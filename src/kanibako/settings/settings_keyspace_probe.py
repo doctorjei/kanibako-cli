@@ -123,6 +123,7 @@ probe_errors: list[str] = []
 
 ### The oracle ###
 
+
 class _AnyAgent(Collection[str]):
   """A ``valid_agents`` that accepts every discriminator (see the module doc).
 
@@ -248,7 +249,8 @@ _DECLARED_HERE: Final[_AgentLeafMap] = _AgentLeafMap()
 #: launch seam (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). ⚑ The
 #: concession is as LAZY as the map: both ask :func:`_discover` and neither sooner.
 AGENT_LEAF_MAP: Final[ConcedingLeafMap] = ConcedingLeafMap(
-  _DECLARED_HERE, unread_harnesses(_DECLARED_HERE),
+  _DECLARED_HERE,
+  unread_harnesses(_DECLARED_HERE),
 )
 
 
@@ -306,13 +308,15 @@ def keyspace_verdict(path: str) -> KeyJudgment:
       # SAY so — in the row, and in the refusal, which prints this note. Conceding
       # the path instead would let a broken oracle green-light §0.
       _verdicts[path] = KeyJudgment(
-        KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
+        KeyClass.UNDECLARED,
+        f"<oracle raised {type(exc).__name__}: {exc}>",
       )
       _note_error(exc)
   return _verdicts[path]
 
 
 ### The seam ###
+
 
 def probe_enabled() -> bool:
   """Is the probe armed? OFF unless :data:`ENV_FLAG` says otherwise."""

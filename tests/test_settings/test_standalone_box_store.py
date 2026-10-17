@@ -24,192 +24,192 @@ from types import SimpleNamespace
 from kanibako.commands import clean as clean_cmd
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
-    box_metadata_dir,
-    box_workset_settings_paths,
-    resolve_standalone_project,
+  BoxMode,
+  _early_scope,
+  box_metadata_dir,
+  box_workset_settings_paths,
+  resolve_standalone_project,
 )
 
 
 def _make_standalone(config, std, tmp_home, leaf: str) -> tuple[Path, str]:
-    """A materialized standalone box at *leaf*, its store in-tree at the default leaf."""
-    root = tmp_home / leaf
-    root.mkdir()
-    (root / "user_code.py").write_text("print('mine')\n")
-    proj = resolve_standalone_project(std, config, str(root), initialize=True)
-    return root, proj.name
+  """A materialized standalone box at *leaf*, its store in-tree at the default leaf."""
+  root = tmp_home / leaf
+  root.mkdir()
+  (root / "user_code.py").write_text("print('mine')\n")
+  proj = resolve_standalone_project(std, config, str(root), initialize=True)
+  return root, proj.name
 
 
 def _relocate(root: Path, target: Path, *, keep_locator: bool = True) -> Path:
-    """Move the store to *target* and point ``workset.boxes`` at it."""
-    target.mkdir(parents=True)
-    (target / "UNRELATED_USER_FILE.txt").write_text("not kanibako's\n")
-    shutil.move(str(root / "box_data"), str(target / "box_data"))
-    write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(target / "box_data"))
-    if keep_locator:
-        # A relocating user can leave an empty ``box_data/`` behind; once the key points
-        # elsewhere it is an ordinary directory, not the store.
-        (root / "box_data").mkdir(exist_ok=True)
-    return target / "box_data"
+  """Move the store to *target* and point ``workset.boxes`` at it."""
+  target.mkdir(parents=True)
+  (target / "UNRELATED_USER_FILE.txt").write_text("not kanibako's\n")
+  shutil.move(str(root / "box_data"), str(target / "box_data"))
+  write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(target / "box_data"))
+  if keep_locator:
+    # A relocating user can leave an empty ``box_data/`` behind; once the key points
+    # elsewhere it is an ordinary directory, not the store.
+    (root / "box_data").mkdir(exist_ok=True)
+  return target / "box_data"
 
 
 def _purge(root: Path) -> int:
-    """The real ``purge`` door, with the flags it would carry non-interactively."""
-    return clean_cmd.run(SimpleNamespace(path=str(root), all_projects=False, force=True))
+  """The real ``purge`` door, with the flags it would carry non-interactively."""
+  return clean_cmd.run(SimpleNamespace(path=str(root), all_projects=False, force=True))
 
 
 class TestTheStoreFollowsTheKey:
-    def test_the_default_leaf_is_unchanged_for_an_unrepointed_box(self, config, std,
-                                                                 tmp_home):
-        """The common case is unchanged: no ``workset.boxes``, so ``<root>/box_data``."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_default")
+  def test_the_default_leaf_is_unchanged_for_an_unrepointed_box(self, config, std, tmp_home):
+    """The common case is unchanged: no ``workset.boxes``, so ``<root>/box_data``."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_default")
 
-        assert box_metadata_dir(
-            BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone)
-        ) == root / "box_data"
+    assert (
+      box_metadata_dir(BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone))
+      == root / "box_data"
+    )
 
-    def test_home_follows_a_repoint(self, config, std, tmp_home):
-        """Home is spelled once against the store, so it moves with the key."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_home")
-        store = _relocate(root, tmp_home / "home_store")
+  def test_home_follows_a_repoint(self, config, std, tmp_home):
+    """Home is spelled once against the store, so it moves with the key."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_home")
+    store = _relocate(root, tmp_home / "home_store")
 
-        proj = resolve_standalone_project(std, config, str(root), initialize=False)
+    proj = resolve_standalone_project(std, config, str(root), initialize=False)
 
-        assert proj.shell_path == store / "home"
+    assert proj.shell_path == store / "home"
 
-    def test_the_box_tier_follows_a_repoint(self, config, std, tmp_home):
-        """The BOX tier is the other half of the store, and follows it too."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_tier")
-        store = _relocate(root, tmp_home / "tier_store")
+  def test_the_box_tier_follows_a_repoint(self, config, std, tmp_home):
+    """The BOX tier is the other half of the store, and follows it too."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_tier")
+    store = _relocate(root, tmp_home / "tier_store")
 
-        proj = resolve_standalone_project(std, config, str(root), initialize=False)
-        box_tier, _workset_tier = box_workset_settings_paths(proj)
+    proj = resolve_standalone_project(std, config, str(root), initialize=False)
+    box_tier, _workset_tier = box_workset_settings_paths(proj)
 
-        assert box_tier == store / "box.yaml"
+    assert box_tier == store / "box.yaml"
 
-    def test_box_metadata_dir_follows_a_repoint(self, config, std, tmp_home):
-        """``box_metadata_dir`` is the helper the lifecycle verbs call; it must not re-literal."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_meta")
-        store = _relocate(root, tmp_home / "meta_store")
+  def test_box_metadata_dir_follows_a_repoint(self, config, std, tmp_home):
+    """``box_metadata_dir`` is the helper the lifecycle verbs call; it must not re-literal."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_meta")
+    store = _relocate(root, tmp_home / "meta_store")
 
-        assert box_metadata_dir(
-            BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone)
-        ) == store
+    assert (
+      box_metadata_dir(BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone))
+      == store
+    )
 
 
 class TestPurgeWithARelocatedStore:
-    """``purge`` is a real teardown, so the split has to hold end to end through it."""
+  """``purge`` is a real teardown, so the split has to hold end to end through it."""
 
-    def test_a_store_outside_the_root_survives_with_the_users_data(self, config, std,
-                                                                  tmp_home, capsys):
-        """⚑ THE DATA-SAFETY PIN: purge deletes no directory the user merely nominated."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_outside")
-        store = _relocate(root, tmp_home / "user_store")
-        (store / "MY_OWN_NOTES.md").write_text("mine\n")
+  def test_a_store_outside_the_root_survives_with_the_users_data(
+    self, config, std, tmp_home, capsys
+  ):
+    """⚑ THE DATA-SAFETY PIN: purge deletes no directory the user merely nominated."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_purge_outside")
+    store = _relocate(root, tmp_home / "user_store")
+    (store / "MY_OWN_NOTES.md").write_text("mine\n")
 
-        rc = _purge(root)
+    rc = _purge(root)
 
-        assert rc == 0
-        assert root.is_dir()
-        assert (root / "user_code.py").is_file()
-        assert store.is_dir(), "a relocated store is the user's; purge must not remove it"
-        assert (store / "MY_OWN_NOTES.md").is_file()
-        assert (store.parent / "UNRELATED_USER_FILE.txt").is_file()
+    assert rc == 0
+    assert root.is_dir()
+    assert (root / "user_code.py").is_file()
+    assert store.is_dir(), "a relocated store is the user's; purge must not remove it"
+    assert (store / "MY_OWN_NOTES.md").is_file()
+    assert (store.parent / "UNRELATED_USER_FILE.txt").is_file()
 
-    def test_a_retained_store_is_named_on_stderr(self, config, std, tmp_home, capsys):
-        """A keep that cannot name the path as the user's is a silent leak, not a keep."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_named")
-        store = _relocate(root, tmp_home / "named_store")
+  def test_a_retained_store_is_named_on_stderr(self, config, std, tmp_home, capsys):
+    """A keep that cannot name the path as the user's is a silent leak, not a keep."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_purge_named")
+    store = _relocate(root, tmp_home / "named_store")
 
-        _purge(root)
-        err = capsys.readouterr().err
+    _purge(root)
+    err = capsys.readouterr().err
 
-        assert str(store) in err
-        assert str(root) in err
+    assert str(store) in err
+    assert str(root) in err
 
-    def test_purge_keeps_the_root_file_when_the_store_is_kept(self, config, std, tmp_home):
-        """⚑ SAME LINE ``box rm --purge`` DRAWS: a kept store leaves the box whole.
+  def test_purge_keeps_the_root_file_when_the_store_is_kept(self, config, std, tmp_home):
+    """⚑ SAME LINE ``box rm --purge`` DRAWS: a kept store leaves the box whole.
 
-        The ROOT ``workset.yaml`` carries the repoint itself, so unlinking it while the
-        box's metadata survives leaves a box that answers to the composed default again.
-        """
-        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_keeps_root")
-        store = _relocate(root, tmp_home / "kept_store")
+    The ROOT ``workset.yaml`` carries the repoint itself, so unlinking it while the
+    box's metadata survives leaves a box that answers to the composed default again.
+    """
+    root, _name = _make_standalone(config, std, tmp_home, "sa_purge_keeps_root")
+    store = _relocate(root, tmp_home / "kept_store")
 
-        rc = _purge(root)
+    rc = _purge(root)
 
-        assert rc == 0
-        assert store.is_dir()
-        assert (root / "workset.yaml").is_file()
-        assert (root / "user_code.py").is_file()
+    assert rc == 0
+    assert store.is_dir()
+    assert (root / "workset.yaml").is_file()
+    assert (root / "user_code.py").is_file()
 
-    def test_purge_keeps_the_root_file_when_an_in_root_store_is_kept(
-            self, config, std, tmp_home):
-        """The inverse case turned on its head: an IN-ROOT store the box's own key nominates
-        is retained, so the root that points at it stays workable and its file stays too."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_drops_root")
-        store = _relocate(root, root / "inside_store")
+  def test_purge_keeps_the_root_file_when_an_in_root_store_is_kept(self, config, std, tmp_home):
+    """The inverse case turned on its head: an IN-ROOT store the box's own key nominates
+    is retained, so the root that points at it stays workable and its file stays too."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_purge_drops_root")
+    store = _relocate(root, root / "inside_store")
 
-        rc = _purge(root)
+    rc = _purge(root)
 
-        assert rc == 0
-        assert store.is_dir()
-        assert (root / "workset.yaml").is_file()
-        assert (root / "user_code.py").is_file()
+    assert rc == 0
+    assert store.is_dir()
+    assert (root / "workset.yaml").is_file()
+    assert (root / "user_code.py").is_file()
 
-    def test_a_store_relocated_inside_the_root_is_kept_and_named(self, config, std, tmp_home,
-                                                             capsys):
-        """⚑ Ruled (A): being strictly below the root does NOT make a store kanibako's.  The
-        box's OWN ``workset.boxes`` nominated it, so purge keeps it and NAMES it — a leftover
-        that is named is recoverable, a deleted user folder is not."""
-        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_inside")
-        store = _relocate(root, root / "inside_store")
-        (store / "MY_OWN_NOTES.md").write_text("mine\n")
-        (store.parent / "UNRELATED_SIBLING.txt").write_text("not the store\n")
+  def test_a_store_relocated_inside_the_root_is_kept_and_named(
+    self, config, std, tmp_home, capsys
+  ):
+    """⚑ Ruled (A): being strictly below the root does NOT make a store kanibako's.  The
+    box's OWN ``workset.boxes`` nominated it, so purge keeps it and NAMES it — a leftover
+    that is named is recoverable, a deleted user folder is not."""
+    root, _name = _make_standalone(config, std, tmp_home, "sa_purge_inside")
+    store = _relocate(root, root / "inside_store")
+    (store / "MY_OWN_NOTES.md").write_text("mine\n")
+    (store.parent / "UNRELATED_SIBLING.txt").write_text("not the store\n")
 
-        rc = _purge(root)
+    rc = _purge(root)
 
-        assert rc == 0
-        assert store.is_dir()
-        assert (store / "MY_OWN_NOTES.md").read_text() == "mine\n"
-        assert (store.parent / "UNRELATED_SIBLING.txt").is_file()
-        assert (root / "user_code.py").is_file()
-        assert str(store) in capsys.readouterr().err
+    assert rc == 0
+    assert store.is_dir()
+    assert (store / "MY_OWN_NOTES.md").read_text() == "mine\n"
+    assert (store.parent / "UNRELATED_SIBLING.txt").is_file()
+    assert (root / "user_code.py").is_file()
+    assert str(store) in capsys.readouterr().err
 
 
 class TestCreateDoesNotFollowTheStoreParent:
-    def test_the_vault_skeleton_is_stamped_at_the_root_not_the_store(
-            self, config, std, tmp_home):
-        """A create with a repointed store stamps ``vault/``'s .gitignore at the ROOT.
+  def test_the_vault_skeleton_is_stamped_at_the_root_not_the_store(self, config, std, tmp_home):
+    """A create with a repointed store stamps ``vault/``'s .gitignore at the ROOT.
 
-        The store's parent is not the workset root once ``workset.boxes`` is repointed, so
-        deriving it from the store answers with a directory outside the box.
-        """
-        root = tmp_home / "sa_new"
-        root.mkdir()
-        store = tmp_home / "new_store"
-        store.mkdir()
-        write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(store))
+    The store's parent is not the workset root once ``workset.boxes`` is repointed, so
+    deriving it from the store answers with a directory outside the box.
+    """
+    root = tmp_home / "sa_new"
+    root.mkdir()
+    store = tmp_home / "new_store"
+    store.mkdir()
+    write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(store))
 
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
 
-        assert proj.shell_path == store / "home"
-        assert not (store / ".gitignore").exists()
-        assert not (store / "vault").exists()
+    assert proj.shell_path == store / "home"
+    assert not (store / ".gitignore").exists()
+    assert not (store / "vault").exists()
 
 
-def test_every_relocated_store_is_kept_out_of_the_way_of_the_workspace(config, std,
-                                                                     tmp_home):
-    """Two boxes with relocated stores: neither purge takes the other's directory."""
-    root_a, _ = _make_standalone(config, std, tmp_home, "sa_two_a")
-    root_b, _ = _make_standalone(config, std, tmp_home, "sa_two_b")
-    store_a = _relocate(root_a, tmp_home / "shared_area", keep_locator=True)
-    store_b = tmp_home / "shared_area" / "box_data"
+def test_every_relocated_store_is_kept_out_of_the_way_of_the_workspace(config, std, tmp_home):
+  """Two boxes with relocated stores: neither purge takes the other's directory."""
+  root_a, _ = _make_standalone(config, std, tmp_home, "sa_two_a")
+  root_b, _ = _make_standalone(config, std, tmp_home, "sa_two_b")
+  store_a = _relocate(root_a, tmp_home / "shared_area", keep_locator=True)
+  store_b = tmp_home / "shared_area" / "box_data"
 
-    assert _purge(root_a) == 0
+  assert _purge(root_a) == 0
 
-    assert store_a.is_dir()
-    assert root_b.is_dir()
-    assert (root_b / "user_code.py").is_file()
-    assert store_b.is_dir()
+  assert store_a.is_dir()
+  assert root_b.is_dir()
+  assert (root_b / "user_code.py").is_file()
+  assert store_b.is_dir()

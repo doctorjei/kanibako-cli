@@ -13,15 +13,15 @@ from __future__ import annotations
 
 
 def blank_ref_refusal() -> str:
-    """The message ``parse_agent_ref`` raises for a ref that is empty after stripping."""
-    from kanibako.agent_ref import parse_agent_ref
-    from kanibako.errors import ConfigError
+  """The message ``parse_agent_ref`` raises for a ref that is empty after stripping."""
+  from kanibako.agent_ref import parse_agent_ref
+  from kanibako.errors import ConfigError
 
-    try:
-        parse_agent_ref("")
-    except ConfigError as exc:
-        return str(exc)
-    raise AssertionError(
-        "parse_agent_ref no longer refuses a blank ref — the grammar, not this "
-        "helper, is what every blank-ref pin is written against."
-    )
+  try:
+    parse_agent_ref("")
+  except ConfigError as exc:
+    return str(exc)
+  raise AssertionError(
+    "parse_agent_ref no longer refuses a blank ref — the grammar, not this "
+    "helper, is what every blank-ref pin is written against."
+  )

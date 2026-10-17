@@ -45,489 +45,504 @@ _PURGE_RE = re.compile(r"^  (kanibako box rm .* --purge)$", re.M)
 
 
 def _pair(message: str) -> "tuple[str, str]":
-    """The register and purge COMMANDS as *message* offers them, one line each."""
-    register, purge = _REGISTER_RE.search(message), _PURGE_RE.search(message)
-    assert register is not None, f"no register cure line in {message!r}"
-    assert purge is not None, f"no purge cure line in {message!r}"
-    return register.group(1), purge.group(1)
+  """The register and purge COMMANDS as *message* offers them, one line each."""
+  register, purge = _REGISTER_RE.search(message), _PURGE_RE.search(message)
+  assert register is not None, f"no register cure line in {message!r}"
+  assert purge is not None, f"no purge cure line in {message!r}"
+  return register.group(1), purge.group(1)
 
 
 def _paste(command: str, scratch: Path, stub: str = "kanibako") -> "tuple[list[str], Path, str]":
-    """Paste *command* into a real shell; return the argv it built, the cwd, the HOME.
+  """Paste *command* into a real shell; return the argv it built, the cwd, the HOME.
 
-    *stub* shadows the pasted command's own leading program, so what is under
-    test is the ARGV THE SHELL BUILT and not what kanibako then does with it.
-    The child environment is passed whole, so it cannot inherit this process's
-    HOME, and the recorded value says whether it did.
-    """
-    stub_dir = scratch / "stubbin"
-    stub_dir.mkdir(parents=True, exist_ok=True)
-    argv_dump = scratch / "argv.dump"
-    home_dump = scratch / "home.dump"
-    argv_dump.write_bytes(b"")
-    program = stub_dir / stub
-    program.write_text(
-        "#!/bin/sh\n"
-        "for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + str(argv_dump) + "\n"
-        "printf '%s' \"$HOME\" > " + str(home_dump) + "\n"
-    )
-    program.chmod(0o755)
+  *stub* shadows the pasted command's own leading program, so what is under
+  test is the ARGV THE SHELL BUILT and not what kanibako then does with it.
+  The child environment is passed whole, so it cannot inherit this process's
+  HOME, and the recorded value says whether it did.
+  """
+  stub_dir = scratch / "stubbin"
+  stub_dir.mkdir(parents=True, exist_ok=True)
+  argv_dump = scratch / "argv.dump"
+  home_dump = scratch / "home.dump"
+  argv_dump.write_bytes(b"")
+  program = stub_dir / stub
+  program.write_text(
+    "#!/bin/sh\n"
+    'for a in "$@"; do printf \'%s\\0\' "$a"; done > ' + str(argv_dump) + "\n"
+    "printf '%s' \"$HOME\" > " + str(home_dump) + "\n"
+  )
+  program.chmod(0o755)
 
-    paste_cwd = scratch / "pastecwd"
-    paste_cwd.mkdir(parents=True, exist_ok=True)
-    child_home = scratch / "childhome"
-    child_home.mkdir(parents=True, exist_ok=True)
+  paste_cwd = scratch / "pastecwd"
+  paste_cwd.mkdir(parents=True, exist_ok=True)
+  child_home = scratch / "childhome"
+  child_home.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        ["/bin/sh", "-c", command],
-        cwd=str(paste_cwd),
-        env={"PATH": f"{stub_dir}:/usr/bin:/bin", "HOME": str(child_home)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return (
-        [a for a in argv_dump.read_bytes().decode().split("\0") if a],
-        paste_cwd,
-        home_dump.read_text(),
-    )
+  subprocess.run(
+    ["/bin/sh", "-c", command],
+    cwd=str(paste_cwd),
+    env={"PATH": f"{stub_dir}:/usr/bin:/bin", "HOME": str(child_home)},
+    capture_output=True,
+    text=True,
+    check=False,
+  )
+  return (
+    [a for a in argv_dump.read_bytes().decode().split("\0") if a],
+    paste_cwd,
+    home_dump.read_text(),
+  )
 
 
 def _paste_over_ssh(command: str, scratch: Path) -> "tuple[str, list[str], Path]":
-    """Paste an ``ssh`` cure; return the destination and the REMOTE argv.
+  """Paste an ``ssh`` cure; return the destination and the REMOTE argv.
 
-    The ``ssh`` stub behaves like ssh(1): it drops its options, ``--``, and the
-    destination, then hands the remaining args, joined by spaces, to a shell —
-    the remote re-parse a local-only quote does not survive.  The "remote"
-    ``kanibako`` records the argv that second shell built.
-    """
-    stub_dir = scratch / "stubbin"
-    stub_dir.mkdir(parents=True, exist_ok=True)
-    dest_dump = scratch / "dest.dump"
-    argv_dump = scratch / "argv.dump"
-    argv_dump.write_bytes(b"")
-    ssh = stub_dir / "ssh"
-    ssh.write_text(
-        "#!/bin/sh\n"
-        "while [ $# -gt 0 ]; do\n"
-        "  case \"$1\" in\n"
-        "    --) shift; break ;;\n"
-        "    -[BbcDEeFIiJLlmOoPpQRSWw]) shift 2 ;;\n"
-        "    -*) shift ;;\n"
-        "    *) break ;;\n"
-        "  esac\n"
-        "done\n"
-        "printf '%s' \"$1\" > " + shlex.quote(str(dest_dump)) + "\n"
-        "shift\n"
-        "exec /bin/sh -c \"$*\"\n"
-    )
-    ssh.chmod(0o755)
-    kanibako = stub_dir / "kanibako"
-    kanibako.write_text(
-        "#!/bin/sh\n"
-        "{ printf '%s\\0' kanibako; for a in \"$@\"; do printf '%s\\0' \"$a\"; done; } > "
-        + shlex.quote(str(argv_dump)) + "\n"
-    )
-    kanibako.chmod(0o755)
+  The ``ssh`` stub behaves like ssh(1): it drops its options, ``--``, and the
+  destination, then hands the remaining args, joined by spaces, to a shell —
+  the remote re-parse a local-only quote does not survive.  The "remote"
+  ``kanibako`` records the argv that second shell built.
+  """
+  stub_dir = scratch / "stubbin"
+  stub_dir.mkdir(parents=True, exist_ok=True)
+  dest_dump = scratch / "dest.dump"
+  argv_dump = scratch / "argv.dump"
+  argv_dump.write_bytes(b"")
+  ssh = stub_dir / "ssh"
+  ssh.write_text(
+    "#!/bin/sh\n"
+    "while [ $# -gt 0 ]; do\n"
+    '  case "$1" in\n'
+    "    --) shift; break ;;\n"
+    "    -[BbcDEeFIiJLlmOoPpQRSWw]) shift 2 ;;\n"
+    "    -*) shift ;;\n"
+    "    *) break ;;\n"
+    "  esac\n"
+    "done\n"
+    "printf '%s' \"$1\" > " + shlex.quote(str(dest_dump)) + "\n"
+    "shift\n"
+    'exec /bin/sh -c "$*"\n'
+  )
+  ssh.chmod(0o755)
+  kanibako = stub_dir / "kanibako"
+  kanibako.write_text(
+    "#!/bin/sh\n"
+    "{ printf '%s\\0' kanibako; for a in \"$@\"; do printf '%s\\0' \"$a\"; done; } > "
+    + shlex.quote(str(argv_dump))
+    + "\n"
+  )
+  kanibako.chmod(0o755)
 
-    paste_cwd = scratch / "pastecwd"
-    paste_cwd.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["/bin/sh", "-c", command],
-        cwd=str(paste_cwd),
-        env={"PATH": f"{stub_dir}:/usr/bin:/bin", "HOME": str(scratch)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return (
-        dest_dump.read_text() if dest_dump.exists() else "",
-        [a for a in argv_dump.read_bytes().decode().split("\0") if a],
-        paste_cwd,
-    )
+  paste_cwd = scratch / "pastecwd"
+  paste_cwd.mkdir(parents=True, exist_ok=True)
+  subprocess.run(
+    ["/bin/sh", "-c", command],
+    cwd=str(paste_cwd),
+    env={"PATH": f"{stub_dir}:/usr/bin:/bin", "HOME": str(scratch)},
+    capture_output=True,
+    text=True,
+    check=False,
+  )
+  return (
+    dest_dump.read_text() if dest_dump.exists() else "",
+    [a for a in argv_dump.read_bytes().decode().split("\0") if a],
+    paste_cwd,
+  )
 
 
 # ---------------------------------------------------------------------------
 # Door drivers — the shipped parser and the real handlers, on a real std.
 # ---------------------------------------------------------------------------
 
-def _run(argv: "list[str]") -> int:
-    """Run *argv* through the SHIPPED parser and handler; return its rc."""
-    from kanibako.cli import build_parser
 
-    parsed = build_parser().parse_args(argv)
-    return parsed.func(parsed)
+def _run(argv: "list[str]") -> int:
+  """Run *argv* through the SHIPPED parser and handler; return its rc."""
+  from kanibako.cli import build_parser
+
+  parsed = build_parser().parse_args(argv)
+  return parsed.func(parsed)
 
 
 def _park_primary_box(name: str) -> Path:
-    """Create a PRIMARY box registered under *name*, as an older ``create`` did."""
-    path = Path.cwd() / name
-    with patch("kanibako.settings.paths.box_name_reason", return_value=None):
-        assert _run(["box", "create", str(path), "--no-vault"]) == 0
-    return path
+  """Create a PRIMARY box registered under *name*, as an older ``create`` did."""
+  path = Path.cwd() / name
+  with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+    assert _run(["box", "create", str(path), "--no-vault"]) == 0
+  return path
 
 
 def _standalone_root(name: str) -> Path:
-    """Create a real STANDALONE box, then key it in the registry as *name*.
+  """Create a real STANDALONE box, then key it in the registry as *name*.
 
-    The registration is the real store function, so the key is written as given;
-    ``create`` itself would sanitize it away, which is why the hostile half of
-    this door's operands is not reachable through ``box create``.
-    """
-    from kanibako.project import registry_store
-    from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import load_std_paths
+  The registration is the real store function, so the key is written as given;
+  ``create`` itself would sanitize it away, which is why the hostile half of
+  this door's operands is not reachable through ``box create``.
+  """
+  from kanibako.project import registry_store
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import load_std_paths
 
-    root = Path.cwd() / "sa_root"
-    root.mkdir(parents=True, exist_ok=True)
-    assert _run(["box", "create", str(root), "--standalone", "--no-vault"]) == 0
-    std = load_std_paths(load_config(user_config_file()))
-    registry_store.register_standalone(std.registry, name, root)
-    return root
+  root = Path.cwd() / "sa_root"
+  root.mkdir(parents=True, exist_ok=True)
+  assert _run(["box", "create", str(root), "--standalone", "--no-vault"]) == 0
+  std = load_std_paths(load_config(user_config_file()))
+  registry_store.register_standalone(std.registry, name, root)
+  return root
 
 
 # --- doors 1-4, the retained-box pair ---------------------------------------
 
-def _at_rm_primary(name: str, capsys) -> str:
-    """Door 4: the cure a ``box rm`` prints when it parks an ACTIVE primary box.
 
-    ``rm`` on the path resolves the parked box back.
-    """
-    _park_primary_box(name)
-    capsys.readouterr()
-    assert _run(["box", "rm", str(Path.cwd() / name)]) == 0
-    return capsys.readouterr().out
+def _at_rm_primary(name: str, capsys) -> str:
+  """Door 4: the cure a ``box rm`` prints when it parks an ACTIVE primary box.
+
+  ``rm`` on the path resolves the parked box back.
+  """
+  _park_primary_box(name)
+  capsys.readouterr()
+  assert _run(["box", "rm", str(Path.cwd() / name)]) == 0
+  return capsys.readouterr().out
 
 
 def _at_rm_standalone(name: str, capsys) -> str:
-    """Door 3: the cure ``box rm <path>`` prints for a STANDALONE box."""
-    root = _standalone_root(name)
-    capsys.readouterr()
-    assert _run(["box", "rm", str(root)]) == 0
-    return capsys.readouterr().out
+  """Door 3: the cure ``box rm <path>`` prints for a STANDALONE box."""
+  root = _standalone_root(name)
+  capsys.readouterr()
+  assert _run(["box", "rm", str(root)]) == 0
+  return capsys.readouterr().out
 
 
 def _at_rm_deregistered(name: str, capsys) -> str:
-    """Door 2: the cure printed for an entry that is ALREADY deregistered.
+  """Door 2: the cure printed for an entry that is ALREADY deregistered.
 
-    The operand is handed to the handler directly; what is pinned is that the
-    cure quotes whatever name it is given.
-    """
-    from kanibako.commands.box._parser import _purge_deregistered
-    from kanibako.project import registry_store
-    from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import load_std_paths
+  The operand is handed to the handler directly; what is pinned is that the
+  cure quotes whatever name it is given.
+  """
+  from kanibako.commands.box._parser import _purge_deregistered
+  from kanibako.project import registry_store
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import load_std_paths
 
-    config = load_config(user_config_file())
-    std = load_std_paths(config)
-    metadata = std.boxes / name
-    metadata.mkdir(parents=True, exist_ok=True)
-    registry_store.register_deregistered(
-        std.registry, name, kind="primary",
-        workspace=str(metadata), metadata=str(metadata),
-    )
-    args = argparse.Namespace(target=name, box=None, purge=False, force=False)
-    capsys.readouterr()
-    rc = _purge_deregistered(
-        std, name, dict(registry_store.lookup_deregistered(std.registry, name)), args,
-        config=config,
-    )
-    assert rc == 0
-    return capsys.readouterr().out
+  config = load_config(user_config_file())
+  std = load_std_paths(config)
+  metadata = std.boxes / name
+  metadata.mkdir(parents=True, exist_ok=True)
+  registry_store.register_deregistered(
+    std.registry,
+    name,
+    kind="primary",
+    workspace=str(metadata),
+    metadata=str(metadata),
+  )
+  args = argparse.Namespace(target=name, box=None, purge=False, force=False)
+  capsys.readouterr()
+  rc = _purge_deregistered(
+    std,
+    name,
+    dict(registry_store.lookup_deregistered(std.registry, name)),
+    args,
+    config=config,
+  )
+  assert rc == 0
+  return capsys.readouterr().out
 
 
 def _at_create_name_refusal(name: str, capsys) -> str:
-    """Door 1: the refusal ``box create`` prints for retained metadata of *name*."""
-    from kanibako.commands.box._parser import _assert_primary_home_free_for_create
-    from kanibako.errors import ProjectError
-    from kanibako.project import registry_store
-    from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import load_std_paths
+  """Door 1: the refusal ``box create`` prints for retained metadata of *name*."""
+  from kanibako.commands.box._parser import _assert_primary_home_free_for_create
+  from kanibako.errors import ProjectError
+  from kanibako.project import registry_store
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import load_std_paths
 
-    std = load_std_paths(load_config(user_config_file()))
-    metadata = std.boxes / name
-    metadata.mkdir(parents=True, exist_ok=True)
-    registry_store.register_deregistered(
-        std.registry, name, kind="primary",
-        workspace=str(metadata), metadata=str(metadata),
-    )
-    with pytest.raises(ProjectError) as raised:
-        _assert_primary_home_free_for_create(std, name)
-    return str(raised.value)
+  std = load_std_paths(load_config(user_config_file()))
+  metadata = std.boxes / name
+  metadata.mkdir(parents=True, exist_ok=True)
+  registry_store.register_deregistered(
+    std.registry,
+    name,
+    kind="primary",
+    workspace=str(metadata),
+    metadata=str(metadata),
+  )
+  with pytest.raises(ProjectError) as raised:
+    _assert_primary_home_free_for_create(std, name)
+  return str(raised.value)
 
 
 _PAIR_DOORS = [
-    pytest.param(_at_rm_primary, id="rm_primary"),
-    pytest.param(_at_rm_standalone, id="rm_standalone"),
-    pytest.param(_at_rm_deregistered, id="rm_deregistered"),
-    pytest.param(_at_create_name_refusal, id="create_orphan"),
+  pytest.param(_at_rm_primary, id="rm_primary"),
+  pytest.param(_at_rm_standalone, id="rm_standalone"),
+  pytest.param(_at_rm_deregistered, id="rm_deregistered"),
+  pytest.param(_at_create_name_refusal, id="create_orphan"),
 ]
 
 
 def _printed_pair(door, name: str, capsys) -> "tuple[str, str]":
-    return _pair(door(name, capsys))
+  return _pair(door(name, capsys))
 
 
 @pytest.mark.parametrize("door", _PAIR_DOORS, ids=[p.values[0].__name__ for p in _PAIR_DOORS])
 @pytest.mark.parametrize("name", _HOSTILE)
 class TestTheRetainedBoxPairIsQuoted:
-    """The register/purge pair, pasted, must not run the operand's own commands."""
+  """The register/purge pair, pasted, must not run the operand's own commands."""
 
-    def test_the_printed_pair_carries_one_operand_per_command(
-        self, door, name, tmp_home, config_file, credentials_dir, capsys
+  def test_the_printed_pair_carries_one_operand_per_command(
+    self, door, name, tmp_home, config_file, credentials_dir, capsys
+  ):
+    """Each printed half names exactly the box, as ONE shell word.
+
+    Pinned on the argv the shell builds, so an operand that split into two
+    words cannot pass by both halves happening to exist.
+    """
+    register, purge = _printed_pair(door, name, capsys)
+
+    assert shlex.split(register) == ["kanibako", "box", "register", name]
+    assert shlex.split(purge) == ["kanibako", "box", "rm", name, "--purge"]
+
+  def test_pasting_the_printed_pair_does_not_run_the_operand(
+    self, door, name, tmp_home, config_file, credentials_dir, capsys, tmp_path
+  ):
+    """⭐ THE EXECUTION: pasting either half leaves no marker and one argv.
+
+    BOTH halves are pasted, each into its own directory, so an operand that
+    ran its own command would leave ``pwned`` beside it — and the ``--purge``
+    half is included because it is the one that deletes.  The recorded HOME
+    says the child inherited the throwaway one and not this session's.
+    """
+    register, purge = _printed_pair(door, name, capsys)
+
+    for half, expected in (
+      (register, ["box", "register", name]),
+      (purge, ["box", "rm", name, "--purge"]),
     ):
-        """Each printed half names exactly the box, as ONE shell word.
+      argv, paste_cwd, child_home = _paste(half, tmp_path / f"paste-{len(expected)}")
 
-        Pinned on the argv the shell builds, so an operand that split into two
-        words cannot pass by both halves happening to exist.
-        """
-        register, purge = _printed_pair(door, name, capsys)
-
-        assert shlex.split(register) == ["kanibako", "box", "register", name]
-        assert shlex.split(purge) == ["kanibako", "box", "rm", name, "--purge"]
-
-    def test_pasting_the_printed_pair_does_not_run_the_operand(
-        self, door, name, tmp_home, config_file, credentials_dir, capsys, tmp_path
-    ):
-        """⭐ THE EXECUTION: pasting either half leaves no marker and one argv.
-
-        BOTH halves are pasted, each into its own directory, so an operand that
-        ran its own command would leave ``pwned`` beside it — and the ``--purge``
-        half is included because it is the one that deletes.  The recorded HOME
-        says the child inherited the throwaway one and not this session's.
-        """
-        register, purge = _printed_pair(door, name, capsys)
-
-        for half, expected in (
-            (register, ["box", "register", name]),
-            (purge, ["box", "rm", name, "--purge"]),
-        ):
-            argv, paste_cwd, child_home = _paste(half, tmp_path / f"paste-{len(expected)}")
-
-            assert not (paste_cwd / _MARKER).exists(), (
-                f"the pasted cure ran injected text: {half}"
-            )
-            assert argv == expected
-            assert child_home == str(tmp_path / f"paste-{len(expected)}" / "childhome")
+      assert not (paste_cwd / _MARKER).exists(), f"the pasted cure ran injected text: {half}"
+      assert argv == expected
+      assert child_home == str(tmp_path / f"paste-{len(expected)}" / "childhome")
 
 
 def test_the_three_shared_doors_print_one_identical_sentence(
-    tmp_home, config_file, credentials_dir, capsys
+  tmp_home, config_file, credentials_dir, capsys
 ):
-    """The three same-sentence doors are one primitive's output, not three copies.
+  """The three same-sentence doors are one primitive's output, not three copies.
 
-    Only the cure SENTENCE is compared — each door prints a different lead-in
-    before it, and it is the sentence that must not drift into a second wording.
-    """
-    def sentence(door, name) -> str:
-        message = door(name, capsys)
-        # From the sentence's own line, so the different lead-in each door prints
-        # before it is excluded; the two cure lines follow it.
-        return message[message.index(_SENTENCE):].strip()
+  Only the cure SENTENCE is compared — each door prints a different lead-in
+  before it, and it is the sentence that must not drift into a second wording.
+  """
 
-    spoken = {
-        door.__name__: sentence(door, _HOSTILE[0])
-        for door in (_at_rm_primary, _at_rm_standalone, _at_rm_deregistered)
-    }
-    assert len(set(spoken.values())) == 1, f"the pair sentence diverged: {spoken}"
+  def sentence(door, name) -> str:
+    message = door(name, capsys)
+    # From the sentence's own line, so the different lead-in each door prints
+    # before it is excluded; the two cure lines follow it.
+    return message[message.index(_SENTENCE) :].strip()
+
+  spoken = {
+    door.__name__: sentence(door, _HOSTILE[0])
+    for door in (_at_rm_primary, _at_rm_standalone, _at_rm_deregistered)
+  }
+  assert len(set(spoken.values())) == 1, f"the pair sentence diverged: {spoken}"
 
 
 class TestTheOtherTwoCuresAreQuoted:
-    """The ``start`` and ``code --remote`` cures carry operands the CLI never validates."""
+  """The ``start`` and ``code --remote`` cures carry operands the CLI never validates."""
 
-    @pytest.mark.parametrize(
-        "designation", ["unregistered_box", "ws/box", "a\0b"],
-        ids=["identifier", "qualified", "nul_bearing"],
+  @pytest.mark.parametrize(
+    "designation",
+    ["unregistered_box", "ws/box", "a\0b"],
+    ids=["identifier", "qualified", "nul_bearing"],
+  )
+  def test_the_start_create_cure_quotes_the_operand_it_is_handed(self, designation):
+    """This door is name-gated, so only a NUL-bearing operand needs quoting.
+
+    The line is reached only when :func:`designation_route` is not PATH,
+    which for a non-empty value is an IDENTIFIER, a ``<workset>/<box>`` pair
+    of them, or a NUL-bearing INVALID — and :func:`is_valid_box_name`
+    refuses whitespace and every shell metacharacter, so the first two are
+    already quote-clean.  The NUL case is the one that still needs it, and it
+    is pinned here so the branch cannot go back to printing its operand raw;
+    a hostile ``$( )`` designation is a PATH and takes the quoted sibling.
+    """
+    from kanibako.commands.start import _no_box_error
+
+    message = _no_box_error(designation)
+    line = next(ln for ln in message.splitlines() if "Otherwise create a new box" in ln)
+
+    assert line.strip() == (
+      f"Otherwise create a new box:  kanibako create {shlex.quote(designation)}"
     )
-    def test_the_start_create_cure_quotes_the_operand_it_is_handed(self, designation):
-        """This door is name-gated, so only a NUL-bearing operand needs quoting.
 
-        The line is reached only when :func:`designation_route` is not PATH,
-        which for a non-empty value is an IDENTIFIER, a ``<workset>/<box>`` pair
-        of them, or a NUL-bearing INVALID — and :func:`is_valid_box_name`
-        refuses whitespace and every shell metacharacter, so the first two are
-        already quote-clean.  The NUL case is the one that still needs it, and it
-        is pinned here so the branch cannot go back to printing its operand raw;
-        a hostile ``$( )`` designation is a PATH and takes the quoted sibling.
-        """
-        from kanibako.commands.start import _no_box_error
+  @pytest.mark.parametrize("name", _HOSTILE)
+  def test_a_path_operand_takes_the_quoted_sibling(self, name, tmp_path):
+    """A hostile operand is a PATH whose leaf ``create`` refuses as a name, so its
+    cure carries ``--name``; the operand stays quoted."""
+    from kanibako.commands.start import _no_box_error
 
-        message = _no_box_error(designation)
-        line = next(
-            ln for ln in message.splitlines() if "Otherwise create a new box" in ln
-        )
+    from kanibako.identifiers import underscore_spelling
 
-        assert line.strip() == (
-            f"Otherwise create a new box:  kanibako create {shlex.quote(designation)}"
-        )
+    message = _no_box_error(name)
+    cure = message.rsplit("\n  ", 1)[1]
+    # The offered ``--name`` is the operand's '_' spelling (spec §0), itself inert.
+    spelled = underscore_spelling(name)
 
-    @pytest.mark.parametrize("name", _HOSTILE)
-    def test_a_path_operand_takes_the_quoted_sibling(self, name, tmp_path):
-        """A hostile operand is a PATH whose leaf ``create`` refuses as a name, so its
-        cure carries ``--name``; the operand stays quoted."""
-        from kanibako.commands.start import _no_box_error
+    assert shlex.split(cure) == ["kanibako", "create", name, "--name", spelled]
 
-        from kanibako.identifiers import underscore_spelling
+    argv, paste_cwd, _home = _paste(cure, tmp_path / "paste")
+    assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
+    assert argv == ["create", name, "--name", spelled]
 
-        message = _no_box_error(name)
-        cure = message.rsplit("\n  ", 1)[1]
-        # The offered ``--name`` is the operand's '_' spelling (spec §0), itself inert.
-        spelled = underscore_spelling(name)
+  @pytest.mark.parametrize("box", [f"web$(touch {_MARKER})", "a b'c"])
+  def test_the_remote_create_cure_survives_both_shells(self, box, tmp_home, capsys, tmp_path):
+    """``--remote`` and ``--box`` are free-form; the box crosses TWO shells.
 
-        assert shlex.split(cure) == ["kanibako", "create", name, "--name", spelled]
+    ssh joins its trailing args with spaces and the REMOTE shell re-parses
+    them, so the box needs a second quoting layer that a local-only quote
+    lacks.  The pasted cure runs through an ``ssh`` stub that behaves like
+    ssh(1) and a recording ``kanibako`` on the "remote" side.
+    """
+    from types import SimpleNamespace
 
-        argv, paste_cwd, _home = _paste(cure, tmp_path / "paste")
-        assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
-        assert argv == ["create", name, "--name", spelled]
+    from kanibako.commands.code_cmd import _run_code_remote
 
-    @pytest.mark.parametrize("box", [f"web$(touch {_MARKER})", "a b'c"])
-    def test_the_remote_create_cure_survives_both_shells(self, box, tmp_home, capsys, tmp_path):
-        """``--remote`` and ``--box`` are free-form; the box crosses TWO shells.
+    dest = f"myhost;>{_MARKER}"
+    failed = SimpleNamespace(
+      returncode=1,
+      stderr="Error: no box at /home/u/webapp.",
+      stdout="",
+    )
+    args = argparse.Namespace(project=None, box=box, remote=dest)
+    with (
+      patch("kanibako.commands.code_cmd._resolve_code_cli", return_value="/usr/bin/code"),
+      patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/podman"),
+      patch("kanibako.commands.code_cmd._wire_docker_path", return_value=None),
+      patch("kanibako.vscode.vscode_remote.dispatch_wrapper_path", return_value=Path("/w")),
+      patch("kanibako.vscode.vscode_remote.ensure_dispatch_wrapper"),
+      patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+      patch("kanibako.vscode.vscode_remote.remote_context_name", return_value="ctx"),
+      patch("kanibako.vscode.vscode_remote.tunnel_socket_path", return_value=Path("/t.sock")),
+      patch("kanibako.vscode.vscode_remote.engine_url", return_value="unix:///t.sock"),
+      patch("kanibako.vscode.vscode_remote.remote_socket_path", return_value="/run/x.sock"),
+      patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
+      patch("kanibako.vscode.vscode_remote.write_context_entry"),
+      patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+      patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=MagicMock()),
+      patch("kanibako.vscode.vscode_remote.preflight_engine"),
+      patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
+    ):
+      assert _run_code_remote(args, dest) == 1
+    hint = next(ln for ln in capsys.readouterr().err.splitlines() if "Create it THERE" in ln)
+    cure = hint.split("e.g.:", 1)[1].strip()
 
-        ssh joins its trailing args with spaces and the REMOTE shell re-parses
-        them, so the box needs a second quoting layer that a local-only quote
-        lacks.  The pasted cure runs through an ``ssh`` stub that behaves like
-        ssh(1) and a recording ``kanibako`` on the "remote" side.
-        """
-        from types import SimpleNamespace
-
-        from kanibako.commands.code_cmd import _run_code_remote
-
-        dest = f"myhost;>{_MARKER}"
-        failed = SimpleNamespace(
-            returncode=1, stderr="Error: no box at /home/u/webapp.", stdout="",
-        )
-        args = argparse.Namespace(project=None, box=box, remote=dest)
-        with (
-            patch("kanibako.commands.code_cmd._resolve_code_cli", return_value="/usr/bin/code"),
-            patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/podman"),
-            patch("kanibako.commands.code_cmd._wire_docker_path", return_value=None),
-            patch("kanibako.vscode.vscode_remote.dispatch_wrapper_path", return_value=Path("/w")),
-            patch("kanibako.vscode.vscode_remote.ensure_dispatch_wrapper"),
-            patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
-            patch("kanibako.vscode.vscode_remote.remote_context_name", return_value="ctx"),
-            patch("kanibako.vscode.vscode_remote.tunnel_socket_path", return_value=Path("/t.sock")),
-            patch("kanibako.vscode.vscode_remote.engine_url", return_value="unix:///t.sock"),
-            patch("kanibako.vscode.vscode_remote.remote_socket_path", return_value="/run/x.sock"),
-            patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
-            patch("kanibako.vscode.vscode_remote.write_context_entry"),
-            patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
-            patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=MagicMock()),
-            patch("kanibako.vscode.vscode_remote.preflight_engine"),
-            patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
-        ):
-            assert _run_code_remote(args, dest) == 1
-        hint = next(
-            ln for ln in capsys.readouterr().err.splitlines() if "Create it THERE" in ln
-        )
-        cure = hint.split("e.g.:", 1)[1].strip()
-
-        remote_dest, remote_argv, paste_cwd = _paste_over_ssh(cure, tmp_path / "paste")
-        assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
-        assert remote_dest == dest
-        assert remote_argv == ["kanibako", "create", box]
+    remote_dest, remote_argv, paste_cwd = _paste_over_ssh(cure, tmp_path / "paste")
+    assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
+    assert remote_dest == dest
+    assert remote_argv == ["kanibako", "create", box]
 
 
 @pytest.mark.parametrize("name", [_SAFE, "q;>pwned"])
 def test_a_plain_operand_prints_the_same_bytes_it_did(
-    name, tmp_home, config_file, credentials_dir, capsys
+  name, tmp_home, config_file, credentials_dir, capsys
 ):
-    """Quoting is a no-op for an operand that needs none."""
-    assert _pair(_at_rm_primary(name, capsys)) == (
-        f"kanibako box register {shlex.quote(name)}",
-        f"kanibako box rm {shlex.quote(name)} --purge",
-    )
+  """Quoting is a no-op for an operand that needs none."""
+  assert _pair(_at_rm_primary(name, capsys)) == (
+    f"kanibako box register {shlex.quote(name)}",
+    f"kanibako box rm {shlex.quote(name)} --purge",
+  )
+
 
 @pytest.mark.parametrize("door", _PAIR_DOORS, ids=[p.values[0].__name__ for p in _PAIR_DOORS])
 def test_no_door_wraps_a_cure_in_prose_quotes(
-    door, tmp_home, config_file, credentials_dir, capsys
+  door, tmp_home, config_file, credentials_dir, capsys
 ):
-    """A quoted command around a quoted operand nests the quotes and does not paste."""
-    message = door("my box", capsys)
+  """A quoted command around a quoted operand nests the quotes and does not paste."""
+  message = door("my box", capsys)
 
-    assert "'kanibako box" not in message, message
-    register, purge = _pair(message)
-    assert shlex.split(register) == ["kanibako", "box", "register", "my box"]
-    assert shlex.split(purge) == ["kanibako", "box", "rm", "my box", "--purge"]
+  assert "'kanibako box" not in message, message
+  register, purge = _pair(message)
+  assert shlex.split(register) == ["kanibako", "box", "register", "my box"]
+  assert shlex.split(purge) == ["kanibako", "box", "rm", "my box", "--purge"]
 
 
 def _legacy_primary_box(name: str) -> Path:
-    """A PRIMARY box registered under *name*, a name the box-name rule now refuses.
+  """A PRIMARY box registered under *name*, a name the box-name rule now refuses.
 
-    ``create`` refuses the name, so the box is created valid and re-keyed by the
-    real registration API, which (like an older release) does not check the rule.
-    """
-    from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import (
-        BoxMode, _early_scope, load_std_paths, register_primary_box_name,
-        unregister_primary_box_name,
-    )
-    from kanibako.launch.box_identity import is_valid_box_name
+  ``create`` refuses the name, so the box is created valid and re-keyed by the
+  real registration API, which (like an older release) does not check the rule.
+  """
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import (
+    BoxMode,
+    _early_scope,
+    load_std_paths,
+    register_primary_box_name,
+    unregister_primary_box_name,
+  )
+  from kanibako.launch.box_identity import is_valid_box_name
 
-    assert not is_valid_box_name(name)
-    path = _park_primary_box("legacy_ws")
-    std = load_std_paths(load_config(user_config_file()))
-    early = _early_scope(std, BoxMode.primary)
-    unregister_primary_box_name(std.primary_workset, "legacy_ws", early=early)
-    (std.boxes / "legacy_ws").rename(std.boxes / name)
-    register_primary_box_name(std.primary_workset, name, path, early=early)
-    return path
+  assert not is_valid_box_name(name)
+  path = _park_primary_box("legacy_ws")
+  std = load_std_paths(load_config(user_config_file()))
+  early = _early_scope(std, BoxMode.primary)
+  unregister_primary_box_name(std.primary_workset, "legacy_ws", early=early)
+  (std.boxes / "legacy_ws").rename(std.boxes / name)
+  register_primary_box_name(std.primary_workset, name, path, early=early)
+  return path
 
 
 class TestALegacyNameCureWorksPasted:
-    """``box rm`` of a legacy-named box prints cures that must run as printed.
+  """``box rm`` of a legacy-named box prints cures that must run as printed.
 
-    A name the rule refuses designates a PATH, never a NAME, so a lookup gated on
-    the NAME route cannot find the retained entry the cure names.
-    """
+  A name the rule refuses designates a PATH, never a NAME, so a lookup gated on
+  the NAME route cannot find the retained entry the cure names.
+  """
 
-    _NAME = "my project"
+  _NAME = "my project"
 
-    def _rm(self, capsys) -> "tuple[str, str]":
-        path = _legacy_primary_box(self._NAME)
-        capsys.readouterr()
-        assert _run(["box", "rm", str(path)]) == 0
-        return _pair(capsys.readouterr().out)
+  def _rm(self, capsys) -> "tuple[str, str]":
+    path = _legacy_primary_box(self._NAME)
+    capsys.readouterr()
+    assert _run(["box", "rm", str(path)]) == 0
+    return _pair(capsys.readouterr().out)
 
-    def test_the_register_cure_readopts_the_box(
-        self, tmp_home, config_file, credentials_dir, capsys
-    ):
-        from kanibako.settings.config import load_config, user_config_file
-        from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
+  def test_the_register_cure_readopts_the_box(
+    self, tmp_home, config_file, credentials_dir, capsys
+  ):
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
 
-        register, _purge = self._rm(capsys)
-        assert _run(shlex.split(register)[1:]) == 0
+    register, _purge = self._rm(capsys)
+    assert _run(shlex.split(register)[1:]) == 0
 
-        std = load_std_paths(load_config(user_config_file()))
-        assert self._NAME in load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary),
-        )
+    std = load_std_paths(load_config(user_config_file()))
+    assert self._NAME in load_primary_boxes(
+      std.primary_workset,
+      early=_early_scope(std, BoxMode.primary),
+    )
 
-    def test_the_purge_cure_deletes_the_retained_metadata(
-        self, tmp_home, config_file, credentials_dir, capsys
-    ):
-        from kanibako.settings.config import load_config, user_config_file
-        from kanibako.settings.paths import load_std_paths
+  def test_the_purge_cure_deletes_the_retained_metadata(
+    self, tmp_home, config_file, credentials_dir, capsys
+  ):
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
 
-        _register, purge = self._rm(capsys)
-        assert _run([*shlex.split(purge)[1:], "--force"]) == 0
+    _register, purge = self._rm(capsys)
+    assert _run([*shlex.split(purge)[1:], "--force"]) == 0
 
-        std = load_std_paths(load_config(user_config_file()))
-        assert not (std.boxes / self._NAME).exists()
+    std = load_std_paths(load_config(user_config_file()))
+    assert not (std.boxes / self._NAME).exists()
 
-    def test_a_real_path_still_outranks_the_retained_name(
-        self, tmp_home, config_file, credentials_dir, capsys
-    ):
-        """A standalone box on disk at the designation registers as itself."""
-        from kanibako.project import registry_store
-        from kanibako.settings.config import load_config, user_config_file
-        from kanibako.settings.paths import load_std_paths
+  def test_a_real_path_still_outranks_the_retained_name(
+    self, tmp_home, config_file, credentials_dir, capsys
+  ):
+    """A standalone box on disk at the designation registers as itself."""
+    from kanibako.project import registry_store
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
 
-        self._rm(capsys)
-        root = Path.cwd() / self._NAME
-        assert _run(["box", "create", str(root), "--standalone", "--no-vault"]) == 0
-        assert _run(["box", "register", self._NAME]) == 0
+    self._rm(capsys)
+    root = Path.cwd() / self._NAME
+    assert _run(["box", "create", str(root), "--standalone", "--no-vault"]) == 0
+    assert _run(["box", "register", self._NAME]) == 0
 
-        std = load_std_paths(load_config(user_config_file()))
-        assert registry_store.standalone_name_for_root(std.registry, root) is not None
-        assert registry_store.lookup_deregistered(std.registry, self._NAME) is not None
+    std = load_std_paths(load_config(user_config_file()))
+    assert registry_store.standalone_name_for_root(std.registry, root) is not None
+    assert registry_store.lookup_deregistered(std.registry, self._NAME) is not None

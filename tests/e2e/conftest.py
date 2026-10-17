@@ -35,10 +35,10 @@ E2E_IMAGE = "kanibako-oci:latest"
 
 
 def box_container(box: str) -> str:
-    """The container name the product renders for the primary box *box*."""
-    name = render_container_name(WORKSET_SEGMENT_PRIMARY, box)
-    assert name is not None, f"box name {box!r} renders no container name"
-    return name
+  """The container name the product renders for the primary box *box*."""
+  name = render_container_name(WORKSET_SEGMENT_PRIMARY, box)
+  assert name is not None, f"box name {box!r} renders no container name"
+  return name
 
 
 # The ``e2e_<x>`` primary boxes' containers start here (other suite boxes are cleaned up by their own tests).
@@ -82,55 +82,54 @@ e2e_requires = [requires_podman, requires_tmux]
 
 
 def _image_available() -> bool:
-    """Check if the e2e test image is available locally.
+  """Check if the e2e test image is available locally.
 
-    ⚑ Never raises. A runtime that is absent, slow or unpermitted is ``False`` here,
-    and must not fail tests that have not asked about podman at all.
-    """
-    if _podman is None:
-        return False
-    try:
-        result = subprocess.run(
-            [_podman, "image", "inspect", E2E_IMAGE],
-            capture_output=True,
-            timeout=10,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    return result.returncode == 0
+  ⚑ Never raises. A runtime that is absent, slow or unpermitted is ``False`` here,
+  and must not fail tests that have not asked about podman at all.
+  """
+  if _podman is None:
+    return False
+  try:
+    result = subprocess.run(
+      [_podman, "image", "inspect", E2E_IMAGE],
+      capture_output=True,
+      timeout=10,
+    )
+  except (subprocess.TimeoutExpired, OSError):
+    return False
+  return result.returncode == 0
 
 
 @functools.cache
 def _host_storage() -> tuple[str, str] | None:
-    """Return host's (graphRoot, runRoot) from podman info, or None on failure.
+  """Return host's (graphRoot, runRoot) from podman info, or None on failure.
 
-    ⚑ Asked under the INHERITED HOME/XDG_*, so the graphroot is the host's real store
-    and not a per-test redirect (see ``host_storage_conf``). Two things hold those
-    values: this is asked from a SESSION-scoped fixture, set up by pytest before the
-    function-scoped ``monkeypatch`` fixtures that redirect HOME, and
-    ``_isolate_user_dirs`` leaves an ``e2e``-marked test alone.
+  ⚑ Asked under the INHERITED HOME/XDG_*, so the graphroot is the host's real store
+  and not a per-test redirect (see ``host_storage_conf``). Two things hold those
+  values: this is asked from a SESSION-scoped fixture, set up by pytest before the
+  function-scoped ``monkeypatch`` fixtures that redirect HOME, and
+  ``_isolate_user_dirs`` leaves an ``e2e``-marked test alone.
 
-    ⚑ MEMOIZED: the host's store cannot move mid-session, and both callers want one
-    answer.
-    """
-    if _podman is None:
-        return None
-    try:
-        result = subprocess.run(
-            [_podman, "info", "--format",
-             "{{.Store.GraphRoot}}\n{{.Store.RunRoot}}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    if result.returncode != 0:
-        return None
-    lines = result.stdout.strip().splitlines()
-    if len(lines) != 2:
-        return None
-    return lines[0], lines[1]
+  ⚑ MEMOIZED: the host's store cannot move mid-session, and both callers want one
+  answer.
+  """
+  if _podman is None:
+    return None
+  try:
+    result = subprocess.run(
+      [_podman, "info", "--format", "{{.Store.GraphRoot}}\n{{.Store.RunRoot}}"],
+      capture_output=True,
+      text=True,
+      timeout=10,
+    )
+  except (subprocess.TimeoutExpired, OSError):
+    return None
+  if result.returncode != 0:
+    return None
+  lines = result.stdout.strip().splitlines()
+  if len(lines) != 2:
+    return None
+  return lines[0], lines[1]
 
 
 # ---------------------------------------------------------------------------
@@ -139,108 +138,106 @@ def _host_storage() -> tuple[str, str] | None:
 
 
 def wait_for_container(name: str, timeout: float = 10.0) -> None:
-    """Poll until a container is running, or raise TimeoutError."""
-    assert _podman is not None, "podman required"
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        result = subprocess.run(
-            [_podman, "inspect", "--format", "{{.State.Running}}", name],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip() == "true":
-            return
-        time.sleep(0.3)
-    raise TimeoutError(f"Container {name!r} not running after {timeout}s")
+  """Poll until a container is running, or raise TimeoutError."""
+  assert _podman is not None, "podman required"
+  deadline = time.monotonic() + timeout
+  while time.monotonic() < deadline:
+    result = subprocess.run(
+      [_podman, "inspect", "--format", "{{.State.Running}}", name],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    if result.returncode == 0 and result.stdout.strip() == "true":
+      return
+    time.sleep(0.3)
+  raise TimeoutError(f"Container {name!r} not running after {timeout}s")
 
 
 def run_kanibako(
-    args: list[str],
-    env: dict[str, str],
-    *,
-    timeout: int = SUBPROCESS_TIMEOUT,
-    check: bool = False,
+  args: list[str],
+  env: dict[str, str],
+  *,
+  timeout: int = SUBPROCESS_TIMEOUT,
+  check: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Run kanibako CLI as a subprocess."""
-    return subprocess.run(
-        ["kanibako"] + args,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=check,
-    )
+  """Run kanibako CLI as a subprocess."""
+  return subprocess.run(
+    ["kanibako"] + args,
+    env=env,
+    capture_output=True,
+    text=True,
+    timeout=timeout,
+    check=check,
+  )
 
 
 @contextmanager
 def _active_env(env: dict[str, str]) -> Iterator[None]:
-    """Temporarily install *env*'s HOME/XDG_* into ``os.environ``.
+  """Temporarily install *env*'s HOME/XDG_* into ``os.environ``.
 
-    The CLI runs as a subprocess with an isolated env *dict*; to resolve the
-    box's host-side paths from the test process we temporarily install that same
-    env into ``os.environ`` and drive the REAL path resolver (no hand-rolled
-    path math, so the test stays faithful to what launch actually computes).
-    """
-    keys = (
-        "HOME",
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "XDG_STATE_HOME",
-        "XDG_CACHE_HOME",
-    )
-    saved = {k: os.environ.get(k) for k in keys}
-    try:
-        for k in keys:
-            if k in env:
-                os.environ[k] = env[k]
-        yield
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+  The CLI runs as a subprocess with an isolated env *dict*; to resolve the
+  box's host-side paths from the test process we temporarily install that same
+  env into ``os.environ`` and drive the REAL path resolver (no hand-rolled
+  path math, so the test stays faithful to what launch actually computes).
+  """
+  keys = (
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+  )
+  saved = {k: os.environ.get(k) for k in keys}
+  try:
+    for k in keys:
+      if k in env:
+        os.environ[k] = env[k]
+    yield
+  finally:
+    for k, v in saved.items():
+      if v is None:
+        os.environ.pop(k, None)
+      else:
+        os.environ[k] = v
 
 
 def resolve_box_dir(env: dict[str, str], project: Path) -> Path:
-    """Resolve the host-side box METADATA dir for *project* via the real resolver.
+  """Resolve the host-side box METADATA dir for *project* via the real resolver.
 
-    A ``kanibako create <path> --name <n>`` box is workset-scoped: its metadata
-    dir lives at ``$XDG_DATA_HOME/kanibako/<workset>/boxes/<name>`` (e.g.
-    ``.../kanibako/primary_workset/boxes/<name>``), NOT the legacy
-    ``.../kanibako/boxes/<name>``.  We resolve it through the SAME functions the
-    launch path uses (``ProjectPaths.metadata_path`` == the ``boxes/<name>/``
-    dir that contains ``home/``, i.e. ``proj.shell_path.parent``), so the
-    inspected path matches what ``start``/``rm`` actually wrote/removed.
-    """
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, resolve_project
+  A ``kanibako create <path> --name <n>`` box is workset-scoped: its metadata
+  dir lives at ``$XDG_DATA_HOME/kanibako/<workset>/boxes/<name>`` (e.g.
+  ``.../kanibako/primary_workset/boxes/<name>``), NOT the legacy
+  ``.../kanibako/boxes/<name>``.  We resolve it through the SAME functions the
+  launch path uses (``ProjectPaths.metadata_path`` == the ``boxes/<name>/``
+  dir that contains ``home/``, i.e. ``proj.shell_path.parent``), so the
+  inspected path matches what ``start``/``rm`` actually wrote/removed.
+  """
+  from kanibako.settings.config import config_file_path, load_config
+  from kanibako.settings.paths import load_std_paths, resolve_project
 
-    with _active_env(env):
-        config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj = resolve_project(
-            std, config, project_dir=str(project), initialize=False
-        )
-    return proj.metadata_path
+  with _active_env(env):
+    config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj = resolve_project(std, config, project_dir=str(project), initialize=False)
+  return proj.metadata_path
 
 
 def podman_exec(
-    container_name: str,
-    command: list[str],
-    *,
-    timeout: int = SUBPROCESS_TIMEOUT,
+  container_name: str,
+  command: list[str],
+  *,
+  timeout: int = SUBPROCESS_TIMEOUT,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a command inside a running container."""
-    assert _podman is not None, "podman required"
-    return subprocess.run(
-        [_podman, "exec", container_name] + command,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+  """Run a command inside a running container."""
+  assert _podman is not None, "podman required"
+  return subprocess.run(
+    [_podman, "exec", container_name] + command,
+    capture_output=True,
+    text=True,
+    timeout=timeout,
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -250,265 +247,278 @@ def podman_exec(
 
 @pytest.fixture(scope="session", autouse=True)
 def require_e2e_runtime() -> None:
-    """Skip the whole e2e session unless podman, tmux and the image are all present.
+  """Skip the whole e2e session unless podman, tmux and the image are all present.
 
-    ⚑ EVERY e2e fixture that reaches podman depends on this one, directly or through
-    ``host_storage_conf``, so nothing probes or pre-warms before the report that the
-    runtime is unusable. Pytest caches a session-scoped skip and re-raises it for each
-    later test, so this one call skips the session.
-    """
-    if _podman is None:
-        pytest.skip(PODMAN_MISSING)
-    if _tmux is None:
-        pytest.skip(TMUX_MISSING)
-    if not _image_available():
-        pytest.skip(IMAGE_MISSING)
+  ⚑ EVERY e2e fixture that reaches podman depends on this one, directly or through
+  ``host_storage_conf``, so nothing probes or pre-warms before the report that the
+  runtime is unusable. Pytest caches a session-scoped skip and re-raises it for each
+  later test, so this one call skips the session.
+  """
+  if _podman is None:
+    pytest.skip(PODMAN_MISSING)
+  if _tmux is None:
+    pytest.skip(TMUX_MISSING)
+  if not _image_available():
+    pytest.skip(IMAGE_MISSING)
 
 
 @pytest.fixture(scope="session")
 def stub_script() -> Path:
-    """Return path to the claude stub script."""
-    stub = Path(__file__).parent / "fixtures" / "claude-stub"
-    assert stub.is_file(), f"Claude stub not found: {stub}"
-    assert os.access(stub, os.X_OK), f"Claude stub not executable: {stub}"
-    return stub
+  """Return path to the claude stub script."""
+  stub = Path(__file__).parent / "fixtures" / "claude-stub"
+  assert stub.is_file(), f"Claude stub not found: {stub}"
+  assert os.access(stub, os.X_OK), f"Claude stub not executable: {stub}"
+  return stub
 
 
 @pytest.fixture(scope="session")
 def goose_stub_script() -> Path:
-    """Return path to the goose stub script."""
-    stub = Path(__file__).parent / "fixtures" / "goose-stub"
-    assert stub.is_file(), f"Goose stub not found: {stub}"
-    assert os.access(stub, os.X_OK), f"Goose stub not executable: {stub}"
-    return stub
+  """Return path to the goose stub script."""
+  stub = Path(__file__).parent / "fixtures" / "goose-stub"
+  assert stub.is_file(), f"Goose stub not found: {stub}"
+  assert os.access(stub, os.X_OK), f"Goose stub not executable: {stub}"
+  return stub
 
 
 @pytest.fixture(scope="session")
 def host_storage_conf(tmp_path_factory, require_e2e_runtime) -> Path:
-    """Write a storage.conf pinning rootless podman to the host's real graphroot.
+  """Write a storage.conf pinning rootless podman to the host's real graphroot.
 
-    The per-test env overrides HOME and XDG_DATA_HOME, which would otherwise
-    relocate rootless podman's graphroot into the test's tmp dir, hiding the
-    host's pulled images. ``rootless_storage_path`` is the rootless-specific
-    knob that survives those overrides (plain ``graphroot`` does not).
-    """
-    storage = _host_storage()
-    assert storage is not None, "podman info failed; cannot pin storage"
-    graphroot, runroot = storage
-    conf_dir = tmp_path_factory.mktemp("podman-storage")
-    conf_path = conf_dir / "storage.conf"
-    conf_path.write_text(
-        "[storage]\n"
-        'driver = "overlay"\n'
-        f'runroot = "{runroot}"\n'
-        f'rootless_storage_path = "{graphroot}"\n'
-    )
-    return conf_path
+  The per-test env overrides HOME and XDG_DATA_HOME, which would otherwise
+  relocate rootless podman's graphroot into the test's tmp dir, hiding the
+  host's pulled images. ``rootless_storage_path`` is the rootless-specific
+  knob that survives those overrides (plain ``graphroot`` does not).
+  """
+  storage = _host_storage()
+  assert storage is not None, "podman info failed; cannot pin storage"
+  graphroot, runroot = storage
+  conf_dir = tmp_path_factory.mktemp("podman-storage")
+  conf_path = conf_dir / "storage.conf"
+  conf_path.write_text(
+    "[storage]\n"
+    'driver = "overlay"\n'
+    f'runroot = "{runroot}"\n'
+    f'rootless_storage_path = "{graphroot}"\n'
+  )
+  return conf_path
 
 
 def _diag(message: str) -> None:
-    """Emit a storage diagnostic to stderr and the CI step summary.
+  """Emit a storage diagnostic to stderr and the CI step summary.
 
-    Written to ``$GITHUB_STEP_SUMMARY`` when set so the facts are visible in
-    the GitHub Actions run summary without needing ``pytest -s``.
-    """
-    line = f"[e2e-storage] {message}"
-    print(line, file=sys.stderr, flush=True)
-    summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary:
-        try:
-            with open(summary, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
-        except OSError:
-            pass
+  Written to ``$GITHUB_STEP_SUMMARY`` when set so the facts are visible in
+  the GitHub Actions run summary without needing ``pytest -s``.
+  """
+  line = f"[e2e-storage] {message}"
+  print(line, file=sys.stderr, flush=True)
+  summary = os.environ.get("GITHUB_STEP_SUMMARY")
+  if summary:
+    try:
+      with open(summary, "a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+    except OSError:
+      pass
 
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_image_in_pinned_store(host_storage_conf) -> None:
-    """Guarantee E2E_IMAGE is present in the pinned store before any test runs.
+  """Guarantee E2E_IMAGE is present in the pinned store before any test runs.
 
-    The per-test subprocesses pin ``rootless_storage_path`` to the host's
-    graphroot (host_storage_conf) so they share the host's image store, where
-    the workflow tagged the pulled image. On the standard CI/local setup the
-    pinned store *is* the default store, so the image is already visible and
-    this fixture is a no-op beyond the diagnostics (confirmed on CI: the
-    pre-warm check adds <1s and never pulls). It exists as defense-in-depth:
-    if a custom graphroot ever makes the pinned store diverge from the store
-    the image was tagged into, the first ``kanibako start`` would otherwise
-    cold-pull *inside* a test and blow SUBPROCESS_TIMEOUT; pre-warming here --
-    once, under the exact config the subprocesses see, on the session clock --
-    removes that risk. The diagnostics it logs (captured vs pinned graphroot,
-    image presence) make any such divergence obvious in the run summary.
-    """
-    if _podman is None:
-        return
+  The per-test subprocesses pin ``rootless_storage_path`` to the host's
+  graphroot (host_storage_conf) so they share the host's image store, where
+  the workflow tagged the pulled image. On the standard CI/local setup the
+  pinned store *is* the default store, so the image is already visible and
+  this fixture is a no-op beyond the diagnostics (confirmed on CI: the
+  pre-warm check adds <1s and never pulls). It exists as defense-in-depth:
+  if a custom graphroot ever makes the pinned store diverge from the store
+  the image was tagged into, the first ``kanibako start`` would otherwise
+  cold-pull *inside* a test and blow SUBPROCESS_TIMEOUT; pre-warming here --
+  once, under the exact config the subprocesses see, on the session clock --
+  removes that risk. The diagnostics it logs (captured vs pinned graphroot,
+  image presence) make any such divergence obvious in the run summary.
+  """
+  if _podman is None:
+    return
 
-    pin_env = os.environ.copy()
-    pin_env["CONTAINERS_STORAGE_CONF"] = str(host_storage_conf)
+  pin_env = os.environ.copy()
+  pin_env["CONTAINERS_STORAGE_CONF"] = str(host_storage_conf)
 
-    info = subprocess.run(
-        [_podman, "info", "--format", "{{.Store.GraphRoot}}"],
-        env=pin_env, capture_output=True, text=True, timeout=20,
-    )
-    pinned_root = info.stdout.strip() if info.returncode == 0 else "<unknown>"
-    _diag(f"captured host store: {_host_storage()}")
-    _diag(f"pinned-config graphroot: {pinned_root!r}")
+  info = subprocess.run(
+    [_podman, "info", "--format", "{{.Store.GraphRoot}}"],
+    env=pin_env,
+    capture_output=True,
+    text=True,
+    timeout=20,
+  )
+  pinned_root = info.stdout.strip() if info.returncode == 0 else "<unknown>"
+  _diag(f"captured host store: {_host_storage()}")
+  _diag(f"pinned-config graphroot: {pinned_root!r}")
 
-    present = subprocess.run(
-        [_podman, "image", "exists", E2E_IMAGE],
-        env=pin_env, capture_output=True, timeout=20,
-    )
-    if present.returncode == 0:
-        _diag(f"{E2E_IMAGE} already present in pinned store -- no pre-warm needed")
-        return
+  present = subprocess.run(
+    [_podman, "image", "exists", E2E_IMAGE],
+    env=pin_env,
+    capture_output=True,
+    timeout=20,
+  )
+  if present.returncode == 0:
+    _diag(f"{E2E_IMAGE} already present in pinned store -- no pre-warm needed")
+    return
 
-    _diag(f"{E2E_IMAGE} MISSING from pinned store -- pre-warming from {E2E_IMAGE_REF}")
-    pull = subprocess.run(
-        [_podman, "pull", E2E_IMAGE_REF],
-        env=pin_env, capture_output=True, text=True, timeout=900,
-    )
-    if pull.returncode != 0:
-        _diag(f"pre-warm pull FAILED: {pull.stderr.strip()[-400:]}")
-        return
-    subprocess.run(
-        [_podman, "tag", E2E_IMAGE_REF, E2E_IMAGE],
-        env=pin_env, capture_output=True, timeout=30,
-    )
-    _diag(f"pre-warm complete: {E2E_IMAGE_REF} -> {E2E_IMAGE}")
+  _diag(f"{E2E_IMAGE} MISSING from pinned store -- pre-warming from {E2E_IMAGE_REF}")
+  pull = subprocess.run(
+    [_podman, "pull", E2E_IMAGE_REF],
+    env=pin_env,
+    capture_output=True,
+    text=True,
+    timeout=900,
+  )
+  if pull.returncode != 0:
+    _diag(f"pre-warm pull FAILED: {pull.stderr.strip()[-400:]}")
+    return
+  subprocess.run(
+    [_podman, "tag", E2E_IMAGE_REF, E2E_IMAGE],
+    env=pin_env,
+    capture_output=True,
+    timeout=30,
+  )
+  _diag(f"pre-warm complete: {E2E_IMAGE_REF} -> {E2E_IMAGE}")
 
 
 @pytest.fixture(scope="session", autouse=True)
 def session_cleanup(require_e2e_runtime):
-    """Safety-net: remove any leftover e2e test containers at suite end."""
-    yield
-    if _podman is None:
-        return
-    # List containers with the e2e prefix
-    result = subprocess.run(
-        [_podman, "ps", "-a", "--filter", f"name={CONTAINER_PREFIX}",
-         "--format", "{{.Names}}"],
+  """Safety-net: remove any leftover e2e test containers at suite end."""
+  yield
+  if _podman is None:
+    return
+  # List containers with the e2e prefix
+  result = subprocess.run(
+    [_podman, "ps", "-a", "--filter", f"name={CONTAINER_PREFIX}", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  for name in result.stdout.strip().splitlines():
+    name = name.strip()
+    if name:
+      subprocess.run(
+        [_podman, "rm", "-f", name],
         capture_output=True,
-        text=True,
         timeout=10,
-    )
-    for name in result.stdout.strip().splitlines():
-        name = name.strip()
-        if name:
-            subprocess.run(
-                [_podman, "rm", "-f", name],
-                capture_output=True,
-                timeout=10,
-            )
+      )
 
 
 @pytest.fixture(autouse=True)
 def _reap_subuid_owned_tmp(tmp_path):
-    """Delete each test's tmp dir through the SUBUID-AWARE deleter.
+  """Delete each test's tmp dir through the SUBUID-AWARE deleter.
 
-    ⚑ WHY pytest's own cleanup is not enough.  Since J-7 a created box home holds a
-    ROOT-OWNED canon skeleton — chowned to a mapped subuid the host user cannot
-    unlink — so pytest's plain ``rmtree`` of ``/tmp/pytest-of-<user>/...`` fails with
-    ``PermissionError`` on any host with working rootless userns.  The dirs then
-    accumulate across runs (the gate measured the creep on both real-podman legs) and
-    eventually the numbered-dir retention sweep starts failing too.
+  ⚑ WHY pytest's own cleanup is not enough.  Since J-7 a created box home holds a
+  ROOT-OWNED canon skeleton — chowned to a mapped subuid the host user cannot
+  unlink — so pytest's plain ``rmtree`` of ``/tmp/pytest-of-<user>/...`` fails with
+  ``PermissionError`` on any host with working rootless userns.  The dirs then
+  accumulate across runs (the gate measured the creep on both real-podman legs) and
+  eventually the numbered-dir retention sweep starts failing too.
 
-    ⚑ E2E ONLY, and deliberately.  On a host WITHOUT working ``podman unshare`` (the
-    dev box) nothing is ever protected, so there is nothing to reap and this is a
-    no-op; and the unit suite never creates a protected box.  Wiring it globally
-    would put a podman escalation in the path of every unit test for a problem only
-    real-podman e2e hosts have.
+  ⚑ E2E ONLY, and deliberately.  On a host WITHOUT working ``podman unshare`` (the
+  dev box) nothing is ever protected, so there is nothing to reap and this is a
+  no-op; and the unit suite never creates a protected box.  Wiring it globally
+  would put a podman escalation in the path of every unit test for a problem only
+  real-podman e2e hosts have.
 
-    ⚑ ONE HELPER, not two escalations: this and the unit tier's ``start_mocks`` reap
-    both go through ``tests/support/protected_trees``, which delegates to the
-    product's own ``container.remove_box_tree``.  The rationale for the whole class
-    lives in that module's docstring.
+  ⚑ ONE HELPER, not two escalations: this and the unit tier's ``start_mocks`` reap
+  both go through ``tests/support/protected_trees``, which delegates to the
+  product's own ``container.remove_box_tree``.  The rationale for the whole class
+  lives in that module's docstring.
 
-    Best-effort by contract: the helper returns False rather than raising, and a
-    failure here must never turn a passing test red.
-    """
-    yield
-    from tests.support.protected_trees import reap_tree
+  Best-effort by contract: the helper returns False rather than raising, and a
+  failure here must never turn a passing test red.
+  """
+  yield
+  from tests.support.protected_trees import reap_tree
 
-    if not reap_tree(tmp_path):
-        _diag(f"tmp reap did not fully clear {tmp_path}")
+  if not reap_tree(tmp_path):
+    _diag(f"tmp reap did not fully clear {tmp_path}")
 
 
 def write_e2e_settings_files(
-    config_home: Path, data_home: Path, *, home: Path, agent: str | None = None,
-    agent_keys: dict[str, dict[str, str]] | None = None,
+  config_home: Path,
+  data_home: Path,
+  *,
+  home: Path,
+  agent: str | None = None,
+  agent_keys: dict[str, dict[str, str]] | None = None,
 ) -> None:
-    """Pre-seed the two files an e2e env starts from: the bootstrap config and the settings.
+  """Pre-seed the two files an e2e env starts from: the bootstrap config and the settings.
 
-    ⚑⚑ THE IMAGE PIN USED TO BE DEAD.  Every e2e env wrote
-    ``kanibako:\\n  image: "<E2E_IMAGE>"`` into ``kanibako.cfg`` — a file that
-    cannot carry settings (the rule is spelled once, at
-    ``settings/config.bootstrap_config_paths``).  The stanza was INERT, so every e2e
-    box launched the DECLARED DEFAULT ``ghcr.io/doctorjei/kanibako-oci:latest`` and not
-    the ``kanibako-oci:latest`` this suite pre-warms (``ensure_image_in_pinned_store``)
-    and gates on (``require_e2e_runtime``).  Both of those were curating an image no test ever
-    ran BY REFERENCE — on CI the retag below makes the two names the same image — and the
-    gate passed on a fact about a launch it did not describe.
+  ⚑⚑ THE IMAGE PIN USED TO BE DEAD.  Every e2e env wrote
+  ``kanibako:\\n  image: "<E2E_IMAGE>"`` into ``kanibako.cfg`` — a file that
+  cannot carry settings (the rule is spelled once, at
+  ``settings/config.bootstrap_config_paths``).  The stanza was INERT, so every e2e
+  box launched the DECLARED DEFAULT ``ghcr.io/doctorjei/kanibako-oci:latest`` and not
+  the ``kanibako-oci:latest`` this suite pre-warms (``ensure_image_in_pinned_store``)
+  and gates on (``require_e2e_runtime``).  Both of those were curating an image no test ever
+  ran BY REFERENCE — on CI the retag below makes the two names the same image — and the
+  gate passed on a fact about a launch it did not describe.
 
-    The image pin now goes where a pin belongs: the ``box:`` table of ``{config.settings}``,
-    the SYSTEM tier of the settings cascade — the same table, in the same file, that
-    ``kanibako system set box.image=<img>`` writes to.  ⚑ NEITHER THE LOCATION NOR THE
-    BYTES IS ASSERTED HERE.  The FILE is located by resolving ``{config.settings}`` through
-    the product's own ``paths.load_system_config``, so a storage repoint carries this write
-    with it instead of leaving it writing where nothing reads — which is the dead stanza's
-    failure wearing a new hat.  The BYTES come from ``config_io.dump_doc``, the serializer
-    ``write_nested_key`` — and so every ``system set`` — already writes through, so the two
-    agree for ANY value rather than only for values PyYAML happens to emit as plain scalars.
-    ⚑ The TABLE is the one part still hand-shaped, and
-    ``TestRoutedScalarDest.test_set_dotted_scope_key`` (``test_config_dest_parity``) is what
-    pins it: ``box.image`` at system scope routes to a ``box:`` table.  That pin covers the
-    ROUTE only; the file's LOCATION is derived above and is not covered there.
+  The image pin now goes where a pin belongs: the ``box:`` table of ``{config.settings}``,
+  the SYSTEM tier of the settings cascade — the same table, in the same file, that
+  ``kanibako system set box.image=<img>`` writes to.  ⚑ NEITHER THE LOCATION NOR THE
+  BYTES IS ASSERTED HERE.  The FILE is located by resolving ``{config.settings}`` through
+  the product's own ``paths.load_system_config``, so a storage repoint carries this write
+  with it instead of leaving it writing where nothing reads — which is the dead stanza's
+  failure wearing a new hat.  The BYTES come from ``config_io.dump_doc``, the serializer
+  ``write_nested_key`` — and so every ``system set`` — already writes through, so the two
+  agree for ANY value rather than only for values PyYAML happens to emit as plain scalars.
+  ⚑ The TABLE is the one part still hand-shaped, and
+  ``TestRoutedScalarDest.test_set_dotted_scope_key`` (``test_config_dest_parity``) is what
+  pins it: ``box.image`` at system scope routes to a ``box:`` table.  That pin covers the
+  ROUTE only; the file's LOCATION is derived above and is not covered there.
 
-    ⚑ THE BARE TAG IS NOT A CHANGE OF IMAGE ON CI, and the image gate is not the reason.
-    ``resolve_image_reference``'s top precedence rule is official-and-local: an unqualified
-    ``kanibako-oci:latest`` gains the ``ghcr.io/doctorjei`` fallback prefix and resolves to
-    ``ghcr.io/doctorjei/kanibako-oci:latest`` whenever that ref is present locally — and the
-    e2e job retags its HEAD build onto exactly that ref (``.github/workflows/test.yml``
-    states why).  CI therefore launches the same image it launched while the stanza was
-    dead.  Off CI the official ref is absent, the bare local tag wins, and nothing is
-    pulled — strictly less work than the declared default's cold pull.
+  ⚑ THE BARE TAG IS NOT A CHANGE OF IMAGE ON CI, and the image gate is not the reason.
+  ``resolve_image_reference``'s top precedence rule is official-and-local: an unqualified
+  ``kanibako-oci:latest`` gains the ``ghcr.io/doctorjei`` fallback prefix and resolves to
+  ``ghcr.io/doctorjei/kanibako-oci:latest`` whenever that ref is present locally — and the
+  e2e job retags its HEAD build onto exactly that ref (``.github/workflows/test.yml``
+  states why).  CI therefore launches the same image it launched while the stanza was
+  dead.  Off CI the official ref is absent, the bare local tag wins, and nothing is
+  pulled — strictly less work than the declared default's cold pull.
 
-    🛑 THE BOOTSTRAP FILE IS STILL CREATED, and it is not optional: ``cli._ensure_initialized``
-    early-returns on its EXISTENCE alone, so an env without it re-runs first-run init —
-    packaged-template install and all — which ``test_instructions_delivery`` explicitly
-    relies on NOT happening.  It goes through the product's own ``write_global_config``
-    so its shape has one source.
+  🛑 THE BOOTSTRAP FILE IS STILL CREATED, and it is not optional: ``cli._ensure_initialized``
+  early-returns on its EXISTENCE alone, so an env without it re-runs first-run init —
+  packaged-template install and all — which ``test_instructions_delivery`` explicitly
+  relies on NOT happening.  It goes through the product's own ``write_global_config``
+  so its shape has one source.
 
-    ⚑ ONE SITE, deliberately.  The dead stanza was copied into FOUR fixtures and was
-    wrong in all four; a single writer is what stops the next shape change hiding in
-    three of them.
+  ⚑ ONE SITE, deliberately.  The dead stanza was copied into FOUR fixtures and was
+  wrong in all four; a single writer is what stops the next shape change hiding in
+  three of them.
 
-    ⚑ *home* is the fixture's ISOLATED home, not the host's.  The resolve above runs in the
-    test process, before the env dict is installed anywhere, so ``Path.home()`` here would
-    read the real host home while the CLI under test reads ``$HOME`` = the fixture's — and a
-    Layer-1 value spelled with ``~`` would then send the two to different files.  Passing it
-    is what keeps the derivation answering the same question the launch asks.
+  ⚑ *home* is the fixture's ISOLATED home, not the host's.  The resolve above runs in the
+  test process, before the env dict is installed anywhere, so ``Path.home()`` here would
+  read the real host home while the CLI under test reads ``$HOME`` = the fixture's — and a
+  Layer-1 value spelled with ``~`` would then send the two to different files.  Passing it
+  is what keeps the derivation answering the same question the launch asks.
 
-    ⚑ Creates the settings file's parent — by default ``$XDG_DATA_HOME/kanibako/global``, and
-    so ``$XDG_DATA_HOME/kanibako`` with it — so a caller that also mkdirs one of those must
-    pass ``exist_ok``.
+  ⚑ Creates the settings file's parent — by default ``$XDG_DATA_HOME/kanibako/global``, and
+  so ``$XDG_DATA_HOME/kanibako`` with it — so a caller that also mkdirs one of those must
+  pass ``exist_ok``.
 
-    *agent_keys* writes ``agent.<node>.<key>`` values into the same file (the system
-    tier), as ``kanibako system set agent.<node>.<key>=...`` would.
-    """
-    from kanibako.settings.config import config_file_path, write_global_config
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.paths import load_system_config
+  *agent_keys* writes ``agent.<node>.<key>`` values into the same file (the system
+  tier), as ``kanibako system set agent.<node>.<key>=...`` would.
+  """
+  from kanibako.settings.config import config_file_path, write_global_config
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.paths import load_system_config
 
-    config_file = config_file_path(config_home)
-    write_global_config(config_file)
+  config_file = config_file_path(config_home)
+  write_global_config(config_file)
 
-    doc: dict[str, dict] = {"box": {"image": E2E_IMAGE}}
-    if agent is not None:
-        doc["system"] = {"agent": agent}
-    if agent_keys:
-        doc["agent"] = agent_keys
-    resolved = load_system_config(config_file, data_home=data_home, home=home)
-    dump_doc(resolved["config.settings"], doc)
+  doc: dict[str, dict] = {"box": {"image": E2E_IMAGE}}
+  if agent is not None:
+    doc["system"] = {"agent": agent}
+  if agent_keys:
+    doc["agent"] = agent_keys
+  resolved = load_system_config(config_file, data_home=data_home, home=home)
+  dump_doc(resolved["config.settings"], doc)
 
 
 # ---------------------------------------------------------------------------
@@ -518,255 +528,256 @@ def write_e2e_settings_files(
 
 @pytest.fixture()
 def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
-    """Create an isolated test environment for one e2e test.
+  """Create an isolated test environment for one e2e test.
 
-    Returns a dict with:
-      - "env": environment dict for subprocess calls
-      - "home": Path to isolated HOME
-      - "project": Path to test project directory
-      - "config_home", "data_home": Path to XDG dirs
-      - "stub_script": Path to the claude stub
-      - "tmp_path": Path to test's temp root
-    """
-    home = tmp_path / "home"
-    config_home = tmp_path / "config"
-    data_home = tmp_path / "data"
-    state_home = tmp_path / "state"
-    cache_home = tmp_path / "cache"
-    project = tmp_path / "project"
+  Returns a dict with:
+    - "env": environment dict for subprocess calls
+    - "home": Path to isolated HOME
+    - "project": Path to test project directory
+    - "config_home", "data_home": Path to XDG dirs
+    - "stub_script": Path to the claude stub
+    - "tmp_path": Path to test's temp root
+  """
+  home = tmp_path / "home"
+  config_home = tmp_path / "config"
+  data_home = tmp_path / "data"
+  state_home = tmp_path / "state"
+  cache_home = tmp_path / "cache"
+  project = tmp_path / "project"
 
-    for d in (home, config_home, data_home, state_home, cache_home, project):
-        d.mkdir()
+  for d in (home, config_home, data_home, state_home, cache_home, project):
+    d.mkdir()
 
-    # Create fake Claude install so ClaudeTarget.detect() finds the stub.
-    # detect() calls shutil.which("claude"), so we need it on PATH.
-    # It then resolves symlinks and walks up to find a "claude" dir.
-    claude_bin_dir = home / ".local" / "bin"
-    claude_install_dir = home / ".local" / "share" / "claude"
-    claude_bin_dir.mkdir(parents=True)
-    claude_install_dir.mkdir(parents=True)
+  # Create fake Claude install so ClaudeTarget.detect() finds the stub.
+  # detect() calls shutil.which("claude"), so we need it on PATH.
+  # It then resolves symlinks and walks up to find a "claude" dir.
+  claude_bin_dir = home / ".local" / "bin"
+  claude_install_dir = home / ".local" / "share" / "claude"
+  claude_bin_dir.mkdir(parents=True)
+  claude_install_dir.mkdir(parents=True)
 
-    # Copy stub as the "claude" binary
-    claude_binary = claude_bin_dir / "claude"
-    shutil.copy2(stub_script, claude_binary)
-    claude_binary.chmod(0o755)
+  # Copy stub as the "claude" binary
+  claude_binary = claude_bin_dir / "claude"
+  shutil.copy2(stub_script, claude_binary)
+  claude_binary.chmod(0o755)
 
-    # Seed fake credentials so the credential refresh has something to copy
-    claude_config_dir = home / ".claude"
-    claude_config_dir.mkdir()
-    creds = {"claudeAiOauth": {"accessToken": "e2e-test-token"}}
-    (claude_config_dir / ".credentials.json").write_text(json.dumps(creds))
+  # Seed fake credentials so the credential refresh has something to copy
+  claude_config_dir = home / ".claude"
+  claude_config_dir.mkdir()
+  creds = {"claudeAiOauth": {"accessToken": "e2e-test-token"}}
+  (claude_config_dir / ".credentials.json").write_text(json.dumps(creds))
 
-    # Create a name file so container_name_for() gives a predictable name
-    # We register via kanibako create later, but for name computation we
-    # need the registry directory to exist.
-    names_dir = data_home / "kanibako"
-    names_dir.mkdir(parents=True, exist_ok=True)
+  # Create a name file so container_name_for() gives a predictable name
+  # We register via kanibako create later, but for name computation we
+  # need the registry directory to exist.
+  names_dir = data_home / "kanibako"
+  names_dir.mkdir(parents=True, exist_ok=True)
 
-    # Pin the system default agent to "claude" so these claude-only tests resolve
-    # the agent unambiguously even when OTHER agent plugins (e.g.
-    # kanibako-agent-goose, required by the goose cred-sync e2e) are also
-    # installed in the test environment.  Without this, config.resolve_agent
-    # REFUSES with AgentUnsetError ("No default agent is configured") whatever is
-    # installed, so `kanibako start` exits rc=1 and no container is ever created.
-    # ⚑ The pin used to be needed only at 2+ agents, because one installed agent
-    # was auto-picked; the count rule is gone, so it is now load-bearing at every
-    # count — never remove it on the grounds that one agent is unambiguous.
-    # The system settings tier
-    # ({config.settings} = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
-    # ``system.agent`` SETTING in its ``system:`` table, which the SYSTEM tier of
-    # the settings cascade reads, so this is faithful to real usage (a configured
-    # default agent) and fixes the ambiguity in one place rather than threading
-    # --agent through every call.
-    # ⚑ That path is the DEFAULT resolution of ``{config.settings}``, not a fixed location;
-    # write_e2e_settings_files resolves the key rather than assuming it.
-    # ⮕ P7: this file used to carry ``agent.default.default_agent`` — the RETIRED
-    # spelling, which the launch now REFUSES BY NAME (migration M-4). Writing the
-    # new location here is also the in-repo proof of the new store shape.
-    # ⚑ The e2e IMAGE pin rides in the same file, and the (empty) bootstrap file is
-    # written too — see write_e2e_settings_files for both reasons.
-    write_e2e_settings_files(config_home, data_home, home=home, agent="claude")
+  # Pin the system default agent to "claude" so these claude-only tests resolve
+  # the agent unambiguously even when OTHER agent plugins (e.g.
+  # kanibako-agent-goose, required by the goose cred-sync e2e) are also
+  # installed in the test environment.  Without this, config.resolve_agent
+  # REFUSES with AgentUnsetError ("No default agent is configured") whatever is
+  # installed, so `kanibako start` exits rc=1 and no container is ever created.
+  # ⚑ The pin used to be needed only at 2+ agents, because one installed agent
+  # was auto-picked; the count rule is gone, so it is now load-bearing at every
+  # count — never remove it on the grounds that one agent is unambiguous.
+  # The system settings tier
+  # ({config.settings} = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
+  # ``system.agent`` SETTING in its ``system:`` table, which the SYSTEM tier of
+  # the settings cascade reads, so this is faithful to real usage (a configured
+  # default agent) and fixes the ambiguity in one place rather than threading
+  # --agent through every call.
+  # ⚑ That path is the DEFAULT resolution of ``{config.settings}``, not a fixed location;
+  # write_e2e_settings_files resolves the key rather than assuming it.
+  # ⮕ P7: this file used to carry ``agent.default.default_agent`` — the RETIRED
+  # spelling, which the launch now REFUSES BY NAME (migration M-4). Writing the
+  # new location here is also the in-repo proof of the new store shape.
+  # ⚑ The e2e IMAGE pin rides in the same file, and the (empty) bootstrap file is
+  # written too — see write_e2e_settings_files for both reasons.
+  write_e2e_settings_files(config_home, data_home, home=home, agent="claude")
 
-    # Environment with isolated paths and stub on PATH
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(home),
-        "XDG_CONFIG_HOME": str(config_home),
-        "XDG_DATA_HOME": str(data_home),
-        "XDG_STATE_HOME": str(state_home),
-        "XDG_CACHE_HOME": str(cache_home),
-        # Put claude stub dir first on PATH so shutil.which("claude") finds it
-        "PATH": f"{claude_bin_dir}:{env.get('PATH', '')}",
-        # Disable telemetry in test containers
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-        # Pin rootless podman storage back to the host's real location.
-        # HOME/XDG_DATA_HOME overrides above would otherwise relocate
-        # graphroot into tmp_path and hide the host's pulled images.
-        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
-    })
-
-    # Compute expected container name.  For a fresh project created via
-    # kanibako create, the name is based on the directory name.
-    # We'll use "kanibako create" in tests to set up properly.
-    # For now, provide a predictable project path.
-
-    yield {
-        "env": env,
-        "home": home,
-        "project": project,
-        "config_home": config_home,
-        "data_home": data_home,
-        "stub_script": stub_script,
-        "tmp_path": tmp_path,
+  # Environment with isolated paths and stub on PATH
+  env = os.environ.copy()
+  env.update(
+    {
+      "HOME": str(home),
+      "XDG_CONFIG_HOME": str(config_home),
+      "XDG_DATA_HOME": str(data_home),
+      "XDG_STATE_HOME": str(state_home),
+      "XDG_CACHE_HOME": str(cache_home),
+      # Put claude stub dir first on PATH so shutil.which("claude") finds it
+      "PATH": f"{claude_bin_dir}:{env.get('PATH', '')}",
+      # Disable telemetry in test containers
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      # Pin rootless podman storage back to the host's real location.
+      # HOME/XDG_DATA_HOME overrides above would otherwise relocate
+      # graphroot into tmp_path and hide the host's pulled images.
+      "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
+  )
 
-    # Teardown: stop and remove any containers from this test.
-    # We can't know the exact name without running kanibako, so do a
-    # prefix-based cleanup.
-    if _podman is None:
-        return
-    result = subprocess.run(
-        [_podman, "ps", "-a", "--format", "{{.Names}}"],
+  # Compute expected container name.  For a fresh project created via
+  # kanibako create, the name is based on the directory name.
+  # We'll use "kanibako create" in tests to set up properly.
+  # For now, provide a predictable project path.
+
+  yield {
+    "env": env,
+    "home": home,
+    "project": project,
+    "config_home": config_home,
+    "data_home": data_home,
+    "stub_script": stub_script,
+    "tmp_path": tmp_path,
+  }
+
+  # Teardown: stop and remove any containers from this test.
+  # We can't know the exact name without running kanibako, so do a
+  # prefix-based cleanup.
+  if _podman is None:
+    return
+  result = subprocess.run(
+    [_podman, "ps", "-a", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  for name in result.stdout.strip().splitlines():
+    name = name.strip()
+    if not name:
+      continue
+    # Clean up only e2e test containers (not user's real ones)
+    if name.startswith(CONTAINER_PREFIX):
+      subprocess.run(
+        [_podman, "rm", "-f", "-t", "1", name],
         capture_output=True,
-        text=True,
         timeout=10,
-    )
-    for name in result.stdout.strip().splitlines():
-        name = name.strip()
-        if not name:
-            continue
-        # Clean up only e2e test containers (not user's real ones)
-        if name.startswith(CONTAINER_PREFIX):
-            subprocess.run(
-                [_podman, "rm", "-f", "-t", "1", name],
-                capture_output=True,
-                timeout=10,
-            )
+      )
 
 
 # Known host credential content the goose cred-sync tests seed and assert on.
 # Exported so a seadog run can cross-check exactly what the box should observe.
 GOOSE_SECRETS_TOKEN = "e2e-goose-secret-aardvark-1234"
-GOOSE_SECRETS_CONTENT = (
-    "ANTHROPIC_API_KEY: " + GOOSE_SECRETS_TOKEN + "\n"
-)
-GOOSE_CONFIG_CONTENT = (
-    "GOOSE_PROVIDER: anthropic\n"
-    "GOOSE_MODEL: claude-e2e-stub\n"
-)
+GOOSE_SECRETS_CONTENT = "ANTHROPIC_API_KEY: " + GOOSE_SECRETS_TOKEN + "\n"
+GOOSE_CONFIG_CONTENT = "GOOSE_PROVIDER: anthropic\nGOOSE_MODEL: claude-e2e-stub\n"
 
 
 @pytest.fixture()
 def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
-    """Create an isolated e2e environment for a GOOSE box.
+  """Create an isolated e2e environment for a GOOSE box.
 
-    Mirrors :func:`e2e_env` but targets the goose plugin instead of claude:
+  Mirrors :func:`e2e_env` but targets the goose plugin instead of claude:
 
-      - isolated HOME / XDG dirs
-      - the goose stub placed at ``~/.local/bin/goose`` so
-        ``GooseTarget.detect()`` (which anchors to that exact contract path,
-        NOT ``$PATH``) resolves it
-      - host ``~/.config/goose/secrets.yaml`` seeded with KNOWN content
-        (GOOSE_SECRETS_CONTENT) so the credsync engine has a real SYNC cred file to
-        deliver / write back; a host ``config.yaml`` (GOOSE_CONFIG_CONTENT) that must
-        NOT reach the box (goose's config.yaml is the box's own)
-      - ``agent.goose.provider`` set at the system tier, so the start gate finds a
-        provider (``GOOSE_PROVIDER`` delivered) and never runs ``goose configure``,
-        which the stub would run as a long-running session
-      - the e2e image pinned at the SYSTEM settings tier (``write_e2e_settings_files``)
-      - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
-        kanibako-launched podman sees the host's image store
+    - isolated HOME / XDG dirs
+    - the goose stub placed at ``~/.local/bin/goose`` so
+      ``GooseTarget.detect()`` (which anchors to that exact contract path,
+      NOT ``$PATH``) resolves it
+    - host ``~/.config/goose/secrets.yaml`` seeded with KNOWN content
+      (GOOSE_SECRETS_CONTENT) so the credsync engine has a real SYNC cred file to
+      deliver / write back; a host ``config.yaml`` (GOOSE_CONFIG_CONTENT) that must
+      NOT reach the box (goose's config.yaml is the box's own)
+    - ``agent.goose.provider`` set at the system tier, so the start gate finds a
+      provider (``GOOSE_PROVIDER`` delivered) and never runs ``goose configure``,
+      which the stub would run as a long-running session
+    - the e2e image pinned at the SYSTEM settings tier (``write_e2e_settings_files``)
+    - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
+      kanibako-launched podman sees the host's image store
 
-    Returns the same dict shape as ``e2e_env`` plus:
-      - "goose_config_dir": Path to host ``~/.config/goose``
-      - "secrets_path", "config_path": Paths to the seeded host cred files
-    """
-    home = tmp_path / "home"
-    config_home = tmp_path / "config"
-    data_home = tmp_path / "data"
-    state_home = tmp_path / "state"
-    cache_home = tmp_path / "cache"
-    project = tmp_path / "project"
+  Returns the same dict shape as ``e2e_env`` plus:
+    - "goose_config_dir": Path to host ``~/.config/goose``
+    - "secrets_path", "config_path": Paths to the seeded host cred files
+  """
+  home = tmp_path / "home"
+  config_home = tmp_path / "config"
+  data_home = tmp_path / "data"
+  state_home = tmp_path / "state"
+  cache_home = tmp_path / "cache"
+  project = tmp_path / "project"
 
-    for d in (home, config_home, data_home, state_home, cache_home, project):
-        d.mkdir()
+  for d in (home, config_home, data_home, state_home, cache_home, project):
+    d.mkdir()
 
-    # Goose detection anchors to ~/.local/bin/goose (the _BINARY contract path),
-    # so the stub must live there exactly.  detect() resolves the real ELF and
-    # binds it into the box as the entrypoint, so the stub is also what runs
-    # in-box.
-    goose_bin_dir = home / ".local" / "bin"
-    goose_bin_dir.mkdir(parents=True)
-    goose_binary = goose_bin_dir / "goose"
-    shutil.copy2(goose_stub_script, goose_binary)
-    goose_binary.chmod(0o755)
+  # Goose detection anchors to ~/.local/bin/goose (the _BINARY contract path),
+  # so the stub must live there exactly.  detect() resolves the real ELF and
+  # binds it into the box as the entrypoint, so the stub is also what runs
+  # in-box.
+  goose_bin_dir = home / ".local" / "bin"
+  goose_bin_dir.mkdir(parents=True)
+  goose_binary = goose_bin_dir / "goose"
+  shutil.copy2(goose_stub_script, goose_binary)
+  goose_binary.chmod(0o755)
 
-    # Seed host cred files with KNOWN content so refresh/seed_cred_files have a
-    # real SYNC source and the seed assertion has a recognizable sentinel.
-    goose_config_dir = home / ".config" / "goose"
-    goose_config_dir.mkdir(parents=True)
-    secrets_path = goose_config_dir / "secrets.yaml"
-    config_path = goose_config_dir / "config.yaml"
-    secrets_path.write_text(GOOSE_SECRETS_CONTENT)
-    config_path.write_text(GOOSE_CONFIG_CONTENT)
+  # Seed host cred files with KNOWN content so refresh/seed_cred_files have a
+  # real SYNC source and the seed assertion has a recognizable sentinel.
+  goose_config_dir = home / ".config" / "goose"
+  goose_config_dir.mkdir(parents=True)
+  secrets_path = goose_config_dir / "secrets.yaml"
+  config_path = goose_config_dir / "config.yaml"
+  secrets_path.write_text(GOOSE_SECRETS_CONTENT)
+  config_path.write_text(GOOSE_CONFIG_CONTENT)
 
-    names_dir = data_home / "kanibako"
-    names_dir.mkdir(parents=True, exist_ok=True)
-    # Pin the e2e image at the SYSTEM settings tier, and write the (empty) bootstrap
-    # file this fixture has always written (write_e2e_settings_files).
-    # ⚑ No agent pin here, matching what this fixture has always written: the goose
-    # tests force selection with an explicit ``--agent goose`` on the launch.
-    write_e2e_settings_files(
-        config_home, data_home, home=home,
-        agent_keys={"goose": {"provider": "anthropic"}},
-    )
+  names_dir = data_home / "kanibako"
+  names_dir.mkdir(parents=True, exist_ok=True)
+  # Pin the e2e image at the SYSTEM settings tier, and write the (empty) bootstrap
+  # file this fixture has always written (write_e2e_settings_files).
+  # ⚑ No agent pin here, matching what this fixture has always written: the goose
+  # tests force selection with an explicit ``--agent goose`` on the launch.
+  write_e2e_settings_files(
+    config_home,
+    data_home,
+    home=home,
+    agent_keys={"goose": {"provider": "anthropic"}},
+  )
 
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(home),
-        "XDG_CONFIG_HOME": str(config_home),
-        "XDG_DATA_HOME": str(data_home),
-        "XDG_STATE_HOME": str(state_home),
-        "XDG_CACHE_HOME": str(cache_home),
-        # Goose detect() does NOT consult $PATH (it anchors to ~/.local/bin),
-        # but keep the stub dir on PATH for parity with e2e_env and so any
-        # incidental `goose` lookup resolves to the stub.
-        "PATH": f"{goose_bin_dir}:{env.get('PATH', '')}",
-        # Pin rootless podman storage back to the host's real graphroot (see
-        # e2e_env / host_storage_conf): HOME/XDG overrides above would otherwise
-        # relocate it into tmp_path and hide the host's pulled images.
-        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
-    })
-
-    yield {
-        "env": env,
-        "home": home,
-        "project": project,
-        "config_home": config_home,
-        "data_home": data_home,
-        "stub_script": goose_stub_script,
-        "goose_config_dir": goose_config_dir,
-        "secrets_path": secrets_path,
-        "config_path": config_path,
-        "tmp_path": tmp_path,
+  env = os.environ.copy()
+  env.update(
+    {
+      "HOME": str(home),
+      "XDG_CONFIG_HOME": str(config_home),
+      "XDG_DATA_HOME": str(data_home),
+      "XDG_STATE_HOME": str(state_home),
+      "XDG_CACHE_HOME": str(cache_home),
+      # Goose detect() does NOT consult $PATH (it anchors to ~/.local/bin),
+      # but keep the stub dir on PATH for parity with e2e_env and so any
+      # incidental `goose` lookup resolves to the stub.
+      "PATH": f"{goose_bin_dir}:{env.get('PATH', '')}",
+      # Pin rootless podman storage back to the host's real graphroot (see
+      # e2e_env / host_storage_conf): HOME/XDG overrides above would otherwise
+      # relocate it into tmp_path and hide the host's pulled images.
+      "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
+  )
 
-    # Teardown: prefix-based cleanup of this test's containers (mirrors e2e_env).
-    if _podman is None:
-        return
-    result = subprocess.run(
-        [_podman, "ps", "-a", "--format", "{{.Names}}"],
+  yield {
+    "env": env,
+    "home": home,
+    "project": project,
+    "config_home": config_home,
+    "data_home": data_home,
+    "stub_script": goose_stub_script,
+    "goose_config_dir": goose_config_dir,
+    "secrets_path": secrets_path,
+    "config_path": config_path,
+    "tmp_path": tmp_path,
+  }
+
+  # Teardown: prefix-based cleanup of this test's containers (mirrors e2e_env).
+  if _podman is None:
+    return
+  result = subprocess.run(
+    [_podman, "ps", "-a", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  for name in result.stdout.strip().splitlines():
+    name = name.strip()
+    if not name:
+      continue
+    if name.startswith(CONTAINER_PREFIX):
+      subprocess.run(
+        [_podman, "rm", "-f", "-t", "1", name],
         capture_output=True,
-        text=True,
         timeout=10,
-    )
-    for name in result.stdout.strip().splitlines():
-        name = name.strip()
-        if not name:
-            continue
-        if name.startswith(CONTAINER_PREFIX):
-            subprocess.run(
-                [_podman, "rm", "-f", "-t", "1", name],
-                capture_output=True,
-                timeout=10,
-            )
+      )

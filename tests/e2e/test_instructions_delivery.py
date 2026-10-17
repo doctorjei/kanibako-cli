@@ -41,12 +41,12 @@ from pathlib import Path
 import pytest
 
 from tests.e2e.conftest import (
-    box_container,
-    _active_env,
-    _podman,
-    e2e_requires,
-    podman_exec,
-    run_kanibako,
+  box_container,
+  _active_env,
+  _podman,
+  e2e_requires,
+  podman_exec,
+  run_kanibako,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -55,50 +55,46 @@ GUEST_HOME = "/home/agent"
 
 
 def rm(name: str) -> None:
-    subprocess.run(
-        [_podman, "rm", "-f", "-t", "1", name], capture_output=True, timeout=20
-    )
+  subprocess.run([_podman, "rm", "-f", "-t", "1", name], capture_output=True, timeout=20)
 
 
 def safe_inspect(name: str):
-    r = subprocess.run(
-        [_podman, "inspect", name], capture_output=True, text=True, timeout=20
-    )
-    if r.returncode != 0:
-        return None
-    return json.loads(r.stdout)[0]
+  r = subprocess.run([_podman, "inspect", name], capture_output=True, text=True, timeout=20)
+  if r.returncode != 0:
+    return None
+  return json.loads(r.stdout)[0]
 
 
 def find_mount(cfg: dict, dest: str):
-    for m in cfg.get("Mounts", []):
-        if m.get("Destination") == dest:
-            return m
-    return None
+  for m in cfg.get("Mounts", []):
+    if m.get("Destination") == dest:
+      return m
+  return None
 
 
 def env_of(cfg: dict) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for item in cfg.get("Config", {}).get("Env", []) or []:
-        k, _, v = str(item).partition("=")
-        out[k] = v
-    return out
+  out: dict[str, str] = {}
+  for item in cfg.get("Config", {}).get("Env", []) or []:
+    k, _, v = str(item).partition("=")
+    out[k] = v
+  return out
 
 
 def run_install(env: dict) -> None:
-    """Run the real packaged-template install against the fixture data dir.
+  """Run the real packaged-template install against the fixture data dir.
 
-    First-init is otherwise skipped because the fixture pre-writes the bootstrap
-    config, so the template staging would never happen.
-    """
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths
-    from kanibako.targets import discover_targets
-    from kanibako.launch.templates import install_packaged_templates
+  First-init is otherwise skipped because the fixture pre-writes the bootstrap
+  config, so the template staging would never happen.
+  """
+  from kanibako.settings.config import config_file_path, load_config
+  from kanibako.settings.paths import load_std_paths
+  from kanibako.targets import discover_targets
+  from kanibako.launch.templates import install_packaged_templates
 
-    with _active_env(env):
-        config = load_config(config_file_path(Path(env["XDG_CONFIG_HOME"])))
-        std = load_std_paths(config)
-        install_packaged_templates(std, list(discover_targets()))
+  with _active_env(env):
+    config = load_config(config_file_path(Path(env["XDG_CONFIG_HOME"])))
+    std = load_std_paths(config)
+    install_packaged_templates(std, list(discover_targets()))
 
 
 KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
@@ -129,11 +125,11 @@ LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 # R1's retired whole-dir bind (re-introducing it would put the agent chapter's
 # mountpoint back inside a bind SOURCE, which is what J-7 removed).
 CANON_CORE_DESTS = (
-    f"{GUEST_HOME}/canon/COLLECTION.md",
-    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
-    f"{GUEST_HOME}/canon/charter/general",
-    f"{GUEST_HOME}/canon/charter/workset",
-    f"{GUEST_HOME}/canon/charter/box",
+  f"{GUEST_HOME}/canon/COLLECTION.md",
+  f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
+  f"{GUEST_HOME}/canon/charter/general",
+  f"{GUEST_HOME}/canon/charter/workset",
+  f"{GUEST_HOME}/canon/charter/box",
 )
 CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
 
@@ -152,8 +148,8 @@ CANON_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 # SKIP-IF-ABSENT, so which of them appears depends on what the box's scopes supply —
 # see ``HANDBOOK_CHAPTERS_EXPECTED``.
 HANDBOOK_SYSTEM_DESTS = (
-    f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
-    f"{GUEST_HOME}/canon/handbook/general",
+  f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
+  f"{GUEST_HOME}/canon/handbook/general",
 )
 
 # The chapters a freshly created PRIMARY box in this harness actually has content for:
@@ -163,319 +159,306 @@ HANDBOOK_SYSTEM_DESTS = (
 #   workset — ABSENT: the default workset ships no chapter, which is the NORMAL case
 #             and precisely what skip-if-absent exists for (no warning, no mount).
 HANDBOOK_CHAPTERS_EXPECTED = (
-    f"{GUEST_HOME}/canon/handbook/agent",
-    f"{GUEST_HOME}/canon/handbook/box",
+  f"{GUEST_HOME}/canon/handbook/agent",
+  f"{GUEST_HOME}/canon/handbook/box",
 )
 HANDBOOK_CHAPTER_ABSENT = f"{GUEST_HOME}/canon/handbook/workset"
 
 
 def assert_canon_binds_ro(cfg: dict) -> None:
-    """The packaged canon is mounted READ-ONLY at all five declared guest slots.
+  """The packaged canon is mounted READ-ONLY at all five declared guest slots.
 
-    Host-side tests prove the SOURCE→DEST mapping; only a real container proves the
-    binds actually materialize onto the pre-created mountpoints, and that neither
-    book root is mounted.
-    """
-    for dest in CANON_CORE_DESTS:
-        m = find_mount(cfg, dest)
-        assert m is not None, f"canon bind missing at {dest}"
-        assert m.get("RW") is False, f"canon bind at {dest} must be read-only"
-    for root in CANON_UNBOUND_ROOTS:
-        assert find_mount(cfg, root) is None, (
-            f"{root} must NOT be bound — the canon is delivered as SIBLINGS onto "
-            "pre-created mountpoints (J-7), and ~/canon must stay traversable to the "
-            "seeded notebook/workbook books"
-        )
+  Host-side tests prove the SOURCE→DEST mapping; only a real container proves the
+  binds actually materialize onto the pre-created mountpoints, and that neither
+  book root is mounted.
+  """
+  for dest in CANON_CORE_DESTS:
+    m = find_mount(cfg, dest)
+    assert m is not None, f"canon bind missing at {dest}"
+    assert m.get("RW") is False, f"canon bind at {dest} must be read-only"
+  for root in CANON_UNBOUND_ROOTS:
+    assert find_mount(cfg, root) is None, (
+      f"{root} must NOT be bound — the canon is delivered as SIBLINGS onto "
+      "pre-created mountpoints (J-7), and ~/canon must stay traversable to the "
+      "seeded notebook/workbook books"
+    )
 
 
 def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
-    """The PLUGIN's charter chapter is mounted RO at ~/canon/charter/agent (C-CANON R2).
+  """The PLUGIN's charter chapter is mounted RO at ~/canon/charter/agent (C-CANON R2).
 
-    Host-side tests prove core emits the bind from the resolved target; only a real
-    container proves the whole-directory bind lands on the skeleton's pre-created
-    (root-owned, EMPTY) mountpoint and that the chapter is actually readable in-box —
-    which is what makes the charter's ``agent/ROM_AGENT.md`` import resolve
-    instead of dangling.
-    """
-    m = find_mount(cfg, CANON_AGENT_DEST)
-    assert m is not None, f"plugin charter chapter not bound at {CANON_AGENT_DEST}"
-    assert m.get("RW") is False, "the plugin charter chapter must be read-only"
-    assert Path(m["Source"], "ROM_AGENT.md").is_file(), (
-        f"the bound chapter source {m['Source']} carries no ROM_AGENT.md"
-    )
-    in_box = podman_exec(
-        box_container(box),
-        ["cat", f"{CANON_AGENT_DEST}/ROM_AGENT.md"],
-    ).stdout
-    assert "Core Tome" in in_box, (
-        f"the agent chapter is not readable in-box, got {in_box!r}"
-    )
+  Host-side tests prove core emits the bind from the resolved target; only a real
+  container proves the whole-directory bind lands on the skeleton's pre-created
+  (root-owned, EMPTY) mountpoint and that the chapter is actually readable in-box —
+  which is what makes the charter's ``agent/ROM_AGENT.md`` import resolve
+  instead of dangling.
+  """
+  m = find_mount(cfg, CANON_AGENT_DEST)
+  assert m is not None, f"plugin charter chapter not bound at {CANON_AGENT_DEST}"
+  assert m.get("RW") is False, "the plugin charter chapter must be read-only"
+  assert Path(m["Source"], "ROM_AGENT.md").is_file(), (
+    f"the bound chapter source {m['Source']} carries no ROM_AGENT.md"
+  )
+  in_box = podman_exec(
+    box_container(box),
+    ["cat", f"{CANON_AGENT_DEST}/ROM_AGENT.md"],
+  ).stdout
+  assert "Core Tome" in in_box, f"the agent chapter is not readable in-box, got {in_box!r}"
 
 
 def assert_canon_locked_down(box: str) -> None:
-    """⚑ THE OWNERSHIP FLIP (J-7) — the half no mount table can show.
+  """⚑ THE OWNERSHIP FLIP (J-7) — the half no mount table can show.
 
-    Two assertions, and the SECOND is the one bifrost exists to settle:
+  Two assertions, and the SECOND is the one bifrost exists to settle:
 
-    1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
-       the stray-file pollution the skeleton exists to prevent, so its refusal is the
-       behavioral contract.
-    2. ``~/canon`` and ``~/canon/charter`` are owned by uid 0 IN-BOX. Without this a
-       wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
-       satisfy assertion 1 and sail through the entire suite — and that uid is
-       precisely the derivation this e2e is here to prove (``chown 0:0`` inside
-       ``podman unshare`` is the REAL HOST USER, whom ``keep-id:uid=1000`` maps to
-       the in-box agent; container-root is ns-uid 1).
+  1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
+     the stray-file pollution the skeleton exists to prevent, so its refusal is the
+     behavioral contract.
+  2. ``~/canon`` and ``~/canon/charter`` are owned by uid 0 IN-BOX. Without this a
+     wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
+     satisfy assertion 1 and sail through the entire suite — and that uid is
+     precisely the derivation this e2e is here to prove (``chown 0:0`` inside
+     ``podman unshare`` is the REAL HOST USER, whom ``keep-id:uid=1000`` maps to
+     the in-box agent; container-root is ns-uid 1).
 
-    ⚑ The writability of ``~/canon/{notebook,workbook}`` is asserted SEPARATELY, in
-    :func:`assert_canon_books_writable` — R1b deferred it because nothing created
-    those dirs yet; the seeds half does, so it is now live.
-    """
-    refused = podman_exec(
-        box_container(box),
-        ["sh", "-c", "mkdir ~/canon/scratch 2>&1; echo rc=$?"],
-    ).stdout
-    assert "rc=0" not in refused, (
-        f"~/canon must be UNWRITABLE from inside the box, got: {refused!r}"
-    )
+  ⚑ The writability of ``~/canon/{notebook,workbook}`` is asserted SEPARATELY, in
+  :func:`assert_canon_books_writable` — R1b deferred it because nothing created
+  those dirs yet; the seeds half does, so it is now live.
+  """
+  refused = podman_exec(
+    box_container(box),
+    ["sh", "-c", "mkdir ~/canon/scratch 2>&1; echo rc=$?"],
+  ).stdout
+  assert "rc=0" not in refused, f"~/canon must be UNWRITABLE from inside the box, got: {refused!r}"
 
-    owners = podman_exec(
-        box_container(box),
-        ["sh", "-c", "stat -c %u ~/canon ~/canon/charter"],
-    ).stdout.split()
-    assert owners == ["0", "0"], (
-        f"the canon book roots must be ROOT-OWNED in-box, got uids {owners!r}. "
-        "A non-zero non-1000 uid means UNSHARE_BOX_ROOT_UID landed on the wrong "
-        "subuid; 1000 means it landed on the agent (the chown 0:0 trap)."
-    )
+  owners = podman_exec(
+    box_container(box),
+    ["sh", "-c", "stat -c %u ~/canon ~/canon/charter"],
+  ).stdout.split()
+  assert owners == ["0", "0"], (
+    f"the canon book roots must be ROOT-OWNED in-box, got uids {owners!r}. "
+    "A non-zero non-1000 uid means UNSHARE_BOX_ROOT_UID landed on the wrong "
+    "subuid; 1000 means it landed on the agent (the chown 0:0 trap)."
+  )
 
 
 def assert_handbook_binds_ro(cfg: dict) -> None:
-    """The HANDBOOK book materializes as SIBLING ro binds, and SKIP-IF-ABSENT holds.
+  """The HANDBOOK book materializes as SIBLING ro binds, and SKIP-IF-ABSENT holds.
 
-    Three separate claims, and the third is the one only a real box can settle:
+  Three separate claims, and the third is the one only a real box can settle:
 
-    1. the two SYSTEM rows (``SYS_CONTENTS.md`` file bind + the ``general`` chapter)
-       are mounted READ-ONLY — the handbook is HOST-owned content, so the box reads it
-       and never edits it (a deliberate behavior change from the writable pre-canon
-       tree it replaces; M-10);
-    2. the chapters a scope actually supplies are mounted, at dests carrying NO agent
-       segment ("storage is varied, binding is not", §2d);
-    3. a chapter no scope supplies is simply ABSENT — no mount, and (asserted by the
-       caller) no warning.  Without skip-if-absent this is the case that would print
-       a ro-drop warning on almost every launch of almost every box.
-    """
-    for dest in HANDBOOK_SYSTEM_DESTS:
-        m = find_mount(cfg, dest)
-        assert m is not None, f"handbook bind missing at {dest}"
-        assert m.get("RW") is False, f"handbook bind at {dest} must be read-only"
-    for dest in HANDBOOK_CHAPTERS_EXPECTED:
-        m = find_mount(cfg, dest)
-        assert m is not None, f"handbook chapter bind missing at {dest}"
-        assert m.get("RW") is False, f"handbook chapter at {dest} must be read-only"
-    assert find_mount(cfg, HANDBOOK_CHAPTER_ABSENT) is None, (
-        f"{HANDBOOK_CHAPTER_ABSENT} must NOT be bound — no workset chapter exists, "
-        "and SKIP-IF-ABSENT means an unsupplied chapter is omitted, not warned about"
-    )
-    assert find_mount(cfg, f"{GUEST_HOME}/canon/handbook") is None, (
-        "the handbook ROOT must not be bound — the book is delivered as SIBLINGS "
-        "onto the skeleton's pre-created mountpoints (J-7)"
-    )
+  1. the two SYSTEM rows (``SYS_CONTENTS.md`` file bind + the ``general`` chapter)
+     are mounted READ-ONLY — the handbook is HOST-owned content, so the box reads it
+     and never edits it (a deliberate behavior change from the writable pre-canon
+     tree it replaces; M-10);
+  2. the chapters a scope actually supplies are mounted, at dests carrying NO agent
+     segment ("storage is varied, binding is not", §2d);
+  3. a chapter no scope supplies is simply ABSENT — no mount, and (asserted by the
+     caller) no warning.  Without skip-if-absent this is the case that would print
+     a ro-drop warning on almost every launch of almost every box.
+  """
+  for dest in HANDBOOK_SYSTEM_DESTS:
+    m = find_mount(cfg, dest)
+    assert m is not None, f"handbook bind missing at {dest}"
+    assert m.get("RW") is False, f"handbook bind at {dest} must be read-only"
+  for dest in HANDBOOK_CHAPTERS_EXPECTED:
+    m = find_mount(cfg, dest)
+    assert m is not None, f"handbook chapter bind missing at {dest}"
+    assert m.get("RW") is False, f"handbook chapter at {dest} must be read-only"
+  assert find_mount(cfg, HANDBOOK_CHAPTER_ABSENT) is None, (
+    f"{HANDBOOK_CHAPTER_ABSENT} must NOT be bound — no workset chapter exists, "
+    "and SKIP-IF-ABSENT means an unsupplied chapter is omitted, not warned about"
+  )
+  assert find_mount(cfg, f"{GUEST_HOME}/canon/handbook") is None, (
+    "the handbook ROOT must not be bound — the book is delivered as SIBLINGS "
+    "onto the skeleton's pre-created mountpoints (J-7)"
+  )
 
 
 def assert_canon_books_writable(box: str) -> None:
-    """⚑ The R1b-deferred half: notebook + workbook ARE writable, handbook is NOT.
+  """⚑ The R1b-deferred half: notebook + workbook ARE writable, handbook is NOT.
 
-    This is the whole shape of the canon in one assertion. The box's OWN books
-    (notebook, workbook) are SEEDED into the home and stay agent-owned and writable —
-    undeletable only because their 555 parent says so — while everything BOUND around
-    them is read-only. If this ever flips, an agent silently loses the only place it
-    is allowed to write inside ``~/canon``.
-    """
-    out = podman_exec(
-        box_container(box),
-        ["sh", "-c",
-         "touch ~/canon/notebook/.probe 2>&1 && echo nb=ok; "
-         "touch ~/canon/workbook/.probe 2>&1 && echo wb=ok; "
-         "touch ~/canon/handbook/.probe 2>&1 || echo hb=refused"],
-    ).stdout
-    assert "nb=ok" in out, f"~/canon/notebook must be WRITABLE in-box, got {out!r}"
-    assert "wb=ok" in out, f"~/canon/workbook must be WRITABLE in-box, got {out!r}"
-    assert "hb=refused" in out, (
-        f"~/canon/handbook must be READ-ONLY in-box, got {out!r}"
-    )
-    seeded = podman_exec(
-        box_container(box),
-        ["sh", "-c", "cat ~/canon/notebook/LOCAL_CONTENTS.md"],
-    ).stdout
-    assert "Notebook" in seeded, (
-        f"the seeded notebook entry point is missing in-box, got {seeded!r}"
-    )
+  This is the whole shape of the canon in one assertion. The box's OWN books
+  (notebook, workbook) are SEEDED into the home and stay agent-owned and writable —
+  undeletable only because their 555 parent says so — while everything BOUND around
+  them is read-only. If this ever flips, an agent silently loses the only place it
+  is allowed to write inside ``~/canon``.
+  """
+  out = podman_exec(
+    box_container(box),
+    [
+      "sh",
+      "-c",
+      "touch ~/canon/notebook/.probe 2>&1 && echo nb=ok; "
+      "touch ~/canon/workbook/.probe 2>&1 && echo wb=ok; "
+      "touch ~/canon/handbook/.probe 2>&1 || echo hb=refused",
+    ],
+  ).stdout
+  assert "nb=ok" in out, f"~/canon/notebook must be WRITABLE in-box, got {out!r}"
+  assert "wb=ok" in out, f"~/canon/workbook must be WRITABLE in-box, got {out!r}"
+  assert "hb=refused" in out, f"~/canon/handbook must be READ-ONLY in-box, got {out!r}"
+  seeded = podman_exec(
+    box_container(box),
+    ["sh", "-c", "cat ~/canon/notebook/LOCAL_CONTENTS.md"],
+  ).stdout
+  assert "Notebook" in seeded, f"the seeded notebook entry point is missing in-box, got {seeded!r}"
 
 
 def assert_no_skip_if_absent_warnings(stderr: str) -> None:
-    """No launch warning names an absent handbook chapter (the skip-if-absent payoff).
+  """No launch warning names an absent handbook chapter (the skip-if-absent payoff).
 
-    ⚑ GREPPED, not eyeballed: warning noise that the NORMAL case produces is what
-    teaches users to ignore warnings, and "almost every box has no workset chapter"
-    is as normal as it gets.
+  ⚑ GREPPED, not eyeballed: warning noise that the NORMAL case produces is what
+  teaches users to ignore warnings, and "almost every box has no workset chapter"
+  is as normal as it gets.
 
-    ⚑ HOST STDERR IS THE RIGHT CHANNEL **HERE**, unlike the flatten pin below — and
-    the two are worth contrasting because they look alike and are not. This warning
-    is emitted by ``commands/start._emit_category_mounts``, which runs in the HOST
-    kanibako process while it assembles the mount list, BEFORE podman is invoked at
-    all. The flatten warning is emitted by a program that ``exec``s inside the tmux
-    session, so it never leaves the box. Same-shaped assertion, opposite channels.
-    """
-    offenders = [
-        line for line in stderr.splitlines()
-        if "does not exist; dropping mount" in line and "canon_hb" in line
-    ]
-    assert not offenders, (
-        f"an absent handbook chapter warned on launch: {offenders}"
-    )
+  ⚑ HOST STDERR IS THE RIGHT CHANNEL **HERE**, unlike the flatten pin below — and
+  the two are worth contrasting because they look alike and are not. This warning
+  is emitted by ``commands/start._emit_category_mounts``, which runs in the HOST
+  kanibako process while it assembles the mount list, BEFORE podman is invoked at
+  all. The flatten warning is emitted by a program that ``exec``s inside the tmux
+  session, so it never leaves the box. Same-shaped assertion, opposite channels.
+  """
+  offenders = [
+    line
+    for line in stderr.splitlines()
+    if "does not exist; dropping mount" in line and "canon_hb" in line
+  ]
+  assert not offenders, f"an absent handbook chapter warned on launch: {offenders}"
 
 
 def assert_flatten_resolves_every_import(
-    cfg: dict, box: str,
+  cfg: dict,
+  box: str,
 ) -> None:
-    """⚑⚑ ZERO unresolved-import warnings — every import in the chain resolves.
+  """⚑⚑ ZERO unresolved-import warnings — every import in the chain resolves.
 
-    The count is the whole point, so it is asserted as a count.  It was ONE until
-    M-12 dropped the kickoff's pre-canon line; that line was the last import in the
-    chain pointing at a tree the box does not have.  THREE mechanisms had to land:
+  The count is the whole point, so it is asserted as a count.  It was ONE until
+  M-12 dropped the kickoff's pre-canon line; that line was the last import in the
+  chain pointing at a tree the box does not have.  THREE mechanisms had to land:
 
-    * the box's NOTEBOOK is seeded, so the handbook ``SYS_CONTENTS.md``'s
-      ``~/canon/notebook/LOCAL_CONTENTS.md`` import resolves;
-    * the skeleton's 0-byte IMPORT-FALLBACK files (F1) make ``SYS_CONTENTS.md``'s
-      UNCONDITIONAL chapter imports resolve-to-empty on a box that supplies no
-      workset/box chapter — skip-if-absent governs the BIND, not the INDEX, so
-      without them every primary box warned about ``@workset/`` on every launch;
-    * M-12 dropped the plugin kickoffs' pre-canon transition import, which pointed at
-      a tree no box has and warned on EVERY launch of EVERY agent box.
+  * the box's NOTEBOOK is seeded, so the handbook ``SYS_CONTENTS.md``'s
+    ``~/canon/notebook/LOCAL_CONTENTS.md`` import resolves;
+  * the skeleton's 0-byte IMPORT-FALLBACK files (F1) make ``SYS_CONTENTS.md``'s
+    UNCONDITIONAL chapter imports resolve-to-empty on a box that supplies no
+    workset/box chapter — skip-if-absent governs the BIND, not the INDEX, so
+    without them every primary box warned about ``@workset/`` on every launch;
+  * M-12 dropped the plugin kickoffs' pre-canon transition import, which pointed at
+    a tree no box has and warned on EVERY launch of EVERY agent box.
 
-    ⚑ ZERO is a stronger pin than ONE, not a weaker one: an expected-noise allowance
-    is exactly where a NEW dangling import hides.  Raising this back above zero means
-    something in the chain is addressing content that is not there.
+  ⚑ ZERO is a stronger pin than ONE, not a weaker one: an expected-noise allowance
+  is exactly where a NEW dangling import hides.  Raising this back above zero means
+  something in the chain is addressing content that is not there.
 
-    ⚑⚑ WHY THIS RE-RUNS THE FLATTENER INSTEAD OF READING ``start``'s STDERR — DO NOT
-    MOVE IT BACK.  The flatten shim ``exec``s INSIDE the tmux session
-    (``_directive_flatten_shim`` nests within the bootstrap wrap), so on the real
-    non-tty path its stderr goes to the PANE and never reaches the host stderr of
-    ``kanibako start``.  Asserting on ``res.stderr`` therefore reads an EMPTY set and
-    the pin silently degrades from "exactly one known warning" to "no warnings
-    anywhere", which would pass while the box printed anything at all.  Measured on
-    both real-podman legs of the gate: 0 lines on host stderr, the expected single
-    line in-box.
+  ⚑⚑ WHY THIS RE-RUNS THE FLATTENER INSTEAD OF READING ``start``'s STDERR — DO NOT
+  MOVE IT BACK.  The flatten shim ``exec``s INSIDE the tmux session
+  (``_directive_flatten_shim`` nests within the bootstrap wrap), so on the real
+  non-tty path its stderr goes to the PANE and never reaches the host stderr of
+  ``kanibako start``.  Asserting on ``res.stderr`` therefore reads an EMPTY set and
+  the pin silently degrades from "exactly one known warning" to "no warnings
+  anywhere", which would pass while the box printed anything at all.  Measured on
+  both real-podman legs of the gate: 0 lines on host stderr, the expected single
+  line in-box.
 
-    So the flattener is re-run IN-BOX over the SAME inputs the agent process used —
-    its own ``KANIBAKO_DIRECTIVE_SEED`` / ``KANIBAKO_DIRECTIVE_FINAL`` container env,
-    read off the inspect payload — and THAT stderr is pinned.  ``podman exec`` is
-    preferred over capturing the tmux pane because it is deterministic: no pane
-    timing, no scrollback truncation, no escape stripping.  Re-running is safe by
-    construction — the flattener is idempotent (a second pass over the same seed
-    produces the same file) and this runs immediately before the box is torn down.
-    """
-    env = env_of(cfg)
-    seed = env.get("KANIBAKO_DIRECTIVE_SEED", "")
-    final = env.get("KANIBAKO_DIRECTIVE_FINAL", "")
-    assert seed and final, (
-        "the box carries no KANIBAKO_DIRECTIVE_SEED/FINAL env, so the launch could "
-        f"not have flattened anything: seed={seed!r} final={final!r}"
-    )
-    result = podman_exec(
-        box_container(box),
-        ["sh", "-c", f'python3 {FLATTENER_IN_BOX} "$1" "$2"', "sh", seed, final],
-    )
-    assert result.returncode == 0, (
-        f"the in-box flatten failed (rc={result.returncode}); it is ``|| true``-"
-        f"guarded at launch, so a failure here is invisible in a real session.\n"
-        f"stderr:\n{result.stderr}"
-    )
-    warnings = [
-        line for line in result.stderr.splitlines() if "unresolved import" in line
-    ]
-    assert warnings == [], (
-        f"expected NO flatten warnings — every import in the chain must resolve — "
-        f"got {len(warnings)}:\n" + "\n".join(warnings)
-    )
+  So the flattener is re-run IN-BOX over the SAME inputs the agent process used —
+  its own ``KANIBAKO_DIRECTIVE_SEED`` / ``KANIBAKO_DIRECTIVE_FINAL`` container env,
+  read off the inspect payload — and THAT stderr is pinned.  ``podman exec`` is
+  preferred over capturing the tmux pane because it is deterministic: no pane
+  timing, no scrollback truncation, no escape stripping.  Re-running is safe by
+  construction — the flattener is idempotent (a second pass over the same seed
+  produces the same file) and this runs immediately before the box is torn down.
+  """
+  env = env_of(cfg)
+  seed = env.get("KANIBAKO_DIRECTIVE_SEED", "")
+  final = env.get("KANIBAKO_DIRECTIVE_FINAL", "")
+  assert seed and final, (
+    "the box carries no KANIBAKO_DIRECTIVE_SEED/FINAL env, so the launch could "
+    f"not have flattened anything: seed={seed!r} final={final!r}"
+  )
+  result = podman_exec(
+    box_container(box),
+    ["sh", "-c", f'python3 {FLATTENER_IN_BOX} "$1" "$2"', "sh", seed, final],
+  )
+  assert result.returncode == 0, (
+    f"the in-box flatten failed (rc={result.returncode}); it is ``|| true``-"
+    f"guarded at launch, so a failure here is invisible in a real session.\n"
+    f"stderr:\n{result.stderr}"
+  )
+  warnings = [line for line in result.stderr.splitlines() if "unresolved import" in line]
+  assert warnings == [], (
+    f"expected NO flatten warnings — every import in the chain must resolve — "
+    f"got {len(warnings)}:\n" + "\n".join(warnings)
+  )
 
 
 def test_claude_kickoff_loader_delivery(e2e_env):
-    """claude: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md
-    (single directive import); mount-parent .config/kanibako auto-created by podman."""
-    env, project, box = e2e_env["env"], e2e_env["project"], "instr_claude"
-    run_install(env)
+  """claude: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md
+  (single directive import); mount-parent .config/kanibako auto-created by podman."""
+  env, project, box = e2e_env["env"], e2e_env["project"], "instr_claude"
+  run_install(env)
 
-    r = run_kanibako(["create", str(project), "--name", box], env=env)
-    assert r.returncode == 0, f"create failed: {r.stderr}"
+  r = run_kanibako(["create", str(project), "--name", box], env=env)
+  assert r.returncode == 0, f"create failed: {r.stderr}"
 
-    res = run_kanibako(
-        ["start", box, "--agent", "claude", "-e", "CLAUDE_STUB_MODE=long-running"],
-        env=env,
-        timeout=90,
-    )
-    cfg = safe_inspect(box_container(box))
-    assert cfg is not None, (
-        f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
-    )
-    try:
-        km = find_mount(cfg, KICKOFF_DEST)
-        assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
-        assert km.get("RW") is False, "kickoff-loader bind must be read-only"
-        kickoff = Path(km["Source"]).read_text()
-        assert DIRECTIVE_IMPORT in kickoff
-        assert LEGACY_DIRECTIVE_IMPORT not in kickoff
-        assert_canon_binds_ro(cfg)
-        assert_agent_chapter_bound_ro(cfg, box)
-        assert_handbook_binds_ro(cfg)
-        assert_canon_locked_down(box)
-        assert_canon_books_writable(box)
-        assert_no_skip_if_absent_warnings(res.stderr)
-        assert_flatten_resolves_every_import(cfg, box)
-    finally:
-        rm(box_container(box))
+  res = run_kanibako(
+    ["start", box, "--agent", "claude", "-e", "CLAUDE_STUB_MODE=long-running"],
+    env=env,
+    timeout=90,
+  )
+  cfg = safe_inspect(box_container(box))
+  assert cfg is not None, f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
+  try:
+    km = find_mount(cfg, KICKOFF_DEST)
+    assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
+    assert km.get("RW") is False, "kickoff-loader bind must be read-only"
+    kickoff = Path(km["Source"]).read_text()
+    assert DIRECTIVE_IMPORT in kickoff
+    assert LEGACY_DIRECTIVE_IMPORT not in kickoff
+    assert_canon_binds_ro(cfg)
+    assert_agent_chapter_bound_ro(cfg, box)
+    assert_handbook_binds_ro(cfg)
+    assert_canon_locked_down(box)
+    assert_canon_books_writable(box)
+    assert_no_skip_if_absent_warnings(res.stderr)
+    assert_flatten_resolves_every_import(cfg, box)
+  finally:
+    rm(box_container(box))
 
 
 def test_goose_kickoff_loader_delivery(goose_e2e_env):
-    """goose: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md and
-    CONTEXT_FILE_NAMES lists AGENTS.md (its native FINAL slot); mount-parent
-    .config/kanibako auto-created by podman."""
-    env, project, box = (
-        goose_e2e_env["env"],
-        goose_e2e_env["project"],
-        "instr_goose",
-    )
-    run_install(env)
+  """goose: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md and
+  CONTEXT_FILE_NAMES lists AGENTS.md (its native FINAL slot); mount-parent
+  .config/kanibako auto-created by podman."""
+  env, project, box = (
+    goose_e2e_env["env"],
+    goose_e2e_env["project"],
+    "instr_goose",
+  )
+  run_install(env)
 
-    r = run_kanibako(["create", str(project), "--name", box], env=env)
-    assert r.returncode == 0, f"create failed: {r.stderr}"
+  r = run_kanibako(["create", str(project), "--name", box], env=env)
+  assert r.returncode == 0, f"create failed: {r.stderr}"
 
-    res = run_kanibako(
-        ["start", box, "--agent", "goose", "-e", "GOOSE_STUB_MODE=long-running"],
-        env=env,
-        timeout=90,
-    )
-    cfg = safe_inspect(box_container(box))
-    assert cfg is not None, (
-        f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
-    )
-    try:
-        km = find_mount(cfg, KICKOFF_DEST)
-        assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
-        assert km.get("RW") is False, "kickoff-loader bind must be read-only"
-        kickoff = Path(km["Source"]).read_text()
-        assert DIRECTIVE_IMPORT in kickoff
-        assert LEGACY_DIRECTIVE_IMPORT not in kickoff
-        assert_canon_binds_ro(cfg)
-        assert_agent_chapter_bound_ro(cfg, box)
-        assert_handbook_binds_ro(cfg)
-        assert_canon_locked_down(box)
-        assert_canon_books_writable(box)
-        assert_no_skip_if_absent_warnings(res.stderr)
-        assert_flatten_resolves_every_import(cfg, box)
-        assert "AGENTS.md" in json.loads(
-            env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
-        )
-    finally:
-        rm(box_container(box))
+  res = run_kanibako(
+    ["start", box, "--agent", "goose", "-e", "GOOSE_STUB_MODE=long-running"],
+    env=env,
+    timeout=90,
+  )
+  cfg = safe_inspect(box_container(box))
+  assert cfg is not None, f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
+  try:
+    km = find_mount(cfg, KICKOFF_DEST)
+    assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
+    assert km.get("RW") is False, "kickoff-loader bind must be read-only"
+    kickoff = Path(km["Source"]).read_text()
+    assert DIRECTIVE_IMPORT in kickoff
+    assert LEGACY_DIRECTIVE_IMPORT not in kickoff
+    assert_canon_binds_ro(cfg)
+    assert_agent_chapter_bound_ro(cfg, box)
+    assert_handbook_binds_ro(cfg)
+    assert_canon_locked_down(box)
+    assert_canon_books_writable(box)
+    assert_no_skip_if_absent_warnings(res.stderr)
+    assert_flatten_resolves_every_import(cfg, box)
+    assert "AGENTS.md" in json.loads(env_of(cfg).get("CONTEXT_FILE_NAMES", "[]"))
+  finally:
+    rm(box_container(box))

@@ -26,153 +26,172 @@ import pytest
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import (
-    BoxMode, _early_scope, load_primary_boxes, load_std_paths, resolve_project,
-    resolve_standalone_project,
-    unregister_primary_box_name,
+  BoxMode,
+  _early_scope,
+  load_primary_boxes,
+  load_std_paths,
+  resolve_project,
+  resolve_standalone_project,
+  unregister_primary_box_name,
 )
 from kanibako.project.workset import add_project, create_workset
 from kanibako.utils import (
-    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, container_name_for_box_name,
+  WORKSET_SEGMENT_PRIMARY,
+  WORKSET_SEGMENT_STANDALONE,
+  container_name_for_box_name,
 )
 
 
 @pytest.fixture(autouse=True)
 def _kanibako_logger_keeps_its_handlers():
-    """Hand the ``kanibako`` logger back the handlers it had.
+  """Hand the ``kanibako`` logger back the handlers it had.
 
-    ``cli.main`` runs ``setup_logging``, which installs a ``StreamHandler`` bound to
-    whatever ``sys.stderr`` is at that moment — this test's capture buffer — and
-    nothing removes it afterwards.  A later test's log record then lands on a buffer
-    pytest has already closed, and logging answers with ``--- Logging error ---`` plus
-    ``ValueError: I/O operation on closed file`` on ITS stderr, which reds any test
-    asserting that stderr is clean.  The leak is in ``kanibako.log.setup_logging``,
-    not here; this keeps it inside the file that provokes it.
-    """
-    logger = logging.getLogger("kanibako")
-    saved = list(logger.handlers)
-    yield
-    logger.handlers[:] = saved
+  ``cli.main`` runs ``setup_logging``, which installs a ``StreamHandler`` bound to
+  whatever ``sys.stderr`` is at that moment — this test's capture buffer — and
+  nothing removes it afterwards.  A later test's log record then lands on a buffer
+  pytest has already closed, and logging answers with ``--- Logging error ---`` plus
+  ``ValueError: I/O operation on closed file`` on ITS stderr, which reds any test
+  asserting that stderr is clean.  The leak is in ``kanibako.log.setup_logging``,
+  not here; this keeps it inside the file that provokes it.
+  """
+  logger = logging.getLogger("kanibako")
+  saved = list(logger.handlers)
+  yield
+  logger.handlers[:] = saved
 
-_ALIVE = "alive"     # primary box, workspace folder present
-_GONE = "gone"       # primary box, workspace folder deleted
-_STRAY = "stray"     # primary box with NO membership (no recorded workspace)
-_MEMBER = "member"   # a NAMED workset's member, workspace folder deleted
-_WS_NAME = "demo"    # that workset's name — the member's <W> segment
+
+_ALIVE = "alive"  # primary box, workspace folder present
+_GONE = "gone"  # primary box, workspace folder deleted
+_STRAY = "stray"  # primary box with NO membership (no recorded workspace)
+_MEMBER = "member"  # a NAMED workset's member, workspace folder deleted
+_WS_NAME = "demo"  # that workset's name — the member's <W> segment
 _LEGACY = "-legacy"  # a box name the rule no longer allows; it renders NO container name
 
 
 class Sandbox:
-    """One box per interesting state, each built by a production resolver."""
+  """One box per interesting state, each built by a production resolver."""
 
-    def __init__(self, *, lone_root: Path, lone_name: str) -> None:
-        self.lone_root = lone_root
-        self.lone_name = lone_name
+  def __init__(self, *, lone_root: Path, lone_name: str) -> None:
+    self.lone_root = lone_root
+    self.lone_name = lone_name
 
-    def running_containers(self) -> tuple[str, ...]:
-        """Container names for every box in the sandbox — the names ``start`` gives.
+  def running_containers(self) -> tuple[str, ...]:
+    """Container names for every box in the sandbox — the names ``start`` gives.
 
-        ⚑ A box that renders NO name has no container under 1.8.0, so it contributes
-        none; that is the listing's own premise, not a gap in the fixture.
-        """
-        return tuple(
-            name for name in (
-                container_name_for_box_name(_ALIVE, WORKSET_SEGMENT_PRIMARY),
-                container_name_for_box_name(_GONE, WORKSET_SEGMENT_PRIMARY),
-                container_name_for_box_name(_STRAY, WORKSET_SEGMENT_PRIMARY),
-                container_name_for_box_name(_MEMBER, _WS_NAME),
-                container_name_for_box_name(
-                    self.lone_name, WORKSET_SEGMENT_STANDALONE,
-                ),
-            ) if name is not None
-        )
+    ⚑ A box that renders NO name has no container under 1.8.0, so it contributes
+    none; that is the listing's own premise, not a gap in the fixture.
+    """
+    return tuple(
+      name
+      for name in (
+        container_name_for_box_name(_ALIVE, WORKSET_SEGMENT_PRIMARY),
+        container_name_for_box_name(_GONE, WORKSET_SEGMENT_PRIMARY),
+        container_name_for_box_name(_STRAY, WORKSET_SEGMENT_PRIMARY),
+        container_name_for_box_name(_MEMBER, _WS_NAME),
+        container_name_for_box_name(
+          self.lone_name,
+          WORKSET_SEGMENT_STANDALONE,
+        ),
+      )
+      if name is not None
+    )
 
 
 @pytest.fixture
 def sandbox(config_file, tmp_home, credentials_dir, capsys):
-    """Build the sandbox through the production resolvers."""
-    config = load_config(config_file)
-    std = load_std_paths(config)
+  """Build the sandbox through the production resolvers."""
+  config = load_config(config_file)
+  std = load_std_paths(config)
 
-    for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
-        workspace = tmp_home / name
-        workspace.mkdir()
-        # _LEGACY is a name an older ``create`` took from its directory, unchecked.
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
-                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
-            resolve_project(std, config, project_dir=str(workspace), initialize=True)
-    # The membership stays; only the workspace folder goes.
-    shutil.rmtree(tmp_home / _GONE)
-    # A box with no membership has no recorded workspace to report.  The name comes
-    # back from the registry the listing itself reads, never from the path.
-    unregister_primary_box_name(
-        std.primary_workset, _primary_name(std, _STRAY),
-        early=_early_scope(std, BoxMode.primary),
-    )
+  for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
+    workspace = tmp_home / name
+    workspace.mkdir()
+    # _LEGACY is a name an older ``create`` took from its directory, unchecked.
+    with (
+      patch("kanibako.settings.paths.box_name_reason", return_value=None),
+      patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s),
+    ):
+      resolve_project(std, config, project_dir=str(workspace), initialize=True)
+  # The membership stays; only the workspace folder goes.
+  shutil.rmtree(tmp_home / _GONE)
+  # A box with no membership has no recorded workspace to report.  The name comes
+  # back from the registry the listing itself reads, never from the path.
+  unregister_primary_box_name(
+    std.primary_workset,
+    _primary_name(std, _STRAY),
+    early=_early_scope(std, BoxMode.primary),
+  )
 
-    # A workset member is never ALSO a primary box, and its workspace lives under
-    # the workset's own ``workspaces/`` — not at the path handed to ``add_project``.
-    ws = create_workset(_WS_NAME, tmp_home / "worksets" / _WS_NAME, std)
-    (tmp_home / _MEMBER).mkdir()
-    add_project(ws, _MEMBER, tmp_home / _MEMBER)
-    shutil.rmtree(ws.workspaces_dir / _MEMBER)
+  # A workset member is never ALSO a primary box, and its workspace lives under
+  # the workset's own ``workspaces/`` — not at the path handed to ``add_project``.
+  ws = create_workset(_WS_NAME, tmp_home / "worksets" / _WS_NAME, std)
+  (tmp_home / _MEMBER).mkdir()
+  add_project(ws, _MEMBER, tmp_home / _MEMBER)
+  shutil.rmtree(ws.workspaces_dir / _MEMBER)
 
-    # A STANDALONE box, whose container is keyed by its NAME and the standalone segment.
-    lone = tmp_home / "lone"
-    lone.mkdir()
-    lone_proj = resolve_standalone_project(
-        std, config, str(lone), initialize=True,
-    )
-    lone_root = lone_proj.metadata_path
-    shutil.rmtree(lone_root)
+  # A STANDALONE box, whose container is keyed by its NAME and the standalone segment.
+  lone = tmp_home / "lone"
+  lone.mkdir()
+  lone_proj = resolve_standalone_project(
+    std,
+    config,
+    str(lone),
+    initialize=True,
+  )
+  lone_root = lone_proj.metadata_path
+  shutil.rmtree(lone_root)
 
-    capsys.readouterr()  # the resolvers announce their own setup; the rows are next
-    return Sandbox(lone_root=lone_root, lone_name=lone_proj.name)
+  capsys.readouterr()  # the resolvers announce their own setup; the rows are next
+  return Sandbox(lone_root=lone_root, lone_name=lone_proj.name)
 
 
 def _primary_name(std, workspace_name: str) -> str:
-    """The PRIMARY box name whose recorded workspace is *workspace_name*."""
-    return next(
-        name for name, workspace in load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary),
-        ).items()
-        if Path(workspace).name == workspace_name
-    )
+  """The PRIMARY box name whose recorded workspace is *workspace_name*."""
+  return next(
+    name
+    for name, workspace in load_primary_boxes(
+      std.primary_workset,
+      early=_early_scope(std, BoxMode.primary),
+    ).items()
+    if Path(workspace).name == workspace_name
+  )
 
 
 def _cli(argv, running: tuple[str, ...], tmp_path, monkeypatch, capsys):
-    """``cli.main`` to completion; return its stdout, with *running* containers up."""
-    rows = "".join(f"  printf '{n}\\tkanibako-oci:latest\\tUp 2 minutes\\n'\n" for n in running)
-    stub = tmp_path / "container-runtime-stub"
-    stub.write_text(
-        "#!/bin/sh\n" + (f'if [ "$1" = "ps" ]; then\n{rows}fi\n' if rows else "") + "exit 0\n",
-    )
-    stub.chmod(0o755)
-    monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
-    capsys.readouterr()
-    from kanibako import cli
+  """``cli.main`` to completion; return its stdout, with *running* containers up."""
+  rows = "".join(f"  printf '{n}\\tkanibako-oci:latest\\tUp 2 minutes\\n'\n" for n in running)
+  stub = tmp_path / "container-runtime-stub"
+  stub.write_text(
+    "#!/bin/sh\n" + (f'if [ "$1" = "ps" ]; then\n{rows}fi\n' if rows else "") + "exit 0\n",
+  )
+  stub.chmod(0o755)
+  monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
+  capsys.readouterr()
+  from kanibako import cli
 
-    try:
-        cli.main(argv)
-    except SystemExit as exc:
-        assert exc.code in (0, None), (argv, exc.code)
-    return capsys.readouterr().out
+  try:
+    cli.main(argv)
+  except SystemExit as exc:
+    assert exc.code in (0, None), (argv, exc.code)
+  return capsys.readouterr().out
 
 
 def _row(out: str, name: str, status: str) -> str:
-    """The one row for *name* whose STATUS cell reads *status*."""
-    rows = [line for line in out.splitlines() if line.split()[:2] == [name, status]]
-    assert len(rows) == 1, (name, status, out)
-    return rows[0]
+  """The one row for *name* whose STATUS cell reads *status*."""
+  rows = [line for line in out.splitlines() if line.split()[:2] == [name, status]]
+  assert len(rows) == 1, (name, status, out)
+  return rows[0]
 
 
 def _row_at(out: str, path: str, status: str) -> str:
-    """The one row whose PATH/SOURCE/ROOT cell is *path* and whose STATUS is *status*."""
-    rows = [
-        line for line in out.splitlines()
-        if line.split()[2:3] == [path] and line.split()[1:2] == [status]
-    ]
-    assert len(rows) == 1, (path, status, out)
-    return rows[0]
+  """The one row whose PATH/SOURCE/ROOT cell is *path* and whose STATUS is *status*."""
+  rows = [
+    line
+    for line in out.splitlines()
+    if line.split()[2:3] == [path] and line.split()[1:2] == [status]
+  ]
+  assert len(rows) == 1, (path, status, out)
+  return rows[0]
 
 
 # ---------------------------------------------------------------------------
@@ -181,51 +200,66 @@ def _row_at(out: str, path: str, status: str) -> str:
 
 
 def test_list_shows_a_box_whose_workspace_folder_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A registered box with a deleted workspace folder is listed, not hidden."""
-    out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
-    row = _row(out, _GONE, "missing")
-    # The STATUS cell already names the condition, so the path cell adds nothing.
-    assert "missing workspace" not in row
-    assert "no breadcrumb" not in row
+  """A registered box with a deleted workspace folder is listed, not hidden."""
+  out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
+  row = _row(out, _GONE, "missing")
+  # The STATUS cell already names the condition, so the path cell adds nothing.
+  assert "missing workspace" not in row
+  assert "no breadcrumb" not in row
 
 
 def test_list_shows_a_standalone_box_whose_root_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A registered standalone box whose root is gone is listed, not hidden."""
-    out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
-    assert "Standalone boxes:" in out
-    _row_at(out, str(sandbox.lone_root), "missing")
+  """A registered standalone box whose root is gone is listed, not hidden."""
+  out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
+  assert "Standalone boxes:" in out
+  _row_at(out, str(sandbox.lone_root), "missing")
 
 
 def test_list_shows_a_named_workset_member_whose_workspace_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A named workset's member with a deleted workspace is listed, not hidden."""
-    out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
-    assert "Workset: demo" in out
-    _row(out, _MEMBER, "missing")
+  """A named workset's member with a deleted workspace is listed, not hidden."""
+  out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
+  assert "Workset: demo" in out
+  _row(out, _MEMBER, "missing")
 
 
 def test_list_all_includes_a_box_whose_workspace_folder_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``-a`` still lists it — ``-a`` no longer decides whether a box appears."""
-    out = _cli(["box", "list", "-a"], (), tmp_path, monkeypatch, capsys)
-    _row(out, _GONE, "missing")
+  """``-a`` still lists it — ``-a`` no longer decides whether a box appears."""
+  out = _cli(["box", "list", "-a"], (), tmp_path, monkeypatch, capsys)
+  _row(out, _GONE, "missing")
 
 
 def test_orphan_still_names_the_boxes_whose_workspace_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``--orphan`` names the gone-workspace boxes and the no-workspace box only."""
-    out = _cli(["box", "list", "--orphan"], (), tmp_path, monkeypatch, capsys)
-    assert _GONE in out
-    assert _STRAY in out
-    assert _MEMBER in out
-    assert _ALIVE not in out
+  """``--orphan`` names the gone-workspace boxes and the no-workspace box only."""
+  out = _cli(["box", "list", "--orphan"], (), tmp_path, monkeypatch, capsys)
+  assert _GONE in out
+  assert _STRAY in out
+  assert _MEMBER in out
+  assert _ALIVE not in out
 
 
 # ---------------------------------------------------------------------------
@@ -234,48 +268,71 @@ def test_orphan_still_names_the_boxes_whose_workspace_is_gone(
 
 
 def test_ps_shows_a_running_box_whose_workspace_folder_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``ps`` reports the running box and flags the workspace that is gone."""
-    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    assert "missing workspace" in _row(out, _GONE, "active")
+  """``ps`` reports the running box and flags the workspace that is gone."""
+  out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  assert "missing workspace" in _row(out, _GONE, "active")
 
 
 def test_list_shows_a_running_box_whose_workspace_folder_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``list`` shows the running box as ``active``, with the condition on the row."""
-    out = _cli(
-        ["box", "list"], sandbox.running_containers(), tmp_path, monkeypatch, capsys,
-    )
-    assert "missing workspace" in _row(out, _GONE, "active")
+  """``list`` shows the running box as ``active``, with the condition on the row."""
+  out = _cli(
+    ["box", "list"],
+    sandbox.running_containers(),
+    tmp_path,
+    monkeypatch,
+    capsys,
+  )
+  assert "missing workspace" in _row(out, _GONE, "active")
 
 
 def test_ps_all_reports_a_running_box_with_its_workspace_gone_as_active(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``ps -a`` agrees with ``ps`` about which box is running."""
-    out = _cli(
-        ["box", "ps", "-a"], sandbox.running_containers(), tmp_path, monkeypatch, capsys,
-    )
-    assert "missing workspace" in _row(out, _GONE, "active")
+  """``ps -a`` agrees with ``ps`` about which box is running."""
+  out = _cli(
+    ["box", "ps", "-a"],
+    sandbox.running_containers(),
+    tmp_path,
+    monkeypatch,
+    capsys,
+  )
+  assert "missing workspace" in _row(out, _GONE, "active")
 
 
 def test_ps_shows_a_running_workset_member_whose_workspace_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A running workset member with a deleted workspace is reported and flagged."""
-    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    assert "missing workspace" in _row(out, _MEMBER, "active")
+  """A running workset member with a deleted workspace is reported and flagged."""
+  out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  assert "missing workspace" in _row(out, _MEMBER, "active")
 
 
 def test_ps_shows_a_running_standalone_box_whose_root_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A running standalone box whose root is gone is reported and flagged."""
-    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    row = _row_at(out, str(sandbox.lone_root), "active")
-    assert "missing workspace" in row
+  """A running standalone box whose root is gone is reported and flagged."""
+  out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  row = _row_at(out, str(sandbox.lone_root), "active")
+  assert "missing workspace" in row
 
 
 # ---------------------------------------------------------------------------
@@ -284,19 +341,25 @@ def test_ps_shows_a_running_standalone_box_whose_root_is_gone(
 
 
 def test_list_shows_a_box_with_no_recorded_workspace(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A box with no recorded workspace is listed, labeled by that fact."""
-    out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
-    assert "no breadcrumb" in _row(out, _STRAY, "unknown")
+  """A box with no recorded workspace is listed, labeled by that fact."""
+  out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
+  assert "no breadcrumb" in _row(out, _STRAY, "unknown")
 
 
 def test_ps_shows_a_running_box_with_no_recorded_workspace(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A running box with no recorded workspace is reported by ``ps``."""
-    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    _row(out, _STRAY, "active")
+  """A running box with no recorded workspace is reported by ``ps``."""
+  out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  _row(out, _STRAY, "active")
 
 
 # ---------------------------------------------------------------------------
@@ -305,35 +368,45 @@ def test_ps_shows_a_running_box_with_no_recorded_workspace(
 
 
 def test_list_row_for_a_healthy_box_is_unchanged(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A box with its workspace folder present carries no condition marker."""
-    idle = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
-    assert "missing workspace" not in _row(idle, _ALIVE, "stopped")
-    assert "no breadcrumb" not in _row(idle, _ALIVE, "stopped")
-    busy = _cli(
-        ["box", "list"], sandbox.running_containers(), tmp_path, monkeypatch, capsys,
-    )
-    assert "missing workspace" not in _row(busy, _ALIVE, "active")
-    assert "no breadcrumb" not in _row(busy, _ALIVE, "active")
+  """A box with its workspace folder present carries no condition marker."""
+  idle = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
+  assert "missing workspace" not in _row(idle, _ALIVE, "stopped")
+  assert "no breadcrumb" not in _row(idle, _ALIVE, "stopped")
+  busy = _cli(
+    ["box", "list"],
+    sandbox.running_containers(),
+    tmp_path,
+    monkeypatch,
+    capsys,
+  )
+  assert "missing workspace" not in _row(busy, _ALIVE, "active")
+  assert "no breadcrumb" not in _row(busy, _ALIVE, "active")
 
 
 def test_ps_omits_a_stopped_box(sandbox, tmp_path, monkeypatch, capsys):
-    """A stopped box is absent from ``ps``, and ``ps -a`` calls it ``stopped``."""
-    out = _cli(["box", "ps"], (), tmp_path, monkeypatch, capsys)
-    assert "No active boxes." in out
-    assert _ALIVE not in out
-    _row(_cli(["box", "ps", "-a"], (), tmp_path, monkeypatch, capsys), _ALIVE, "stopped")
+  """A stopped box is absent from ``ps``, and ``ps -a`` calls it ``stopped``."""
+  out = _cli(["box", "ps"], (), tmp_path, monkeypatch, capsys)
+  assert "No active boxes." in out
+  assert _ALIVE not in out
+  _row(_cli(["box", "ps", "-a"], (), tmp_path, monkeypatch, capsys), _ALIVE, "stopped")
 
 
 def test_ps_omits_a_stopped_box_whose_workspace_folder_is_gone(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """A box that is not running is absent from ``ps`` even with its workspace gone."""
-    out = _cli(["box", "ps"], (), tmp_path, monkeypatch, capsys)
-    assert _GONE not in out
-    assert _MEMBER not in out
-    assert "No active boxes." in out
+  """A box that is not running is absent from ``ps`` even with its workspace gone."""
+  out = _cli(["box", "ps"], (), tmp_path, monkeypatch, capsys)
+  assert _GONE not in out
+  assert _MEMBER not in out
+  assert "No active boxes." in out
 
 
 # ---------------------------------------------------------------------------
@@ -342,57 +415,64 @@ def test_ps_omits_a_stopped_box_whose_workspace_folder_is_gone(
 
 
 def test_show_all_help_is_one_string_for_list_and_ps():
-    """``list -a`` and ``ps -a`` reach the same listing, so they read the same."""
-    assert _show_all_help("list") == _show_all_help("ps")
-    assert "every box" in _show_all_help("list")
+  """``list -a`` and ``ps -a`` reach the same listing, so they read the same."""
+  assert _show_all_help("list") == _show_all_help("ps")
+  assert "every box" in _show_all_help("list")
 
 
 def _show_all_help(verb: str) -> str:
-    """The help string of *verb*'s ``-a`` option, read off the real parser."""
-    import argparse
+  """The help string of *verb*'s ``-a`` option, read off the real parser."""
+  import argparse
 
-    from kanibako.commands.box._parser import add_parser
+  from kanibako.commands.box._parser import add_parser
 
-    def _subparser(parser: argparse.ArgumentParser, name: str) -> argparse.ArgumentParser:
-        return next(
-            action.choices[name]
-            for action in parser._actions
-            if isinstance(action, argparse._SubParsersAction)
-        )
+  def _subparser(parser: argparse.ArgumentParser, name: str) -> argparse.ArgumentParser:
+    return next(
+      action.choices[name]
+      for action in parser._actions
+      if isinstance(action, argparse._SubParsersAction)
+    )
 
-    root = argparse.ArgumentParser()
-    add_parser(root.add_subparsers(dest="command"))
-    verb_parser = _subparser(_subparser(root, "box"), verb)
-    return str(next(a for a in verb_parser._actions if "-a" in a.option_strings).help)
+  root = argparse.ArgumentParser()
+  add_parser(root.add_subparsers(dest="command"))
+  verb_parser = _subparser(_subparser(root, "box"), verb)
+  return str(next(a for a in verb_parser._actions if "-a" in a.option_strings).help)
 
 
 # ---------------------------------------------------------------------------
 # A box name that renders NO container name is REPORTED, never fatal.
 # ---------------------------------------------------------------------------
 
-def test_list_with_one_legacy_box_name_still_lists_every_box(
-    sandbox, tmp_path, monkeypatch, capsys,
-):
-    """One box whose name renders NO name must not blank the listing.
 
-    The listing has no container-name column, so "no name" is the STATUS it already
-    shows for any box that is not running — and every other box is still listed.
-    """
-    out = _cli(["box", "list"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
-        assert name in out, (name, out)
-    _row(out, _LEGACY, "stopped")
-    _row(out, _ALIVE, "active")
+def test_list_with_one_legacy_box_name_still_lists_every_box(
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
+):
+  """One box whose name renders NO name must not blank the listing.
+
+  The listing has no container-name column, so "no name" is the STATUS it already
+  shows for any box that is not running — and every other box is still listed.
+  """
+  out = _cli(["box", "list"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
+    assert name in out, (name, out)
+  _row(out, _LEGACY, "stopped")
+  _row(out, _ALIVE, "active")
 
 
 def test_ps_with_one_legacy_box_name_still_lists_the_active_boxes(
-    sandbox, tmp_path, monkeypatch, capsys,
+  sandbox,
+  tmp_path,
+  monkeypatch,
+  capsys,
 ):
-    """``box ps`` is the ACTIVE-ONLY view, so the offender is simply not in it.
+  """``box ps`` is the ACTIVE-ONLY view, so the offender is simply not in it.
 
-    What matters is that its presence on disk does not blank the view: ``_cli`` fails
-    the test on any non-zero exit, so reaching the assertions IS the rc 0 pin.
-    """
-    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
-    _row(out, _ALIVE, "active")
-    assert _LEGACY not in out
+  What matters is that its presence on disk does not blank the view: ``_cli`` fails
+  the test on any non-zero exit, so reaching the assertions IS the rc 0 pin.
+  """
+  out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+  _row(out, _ALIVE, "active")
+  assert _LEGACY not in out

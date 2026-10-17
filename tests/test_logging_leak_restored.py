@@ -20,44 +20,41 @@ import logging
 
 
 def _closed_stream_handlers() -> "list[logging.Handler]":
-    """Handlers on the ``kanibako`` logger whose stream is closed."""
-    logger = logging.getLogger("kanibako")
-    return [
-        h for h in logger.handlers
-        if getattr(h, "stream", None) is not None and h.stream.closed
-    ]
+  """Handlers on the ``kanibako`` logger whose stream is closed."""
+  logger = logging.getLogger("kanibako")
+  return [h for h in logger.handlers if getattr(h, "stream", None) is not None and h.stream.closed]
 
 
 class TestALeakedHandlerDoesNotOutliveItsTest:
-    def test_first_a_handler_is_installed_on_a_stream_we_then_close(self):
-        """Recreate the leak shape exactly: a handler bound to a stream that closes.
+  def test_first_a_handler_is_installed_on_a_stream_we_then_close(self):
+    """Recreate the leak shape exactly: a handler bound to a stream that closes.
 
-        This is what ``setup_logging`` does to pytest's captured ``sys.stderr`` when a
-        test calls ``main()`` in-process.  Asserted present, so the next test has
-        something it must have cleaned up.
-        """
-        logger = logging.getLogger("kanibako")
-        stream = io.StringIO()
-        handler = logging.StreamHandler(stream)
-        logger.addHandler(handler)
-        stream.close()
+    This is what ``setup_logging`` does to pytest's captured ``sys.stderr`` when a
+    test calls ``main()`` in-process.  Asserted present, so the next test has
+    something it must have cleaned up.
+    """
+    logger = logging.getLogger("kanibako")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    logger.addHandler(handler)
+    stream.close()
 
-        assert handler in logger.handlers
-        assert _closed_stream_handlers() == [handler]
-        # Teardown of THIS test must remove it; see the next test.
+    assert handler in logger.handlers
+    assert _closed_stream_handlers() == [handler]
+    # Teardown of THIS test must remove it; see the next test.
 
-    def test_the_previous_test_left_no_handler_on_a_closed_stream(self):
-        """The autouse restore fixture must have removed the leaked handler.
+  def test_the_previous_test_left_no_handler_on_a_closed_stream(self):
+    """The autouse restore fixture must have removed the leaked handler.
 
-        Without it, any WARNING this test triggered would hit the closed stream and
-        print a ``Logging error`` block into this test's own captured output — the
-        exact failure that showed up in ``test_create_recovery.py``.
-        """
-        assert _closed_stream_handlers() == []
+    Without it, any WARNING this test triggered would hit the closed stream and
+    print a ``Logging error`` block into this test's own captured output — the
+    exact failure that showed up in ``test_create_recovery.py``.
+    """
+    assert _closed_stream_handlers() == []
 
-    def test_a_warning_here_does_not_raise_or_print_a_logging_error(self, capsys):
-        """Emitting here must be clean: no error text, no ``Logging error`` block."""
-        logging.getLogger("kanibako").warning("probe after a prior test's leak")
-        cap = capsys.readouterr()
-        assert "Logging error" not in cap.err
-        assert "I/O operation on closed file" not in cap.err
+  def test_a_warning_here_does_not_raise_or_print_a_logging_error(self, capsys):
+    """Emitting here must be clean: no error text, no ``Logging error`` block."""
+    logging.getLogger("kanibako").warning("probe after a prior test's leak")
+    cap = capsys.readouterr()
+    assert "Logging error" not in cap.err
+    assert "I/O operation on closed file" not in cap.err

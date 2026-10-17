@@ -30,16 +30,16 @@ import pytest
 
 from kanibako.settings.config import STANDARD_BIND_SOURCE_KEYS, load_config
 from kanibako.settings.paths import (
-    CONFIG_PATH_DEFAULTS,
-    SYSTEM_PATH_DEFAULTS,
-    host_xdg_map,
-    load_std_paths,
-    load_system_config,
-    resolve_config_paths,
-    resolve_data_path,
-    resolve_state_path,
-    resolve_system_paths,
-    resolve_xdg,
+  CONFIG_PATH_DEFAULTS,
+  SYSTEM_PATH_DEFAULTS,
+  host_xdg_map,
+  load_std_paths,
+  load_system_config,
+  resolve_config_paths,
+  resolve_data_path,
+  resolve_state_path,
+  resolve_system_paths,
+  resolve_xdg,
 )
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -47,1274 +47,1321 @@ from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
 
 
 class TestResolveSystemPathsDefaults:
-    def test_defaults_match_layout(self, tmp_path):
-        """Empty config → the data tree hangs off $XDG_DATA_HOME/kanibako.
+  def test_defaults_match_layout(self, tmp_path):
+    """Empty config → the data tree hangs off $XDG_DATA_HOME/kanibako.
 
-        Layer-1 ``config.*`` foundation + Layer-2 ``system.*`` path settings,
-        resolved to the SAME host paths the pre-reshape ``system.{5}`` build
-        produced (equivalence oracle; ``system.global`` is dropped).
-        """
-        resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        base = tmp_path / "kanibako"
-        # Layer-1 config-key foundation (was system.{data,agents,settings,
-        # primary_workset,registry} — same resolved values, re-keyed config.*).
-        assert resolved["config.data"] == base
-        assert resolved["config.agents"] == base / "agents"
-        assert resolved["config.settings"] == base / "global" / "settings.yaml"
-        assert resolved["config.primary_workset"] == base / "primary_workset"
-        assert resolved["config.registry"] == base / "global" / "registry.yaml"
-        # Layer-2 system.* path settings (reference a config key).
-        assert resolved["system.backup"] == base / "backup"
-        assert resolved["system.channelroot"] == base / "channels"
-        assert resolved["system.template"] == base / "global" / "template"
-        assert resolved["system.canon"] == base / "global" / "canon"
-        # The box guide (KANIBAKO.md) is NOT a system path key — it is delivered
-        # live via the RO bundle + launch-flatten, not a host runtime install.
-        assert "system.instructions" not in resolved
-        # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
-        assert resolved["_primary_boxes"] == base / "primary_workset" / "boxes"
-        assert resolved["_primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
-        assert resolved["_primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
-        assert resolved["_primary_logs"] == base / "primary_workset" / "logs"
+    Layer-1 ``config.*`` foundation + Layer-2 ``system.*`` path settings,
+    resolved to the SAME host paths the pre-reshape ``system.{5}`` build
+    produced (equivalence oracle; ``system.global`` is dropped).
+    """
+    resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
+    base = tmp_path / "kanibako"
+    # Layer-1 config-key foundation (was system.{data,agents,settings,
+    # primary_workset,registry} — same resolved values, re-keyed config.*).
+    assert resolved["config.data"] == base
+    assert resolved["config.agents"] == base / "agents"
+    assert resolved["config.settings"] == base / "global" / "settings.yaml"
+    assert resolved["config.primary_workset"] == base / "primary_workset"
+    assert resolved["config.registry"] == base / "global" / "registry.yaml"
+    # Layer-2 system.* path settings (reference a config key).
+    assert resolved["system.backup"] == base / "backup"
+    assert resolved["system.channelroot"] == base / "channels"
+    assert resolved["system.template"] == base / "global" / "template"
+    assert resolved["system.canon"] == base / "global" / "canon"
+    # The box guide (KANIBAKO.md) is NOT a system path key — it is delivered
+    # live via the RO bundle + launch-flatten, not a host runtime install.
+    assert "system.instructions" not in resolved
+    # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
+    assert resolved["_primary_boxes"] == base / "primary_workset" / "boxes"
+    assert resolved["_primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
+    assert resolved["_primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
+    assert resolved["_primary_logs"] == base / "primary_workset" / "logs"
 
-    def test_config_foundation_resolves_standalone(self, tmp_path):
-        """The Layer-1 foundation resolves the 6 config keys on its own."""
-        config = resolve_config_paths({}, data_home=tmp_path, home=tmp_path)
-        base = tmp_path / "kanibako"
-        assert config == {
-            "config.data": str(base),
-            "config.settings": str(base / "global" / "settings.yaml"),
-            "config.agents": str(base / "agents"),
-            "config.primary_workset": str(base / "primary_workset"),
-            "config.registry": str(base / "global" / "registry.yaml"),
-            # J1: the lifecycle journal, beside the registry.
-            "config.journal": str(base / "global" / "journal.yaml"),
-        }
+  def test_config_foundation_resolves_standalone(self, tmp_path):
+    """The Layer-1 foundation resolves the 6 config keys on its own."""
+    config = resolve_config_paths({}, data_home=tmp_path, home=tmp_path)
+    base = tmp_path / "kanibako"
+    assert config == {
+      "config.data": str(base),
+      "config.settings": str(base / "global" / "settings.yaml"),
+      "config.agents": str(base / "agents"),
+      "config.primary_workset": str(base / "primary_workset"),
+      "config.registry": str(base / "global" / "registry.yaml"),
+      # J1: the lifecycle journal, beside the registry.
+      "config.journal": str(base / "global" / "journal.yaml"),
+    }
 
-    def test_channels_skeleton_resolves(self, tmp_path):
-        resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        channels = tmp_path / "kanibako" / "channels"
-        assert resolved["system.channels.common"] == channels / "common"
-        assert resolved["system.channels.chat"] == channels / "chat"
-        assert resolved["system.channels.broadcast"] == channels / "chat" / "broadcast.md"
-        assert resolved["system.channels.mailboxes"] == channels / "mailboxes"
-        assert resolved["system.channels.share"] == channels / "share"
+  def test_channels_skeleton_resolves(self, tmp_path):
+    resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
+    channels = tmp_path / "kanibako" / "channels"
+    assert resolved["system.channels.common"] == channels / "common"
+    assert resolved["system.channels.chat"] == channels / "chat"
+    assert resolved["system.channels.broadcast"] == channels / "chat" / "broadcast.md"
+    assert resolved["system.channels.mailboxes"] == channels / "mailboxes"
+    assert resolved["system.channels.share"] == channels / "share"
 
-    def test_cache_and_runtime_not_under_data(self, tmp_path, monkeypatch):
-        """cache/runtime live under their OWN XDG bases, NOT under data."""
-        cache_home = tmp_path / "cache"
-        run_dir = tmp_path / "run"
-        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
-        resolved = resolve_system_paths(
-            {}, data_home=tmp_path / "data", home=tmp_path,
-        )
-        assert resolved["system.cache"] == cache_home / "kanibako"
-        assert resolved["system.runtime"] == run_dir / "kanibako"
+  def test_cache_and_runtime_not_under_data(self, tmp_path, monkeypatch):
+    """cache/runtime live under their OWN XDG bases, NOT under data."""
+    cache_home = tmp_path / "cache"
+    run_dir = tmp_path / "run"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
+    resolved = resolve_system_paths(
+      {},
+      data_home=tmp_path / "data",
+      home=tmp_path,
+    )
+    assert resolved["system.cache"] == cache_home / "kanibako"
+    assert resolved["system.runtime"] == run_dir / "kanibako"
 
-    def test_returns_every_declared_key(self, tmp_path):
-        resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        # Every declared Layer-1 config key + Layer-2 system key + the derived
-        # PRIMARY-workset roots under their non-key names.
-        assert set(resolved) == (
-            set(CONFIG_PATH_DEFAULTS)
-            | set(SYSTEM_PATH_DEFAULTS)
-            | {
-                "_primary_boxes",
-                "_primary_vault_ro",
-                "_primary_vault_rw",
-                "_primary_logs",
-            }
-        )
+  def test_returns_every_declared_key(self, tmp_path):
+    resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
+    # Every declared Layer-1 config key + Layer-2 system key + the derived
+    # PRIMARY-workset roots under their non-key names.
+    assert set(resolved) == (
+      set(CONFIG_PATH_DEFAULTS)
+      | set(SYSTEM_PATH_DEFAULTS)
+      | {
+        "_primary_boxes",
+        "_primary_vault_ro",
+        "_primary_vault_rw",
+        "_primary_logs",
+      }
+    )
 
 
 class TestResolveSystemPathsOverrides:
-    def test_data_override_tracks_dependents(self, tmp_path):
-        """Overriding config.data moves dependents (which reference config.data)."""
-        resolved = resolve_system_paths(
-            {"config.data": "{$XDG_DATA_HOME}/custom"},
-            data_home=tmp_path,
-            home=tmp_path,
-        )
-        custom = tmp_path / "custom"
-        assert resolved["config.data"] == custom
-        assert resolved["config.agents"] == custom / "agents"
-        assert resolved["_primary_boxes"] == custom / "primary_workset" / "boxes"
-        # A Layer-2 system.* path references config.data → tracks the override too.
-        assert resolved["system.channelroot"] == custom / "channels"
-        assert resolved["system.template"] == custom / "global" / "template"
+  def test_data_override_tracks_dependents(self, tmp_path):
+    """Overriding config.data moves dependents (which reference config.data)."""
+    resolved = resolve_system_paths(
+      {"config.data": "{$XDG_DATA_HOME}/custom"},
+      data_home=tmp_path,
+      home=tmp_path,
+    )
+    custom = tmp_path / "custom"
+    assert resolved["config.data"] == custom
+    assert resolved["config.agents"] == custom / "agents"
+    assert resolved["_primary_boxes"] == custom / "primary_workset" / "boxes"
+    # A Layer-2 system.* path references config.data → tracks the override too.
+    assert resolved["system.channelroot"] == custom / "channels"
+    assert resolved["system.template"] == custom / "global" / "template"
 
-    def test_absolute_leaf_override_isolated(self, tmp_path):
-        """An absolute config.agents override does not perturb the other keys."""
-        resolved = resolve_system_paths(
-            {"config.agents": "/srv/agents"},
-            data_home=tmp_path,
-            home=tmp_path,
-        )
-        assert resolved["config.agents"] == Path("/srv/agents")
-        # Others keep their defaults under $XDG_DATA_HOME/kanibako.
-        base = tmp_path / "kanibako"
-        assert resolved["config.data"] == base
-        assert resolved["system.channelroot"] == base / "channels"
+  def test_absolute_leaf_override_isolated(self, tmp_path):
+    """An absolute config.agents override does not perturb the other keys."""
+    resolved = resolve_system_paths(
+      {"config.agents": "/srv/agents"},
+      data_home=tmp_path,
+      home=tmp_path,
+    )
+    assert resolved["config.agents"] == Path("/srv/agents")
+    # Others keep their defaults under $XDG_DATA_HOME/kanibako.
+    base = tmp_path / "kanibako"
+    assert resolved["config.data"] == base
+    assert resolved["system.channelroot"] == base / "channels"
 
-    def test_tilde_expands_to_home(self, tmp_path):
-        home = tmp_path / "h"
-        resolved = resolve_system_paths(
-            {"config.data": "~/.kani"}, data_home=tmp_path, home=home,
-        )
-        assert resolved["config.data"] == home / ".kani"
+  def test_tilde_expands_to_home(self, tmp_path):
+    home = tmp_path / "h"
+    resolved = resolve_system_paths(
+      {"config.data": "~/.kani"},
+      data_home=tmp_path,
+      home=home,
+    )
+    assert resolved["config.data"] == home / ".kani"
 
-    def test_unknown_system_ref_raises(self, tmp_path):
-        with pytest.raises(SettingsError):
-            resolve_system_paths(
-                {"system.channelroot": "{system.nope}/x"},
-                data_home=tmp_path,
-                home=tmp_path,
-            )
+  def test_unknown_system_ref_raises(self, tmp_path):
+    with pytest.raises(SettingsError):
+      resolve_system_paths(
+        {"system.channelroot": "{system.nope}/x"},
+        data_home=tmp_path,
+        home=tmp_path,
+      )
 
-    def test_unknown_config_ref_raises(self, tmp_path):
-        with pytest.raises(SettingsError):
-            resolve_system_paths(
-                {"system.channelroot": "{config.nope}/x"},
-                data_home=tmp_path,
-                home=tmp_path,
-            )
+  def test_unknown_config_ref_raises(self, tmp_path):
+    with pytest.raises(SettingsError):
+      resolve_system_paths(
+        {"system.channelroot": "{config.nope}/x"},
+        data_home=tmp_path,
+        home=tmp_path,
+      )
 
 
 class TestAPresentNoneIsRefusedAsNoneNotAsTheWordNone:
-    """A present ``<None>`` at a path key is reported as ``<None>``, never as a string.
+  """A present ``<None>`` at a path key is reported as ``<None>``, never as a string.
 
-    ``str(None)`` is the word ``"None"``, which is a bare relative, so a null used to
-    reach the user as *"``config.data`` is set to ``'None'``"* — a refusal quoting a
-    string nobody wrote, over a value they did write.  §2h: a present ``<None>``
-    is a value that does NOT fall back to the default, so the message names what it is
-    and the cure that follows from that.
+  ``str(None)`` is the word ``"None"``, which is a bare relative, so a null used to
+  reach the user as *"``config.data`` is set to ``'None'``"* — a refusal quoting a
+  string nobody wrote, over a value they did write.  §2h: a present ``<None>``
+  is a value that does NOT fall back to the default, so the message names what it is
+  and the cure that follows from that.
 
-    ⚑ Corpus derived from both path tables (P13), as the class below does.
-    """
+  ⚑ Corpus derived from both path tables (P13), as the class below does.
+  """
 
-    def test_the_corpus_is_not_empty(self):
-        assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
+  def test_the_corpus_is_not_empty(self):
+    assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
 
-    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
-    def test_a_present_none_is_refused_as_none(self, key, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            resolve_config_paths({key: None}, data_home=tmp_path, home=tmp_path)
-        message = str(exc.value)
-        assert key in message
-        assert "<None>" in message
-        assert "'None'" not in message
+  @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+  def test_a_present_none_is_refused_as_none(self, key, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      resolve_config_paths({key: None}, data_home=tmp_path, home=tmp_path)
+    message = str(exc.value)
+    assert key in message
+    assert "<None>" in message
+    assert "'None'" not in message
 
-    # ⚑ THE CORPUS IS THE KEYS THAT STILL REFUSE.  A ``<None>`` at a STANDARD bind's
-    # SOURCE KEY is an OMISSION, not a refusal (spec §2a) — ``config.STANDARD_BIND_SOURCE_KEYS``
-    # — and the omission is pinned in ``test_null_system_path_key.py``.
-    @pytest.mark.parametrize("key", sorted(
-        set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
-    ))
-    def test_a_present_none_is_refused_as_none_for_system_keys(self, key, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            resolve_system_paths({key: None}, data_home=tmp_path, home=tmp_path)
-        message = str(exc.value)
-        assert key in message
-        assert "<None>" in message
-        assert "'None'" not in message
+  # ⚑ THE CORPUS IS THE KEYS THAT STILL REFUSE.  A ``<None>`` at a STANDARD bind's
+  # SOURCE KEY is an OMISSION, not a refusal (spec §2a) — ``config.STANDARD_BIND_SOURCE_KEYS``
+  # — and the omission is pinned in ``test_null_system_path_key.py``.
+  @pytest.mark.parametrize(
+    "key",
+    sorted(
+      set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
+    ),
+  )
+  def test_a_present_none_is_refused_as_none_for_system_keys(self, key, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      resolve_system_paths({key: None}, data_home=tmp_path, home=tmp_path)
+    message = str(exc.value)
+    assert key in message
+    assert "<None>" in message
+    assert "'None'" not in message
 
 
 class TestBareRelativeIsRefusedNotAnchored:
-    """keyspec §2a "A path key's stored value" over the WHOLE of both path tables, not over a
-    hand-picked key.
+  """keyspec §2a "A path key's stored value" over the WHOLE of both path tables, not over a
+  hand-picked key.
 
-    ⚑ The corpus is derived from :data:`CONFIG_PATH_DEFAULTS` /
-    :data:`SYSTEM_PATH_DEFAULTS` (P13), so a seventeenth path key added to either
-    table is swept the moment it is declared — and the sweep reds on its own
-    emptiness via the non-vacuity case below.
-    """
+  ⚑ The corpus is derived from :data:`CONFIG_PATH_DEFAULTS` /
+  :data:`SYSTEM_PATH_DEFAULTS` (P13), so a seventeenth path key added to either
+  table is swept the moment it is declared — and the sweep reds on its own
+  emptiness via the non-vacuity case below.
+  """
 
-    def test_the_two_tables_are_not_empty(self):
-        assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
+  def test_the_two_tables_are_not_empty(self):
+    assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
 
-    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
-    def test_every_config_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
-        # Run from a link, as a shell does: only ``$PWD`` names the link.
-        real, link = tmp_path / "run-real", tmp_path / "run-from"
-        real.mkdir()
-        link.symlink_to(real)
-        monkeypatch.chdir(link)
-        monkeypatch.setenv("PWD", str(link))
-        with pytest.raises(SettingsError) as exc:
-            resolve_config_paths(
-                {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
-            )
-        message = str(exc.value)
-        assert key in message
-        # BOTH readings named — the refusal removes the guess, it does not relay it.
-        assert str(link / "somewhere") in message
-        assert str(real.resolve() / "somewhere") not in message
-        assert "BARE RELATIVE" in message
+  @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+  def test_every_config_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
+    with pytest.raises(SettingsError) as exc:
+      resolve_config_paths(
+        {key: "somewhere"},
+        data_home=tmp_path,
+        home=tmp_path,
+      )
+    message = str(exc.value)
+    assert key in message
+    # BOTH readings named — the refusal removes the guess, it does not relay it.
+    assert str(link / "somewhere") in message
+    assert str(real.resolve() / "somewhere") not in message
+    assert "BARE RELATIVE" in message
 
-    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
-    def test_every_system_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
-        # Run from a link, as a shell does: only ``$PWD`` names the link.
-        real, link = tmp_path / "run-real", tmp_path / "run-from"
-        real.mkdir()
-        link.symlink_to(real)
-        monkeypatch.chdir(link)
-        monkeypatch.setenv("PWD", str(link))
-        with pytest.raises(SettingsError) as exc:
-            resolve_system_paths(
-                {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
-            )
-        message = str(exc.value)
-        assert key in message
-        assert str(link / "somewhere") in message
-        assert str(real.resolve() / "somewhere") not in message
+  @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+  def test_every_system_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
+    with pytest.raises(SettingsError) as exc:
+      resolve_system_paths(
+        {key: "somewhere"},
+        data_home=tmp_path,
+        home=tmp_path,
+      )
+    message = str(exc.value)
+    assert key in message
+    assert str(link / "somewhere") in message
+    assert str(real.resolve() / "somewhere") not in message
 
-    def test_the_legal_shapes_still_resolve(self, tmp_path):
-        home = tmp_path / "h"
-        resolved = resolve_system_paths(
-            {"config.data": "~/.kani", "system.backup": "{config.data}/bk",
-             "system.cache": "{$XDG_CACHE_HOME}/c", "system.canon": "/abs/canon"},
-            data_home=tmp_path, home=home,
-        )
-        assert resolved["system.backup"] == home / ".kani" / "bk"
-        assert resolved["system.canon"] == Path("/abs/canon")
+  def test_the_legal_shapes_still_resolve(self, tmp_path):
+    home = tmp_path / "h"
+    resolved = resolve_system_paths(
+      {
+        "config.data": "~/.kani",
+        "system.backup": "{config.data}/bk",
+        "system.cache": "{$XDG_CACHE_HOME}/c",
+        "system.canon": "/abs/canon",
+      },
+      data_home=tmp_path,
+      home=home,
+    )
+    assert resolved["system.backup"] == home / ".kani" / "bk"
+    assert resolved["system.canon"] == Path("/abs/canon")
 
 
 class TestLoadConfigPaths:
-    """The Layer-1 read produces ``config.*`` and refuses everything else.
+  """The Layer-1 read produces ``config.*`` and refuses everything else.
 
-    ⚑ CHANGED 2026-08-31. ``load_config`` used to flatten the ``config:`` AND the
-    ``system:`` table of whatever document it was given into ONE ``config_paths`` set —
-    which is exactly how each layer's file came to speak for the other. The two questions
-    have two readers now: ``bootstrap_config_paths`` for the Layer-1 file, and
-    ``system_path_set_values`` for a SETTINGS file's ``system:`` table.
+  ⚑ CHANGED 2026-08-31. ``load_config`` used to flatten the ``config:`` AND the
+  ``system:`` table of whatever document it was given into ONE ``config_paths`` set —
+  which is exactly how each layer's file came to speak for the other. The two questions
+  have two readers now: ``bootstrap_config_paths`` for the Layer-1 file, and
+  ``system_path_set_values`` for a SETTINGS file's ``system:`` table.
+  """
+
+  def test_config_table_populates(self, tmp_path):
+    toml = tmp_path / CONFIG_FILENAME
+    toml.write_text('config:\n  agents: "/x"\n')
+    cfg = load_config(toml)
+    assert cfg.config_paths == {"config.agents": "/x"}
+
+  def test_a_system_table_refuses_and_names_the_key(self, tmp_path):
+    from kanibako.errors import ConfigError
+
+    toml = tmp_path / CONFIG_FILENAME
+    toml.write_text('system:\n  channelroot: "/x"\n')
+    with pytest.raises(ConfigError) as exc:
+      load_config(toml)
+    assert str(toml) in str(exc.value)
+    assert "system.channelroot" in str(exc.value)
+
+  def test_the_config_table_does_not_rescue_a_system_table(self, tmp_path):
+    """🛑 The refusal is not conditional on the file being otherwise empty."""
+    from kanibako.errors import ConfigError
+
+    toml = tmp_path / CONFIG_FILENAME
+    toml.write_text('config:\n  data: "/d"\nsystem:\n  channelroot: "/c"\n')
+    with pytest.raises(ConfigError):
+      load_config(toml)
+
+  def test_nested_system_subkey_flattens_in_the_settings_file(self, tmp_path):
+    """The dotted flatten of a nested ``system:`` table, on the file that owns it."""
+    from kanibako.settings.config import system_path_set_values
+
+    settings = tmp_path / "settings.yaml"
+    settings.write_text('system:\n  channels:\n    common: "/c"\n')
+    assert system_path_set_values(settings) == {"system.channels.common": "/c"}
+
+  # ⚑ THE KEYS THAT STILL REFUSE.  A null at a STANDARD bind's SOURCE KEY is an
+  # OMISSION now (spec §2a), so this sweep would otherwise be pinning the superseded
+  # rule for the five in ``config.STANDARD_BIND_SOURCE_KEYS``; their omission is pinned
+  # in ``test_null_system_path_key.py``.
+  @pytest.mark.parametrize(
+    "key",
+    sorted(
+      set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
+    ),
+  )
+  def test_a_null_system_path_key_refuses_by_name(self, tmp_path, key):
+    """A ``null`` path key used to read as the text ``None`` (bare-relative refusal).
+
+    MUTATION: drop the ``_refuse_null_paths`` call in ``system_path_set_values`` and
+    this returns ``{key: "None"}``.
     """
+    from kanibako.errors import ConfigError
+    from kanibako.settings.config import system_path_set_values
+    from kanibako.settings.config_io import dump_doc
 
-    def test_config_table_populates(self, tmp_path):
-        toml = tmp_path / CONFIG_FILENAME
-        toml.write_text('config:\n  agents: "/x"\n')
-        cfg = load_config(toml)
-        assert cfg.config_paths == {"config.agents": "/x"}
+    table: dict = {}
+    node = table
+    *parents, leaf = key.split(".")[1:]
+    for part in parents:
+      node = node.setdefault(part, {})
+    node[leaf] = None
+    settings = tmp_path / "settings.yaml"
+    dump_doc(settings, {"system": table})
+    with pytest.raises(ConfigError) as exc:
+      system_path_set_values(settings)
+    assert str(settings) in str(exc.value)
+    assert key in str(exc.value)
 
-    def test_a_system_table_refuses_and_names_the_key(self, tmp_path):
-        from kanibako.errors import ConfigError
+  def test_a_null_non_path_system_key_is_not_refused(self, tmp_path):
+    """``system.agent: null`` means "no default agent" (spec §2b) — not a path."""
+    from kanibako.settings.config import system_path_set_values
 
-        toml = tmp_path / CONFIG_FILENAME
-        toml.write_text('system:\n  channelroot: "/x"\n')
-        with pytest.raises(ConfigError) as exc:
-            load_config(toml)
-        assert str(toml) in str(exc.value)
-        assert "system.channelroot" in str(exc.value)
+    settings = tmp_path / "settings.yaml"
+    settings.write_text("system:\n  agent: null\n")
+    assert "system.agent" in system_path_set_values(settings)
 
-    def test_the_config_table_does_not_rescue_a_system_table(self, tmp_path):
-        """🛑 The refusal is not conditional on the file being otherwise empty."""
-        from kanibako.errors import ConfigError
+  def test_a_non_table_system_entry_reads_as_empty(self, tmp_path):
+    """The tier difference the reader documents: the launch resolve refuses ``system: /x``
+    as a scalar at a namespace (pinned by ``test_settings_keyspace``'s
+    ``test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace``), so this read does
+    not carry a second refusal."""
+    from kanibako.settings.config import system_path_set_values
 
-        toml = tmp_path / CONFIG_FILENAME
-        toml.write_text('config:\n  data: "/d"\nsystem:\n  channelroot: "/c"\n')
-        with pytest.raises(ConfigError):
-            load_config(toml)
+    settings = tmp_path / "settings.yaml"
+    settings.write_text("system: /x\n")
+    assert system_path_set_values(settings) == {}
 
-    def test_nested_system_subkey_flattens_in_the_settings_file(self, tmp_path):
-        """The dotted flatten of a nested ``system:`` table, on the file that owns it."""
-        from kanibako.settings.config import system_path_set_values
-
-        settings = tmp_path / "settings.yaml"
-        settings.write_text('system:\n  channels:\n    common: "/c"\n')
-        assert system_path_set_values(settings) == {"system.channels.common": "/c"}
-
-    # ⚑ THE KEYS THAT STILL REFUSE.  A null at a STANDARD bind's SOURCE KEY is an
-    # OMISSION now (spec §2a), so this sweep would otherwise be pinning the superseded
-    # rule for the five in ``config.STANDARD_BIND_SOURCE_KEYS``; their omission is pinned
-    # in ``test_null_system_path_key.py``.
-    @pytest.mark.parametrize("key", sorted(
-        set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
-    ))
-    def test_a_null_system_path_key_refuses_by_name(self, tmp_path, key):
-        """A ``null`` path key used to read as the text ``None`` (bare-relative refusal).
-
-        MUTATION: drop the ``_refuse_null_paths`` call in ``system_path_set_values`` and
-        this returns ``{key: "None"}``.
-        """
-        from kanibako.errors import ConfigError
-        from kanibako.settings.config import system_path_set_values
-        from kanibako.settings.config_io import dump_doc
-
-        table: dict = {}
-        node = table
-        *parents, leaf = key.split(".")[1:]
-        for part in parents:
-            node = node.setdefault(part, {})
-        node[leaf] = None
-        settings = tmp_path / "settings.yaml"
-        dump_doc(settings, {"system": table})
-        with pytest.raises(ConfigError) as exc:
-            system_path_set_values(settings)
-        assert str(settings) in str(exc.value)
-        assert key in str(exc.value)
-
-    def test_a_null_non_path_system_key_is_not_refused(self, tmp_path):
-        """``system.agent: null`` means "no default agent" (spec §2b) — not a path."""
-        from kanibako.settings.config import system_path_set_values
-
-        settings = tmp_path / "settings.yaml"
-        settings.write_text("system:\n  agent: null\n")
-        assert "system.agent" in system_path_set_values(settings)
-
-    def test_a_non_table_system_entry_reads_as_empty(self, tmp_path):
-        """The tier difference the reader documents: the launch resolve refuses ``system: /x``
-        as a scalar at a namespace (pinned by ``test_settings_keyspace``'s
-        ``test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace``), so this read does
-        not carry a second refusal."""
-        from kanibako.settings.config import system_path_set_values
-
-        settings = tmp_path / "settings.yaml"
-        settings.write_text("system: /x\n")
-        assert system_path_set_values(settings) == {}
-
-    def test_empty_config_has_no_config_paths(self, tmp_path):
-        cfg = load_config(tmp_path / "absent.yaml")
-        assert cfg.config_paths == {}
+  def test_empty_config_has_no_config_paths(self, tmp_path):
+    cfg = load_config(tmp_path / "absent.yaml")
+    assert cfg.config_paths == {}
 
 
 class TestLoadStdPathsParity:
-    def test_default_layout_matches_data_path(self, tmp_home, config_file):
-        """load_std_paths yields the renamed/re-pointed dirs by default."""
-        from kanibako.settings.paths import load_std_paths
+  def test_default_layout_matches_data_path(self, tmp_home, config_file):
+    """load_std_paths yields the renamed/re-pointed dirs by default."""
+    from kanibako.settings.paths import load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        assert std.data == std.data_path
-        assert std.agents == std.data_path / "agents"
-        assert std.channels == std.data_path / "channels"
-        assert std.primary_workset == std.data_path / "primary_workset"
-        assert std.template == std.data_path / "global" / "template"
-        assert std.canon == std.data_path / "global" / "canon"
-        assert std.registry == std.data_path / "global" / "registry.yaml"
-        # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
-        assert std.boxes == std.primary_workset / "boxes"
-        assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
-        assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
-        assert std.primary_logs == std.primary_workset / "logs"
-        # M-11 retired the ``templates`` alias with the field rename: keeping it
-        # would have shipped THREE spellings of one directory.
-        assert not hasattr(std, "templates")
-        # ``share_ro``/``share_rw`` named dirs deleted in the system.* reorg; use
-        # the workset vault / 'shared' category instead.
-        assert not hasattr(std, "share_ro")
-        assert not hasattr(std, "share_rw")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    assert std.data == std.data_path
+    assert std.agents == std.data_path / "agents"
+    assert std.channels == std.data_path / "channels"
+    assert std.primary_workset == std.data_path / "primary_workset"
+    assert std.template == std.data_path / "global" / "template"
+    assert std.canon == std.data_path / "global" / "canon"
+    assert std.registry == std.data_path / "global" / "registry.yaml"
+    # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
+    assert std.boxes == std.primary_workset / "boxes"
+    assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
+    assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
+    assert std.primary_logs == std.primary_workset / "logs"
+    # M-11 retired the ``templates`` alias with the field rename: keeping it
+    # would have shipped THREE spellings of one directory.
+    assert not hasattr(std, "templates")
+    # ``share_ro``/``share_rw`` named dirs deleted in the system.* reorg; use
+    # the workset vault / 'shared' category instead.
+    assert not hasattr(std, "share_ro")
+    assert not hasattr(std, "share_rw")
 
 
 class TestBoxesOverrideConsumers:
-    """A ``system.data`` override is honored consistently by both project
-    creation/listing AND the registry-based reverse-lookup helpers (the
-    box store hangs off the resolved data dir).
+  """A ``system.data`` override is honored consistently by both project
+  creation/listing AND the registry-based reverse-lookup helpers (the
+  box store hangs off the resolved data dir).
+  """
+
+  def test_boxes_override_used_by_creation_and_lookup(self, tmp_home):
+    """Creating a project under a custom data dir registers its box under
+    ``<custom>/boxes/<name>``, and the reverse-lookup helpers find it there.
     """
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      _find_local_ancestor,
+      _resolve_local_dir,
+      iter_projects,
+      load_std_paths,
+      resolve_project,
+    )
 
-    def test_boxes_override_used_by_creation_and_lookup(self, tmp_home):
-        """Creating a project under a custom data dir registers its box under
-        ``<custom>/boxes/<name>``, and the reverse-lookup helpers find it there.
-        """
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            _find_local_ancestor,
-            _resolve_local_dir,
-            iter_projects,
-            load_std_paths,
-            resolve_project,
-        )
+    custom_data = tmp_home / "srv_data"
+    custom_boxes = custom_data / "primary_workset" / "boxes"
 
-        custom_data = tmp_home / "srv_data"
-        custom_boxes = custom_data / "primary_workset" / "boxes"
+    # Write a config that overrides config.data to the custom dir.
+    cf = tmp_home / "config" / CONFIG_FILENAME
+    cf.write_text(f'config:\n  data: "{custom_data}"\n')
 
-        # Write a config that overrides config.data to the custom dir.
-        cf = tmp_home / "config" / CONFIG_FILENAME
-        cf.write_text(f'config:\n  data: "{custom_data}"\n')
+    config = load_config(cf)
+    assert config.config_paths == {"config.data": str(custom_data)}
+    std = load_std_paths(config)
+    assert std.boxes == custom_boxes
 
-        config = load_config(cf)
-        assert config.config_paths == {"config.data": str(custom_data)}
-        std = load_std_paths(config)
-        assert std.boxes == custom_boxes
+    # Create a project — its metadata dir must land under the custom boxes.
+    workspace = tmp_home / "ws"
+    workspace.mkdir()
+    proj = resolve_project(std, config, str(workspace), initialize=True)
+    assert proj.metadata_path.is_dir()
+    assert proj.metadata_path == custom_boxes / proj.name
 
-        # Create a project — its metadata dir must land under the custom boxes.
-        workspace = tmp_home / "ws"
-        workspace.mkdir()
-        proj = resolve_project(std, config, str(workspace), initialize=True)
-        assert proj.metadata_path.is_dir()
-        assert proj.metadata_path == custom_boxes / proj.name
+    # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
+    name, box_dir = _resolve_local_dir(std, str(workspace.resolve()))
+    assert name == proj.name
+    assert box_dir == custom_boxes / proj.name
 
-        # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
-        name, box_dir = _resolve_local_dir(std, str(workspace.resolve()))
-        assert name == proj.name
-        assert box_dir == custom_boxes / proj.name
+    # Deepest-ancestor lookup also keys off the custom boxes dir.
+    sub = workspace / "src"
+    sub.mkdir()
+    ancestor = _find_local_ancestor(sub.resolve(), std)
+    assert ancestor == workspace.resolve()
 
-        # Deepest-ancestor lookup also keys off the custom boxes dir.
-        sub = workspace / "src"
-        sub.mkdir()
-        ancestor = _find_local_ancestor(sub.resolve(), std)
-        assert ancestor == workspace.resolve()
-
-        # Listing enumerates the custom boxes dir.
-        listed = {p.name for p, _ in iter_projects(std, config)}
-        assert proj.name in listed
+    # Listing enumerates the custom boxes dir.
+    listed = {p.name for p, _ in iter_projects(std, config)}
+    assert proj.name in listed
 
 
 class TestResolveXdg:
-    """The hardened XDG base-directory resolver (freedesktop spec)."""
+  """The hardened XDG base-directory resolver (freedesktop spec)."""
 
-    def test_absolute_env_value_honored(self, tmp_path, monkeypatch):
-        abs_dir = tmp_path / "custom_data"
-        monkeypatch.setenv("XDG_DATA_HOME", str(abs_dir))
-        assert resolve_xdg("XDG_DATA_HOME", ".local/share") == abs_dir.resolve()
+  def test_absolute_env_value_honored(self, tmp_path, monkeypatch):
+    abs_dir = tmp_path / "custom_data"
+    monkeypatch.setenv("XDG_DATA_HOME", str(abs_dir))
+    assert resolve_xdg("XDG_DATA_HOME", ".local/share") == abs_dir.resolve()
 
-    def test_unset_uses_spec_default_under_home(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-        monkeypatch.setenv("HOME", str(tmp_path))
-        assert resolve_xdg("XDG_CONFIG_HOME", ".config") == tmp_path / ".config"
+  def test_unset_uses_spec_default_under_home(self, tmp_path, monkeypatch):
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert resolve_xdg("XDG_CONFIG_HOME", ".config") == tmp_path / ".config"
 
-    def test_relative_env_value_ignored_for_spec_default(
-        self, tmp_path, monkeypatch, caplog
-    ):
-        """A relative XDG value is invalid → ignored → spec default used."""
-        monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
-        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
-            result = resolve_xdg("XDG_STATE_HOME", ".local/state")
-        assert result == tmp_path / ".local/state"
-        assert any("relative" in r.message.lower() for r in caplog.records)
+  def test_relative_env_value_ignored_for_spec_default(self, tmp_path, monkeypatch, caplog):
+    """A relative XDG value is invalid → ignored → spec default used."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
+    with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+      result = resolve_xdg("XDG_STATE_HOME", ".local/state")
+    assert result == tmp_path / ".local/state"
+    assert any("relative" in r.message.lower() for r in caplog.records)
 
-    def test_empty_env_value_uses_default(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("XDG_CACHE_HOME", "")
-        assert resolve_xdg("XDG_CACHE_HOME", ".cache") == tmp_path / ".cache"
+  def test_empty_env_value_uses_default(self, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CACHE_HOME", "")
+    assert resolve_xdg("XDG_CACHE_HOME", ".cache") == tmp_path / ".cache"
 
-    def test_runtime_dir_absolute_honored(self, tmp_path, monkeypatch):
-        abs_dir = tmp_path / "run"
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(abs_dir))
-        assert resolve_xdg("XDG_RUNTIME_DIR", None) == abs_dir.resolve()
+  def test_runtime_dir_absolute_honored(self, tmp_path, monkeypatch):
+    abs_dir = tmp_path / "run"
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(abs_dir))
+    assert resolve_xdg("XDG_RUNTIME_DIR", None) == abs_dir.resolve()
 
-    def test_runtime_dir_unset_falls_back_and_warns(self, monkeypatch, caplog):
-        """No spec default → must fall back to a usable 0700 dir AND warn."""
-        import kanibako.settings.paths as paths_mod
+  def test_runtime_dir_unset_falls_back_and_warns(self, monkeypatch, caplog):
+    """No spec default → must fall back to a usable 0700 dir AND warn."""
+    import kanibako.settings.paths as paths_mod
 
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        # Clear the process cache so this test sees a fresh selection+warn.
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
-            result = resolve_xdg("XDG_RUNTIME_DIR", None)
-        # Fallback dir is real, owned, and 0700.
-        assert result.is_dir()
-        st = result.stat()
-        assert st.st_uid == os.getuid()
-        assert (st.st_mode & 0o777) == 0o700
-        # Never silent.
-        assert any(
-            "XDG_RUNTIME_DIR" in r.message and "falling back" in r.message
-            for r in caplog.records
-        )
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    # Clear the process cache so this test sees a fresh selection+warn.
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+      result = resolve_xdg("XDG_RUNTIME_DIR", None)
+    # Fallback dir is real, owned, and 0700.
+    assert result.is_dir()
+    st = result.stat()
+    assert st.st_uid == os.getuid()
+    assert (st.st_mode & 0o777) == 0o700
+    # Never silent.
+    assert any(
+      "XDG_RUNTIME_DIR" in r.message and "falling back" in r.message for r in caplog.records
+    )
 
-    def test_runtime_dir_relative_falls_back_and_warns(self, monkeypatch, caplog):
-        import kanibako.settings.paths as paths_mod
+  def test_runtime_dir_relative_falls_back_and_warns(self, monkeypatch, caplog):
+    import kanibako.settings.paths as paths_mod
 
-        monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/run")
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
-            result = resolve_xdg("XDG_RUNTIME_DIR", None)
-        assert result.is_dir()
-        # Both the relative-ignored warning and the fallback warning fire.
-        msgs = " ".join(r.message.lower() for r in caplog.records)
-        assert "relative" in msgs
-        assert "falling back" in msgs
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/run")
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+      result = resolve_xdg("XDG_RUNTIME_DIR", None)
+    assert result.is_dir()
+    # Both the relative-ignored warning and the fallback warning fire.
+    msgs = " ".join(r.message.lower() for r in caplog.records)
+    assert "relative" in msgs
+    assert "falling back" in msgs
 
-    def test_runtime_dir_fallback_cached_within_process(self, monkeypatch):
-        """Repeated resolution returns the SAME fallback dir (no temp leak)."""
-        import kanibako.settings.paths as paths_mod
+  def test_runtime_dir_fallback_cached_within_process(self, monkeypatch):
+    """Repeated resolution returns the SAME fallback dir (no temp leak)."""
+    import kanibako.settings.paths as paths_mod
 
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        first = resolve_xdg("XDG_RUNTIME_DIR", None)
-        second = resolve_xdg("XDG_RUNTIME_DIR", None)
-        assert first == second
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    first = resolve_xdg("XDG_RUNTIME_DIR", None)
+    second = resolve_xdg("XDG_RUNTIME_DIR", None)
+    assert first == second
 
 
 class TestRuntimeDirFallbackReusesOneStableDir:
-    """The last resort reuses ONE stable per-uid temp dir instead of minting a new
-    ``mkdtemp`` dir on every process and never removing it.
+  """The last resort reuses ONE stable per-uid temp dir instead of minting a new
+  ``mkdtemp`` dir on every process and never removing it.
 
-    ⚑ Every case here is hermetic in the same two moves, because the branch under test
-    is otherwise taken only on a host with no usable ``/run/user/<uid>``:
-    :attr:`tempfile.tempdir` is repointed at a fresh ``tmp_path`` dir (the real ``/tmp``
-    is never touched), and :data:`RUN_USER_UID_PATH` is repointed at a path that does
-    not exist under ``tmp_path`` so the ``/run/user`` arm cannot win on a dev box.
-    Clearing :data:`_runtime_fallback_cache` is what stands in for a new process.
+  ⚑ Every case here is hermetic in the same two moves, because the branch under test
+  is otherwise taken only on a host with no usable ``/run/user/<uid>``:
+  :attr:`tempfile.tempdir` is repointed at a fresh ``tmp_path`` dir (the real ``/tmp``
+  is never touched), and :data:`RUN_USER_UID_PATH` is repointed at a path that does
+  not exist under ``tmp_path`` so the ``/run/user`` arm cannot win on a dev box.
+  Clearing :data:`_runtime_fallback_cache` is what stands in for a new process.
 
-    ⚑ The hostile cases all assert THREE things, not two: the result is not the planted
-    path, it IS a fresh 0700 dir we own, and the planted object is UNCHANGED — not
-    created, not chmodded, not written through. The third is the security property; the
-    first two alone would also pass an implementation that fixed itself by damaging
-    what it found.
-    """
+  ⚑ The hostile cases all assert THREE things, not two: the result is not the planted
+  path, it IS a fresh 0700 dir we own, and the planted object is UNCHANGED — not
+  created, not chmodded, not written through. The third is the security property; the
+  first two alone would also pass an implementation that fixed itself by damaging
+  what it found.
+  """
 
-    def _force_the_temp_branch(self, tmp_path, monkeypatch) -> Path:
-        """Unset ``XDG_RUNTIME_DIR`` and pin BOTH the temp root and the ``/run/user``
-        base, then clear the process cache. Returns the pinned temp root."""
-        import kanibako.settings.paths as paths_mod
+  def _force_the_temp_branch(self, tmp_path, monkeypatch) -> Path:
+    """Unset ``XDG_RUNTIME_DIR`` and pin BOTH the temp root and the ``/run/user``
+    base, then clear the process cache. Returns the pinned temp root."""
+    import kanibako.settings.paths as paths_mod
 
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        temp_root = tmp_path / "temp"
-        temp_root.mkdir()
-        monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
-        monkeypatch.setattr(
-            paths_mod, "RUN_USER_UID_PATH", str(tmp_path / "absent-run-user" / "%d"),
-        )
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        return temp_root
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+    monkeypatch.setattr(
+      paths_mod,
+      "RUN_USER_UID_PATH",
+      str(tmp_path / "absent-run-user" / "%d"),
+    )
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    return temp_root
 
-    def _assert_fresh_private_own_dir(self, result: Path, temp_root: Path) -> None:
-        """A directory we own, 0700, directly under the pinned temp root."""
-        assert result.parent == temp_root
-        assert result.is_dir()
-        assert not result.is_symlink()
-        st = result.stat()
-        assert st.st_uid == os.getuid()
-        assert (st.st_mode & 0o777) == 0o700
+  def _assert_fresh_private_own_dir(self, result: Path, temp_root: Path) -> None:
+    """A directory we own, 0700, directly under the pinned temp root."""
+    assert result.parent == temp_root
+    assert result.is_dir()
+    assert not result.is_symlink()
+    st = result.stat()
+    assert st.st_uid == os.getuid()
+    assert (st.st_mode & 0o777) == 0o700
 
-    def test_stable_across_processes(self, tmp_path, monkeypatch):
-        """THE REPAIR.  Clearing the cache simulates a new process: the second resolve
-        must return the FIRST one's path — the per-uid stable name — and the temp root
-        must hold exactly one ``kanibako-runtime-*`` entry.  On the base the second call
-        minted a second dir, so this is the case that reads red there."""
-        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-        stable_name = f"kanibako-runtime-{os.getuid()}"
+  def test_stable_across_processes(self, tmp_path, monkeypatch):
+    """THE REPAIR.  Clearing the cache simulates a new process: the second resolve
+    must return the FIRST one's path — the per-uid stable name — and the temp root
+    must hold exactly one ``kanibako-runtime-*`` entry.  On the base the second call
+    minted a second dir, so this is the case that reads red there."""
+    temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+    stable_name = f"kanibako-runtime-{os.getuid()}"
 
-        first = resolve_xdg("XDG_RUNTIME_DIR", None)
-        # A new process: the process-lifetime cache is empty again.
-        import kanibako.settings.paths as paths_mod
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        second = resolve_xdg("XDG_RUNTIME_DIR", None)
+    first = resolve_xdg("XDG_RUNTIME_DIR", None)
+    # A new process: the process-lifetime cache is empty again.
+    import kanibako.settings.paths as paths_mod
 
-        assert first == second
-        assert first == temp_root / stable_name
-        # Exactly one entry — the whole defect was "one more dir per run".
-        assert sorted(p.name for p in temp_root.iterdir()) == [stable_name]
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    second = resolve_xdg("XDG_RUNTIME_DIR", None)
 
-    def test_reused_dir_stays_0700_on_the_second_process(self, tmp_path, monkeypatch):
-        """The reuse must not be a license to relax the mode: the second process adopts
-        the existing dir and leaves it 0700."""
-        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-        import kanibako.settings.paths as paths_mod
+    assert first == second
+    assert first == temp_root / stable_name
+    # Exactly one entry — the whole defect was "one more dir per run".
+    assert sorted(p.name for p in temp_root.iterdir()) == [stable_name]
 
-        first = resolve_xdg("XDG_RUNTIME_DIR", None)
-        assert (first.stat().st_mode & 0o777) == 0o700
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        second = resolve_xdg("XDG_RUNTIME_DIR", None)
-        assert second == first
-        self._assert_fresh_private_own_dir(second, temp_root)
+  def test_reused_dir_stays_0700_on_the_second_process(self, tmp_path, monkeypatch):
+    """The reuse must not be a license to relax the mode: the second process adopts
+    the existing dir and leaves it 0700."""
+    temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+    import kanibako.settings.paths as paths_mod
 
-    def test_refuses_a_symlinked_stable_path(self, tmp_path, monkeypatch):
-        """A symlink planted at the stable name is refused, and the link is left alone:
-        its target is neither created, chmodded, nor written through, and the link still
-        points where it did."""
-        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
-        elsewhere = tmp_path / "elsewhere"
-        elsewhere.mkdir(mode=0o700)
-        target_mode_before = elsewhere.stat().st_mode
-        stable.symlink_to(elsewhere)
+    first = resolve_xdg("XDG_RUNTIME_DIR", None)
+    assert (first.stat().st_mode & 0o777) == 0o700
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    second = resolve_xdg("XDG_RUNTIME_DIR", None)
+    assert second == first
+    self._assert_fresh_private_own_dir(second, temp_root)
 
-        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+  def test_refuses_a_symlinked_stable_path(self, tmp_path, monkeypatch):
+    """A symlink planted at the stable name is refused, and the link is left alone:
+    its target is neither created, chmodded, nor written through, and the link still
+    points where it did."""
+    temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+    stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir(mode=0o700)
+    target_mode_before = elsewhere.stat().st_mode
+    stable.symlink_to(elsewhere)
 
-        # 1. Not the planted path, and not anything reached THROUGH it.
-        assert result != stable
-        assert result != elsewhere
-        # 2. A fresh 0700 dir we own.
-        self._assert_fresh_private_own_dir(result, temp_root)
-        assert result != stable
-        # 3. The planted object is unchanged.
-        assert stable.is_symlink()
-        assert os.readlink(stable) == str(elsewhere)
-        assert elsewhere.stat().st_mode == target_mode_before
-        assert list(elsewhere.iterdir()) == []
+    result = resolve_xdg("XDG_RUNTIME_DIR", None)
 
-    def test_refuses_a_group_readable_stable_dir(self, tmp_path, monkeypatch):
-        """A 0755 dir at the stable name is refused — and, the part a fix could get
-        wrong in the other direction, it is NOT chmodded on the way past. We only chmod
-        a directory we just created."""
-        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
-        stable.mkdir(mode=0o755)
-        mode_before = stable.stat().st_mode
+    # 1. Not the planted path, and not anything reached THROUGH it.
+    assert result != stable
+    assert result != elsewhere
+    # 2. A fresh 0700 dir we own.
+    self._assert_fresh_private_own_dir(result, temp_root)
+    assert result != stable
+    # 3. The planted object is unchanged.
+    assert stable.is_symlink()
+    assert os.readlink(stable) == str(elsewhere)
+    assert elsewhere.stat().st_mode == target_mode_before
+    assert list(elsewhere.iterdir()) == []
 
-        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+  def test_refuses_a_group_readable_stable_dir(self, tmp_path, monkeypatch):
+    """A 0755 dir at the stable name is refused — and, the part a fix could get
+    wrong in the other direction, it is NOT chmodded on the way past. We only chmod
+    a directory we just created."""
+    temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+    stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+    stable.mkdir(mode=0o755)
+    mode_before = stable.stat().st_mode
 
-        # 1. Not the planted path.
-        assert result != stable
-        # 2. A fresh 0700 dir we own.
-        self._assert_fresh_private_own_dir(result, temp_root)
-        # 3. The planted dir is unchanged — still 0755, byte-for-byte the same mode.
-        assert stable.is_dir()
-        assert not stable.is_symlink()
-        assert stable.stat().st_mode == mode_before
-        assert (stable.stat().st_mode & 0o777) == 0o755
+    result = resolve_xdg("XDG_RUNTIME_DIR", None)
 
-    def test_refuses_a_regular_file_at_the_stable_path(self, tmp_path, monkeypatch):
-        """A regular file at the stable name is refused, and is neither truncated nor
-        written through — the ``mkdir`` that hits ENOTDIR must not reach past it."""
-        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
-        stable.write_text("planted by someone else")
-        mode_before = stable.stat().st_mode
+    # 1. Not the planted path.
+    assert result != stable
+    # 2. A fresh 0700 dir we own.
+    self._assert_fresh_private_own_dir(result, temp_root)
+    # 3. The planted dir is unchanged — still 0755, byte-for-byte the same mode.
+    assert stable.is_dir()
+    assert not stable.is_symlink()
+    assert stable.stat().st_mode == mode_before
+    assert (stable.stat().st_mode & 0o777) == 0o755
 
-        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+  def test_refuses_a_regular_file_at_the_stable_path(self, tmp_path, monkeypatch):
+    """A regular file at the stable name is refused, and is neither truncated nor
+    written through — the ``mkdir`` that hits ENOTDIR must not reach past it."""
+    temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+    stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+    stable.write_text("planted by someone else")
+    mode_before = stable.stat().st_mode
 
-        # 1. Not the planted path.
-        assert result != stable
-        # 2. A fresh 0700 dir we own.
-        self._assert_fresh_private_own_dir(result, temp_root)
-        # 3. The planted file is unchanged.
-        assert stable.is_file()
-        assert not stable.is_symlink()
-        assert stable.read_text() == "planted by someone else"
-        assert stable.stat().st_mode == mode_before
+    result = resolve_xdg("XDG_RUNTIME_DIR", None)
 
-    def test_stable_prefix_is_spelled_once(self):
-        """P10: the ``kanibako-runtime-`` prefix lives in exactly one module constant,
-        shared by the reused name and the ``mkdtemp`` arm."""
-        import kanibako.settings.paths as paths_mod
+    # 1. Not the planted path.
+    assert result != stable
+    # 2. A fresh 0700 dir we own.
+    self._assert_fresh_private_own_dir(result, temp_root)
+    # 3. The planted file is unchanged.
+    assert stable.is_file()
+    assert not stable.is_symlink()
+    assert stable.read_text() == "planted by someone else"
+    assert stable.stat().st_mode == mode_before
 
-        assert paths_mod._RUNTIME_TMP_PREFIX == "kanibako-runtime-"
-        source = Path(paths_mod.__file__).read_text()
-        # One declaration, and no second literal anywhere in the module.
-        assert source.count('"kanibako-runtime-"') == 1
-        assert 'mkdtemp(prefix="kanibako-runtime-")' not in source
+  def test_stable_prefix_is_spelled_once(self):
+    """P10: the ``kanibako-runtime-`` prefix lives in exactly one module constant,
+    shared by the reused name and the ``mkdtemp`` arm."""
+    import kanibako.settings.paths as paths_mod
+
+    assert paths_mod._RUNTIME_TMP_PREFIX == "kanibako-runtime-"
+    source = Path(paths_mod.__file__).read_text()
+    # One declaration, and no second literal anywhere in the module.
+    assert source.count('"kanibako-runtime-"') == 1
+    assert 'mkdtemp(prefix="kanibako-runtime-")' not in source
 
 
 class TestRuntimeBaseUsableTrustSeam:
-    """⚑ A DIFFERENT-OWNER DIRECTORY CANNOT BE PLANTED WITHOUT ROOT, so the owner
-    clause has no filesystem case here and is covered through the helper instead:
-    the directory really is ours and ``os.getuid`` is made to report another uid,
-    which is the shape of a root-planted or otherwise-foreign directory. Without
-    root this is the only honest way to reach that branch.
+  """⚑ A DIFFERENT-OWNER DIRECTORY CANNOT BE PLANTED WITHOUT ROOT, so the owner
+  clause has no filesystem case here and is covered through the helper instead:
+  the directory really is ours and ``os.getuid`` is made to report another uid,
+  which is the shape of a root-planted or otherwise-foreign directory. Without
+  root this is the only honest way to reach that branch.
 
-    These are guards on the one check both arms share, plus the defaults the
-    ``/run/user`` call site depends on.
-    """
+  These are guards on the one check both arms share, plus the defaults the
+  ``/run/user`` call site depends on.
+  """
 
-    def test_rejects_a_foreign_owner(self, tmp_path, monkeypatch):
-        import kanibako.settings.paths as paths_mod
+  def test_rejects_a_foreign_owner(self, tmp_path, monkeypatch):
+    import kanibako.settings.paths as paths_mod
 
-        not_ours = tmp_path / "not-ours"
-        not_ours.mkdir(mode=0o700)
-        real_uid = not_ours.stat().st_uid
+    not_ours = tmp_path / "not-ours"
+    not_ours.mkdir(mode=0o700)
+    real_uid = not_ours.stat().st_uid
 
-        monkeypatch.setattr(os, "getuid", lambda: real_uid + 1)
-        assert paths_mod._runtime_base_usable(not_ours) is False
-        assert paths_mod._runtime_base_usable(
-            not_ours, follow_symlinks=False, require_private=True,
-        ) is False
+    monkeypatch.setattr(os, "getuid", lambda: real_uid + 1)
+    assert paths_mod._runtime_base_usable(not_ours) is False
+    assert (
+      paths_mod._runtime_base_usable(
+        not_ours,
+        follow_symlinks=False,
+        require_private=True,
+      )
+      is False
+    )
 
-        # Anti-vacuity: the same directory, reported as ours, is accepted — so the two
-        # assertions above are about the OWNER and not about a broken path or a mode.
-        monkeypatch.setattr(os, "getuid", lambda: real_uid)
-        assert paths_mod._runtime_base_usable(
-            not_ours, follow_symlinks=False, require_private=True,
-        ) is True
+    # Anti-vacuity: the same directory, reported as ours, is accepted — so the two
+    # assertions above are about the OWNER and not about a broken path or a mode.
+    monkeypatch.setattr(os, "getuid", lambda: real_uid)
+    assert (
+      paths_mod._runtime_base_usable(
+        not_ours,
+        follow_symlinks=False,
+        require_private=True,
+      )
+      is True
+    )
 
-    def test_defaults_leave_the_run_user_call_unchanged(self, tmp_path):
-        """The ``/run/user`` call site passes NEITHER keyword, so it must keep both of
-        its old answers: ``stat`` follows a symlink, and no mode test applies. A silent
-        tightening there would be a regression on that path, not a cleanup."""
-        import kanibako.settings.paths as paths_mod
+  def test_defaults_leave_the_run_user_call_unchanged(self, tmp_path):
+    """The ``/run/user`` call site passes NEITHER keyword, so it must keep both of
+    its old answers: ``stat`` follows a symlink, and no mode test applies. A silent
+    tightening there would be a regression on that path, not a cleanup."""
+    import kanibako.settings.paths as paths_mod
 
-        target = tmp_path / "target"
-        target.mkdir(mode=0o700)
-        link = tmp_path / "link"
-        link.symlink_to(target)
-        # Default: the link reads as its target, and a 0755 dir is acceptable.
-        assert paths_mod._runtime_base_usable(link) is True
-        open_dir = tmp_path / "open"
-        open_dir.mkdir(mode=0o755)
-        assert paths_mod._runtime_base_usable(open_dir) is True
+    target = tmp_path / "target"
+    target.mkdir(mode=0o700)
+    link = tmp_path / "link"
+    link.symlink_to(target)
+    # Default: the link reads as its target, and a 0755 dir is acceptable.
+    assert paths_mod._runtime_base_usable(link) is True
+    open_dir = tmp_path / "open"
+    open_dir.mkdir(mode=0o755)
+    assert paths_mod._runtime_base_usable(open_dir) is True
 
-        # The new branch's spelling refuses both — which is why it passes the keywords.
-        assert paths_mod._runtime_base_usable(
-            link, follow_symlinks=False, require_private=True,
-        ) is False
-        assert paths_mod._runtime_base_usable(
-            open_dir, follow_symlinks=False, require_private=True,
-        ) is False
+    # The new branch's spelling refuses both — which is why it passes the keywords.
+    assert (
+      paths_mod._runtime_base_usable(
+        link,
+        follow_symlinks=False,
+        require_private=True,
+      )
+      is False
+    )
+    assert (
+      paths_mod._runtime_base_usable(
+        open_dir,
+        follow_symlinks=False,
+        require_private=True,
+      )
+      is False
+    )
 
-    def test_missing_path_and_regular_file_are_not_usable(self, tmp_path):
-        """The pre-existing answers, pinned: an absent path and a regular file are both
-        refused, and neither raises."""
-        import kanibako.settings.paths as paths_mod
+  def test_missing_path_and_regular_file_are_not_usable(self, tmp_path):
+    """The pre-existing answers, pinned: an absent path and a regular file are both
+    refused, and neither raises."""
+    import kanibako.settings.paths as paths_mod
 
-        assert paths_mod._runtime_base_usable(tmp_path / "absent") is False
-        regular = tmp_path / "file"
-        regular.write_text("x")
-        assert paths_mod._runtime_base_usable(regular) is False
-        assert paths_mod._runtime_base_usable(
-            regular, follow_symlinks=False, require_private=True,
-        ) is False
+    assert paths_mod._runtime_base_usable(tmp_path / "absent") is False
+    regular = tmp_path / "file"
+    regular.write_text("x")
+    assert paths_mod._runtime_base_usable(regular) is False
+    assert (
+      paths_mod._runtime_base_usable(
+        regular,
+        follow_symlinks=False,
+        require_private=True,
+      )
+      is False
+    )
 
 
 class TestHostXdgMap:
-    """``host_xdg_map`` — THE canonical host-side ``$XDG_*`` map for every
-    host-side ``ResolveCtx`` ([Jei:2026-07-02]: XDG vars must have
-    fallbacks).  Every var must be PRESENT in the map regardless of the
-    environment: the resolver reads only the ctx map, never the env, so a
-    missing key raises at expand time (the 2026-07-02 dogfood bug)."""
+  """``host_xdg_map`` — THE canonical host-side ``$XDG_*`` map for every
+  host-side ``ResolveCtx`` ([Jei:2026-07-02]: XDG vars must have
+  fallbacks).  Every var must be PRESENT in the map regardless of the
+  environment: the resolver reads only the ctx map, never the env, so a
+  missing key raises at expand time (the 2026-07-02 dogfood bug)."""
 
-    # The freedesktop Base Directory spec defaults (the oracle — pinned
-    # independently of the code's own defaults table).
-    _SPEC_VARS = {
-        "XDG_DATA_HOME": ".local/share",
-        "XDG_CONFIG_HOME": ".config",
-        "XDG_STATE_HOME": ".local/state",
-        "XDG_CACHE_HOME": ".cache",
-    }
+  # The freedesktop Base Directory spec defaults (the oracle — pinned
+  # independently of the code's own defaults table).
+  _SPEC_VARS = {
+    "XDG_DATA_HOME": ".local/share",
+    "XDG_CONFIG_HOME": ".config",
+    "XDG_STATE_HOME": ".local/state",
+    "XDG_CACHE_HOME": ".cache",
+  }
 
-    def _pin_runtime_dir(self, tmp_path, monkeypatch):
-        """Pin XDG_RUNTIME_DIR to an absolute dir (avoids the fallback+warn)."""
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+  def _pin_runtime_dir(self, tmp_path, monkeypatch):
+    """Pin XDG_RUNTIME_DIR to an absolute dir (avoids the fallback+warn)."""
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
 
-    def test_returns_all_five_vars(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HOME", str(tmp_path))
-        self._pin_runtime_dir(tmp_path, monkeypatch)
-        assert set(host_xdg_map()) == set(self._SPEC_VARS) | {"XDG_RUNTIME_DIR"}
+  def test_returns_all_five_vars(self, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    self._pin_runtime_dir(tmp_path, monkeypatch)
+    assert set(host_xdg_map()) == set(self._SPEC_VARS) | {"XDG_RUNTIME_DIR"}
 
-    def test_unset_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HOME", str(tmp_path))
-        self._pin_runtime_dir(tmp_path, monkeypatch)
-        for var in self._SPEC_VARS:
-            monkeypatch.delenv(var, raising=False)
-        xdg_map = host_xdg_map()
-        for var, suffix in self._SPEC_VARS.items():
-            assert xdg_map[var] == str(tmp_path / suffix)
+  def test_unset_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    self._pin_runtime_dir(tmp_path, monkeypatch)
+    for var in self._SPEC_VARS:
+      monkeypatch.delenv(var, raising=False)
+    xdg_map = host_xdg_map()
+    for var, suffix in self._SPEC_VARS.items():
+      assert xdg_map[var] == str(tmp_path / suffix)
 
-    def test_empty_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
-        """An EMPTY env value is as good as unset (per the spec) → default."""
-        monkeypatch.setenv("HOME", str(tmp_path))
-        self._pin_runtime_dir(tmp_path, monkeypatch)
-        for var in self._SPEC_VARS:
-            monkeypatch.setenv(var, "")
-        xdg_map = host_xdg_map()
-        for var, suffix in self._SPEC_VARS.items():
-            assert xdg_map[var] == str(tmp_path / suffix)
+  def test_empty_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
+    """An EMPTY env value is as good as unset (per the spec) → default."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    self._pin_runtime_dir(tmp_path, monkeypatch)
+    for var in self._SPEC_VARS:
+      monkeypatch.setenv(var, "")
+    xdg_map = host_xdg_map()
+    for var, suffix in self._SPEC_VARS.items():
+      assert xdg_map[var] == str(tmp_path / suffix)
 
-    def test_set_absolute_vars_win(self, tmp_path, monkeypatch):
-        """A SET (absolute) env var is honored over the spec default."""
-        monkeypatch.setenv("HOME", str(tmp_path))
-        for var in self._SPEC_VARS:
-            monkeypatch.setenv(var, str(tmp_path / var.lower()))
-        self._pin_runtime_dir(tmp_path, monkeypatch)
-        xdg_map = host_xdg_map()
-        for var in self._SPEC_VARS:
-            assert xdg_map[var] == str((tmp_path / var.lower()).resolve())
+  def test_set_absolute_vars_win(self, tmp_path, monkeypatch):
+    """A SET (absolute) env var is honored over the spec default."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for var in self._SPEC_VARS:
+      monkeypatch.setenv(var, str(tmp_path / var.lower()))
+    self._pin_runtime_dir(tmp_path, monkeypatch)
+    xdg_map = host_xdg_map()
+    for var in self._SPEC_VARS:
+      assert xdg_map[var] == str((tmp_path / var.lower()).resolve())
 
-    def test_data_home_param_overrides_env(self, tmp_path, monkeypatch):
-        """An explicit *data_home* anchors XDG_DATA_HOME (the flat resolver's
-        already-resolved anchor), beating even a set env var; the other vars
-        still resolve from the environment."""
-        monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "env_data"))
-        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-        self._pin_runtime_dir(tmp_path, monkeypatch)
-        anchor = tmp_path / "anchor"
-        xdg_map = host_xdg_map(anchor)
-        assert xdg_map["XDG_DATA_HOME"] == str(anchor)
-        assert xdg_map["XDG_CACHE_HOME"] == str(tmp_path / ".cache")
+  def test_data_home_param_overrides_env(self, tmp_path, monkeypatch):
+    """An explicit *data_home* anchors XDG_DATA_HOME (the flat resolver's
+    already-resolved anchor), beating even a set env var; the other vars
+    still resolve from the environment."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "env_data"))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    self._pin_runtime_dir(tmp_path, monkeypatch)
+    anchor = tmp_path / "anchor"
+    xdg_map = host_xdg_map(anchor)
+    assert xdg_map["XDG_DATA_HOME"] == str(anchor)
+    assert xdg_map["XDG_CACHE_HOME"] == str(tmp_path / ".cache")
 
 
 class TestLoadSystemConfig:
-    """The 2-file CONFIG loader: site ``base.cfg`` < user-global, then the SETTINGS file.
+  """The 2-file CONFIG loader: site ``base.cfg`` < user-global, then the SETTINGS file.
 
-    ``config_base_path`` points at ``/etc/kanibako`` in production; tests redirect
-    it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
-    (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
+  ``config_base_path`` points at ``/etc/kanibako`` in production; tests redirect
+  it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
+  (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
 
-    ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. [Jei:2026-08-26]:
-    *"kanibako_config.yaml <-- cannot have settings. Period."* (that file is
-    ``kanibako.cfg`` now) — and the site ``base.cfg`` is the SAME family, the site half
-    of the Layer-1 CONFIG set (spec §1 names both; the settings base is the separate
-    ``/etc/kanibako/settings_base.yaml``). The Layer-2 ``system.*`` path half comes from
-    ``{config.settings}`` alone, which is layer 3.
+  ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. [Jei:2026-08-26]:
+  *"kanibako_config.yaml <-- cannot have settings. Period."* (that file is
+  ``kanibako.cfg`` now) — and the site ``base.cfg`` is the SAME family, the site half
+  of the Layer-1 CONFIG set (spec §1 names both; the settings base is the separate
+  ``/etc/kanibako/settings_base.yaml``). The Layer-2 ``system.*`` path half comes from
+  ``{config.settings}`` alone, which is layer 3.
+  """
+
+  def _redirect(self, monkeypatch, base: Path) -> None:
+    """Point the /etc base CONFIG path at a tmp file.
+
+    ``load_system_config`` imports this lazily from ``kanibako.settings.config``, so
+    patching the source module catches every call.
     """
+    import kanibako.settings.config as cfg_mod
 
-    def _redirect(self, monkeypatch, base: Path) -> None:
-        """Point the /etc base CONFIG path at a tmp file.
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
 
-        ``load_system_config`` imports this lazily from ``kanibako.settings.config``, so
-        patching the source module catches every call.
-        """
-        import kanibako.settings.config as cfg_mod
+  def test_only_user_global_still_works(self, tmp_path, monkeypatch):
+    """Back-compat: a user with only ~/.config/kanibako.cfg (absent
+    /etc base) gets exactly the prior behavior."""
+    base = tmp_path / SITE_CONFIG_FILENAME  # absent
+    self._redirect(monkeypatch, base)
 
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
+    user = tmp_path / CONFIG_FILENAME
+    user.write_text('config:\n  agents: "/u/agents"\n')
 
-    def test_only_user_global_still_works(self, tmp_path, monkeypatch):
-        """Back-compat: a user with only ~/.config/kanibako.cfg (absent
-        /etc base) gets exactly the prior behavior."""
-        base = tmp_path / SITE_CONFIG_FILENAME  # absent
-        self._redirect(monkeypatch, base)
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert resolved["config.agents"] == Path("/u/agents")
+    # Unset keys fall back to defaults under $XDG_DATA_HOME/kanibako.
+    assert resolved["config.data"] == tmp_path / "kanibako"
 
-        user = tmp_path / CONFIG_FILENAME
-        user.write_text('config:\n  agents: "/u/agents"\n')
+  def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME  # absent
+    self._redirect(monkeypatch, base)
 
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["config.agents"] == Path("/u/agents")
-        # Unset keys fall back to defaults under $XDG_DATA_HOME/kanibako.
-        assert resolved["config.data"] == tmp_path / "kanibako"
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert set(resolved) == (
+      set(CONFIG_PATH_DEFAULTS)
+      | set(SYSTEM_PATH_DEFAULTS)
+      | {
+        "_primary_boxes",
+        "_primary_vault_ro",
+        "_primary_vault_rw",
+        "_primary_logs",
+      }
+    )
+    assert resolved["config.data"] == tmp_path / "kanibako"
 
-    def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME  # absent
-        self._redirect(monkeypatch, base)
+  def test_user_wins_over_base(self, tmp_path, monkeypatch):
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME
+    base.write_text('config:\n  agents: "/base/agents"\n')
+    user.write_text('config:\n  agents: "/user/agents"\n')
+    self._redirect(monkeypatch, base)
 
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert set(resolved) == (
-            set(CONFIG_PATH_DEFAULTS)
-            | set(SYSTEM_PATH_DEFAULTS)
-            | {
-                "_primary_boxes",
-                "_primary_vault_ro",
-                "_primary_vault_rw",
-                "_primary_logs",
-            }
-        )
-        assert resolved["config.data"] == tmp_path / "kanibako"
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert resolved["config.agents"] == Path("/user/agents")
 
-    def test_user_wins_over_base(self, tmp_path, monkeypatch):
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME
-        base.write_text('config:\n  agents: "/base/agents"\n')
-        user.write_text('config:\n  agents: "/user/agents"\n')
-        self._redirect(monkeypatch, base)
+  def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
+    """A base-only key is honored when the user file omits it.
 
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["config.agents"] == Path("/user/agents")
+    ⚑ The base-only key is a ``config.*`` one now: it was ``system.channelroot``,
+    and a CONFIG file's ``system:`` table supplies nothing since 2026-08-26.
+    """
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME
+    base.write_text('config:\n  registry: "/base/registry.yaml"\n')
+    user.write_text('config:\n  agents: "/user/agents"\n')
+    self._redirect(monkeypatch, base)
 
-    def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
-        """A base-only key is honored when the user file omits it.
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert resolved["config.registry"] == Path("/base/registry.yaml")
+    assert resolved["config.agents"] == Path("/user/agents")
 
-        ⚑ The base-only key is a ``config.*`` one now: it was ``system.channelroot``,
-        and a CONFIG file's ``system:`` table supplies nothing since 2026-08-26.
-        """
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME
-        base.write_text('config:\n  registry: "/base/registry.yaml"\n')
-        user.write_text('config:\n  agents: "/user/agents"\n')
-        self._redirect(monkeypatch, base)
+  def test_a_system_table_in_either_config_file_refuses(self, tmp_path, monkeypatch):
+    """🛑 Neither CONFIG file may supply a Layer-2 ``system.*`` path.
 
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["config.registry"] == Path("/base/registry.yaml")
-        assert resolved["config.agents"] == Path("/user/agents")
+    Before 2026-08-26 a ``system:`` table in either file entered the resolve as a
+    real (if lowest) layer, which made the bootstrap files a settings source in the
+    one place it most mattered — where every host path is decided. It was then
+    INERT; since 2026-08-31 it REFUSES, and each file is named in its own turn.
+    """
+    from kanibako.errors import ConfigError
 
-    def test_a_system_table_in_either_config_file_refuses(self, tmp_path, monkeypatch):
-        """🛑 Neither CONFIG file may supply a Layer-2 ``system.*`` path.
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME
+    base.write_text('system:\n  channelroot: "/base/channels"\n')
+    user.write_text('system:\n  channelroot: "/user/channels"\n')
+    self._redirect(monkeypatch, base)
 
-        Before 2026-08-26 a ``system:`` table in either file entered the resolve as a
-        real (if lowest) layer, which made the bootstrap files a settings source in the
-        one place it most mattered — where every host path is decided. It was then
-        INERT; since 2026-08-31 it REFUSES, and each file is named in its own turn.
-        """
-        from kanibako.errors import ConfigError
+    # The SITE file is read first, so it is the one named.
+    with pytest.raises(ConfigError) as exc:
+      load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert str(base) in str(exc.value)
+    assert "system.channelroot" in str(exc.value)
 
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME
-        base.write_text('system:\n  channelroot: "/base/channels"\n')
-        user.write_text('system:\n  channelroot: "/user/channels"\n')
-        self._redirect(monkeypatch, base)
+    # With the site file clean, the USER file is named in its place.
+    base.write_text("")
+    with pytest.raises(ConfigError) as exc:
+      load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert str(user) in str(exc.value)
 
-        # The SITE file is read first, so it is the one named.
-        with pytest.raises(ConfigError) as exc:
-            load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert str(base) in str(exc.value)
-        assert "system.channelroot" in str(exc.value)
+  def test_the_declared_default_is_what_a_clean_pair_resolves(
+    self,
+    tmp_path,
+    monkeypatch,
+  ):
+    """The other half of the case above: with neither file speaking, the DECLARED
+    table answers — which is what the planted values were failing to displace."""
 
-        # With the site file clean, the USER file is named in its place.
-        base.write_text("")
-        with pytest.raises(ConfigError) as exc:
-            load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert str(user) in str(exc.value)
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME
+    base.write_text("")
+    user.write_text("")
+    self._redirect(monkeypatch, base)
 
-    def test_the_declared_default_is_what_a_clean_pair_resolves(
-        self, tmp_path, monkeypatch,
-    ):
-        """The other half of the case above: with neither file speaking, the DECLARED
-        table answers — which is what the planted values were failing to displace."""
+    from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME
-        base.write_text("")
-        user.write_text("")
-        self._redirect(monkeypatch, base)
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "{config.data}/channels"
+    assert resolved["system.channelroot"] == resolved["config.data"] / "channels"
 
-        from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
+  def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
+    """Each leaf cascades independently, spanning BOTH layers and all three files.
 
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "{config.data}/channels"
-        assert resolved["system.channelroot"] == resolved["config.data"] / "channels"
+    ⚑ The Layer-2 leaf is planted in the SETTINGS file (layer 3) rather than in the
+    base CONFIG file: since 2026-08-26 that is the only file that may supply one.
+    The property under test — per-key independence across the layers — is unchanged,
+    and the case now genuinely exercises all three inputs.
+    """
+    data = tmp_path / "userdata"
+    base = tmp_path / SITE_CONFIG_FILENAME
+    user = tmp_path / CONFIG_FILENAME
+    base.write_text('config:\n  data: "/base/data"\n')
+    user.write_text(f'config:\n  data: "{data}"\n  agents: "/user/agents"\n')
+    self._redirect(monkeypatch, base)
 
-    def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
-        """Each leaf cascades independently, spanning BOTH layers and all three files.
+    # Layer 3 — the SYSTEM SETTINGS file at the resolved ``{config.settings}``
+    # (``{config.data}/global/settings.yaml``, i.e. under the user-pinned data root).
+    ssp = data / "global" / "settings.yaml"
+    ssp.parent.mkdir(parents=True)
+    ssp.write_text('system:\n  channelroot: "/settings/channels"\n')
 
-        ⚑ The Layer-2 leaf is planted in the SETTINGS file (layer 3) rather than in the
-        base CONFIG file: since 2026-08-26 that is the only file that may supply one.
-        The property under test — per-key independence across the layers — is unchanged,
-        and the case now genuinely exercises all three inputs.
-        """
-        data = tmp_path / "userdata"
-        base = tmp_path / SITE_CONFIG_FILENAME
-        user = tmp_path / CONFIG_FILENAME
-        base.write_text('config:\n  data: "/base/data"\n')
-        user.write_text(
-            f'config:\n  data: "{data}"\n  agents: "/user/agents"\n'
-        )
-        self._redirect(monkeypatch, base)
-
-        # Layer 3 — the SYSTEM SETTINGS file at the resolved ``{config.settings}``
-        # (``{config.data}/global/settings.yaml``, i.e. under the user-pinned data root).
-        ssp = data / "global" / "settings.yaml"
-        ssp.parent.mkdir(parents=True)
-        ssp.write_text('system:\n  channelroot: "/settings/channels"\n')
-
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["config.data"] == data                    # user overrides base
-        assert resolved["config.agents"] == Path("/user/agents")  # user-only
-        assert resolved["system.channelroot"] == Path("/settings/channels")  # layer 3
+    resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+    assert resolved["config.data"] == data  # user overrides base
+    assert resolved["config.agents"] == Path("/user/agents")  # user-only
+    assert resolved["system.channelroot"] == Path("/settings/channels")  # layer 3
 
 
 class TestResolveSystemPathsXdgCtx:
-    """``resolve_system_paths`` populates the full XDG var set into ctx."""
+  """``resolve_system_paths`` populates the full XDG var set into ctx."""
 
-    def test_xdg_config_state_cache_refs_resolve(self, tmp_path, monkeypatch):
-        """A config path expression referencing {$XDG_CONFIG_HOME} resolves."""
-        monkeypatch.setenv("HOME", str(tmp_path))
-        cfg_home = tmp_path / "cfg"
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
-        resolved = resolve_system_paths(
-            {"config.agents": "{$XDG_CONFIG_HOME}/kani-agents"},
-            data_home=tmp_path / "data",
-            home=tmp_path,
-        )
-        assert resolved["config.agents"] == cfg_home / "kani-agents"
+  def test_xdg_config_state_cache_refs_resolve(self, tmp_path, monkeypatch):
+    """A config path expression referencing {$XDG_CONFIG_HOME} resolves."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg_home = tmp_path / "cfg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
+    resolved = resolve_system_paths(
+      {"config.agents": "{$XDG_CONFIG_HOME}/kani-agents"},
+      data_home=tmp_path / "data",
+      home=tmp_path,
+    )
+    assert resolved["config.agents"] == cfg_home / "kani-agents"
 
-    def test_xdg_runtime_ref_resolves(self, tmp_path, monkeypatch):
-        run_dir = tmp_path / "run"
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
-        resolved = resolve_system_paths(
-            {"config.agents": "{$XDG_RUNTIME_DIR}/kani"},
-            data_home=tmp_path / "data",
-            home=tmp_path,
-        )
-        assert resolved["config.agents"] == run_dir / "kani"
+  def test_xdg_runtime_ref_resolves(self, tmp_path, monkeypatch):
+    run_dir = tmp_path / "run"
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
+    resolved = resolve_system_paths(
+      {"config.agents": "{$XDG_RUNTIME_DIR}/kani"},
+      data_home=tmp_path / "data",
+      home=tmp_path,
+    )
+    assert resolved["config.agents"] == run_dir / "kani"
 
 
 class TestResolverSplitRouting:
-    """Spec §1A / JC-2: ``{config.*}`` routes to the Layer-1 FOUNDATION
-    (``ctx.config``); ``{system.*}`` to the merged settings snapshot.
+  """Spec §1A / JC-2: ``{config.*}`` routes to the Layer-1 FOUNDATION
+  (``ctx.config``); ``{system.*}`` to the merged settings snapshot.
 
-    These exercise the launch-path expand engine directly (the same router both
-    the launch snapshot and set-time validation use), proving the prefix-driven
-    split: a ``{config.*}`` ref reads ``ctx.config`` even when the key is ABSENT
-    from the snapshot, while a ``{system.*}`` ref reads the snapshot.
-    """
+  These exercise the launch-path expand engine directly (the same router both
+  the launch snapshot and set-time validation use), proving the prefix-driven
+  split: a ``{config.*}`` ref reads ``ctx.config`` even when the key is ABSENT
+  from the snapshot, while a ``{system.*}`` ref reads the snapshot.
+  """
 
-    def _ctx(self, config):
-        from kanibako.settings.settings_resolve import ResolveCtx
+  def _ctx(self, config):
+    from kanibako.settings.settings_resolve import ResolveCtx
 
-        return ResolveCtx(
-            agent_name=None,
-            workset_name=None,
-            host_home="/home/u",
-            xdg={"XDG_DATA_HOME": "/data"},
-            config=config,
-        )
+    return ResolveCtx(
+      agent_name=None,
+      workset_name=None,
+      host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"},
+      config=config,
+    )
 
-    def test_config_ref_resolves_via_foundation_not_snapshot(self):
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_expand import expand
+  def test_config_ref_resolves_via_foundation_not_snapshot(self):
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_expand import expand
 
-        # The snapshot has NO config.* node — only ctx.config does.
-        snap = KeyStore()
-        snap["x"] = "{config.data}/sub"
-        ctx = self._ctx({"config.data": "/foundation/data"})
-        out = expand(snap, ctx)
-        assert out["x"] == "/foundation/data/sub"
+    # The snapshot has NO config.* node — only ctx.config does.
+    snap = KeyStore()
+    snap["x"] = "{config.data}/sub"
+    ctx = self._ctx({"config.data": "/foundation/data"})
+    out = expand(snap, ctx)
+    assert out["x"] == "/foundation/data/sub"
 
-    def test_dangling_config_ref_drops_whole_value(self):
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_expand import expand
+  def test_dangling_config_ref_drops_whole_value(self):
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_expand import expand
 
-        # A whole-value {config.*} ref to a declared key absent from the foundation
-        # → the holder key is DROPPED (absence propagation, spec §0).
-        snap = KeyStore()
-        snap["x"] = "{config.journal}"
-        ctx = self._ctx({"config.data": "/foundation/data"})
-        out = expand(snap, ctx)
-        assert "x" not in out
+    # A whole-value {config.*} ref to a declared key absent from the foundation
+    # → the holder key is DROPPED (absence propagation, spec §0).
+    snap = KeyStore()
+    snap["x"] = "{config.journal}"
+    ctx = self._ctx({"config.data": "/foundation/data"})
+    out = expand(snap, ctx)
+    assert "x" not in out
 
-    def test_system_ref_resolves_via_snapshot(self):
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_expand import expand
+  def test_system_ref_resolves_via_snapshot(self):
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_expand import expand
 
-        # {system.*} reads the snapshot (NOT ctx.config).
-        snap = KeyStore()
-        sysnode = KeyStore()
-        sysnode["channelroot"] = "/snap/channels"
-        snap["system"] = sysnode
-        snap["x"] = "{system.channelroot}/chat"
-        ctx = self._ctx({"config.data": "/foundation/data"})
-        out = expand(snap, ctx)
-        assert out["x"] == "/snap/channels/chat"
+    # {system.*} reads the snapshot (NOT ctx.config).
+    snap = KeyStore()
+    sysnode = KeyStore()
+    sysnode["channelroot"] = "/snap/channels"
+    snap["system"] = sysnode
+    snap["x"] = "{system.channelroot}/chat"
+    ctx = self._ctx({"config.data": "/foundation/data"})
+    out = expand(snap, ctx)
+    assert out["x"] == "/snap/channels/chat"
 
 
 class TestConfigDataCascade:
-    """A user ``kanibako.cfg`` override of ``config.data`` cascades to
-    every dependent (the other ``config.*`` keys + the Layer-2 system paths that
-    reference it).
-    """
+  """A user ``kanibako.cfg`` override of ``config.data`` cascades to
+  every dependent (the other ``config.*`` keys + the Layer-2 system paths that
+  reference it).
+  """
 
-    def test_config_data_override_cascades_to_all(self, tmp_path):
-        resolved = resolve_system_paths(
-            {"config.data": "/srv/kani"}, data_home=tmp_path, home=tmp_path,
-        )
-        root = Path("/srv/kani")
-        assert resolved["config.data"] == root
-        assert resolved["config.settings"] == root / "global" / "settings.yaml"
-        assert resolved["config.agents"] == root / "agents"
-        assert resolved["config.primary_workset"] == root / "primary_workset"
-        assert resolved["config.registry"] == root / "global" / "registry.yaml"
-        assert resolved["config.journal"] == root / "global" / "journal.yaml"
-        # Layer-2 system paths reference config.data → cascade too.
-        assert resolved["system.channelroot"] == root / "channels"
-        assert resolved["system.backup"] == root / "backup"
-        assert resolved["system.template"] == root / "global" / "template"
-        assert resolved["system.canon"] == root / "global" / "canon"
+  def test_config_data_override_cascades_to_all(self, tmp_path):
+    resolved = resolve_system_paths(
+      {"config.data": "/srv/kani"},
+      data_home=tmp_path,
+      home=tmp_path,
+    )
+    root = Path("/srv/kani")
+    assert resolved["config.data"] == root
+    assert resolved["config.settings"] == root / "global" / "settings.yaml"
+    assert resolved["config.agents"] == root / "agents"
+    assert resolved["config.primary_workset"] == root / "primary_workset"
+    assert resolved["config.registry"] == root / "global" / "registry.yaml"
+    assert resolved["config.journal"] == root / "global" / "journal.yaml"
+    # Layer-2 system paths reference config.data → cascade too.
+    assert resolved["system.channelroot"] == root / "channels"
+    assert resolved["system.backup"] == root / "backup"
+    assert resolved["system.template"] == root / "global" / "template"
+    assert resolved["system.canon"] == root / "global" / "canon"
 
 
 class TestResolveDataPath:
-    """``resolve_data_path`` — the PURE, TOTAL ``config.data`` DIRECTORY resolver.
+  """``resolve_data_path`` — the PURE, TOTAL ``config.data`` DIRECTORY resolver.
 
-    THE single source for a caller that holds no ``StandardPaths`` and must still land in the
-    store the user configured (CONVENTIONS P10 "derive from declared keys"):
-    ``targets.discover_targets``.
-    """
+  THE single source for a caller that holds no ``StandardPaths`` and must still land in the
+  store the user configured (CONVENTIONS P10 "derive from declared keys"):
+  ``targets.discover_targets``.
+  """
 
-    def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
-        """Point the /etc base CONFIG path at an absent tmp file (mirrors
-        ``TestLoadSystemConfig._redirect`` — hermetic, doesn't depend on the real host)."""
-        import kanibako.settings.config as cfg_mod
+  def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
+    """Point the /etc base CONFIG path at an absent tmp file (mirrors
+    ``TestLoadSystemConfig._redirect`` — hermetic, doesn't depend on the real host)."""
+    import kanibako.settings.config as cfg_mod
 
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
 
-    def test_tracks_non_default_config_data(self, tmp_path, monkeypatch):
-        """The WHOLE configured path, not the XDG base rejoined to its leaf — a repointed
-        ``config.data`` moves its parent too, and a leaf-only reading drops that move."""
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text(
-            f'config:\n  data: "{tmp_path / "srv" / "custom_store"}"\n'
-        )
-        path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
-        assert path == tmp_path / "srv" / "custom_store"
+  def test_tracks_non_default_config_data(self, tmp_path, monkeypatch):
+    """The WHOLE configured path, not the XDG base rejoined to its leaf — a repointed
+    ``config.data`` moves its parent too, and a leaf-only reading drops that move."""
+    self._redirect_etc_base(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    config_home.mkdir()
+    (config_home / CONFIG_FILENAME).write_text(
+      f'config:\n  data: "{tmp_path / "srv" / "custom_store"}"\n'
+    )
+    path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
+    assert path == tmp_path / "srv" / "custom_store"
 
-    def test_no_config_file_returns_default_under_data_home(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        path = resolve_data_path(config_home=tmp_path / "cfg-absent",
-                                 data_home=tmp_path / "data")
-        assert path == tmp_path / "data" / "kanibako"
+  def test_no_config_file_returns_default_under_data_home(self, tmp_path, monkeypatch):
+    self._redirect_etc_base(monkeypatch, tmp_path)
+    path = resolve_data_path(config_home=tmp_path / "cfg-absent", data_home=tmp_path / "data")
+    assert path == tmp_path / "data" / "kanibako"
 
-    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
-        # Mutation proof: without the try/except this raises ConfigError and the
-        # test errors out rather than reaching the assertion.
-        path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
-        assert path == tmp_path / "data" / "kanibako"
+  def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
+    self._redirect_etc_base(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    config_home.mkdir()
+    (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
+    # Mutation proof: without the try/except this raises ConfigError and the
+    # test errors out rather than reaching the assertion.
+    path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
+    assert path == tmp_path / "data" / "kanibako"
 
-    def test_creates_no_directories(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text(
-            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
-        )
-        data_home = tmp_path / "data"
-        before = set(tmp_path.rglob("*"))
-        resolve_data_path(config_home=config_home, data_home=data_home)
-        assert set(tmp_path.rglob("*")) == before
-        assert not data_home.exists()
-        assert not (tmp_path / "custom_store").exists()
+  def test_creates_no_directories(self, tmp_path, monkeypatch):
+    self._redirect_etc_base(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    config_home.mkdir()
+    (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{tmp_path / "custom_store"}"\n')
+    data_home = tmp_path / "data"
+    before = set(tmp_path.rglob("*"))
+    resolve_data_path(config_home=config_home, data_home=data_home)
+    assert set(tmp_path.rglob("*")) == before
+    assert not data_home.exists()
+    assert not (tmp_path / "custom_store").exists()
 
 
 class TestResolveStatePath:
-    """``resolve_state_path`` — the PURE, TOTAL ``system.state`` DIRECTORY resolver.
+  """``resolve_state_path`` — the PURE, TOTAL ``system.state`` DIRECTORY resolver.
 
-    THE single source for a caller that holds no ``StandardPaths`` and must still land in
-    the state root the user configured (keyspec §2g system.state: state derives from
-    ``system.state`` and from nothing else).  ``vscode_remote._vscode_remote_state_dir`` is
-    that caller.
-    """
+  THE single source for a caller that holds no ``StandardPaths`` and must still land in
+  the state root the user configured (keyspec §2g system.state: state derives from
+  ``system.state`` and from nothing else).  ``vscode_remote._vscode_remote_state_dir`` is
+  that caller.
+  """
 
-    def _isolate(self, monkeypatch, tmp_path: Path) -> Path:
-        """Point the /etc base at an absent file and ``$XDG_STATE_HOME`` at a tmp dir."""
-        import kanibako.settings.config as cfg_mod
+  def _isolate(self, monkeypatch, tmp_path: Path) -> Path:
+    """Point the /etc base at an absent file and ``$XDG_STATE_HOME`` at a tmp dir."""
+    import kanibako.settings.config as cfg_mod
 
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        return tmp_path / "state"
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    return tmp_path / "state"
 
-    def _store(self, tmp_path: Path, config_home: Path, *, state: str | None = None) -> Path:
-        """Write a config file pointing ``config.data`` at a tmp store, and (optionally) a
-        settings file setting ``system.state``.  Returns the store root."""
-        store = tmp_path / "srv" / "custom_store"
-        config_home.mkdir(parents=True, exist_ok=True)
-        (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
-        if state is not None:
-            settings = store / "global" / "settings.yaml"
-            settings.parent.mkdir(parents=True, exist_ok=True)
-            settings.write_text(f'system:\n  state: "{state}"\n')
-        return store
+  def _store(self, tmp_path: Path, config_home: Path, *, state: str | None = None) -> Path:
+    """Write a config file pointing ``config.data`` at a tmp store, and (optionally) a
+    settings file setting ``system.state``.  Returns the store root."""
+    store = tmp_path / "srv" / "custom_store"
+    config_home.mkdir(parents=True, exist_ok=True)
+    (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+    if state is not None:
+      settings = store / "global" / "settings.yaml"
+      settings.parent.mkdir(parents=True, exist_ok=True)
+      settings.write_text(f'system:\n  state: "{state}"\n')
+    return store
 
-    def test_no_config_file_returns_the_key_default(self, tmp_path, monkeypatch):
-        state_home = self._isolate(monkeypatch, tmp_path)
-        path = resolve_state_path(config_home=tmp_path / "cfg-absent",
-                                  data_home=tmp_path / "data")
-        assert path == state_home / "kanibako"
+  def test_no_config_file_returns_the_key_default(self, tmp_path, monkeypatch):
+    state_home = self._isolate(monkeypatch, tmp_path)
+    path = resolve_state_path(config_home=tmp_path / "cfg-absent", data_home=tmp_path / "data")
+    assert path == state_home / "kanibako"
 
-    def test_reads_a_set_value_from_the_settings_file(self, tmp_path, monkeypatch):
-        """MUTATION PROOF that the resolve reaches LAYER 2: ``system.state`` is a settings
-        key, so a resolver that stopped at the CONFIG files would return the default here."""
-        self._isolate(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        self._store(tmp_path, config_home, state=str(tmp_path / "elsewhere" / "state"))
-        path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
-        assert path == tmp_path / "elsewhere" / "state"
+  def test_reads_a_set_value_from_the_settings_file(self, tmp_path, monkeypatch):
+    """MUTATION PROOF that the resolve reaches LAYER 2: ``system.state`` is a settings
+    key, so a resolver that stopped at the CONFIG files would return the default here."""
+    self._isolate(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    self._store(tmp_path, config_home, state=str(tmp_path / "elsewhere" / "state"))
+    path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+    assert path == tmp_path / "elsewhere" / "state"
 
-    def test_never_tracks_config_datas_leaf(self, tmp_path, monkeypatch):
-        """keyspec §2g system.state: a repointed ``config.data`` moves no state.  The retired
-        behavior put this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that
-        spelling again."""
-        state_home = self._isolate(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        self._store(tmp_path, config_home)
-        path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
-        assert path == state_home / "kanibako"
+  def test_never_tracks_config_datas_leaf(self, tmp_path, monkeypatch):
+    """keyspec §2g system.state: a repointed ``config.data`` moves no state.  The retired
+    behavior put this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that
+    spelling again."""
+    state_home = self._isolate(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    self._store(tmp_path, config_home)
+    path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+    assert path == state_home / "kanibako"
 
-    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
-        state_home = self._isolate(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
-        # Mutation proof: without the try/except this raises ConfigError and the
-        # test errors out rather than reaching the assertion.
-        assert resolve_state_path(config_home=config_home,
-                                  data_home=tmp_path / "data") == state_home / "kanibako"
+  def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
+    state_home = self._isolate(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    config_home.mkdir()
+    (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
+    # Mutation proof: without the try/except this raises ConfigError and the
+    # test errors out rather than reaching the assertion.
+    assert (
+      resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+      == state_home / "kanibako"
+    )
 
-    def test_malformed_settings_file_degrades_without_raising(self, tmp_path, monkeypatch):
-        """The SETTINGS file is the second file this reads, and it fails the same way."""
-        state_home = self._isolate(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        store = self._store(tmp_path, config_home)
-        settings = store / "global" / "settings.yaml"
-        settings.parent.mkdir(parents=True, exist_ok=True)
-        settings.write_text("system: [valid: yaml: at all")
-        assert resolve_state_path(config_home=config_home,
-                                  data_home=tmp_path / "data") == state_home / "kanibako"
+  def test_malformed_settings_file_degrades_without_raising(self, tmp_path, monkeypatch):
+    """The SETTINGS file is the second file this reads, and it fails the same way."""
+    state_home = self._isolate(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    store = self._store(tmp_path, config_home)
+    settings = store / "global" / "settings.yaml"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text("system: [valid: yaml: at all")
+    assert (
+      resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+      == state_home / "kanibako"
+    )
 
-    def test_creates_no_directories(self, tmp_path, monkeypatch):
-        self._isolate(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        target = tmp_path / "elsewhere" / "state"
-        self._store(tmp_path, config_home, state=str(target))
-        before = set(tmp_path.rglob("*"))
-        resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
-        assert set(tmp_path.rglob("*")) == before
-        assert not target.exists()
+  def test_creates_no_directories(self, tmp_path, monkeypatch):
+    self._isolate(monkeypatch, tmp_path)
+    config_home = tmp_path / "cfg"
+    target = tmp_path / "elsewhere" / "state"
+    self._store(tmp_path, config_home, state=str(target))
+    before = set(tmp_path.rglob("*"))
+    resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+    assert set(tmp_path.rglob("*")) == before
+    assert not target.exists()
 
-    def test_never_touches_xdg_runtime_dir_fallback(self, tmp_path, monkeypatch):
-        """Mutation proof, and it bites HARDER than on the Layer-1 resolver: the Layer-2
-        table holds ``system.runtime``, so a resolve routed through ``host_xdg_map`` (which
-        resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset) would fire."""
-        import kanibako.settings.paths as paths_mod
+  def test_never_touches_xdg_runtime_dir_fallback(self, tmp_path, monkeypatch):
+    """Mutation proof, and it bites HARDER than on the Layer-1 resolver: the Layer-2
+    table holds ``system.runtime``, so a resolve routed through ``host_xdg_map`` (which
+    resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset) would fire."""
+    import kanibako.settings.paths as paths_mod
 
-        self._isolate(monkeypatch, tmp_path)
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        spy = MagicMock()
-        monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
+    self._isolate(monkeypatch, tmp_path)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    spy = MagicMock()
+    monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
 
-        resolve_state_path(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
-        spy.assert_not_called()
+    resolve_state_path(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
+    spy.assert_not_called()
 
 
 class TestCacheRootIsTheKey:
-    """``std.cache`` is ``system.cache``, and nothing derives a cache dir from a LEAF.
+  """``std.cache`` is ``system.cache``, and nothing derives a cache dir from a LEAF.
 
-    The key was declared, defaulted and ``set: cli+file``, and ``load_std_paths`` resolved
-    it — into a field no consumer read.  All three took ``cache_path``, which joined
-    ``config.data``'s leaf to ``$XDG_CACHE_HOME``, so ``system set system.cache=…``
-    succeeded and did nothing.  That is the defect keyspec §2g system.state removed from the
-    STATE side, one key over; these cases pin the repair from both directions — the key
-    REACHES the root, and a repointed ``config.data`` does NOT.
+  The key was declared, defaulted and ``set: cli+file``, and ``load_std_paths`` resolved
+  it — into a field no consumer read.  All three took ``cache_path``, which joined
+  ``config.data``'s leaf to ``$XDG_CACHE_HOME``, so ``system set system.cache=…``
+  succeeded and did nothing.  That is the defect keyspec §2g system.state removed from the
+  STATE side, one key over; these cases pin the repair from both directions — the key
+  REACHES the root, and a repointed ``config.data`` does NOT.
 
-    ⚑ The class this replaced pinned ``resolve_data_leaf``, whose only caller was the
-    defect: the function went with it.
+  ⚑ The class this replaced pinned ``resolve_data_leaf``, whose only caller was the
+  defect: the function went with it.
+  """
+
+  def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
+    """Point the /etc base CONFIG path at an absent tmp file (hermetic — mirrors
+    ``TestLoadSystemConfig._redirect``)."""
+    import kanibako.settings.config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+
+  def test_a_repointed_config_data_moves_neither_cache_nor_state(self, tmp_home, monkeypatch):
+    """⚑ THE INVERTED PIN.  This pair read ``std.cache_path == std.cache_home /
+    "srv_data"`` — the leaf reading asserted as the rule.  Both roots now hold their
+    own keys' defaults; re-grow a leaf reading for either and exactly one of these reds.
+    🛑 IT GUARDS FORWARD, NOT BACK — measured against the pre-image it PASSES, because
+    ``std.cache`` already carried ``system.cache`` there; the defect was what the
+    CONSUMERS were handed, which is what the two cases below pin.
     """
+    self._redirect_etc_base(monkeypatch, tmp_home)
+    cf = tmp_home / "config" / CONFIG_FILENAME
+    cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
+    std = load_std_paths(load_config(cf))
+    # Anti-vacuity: the repoint really took, so the two below are saying something.
+    assert std.data_path == tmp_home / "srv_data"
+    assert std.cache == std.cache_home / "kanibako"
+    assert std.state == std.state_home / "kanibako"
 
-    def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
-        """Point the /etc base CONFIG path at an absent tmp file (hermetic — mirrors
-        ``TestLoadSystemConfig._redirect``)."""
-        import kanibako.settings.config as cfg_mod
+  def test_the_settings_file_key_reaches_the_root_without_creating_it(self, tmp_home, monkeypatch):
+    """``system set system.cache=…`` writes the ``system:`` table of ``{config.settings}``;
+    the write ARRIVES at what the consumers are handed — and the resolve leaves
+    the filesystem alone.  The ``.is_dir()`` pin stood here until the set-door
+    brick repair, asserting the eager ``mkdir`` that bricked every command on a
+    stored-but-unusable value; each store materializes at its own point of use."""
+    self._redirect_etc_base(monkeypatch, tmp_home)
+    cf = tmp_home / "config" / CONFIG_FILENAME
+    cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
+    ssp = load_system_config(
+      cf,
+      data_home=tmp_home / "data",
+      home=tmp_home / "home",
+    )["config.settings"]
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+    ssp.write_text(f'system:\n  cache: "{tmp_home / "elsewhere"}"\n')
 
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+    std = load_std_paths(load_config(cf))
+    assert std.cache == tmp_home / "elsewhere"
+    # The resolve answers the key's own directory WITHOUT materializing it...
+    assert not (tmp_home / "elsewhere").exists()
+    # ...and never the leaf-joined one it used to create and hand out.
+    assert not (std.cache_home / "srv_data").exists()
 
-    def test_a_repointed_config_data_moves_neither_cache_nor_state(self, tmp_home, monkeypatch):
-        """⚑ THE INVERTED PIN.  This pair read ``std.cache_path == std.cache_home /
-        "srv_data"`` — the leaf reading asserted as the rule.  Both roots now hold their
-        own keys' defaults; re-grow a leaf reading for either and exactly one of these reds.
-        🛑 IT GUARDS FORWARD, NOT BACK — measured against the pre-image it PASSES, because
-        ``std.cache`` already carried ``system.cache`` there; the defect was what the
-        CONSUMERS were handed, which is what the two cases below pin.
-        """
-        self._redirect_etc_base(monkeypatch, tmp_home)
-        cf = tmp_home / "config" / CONFIG_FILENAME
-        cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
-        std = load_std_paths(load_config(cf))
-        # Anti-vacuity: the repoint really took, so the two below are saying something.
-        assert std.data_path == tmp_home / "srv_data"
-        assert std.cache == std.cache_home / "kanibako"
-        assert std.state == std.state_home / "kanibako"
-
-    def test_the_settings_file_key_reaches_the_root_without_creating_it(self, tmp_home, monkeypatch):
-        """``system set system.cache=…`` writes the ``system:`` table of ``{config.settings}``;
-        the write ARRIVES at what the consumers are handed — and the resolve leaves
-        the filesystem alone.  The ``.is_dir()`` pin stood here until the set-door
-        brick repair, asserting the eager ``mkdir`` that bricked every command on a
-        stored-but-unusable value; each store materializes at its own point of use."""
-        self._redirect_etc_base(monkeypatch, tmp_home)
-        cf = tmp_home / "config" / CONFIG_FILENAME
-        cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
-        ssp = load_system_config(
-            cf, data_home=tmp_home / "data", home=tmp_home / "home",
-        )["config.settings"]
-        ssp.parent.mkdir(parents=True, exist_ok=True)
-        ssp.write_text(f'system:\n  cache: "{tmp_home / "elsewhere"}"\n')
-
-        std = load_std_paths(load_config(cf))
-        assert std.cache == tmp_home / "elsewhere"
-        # The resolve answers the key's own directory WITHOUT materializing it...
-        assert not (tmp_home / "elsewhere").exists()
-        # ...and never the leaf-joined one it used to create and hand out.
-        assert not (std.cache_home / "srv_data").exists()
-
-    def test_standard_paths_carries_no_leaf_derived_cache_field(self, std):
-        """P3: the regression is UNAVAILABLE, not merely forbidden.  With ``cache_path``
-        gone a consumer cannot be handed a leaf-derived cache dir without deriving one by
-        hand, which is the shape this reds on."""
-        assert not hasattr(std, "cache_path")
-
+  def test_standard_paths_carries_no_leaf_derived_cache_field(self, std):
+    """P3: the regression is UNAVAILABLE, not merely forbidden.  With ``cache_path``
+    gone a consumer cannot be handed a leaf-derived cache dir without deriving one by
+    hand, which is the shape this reds on."""
+    assert not hasattr(std, "cache_path")

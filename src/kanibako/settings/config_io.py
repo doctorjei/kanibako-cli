@@ -8,6 +8,7 @@ file and which nested slot a config KEY maps to is answered by
 :mod:`kanibako.settings.config_keys` and :mod:`kanibako.settings.config_dest`.
 (pyproject.toml is Python packaging and is NOT handled here.)
 """
+
 from __future__ import annotations
 
 import errno
@@ -33,93 +34,87 @@ MAX_DOC_DEPTH = 64
 
 
 def parse_packaged(text: str) -> object:
-    """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
-    return yaml.load(text, Loader=_PACKAGED_LOADER)
+  """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
+  return yaml.load(text, Loader=_PACKAGED_LOADER)
 
 
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]:
-    """The shipped YAML mapping at *ref*; an empty file or any other shape raises.
+  """The shipped YAML mapping at *ref*; an empty file or any other shape raises.
 
-    ⚑ Spec §0, no silent accept: a packaged file that is not a mapping is a broken install,
-    never an empty document.
-    """
-    raw = parse_packaged(Path(str(ref)).read_text())
-    if not isinstance(raw, dict):
-        raise PackagingError(
-            f"{filename} is empty or is not a YAML mapping (read from {ref}) — it is "
-            f"packaged data, so this is a PACKAGING defect, not a configuration one"
-        )
-    return raw
+  ⚑ Spec §0, no silent accept: a packaged file that is not a mapping is a broken install,
+  never an empty document.
+  """
+  raw = parse_packaged(Path(str(ref)).read_text())
+  if not isinstance(raw, dict):
+    raise PackagingError(
+      f"{filename} is empty or is not a YAML mapping (read from {ref}) — it is "
+      f"packaged data, so this is a PACKAGING defect, not a configuration one"
+    )
+  return raw
 
 
 def yaml_problem(exc: yaml.YAMLError) -> str:
-    """One-line rendering of a YAML parse failure (the problem + where).
+  """One-line rendering of a YAML parse failure (the problem + where).
 
-    ⚑ THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A SECOND READER: a file's own
-    loader (``rig.yaml``'s, an overlay's) wraps the failure in its own error type, and a
-    private helper would leave that reader re-spelling the same failure in different words —
-    one rule, one place that knows it.
-    """
-    if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
-        mark = exc.problem_mark
-        where = (
-            f" (line {mark.line + 1}, column {mark.column + 1})"
-            if mark is not None else ""
-        )
-        return f"{exc.problem}{where}"
-    return " ".join(str(exc).split())
+  ⚑ THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A SECOND READER: a file's own
+  loader (``rig.yaml``'s, an overlay's) wraps the failure in its own error type, and a
+  private helper would leave that reader re-spelling the same failure in different words —
+  one rule, one place that knows it.
+  """
+  if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
+    mark = exc.problem_mark
+    where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
+    return f"{exc.problem}{where}"
+  return " ".join(str(exc).split())
 
 
 class DuplicateKeyError(yaml.YAMLError):
-    """A mapping in one document spells the same key twice.
+  """A mapping in one document spells the same key twice.
 
-    ⚑ A ``yaml.YAMLError``, so every caller's existing ``except yaml.YAMLError`` already
-    means "this document is not readable" — a reader that forgot this subclass would read
-    the repeat as last-wins again.
-    """
+  ⚑ A ``yaml.YAMLError``, so every caller's existing ``except yaml.YAMLError`` already
+  means "this document is not readable" — a reader that forgot this subclass would read
+  the repeat as last-wins again.
+  """
 
-    def __init__(self, dotted: str, first: yaml.Mark, second: yaml.Mark) -> None:
-        super().__init__(dotted)
-        self.dotted = dotted
-        # 1-based, as an editor shows them; the column only where the line cannot tell them apart.
-        same_line = first.line == second.line
-        self.first, self.second = (
-            f"line {m.line + 1}" + (f", column {m.column + 1}" if same_line else "")
-            for m in (first, second)
-        )
+  def __init__(self, dotted: str, first: yaml.Mark, second: yaml.Mark) -> None:
+    super().__init__(dotted)
+    self.dotted = dotted
+    # 1-based, as an editor shows them; the column only where the line cannot tell them apart.
+    same_line = first.line == second.line
+    self.first, self.second = (
+      f"line {m.line + 1}" + (f", column {m.column + 1}" if same_line else "")
+      for m in (first, second)
+    )
 
-    def __str__(self) -> str:
-        return f"sets '{self.dotted}' twice ({self.first} and {self.second})"
+  def __str__(self) -> str:
+    return f"sets '{self.dotted}' twice ({self.first} and {self.second})"
 
 
 class CyclicAnchorError(yaml.YAMLError):
-    """A mapping or list is reachable from inside itself (an alias inside its own anchor)."""
+  """A mapping or list is reachable from inside itself (an alias inside its own anchor)."""
 
-    def __init__(self, dotted: str) -> None:
-        super().__init__(dotted)
-        self.dotted = dotted
+  def __init__(self, dotted: str) -> None:
+    super().__init__(dotted)
+    self.dotted = dotted
 
-    def __str__(self) -> str:
-        return (
-            f"refers to itself at '{self.dotted}' "
-            "(a YAML alias inside its own anchor)"
-        )
+  def __str__(self) -> str:
+    return f"refers to itself at '{self.dotted}' (a YAML alias inside its own anchor)"
 
 
 class DocumentTooDeepError(yaml.YAMLError):
-    """A document nests deeper than :data:`MAX_DOC_DEPTH`.
+  """A document nests deeper than :data:`MAX_DOC_DEPTH`.
 
-    *dotted* is the path of the offending table, or ``""`` when the refusal belongs to
-    the document as a whole (a flow collection the loader gave up composing).
-    """
+  *dotted* is the path of the offending table, or ``""`` when the refusal belongs to
+  the document as a whole (a flow collection the loader gave up composing).
+  """
 
-    def __init__(self, dotted: str, limit: int) -> None:
-        super().__init__(dotted)
-        self.dotted, self.limit = dotted, limit
+  def __init__(self, dotted: str, limit: int) -> None:
+    super().__init__(dotted)
+    self.dotted, self.limit = dotted, limit
 
-    def __str__(self) -> str:
-        at = f" at '{self.dotted}'" if self.dotted else ""
-        return f"nests deeper than {self.limit} levels{at}"
+  def __str__(self) -> str:
+    at = f" at '{self.dotted}'" if self.dotted else ""
+    return f"nests deeper than {self.limit} levels{at}"
 
 
 _MERGE_TAG = "tag:yaml.org,2002:merge"
@@ -127,432 +122,451 @@ _VALUE_TAG = "tag:yaml.org,2002:value"
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
-    """``SafeLoader`` that refuses a mapping repeating a key, at any depth."""
+  """``SafeLoader`` that refuses a mapping repeating a key, at any depth."""
 
-    def construct_document(self, node: yaml.Node) -> object:
-        # ⚑ Checked on the node tree, before construction, because PyYAML keeps the LAST of a
-        # repeated key without a word; the tree is also the only place the key's path and lines exist.
-        self._check_duplicates(node, "", set())
-        return super().construct_document(node)
+  def construct_document(self, node: yaml.Node) -> object:
+    # ⚑ Checked on the node tree, before construction, because PyYAML keeps the LAST of a
+    # repeated key without a word; the tree is also the only place the key's path and lines exist.
+    self._check_duplicates(node, "", set())
+    return super().construct_document(node)
 
-    def _check_duplicates(self, node: yaml.Node, where: str, seen_nodes: set[int]) -> None:
-        if id(node) in seen_nodes:  # an alias revisits a node (and can be recursive)
-            return
-        seen_nodes.add(id(node))
-        if isinstance(node, yaml.SequenceNode):
-            for i, item in enumerate(node.value):
-                self._check_duplicates(item, f"{where}[{i}]", seen_nodes)
-        elif isinstance(node, yaml.MappingNode):
-            first_mark: dict[object, yaml.Mark] = {}
-            for key_node, value_node in node.value:
-                if key_node.tag == _MERGE_TAG:
-                    # ``<<`` is YAML's own override mechanism, not a repeated key — but the maps it
-                    # merges are still maps, and a repeat inside one is still lost.
-                    self._check_duplicates(value_node, f"{where}.<<" if where else "<<", seen_nodes)
-                    continue
-                # A bare ``=`` key is tagged ``value``; SafeConstructor reads it as the string
-                # ``"="`` (``flatten_mapping``) but cannot construct it on its own.
-                key = "=" if key_node.tag == _VALUE_TAG else self.construct_object(key_node, deep=True)
-                dotted = f"{where}.{key}" if where else str(key)
-                try:
-                    if key in first_mark:
-                        raise DuplicateKeyError(dotted, first_mark[key], key_node.start_mark)
-                    first_mark[key] = key_node.start_mark
-                except TypeError:  # unhashable key: SafeConstructor refuses it itself
-                    pass
-                self._check_duplicates(value_node, dotted, seen_nodes)
+  def _check_duplicates(self, node: yaml.Node, where: str, seen_nodes: set[int]) -> None:
+    if id(node) in seen_nodes:  # an alias revisits a node (and can be recursive)
+      return
+    seen_nodes.add(id(node))
+    if isinstance(node, yaml.SequenceNode):
+      for i, item in enumerate(node.value):
+        self._check_duplicates(item, f"{where}[{i}]", seen_nodes)
+    elif isinstance(node, yaml.MappingNode):
+      first_mark: dict[object, yaml.Mark] = {}
+      for key_node, value_node in node.value:
+        if key_node.tag == _MERGE_TAG:
+          # ``<<`` is YAML's own override mechanism, not a repeated key — but the maps it
+          # merges are still maps, and a repeat inside one is still lost.
+          self._check_duplicates(value_node, f"{where}.<<" if where else "<<", seen_nodes)
+          continue
+        # A bare ``=`` key is tagged ``value``; SafeConstructor reads it as the string
+        # ``"="`` (``flatten_mapping``) but cannot construct it on its own.
+        key = "=" if key_node.tag == _VALUE_TAG else self.construct_object(key_node, deep=True)
+        dotted = f"{where}.{key}" if where else str(key)
+        try:
+          if key in first_mark:
+            raise DuplicateKeyError(dotted, first_mark[key], key_node.start_mark)
+          first_mark[key] = key_node.start_mark
+        except TypeError:  # unhashable key: SafeConstructor refuses it itself
+          pass
+        self._check_duplicates(value_node, dotted, seen_nodes)
 
 
 def _guard_document(data: object) -> None:
-    """Refuse a document that CONTAINS ITSELF, or that nests deeper than MAX_DOC_DEPTH.
+  """Refuse a document that CONTAINS ITSELF, or that nests deeper than MAX_DOC_DEPTH.
 
-    ⚑⚑ ITERATIVE, WITH AN EXPLICIT STACK, and that is the whole point: the recursion a
-    recursive guard would use is exactly what a cyclic anchor drives to the stack limit.
-    ⚑ AN ANCESTOR, NOT A SIBLING.  Two keys MAY name one table — the ``<<`` merge key
-    does it by name, and ``a: &x {…}`` + ``b: *x`` does it by alias — so sharing is legal
-    and loads; only a path back INTO ITSELF is a document that never finishes.
+  ⚑⚑ ITERATIVE, WITH AN EXPLICIT STACK, and that is the whole point: the recursion a
+  recursive guard would use is exactly what a cyclic anchor drives to the stack limit.
+  ⚑ AN ANCESTOR, NOT A SIBLING.  Two keys MAY name one table — the ``<<`` merge key
+  does it by name, and ``a: &x {…}`` + ``b: *x`` does it by alias — so sharing is legal
+  and loads; only a path back INTO ITSELF is a document that never finishes.
 
-    ⚑⚑ THE WALK IS LINEAR IN DISTINCT CONTAINERS, NOT IN PATHS.  A document that fans out
-    over shared aliases — the billion-laughs shape, each level nine aliases to the level
-    below — reaches one table by 9**n PATHS, and walking every path turned a few hundred
-    bytes of a user's ``rig.yaml`` into minutes of host CPU, on a file that arrives inside
-    an image bundle, from whoever built the bundle.  ``reached`` memoizes each container at
-    the DEEPEST depth the walk reached it at, so a container already walked at this depth
-    or deeper is not walked again; the work is bounded by the number of distinct containers
-    times the number of distinct depths one can reach each at.
+  ⚑⚑ THE WALK IS LINEAR IN DISTINCT CONTAINERS, NOT IN PATHS.  A document that fans out
+  over shared aliases — the billion-laughs shape, each level nine aliases to the level
+  below — reaches one table by 9**n PATHS, and walking every path turned a few hundred
+  bytes of a user's ``rig.yaml`` into minutes of host CPU, on a file that arrives inside
+  an image bundle, from whoever built the bundle.  ``reached`` memoizes each container at
+  the DEEPEST depth the walk reached it at, so a container already walked at this depth
+  or deeper is not walked again; the work is bounded by the number of distinct containers
+  times the number of distinct depths one can reach each at.
 
-    ⚑ DEEPEST, NOT FIRST, AND THAT IS THE CYCLE GUARD.  The memo may decide only how many
-    times a container is walked, never whether it is CHECKED: the ancestor test runs when a
-    child is pushed, before the child is popped, so it fires for every sighting. And a loop
-    can only close by reaching a container DEEPER than some earlier sighting of it, so a
-    memo that remembered the first sighting would skip exactly the re-walk that finds the
-    loop. ``MAX_DOC_DEPTH`` bounds how deep that can go, which is why a walk that keeps
-    failing to settle ends at one of the two refusals rather than loading a cycle.
-    """
-    stack: list[tuple[object, str, int, frozenset[int]]] = [(data, "", 1, frozenset())]
-    reached: dict[int, int] = {}  # id(container) -> the deepest depth it was walked at
-    while stack:
-        value, dotted, depth, ancestors = stack.pop()
-        # Scalars are leaves: a table's own depth is what the limit is about.
-        if isinstance(value, dict):
-            kids: list[tuple[str, object]] = [
-                (f"{dotted}.{k}" if dotted else str(k), v) for k, v in value.items()
-            ]
-        elif isinstance(value, list):
-            kids = [(f"{dotted}[{i}]", item) for i, item in enumerate(value)]
-        else:
-            continue
-        # Measured BEFORE the memo: a memo entry only ever holds a depth this check passed,
-        # so a container arriving past the limit can never be one this walk already covered.
-        if depth > MAX_DOC_DEPTH:
-            raise DocumentTooDeepError(dotted, MAX_DOC_DEPTH)
-        # `id` is a stable identity here: the whole document is alive and reachable from
-        # `data` for the length of the walk, so no two live containers can share one.
-        walked_at = reached.get(id(value))
-        if walked_at is not None and walked_at >= depth:
-            continue  # this subtree was walked at this depth or deeper already
-        reached[id(value)] = depth
-        chain = ancestors | {id(value)}
-        for child_path, child in kids:
-            if isinstance(child, (dict, list)) and id(child) in chain:
-                raise CyclicAnchorError(child_path)
-            stack.append((child, child_path, depth + 1, chain))
+  ⚑ DEEPEST, NOT FIRST, AND THAT IS THE CYCLE GUARD.  The memo may decide only how many
+  times a container is walked, never whether it is CHECKED: the ancestor test runs when a
+  child is pushed, before the child is popped, so it fires for every sighting. And a loop
+  can only close by reaching a container DEEPER than some earlier sighting of it, so a
+  memo that remembered the first sighting would skip exactly the re-walk that finds the
+  loop. ``MAX_DOC_DEPTH`` bounds how deep that can go, which is why a walk that keeps
+  failing to settle ends at one of the two refusals rather than loading a cycle.
+  """
+  stack: list[tuple[object, str, int, frozenset[int]]] = [(data, "", 1, frozenset())]
+  reached: dict[int, int] = {}  # id(container) -> the deepest depth it was walked at
+  while stack:
+    value, dotted, depth, ancestors = stack.pop()
+    # Scalars are leaves: a table's own depth is what the limit is about.
+    if isinstance(value, dict):
+      kids: list[tuple[str, object]] = [
+        (f"{dotted}.{k}" if dotted else str(k), v) for k, v in value.items()
+      ]
+    elif isinstance(value, list):
+      kids = [(f"{dotted}[{i}]", item) for i, item in enumerate(value)]
+    else:
+      continue
+    # Measured BEFORE the memo: a memo entry only ever holds a depth this check passed,
+    # so a container arriving past the limit can never be one this walk already covered.
+    if depth > MAX_DOC_DEPTH:
+      raise DocumentTooDeepError(dotted, MAX_DOC_DEPTH)
+    # `id` is a stable identity here: the whole document is alive and reachable from
+    # `data` for the length of the walk, so no two live containers can share one.
+    walked_at = reached.get(id(value))
+    if walked_at is not None and walked_at >= depth:
+      continue  # this subtree was walked at this depth or deeper already
+    reached[id(value)] = depth
+    chain = ancestors | {id(value)}
+    for child_path, child in kids:
+      if isinstance(child, (dict, list)) and id(child) in chain:
+        raise CyclicAnchorError(child_path)
+      stack.append((child, child_path, depth + 1, chain))
 
 
 def parse_doc_text(text: str) -> object:
-    """Parse ONE document from *text* under kanibako's reading rules.
+  """Parse ONE document from *text* under kanibako's reading rules.
 
-    ⚑ THE TEXT DOOR :func:`load_doc` ALSO OPENS, so a caller holding YAML instead of a
-    file gets the SAME refusals in the SAME words; a second reader is a second, quieter
-    opinion on what a document means.  The three refusals — :class:`DuplicateKeyError`,
-    :class:`CyclicAnchorError`, :class:`DocumentTooDeepError` — are
-    :class:`yaml.YAMLError`\\ s, so one ``except yaml.YAMLError`` covers all of them.
-    """
-    try:
-        data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
-    except RecursionError as exc:
-        # ⚑ A flow collection long enough to outrun the Python stack is the SAME refusal
-        # the depth guard makes by measurement; the loader cannot say where it gave up.
-        raise DocumentTooDeepError("", MAX_DOC_DEPTH) from exc
-    _guard_document(data)
-    return data
+  ⚑ THE TEXT DOOR :func:`load_doc` ALSO OPENS, so a caller holding YAML instead of a
+  file gets the SAME refusals in the SAME words; a second reader is a second, quieter
+  opinion on what a document means.  The three refusals — :class:`DuplicateKeyError`,
+  :class:`CyclicAnchorError`, :class:`DocumentTooDeepError` — are
+  :class:`yaml.YAMLError`\\ s, so one ``except yaml.YAMLError`` covers all of them.
+  """
+  try:
+    data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
+  except RecursionError as exc:
+    # ⚑ A flow collection long enough to outrun the Python stack is the SAME refusal
+    # the depth guard makes by measurement; the loader cannot say where it gave up.
+    raise DocumentTooDeepError("", MAX_DOC_DEPTH) from exc
+  _guard_document(data)
+  return data
 
 
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
-    a self-reference, or unbounded nesting raises.
+  """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
+  a self-reference, or unbounded nesting raises.
 
-    ⚑ Only ``ENOENT``/``ENOTDIR`` read as missing, never ``Path.exists()``: a file kanibako
-    cannot reach (EACCES on it or a parent, a link loop) refuses, naming it."""
-    if path is None:
-        return {}
-    try:
-        text = path.read_text()
-    except (FileNotFoundError, NotADirectoryError):
-        return {}
-    except OSError as exc:
-        if exc.errno in (errno.EACCES, errno.EPERM, errno.ELOOP):
-            # ⚑ The file may be fine: the cure is to make the path reachable, not to edit it.
-            from kanibako.utils import unreadable_path_error
+  ⚑ Only ``ENOENT``/``ENOTDIR`` read as missing, never ``Path.exists()``: a file kanibako
+  cannot reach (EACCES on it or a parent, a link loop) refuses, naming it."""
+  if path is None:
+    return {}
+  try:
+    text = path.read_text()
+  except (FileNotFoundError, NotADirectoryError):
+    return {}
+  except OSError as exc:
+    if exc.errno in (errno.EACCES, errno.EPERM, errno.ELOOP):
+      # ⚑ The file may be fine: the cure is to make the path reachable, not to edit it.
+      from kanibako.utils import unreadable_path_error
 
-            raise unreadable_path_error(path, exc) from exc
-        raise ConfigError(
-            f"the config file {path} could not be read ({exc.strerror}). "
-            "Fix or remove the file, then retry."
-        ) from exc
-    except UnicodeDecodeError as exc:
-        raise ConfigError(
-            f"the config file {path} is not valid UTF-8 text. "
-            "Fix or remove the file, then retry."
-        ) from exc
-    # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to the yaml loader can OOM the box.
-    if not isinstance(text, str):
-        return {}
-    # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
-    try:
-        data = parse_doc_text(text)
-    except DuplicateKeyError as dup:
-        # ⚑ Spec §0: never a silent accept — PyYAML would keep the second and drop the first.
-        raise ConfigError(
-            f"the config file {path} sets '{dup.dotted}' twice ({dup.first} and "
-            f"{dup.second}). Remove one of the two, then retry."
-        ) from None
-    except (CyclicAnchorError, DocumentTooDeepError) as exc:
-        raise ConfigError(
-            f"the config file {path} {exc}. Fix or remove the file, then retry."
-        ) from None
-    except yaml.YAMLError as exc:
-        raise ConfigError(
-            f"the config file {path} is not valid YAML: {yaml_problem(exc)}. "
-            "Fix or remove the file, then retry."
-        ) from exc
-    if data is None:
-        return {}
-    # ⚑ Spec §0: a document that is one value or a list holds no keys to read, and reading it
-    # as empty would silently drop whatever the user meant by it.
-    if not isinstance(data, dict):
-        shape = "a list" if isinstance(data, list) else "a single value"
-        raise ConfigError(
-            f"the config file {path} is {shape}, not a mapping of keys. "
-            "Fix or remove the file, then retry."
-        )
-    return data
+      raise unreadable_path_error(path, exc) from exc
+    raise ConfigError(
+      f"the config file {path} could not be read ({exc.strerror}). "
+      "Fix or remove the file, then retry."
+    ) from exc
+  except UnicodeDecodeError as exc:
+    raise ConfigError(
+      f"the config file {path} is not valid UTF-8 text. Fix or remove the file, then retry."
+    ) from exc
+  # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to the yaml loader can OOM the box.
+  if not isinstance(text, str):
+    return {}
+  # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
+  try:
+    data = parse_doc_text(text)
+  except DuplicateKeyError as dup:
+    # ⚑ Spec §0: never a silent accept — PyYAML would keep the second and drop the first.
+    raise ConfigError(
+      f"the config file {path} sets '{dup.dotted}' twice ({dup.first} and "
+      f"{dup.second}). Remove one of the two, then retry."
+    ) from None
+  except (CyclicAnchorError, DocumentTooDeepError) as exc:
+    raise ConfigError(
+      f"the config file {path} {exc}. Fix or remove the file, then retry."
+    ) from None
+  except yaml.YAMLError as exc:
+    raise ConfigError(
+      f"the config file {path} is not valid YAML: {yaml_problem(exc)}. "
+      "Fix or remove the file, then retry."
+    ) from exc
+  if data is None:
+    return {}
+  # ⚑ Spec §0: a document that is one value or a list holds no keys to read, and reading it
+  # as empty would silently drop whatever the user meant by it.
+  if not isinstance(data, dict):
+    shape = "a list" if isinstance(data, list) else "a single value"
+    raise ConfigError(
+      f"the config file {path} is {shape}, not a mapping of keys. "
+      "Fix or remove the file, then retry."
+    )
+  return data
 
 
 class _SafeDumper(yaml.SafeDumper):
-    """``yaml.SafeDumper`` that writes a ``str`` SUBCLASS as a plain string.
+  """``yaml.SafeDumper`` that writes a ``str`` SUBCLASS as a plain string.
 
-    BARE-REF-GUARD: ``settings_resolve.DataExpr`` is a ``str`` subclass, which the stock
-    safe representer refuses outright.
-    """
+  BARE-REF-GUARD: ``settings_resolve.DataExpr`` is a ``str`` subclass, which the stock
+  safe representer refuses outright.
+  """
 
 
 _SafeDumper.add_multi_representer(str, yaml.SafeDumper.represent_str)
 
 
 def _dump_text(data: dict) -> str:
-    return yaml.dump(
-        data, Dumper=_SafeDumper, sort_keys=False, default_flow_style=False,
-        allow_unicode=True,
-    )
+  return yaml.dump(
+    data,
+    Dumper=_SafeDumper,
+    sort_keys=False,
+    default_flow_style=False,
+    allow_unicode=True,
+  )
 
 
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None:
-    """Serialize *data* to *path* as YAML, atomically (creates parent dirs), after *header*."""
-    atomic_write_text(path, header + _dump_text(data))
+  """Serialize *data* to *path* as YAML, atomically (creates parent dirs), after *header*."""
+  atomic_write_text(path, header + _dump_text(data))
 
 
 def dump_doc_commented(
-    path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str,
+  path: Path,
+  data: dict,
+  sections: tuple[str, ...],
+  key: str,
+  comment: str,
 ) -> None:
-    """:func:`dump_doc`, with ``# comment`` ending *key*'s line in the *sections* table.
+  """:func:`dump_doc`, with ``# comment`` ending *key*'s line in the *sections* table.
 
-    Raises ConfigError, writing nothing, unless that line occurs exactly once.
-    """
-    lines = _dump_text(data).splitlines(keepends=True)
-    hits: list[int] = []
-    depth = 0
-    for i, line in enumerate(lines):
-        indent = (len(line) - len(line.lstrip(" "))) // 2
-        if indent < depth:
-            depth = indent
-        if depth < len(sections) and indent == depth and line.strip() == f"{sections[depth]}:":
-            depth += 1
-        elif depth == len(sections) and indent == depth and line.lstrip().startswith(f"{key}:"):
-            hits.append(i)
-    if len(hits) != 1:
-        raise ConfigError(f"{'.'.join((*sections, key))} is not one line of {path}'s text")
-    lines[hits[0]] = lines[hits[0]].rstrip("\n") + f"  # {comment}\n"
-    text = "".join(lines)
-    if yaml.safe_load(text) != data:
-        raise ConfigError(f"commenting {'.'.join((*sections, key))} changed {path}'s content")
-    atomic_write_text(path, text)
+  Raises ConfigError, writing nothing, unless that line occurs exactly once.
+  """
+  lines = _dump_text(data).splitlines(keepends=True)
+  hits: list[int] = []
+  depth = 0
+  for i, line in enumerate(lines):
+    indent = (len(line) - len(line.lstrip(" "))) // 2
+    if indent < depth:
+      depth = indent
+    if depth < len(sections) and indent == depth and line.strip() == f"{sections[depth]}:":
+      depth += 1
+    elif depth == len(sections) and indent == depth and line.lstrip().startswith(f"{key}:"):
+      hits.append(i)
+  if len(hits) != 1:
+    raise ConfigError(f"{'.'.join((*sections, key))} is not one line of {path}'s text")
+  lines[hits[0]] = lines[hits[0]].rstrip("\n") + f"  # {comment}\n"
+  text = "".join(lines)
+  if yaml.safe_load(text) != data:
+    raise ConfigError(f"commenting {'.'.join((*sections, key))} changed {path}'s content")
+  atomic_write_text(path, text)
 
 
 # ---------------------------------------------------------------------------
 # Document mutators (load → mutate → dump)
 # ---------------------------------------------------------------------------
 
+
 # ⚑ No key routes to empty ``sections`` — this pair is the nested pair's
 # structural complement, not dead code.  See llm-docs.
 def write_root_key(path: Path, key: str, value: object) -> None:
-    """Write a TOP-LEVEL scalar key, preserving other content."""
-    data = load_doc(path)
-    data[key] = value
-    dump_doc(path, data)
+  """Write a TOP-LEVEL scalar key, preserving other content."""
+  data = load_doc(path)
+  data[key] = value
+  dump_doc(path, data)
 
 
 def remove_root_key(path: Path, key: str) -> bool:
-    """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
-    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
+  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
 
-    if stat_unless_gone(path) is None:
-        return False
-    data = load_doc(path)
-    if key not in data:
-        return False
-    del data[key]
-    dump_doc(path, data)
-    return True
+  if stat_unless_gone(path) is None:
+    return False
+  data = load_doc(path)
+  if key not in data:
+    return False
+  del data[key]
+  dump_doc(path, data)
+  return True
 
 
 def refuse_scalar_sections(
-    path: Path, sections: tuple[str, ...], *, data: dict | None = None,
+  path: Path,
+  sections: tuple[str, ...],
+  *,
+  data: dict | None = None,
 ) -> None:
-    """RAISE :class:`ConfigError` when *sections* walks into a value that is not a table.
+  """RAISE :class:`ConfigError` when *sections* walks into a value that is not a table.
 
-    Every section walked is a namespace, so a value where a table belongs refuses,
-    ``null`` included (spec §0).  ⚑ THE SHAPE RULE, STATED HERE: an absent section, or a
-    *path* that is not a file, is a writer's to create, so neither refuses.  *data* is the
-    ALREADY-READ doc, not re-read.
-    """
-    from kanibako.utils import is_file_unless_gone  # lazy: config_io stays import-light
+  Every section walked is a namespace, so a value where a table belongs refuses,
+  ``null`` included (spec §0).  ⚑ THE SHAPE RULE, STATED HERE: an absent section, or a
+  *path* that is not a file, is a writer's to create, so neither refuses.  *data* is the
+  ALREADY-READ doc, not re-read.
+  """
+  from kanibako.utils import is_file_unless_gone  # lazy: config_io stays import-light
 
-    if not is_file_unless_gone(path):
-        return
-    node = load_doc(path) if data is None else data
-    for depth, sec in enumerate(sections):
-        sec = _resolved_section(node, sec)
-        if sec not in node:
-            return
-        child = node[sec]
-        if not isinstance(child, dict):
-            dotted = ".".join((*sections[:depth], sec))
-            raise ConfigError(
-                f"the config file {path} holds {render_stored_scalar(child)} at '{dotted}', "
-                f"where a table of keys belongs, so '{dotted}.' keys cannot be written under it. "
-                f"Fix or delete '{dotted}' in that file by hand, then retry."
-            )
-        node = child
+  if not is_file_unless_gone(path):
+    return
+  node = load_doc(path) if data is None else data
+  for depth, sec in enumerate(sections):
+    sec = _resolved_section(node, sec)
+    if sec not in node:
+      return
+    child = node[sec]
+    if not isinstance(child, dict):
+      dotted = ".".join((*sections[:depth], sec))
+      raise ConfigError(
+        f"the config file {path} holds {render_stored_scalar(child)} at '{dotted}', "
+        f"where a table of keys belongs, so '{dotted}.' keys cannot be written under it. "
+        f"Fix or delete '{dotted}' in that file by hand, then retry."
+      )
+    node = child
 
 
 def write_nested_key(
-    path: Path, sections: tuple[str, ...], key: str, value: object,
+  path: Path,
+  sections: tuple[str, ...],
+  key: str,
+  value: object,
 ) -> None:
-    """Write *key* into a nested table (e.g. ``("system", "path")``), creating ABSENT intermediates.
+  """Write *key* into a nested table (e.g. ``("system", "path")``), creating ABSENT intermediates.
 
-    Raises ConfigError when an intermediate is present but not a table, ``null`` included:
-    every section walked is a namespace, where no value is a setting the closed keyspace
-    accepts (spec §0) — :func:`refuse_scalar_sections` owns that refusal.
+  Raises ConfigError when an intermediate is present but not a table, ``null`` included:
+  every section walked is a namespace, where no value is a setting the closed keyspace
+  accepts (spec §0) — :func:`refuse_scalar_sections` owns that refusal.
 
-    ⚑ A NODE SECTION is stored as a human writes it, ``persona+harness`` -- see
-    :func:`_resolved_section`, which this walk and ``stored_leaf_object``'s share.
-    """
-    data = load_doc(path)
-    refuse_scalar_sections(path, sections, data=data)
-    node = data
-    for sec in sections:
-        sec = _resolved_section(node, sec)
-        node = node.setdefault(sec, {})
-    node[key] = value
-    dump_doc(path, data)
+  ⚑ A NODE SECTION is stored as a human writes it, ``persona+harness`` -- see
+  :func:`_resolved_section`, which this walk and ``stored_leaf_object``'s share.
+  """
+  data = load_doc(path)
+  refuse_scalar_sections(path, sections, data=data)
+  node = data
+  for sec in sections:
+    sec = _resolved_section(node, sec)
+    node = node.setdefault(sec, {})
+  node[key] = value
+  dump_doc(path, data)
 
 
 def _resolved_section(table: dict, section: str) -> str:
-    """*section* as *table* spells it -- a node's SEPARATOR, resolved to whichever the file holds.
+  """*section* as *table* spells it -- a node's SEPARATOR, resolved to whichever the file holds.
 
-    A node already in the table WINS, so a write cannot leave one node in two spellings and a
-    read reaches a file stored either way. 🛑 THE SEPARATOR ALONE: a node's CASE is Q87's fold,
-    and that fold WARNS -- a walk that silently reached a capital node would make that a lie.
-    """
-    from kanibako.agent_ref import CANONICAL_SEP, display_agent_ref
+  A node already in the table WINS, so a write cannot leave one node in two spellings and a
+  read reaches a file stored either way. 🛑 THE SEPARATOR ALONE: a node's CASE is Q87's fold,
+  and that fold WARNS -- a walk that silently reached a capital node would make that a lie.
+  """
+  from kanibako.agent_ref import CANONICAL_SEP, display_agent_ref
 
-    if CANONICAL_SEP not in section:
-        return section
-    user_facing = display_agent_ref(section)
-    for spelling in table:
-        if isinstance(spelling, str) and display_agent_ref(spelling) == user_facing:
-            return spelling
-    return user_facing
+  if CANONICAL_SEP not in section:
+    return section
+  user_facing = display_agent_ref(section)
+  for spelling in table:
+    if isinstance(spelling, str) and display_agent_ref(spelling) == user_facing:
+      return spelling
+  return user_facing
 
 
 def remove_nested_key(
-    path: Path, sections: tuple[str, ...], key: str,
+  path: Path,
+  sections: tuple[str, ...],
+  key: str,
 ) -> bool:
-    """Remove *key* from a nested table, pruning now-empty intermediates.  True if found."""
-    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  """Remove *key* from a nested table, pruning now-empty intermediates.  True if found."""
+  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
 
-    if stat_unless_gone(path) is None:
-        return False
+  if stat_unless_gone(path) is None:
+    return False
 
-    data = load_doc(path)
+  data = load_doc(path)
 
-    # Walk to the innermost table, recording the chain for pruning.
-    # ⚑ *walked* is the RESOLVED spelling, so the prune below deletes the key the walk matched.
-    chain: list[dict] = [data]
-    walked: list[str] = []
-    node = data
-    for sec in sections:
-        resolved = _resolved_section(node, sec)
-        child = node.get(resolved)
-        if not isinstance(child, dict):
-            return False
-        walked.append(resolved)
-        node = child
-        chain.append(node)
+  # Walk to the innermost table, recording the chain for pruning.
+  # ⚑ *walked* is the RESOLVED spelling, so the prune below deletes the key the walk matched.
+  chain: list[dict] = [data]
+  walked: list[str] = []
+  node = data
+  for sec in sections:
+    resolved = _resolved_section(node, sec)
+    child = node.get(resolved)
+    if not isinstance(child, dict):
+      return False
+    walked.append(resolved)
+    node = child
+    chain.append(node)
 
-    if key not in node:
-        return False
-    del node[key]
+  if key not in node:
+    return False
+  del node[key]
 
-    # Prune empty tables bottom-up.
-    for i in range(len(walked) - 1, -1, -1):
-        if not chain[i + 1]:
-            del chain[i][walked[i]]
-        else:
-            break
-    dump_doc(path, data)
-    return True
+  # Prune empty tables bottom-up.
+  for i in range(len(walked) - 1, -1, -1):
+    if not chain[i + 1]:
+      del chain[i][walked[i]]
+    else:
+      break
+  dump_doc(path, data)
+  return True
 
 
 def count_leaves(node: object) -> int:
-    """Count the leaf entries under a nested table — the unit every ``reset --all`` reports."""
-    if isinstance(node, dict):
-        return sum(count_leaves(v) for v in node.values())
-    return 1
+  """Count the leaf entries under a nested table — the unit every ``reset --all`` reports."""
+  if isinstance(node, dict):
+    return sum(count_leaves(v) for v in node.values())
+  return 1
 
 
 # ---------------------------------------------------------------------------
 # Stored-value reads (the ``get`` model's stored-at-noun read + its rendering)
 # ---------------------------------------------------------------------------
 
+
 def render_stored_scalar(v: object) -> str:
-    """Render a stored scalar for ``get`` output, keeping §2h's empty idioms apart.
+  """Render a stored scalar for ``get`` output, keeping §2h's empty idioms apart.
 
-    ⚑⚑ TOTAL, AND THAT IS THE POINT (P3).  Absence is reported ABOVE any render — by
-    :func:`read_stored_leaf`, which never reaches here for a leaf that is not in the file —
-    so a renderer able to answer ``None`` could only collapse "not set" into a STORED value.
-    It used to answer ``None`` for a stored ``""`` and did exactly that: a terminal empty
-    string read back "(not set)", which spec §2h forbids in as many words (``""`` ≠ unset).
+  ⚑⚑ TOTAL, AND THAT IS THE POINT (P3).  Absence is reported ABOVE any render — by
+  :func:`read_stored_leaf`, which never reaches here for a leaf that is not in the file —
+  so a renderer able to answer ``None`` could only collapse "not set" into a STORED value.
+  It used to answer ``None`` for a stored ``""`` and did exactly that: a terminal empty
+  string read back "(not set)", which spec §2h forbids in as many words (``""`` ≠ unset).
 
-    THE THREE STORED SPELLINGS, each its own: a present-``None`` (the tri-state OMIT) is
-    ``null``; a terminal ``""`` is ``""``; a bool is lowercase, the spelling ``set`` accepts
-    back.  ⚑ EACH NAMES THE YAML THE FILE HOLDS, WHICH IS NOT THE SAME AS THE WORD YOU TYPE
-    TO WRITE IT.  ``null`` is the file's null, and the write spelling for it is the ``--null``
-    FLAG: ``set <key>=null`` stores the three-character STRING, a different value that reads
-    back through this same line.  A ``get`` may only teach values the CLI reads, and
-    ``str(None)`` taught ``None``, which a typed key refuses and a string key stores as three
-    letters — but reading a line back is not always retyping it.
-    """
-    if v is None:
-        return "null"
-    if v == "":
-        return '""'
-    if isinstance(v, bool):
-        return str(v).lower()
-    return str(v)
+  THE THREE STORED SPELLINGS, each its own: a present-``None`` (the tri-state OMIT) is
+  ``null``; a terminal ``""`` is ``""``; a bool is lowercase, the spelling ``set`` accepts
+  back.  ⚑ EACH NAMES THE YAML THE FILE HOLDS, WHICH IS NOT THE SAME AS THE WORD YOU TYPE
+  TO WRITE IT.  ``null`` is the file's null, and the write spelling for it is the ``--null``
+  FLAG: ``set <key>=null`` stores the three-character STRING, a different value that reads
+  back through this same line.  A ``get`` may only teach values the CLI reads, and
+  ``str(None)`` taught ``None``, which a typed key refuses and a string key stores as three
+  letters — but reading a line back is not always retyping it.
+  """
+  if v is None:
+    return "null"
+  if v == "":
+    return '""'
+  if isinstance(v, bool):
+    return str(v).lower()
+  return str(v)
 
 
 def stored_leaf_object(
-    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-    *, default: object = None,
+  noun_file: "Path | None",
+  sections: tuple[str, ...],
+  leaf: str,
+  *,
+  default: object = None,
 ) -> object:
-    """The RAW value stored at ``sections/leaf`` in *noun_file*, or *default* when absent.
+  """The RAW value stored at ``sections/leaf`` in *noun_file*, or *default* when absent.
 
-    ⚑⚑ THE UNRENDERED READ, AND THE ONLY WALK: :func:`read_stored_leaf` and
-    :func:`read_stored_pref` are each this plus their own renderer, which is what keeps the
-    two from growing separate ideas of where a leaf lives.
-    ⚑⚑ A DOOR THAT JUDGES THE VALUE READS HERE, NEVER THE RENDERING.  The renderings are
-    deliberately not injective — a stored ``""`` and a stored ``'""'`` both read back ``""``
-    (§2h) — so ``rendered == '""'`` cannot tell a user's two-character label from an empty
-    one, and a door asking that question must ask it of the object.
-    🛑 *default* IS WHAT "NOT THERE" LOOKS LIKE TO THE CALLER, and the caller owns that
-    choice because the raw answer cannot make it: a present-``None`` is indistinguishable
-    from the ``None`` default.  Pass a sentinel to tell them apart; leave it ``None`` only
-    where absent and present-``None`` mean the same thing to you.
-    """
-    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  ⚑⚑ THE UNRENDERED READ, AND THE ONLY WALK: :func:`read_stored_leaf` and
+  :func:`read_stored_pref` are each this plus their own renderer, which is what keeps the
+  two from growing separate ideas of where a leaf lives.
+  ⚑⚑ A DOOR THAT JUDGES THE VALUE READS HERE, NEVER THE RENDERING.  The renderings are
+  deliberately not injective — a stored ``""`` and a stored ``'""'`` both read back ``""``
+  (§2h) — so ``rendered == '""'`` cannot tell a user's two-character label from an empty
+  one, and a door asking that question must ask it of the object.
+  🛑 *default* IS WHAT "NOT THERE" LOOKS LIKE TO THE CALLER, and the caller owns that
+  choice because the raw answer cannot make it: a present-``None`` is indistinguishable
+  from the ``None`` default.  Pass a sentinel to tell them apart; leave it ``None`` only
+  where absent and present-``None`` mean the same thing to you.
+  """
+  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
 
-    if noun_file is None or stat_unless_gone(noun_file) is None:
-        return default
-    node: object = load_doc(noun_file)
-    for sec in sections:
-        if not isinstance(node, dict):
-            return default
-        node = node.get(_resolved_section(node, sec))
-    if not isinstance(node, dict) or leaf not in node:
-        return default
-    return node[leaf]
+  if noun_file is None or stat_unless_gone(noun_file) is None:
+    return default
+  node: object = load_doc(noun_file)
+  for sec in sections:
+    if not isinstance(node, dict):
+      return default
+    node = node.get(_resolved_section(node, sec))
+  if not isinstance(node, dict) or leaf not in node:
+    return default
+  return node[leaf]
 
 
 #: :func:`stored_leaf_object`'s "not there" answer for the two rendering readers below, which
@@ -562,57 +576,63 @@ _ABSENT = object()
 
 
 def read_stored_leaf(
-    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-    *, render: "Callable[[object], str]" = render_stored_scalar,
+  noun_file: "Path | None",
+  sections: tuple[str, ...],
+  leaf: str,
+  *,
+  render: "Callable[[object], str]" = render_stored_scalar,
 ) -> str | None:
-    """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file.
+  """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file.
 
-    ⚑ ``None`` MEANS ABSENT AND NOTHING ELSE, and the TOTAL *render* is what guarantees it:
-    a leaf that is not there returns above without rendering anything, and no renderer this
-    signature accepts can produce that answer for a value that IS there.  The type carries
-    the rule, so no caller has to know it (P3).
-    ⚑ *render* is a parameter because the scalar convention is not universal — a leaf whose
-    stored shape is not a scalar (``agent_file``'s argv list) renders by a rule that belongs
-    with the file that owns the shape, not here.  The default keeps every other caller on the
-    scalar convention.
-    """
-    v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
-    return None if v is _ABSENT else render(v)
+  ⚑ ``None`` MEANS ABSENT AND NOTHING ELSE, and the TOTAL *render* is what guarantees it:
+  a leaf that is not there returns above without rendering anything, and no renderer this
+  signature accepts can produce that answer for a value that IS there.  The type carries
+  the rule, so no caller has to know it (P3).
+  ⚑ *render* is a parameter because the scalar convention is not universal — a leaf whose
+  stored shape is not a scalar (``agent_file``'s argv list) renders by a rule that belongs
+  with the file that owns the shape, not here.  The default keeps every other caller on the
+  scalar convention.
+  """
+  v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
+  return None if v is _ABSENT else render(v)
 
 
 def render_stored_pref(v: object) -> str:
-    """Render a stored ``pref`` REQUEST, keeping all THREE empty idioms apart (spec §2h).
+  """Render a stored ``pref`` REQUEST, keeping all THREE empty idioms apart (spec §2h).
 
-    ⚑ IT AGREES WITH :func:`render_stored_scalar` TODAY, STRING FOR STRING, AND IS STILL NOT
-    IT.  They answer different questions: that one DECIDES what a scalar leaf reads back as,
-    while this one may only FORWARD — *"the pref layer MUST NOT interpret emptiness AT ALL …
-    otherwise it becomes a FOURTH place deciding what 'empty' means"* (§2h).  A request also
-    carries whatever shape its TARGET holds, so a rule the scalar convention may adopt about
-    values that are not scalars is a rule this side must NOT inherit.  Folding them would put
-    one branch under two authorities; the agreement is the point, not a reason to merge.
-    """
-    if v is None:
-        return "null"
-    if v == "":
-        return '""'
-    if isinstance(v, bool):
-        return str(v).lower()
-    return str(v)
+  ⚑ IT AGREES WITH :func:`render_stored_scalar` TODAY, STRING FOR STRING, AND IS STILL NOT
+  IT.  They answer different questions: that one DECIDES what a scalar leaf reads back as,
+  while this one may only FORWARD — *"the pref layer MUST NOT interpret emptiness AT ALL …
+  otherwise it becomes a FOURTH place deciding what 'empty' means"* (§2h).  A request also
+  carries whatever shape its TARGET holds, so a rule the scalar convention may adopt about
+  values that are not scalars is a rule this side must NOT inherit.  Folding them would put
+  one branch under two authorities; the agreement is the point, not a reason to merge.
+  """
+  if v is None:
+    return "null"
+  if v == "":
+    return '""'
+  if isinstance(v, bool):
+    return str(v).lower()
+  return str(v)
 
 
 def read_stored_pref(
-    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-    *, render: "Callable[[object], str]" = render_stored_pref,
+  noun_file: "Path | None",
+  sections: tuple[str, ...],
+  leaf: str,
+  *,
+  render: "Callable[[object], str]" = render_stored_pref,
 ) -> str | None:
-    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h).
+  """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h).
 
-    ⚑ *render* IS HANDED IN FOR THE SAME REASON IT IS ON :func:`read_stored_leaf`, and the
-    two must not grow separate conventions: a leaf that is not there returns ``None`` above
-    without rendering anything, and the TOTAL renderer type is what keeps that the only way
-    this answers ``None``.  A pref REQUEST carries whatever shape its TARGET key holds —
-    ``pref.agent.default.run_args`` carries the argv LIST — and a shape that is not a scalar
-    renders by a rule belonging to the file that owns it, not here.  The default keeps every
-    other caller on the three pref idioms.
-    """
-    v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
-    return None if v is _ABSENT else render(v)
+  ⚑ *render* IS HANDED IN FOR THE SAME REASON IT IS ON :func:`read_stored_leaf`, and the
+  two must not grow separate conventions: a leaf that is not there returns ``None`` above
+  without rendering anything, and the TOTAL renderer type is what keeps that the only way
+  this answers ``None``.  A pref REQUEST carries whatever shape its TARGET key holds —
+  ``pref.agent.default.run_args`` carries the argv LIST — and a shape that is not a scalar
+  renders by a rule belonging to the file that owns it, not here.  The default keeps every
+  other caller on the three pref idioms.
+  """
+  v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
+  return None if v is _ABSENT else render(v)

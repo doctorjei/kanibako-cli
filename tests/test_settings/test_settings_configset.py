@@ -49,46 +49,46 @@ from kanibako.settings.settings_resolve import ResolveCtx
 #: A keyspace the {key}-refs in most validation tests resolve against (real values so
 #: the lenient expand actually resolves a chain, not just an existence map).
 _KEYSPACE: dict = {
-    "workset": {"boxes": "/ws/boxes", "vault_rw": "/ws/vault"},
-    "config": {"data": "/sys/data"},
-    "meta": {"box": {"name": "mybox"}},
+  "workset": {"boxes": "/ws/boxes", "vault_rw": "/ws/vault"},
+  "config": {"data": "/sys/data"},
+  "meta": {"box": {"name": "mybox"}},
 }
 #: A ctx whose XDG/home set makes {$XDG_DATA_HOME}/{$XDG_STATE_HOME} resolvable and
 #: {$NOPE_VAR} / {$XDG_CACHE_HOME} unset (→ a defect the lenient expand records).
 _CTX = ResolveCtx(
-    agent_name="claude",
-    workset_name="ws",
-    host_home="/home/u",
-    xdg={
-        "XDG_DATA_HOME": "/home/u/.local/share",
-        "XDG_STATE_HOME": "/home/u/.local/state",
-    },
+  agent_name="claude",
+  workset_name="ws",
+  host_home="/home/u",
+  xdg={
+    "XDG_DATA_HOME": "/home/u/.local/share",
+    "XDG_STATE_HOME": "/home/u/.local/state",
+  },
 )
 
 
 def _resolves(key: str, value: str):
-    """The E3 RESOLUTION probe stub: apply *value* at *key* into a fresh copy of
-    ``_KEYSPACE``, lenient-``expand``, and return the edited key's defect reason (or
-    ``None`` if it resolves cleanly) — the same contract the real seam builds."""
-    import copy
+  """The E3 RESOLUTION probe stub: apply *value* at *key* into a fresh copy of
+  ``_KEYSPACE``, lenient-``expand``, and return the edited key's defect reason (or
+  ``None`` if it resolves cleanly) — the same contract the real seam builds."""
+  import copy
 
-    candidate = KeyStore(copy.deepcopy(_KEYSPACE))
-    node = candidate
-    parts = key.split(".")
-    for seg in parts[:-1]:
-        sub = dict.get(node, seg, None)
-        if not isinstance(sub, KeyStore):
-            sub = KeyStore()
-            node[seg] = sub
-        node = sub
-    node[parts[-1]] = value
-    _expanded, errors = expand(candidate, _CTX, collect_errors=True)
-    reason = dict.get(errors, key, __MISSING__)
-    return None if reason is __MISSING__ else reason
+  candidate = KeyStore(copy.deepcopy(_KEYSPACE))
+  node = candidate
+  parts = key.split(".")
+  for seg in parts[:-1]:
+    sub = dict.get(node, seg, None)
+    if not isinstance(sub, KeyStore):
+      sub = KeyStore()
+      node[seg] = sub
+    node = sub
+  node[parts[-1]] = value
+  _expanded, errors = expand(candidate, _CTX, collect_errors=True)
+  reason = dict.get(errors, key, __MISSING__)
+  return None if reason is __MISSING__ else reason
 
 
 def _validate(key: str, value: str, *, resolves=_resolves):
-    return validate_config_set(key, value, resolves=resolves)
+  return validate_config_set(key, value, resolves=resolves)
 
 
 # --------------------------------------------------------------------------- #
@@ -97,35 +97,35 @@ def _validate(key: str, value: str, *, resolves=_resolves):
 
 
 def test_typed_scalar_mismatch_is_hard_error() -> None:
-    # box.share_images is a bool key (KEY_TYPES) — a non-bool value fails coercion.
-    v = _validate("box.share_images", "notabool")
-    assert isinstance(v, Error)
-    assert "boolean" in v.message.lower() or "bool" in v.message.lower()
+  # box.share_images is a bool key (KEY_TYPES) — a non-bool value fails coercion.
+  v = _validate("box.share_images", "notabool")
+  assert isinstance(v, Error)
+  assert "boolean" in v.message.lower() or "bool" in v.message.lower()
 
 
 def test_typed_scalar_valid_is_ok() -> None:
-    v = _validate("box.share_images", "true")
-    assert v is OK
+  v = _validate("box.share_images", "true")
+  assert v is OK
 
 
 def test_untyped_scalar_is_ok() -> None:
-    # A plain non-typed scalar value passes (no KEY_TYPES entry).
-    v = _validate("model", "opus")
-    assert v is OK
+  # A plain non-typed scalar value passes (no KEY_TYPES entry).
+  v = _validate("model", "opus")
+  assert v is OK
 
 
 def test_a_colon_in_a_value_is_ordinary_content() -> None:
-    """⚑ THE REPLACEMENT FOR THE DELETED ``:`` REFUSAL, POSED THE OTHER WAY ROUND.
+  """⚑ THE REPLACEMENT FOR THE DELETED ``:`` REFUSAL, POSED THE OTHER WAY ROUND.
 
-    The forbidden ``src:dest`` notation was a CATEGORY rule about the bind SHAPE (a
-    structured pair spelled as a joined string) and went with the ``is_category``
-    arm in QA′. What must hold on the surviving path is the OPPOSITE claim, and it
-    is the one with real users: a colon is ordinary content. Pinned rather than left
-    implicit because the refusal was ungated once before, and it then refused every
-    ``https://`` value the moment a scalar caller existed.
-    """
-    v = _validate("model", "https://api.example.com:8443/v1")
-    assert v is OK
+  The forbidden ``src:dest`` notation was a CATEGORY rule about the bind SHAPE (a
+  structured pair spelled as a joined string) and went with the ``is_category``
+  arm in QA′. What must hold on the surviving path is the OPPOSITE claim, and it
+  is the one with real users: a colon is ordinary content. Pinned rather than left
+  implicit because the refusal was ungated once before, and it then refused every
+  ``https://`` value the moment a scalar caller existed.
+  """
+  v = _validate("model", "https://api.example.com:8443/v1")
+  assert v is OK
 
 
 # --------------------------------------------------------------------------- #
@@ -134,50 +134,50 @@ def test_a_colon_in_a_value_is_ordinary_content() -> None:
 
 
 def test_dangling_ref_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "{nope.not.a.key}")
-    assert isinstance(v, Error)
-    assert "'{nope.not.a.key}'" in v.message
+  v = _validate("box.bindings.rw.home", "{nope.not.a.key}")
+  assert isinstance(v, Error)
+  assert "'{nope.not.a.key}'" in v.message
 
 
 def test_existing_whole_value_ref_repoint_is_ok_no_warn() -> None:
-    # B4: repointing a value to a whole-value {key}-ref to an EXISTING key is OK, and
-    # carries NO {key}-ref-repoint warning.
-    v = _validate("box.bindings.rw.home", "{workset.boxes}")
-    assert v is OK
+  # B4: repointing a value to a whole-value {key}-ref to an EXISTING key is OK, and
+  # carries NO {key}-ref-repoint warning.
+  v = _validate("box.bindings.rw.home", "{workset.boxes}")
+  assert v is OK
 
 
 def test_embedded_ref_to_existing_key_is_ok() -> None:
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/sub/dir")
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/sub/dir")
+  assert v is OK
 
 
 def test_embedded_dangling_ref_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.ref}/x")
-    assert isinstance(v, Error)
-    assert "'{bad.ref}'" in v.message
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.ref}/x")
+  assert isinstance(v, Error)
+  assert "'{bad.ref}'" in v.message
 
 
 def test_unknown_var_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "{$NOPE_VAR}/x")
-    assert isinstance(v, Error)
-    assert "{$NOPE_VAR}" in v.message
+  v = _validate("box.bindings.rw.home", "{$NOPE_VAR}/x")
+  assert isinstance(v, Error)
+  assert "{$NOPE_VAR}" in v.message
 
 
 def test_known_var_is_ok() -> None:
-    v = _validate("box.bindings.rw.home", "{$XDG_DATA_HOME}/kanibako")
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "{$XDG_DATA_HOME}/kanibako")
+  assert v is OK
 
 
 def test_the_old_braced_var_spelling_is_refused_naming_the_cure() -> None:
-    v = _validate("box.bindings.rw.home", "${XDG_DATA_HOME}/x")
-    assert isinstance(v, Error)
-    assert "write '{$XDG_DATA_HOME}'" in v.message, v.message
+  v = _validate("box.bindings.rw.home", "${XDG_DATA_HOME}/x")
+  assert isinstance(v, Error)
+  assert "write '{$XDG_DATA_HOME}'" in v.message, v.message
 
 
 def test_a_dollar_before_a_braced_name_is_text_then_a_ref() -> None:
-    v = _validate("box.bindings.rw.home", "${NOPE}/x")
-    assert isinstance(v, Error)
-    assert "{NOPE}" in v.message
+  v = _validate("box.bindings.rw.home", "${NOPE}/x")
+  assert isinstance(v, Error)
+  assert "{NOPE}" in v.message
 
 
 # --------------------------------------------------------------------------- #
@@ -186,27 +186,27 @@ def test_a_dollar_before_a_braced_name_is_text_then_a_ref() -> None:
 
 
 def test_unterminated_braced_var_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "${XDG_DATA_HOME/x")
-    assert isinstance(v, Error)
-    assert "malformed" in v.message.lower()
+  v = _validate("box.bindings.rw.home", "${XDG_DATA_HOME/x")
+  assert isinstance(v, Error)
+  assert "malformed" in v.message.lower()
 
 
 def test_a_dollar_is_text() -> None:
-    # ``$`` is an ordinary character (keyspec "References"): ``$/`` and ``$NOTAVAR``
-    # are text, never a variable token. Anchored ABSOLUTE so no path rule decides it.
-    assert _validate("box.bindings.rw.home", "/abs/$/notavar") is OK
-    assert _validate("box.bindings.rw.home", "/abs/$NOTAVAR/x") is OK
+  # ``$`` is an ordinary character (keyspec "References"): ``$/`` and ``$NOTAVAR``
+  # are text, never a variable token. Anchored ABSOLUTE so no path rule decides it.
+  assert _validate("box.bindings.rw.home", "/abs/$/notavar") is OK
+  assert _validate("box.bindings.rw.home", "/abs/$NOTAVAR/x") is OK
 
 
 def test_an_at_is_text() -> None:
-    assert _validate("box.bindings.rw.home", "/abs/@nope/x") is OK
+  assert _validate("box.bindings.rw.home", "/abs/@nope/x") is OK
 
 
 def test_backslash_dollar_and_at_are_illegal_escapes() -> None:
-    for value in (r"/abs/\$NOTAVAR/x", r"/abs/\@nope/x"):
-        v = _validate("box.bindings.rw.home", value)
-        assert isinstance(v, Error), value
-        assert "Illegal escape" in v.message, v.message
+  for value in (r"/abs/\$NOTAVAR/x", r"/abs/\@nope/x"):
+    v = _validate("box.bindings.rw.home", value)
+    assert isinstance(v, Error), value
+    assert "Illegal escape" in v.message, v.message
 
 
 # --------------------------------------------------------------------------- #
@@ -215,63 +215,64 @@ def test_backslash_dollar_and_at_are_illegal_escapes() -> None:
 
 
 def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
-    # ``scan_tokens`` reads the resolver's OWN tokenizer, so the ref name stops at
-    # the closing brace and the ``.jsonl`` suffix is a literal. The old greedy
-    # ``@meta.box.name.jsonl`` is refused by the guard, naming that spelling.
-    from kanibako.settings.settings_configset import scan_tokens
+  # ``scan_tokens`` reads the resolver's OWN tokenizer, so the ref name stops at
+  # the closing brace and the ``.jsonl`` suffix is a literal. The old greedy
+  # ``@meta.box.name.jsonl`` is refused by the guard, naming that spelling.
+  from kanibako.settings.settings_configset import scan_tokens
 
-    assert scan_tokens("{meta.box.name}.jsonl") == (["meta.box.name"], [])
-    assert scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
-    with pytest.raises(ValueError, match=r"write '\{meta\.box\.name\}\.jsonl'"):
-        scan_tokens("@meta.box.name.jsonl")
+  assert scan_tokens("{meta.box.name}.jsonl") == (["meta.box.name"], [])
+  assert scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
+  with pytest.raises(ValueError, match=r"write '\{meta\.box\.name\}\.jsonl'"):
+    scan_tokens("@meta.box.name.jsonl")
 
 
 def test_braced_ref_that_resolves_is_ok() -> None:
-    # ``meta.box.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
-    v = _validate(
-        "box.bindings.ro.helper_log", "{workset.boxes}/{meta.box.name}.jsonl",
-    )
-    assert v is OK
+  # ``meta.box.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
+  v = _validate(
+    "box.bindings.ro.helper_log",
+    "{workset.boxes}/{meta.box.name}.jsonl",
+  )
+  assert v is OK
 
 
 def test_dangling_braced_ref_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "{nope.missing}/x")
-    assert isinstance(v, Error)
-    assert "nope.missing" in v.message
-    # ...and an ``@`` before it is text, not part of the reference.
-    at = _validate("box.bindings.rw.home", "@{nope.missing}/x")
-    assert isinstance(at, Error) and "nope.missing" in at.message
+  v = _validate("box.bindings.rw.home", "{nope.missing}/x")
+  assert isinstance(v, Error)
+  assert "nope.missing" in v.message
+  # ...and an ``@`` before it is text, not part of the reference.
+  at = _validate("box.bindings.rw.home", "@{nope.missing}/x")
+  assert isinstance(at, Error) and "nope.missing" in at.message
 
 
 def test_malformed_braced_ref_is_hard_error() -> None:
-    for value in ("@{a b}/x", "@{unclosed/x", "@{}/x"):
-        v = _validate("box.bindings.rw.home", value)
-        assert isinstance(v, Error), value
-        assert "malformed" in v.message.lower(), value
+  for value in ("@{a b}/x", "@{unclosed/x", "@{}/x"):
+    v = _validate("box.bindings.rw.home", value)
+    assert isinstance(v, Error), value
+    assert "malformed" in v.message.lower(), value
 
 
 def test_every_refusal_reports_in_the_resolvers_message_style() -> None:
-    """One grammar means one ERROR STYLE too: ``scan_tokens`` re-raises the
-    resolver's own text, for every refusal the tokenizer makes."""
-    from kanibako.settings.settings_configset import scan_tokens
+  """One grammar means one ERROR STYLE too: ``scan_tokens`` re-raises the
+  resolver's own text, for every refusal the tokenizer makes."""
+  from kanibako.settings.settings_configset import scan_tokens
 
-    for value, expected in (
-        ("{", "Unpaired '{' at:"),
-        ("{a b}", "Malformed reference '{a b}' at:"),
-        ("\\q", "Illegal escape '\\q' at:"),
-        ("@box.image", "Old reference spelling '@box.image' at:"),
-        ("$TERM", "Old reference spelling '$TERM' at:"),
-    ):
-        with pytest.raises(ValueError) as ei:
-            scan_tokens(value)
-        assert str(ei.value).startswith(expected), (value, str(ei.value))
+  for value, expected in (
+    ("{", "Unpaired '{' at:"),
+    ("{a b}", "Malformed reference '{a b}' at:"),
+    ("\\q", "Illegal escape '\\q' at:"),
+    ("@box.image", "Old reference spelling '@box.image' at:"),
+    ("$TERM", "Old reference spelling '$TERM' at:"),
+  ):
+    with pytest.raises(ValueError) as ei:
+      scan_tokens(value)
+    assert str(ei.value).startswith(expected), (value, str(ei.value))
 
 
 def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
-    # A literal ``@{`` is an ``@`` and a doubled brace — not a token, so no
-    # dangling-ref error (matches expand_expr's rule).
-    v = _validate("box.bindings.rw.home", "/abs/@{{nope}}/x")
-    assert v is OK
+  # A literal ``@{`` is an ``@`` and a doubled brace — not a token, so no
+  # dangling-ref error (matches expand_expr's rule).
+  v = _validate("box.bindings.rw.home", "/abs/@{{nope}}/x")
+  assert v is OK
 
 
 # --------------------------------------------------------------------------- #
@@ -326,118 +327,117 @@ def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
 
 
 def _resolves_with(extra: dict, *, key: str, value: str):
-    """E3 probe over ``_KEYSPACE`` PLUS *extra* pre-seeded keys (defects/deps), so a
-    case can place a pre-existing defect somewhere and edit a different key."""
-    import copy
+  """E3 probe over ``_KEYSPACE`` PLUS *extra* pre-seeded keys (defects/deps), so a
+  case can place a pre-existing defect somewhere and edit a different key."""
+  import copy
 
-    space = copy.deepcopy(_KEYSPACE)
-    space.update(copy.deepcopy(extra))
-    candidate = KeyStore(space)
-    node = candidate
-    parts = key.split(".")
-    for seg in parts[:-1]:
-        sub = dict.get(node, seg, None)
-        if not isinstance(sub, KeyStore):
-            sub = KeyStore()
-            node[seg] = sub
-        node = sub
-    node[parts[-1]] = value
-    _expanded, errors = expand(candidate, _CTX, collect_errors=True)
-    reason = dict.get(errors, key, __MISSING__)
-    return None if reason is __MISSING__ else reason
+  space = copy.deepcopy(_KEYSPACE)
+  space.update(copy.deepcopy(extra))
+  candidate = KeyStore(space)
+  node = candidate
+  parts = key.split(".")
+  for seg in parts[:-1]:
+    sub = dict.get(node, seg, None)
+    if not isinstance(sub, KeyStore):
+      sub = KeyStore()
+      node[seg] = sub
+    node = sub
+  node[parts[-1]] = value
+  _expanded, errors = expand(candidate, _CTX, collect_errors=True)
+  reason = dict.get(errors, key, __MISSING__)
+  return None if reason is __MISSING__ else reason
 
 
 def test_e3_a_unrelated_preexisting_defect_allows() -> None:
-    # (a) A defect on a DIFFERENT branch does not block an unrelated edit.
-    def probe(key, value):
-        return _resolves_with(
-            {"other": {"broken": "{gone.x}"}}, key=key, value=value
-        )
+  # (a) A defect on a DIFFERENT branch does not block an unrelated edit.
+  def probe(key, value):
+    return _resolves_with({"other": {"broken": "{gone.x}"}}, key=key, value=value)
 
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/ok", resolves=probe)
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/ok", resolves=probe)
+  assert v is OK
 
 
 def test_e3_b_downstream_child_defect_allows() -> None:
-    # (b) A DOWNSTREAM consumer of the edited value is broken; the EDITED value
-    # itself resolves → ALLOW. (`dependent` refs the edited key, but `dependent` is
-    # not what we edit; its breakage is downstream.)
-    def probe(key, value):
-        return _resolves_with(
-            {"dependent": "{box.bindings.rw.home}/{also.gone}"},
-            key=key, value=value,
-        )
+  # (b) A DOWNSTREAM consumer of the edited value is broken; the EDITED value
+  # itself resolves → ALLOW. (`dependent` refs the edited key, but `dependent` is
+  # not what we edit; its breakage is downstream.)
+  def probe(key, value):
+    return _resolves_with(
+      {"dependent": "{box.bindings.rw.home}/{also.gone}"},
+      key=key,
+      value=value,
+    )
 
-    v = _validate("box.bindings.rw.home", "/clean/literal", resolves=probe)
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "/clean/literal", resolves=probe)
+  assert v is OK
 
 
 def test_e3_c_edit_repoints_away_from_broken_dep_allows() -> None:
-    # (c) The OLD value referenced a broken dep; the edit re-points to a good one.
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/x")
-    assert v is OK
+  # (c) The OLD value referenced a broken dep; the edit re-points to a good one.
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/x")
+  assert v is OK
 
 
 def test_e3_d_edit_fixes_broken_key_itself_allows() -> None:
-    # (d) Editing the broken key to a good value resolves it (and dependents
-    # recover). Here we edit the key directly to a clean literal.
-    def probe(key, value):
-        return _resolves_with({}, key=key, value=value)
+  # (d) Editing the broken key to a good value resolves it (and dependents
+  # recover). Here we edit the key directly to a clean literal.
+  def probe(key, value):
+    return _resolves_with({}, key=key, value=value)
 
-    v = _validate("workset.vault_rw", "/now/good", resolves=probe)
-    assert v is OK
+  v = _validate("workset.vault_rw", "/now/good", resolves=probe)
+  assert v is OK
 
 
 def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
-    # (e) The edited value's UPSTREAM chain stays unresolvable → BLOCK, name the dep.
-    v = _validate("box.bindings.rw.home", "{gone.upstream}/x")
-    assert isinstance(v, Error)
-    assert "gone.upstream" in v.message
+  # (e) The edited value's UPSTREAM chain stays unresolvable → BLOCK, name the dep.
+  v = _validate("box.bindings.rw.home", "{gone.upstream}/x")
+  assert isinstance(v, Error)
+  assert "gone.upstream" in v.message
 
 
 def test_e3_e_embedded_dangling_in_edited_value_blocks() -> None:
-    # (e′, keyspec §2a "VALIDATION at set-time") an EMBEDDED dangling {key}-ref in the
-    # EDITED value's chain is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.embedded}/x")
-    assert isinstance(v, Error)
-    assert "bad.embedded" in v.message
+  # (e′, keyspec §2a "VALIDATION at set-time") an EMBEDDED dangling {key}-ref in the
+  # EDITED value's chain is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.embedded}/x")
+  assert isinstance(v, Error)
+  assert "bad.embedded" in v.message
 
 
 def test_e3_embedded_dangling_ELSEWHERE_allows() -> None:
-    # (E3 holds) an embedded dangler on an UNRELATED key does not block; the edited
-    # value resolves cleanly.
-    def probe(key, value):
-        return _resolves_with(
-            # ⚑ BRACED: ``-`` is a ref-name char, so the bare spelling would name
-            # ``gone.embedded-post``.  Inert either way (this is the UNRELATED
-            # key), but the braces keep the fixture reading as written.
-            {"other": {"x": "pre-{gone.embedded}-post"}}, key=key, value=value
-        )
+  # (E3 holds) an embedded dangler on an UNRELATED key does not block; the edited
+  # value resolves cleanly.
+  def probe(key, value):
+    return _resolves_with(
+      # ⚑ BRACED: ``-`` is a ref-name char, so the bare spelling would name
+      # ``gone.embedded-post``.  Inert either way (this is the UNRELATED
+      # key), but the braces keep the fixture reading as written.
+      {"other": {"x": "pre-{gone.embedded}-post"}},
+      key=key,
+      value=value,
+    )
 
-    v = _validate("box.bindings.rw.home", "/clean", resolves=probe)
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "/clean", resolves=probe)
+  assert v is OK
 
 
 def test_e3_f_edit_introduces_cycle_blocks() -> None:
-    # (f) The edit makes the edited value's chain a CYCLE → BLOCK.
-    def probe(key, value):
-        # editing `a` to {b}, with b={a} already present → a -> b -> a cycle.
-        return _resolves_with({"b": "{a}"}, key=key, value=value)
+  # (f) The edit makes the edited value's chain a CYCLE → BLOCK.
+  def probe(key, value):
+    # editing `a` to {b}, with b={a} already present → a -> b -> a cycle.
+    return _resolves_with({"b": "{a}"}, key=key, value=value)
 
-    v = _validate("a", "{b}", resolves=probe)
-    assert isinstance(v, Error)
-    assert "cyclic" in v.message.lower()
+  v = _validate("a", "{b}", resolves=probe)
+  assert isinstance(v, Error)
+  assert "cyclic" in v.message.lower()
 
 
 def test_e3_g_preexisting_cycle_elsewhere_allows() -> None:
-    # (g) A cycle on an UNRELATED branch does not block the edit.
-    def probe(key, value):
-        return _resolves_with(
-            {"loop_a": "{loop_b}", "loop_b": "{loop_a}"}, key=key, value=value
-        )
+  # (g) A cycle on an UNRELATED branch does not block the edit.
+  def probe(key, value):
+    return _resolves_with({"loop_a": "{loop_b}", "loop_b": "{loop_a}"}, key=key, value=value)
 
-    v = _validate("box.bindings.rw.home", "{workset.boxes}/x", resolves=probe)
-    assert v is OK
+  v = _validate("box.bindings.rw.home", "{workset.boxes}/x", resolves=probe)
+  assert v is OK
 
 
 # --------------------------------------------------------------------------- #

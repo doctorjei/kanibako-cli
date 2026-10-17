@@ -27,156 +27,154 @@ from typing import TYPE_CHECKING
 
 from kanibako.runtime.containerfiles import get_containerfile
 from kanibako.runtime.templates_image import (
-    list_bundled_templates,
-    rig_image_name,
-    template_image_name,
+  list_bundled_templates,
+  rig_image_name,
+  template_image_name,
 )
 
 if TYPE_CHECKING:
-    from kanibako.settings.config import KanibakoConfig
-    from kanibako.runtime.container import ContainerRuntime
-    from kanibako.settings.paths import StandardPaths
-    from kanibako.runtime.rig_registry import RigRecord
+  from kanibako.settings.config import KanibakoConfig
+  from kanibako.runtime.container import ContainerRuntime
+  from kanibako.settings.paths import StandardPaths
+  from kanibako.runtime.rig_registry import RigRecord
 
 
 @dataclass(frozen=True)
 class RigResolution:
-    """The classification of a rig name.
+  """The classification of a rig name.
 
-    *kind* is one of ``"prefab"``, ``"template"``, ``"extended"``.
-    *prep_action* is one of ``"pull"``, ``"build"``, ``"none"``, ``"missing"``.
-    *image* is the OCI reference a prepped rig is (or will be) stored under.
-    *containerfile* is set for buildable templates that need building.
-    *source_ref* carries the original/source reference for prefabs (reserved).
-    """
+  *kind* is one of ``"prefab"``, ``"template"``, ``"extended"``.
+  *prep_action* is one of ``"pull"``, ``"build"``, ``"none"``, ``"missing"``.
+  *image* is the OCI reference a prepped rig is (or will be) stored under.
+  *containerfile* is set for buildable templates that need building.
+  *source_ref* carries the original/source reference for prefabs (reserved).
+  """
 
-    name: str
-    kind: str
-    image: str
-    prep_action: str
-    containerfile: Path | None = None
-    source_ref: str | None = None
+  name: str
+  kind: str
+  image: str
+  prep_action: str
+  containerfile: Path | None = None
+  source_ref: str | None = None
 
 
 def resolve_rig(
-    name: str,
-    runtime: ContainerRuntime,
-    std: StandardPaths,
-    merged: KanibakoConfig,
-    *,
-    registry: dict[str, RigRecord] | None = None,
+  name: str,
+  runtime: ContainerRuntime,
+  std: StandardPaths,
+  merged: KanibakoConfig,
+  *,
+  registry: dict[str, RigRecord] | None = None,
 ) -> RigResolution:
-    """Classify rig *name* into a :class:`RigResolution`. Pure -- no side effects.
+  """Classify rig *name* into a :class:`RigResolution`. Pure -- no side effects.
 
-    Precedence:
+  Precedence:
 
-    1. **Already-prepped local image.** If a ``kanibako-template-<name>`` or
-       ``kanibako-rig-<name>`` image exists locally, it is already prepped
-       (``prep_action="none"``) with kind ``"template"`` / ``"extended"``.
-    2. **Discovered template.** If *name* matches a bundled or user-override
-       ``Containerfile.template-<name>``, it is a buildable template
-       (``prep_action="build"``).
-    3. **Resolvable reference / prefab.** Otherwise defer to
-       :func:`resolve_image_reference`; the rig is a ``"prefab"`` made ready by
-       ``"pull"`` (or ``"none"`` if the resolved image already exists locally).
+  1. **Already-prepped local image.** If a ``kanibako-template-<name>`` or
+     ``kanibako-rig-<name>`` image exists locally, it is already prepped
+     (``prep_action="none"``) with kind ``"template"`` / ``"extended"``.
+  2. **Discovered template.** If *name* matches a bundled or user-override
+     ``Containerfile.template-<name>``, it is a buildable template
+     (``prep_action="build"``).
+  3. **Resolvable reference / prefab.** Otherwise defer to
+     :func:`resolve_image_reference`; the rig is a ``"prefab"`` made ready by
+     ``"pull"`` (or ``"none"`` if the resolved image already exists locally).
 
-    Between steps 1 and 2, if *registry* is provided and contains *name*, the
-    matching record decides the result: an ``"extended"`` record resolves to its
-    recorded image (``"none"`` if present locally, else ``"missing"``); any other
-    (prefab) record resolves to its image / source reference made ready by
-    ``"pull"`` (or ``"none"`` if already local). Passing ``None`` skips this step.
-    """
-    # --- (a) Already-prepped local image -------------------------------
-    # rig_image_name / template_image_name raise on names that aren't valid
-    # short template names (e.g. anything with '/' or ':'); those can't be a
-    # locally-prepped template/extended image, so just skip this step for them.
-    try:
-        extended_image = rig_image_name(name)
-        template_image = template_image_name(name)
-    except ValueError:
-        extended_image = None
-        template_image = None
+  Between steps 1 and 2, if *registry* is provided and contains *name*, the
+  matching record decides the result: an ``"extended"`` record resolves to its
+  recorded image (``"none"`` if present locally, else ``"missing"``); any other
+  (prefab) record resolves to its image / source reference made ready by
+  ``"pull"`` (or ``"none"`` if already local). Passing ``None`` skips this step.
+  """
+  # --- (a) Already-prepped local image -------------------------------
+  # rig_image_name / template_image_name raise on names that aren't valid
+  # short template names (e.g. anything with '/' or ':'); those can't be a
+  # locally-prepped template/extended image, so just skip this step for them.
+  try:
+    extended_image = rig_image_name(name)
+    template_image = template_image_name(name)
+  except ValueError:
+    extended_image = None
+    template_image = None
 
-    if template_image is not None and runtime.image_exists(template_image):
-        return RigResolution(
-            name=name,
-            kind="template",
-            image=template_image,
-            prep_action="none",
-        )
-    if extended_image is not None and runtime.image_exists(extended_image):
-        return RigResolution(
-            name=name,
-            kind="extended",
-            image=extended_image,
-            prep_action="none",
-        )
-
-    # --- (a2) Host registry (added rigs: prefabs / imported extended) --
-    if registry is not None and name in registry:
-        record = registry[name]
-        if record.kind == "extended":
-            # Extended rigs normally carry their recorded image and a valid
-            # short name (so extended_image is set). Guard the malformed case
-            # -- no recorded image AND a name that isn't a valid default-image
-            # name (extended_image is None) -- by falling back to the name
-            # itself, rather than re-calling rig_image_name(name) which would
-            # raise the same ValueError that already nulled extended_image.
-            img = record.image or extended_image or name
-            action = "none" if runtime.image_exists(img) else "missing"
-            return RigResolution(
-                name=name,
-                kind="extended",
-                image=img,
-                prep_action=action,
-                source_ref=record.source,
-            )
-        # prefab (or any other registry kind): pull-based.
-        if record.image:
-            img = record.image
-        else:
-            # Lazy import to avoid a circular import (see step (c)).
-            from kanibako.commands.image import resolve_image_reference
-
-            img = resolve_image_reference(
-                record.source or name, runtime, merged.box_image
-            )
-        action = "none" if runtime.image_exists(img) else "pull"
-        return RigResolution(
-            name=name,
-            kind=record.kind,
-            image=img,
-            prep_action=action,
-            source_ref=record.source,
-        )
-
-    # --- (b) Discovered template (buildable Containerfile) -------------
-    containers_dir = std.data_path / "containers"
-    discovered = {t.name for t in list_bundled_templates(override_dir=containers_dir)}
-    if name in discovered:
-        containerfile = get_containerfile(f"template-{name}", containers_dir)
-        return RigResolution(
-            name=name,
-            # template_image is non-None here: a discovered template name is a
-            # valid short name, so template_image_name didn't raise above.
-            kind="template",
-            image=template_image or template_image_name(name),
-            prep_action="build",
-            containerfile=containerfile,
-        )
-
-    # --- (c) Known base / resolvable reference (prefab) ---------------
-    # Imported lazily to avoid a circular import: commands.image imports
-    # resolve_rig (from Increment 2 onward), and this module would otherwise
-    # import commands.image at load time.
-    from kanibako.commands.image import resolve_image_reference
-
-    resolved = resolve_image_reference(name, runtime, merged.box_image)
-    prep_action = "none" if runtime.image_exists(resolved) else "pull"
+  if template_image is not None and runtime.image_exists(template_image):
     return RigResolution(
-        name=name,
-        kind="prefab",
-        image=resolved,
-        prep_action=prep_action,
-        source_ref=name,
+      name=name,
+      kind="template",
+      image=template_image,
+      prep_action="none",
     )
+  if extended_image is not None and runtime.image_exists(extended_image):
+    return RigResolution(
+      name=name,
+      kind="extended",
+      image=extended_image,
+      prep_action="none",
+    )
+
+  # --- (a2) Host registry (added rigs: prefabs / imported extended) --
+  if registry is not None and name in registry:
+    record = registry[name]
+    if record.kind == "extended":
+      # Extended rigs normally carry their recorded image and a valid
+      # short name (so extended_image is set). Guard the malformed case
+      # -- no recorded image AND a name that isn't a valid default-image
+      # name (extended_image is None) -- by falling back to the name
+      # itself, rather than re-calling rig_image_name(name) which would
+      # raise the same ValueError that already nulled extended_image.
+      img = record.image or extended_image or name
+      action = "none" if runtime.image_exists(img) else "missing"
+      return RigResolution(
+        name=name,
+        kind="extended",
+        image=img,
+        prep_action=action,
+        source_ref=record.source,
+      )
+    # prefab (or any other registry kind): pull-based.
+    if record.image:
+      img = record.image
+    else:
+      # Lazy import to avoid a circular import (see step (c)).
+      from kanibako.commands.image import resolve_image_reference
+
+      img = resolve_image_reference(record.source or name, runtime, merged.box_image)
+    action = "none" if runtime.image_exists(img) else "pull"
+    return RigResolution(
+      name=name,
+      kind=record.kind,
+      image=img,
+      prep_action=action,
+      source_ref=record.source,
+    )
+
+  # --- (b) Discovered template (buildable Containerfile) -------------
+  containers_dir = std.data_path / "containers"
+  discovered = {t.name for t in list_bundled_templates(override_dir=containers_dir)}
+  if name in discovered:
+    containerfile = get_containerfile(f"template-{name}", containers_dir)
+    return RigResolution(
+      name=name,
+      # template_image is non-None here: a discovered template name is a
+      # valid short name, so template_image_name didn't raise above.
+      kind="template",
+      image=template_image or template_image_name(name),
+      prep_action="build",
+      containerfile=containerfile,
+    )
+
+  # --- (c) Known base / resolvable reference (prefab) ---------------
+  # Imported lazily to avoid a circular import: commands.image imports
+  # resolve_rig (from Increment 2 onward), and this module would otherwise
+  # import commands.image at load time.
+  from kanibako.commands.image import resolve_image_reference
+
+  resolved = resolve_image_reference(name, runtime, merged.box_image)
+  prep_action = "none" if runtime.image_exists(resolved) else "pull"
+  return RigResolution(
+    name=name,
+    kind="prefab",
+    image=resolved,
+    prep_action=prep_action,
+    source_ref=name,
+  )

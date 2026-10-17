@@ -144,6 +144,7 @@ _ABSENT_ARM = "may_answer_absent"
 # pattern — ``tests/test_channels/test_channel_keys.py`` carries the same three.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def primary_proj(std, config, project_dir):
   return resolve_project(std, config, str(project_dir), initialize=True)
@@ -157,7 +158,11 @@ def named_proj(std, config, tmp_home):
   source.mkdir()
   add_project(workset, "cool_app", source)
   return resolve_workset_project(
-    WorksetSpec.from_workset(workset), "cool_app", std, config, initialize=True,
+    WorksetSpec.from_workset(workset),
+    "cool_app",
+    std,
+    config,
+    initialize=True,
   )
 
 
@@ -177,7 +182,11 @@ def _termini(std, config_file, proj, target):
   return [
     (label, snapshot)
     for label, snapshot, _ in existing_box_termini(
-      std, config_file, proj, target, node="claude",
+      std,
+      config_file,
+      proj,
+      target,
+      node="claude",
     )
   ]
 
@@ -209,7 +218,9 @@ def _probe(request, std, config_file, mode: str, target=None):
 
   proj = request.getfixturevalue(f"{mode}_proj")
   termini = _termini(
-    std, config_file, proj,
+    std,
+    config_file,
+    proj,
     resolve_target("claude") if target is None else target,
   )
   return termini, launch_resolve_ctx(std, proj, "claude")
@@ -219,12 +230,10 @@ def _probe(request, std, config_file, mode: str, target=None):
 # The corpus — derived off each row, never listed.
 # ---------------------------------------------------------------------------
 
+
 def _rows() -> "dict[str, dict]":
   """Every ``keys:`` row, parametric ones included (the demand graph reads those)."""
-  return {
-    str(key): row for key, row in manifest_doc()["keys"].items()
-    if isinstance(row, dict)
-  }
+  return {str(key): row for key, row in manifest_doc()["keys"].items() if isinstance(row, dict)}
 
 
 def _static_rows() -> "dict[str, dict]":
@@ -268,10 +277,7 @@ def _may_answer_absent(row: dict) -> bool:
 
 def _corpus(mode: str) -> "dict[str, dict]":
   """The rows P applies to in *mode*."""
-  return {
-    key: row for key, row in _static_rows().items()
-    if _default_arm(row, mode) is not None
-  }
+  return {key: row for key, row in _static_rows().items() if _default_arm(row, mode) is not None}
 
 
 def _answering_termini(key: str, row: dict, termini, ctx) -> "list[str]":
@@ -284,10 +290,7 @@ def _answering_termini(key: str, row: dict, termini, ctx) -> "list[str]":
   """
   if row.get("layer") == 1:
     return ["resolve_ctx.config"] if key in ctx.config else []
-  return [
-    label for label, snapshot in termini
-    if snapshot_leaf(snapshot, key) is not __MISSING__
-  ]
+  return [label for label, snapshot in termini if snapshot_leaf(snapshot, key) is not __MISSING__]
 
 
 def _answers(key: str, row: dict, termini, ctx) -> bool:
@@ -383,6 +386,7 @@ def _demand_edges() -> "list[tuple[str, str, str]]":
 # Families — derived two ways, no prefix guessing at scope level.
 # ---------------------------------------------------------------------------
 
+
 def _families() -> "dict[str, set[str]]":
   """``family label -> member keys``, built off the rows and closed over refs.
 
@@ -427,6 +431,7 @@ def _families() -> "dict[str, set[str]]":
 # 2a — corpus + probe, REPORT-ONLY.
 # ---------------------------------------------------------------------------
 
+
 class TestTheCorpusAndTheProbe:
   """The instrument, proved sound before anything is concluded from it."""
 
@@ -445,17 +450,15 @@ class TestTheCorpusAndTheProbe:
       if key in covered:
         continue
       if "<" in key:
-        continue                                   # (i) parametric spelling
+        continue  # (i) parametric spelling
       if "default" not in row:
-        continue                                   # (ii) declares no default at all
+        continue  # (ii) declares no default at all
       declared = row["default"]
       arms = declared.values() if isinstance(declared, dict) else [declared]
       if isinstance(declared, dict) and not declared:
-        continue                                   # (ii) `{}` — an empty category
-      if all(
-        arm is None or (isinstance(arm, str) and "<" in arm) for arm in arms
-      ):
-        continue                                   # (ii) null / prose placeholder
+        continue  # (ii) `{}` — an empty category
+      if all(arm is None or (isinstance(arm, str) and "<" in arm) for arm in arms):
+        continue  # (ii) null / prose placeholder
       unexplained.append(key)
     assert not unexplained, (
       "these rows fell out of the corpus without the row itself saying why:\n  "
@@ -467,8 +470,7 @@ class TestTheCorpusAndTheProbe:
     stray = {
       key: sorted(row["default"])
       for key, row in _static_rows().items()
-      if isinstance(row.get("default"), dict)
-      and set(row["default"]) - set(MODES)
+      if isinstance(row.get("default"), dict) and set(row["default"]) - set(MODES)
     }
     assert not stray, f"dict defaults keyed by something other than a mode: {stray}"
 
@@ -490,11 +492,10 @@ class TestTheCorpusAndTheProbe:
     """
     from kanibako.settings.settings_expand import _is_whole_value_var
 
-    carriers = {
-      key: row for key, row in _static_rows().items() if _may_answer_absent(row)
-    }
+    carriers = {key: row for key, row in _static_rows().items() if _may_answer_absent(row)}
     ill_formed = {
-      key: row.get("default") for key, row in carriers.items()
+      key: row.get("default")
+      for key, row in carriers.items()
       if not all(
         isinstance(arm, str) and _is_whole_value_var(arm) is not None
         for arm in _arms(row.get("default")).values()
@@ -511,7 +512,11 @@ class TestTheCorpusAndTheProbe:
 
   @pytest.mark.parametrize("mode", MODES)
   def test_every_mode_yields_a_snapshot_and_something_answers(
-    self, mode, request, std, config_file,
+    self,
+    mode,
+    request,
+    std,
+    config_file,
   ):
     """PER-TERMINUS anti-vacuity: every terminus is live, and the flat tier too.
 
@@ -536,32 +541,31 @@ class TestTheCorpusAndTheProbe:
     declared = _static_rows()
     corpus = _corpus(mode)
     inert = [
-      label for label, snapshot in termini
-      if not any(
-        snapshot_leaf(snapshot, key) is not __MISSING__ for key in declared
-      )
+      label
+      for label, snapshot in termini
+      if not any(snapshot_leaf(snapshot, key) is not __MISSING__ for key in declared)
     ]
     assert not inert, (
       f"{mode}: these termini reach NO declared key at all — the probe, not the "
       f"keyspace, is wrong (or they do not belong in the set): {inert}"
     )
-    assert any(
-      key in ctx.config for key, row in corpus.items() if row.get("layer") == 1
-    ), f"{mode}: the layer-1 flat foundation answers NOTHING"
+    assert any(key in ctx.config for key, row in corpus.items() if row.get("layer") == 1), (
+      f"{mode}: the layer-1 flat foundation answers NOTHING"
+    )
 
     answers, dangles, declared_absent = _partition(mode, termini, ctx)
     assert answers, f"{mode}: NOTHING answers — the probe, not the keyspace, is wrong"
     print(f"\n=== P/REACHABILITY · mode={mode} ===")
     print(f"  corpus  {len(answers) + len(dangles) + len(declared_absent)}")
     for label, snapshot in termini:
-      reach = sum(
-        1 for key in corpus if snapshot_leaf(snapshot, key) is not __MISSING__
-      )
+      reach = sum(1 for key in corpus if snapshot_leaf(snapshot, key) is not __MISSING__)
       print(f"  terminus {label}: {reach} corpus keys")
     print(f"  ANSWERS {len(answers)}: {', '.join(answers)}")
     print(f"  DANGLES {len(dangles)}: {', '.join(dangles) or '(none)'}")
-    print(f"  DECLARED MAY-ANSWER-ABSENT {len(declared_absent)}: "
-          f"{', '.join(declared_absent) or '(none)'}")
+    print(
+      f"  DECLARED MAY-ANSWER-ABSENT {len(declared_absent)}: "
+      f"{', '.join(declared_absent) or '(none)'}"
+    )
 
   @pytest.mark.parametrize("mode", MODES)
   def test_report_where_each_key_answers(self, mode, request, std, config_file):
@@ -588,7 +592,11 @@ class TestTheCorpusAndTheProbe:
     """
     termini, ctx = _probe(request, std, config_file, mode)
     bare_termini, bare_ctx = _probe(
-      request, std, config_file, mode, target=ShellTarget(),
+      request,
+      std,
+      config_file,
+      mode,
+      target=ShellTarget(),
     )
     with_agent = set(_partition(mode, termini, ctx)[0])
     without = set(_partition(mode, bare_termini, bare_ctx)[0])
@@ -601,6 +609,7 @@ class TestTheCorpusAndTheProbe:
 # 2a′ — P ITSELF, ASSERTED.  Everything above this line REPORTS P; nothing
 #       required it.  D and F below are narrower properties, not substitutes.
 # ---------------------------------------------------------------------------
+
 
 class TestEveryDeclaredDefaultAnswers:
   """P, asserted directly: no key in the corpus dangles, in any mode.
@@ -639,16 +648,14 @@ class TestEveryDeclaredDefaultAnswers:
     """Every corpus key ANSWERS, or its own row declares that it need not."""
     termini, ctx = _probe(request, std, config_file, mode)
     _answers, dangles, declared_absent = _partition(mode, termini, ctx)
-    print(f"\n=== declared MAY-ANSWER-ABSENT and did · mode={mode} "
-          f"({len(declared_absent)}) ===")
+    print(f"\n=== declared MAY-ANSWER-ABSENT and did · mode={mode} ({len(declared_absent)}) ===")
     for key in declared_absent or ["(none)"]:
       print(f"  {key}")
     assert not dangles, (
       f"mode={mode}: these keys declare a real default that NOTHING installs, so a "
       f"whole-value {{key}}-reference to each resolves absent for a box that already "
-      f"exists:\n" + "\n".join(
-        f"  {key} (default: {_corpus(mode)[key].get('default')!r})" for key in dangles
-      )
+      f"exists:\n"
+      + "\n".join(f"  {key} (default: {_corpus(mode)[key].get('default')!r})" for key in dangles)
     )
 
 
@@ -657,13 +664,16 @@ class TestEveryDeclaredDefaultAnswers:
 #      dangling key EARLIER, by naming who breaks when it dangles.
 # ---------------------------------------------------------------------------
 
+
 class TestNoDemandedKeyDangles:
   """A key ANOTHER declaration references must answer, or that one collapses."""
 
   def test_the_graph_is_non_empty(self):
     edges = _demand_edges()
-    print(f"\n=== demand graph: {len(edges)} edges, "
-          f"{len({key for _d, _m, key in edges})} distinct demanded keys ===")
+    print(
+      f"\n=== demand graph: {len(edges)} edges, "
+      f"{len({key for _d, _m, key in edges})} distinct demanded keys ==="
+    )
     assert len(edges) >= _DEMAND_EDGE_FLOOR, (
       f"demand graph collapsed to {len(edges)} edges (floor {_DEMAND_EDGE_FLOOR})"
     )
@@ -675,8 +685,7 @@ class TestNoDemandedKeyDangles:
       # the manifest's own formula for the broadcast leaf
       ("workset.channels.broadcast", "workset.channels.chat"),
       # the helper-socket bind entry, ``bind_default_entries``
-      ('bind_default_entries[box.bindings.rw][~/.kanibako/state/hub]',
-       "system.runtime"),
+      ("bind_default_entries[box.bindings.rw][~/.kanibako/state/hub]", "system.runtime"),
       # a ``meta.*`` row's ``value:``, which is where meta declarations live
       ("meta.box.workspace", "workset.workspaces"),
     }
@@ -707,11 +716,13 @@ class TestNoDemandedKeyDangles:
     """REPORT-ONLY: a demand P cannot judge, because the arm declares no default."""
     corpus = _corpus(mode)
     static = _static_rows()
-    outside = sorted({
-      f"{key} <- {demander}"
-      for demander, edge_mode, key in _demand_edges()
-      if edge_mode == mode and key not in corpus and key in static
-    })
+    outside = sorted(
+      {
+        f"{key} <- {demander}"
+        for demander, edge_mode, key in _demand_edges()
+        if edge_mode == mode and key not in corpus and key in static
+      }
+    )
     print(f"\n=== demands outside the corpus · mode={mode} ({len(outside)}) ===")
     for line in outside:
       print(f"  {line}")
@@ -720,6 +731,7 @@ class TestNoDemandedKeyDangles:
 # ---------------------------------------------------------------------------
 # 2c — family closure.
 # ---------------------------------------------------------------------------
+
 
 class TestNoFamilyIsPartiallyInstalled:
   """A family is installed WHOLE or it is reserved — never half."""
@@ -731,9 +743,7 @@ class TestNoFamilyIsPartiallyInstalled:
     assert "system.channels" in families
     assert "workset.channels" in families
     # ⚑ Depth 2 is the SCOPE: ``system.backup`` forms no family of its own.
-    assert not any(
-      label != "layer1" and len(label.split(".")) < 2 for label in families
-    )
+    assert not any(label != "layer1" and len(label.split(".")) < 2 for label in families)
     assert "system.backup" not in families
 
   def test_the_closure_does_not_cross_scopes(self):
@@ -757,8 +767,7 @@ class TestNoFamilyIsPartiallyInstalled:
       if not applicable:
         continue
       answering = [
-        member for member in applicable
-        if _answers(member, corpus[member], termini, ctx)
+        member for member in applicable if _answers(member, corpus[member], termini, ctx)
       ]
       if not answering:
         reserved.append(f"{label} ({len(applicable)} members)")
@@ -778,6 +787,7 @@ class TestNoFamilyIsPartiallyInstalled:
 # 2d — the residue report.  ASSERTS NOTHING.
 # ---------------------------------------------------------------------------
 
+
 class TestTheResidueReport:
   """The set only the user can rule on: undemanded, family-less, dangling."""
 
@@ -792,16 +802,13 @@ class TestTheResidueReport:
     """
     families = _families()
     in_a_family = {member for members in families.values() for member in members}
-    demanded = {
-      key for _demander, edge_mode, key in _demand_edges() if edge_mode == mode
-    }
+    demanded = {key for _demander, edge_mode, key in _demand_edges() if edge_mode == mode}
     termini, ctx = _probe(request, std, config_file, mode)
     corpus = _corpus(mode)
     residue = sorted(
-      key for key, row in corpus.items()
-      if key not in demanded
-      and key not in in_a_family
-      and not _answers(key, row, termini, ctx)
+      key
+      for key, row in corpus.items()
+      if key not in demanded and key not in in_a_family and not _answers(key, row, termini, ctx)
     )
     print(f"\n=== RESIDUE — undemanded, family-less, DANGLING · mode={mode} ===")
     for key in residue or ["(none)"]:

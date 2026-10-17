@@ -103,15 +103,15 @@ import enum
 import re
 from types import MappingProxyType
 from typing import (
-    Any,
-    Callable,
-    Collection,
-    Container,
-    Final,
-    Iterator,
-    Mapping,
-    NamedTuple,
-    Sequence,
+  Any,
+  Callable,
+  Collection,
+  Container,
+  Final,
+  Iterator,
+  Mapping,
+  NamedTuple,
+  Sequence,
 )
 
 # ⚑ MODULE SCOPE, and it closes no cycle: ``agent_ref`` is pure — stdlib ``re``
@@ -119,16 +119,17 @@ from typing import (
 # needs it because NORMALIZING a node to its harness is the KEYSPACE's rule, not a
 # supplier's: see :func:`agent_declared_leaves`.
 from kanibako.agent_ref import (
-    ENV_VAR_NAME,
-    PSEUDO_AGENT_NAMES,
-    agent_segment_case,
-    canonicalize_agent_ref,
-    display_agent_ref,
-    harness_of,
+  ENV_VAR_NAME,
+  PSEUDO_AGENT_NAMES,
+  agent_segment_case,
+  canonicalize_agent_ref,
+  display_agent_ref,
+  harness_of,
 )
 from kanibako.errors import ConfigError, PackagingError
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
+
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
 # imports stdlib only, with ``kb_store`` and ``keystore`` behind ``TYPE_CHECKING``.
 from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
@@ -150,9 +151,16 @@ KEYSPACE_VERSION: Final[str] = "1.8.0rc"
 
 #: The Layer-1 bootstrap CONFIG keys (spec §1). Human-edited in
 #: ``kanibako.cfg``; never CLI-settable (block B2) but unquestionably KEYS.
-DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({
-    "data", "settings", "agents", "primary_workset", "registry", "journal",
-})
+DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "data",
+    "settings",
+    "agents",
+    "primary_workset",
+    "registry",
+    "journal",
+  }
+)
 
 # ---------------------------------------------------------------------------
 # Layer 2 — the scope SCALAR leaves (spec §2b / §2c / §2e / §2g)
@@ -162,23 +170,41 @@ DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({
 #: (D-M2 superseded 2026-07-29) and, since P7, the ONLY spelling: the stored
 #: ``system.default_agent`` is RETIRED and REFUSED by name at assembly
 #: (``settings_assemble.RETIRED_FILE_KEYS``).
-DECLARED_SYSTEM_LEAVES: Final[frozenset[str]] = frozenset({
-    "channelroot", "template", "canon", "backup", "cache", "state", "runtime",
-    "agent", "setup_completed",
-})
+DECLARED_SYSTEM_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "channelroot",
+    "template",
+    "canon",
+    "backup",
+    "cache",
+    "state",
+    "runtime",
+    "agent",
+    "setup_completed",
+  }
+)
 
 #: ``system.channels.<leaf>`` (spec §2g).
-DECLARED_SYSTEM_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
-    "common", "chat", "broadcast", "mailboxes", "share",
-})
+DECLARED_SYSTEM_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "common",
+    "chat",
+    "broadcast",
+    "mailboxes",
+    "share",
+  }
+)
 
 #: ``system.helpers.<leaf>`` — the helper-hub SPAWN BUDGET (spec §2g).
 #: ⚑ DECLARED 2026-09-19.  Both leaves were LIVE and UNDECLARED: ``channels/helpers.py``
 #: read a ``spawn:`` table out of a bespoke ``<XDG_CONFIG_HOME>/kanibako/spawn.yaml``,
 #: which is the §0 violation ``system.templates_stamp`` was retired for.
-DECLARED_SYSTEM_HELPERS_LEAVES: Final[frozenset[str]] = frozenset({
-    "depth", "breadth",
-})
+DECLARED_SYSTEM_HELPERS_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "depth",
+    "breadth",
+  }
+)
 
 #: ``system.auth.<leaf>`` — the auth 3-tier gate (spec §2g/§2c; settable ONLY
 #: from the system floor per §0).
@@ -186,26 +212,51 @@ DECLARED_SYSTEM_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_allowed"}
 
 #: ``box.<leaf>`` (spec §2b). ⚑ ``box.agent_name`` is RETIRED (§2b
 #: ) and is deliberately ABSENT — its replacement is ``pref.system.agent``.
-DECLARED_BOX_LEAVES: Final[frozenset[str]] = frozenset({
-    "image", "share_images", "images_store", "canon", "shell", "enable_vault",
-})
+DECLARED_BOX_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "image",
+    "share_images",
+    "images_store",
+    "canon",
+    "shell",
+    "enable_vault",
+  }
+)
 
 #: ``box.auth.<leaf>`` (spec §2b).
-DECLARED_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
-    "global_enabled", "workset_enabled",
-})
+DECLARED_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "global_enabled",
+    "workset_enabled",
+  }
+)
 
 #: ``workset.<leaf>`` (spec §2c ALL WORKSETS, ALL PROJECTS,
 #: STANDALONE, §2e).
-DECLARED_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
-    "workspaces", "boxes", "logs", "registry", "template", "canon",
-    "kuid", "skip_kuid_check", "vault_ro", "vault_rw", "channelroot",
-})
+DECLARED_WORKSET_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "workspaces",
+    "boxes",
+    "logs",
+    "registry",
+    "template",
+    "canon",
+    "kuid",
+    "skip_kuid_check",
+    "vault_ro",
+    "vault_rw",
+    "channelroot",
+  }
+)
 
 #: ``workset.auth.<leaf>`` (spec §2c).
-DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
-    "share_allowed", "global_sync", "path",
-})
+DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "share_allowed",
+    "global_sync",
+    "path",
+  }
+)
 
 #: ``workset.channels.<leaf>`` (spec §2c). TWO sub-families make up the set:
 #: the workset-LOCAL type roots (``common``/``chat``/``broadcast``/``share`` —
@@ -221,9 +272,16 @@ DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
 #: ``meta.box.share_global`` derive through these keys in the spec's formulas.
 #: This set must EQUAL ``settings_launch._WORKSET_CHANNEL_LEAVES`` (the launch
 #: floor's allowlist) — a test pins the agreement.
-DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
-    "common", "chat", "broadcast", "share", "mailboxes", "share_global",
-})
+DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "common",
+    "chat",
+    "broadcast",
+    "share",
+    "mailboxes",
+    "share_global",
+  }
+)
 
 #: ``agent.<agent>.<leaf>`` — the generic per-agent contract (spec §2d).
 #: Every one of these ALSO exists as ``agent.default.<leaf>`` (the agent tier's
@@ -236,23 +294,25 @@ DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
 #: PLUGIN-declared"), which is why ``endpoint`` appearing here is a floor, not a
 #: ceiling. ⚑ The union is LAZY and this set is the half asked FIRST — see
 #: :class:`_EffectiveLeaves`, which is where the reason lives.
-DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
+DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset(
+  {
     # §2d — the agent's human-readable DESCRIPTION, and the ONE carrier of it since
     # D8b retired the agent file's non-key ``name`` field (2026-09-15).
     # ⚑ Not ``meta.agent.<agent>.name``, which is the STORE DIR (RO).
     "label",
-    "access",              # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
-    "allow_helpers",       # §2d
-    "continue_mode",       # §2d
-    "bootstrap",           # §2d
-    "model",               # §2d
-    "run_args",            # §2d
-    "transform",           # §2d (WHICH transform; claude declares `tweakcc`)
+    "access",  # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
+    "allow_helpers",  # §2d
+    "continue_mode",  # §2d
+    "bootstrap",  # §2d
+    "model",  # §2d
+    "run_args",  # §2d
+    "transform",  # §2d (WHICH transform; claude declares `tweakcc`)
     "transform_settings",  # §2d
-    "endpoint",            # §2d (claude-declared; part of the generic shape)
-    "template",            # §2d
-    "canon",               # §2d
-})
+    "endpoint",  # §2d (claude-declared; part of the generic shape)
+    "template",  # §2d
+    "canon",  # §2d
+  }
+)
 
 #: The declared agent leaves whose VALUE IS A TABLE — spec §2d calls
 #: ``transform_settings`` "agent-scope, sparse, dict-valued".  Its entries are DATA inside
@@ -289,9 +349,7 @@ PATH_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"template", "canon"
 #: at either surface.  ``agent.default.{template,canon,run_args,transform}`` were declared
 #: ``set: cli+file`` and refused for the whole 1.8.0 cycle precisely because those two
 #: surfaces each carried their own hand-kept copy of this set and both fell behind.
-SCALAR_AGENT_LEAVES: Final[frozenset[str]] = (
-    DECLARED_AGENT_LEAVES - TABLE_VALUED_AGENT_LEAVES
-)
+SCALAR_AGENT_LEAVES: Final[frozenset[str]] = DECLARED_AGENT_LEAVES - TABLE_VALUED_AGENT_LEAVES
 
 # ---------------------------------------------------------------------------
 # The ``access`` permission TIER — the one enum-valued agent leaf (spec §2d)
@@ -316,34 +374,35 @@ ACCESS_TIERS: Final[tuple[str, ...]] = ("restricted", "editing", "full")
 
 
 def access_default() -> str:
-    """The tier a launch uses when NO scope in the cascade sets ``access``.
+  """The tier a launch uses when NO scope in the cascade sets ``access``.
 
-    Spec §2d ``:1244`` (``agent.default.access | full``; R-41 CLOSED: option (a),
-    today's behavior preserved).  The value is DECLARED in ``core-defaults.yaml``
-    beside the other ``agent.default.*`` behavior floors (D1-2) and read from there.
+  Spec §2d ``:1244`` (``agent.default.access | full``; R-41 CLOSED: option (a),
+  today's behavior preserved).  The value is DECLARED in ``core-defaults.yaml``
+  beside the other ``agent.default.*`` behavior floors (D1-2) and read from there.
 
-    ⚑ A FUNCTION, not the retired ``ACCESS_DEFAULT`` constant, and the reason is
-    IMPORT DISCIPLINE: this module is imported at MODULE SCOPE by ``config_keys``,
-    ``agent_defaults``, ``settings_cli_level`` and ``settings_prefs``, so a
-    module-level read would put YAML file I/O on every one of those imports.
-    ⚑ FAIL-CLOSED on a declaration outside :data:`ACCESS_TIERS`. Nothing downstream
-    re-checks the DEFAULT — ``resolve_access_tier`` validates only a value the
-    cascade supplied — so a shipped typo here would silently become the tier every
-    unset box runs at, on a permission axis.
-    """
-    from kanibako.settings.core_defaults import (
-        CORE_DEFAULTS_FILENAME,
-        behavior_default,
+  ⚑ A FUNCTION, not the retired ``ACCESS_DEFAULT`` constant, and the reason is
+  IMPORT DISCIPLINE: this module is imported at MODULE SCOPE by ``config_keys``,
+  ``agent_defaults``, ``settings_cli_level`` and ``settings_prefs``, so a
+  module-level read would put YAML file I/O on every one of those imports.
+  ⚑ FAIL-CLOSED on a declaration outside :data:`ACCESS_TIERS`. Nothing downstream
+  re-checks the DEFAULT — ``resolve_access_tier`` validates only a value the
+  cascade supplied — so a shipped typo here would silently become the tier every
+  unset box runs at, on a permission axis.
+  """
+  from kanibako.settings.core_defaults import (
+    CORE_DEFAULTS_FILENAME,
+    behavior_default,
+  )
+
+  value = behavior_default("access")
+  if value not in ACCESS_TIERS:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.access' as {value!r}, "
+      f"which is not one of {' | '.join(ACCESS_TIERS)} (spec §2d). Refusing "
+      "rather than defaulting every unset box to an unrecognized tier."
     )
+  return value
 
-    value = behavior_default("access")
-    if value not in ACCESS_TIERS:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.access' as {value!r}, "
-            f"which is not one of {' | '.join(ACCESS_TIERS)} (spec §2d). Refusing "
-            "rather than defaulting every unset box to an unrecognized tier."
-        )
-    return value
 
 # ---------------------------------------------------------------------------
 # The §2a CATEGORIES — parametric over every scope
@@ -367,16 +426,21 @@ def access_default() -> str:
 #: key shape ask :data:`TERMINAL_CATEGORY_TAILS` (⚑ note several still filter the
 #: dotted members with ``if "." not in c``, which is a fact about the two-token
 #: ``bindings.<arm>`` spelling, not about name-keying).
-BIND_CATEGORIES: Final[frozenset[str]] = frozenset({
-    "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
-})
+BIND_CATEGORIES: Final[frozenset[str]] = frozenset(
+  {
+    "bindings.ro",
+    "bindings.rw",
+    "caches",
+    "seeded",
+    "common",
+    "synced",
+  }
+)
 
 #: The bind-shaped categories whose category token IS the whole key — terminal ONE
 #: SEGMENT SHALLOWER than a ``bindings`` arm, with a ``BindMap`` value.  DERIVED from
 #: :data:`BIND_CATEGORIES`; ``masks`` is dest-keyed too but holds the 3-state marker.
-BIND_LEAF_CATEGORIES: Final[frozenset[str]] = frozenset(
-    c for c in BIND_CATEGORIES if "." not in c
-)
+BIND_LEAF_CATEGORIES: Final[frozenset[str]] = frozenset(c for c in BIND_CATEGORIES if "." not in c)
 
 #: The DEST-KEYED **TERMINAL** category keys (spec §2a), as the segment tail that
 #: ENDS a key. A key may end here and nothing may follow: the value is a map whose
@@ -393,7 +457,8 @@ BIND_LEAF_CATEGORIES: Final[frozenset[str]] = frozenset(
 #: ⚑ ALL SEVEN since 2026-08-08c: ``masks`` plus every bind-shaped category.
 #: ``caches`` / ``seeded`` / ``common`` / ``synced`` are terminal ONE SEGMENT
 #: SHALLOWER than a ``bindings`` arm — the category token itself ends the key.
-TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({
+TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset(
+  {
     ("masks",),
     ("bindings", "ro"),
     ("bindings", "rw"),
@@ -401,7 +466,8 @@ TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({
     ("seeded",),
     ("common",),
     ("synced",),
-})
+  }
+)
 
 #: The per-VARIABLE families (spec §2a: ``env.<VAR>``, ``secret_path.<VAR>``) — scalar
 #: valued, keyed by a VAR name one segment below the family root.  ⚑ DERIVED, never
@@ -409,70 +475,71 @@ TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({
 #: family root (``settings_categories.CATEGORY_FAMILY_ROOTS``) that heads no
 #: :data:`TERMINAL_CATEGORY_TAILS` entry.
 VAR_KEYED_CATEGORIES: Final[frozenset[str]] = CATEGORY_FAMILY_ROOTS - frozenset(
-    tail[0] for tail in TERMINAL_CATEGORY_TAILS
+  tail[0] for tail in TERMINAL_CATEGORY_TAILS
 )
 
 
 def is_terminal_category_tail(tail: Sequence[str]) -> bool:
-    """Does *tail* END at a DEST-KEYED TERMINAL category key? (spec §2a)
+  """Does *tail* END at a DEST-KEYED TERMINAL category key? (spec §2a)
 
-    *tail* is a key's segments (a full key or any suffix of one). True for
-    ``(…, "masks")``, ``(…, "bindings", "ro"|"rw")`` and each of
-    ``(…, "caches"|"seeded"|"common"|"synced")`` — the keys whose VALUE is a
-    destination-keyed map. See :data:`TERMINAL_CATEGORY_TAILS`.
-    """
-    segments = tuple(tail)
-    for cat in TERMINAL_CATEGORY_TAILS:
-        if len(segments) >= len(cat) and segments[-len(cat):] == cat:
-            return True
-    return False
+  *tail* is a key's segments (a full key or any suffix of one). True for
+  ``(…, "masks")``, ``(…, "bindings", "ro"|"rw")`` and each of
+  ``(…, "caches"|"seeded"|"common"|"synced")`` — the keys whose VALUE is a
+  destination-keyed map. See :data:`TERMINAL_CATEGORY_TAILS`.
+  """
+  segments = tuple(tail)
+  for cat in TERMINAL_CATEGORY_TAILS:
+    if len(segments) >= len(cat) and segments[-len(cat) :] == cat:
+      return True
+  return False
 
 
 def is_terminal_category_key(key: str) -> bool:
-    """Is *key* — a WHOLE canonical key — a DEST-KEYED TERMINAL category key? (spec §2a)
+  """Is *key* — a WHOLE canonical key — a DEST-KEYED TERMINAL category key? (spec §2a)
 
-    ⚑⚑ NOT :func:`is_terminal_category_tail` HANDED A KEY. That one is a SUFFIX
-    test, so it answers True for ``system.channels.common`` — an ordinary path
-    SCALAR that merely ENDS in a category token — while its sibling
-    ``system.channels.chat`` answers False, routing two members of one family
-    differently. This one requires the tail to begin exactly where the SCOPE ends,
-    which is the position spec §2a puts a category in: *"the discriminator is the
-    ``channels.`` segment, which the channel form always carries and the category
-    form never does, so no KEY is ambiguous."* The two take different TYPES —
-    segments for the tail, a dotted string for the key — so which question a call
-    site asks is visible at the call.
+  ⚑⚑ NOT :func:`is_terminal_category_tail` HANDED A KEY. That one is a SUFFIX
+  test, so it answers True for ``system.channels.common`` — an ordinary path
+  SCALAR that merely ENDS in a category token — while its sibling
+  ``system.channels.chat`` answers False, routing two members of one family
+  differently. This one requires the tail to begin exactly where the SCOPE ends,
+  which is the position spec §2a puts a category in: *"the discriminator is the
+  ``channels.`` segment, which the channel form always carries and the category
+  form never does, so no KEY is ambiguous."* The two take different TYPES —
+  segments for the tail, a dotted string for the key — so which question a call
+  site asks is visible at the call.
 
-    ⚑ BOTH AXES ARE DERIVED, NEVER ENUMERATED HERE: which tails from
-    :data:`TERMINAL_CATEGORY_TAILS`; where a scope may END from
-    :data:`~kanibako.settings.kb_store.SCOPE_CONTAINMENT`. A scope is ONE
-    segment except the DISCRIMINATED agent tier ``agent.<node>`` (spec §0/§2d),
-    which is two — and two is the CEILING, because ``.`` is the key-path separator
-    and ``agent_ref.parse_agent_ref`` REFUSES a dotted node. ``pref.*`` is False by
-    construction: ``pref`` is not a scope.
-    """
-    parts = key.split(".")
-    for cat in TERMINAL_CATEGORY_TAILS:
-        if len(parts) <= len(cat) or tuple(parts[-len(cat):]) != cat:
-            continue
-        scope = parts[: -len(cat)]
-        if scope[0] not in SCOPE_CONTAINMENT:
-            return False
-        # The tail must begin exactly where the SCOPE ends.
-        return len(scope) == (2 if scope[0] == "agent" else 1)
-    return False
+  ⚑ BOTH AXES ARE DERIVED, NEVER ENUMERATED HERE: which tails from
+  :data:`TERMINAL_CATEGORY_TAILS`; where a scope may END from
+  :data:`~kanibako.settings.kb_store.SCOPE_CONTAINMENT`. A scope is ONE
+  segment except the DISCRIMINATED agent tier ``agent.<node>`` (spec §0/§2d),
+  which is two — and two is the CEILING, because ``.`` is the key-path separator
+  and ``agent_ref.parse_agent_ref`` REFUSES a dotted node. ``pref.*`` is False by
+  construction: ``pref`` is not a scope.
+  """
+  parts = key.split(".")
+  for cat in TERMINAL_CATEGORY_TAILS:
+    if len(parts) <= len(cat) or tuple(parts[-len(cat) :]) != cat:
+      continue
+    scope = parts[: -len(cat)]
+    if scope[0] not in SCOPE_CONTAINMENT:
+      return False
+    # The tail must begin exactly where the SCOPE ends.
+    return len(scope) == (2 if scope[0] == "agent" else 1)
+  return False
 
 
 def entry_label(declaration: str, entry: str) -> str:
-    """How a message names the *entry* of the category key *declaration*.
+  """How a message names the *entry* of the category key *declaration*.
 
-    A DEST-KEYED category's entry is a dict INDEX, not a key segment (spec §2c), so it
-    is ``box.bindings.ro[~/w]``; a VAR-keyed family's is a segment, ``box.env.FOO``.  A
-    ``pref.<category>`` request carries the same map (§2h), so it is indexed too.
-    """
-    head, _, target = declaration.partition(".")
-    if is_terminal_category_key(target if head == "pref" else declaration):
-        return f"{declaration}[{entry}]"
-    return f"{declaration}.{entry}"
+  A DEST-KEYED category's entry is a dict INDEX, not a key segment (spec §2c), so it
+  is ``box.bindings.ro[~/w]``; a VAR-keyed family's is a segment, ``box.env.FOO``.  A
+  ``pref.<category>`` request carries the same map (§2h), so it is indexed too.
+  """
+  head, _, target = declaration.partition(".")
+  if is_terminal_category_key(target if head == "pref" else declaration):
+    return f"{declaration}[{entry}]"
+  return f"{declaration}.{entry}"
+
 
 # (There is deliberately no CATEGORY_SCOPES constant. The scope dispatch in
 # :func:`key_validity` is an explicit if-chain on the head token, and the
@@ -494,24 +561,40 @@ def entry_label(declaration: str, entry: str) -> str:
 # sites that will read them are their own seam. Declared-but-unproduced is a
 # state the manifest already describes, as it does for
 # `meta.box.{container,helper_num}` below.
-DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
-    "ws_root", "ws_name", "project_type",
-})
+DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "ws_root",
+    "ws_name",
+    "project_type",
+  }
+)
 DECLARED_META_RUNTIME_USER_LEAVES: Final[frozenset[str]] = frozenset({"config"})
-DECLARED_META_RUNTIME_ADMIN_LEAVES: Final[frozenset[str]] = frozenset({
-    "config", "settings",
-})
+DECLARED_META_RUNTIME_ADMIN_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "config",
+    "settings",
+  }
+)
 # The COLLAPSE outputs (spec §1A): folded AFTER every scope resolves, not at the L0.2
 # treewalk above — which is why they are their OWN group. ⚑ ALL FOUR ARE PRODUCED,
 # on the launch path (`commands/start.py._install_assembly_collapse`); the copy output
 # split into `seeded` + `synced` on 2026-08-10, retiring the reserved `backup`, and
 # `env` — the VAR slots after write-once arbitration — joined on 2026-08-14.
-DECLARED_META_ASSEMBLY_LEAVES: Final[frozenset[str]] = frozenset({
-    "bindings", "seeded", "synced", "env",
-})
-DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
-    "path", "name", "settings",
-})
+DECLARED_META_ASSEMBLY_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "bindings",
+    "seeded",
+    "synced",
+    "env",
+  }
+)
+DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "path",
+    "name",
+    "settings",
+  }
+)
 # ⚑ `home` IS produced — `settings_launch.workset_anchor_floor`, beside the
 # `{meta.box.path}` it derives from — and it is the ONLY spelling of that
 # derivation: home does NOT route through `bindings.rw` (spec `:1015`), so the
@@ -521,78 +604,100 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
 # `utils.render_container_name`, from proj, not the store; `helper_num` travels
 # in helper messages and the helper's spawn document. Declared-but-unproduced is the state the manifest already
 # describes (JC-B2-3), not an omission.
-DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
-    "path", "name", "mode", "workspace", "settings",
-    "inbox", "share_global", "share_workset",
-    "home", "container", "helper_num",
-})
-DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
-    "workset_path", "global_active", "workset_active",
-})
+DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "path",
+    "name",
+    "mode",
+    "workspace",
+    "settings",
+    "inbox",
+    "share_global",
+    "share_workset",
+    "home",
+    "container",
+    "helper_num",
+  }
+)
+DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "workset_path",
+    "global_active",
+    "workset_active",
+  }
+)
 #: ``meta.workset.auth.<leaf>`` — the computed workset sharing state (Q61): whether
 #: the workset tier is actively syncing with the global store. The ``auth`` leaves
 #: live one level down like their ``meta.box.auth`` siblings, so they get their own
 #: arm in :func:`_meta_reason` rather than joining :data:`DECLARED_META_WORKSET_LEAVES`.
 DECLARED_META_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"global_active"})
-DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
-    "name", "path", "settings", "mode", "exec",
-})
+DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset(
+  {
+    "name",
+    "path",
+    "settings",
+    "mode",
+    "exec",
+  }
+)
 DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_support"})
 
 
 class PseudoAgentFence(NamedTuple):
-    """One pseudo-agent's §2d block: every leaf it declares, and so every leaf it has.
+  """One pseudo-agent's §2d block: every leaf it declares, and so every leaf it has.
 
-    ⚑⚑ THE TRUE-AGENT ROWS DO NOT REACH A PSEUDO-AGENT. §2d's generic
-    ``agent.<agent>.<key> | agent.default.<key>`` and every ``meta.agent.<agent>.*`` row sit
-    under *"True agent(s)"*, and a pseudo-agent is not one, so its own block is COMPLETE: a
-    leaf it does not list is not a key at that node (§0). The sets above are the TRUE-agent
-    vocabulary; this is what a pseudo-agent node is judged against instead.
-    ⚑ The §2a categories are not listed here: they are declared at every agent scope by
-    §2a, not by a §2d block.
-    """
+  ⚑⚑ THE TRUE-AGENT ROWS DO NOT REACH A PSEUDO-AGENT. §2d's generic
+  ``agent.<agent>.<key> | agent.default.<key>`` and every ``meta.agent.<agent>.*`` row sit
+  under *"True agent(s)"*, and a pseudo-agent is not one, so its own block is COMPLETE: a
+  leaf it does not list is not a key at that node (§0). The sets above are the TRUE-agent
+  vocabulary; this is what a pseudo-agent node is judged against instead.
+  ⚑ The §2a categories are not listed here: they are declared at every agent scope by
+  §2a, not by a §2d block.
+  """
 
-    #: ``agent.<name>.<leaf>``.
-    leaves: frozenset[str]
-    #: ``meta.agent.<name>.<leaf>``.
-    meta_leaves: frozenset[str]
-    #: ``meta.agent.<name>.auth.<leaf>`` — empty means ``auth`` is no namespace here.
-    meta_auth_leaves: frozenset[str]
+  #: ``agent.<name>.<leaf>``.
+  leaves: frozenset[str]
+  #: ``meta.agent.<name>.<leaf>``.
+  meta_leaves: frozenset[str]
+  #: ``meta.agent.<name>.auth.<leaf>`` — empty means ``auth`` is no namespace here.
+  meta_auth_leaves: frozenset[str]
 
 
 #: Every pseudo-agent's fence, keyed by the name ``agent_ref`` reserves for it.
 #: ⚑ THE NAMES ARE ``agent_ref.PSEUDO_AGENT_NAMES``' (see :func:`is_valid_agent_segment`);
 #: ``tests/test_settings/test_settings_keyspace.py`` holds the two key sets equal.
-PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({
+PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType(
+  {
     # §2d **default** — the all-agents tier. Its agent leaves ARE the true-agent universal
     # set, which §2d's generic row derives from this block.
     "default": PseudoAgentFence(
-        leaves=DECLARED_AGENT_LEAVES,
-        # ⚑ NO META TIER: §2d declares no ``meta.agent.default.*`` — a core value that
-        # needs a store root roots at the ACTIVE node (``meta.self.path``).
-        meta_leaves=frozenset(),
-        meta_auth_leaves=frozenset(),
+      leaves=DECLARED_AGENT_LEAVES,
+      # ⚑ NO META TIER: §2d declares no ``meta.agent.default.*`` — a core value that
+      # needs a store root roots at the ACTIVE node (``meta.self.path``).
+      meta_leaves=frozenset(),
+      meta_auth_leaves=frozenset(),
     ),
     # §2d **shell** — the plain shell. Its leaves ARE ``default``'s (the same object, so a
     # new universal leaf can never be refused here): a key its fence states no row for
     # still exists and inherits ``agent.default``.
     "shell": PseudoAgentFence(
-        leaves=DECLARED_AGENT_LEAVES,
-        meta_leaves=frozenset({"name", "path", "settings", "mode", "exec"}),
-        # ``meta.agent.shell.auth.share_support | false`` — the target of §2c's
-        # ``meta.box.agent.auth.share_support`` mirror for a plain-shell box.
-        meta_auth_leaves=frozenset({"share_support"}),
+      leaves=DECLARED_AGENT_LEAVES,
+      meta_leaves=frozenset({"name", "path", "settings", "mode", "exec"}),
+      # ``meta.agent.shell.auth.share_support | false`` — the target of §2c's
+      # ``meta.box.agent.auth.share_support`` mirror for a plain-shell box.
+      meta_auth_leaves=frozenset({"share_support"}),
     ),
-})
+  }
+)
 
 
 def pseudo_agent_fence(name: str) -> PseudoAgentFence | None:
-    """The §2d fence of pseudo-agent *name*, or ``None`` for any other node.
+  """The §2d fence of pseudo-agent *name*, or ``None`` for any other node.
 
-    *name* is a NODE, so it is matched exactly, as :func:`is_valid_agent_segment` matches it
-    (Q87: zero tolerance in code — a user's ``Shell`` is folded where it enters, never here).
-    """
-    return PSEUDO_AGENT_FENCES.get(name)
+  *name* is a NODE, so it is matched exactly, as :func:`is_valid_agent_segment` matches it
+  (Q87: zero tolerance in code — a user's ``Shell`` is folded where it enters, never here).
+  """
+  return PSEUDO_AGENT_FENCES.get(name)
 
 
 # ---------------------------------------------------------------------------
@@ -672,64 +777,63 @@ PREF_ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 
 
 def glob_match(pattern: str, key: str) -> bool:
-    """Match *key* against a §0 glob *pattern*.
+  """Match *key* against a §0 glob *pattern*.
 
-    Convention (spec §0): ``*`` matches exactly ONE segment; ``**`` matches the
-    remaining tail at ANY depth. ``**`` is ONE-or-more *by construction*, not by
-    rule — the separator is part of the pattern, so a zero-length tail on
-    ``agent.*.**`` would yield the malformed ``agent.foo.`` (trailing dot).
-    """
-    pat = pattern.split(".")
-    seg = key.split(".")
-    # ⚑ A key with an EMPTY segment is not a key (§0), and this is where the
-    # "one-or-more BY CONSTRUCTION" argument bites: without this guard
-    # ``agent.*.**`` would MATCH the malformed ``agent.claude.``.
-    if any(s == "" for s in seg):
-        return False
-    for i, token in enumerate(pat):
-        if token == "**":
-            # The tail: one-or-more remaining segments.
-            return len(seg) > i
-        if i >= len(seg):
-            return False
-        if token != "*" and token != seg[i]:
-            return False
-    return len(seg) == len(pat)
+  Convention (spec §0): ``*`` matches exactly ONE segment; ``**`` matches the
+  remaining tail at ANY depth. ``**`` is ONE-or-more *by construction*, not by
+  rule — the separator is part of the pattern, so a zero-length tail on
+  ``agent.*.**`` would yield the malformed ``agent.foo.`` (trailing dot).
+  """
+  pat = pattern.split(".")
+  seg = key.split(".")
+  # ⚑ A key with an EMPTY segment is not a key (§0), and this is where the
+  # "one-or-more BY CONSTRUCTION" argument bites: without this guard
+  # ``agent.*.**`` would MATCH the malformed ``agent.claude.``.
+  if any(s == "" for s in seg):
+    return False
+  for i, token in enumerate(pat):
+    if token == "**":
+      # The tail: one-or-more remaining segments.
+      return len(seg) > i
+    if i >= len(seg):
+      return False
+    if token != "*" and token != seg[i]:
+      return False
+  return len(seg) == len(pat)
 
 
 def pref_allowlist_entry(
-    target: str, *, allowlist: Sequence[str] = PREF_ALLOWLIST,
+  target: str,
+  *,
+  allowlist: Sequence[str] = PREF_ALLOWLIST,
 ) -> str | None:
-    """The allowlist ENTRY *target* is a member of, or ``None`` (spec §2h).
+  """The allowlist ENTRY *target* is a member of, or ``None`` (spec §2h).
 
-    ONE question with two consumers: :func:`key_class` asks it to bound the
-    ``pref.*`` family, and ``settings_prefs.allowlist_reason`` (filter 2) asks it
-    to learn WHICH entry matched, because the ``agent.*.**`` entry carries its own
-    agent-name validation.
-    """
-    for pattern in allowlist:
-        if glob_match(pattern, target):
-            return pattern
-    return None
+  ONE question with two consumers: :func:`key_class` asks it to bound the
+  ``pref.*`` family, and ``settings_prefs.allowlist_reason`` (filter 2) asks it
+  to learn WHICH entry matched, because the ``agent.*.**`` entry carries its own
+  agent-name validation.
+  """
+  for pattern in allowlist:
+    if glob_match(pattern, target):
+      return pattern
+  return None
 
 
 def _is_pref_interior(segments: Sequence[str]) -> bool:
-    """Whether *segments* could lie ABOVE an allowlisted target (``system``, ``agent.<a>``).
+  """Whether *segments* could lie ABOVE an allowlisted target (``system``, ``agent.<a>``).
 
-    A proper prefix of an entry, read token by token: ``*`` takes any one segment,
-    and the ``**`` tail is where membership starts, so nothing at or past it is an
-    interior. Such a path is a NAMESPACE of the pref family when its target is one.
-    """
-    for pattern in PREF_ALLOWLIST:
-        tokens = pattern.split(".")
-        if len(segments) >= len(tokens):
-            continue
-        if all(
-            tok != "**" and (tok == "*" or tok == seg)
-            for tok, seg in zip(tokens, segments)
-        ):
-            return True
-    return False
+  A proper prefix of an entry, read token by token: ``*`` takes any one segment,
+  and the ``**`` tail is where membership starts, so nothing at or past it is an
+  interior. Such a path is a NAMESPACE of the pref family when its target is one.
+  """
+  for pattern in PREF_ALLOWLIST:
+    tokens = pattern.split(".")
+    if len(segments) >= len(tokens):
+      continue
+    if all(tok != "**" and (tok == "*" or tok == seg) for tok, seg in zip(tokens, segments)):
+      return True
+  return False
 
 
 # ---------------------------------------------------------------------------
@@ -738,41 +842,41 @@ def _is_pref_interior(segments: Sequence[str]) -> bool:
 
 
 class KeyClass(enum.Enum):
-    """What a dotted path IS to the closed keyspace. THREE answers, not two.
+  """What a dotted path IS to the closed keyspace. THREE answers, not two.
 
-    ⚑⚑ THE THIRD ONE IS THE POINT. A path can fail to be a key for two opposite
-    reasons, and collapsing them is how a NAMESPACE gets reported as a fabrication:
+  ⚑⚑ THE THIRD ONE IS THE POINT. A path can fail to be a key for two opposite
+  reasons, and collapsing them is how a NAMESPACE gets reported as a fabrication:
 
-    ``KEY``         a declared key. Readable, resolvable; may be settable.
-    ``NAMESPACE``   a declared INTERIOR of the keyspace — a grouping declared keys
-                    hang under. ``meta`` (spec :42, *"a TOP-LEVEL, protected
-                    read-only namespace, grouped as meta.<scope>.*"*), a scope
-                    root, an agent tier, an ``auth``/``channels`` sub-table. NOT a
-                    key, and never settable — but a NODE here is legitimate store
-                    structure, not something the code invented.
-    ``UNDECLARED``  neither. Spec §0's error case: *"reading, setting, or resolving
-                    an undeclared key is an ERROR that NAMES the offending key"*.
+  ``KEY``         a declared key. Readable, resolvable; may be settable.
+  ``NAMESPACE``   a declared INTERIOR of the keyspace — a grouping declared keys
+                  hang under. ``meta`` (spec :42, *"a TOP-LEVEL, protected
+                  read-only namespace, grouped as meta.<scope>.*"*), a scope
+                  root, an agent tier, an ``auth``/``channels`` sub-table. NOT a
+                  key, and never settable — but a NODE here is legitimate store
+                  structure, not something the code invented.
+  ``UNDECLARED``  neither. Spec §0's error case: *"reading, setting, or resolving
+                  an undeclared key is an ERROR that NAMES the offending key"*.
 
-    ⚑ An ENUM rather than :class:`Verdict`'s string constants because nothing
-    subclasses this and nothing may add a fourth answer — a name-keyed
-    ``EXEMPT`` is exactly the carve-out the closed keyspace exists to refuse.
-    """
+  ⚑ An ENUM rather than :class:`Verdict`'s string constants because nothing
+  subclasses this and nothing may add a fourth answer — a name-keyed
+  ``EXEMPT`` is exactly the carve-out the closed keyspace exists to refuse.
+  """
 
-    KEY = "KEY"
-    NAMESPACE = "NAMESPACE"
-    UNDECLARED = "UNDECLARED"
+  KEY = "KEY"
+  NAMESPACE = "NAMESPACE"
+  UNDECLARED = "UNDECLARED"
 
 
 class KeyJudgment(NamedTuple):
-    """A :class:`KeyClass` and the REASON, which is empty only for ``KEY``.
+  """A :class:`KeyClass` and the REASON, which is empty only for ``KEY``.
 
-    Every non-key answer carries prose because every consumer must be able to tell
-    the user WHY (spec §2h: *"the error NAMES which key, at which level, and
-    WHY"*). ⚑ The reason is for the READER; nothing may branch on its text.
-    """
+  Every non-key answer carries prose because every consumer must be able to tell
+  the user WHY (spec §2h: *"the error NAMES which key, at which level, and
+  WHY"*). ⚑ The reason is for the READER; nothing may branch on its text.
+  """
 
-    cls: KeyClass
-    reason: str
+  cls: KeyClass
+  reason: str
 
 
 #: The one ``KEY`` judgment — there is nothing to say about a key that is a key.
@@ -780,507 +884,497 @@ _KEY: Final[KeyJudgment] = KeyJudgment(KeyClass.KEY, "")
 
 
 def _namespace(reason: str) -> KeyJudgment:
-    return KeyJudgment(KeyClass.NAMESPACE, reason)
+  return KeyJudgment(KeyClass.NAMESPACE, reason)
 
 
 def _undeclared(reason: str) -> KeyJudgment:
-    return KeyJudgment(KeyClass.UNDECLARED, reason)
+  return KeyJudgment(KeyClass.UNDECLARED, reason)
 
 
 def _leaf(leaf: str) -> KeyJudgment:
-    """A declared leaf, subject to the reserved-name floor."""
-    reason = leaf_name_reason(leaf)
-    return _KEY if reason is None else _undeclared(reason)
+  """A declared leaf, subject to the reserved-name floor."""
+  reason = leaf_name_reason(leaf)
+  return _KEY if reason is None else _undeclared(reason)
 
 
 def leaf_name_reason(leaf: str) -> str | None:
-    """Reject a RESERVED / dunder leaf name (spec §0).
+  """Reject a RESERVED / dunder leaf name (spec §0).
 
-    PUBLIC because the floor is due at TWO moments, not one: spec §0 says a
-    reserved name is "rejected loudly at write/``config set`` time", so the
-    ``<scope>.env.<VAR>`` set/reset route calls this directly
-    (``config_keys.scope_env_var_error``) rather than waiting for the
-    resolve-time :func:`key_validity` pass — a stored key that only fails at the
-    NEXT launch is exactly the deferred surprise §0 forbids.
-    """
-    if leaf in RESERVED_LEAF_NAMES:
-        return (
-            f"'{leaf}' is a RESERVED key name — it would shadow a real attribute on "
-            f"the resolved store — and may not name a key (spec §0 reserved key names)"
-        )
-    if _DUNDER_RE.match(leaf):
-        return (
-            f"'{leaf}' matches the dunder pattern and may not name a key "
-            f"(spec §0 reserved key names)"
-        )
-    return None
+  PUBLIC because the floor is due at TWO moments, not one: spec §0 says a
+  reserved name is "rejected loudly at write/``config set`` time", so the
+  ``<scope>.env.<VAR>`` set/reset route calls this directly
+  (``config_keys.scope_env_var_error``) rather than waiting for the
+  resolve-time :func:`key_validity` pass — a stored key that only fails at the
+  NEXT launch is exactly the deferred surprise §0 forbids.
+  """
+  if leaf in RESERVED_LEAF_NAMES:
+    return (
+      f"'{leaf}' is a RESERVED key name — it would shadow a real attribute on "
+      f"the resolved store — and may not name a key (spec §0 reserved key names)"
+    )
+  if _DUNDER_RE.match(leaf):
+    return (
+      f"'{leaf}' matches the dunder pattern and may not name a key (spec §0 reserved key names)"
+    )
+  return None
 
 
 def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool:
-    """Is *segment* a legal ``agent.<HERE>`` discriminator?
+  """Is *segment* a legal ``agent.<HERE>`` discriminator?
 
-    A PSEUDO-AGENT name (spec §2d *"Pseudo-agent(s)"*) or a member of
-    *valid_agents*. The caller decides what "valid agent" means — see
-    ``settings_prefs.default_valid_agents``, which answers it as "a discovered
-    harness, or a persona node whose harness is discovered" (§2h: the
-    test is *is it a VALID agent*, NOT *is it the ACTIVE agent*).
+  A PSEUDO-AGENT name (spec §2d *"Pseudo-agent(s)"*) or a member of
+  *valid_agents*. The caller decides what "valid agent" means — see
+  ``settings_prefs.default_valid_agents``, which answers it as "a discovered
+  harness, or a persona node whose harness is discovered" (§2h: the
+  test is *is it a VALID agent*, NOT *is it the ACTIVE agent*).
 
-    ⚑⚑ THE PSEUDO-AGENT SET IS ``agent_ref``'s, NOT A SECOND LIST HERE. The spec
-    reserves those names in ONE breath — against an agent, a persona and a harness —
-    and :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` is where that reservation is
-    already spelled. A twin here would be two carriers of one shape: the parser would
-    refuse a name this segment rule still admitted, or the reverse, and each list
-    alone would read true.
+  ⚑⚑ THE PSEUDO-AGENT SET IS ``agent_ref``'s, NOT A SECOND LIST HERE. The spec
+  reserves those names in ONE breath — against an agent, a persona and a harness —
+  and :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` is where that reservation is
+  already spelled. A twin here would be two carriers of one shape: the parser would
+  refuse a name this segment rule still admitted, or the reverse, and each list
+  alone would read true.
 
-    ⚑ THE TWO SIDES ARE COMPLEMENTS, NOT A CONTRADICTION (P14). ``agent_ref`` refuses
-    a pseudo-agent name to anything that CLAIMS it — an agent, a persona, a harness —
-    because the name is already owned. This admits the same names as the ``agent.<HERE>``
-    DISCRIMINATOR, because being owned is precisely what gives them a cascade slot.
+  ⚑ THE TWO SIDES ARE COMPLEMENTS, NOT A CONTRADICTION (P14). ``agent_ref`` refuses
+  a pseudo-agent name to anything that CLAIMS it — an agent, a persona, a harness —
+  because the name is already owned. This admits the same names as the ``agent.<HERE>``
+  DISCRIMINATOR, because being owned is precisely what gives them a cascade slot.
 
-    🛑 DOES NOT FOLD (Q87): a node is lowercase (spec §0), so ``agent.Claude`` is not a
-    discriminator. A user's capital spelling is folded, with a warning, where it enters — a
-    settings file (``settings_assemble.fold_agent_nodes``) or a typed key
-    (``config_keys.resolve_key``); one that reaches this verdict was built by code, and code
-    gets no relief. A persona node is valid by its harness.
-    """
-    if segment in PSEUDO_AGENT_NAMES or segment in valid_agents:
-        return True
-    try:
-        node = canonicalize_agent_ref(segment)
-    except ConfigError:
-        return False
-    return harness_of(node) in valid_agents
+  🛑 DOES NOT FOLD (Q87): a node is lowercase (spec §0), so ``agent.Claude`` is not a
+  discriminator. A user's capital spelling is folded, with a warning, where it enters — a
+  settings file (``settings_assemble.fold_agent_nodes``) or a typed key
+  (``config_keys.resolve_key``); one that reaches this verdict was built by code, and code
+  gets no relief. A persona node is valid by its harness.
+  """
+  if segment in PSEUDO_AGENT_NAMES or segment in valid_agents:
+    return True
+  try:
+    node = canonicalize_agent_ref(segment)
+  except ConfigError:
+    return False
+  return harness_of(node) in valid_agents
 
 
 def file_alias_reason(segment: str) -> str | None:
-    """Why *segment* cannot be an ``agent.<HERE>`` node — it is the agent file's alias — or ``None``.
+  """Why *segment* cannot be an ``agent.<HERE>`` node — it is the agent file's alias — or ``None``.
 
-    The spec: the per-agent file's root alias is "NOT a key, never a key segment". ONE carrier for
-    every door that takes a node: the §0 verdict (:func:`key_class`) and the per-node file route
-    (``config_dest.check_agent_node``), which would otherwise write ``agents/<alias>/agent.yaml``.
-    The alias is spelled by ``agent_file``, its one owner.
-    """
-    from kanibako.settings.agent_file import file_spelling
+  The spec: the per-agent file's root alias is "NOT a key, never a key segment". ONE carrier for
+  every door that takes a node: the §0 verdict (:func:`key_class`) and the per-node file route
+  (``config_dest.check_agent_node``), which would otherwise write ``agents/<alias>/agent.yaml``.
+  The alias is spelled by ``agent_file``, its one owner.
+  """
+  from kanibako.settings.agent_file import file_spelling
 
-    if segment != file_spelling():
-        return None
-    return (
-        f"'{segment}' is not an agent: it is the per-agent settings file's alias for that "
-        f"file's own node, valid only as the file's top-level table and never a key segment "
-        f"(spec header, the `{segment}` FILE-SURFACE ALIAS)"
-    )
+  if segment != file_spelling():
+    return None
+  return (
+    f"'{segment}' is not an agent: it is the per-agent settings file's alias for that "
+    f"file's own node, valid only as the file's top-level table and never a key segment "
+    f"(spec header, the `{segment}` FILE-SURFACE ALIAS)"
+  )
 
 
 def valid_agent_segments(valid_agents: Collection[str]) -> list[str]:
-    """Every legal ``agent.<HERE>`` discriminator, sorted — for a refusal MESSAGE.
+  """Every legal ``agent.<HERE>`` discriminator, sorted — for a refusal MESSAGE.
 
-    ⚑ ONE CARRIER WITH :func:`is_valid_agent_segment`, and the reason is that a
-    message which offers a NARROWER world than the predicate accepts sends a user to
-    fix a name that was already correct. The two refusal sentences that print this —
-    :func:`_bad_agent_reason` here and ``settings_prefs.allowlist_reason``'s — each
-    kept their own ``{*valid_agents, "default"}`` copy, and both went stale the moment
-    a second pseudo-agent was reserved.
-    """
-    return sorted({*valid_agents, *PSEUDO_AGENT_NAMES})
+  ⚑ ONE CARRIER WITH :func:`is_valid_agent_segment`, and the reason is that a
+  message which offers a NARROWER world than the predicate accepts sends a user to
+  fix a name that was already correct. The two refusal sentences that print this —
+  :func:`_bad_agent_reason` here and ``settings_prefs.allowlist_reason``'s — each
+  kept their own ``{*valid_agents, "default"}`` copy, and both went stale the moment
+  a second pseudo-agent was reserved.
+  """
+  return sorted({*valid_agents, *PSEUDO_AGENT_NAMES})
 
 
-def _category_reason(
-    prefix: str, rest: list[str], *, what: str
-) -> KeyJudgment:
-    """Judge a ``<category>.<name>`` tail under an already-valid *prefix*.
+def _category_reason(prefix: str, rest: list[str], *, what: str) -> KeyJudgment:
+  """Judge a ``<category>.<name>`` tail under an already-valid *prefix*.
 
-    *rest* is the tail AFTER the scope token(s). *what* names the scope for the
-    message ("the box scope", "agent 'claude'", …).
+  *rest* is the tail AFTER the scope token(s). *what* names the scope for the
+  message ("the box scope", "agent 'claude'", …).
 
-    ⚑ Two of these categories have an INTERIOR: ``env`` and ``secret_path`` are
-    VAR-keyed, so the bare token is a namespace real keys hang under, and
-    ``bindings`` is the arm root. The dest-keyed terminals have none — the
-    category token IS the key, and anything under it is a value address.
-    """
-    if not rest:
-        # Unreachable from either caller (both gate on a non-empty tail), and kept
-        # rather than deleted because it is the correct answer if one ever stops.
-        return _namespace(f"'{prefix}' names {what} itself, which is not a key")
-    head = rest[0]
+  ⚑ Two of these categories have an INTERIOR: ``env`` and ``secret_path`` are
+  VAR-keyed, so the bare token is a namespace real keys hang under, and
+  ``bindings`` is the arm root. The dest-keyed terminals have none — the
+  category token IS the key, and anything under it is a value address.
+  """
+  if not rest:
+    # Unreachable from either caller (both gate on a non-empty tail), and kept
+    # rather than deleted because it is the correct answer if one ever stops.
+    return _namespace(f"'{prefix}' names {what} itself, which is not a key")
+  head = rest[0]
 
-    # masks — the value-less keyed category (spec §2a). The KEY is exactly
-    # ``<scope>.masks``; entries live INSIDE it as a dict[box_dest -> bool|None],
-    # and a box_dest is a PATH, not a key segment, so a dotted tail under masks is
-    # a value address rather than a key. Accept the bare form only.
-    # ⚑ This, the ``bindings.{ro,rw}`` branch and the four-category branch below
-    # are ALL terminal dest-keyed; they are enumerated in
-    # :data:`TERMINAL_CATEGORY_TAILS`.
-    if head == "masks":
-        if len(rest) == 1:
-            return _KEY
-        return _undeclared(
-            f"'{prefix}.masks.{'.'.join(rest[1:])}' is not a key: masks is a "
-            f"keyed category whose entries are box destinations inside the "
-            f"'{prefix}.masks' value, not key segments (spec §2a)"
-        )
+  # masks — the value-less keyed category (spec §2a). The KEY is exactly
+  # ``<scope>.masks``; entries live INSIDE it as a dict[box_dest -> bool|None],
+  # and a box_dest is a PATH, not a key segment, so a dotted tail under masks is
+  # a value address rather than a key. Accept the bare form only.
+  # ⚑ This, the ``bindings.{ro,rw}`` branch and the four-category branch below
+  # are ALL terminal dest-keyed; they are enumerated in
+  # :data:`TERMINAL_CATEGORY_TAILS`.
+  if head == "masks":
+    if len(rest) == 1:
+      return _KEY
+    return _undeclared(
+      f"'{prefix}.masks.{'.'.join(rest[1:])}' is not a key: masks is a "
+      f"keyed category whose entries are box destinations inside the "
+      f"'{prefix}.masks' value, not key segments (spec §2a)"
+    )
 
-    # env.<VAR> / secret_path.<VAR> — scalar-valued, VAR-keyed (spec §2a).
-    if head in VAR_KEYED_CATEGORIES:
-        if len(rest) == 1:
-            # The VAR-keyed family's ROOT. Real keys live one segment below it, so
-            # the node is structure; only a SCALAR sitting here is a fabrication.
-            return _namespace(
-                f"'{prefix}.{head}' is a namespace, not a key: {head} is keyed per "
-                f"variable — '{prefix}.{head}.<VAR>' (spec §2a)"
-            )
-        if len(rest) != 2:
-            return _undeclared(
-                f"'{prefix}.{'.'.join(rest)}' is not a key: {head} is keyed per "
-                f"variable — '{prefix}.{head}.<VAR>' (spec §2a)"
-            )
-        var = rest[1]
-        if not _VAR_RE.match(var):
-            return _undeclared(
-                f"'{var}' is not a legal environment variable name for "
-                f"'{prefix}.{head}.<VAR>' (spec §2a)"
-            )
-        return _leaf(var)
+  # env.<VAR> / secret_path.<VAR> — scalar-valued, VAR-keyed (spec §2a).
+  if head in VAR_KEYED_CATEGORIES:
+    if len(rest) == 1:
+      # The VAR-keyed family's ROOT. Real keys live one segment below it, so
+      # the node is structure; only a SCALAR sitting here is a fabrication.
+      return _namespace(
+        f"'{prefix}.{head}' is a namespace, not a key: {head} is keyed per "
+        f"variable — '{prefix}.{head}.<VAR>' (spec §2a)"
+      )
+    if len(rest) != 2:
+      return _undeclared(
+        f"'{prefix}.{'.'.join(rest)}' is not a key: {head} is keyed per "
+        f"variable — '{prefix}.{head}.<VAR>' (spec §2a)"
+      )
+    var = rest[1]
+    if not _VAR_RE.match(var):
+      return _undeclared(
+        f"'{var}' is not a legal environment variable name for '{prefix}.{head}.<VAR>' (spec §2a)"
+      )
+    return _leaf(var)
 
-    # bindings.{ro,rw} — DEST-KEYED and TERMINAL (spec §2a; R-5/R-10,
-    # 2026-08-06c), the same shape as ``masks`` above. TWO independent rules:
-    #
-    # 1. The ARM is REQUIRED (§2d: an ARM-LESS binding is not a declared key) —
-    #    ``bindings`` alone names the arm ROOT, not a key.
-    # 2. The ARM is the WHOLE of the key. Entries live INSIDE its value as a
-    #    dict[box_dest -> [src[, options]]], and a box_dest is a PATH, so a tail
-    #    under an arm is a VALUE address rather than a key. There is no entry
-    #    NAME at all any more (R-10: the destination IS the identity).
-    if head == "bindings":
-        if len(rest) == 1:
-            # The ARM ROOT. Rule 1 still holds — an arm-LESS binding is not a key —
-            # but the node itself is where the two arms live, so it is structure.
-            return _namespace(
-                f"'{prefix}.bindings' is a namespace, not a key: bindings are "
-                f"declared per ARM — '{prefix}.bindings.ro' / "
-                f"'{prefix}.bindings.rw' (spec §2a / §2d)"
-            )
-        if rest[1] not in ("ro", "rw"):
-            return _undeclared(
-                f"'{prefix}.{'.'.join(rest)}' is not a key: bindings are declared "
-                f"per ARM — '{prefix}.bindings.ro' / "
-                f"'{prefix}.bindings.rw' (spec §2a / §2d)"
-            )
-        if len(rest) == 2:
-            return _KEY
-        return _undeclared(
-            f"'{prefix}.bindings.{rest[1]}.{'.'.join(rest[2:])}' is not a key: "
-            f"'{prefix}.bindings.{rest[1]}' is a TERMINAL dest-keyed key whose "
-            f"entries are box destinations inside its value, not key segments. "
-            f"Bindings have no entry NAME — write the entry in the settings FILE "
-            f"under '{prefix}.bindings.{rest[1]}', keyed by its destination "
-            f"(spec §2a)"
-        )
+  # bindings.{ro,rw} — DEST-KEYED and TERMINAL (spec §2a; R-5/R-10,
+  # 2026-08-06c), the same shape as ``masks`` above. TWO independent rules:
+  #
+  # 1. The ARM is REQUIRED (§2d: an ARM-LESS binding is not a declared key) —
+  #    ``bindings`` alone names the arm ROOT, not a key.
+  # 2. The ARM is the WHOLE of the key. Entries live INSIDE its value as a
+  #    dict[box_dest -> [src[, options]]], and a box_dest is a PATH, so a tail
+  #    under an arm is a VALUE address rather than a key. There is no entry
+  #    NAME at all any more (R-10: the destination IS the identity).
+  if head == "bindings":
+    if len(rest) == 1:
+      # The ARM ROOT. Rule 1 still holds — an arm-LESS binding is not a key —
+      # but the node itself is where the two arms live, so it is structure.
+      return _namespace(
+        f"'{prefix}.bindings' is a namespace, not a key: bindings are "
+        f"declared per ARM — '{prefix}.bindings.ro' / "
+        f"'{prefix}.bindings.rw' (spec §2a / §2d)"
+      )
+    if rest[1] not in ("ro", "rw"):
+      return _undeclared(
+        f"'{prefix}.{'.'.join(rest)}' is not a key: bindings are declared "
+        f"per ARM — '{prefix}.bindings.ro' / "
+        f"'{prefix}.bindings.rw' (spec §2a / §2d)"
+      )
+    if len(rest) == 2:
+      return _KEY
+    return _undeclared(
+      f"'{prefix}.bindings.{rest[1]}.{'.'.join(rest[2:])}' is not a key: "
+      f"'{prefix}.bindings.{rest[1]}' is a TERMINAL dest-keyed key whose "
+      f"entries are box destinations inside its value, not key segments. "
+      f"Bindings have no entry NAME — write the entry in the settings FILE "
+      f"under '{prefix}.bindings.{rest[1]}', keyed by its destination "
+      f"(spec §2a)"
+    )
 
-    # caches / seeded / common / synced — DEST-KEYED and TERMINAL (spec §2a;
-    # 2026-08-08c), the same shape as ``masks`` and the ``bindings`` arms above,
-    # but terminal ONE SEGMENT SHALLOWER: the category token IS the whole key.
-    # Entries live INSIDE its value as a dict[box_dest -> [src[, options]]], and a
-    # box_dest is a PATH, so a tail under one is a VALUE address, not a key. There
-    # is no entry NAME at all any more — the destination IS the identity.
-    if head in BIND_LEAF_CATEGORIES:
-        if len(rest) == 1:
-            return _KEY
-        return _undeclared(
-            f"'{prefix}.{head}.{'.'.join(rest[1:])}' is not a key: "
-            f"'{prefix}.{head}' is a TERMINAL dest-keyed key whose entries are "
-            f"box destinations inside its value, not key segments. "
-            f"'{head}' entries have no NAME — write the entry in the settings "
-            f"FILE under '{prefix}.{head}', keyed by its destination (spec §2a)"
-        )
+  # caches / seeded / common / synced — DEST-KEYED and TERMINAL (spec §2a;
+  # 2026-08-08c), the same shape as ``masks`` and the ``bindings`` arms above,
+  # but terminal ONE SEGMENT SHALLOWER: the category token IS the whole key.
+  # Entries live INSIDE its value as a dict[box_dest -> [src[, options]]], and a
+  # box_dest is a PATH, so a tail under one is a VALUE address, not a key. There
+  # is no entry NAME at all any more — the destination IS the identity.
+  if head in BIND_LEAF_CATEGORIES:
+    if len(rest) == 1:
+      return _KEY
+    return _undeclared(
+      f"'{prefix}.{head}.{'.'.join(rest[1:])}' is not a key: "
+      f"'{prefix}.{head}' is a TERMINAL dest-keyed key whose entries are "
+      f"box destinations inside its value, not key segments. "
+      f"'{head}' entries have no NAME — write the entry in the settings "
+      f"FILE under '{prefix}.{head}', keyed by its destination (spec §2a)"
+    )
 
-    # Unreachable BY CONSTRUCTION: the branches above cover exactly the token set
-    # :func:`_looks_like_category` admits, and no caller enters without it.
-    raise AssertionError(f"{head!r} passed _looks_like_category with no branch here")
+  # Unreachable BY CONSTRUCTION: the branches above cover exactly the token set
+  # :func:`_looks_like_category` admits, and no caller enters without it.
+  raise AssertionError(f"{head!r} passed _looks_like_category with no branch here")
 
 
 def _is_category_token(token: str) -> bool:
-    """Is *token* a §2a category token?
+  """Is *token* a §2a category token?
 
-    ⚑ DERIVED FROM THE DELIVERY TABLE, never hand-listed (P13):
-    :data:`~kanibako.settings.settings_categories.CATEGORY_FAMILY_ROOTS` is the one
-    place all NINE families are named, so a tenth is a category token here with no
-    edit — which matters because TWO different questions read this: where a category
-    tail begins (:func:`_looks_like_category`) and which segments can never be an
-    AGENT NAME (:func:`_could_name_an_agent`).
+  ⚑ DERIVED FROM THE DELIVERY TABLE, never hand-listed (P13):
+  :data:`~kanibako.settings.settings_categories.CATEGORY_FAMILY_ROOTS` is the one
+  place all NINE families are named, so a tenth is a category token here with no
+  edit — which matters because TWO different questions read this: where a category
+  tail begins (:func:`_looks_like_category`) and which segments can never be an
+  AGENT NAME (:func:`_could_name_an_agent`).
 
-    🛑 IT IS NOT :data:`BIND_CATEGORIES`, and that is the correction. This used to
-    read the bind-shaped set and then NAME ``masks``, ``env`` and ``secret_path``
-    beside it, so "derived" held only for a family that happens to be bind-shaped —
-    a tenth family with a value shape of its own would have reached ``agent.<HERE>``
-    as a candidate AGENT NAME and been conceded. No live hole (all eight roots
-    refuse today), but the guarantee the shape claimed was not the one it gave.
-    """
-    return token in CATEGORY_FAMILY_ROOTS
+  🛑 IT IS NOT :data:`BIND_CATEGORIES`, and that is the correction. This used to
+  read the bind-shaped set and then NAME ``masks``, ``env`` and ``secret_path``
+  beside it, so "derived" held only for a family that happens to be bind-shaped —
+  a tenth family with a value shape of its own would have reached ``agent.<HERE>``
+  as a candidate AGENT NAME and been conceded. No live hole (all eight roots
+  refuse today), but the guarantee the shape claimed was not the one it gave.
+  """
+  return token in CATEGORY_FAMILY_ROOTS
 
 
 def _looks_like_category(rest: list[str]) -> bool:
-    """Does *rest* start with a §2a category token?"""
-    return bool(rest) and _is_category_token(rest[0])
+  """Does *rest* start with a §2a category token?"""
+  return bool(rest) and _is_category_token(rest[0])
 
 
 def _could_name_an_agent(segment: str) -> bool:
-    """Could *segment* EVER be the ``agent.<HERE>`` discriminator of a real agent?
+  """Could *segment* EVER be the ``agent.<HERE>`` discriminator of a real agent?
 
-    ⚑ THIS IS THE CONCESSION'S TEST, and it is NOT "is this agent installed"
-    (:func:`key_class`). A machine cannot enumerate the agents it has never heard
-    of, so an unrecognized NAME has to be conceded — but the tokens below are a
-    KNOWN FINITE SET the keyspace declares itself, so there is nothing unknowable
-    about them and conceding one would un-arm §0 over a shape that is documented as
-    a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
-    undiscriminated launch-built form, MIGRATION.md § "Housekeeping: renames you almost
-    certainly don't carry").
+  ⚑ THIS IS THE CONCESSION'S TEST, and it is NOT "is this agent installed"
+  (:func:`key_class`). A machine cannot enumerate the agents it has never heard
+  of, so an unrecognized NAME has to be conceded — but the tokens below are a
+  KNOWN FINITE SET the keyspace declares itself, so there is nothing unknowable
+  about them and conceding one would un-arm §0 over a shape that is documented as
+  a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
+  undiscriminated launch-built form, MIGRATION.md § "Housekeeping: renames you almost
+  certainly don't carry").
 
-    FALSE for a §2a category token and for a PSEUDO-AGENT name
-    (:data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES`); all of them are then judged by
-    the core contract, which knows them. TRUE for anything else — including a
-    plausible-looking typo such as ``agent.clade.zippity``, which is the IRREDUCIBLE
-    residual: ``clade`` is exactly the shape a real uninstalled harness has.
+  FALSE for a §2a category token and for a PSEUDO-AGENT name
+  (:data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES`); all of them are then judged by
+  the core contract, which knows them. TRUE for anything else — including a
+  plausible-looking typo such as ``agent.clade.zippity``, which is the IRREDUCIBLE
+  residual: ``clade`` is exactly the shape a real uninstalled harness has.
 
-    ⚑ ``shell`` REACHED THE SAME ANSWER BY ACCIDENT BEFORE IT WAS NAMED HERE, and that
-    is why it is named. It fell through to :func:`agent_declared_leaves`'s
-    will-not-canonicalize arm, because ``agent_ref`` happens to REFUSE a reserved name
-    to the parser — so the keyspace's own rule was being carried by another module's
-    refusal. Relax that refusal and ``shell`` would silently become a CONCEDED name,
-    with every leaf a user liked legal under ``agent.shell.*``.
-    """
-    return segment not in PSEUDO_AGENT_NAMES and not _is_category_token(segment)
+  ⚑ ``shell`` REACHED THE SAME ANSWER BY ACCIDENT BEFORE IT WAS NAMED HERE, and that
+  is why it is named. It fell through to :func:`agent_declared_leaves`'s
+  will-not-canonicalize arm, because ``agent_ref`` happens to REFUSE a reserved name
+  to the parser — so the keyspace's own rule was being carried by another module's
+  refusal. Relax that refusal and ``shell`` would silently become a CONCEDED name,
+  with every leaf a user liked legal under ``agent.shell.*``.
+  """
+  return segment not in PSEUDO_AGENT_NAMES and not _is_category_token(segment)
 
 
 def _scope_reason(
-    scope: str,
-    rest: list[str],
-    *,
-    leaves: frozenset[str],
-    sub_tables: dict[str, frozenset[str]],
-    what: str,
+  scope: str,
+  rest: list[str],
+  *,
+  leaves: frozenset[str],
+  sub_tables: dict[str, frozenset[str]],
+  what: str,
 ) -> KeyJudgment:
-    """Judge a NON-agent scope key ``<scope>.<rest…>``."""
-    if not rest:
-        # The SCOPE TABLE itself. A settings file's ``box:`` heading writes this
-        # node; it is the grouping every scope key hangs under, never a key.
-        return _namespace(
-            f"'{scope}' names the {what} scope, which is a namespace, not a key "
-            f"(spec §0)"
-        )
-    if _looks_like_category(rest):
-        return _category_reason(scope, rest, what=what)
-    if len(rest) == 1:
-        if rest[0] in leaves:
-            return _leaf(rest[0])
-        if rest[0] in sub_tables:
-            # A declared SUB-TABLE root (``<scope>.auth``, ``<scope>.channels``).
-            # ⚑ THE MEMBER LIST IS DELIBERATELY NOT PRINTED HERE: a namespace
-            # message's job is "this is not a key", and the leaf that is actually
-            # wrong gets the list from the branch below. Naming the members twice is
-            # P12 padding.
-            return _namespace(f"'{scope}.{rest[0]}' is a namespace, not a key")
-        return _undeclared(
-            f"'{rest[0]}' is not a declared {what} key (declared: "
-            f"{', '.join(sorted(leaves))}, plus the §2a categories)"
-        )
-    if len(rest) == 2 and rest[0] in sub_tables:
-        table = sub_tables[rest[0]]
-        if rest[1] in table:
-            return _leaf(rest[1])
-        return _undeclared(
-            f"'{scope}.{rest[0]}.{rest[1]}' is not a declared key (declared "
-            f"'{scope}.{rest[0]}.*': {', '.join(sorted(table))})"
-        )
-    return _undeclared(
-        f"'{scope}.{'.'.join(rest)}' is not a declared {what} key "
-        f"(spec §0 — the keyspace is CLOSED)"
+  """Judge a NON-agent scope key ``<scope>.<rest…>``."""
+  if not rest:
+    # The SCOPE TABLE itself. A settings file's ``box:`` heading writes this
+    # node; it is the grouping every scope key hangs under, never a key.
+    return _namespace(
+      f"'{scope}' names the {what} scope, which is a namespace, not a key (spec §0)"
     )
+  if _looks_like_category(rest):
+    return _category_reason(scope, rest, what=what)
+  if len(rest) == 1:
+    if rest[0] in leaves:
+      return _leaf(rest[0])
+    if rest[0] in sub_tables:
+      # A declared SUB-TABLE root (``<scope>.auth``, ``<scope>.channels``).
+      # ⚑ THE MEMBER LIST IS DELIBERATELY NOT PRINTED HERE: a namespace
+      # message's job is "this is not a key", and the leaf that is actually
+      # wrong gets the list from the branch below. Naming the members twice is
+      # P12 padding.
+      return _namespace(f"'{scope}.{rest[0]}' is a namespace, not a key")
+    return _undeclared(
+      f"'{rest[0]}' is not a declared {what} key (declared: "
+      f"{', '.join(sorted(leaves))}, plus the §2a categories)"
+    )
+  if len(rest) == 2 and rest[0] in sub_tables:
+    table = sub_tables[rest[0]]
+    if rest[1] in table:
+      return _leaf(rest[1])
+    return _undeclared(
+      f"'{scope}.{rest[0]}.{rest[1]}' is not a declared key (declared "
+      f"'{scope}.{rest[0]}.*': {', '.join(sorted(table))})"
+    )
+  return _undeclared(
+    f"'{scope}.{'.'.join(rest)}' is not a declared {what} key (spec §0 — the keyspace is CLOSED)"
+  )
 
 
 def _meta_reason(
-    rest: list[str],
-    valid_agents: Collection[str],
-    leaves: Collection[str] = DECLARED_AGENT_LEAVES,
+  rest: list[str],
+  valid_agents: Collection[str],
+  leaves: Collection[str] = DECLARED_AGENT_LEAVES,
 ) -> KeyJudgment:
-    """Judge a ``meta.<rest…>`` key (spec §0, §2c, §2d).
+  """Judge a ``meta.<rest…>`` key (spec §0, §2c, §2d).
 
-    ⚑ EVERY GROUP HEAD IS A NAMESPACE, and saying so is not a courtesy: spec :42
-    declares ``meta.*`` *"a TOP-LEVEL, protected (read-only) namespace, grouped as
-    ``meta.<scope>.*``"* — the grouping is the spec's own word for these nodes.
-    """
-    if not rest:
-        return _namespace("'meta' is a namespace, not a key")
-    group = rest[0]
-    tail = rest[1:]
+  ⚑ EVERY GROUP HEAD IS A NAMESPACE, and saying so is not a courtesy: spec :42
+  declares ``meta.*`` *"a TOP-LEVEL, protected (read-only) namespace, grouped as
+  ``meta.<scope>.*``"* — the grouping is the spec's own word for these nodes.
+  """
+  if not rest:
+    return _namespace("'meta' is a namespace, not a key")
+  group = rest[0]
+  tail = rest[1:]
 
-    if group == "runtime":
-        if not tail:
-            return _namespace("'meta.runtime' is a namespace, not a key")
-        if len(tail) == 1 and tail[0] in DECLARED_META_RUNTIME_LEAVES:
-            return _KEY
-        if len(tail) == 1 and tail[0] in ("user", "admin"):
-            return _namespace(f"'meta.runtime.{tail[0]}' is a namespace, not a key")
-        if len(tail) == 2 and tail[0] == "user":
-            if tail[1] in DECLARED_META_RUNTIME_USER_LEAVES:
-                return _KEY
-            return _undeclared(
-                f"'meta.runtime.user.{tail[1]}' is not a declared key (declared: "
-                f"{', '.join(sorted(DECLARED_META_RUNTIME_USER_LEAVES))})"
-            )
-        if len(tail) == 2 and tail[0] == "admin":
-            if tail[1] in DECLARED_META_RUNTIME_ADMIN_LEAVES:
-                return _KEY
-            return _undeclared(
-                f"'meta.runtime.admin.{tail[1]}' is not a declared key (declared: "
-                f"{', '.join(sorted(DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
-            )
-        return _undeclared(
-            f"'meta.runtime.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_RUNTIME_LEAVES))}, "
-            f"{', '.join(sorted(f'user.{leaf}' for leaf in DECLARED_META_RUNTIME_USER_LEAVES))}, "
-            f"{', '.join(sorted(f'admin.{leaf}' for leaf in DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
-        )
-
-    if group == "assembly":
-        if not tail:
-            return _namespace("'meta.assembly' is a namespace, not a key")
-        if len(tail) == 1 and tail[0] in DECLARED_META_ASSEMBLY_LEAVES:
-            return _KEY
-        return _undeclared(
-            f"'meta.assembly.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_ASSEMBLY_LEAVES))})"
-        )
-
-    if group == "workset":
-        if not tail:
-            return _namespace("'meta.workset' is a namespace, not a key")
-        if len(tail) == 1 and tail[0] in DECLARED_META_WORKSET_LEAVES:
-            return _KEY
-        if len(tail) == 1 and tail[0] == "auth":
-            return _namespace("'meta.workset.auth' is a namespace, not a key")
-        if len(tail) == 2 and tail[0] == "auth":
-            if tail[1] in DECLARED_META_WORKSET_AUTH_LEAVES:
-                return _KEY
-            return _undeclared(
-                f"'meta.workset.auth.{tail[1]}' is not a declared key (declared: "
-                f"{', '.join(sorted(DECLARED_META_WORKSET_AUTH_LEAVES))})"
-            )
-        return _undeclared(
-            f"'meta.workset.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_WORKSET_LEAVES))})"
-        )
-
-    if group == "box":
-        if not tail:
-            return _namespace("'meta.box' is a namespace, not a key (spec §0)")
-        if len(tail) == 1 and tail[0] in DECLARED_META_BOX_LEAVES:
-            return _KEY
-        if len(tail) == 1 and tail[0] == "auth":
-            return _namespace("'meta.box.auth' is a namespace, not a key")
-        if len(tail) == 2 and tail[0] == "auth":
-            if tail[1] in DECLARED_META_BOX_AUTH_LEAVES:
-                return _KEY
-            return _undeclared(
-                f"'meta.box.auth.{tail[1]}' is not a declared key (declared: "
-                f"{', '.join(sorted(DECLARED_META_BOX_AUTH_LEAVES))})"
-            )
-        if tail[0] == "agent":
-            # meta.box.agent.<key> — the RO MIRROR that gives a box a STATIC,
-            # declarable key path to an ACTIVE-agent value (spec :1077, *"the
-            # meta.box.agent.<key> mirror pattern → avoids a nested dynamic
-            # lookup"*): a symbol inside a key SEGMENT would need a grammar the key
-            # system does not have.
-            #
-            # ⚑ TWO SOURCES, both DECLARED, and both are the mirror's job ([R141] as
-            # amended): the settable ``agent.<agent>`` contract (:859), PLUS
-            # ``auth.*`` capabilities that have no settable form (:1081 declares
-            # ``meta.box.agent.auth.share_support`` as its own row). The ``auth``
-            # leaves are the ``meta.agent`` tier's, so they come from
-            # :data:`DECLARED_META_AGENT_AUTH_LEAVES` and are answered here rather
-            # than by :func:`_agent_tail_reason`, which knows only the first source.
-            # ``auth_chain_floor`` writes that leaf on every launch resolve.
-            mirror = tail[1:]
-            if len(mirror) == 1 and mirror[0] == "auth":
-                return _namespace("'meta.box.agent.auth' is a namespace, not a key")
-            if len(mirror) == 2 and mirror[0] == "auth":
-                if mirror[1] in DECLARED_META_AGENT_AUTH_LEAVES:
-                    return _KEY
-                return _undeclared(
-                    f"'meta.box.agent.auth.{mirror[1]}' is not a declared key "
-                    f"(declared: "
-                    f"{', '.join(sorted(DECLARED_META_AGENT_AUTH_LEAVES))})"
-                )
-            return _agent_tail_reason("meta.box.agent", mirror, leaves)
-        return _undeclared(
-            f"'meta.box.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_BOX_LEAVES))}, "
-            f"{', '.join('auth.' + leaf for leaf in sorted(DECLARED_META_BOX_AUTH_LEAVES))}, "
-            f"and the agent.* read-back mirror)"
-        )
-
-    if group == "agent":
-        if not tail:
-            return _namespace("'meta.agent' is a namespace, not a key (spec §2d)")
-        name = tail[0]
-        if not is_valid_agent_segment(name, valid_agents):
-            return _undeclared(_bad_agent_reason(name, valid_agents))
-        shown = display_agent_ref(name)
-        sub = tail[1:]
-        # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
-        fence = pseudo_agent_fence(name)
-        if fence is not None and not (fence.meta_leaves or fence.meta_auth_leaves):
-            spelled = ".".join(("meta.agent", shown, *sub))
-            return _undeclared(
-                f"'{spelled}' is not a declared key: '{name}' declares no "
-                f"meta.agent.* keys (spec §2d)"
-            )
-        if not sub:
-            # ⚑ THE OTHER NAMESPACE ONE WORD AWAY ([R141]): this is the agent's own
-            # ANCHOR group; ``meta.box.agent`` above is the RO mirror of the settable
-            # contract. Two namespaces, one word apart — say which, never both.
-            return _namespace(f"'meta.agent.{shown}' is a namespace, not a key")
-        meta_leaves = (
-            DECLARED_META_AGENT_LEAVES if fence is None else fence.meta_leaves
-        )
-        auth_leaves = (
-            DECLARED_META_AGENT_AUTH_LEAVES if fence is None else fence.meta_auth_leaves
-        )
-        if len(sub) == 1 and sub[0] in meta_leaves:
-            return _KEY
-        if len(sub) == 1 and sub[0] == "auth" and auth_leaves:
-            # The tier the ``meta.box.agent.auth`` mirror points AT (spec :1081).
-            return _namespace(f"'meta.agent.{shown}.auth' is a namespace, not a key")
-        if len(sub) == 2 and sub[0] == "auth" and auth_leaves:
-            if sub[1] in auth_leaves:
-                return _KEY
-            return _undeclared(
-                f"'meta.agent.{shown}.auth.{sub[1]}' is not a declared key "
-                f"(declared: {', '.join(sorted(auth_leaves))})"
-            )
-        declared = [*sorted(meta_leaves), *(f"auth.{a}" for a in sorted(auth_leaves))]
-        return _undeclared(
-            f"'meta.agent.{shown}.{'.'.join(sub)}' is not a declared key "
-            f"(declared: {', '.join(declared)})"
-        )
-
+  if group == "runtime":
+    if not tail:
+      return _namespace("'meta.runtime' is a namespace, not a key")
+    if len(tail) == 1 and tail[0] in DECLARED_META_RUNTIME_LEAVES:
+      return _KEY
+    if len(tail) == 1 and tail[0] in ("user", "admin"):
+      return _namespace(f"'meta.runtime.{tail[0]}' is a namespace, not a key")
+    if len(tail) == 2 and tail[0] == "user":
+      if tail[1] in DECLARED_META_RUNTIME_USER_LEAVES:
+        return _KEY
+      return _undeclared(
+        f"'meta.runtime.user.{tail[1]}' is not a declared key (declared: "
+        f"{', '.join(sorted(DECLARED_META_RUNTIME_USER_LEAVES))})"
+      )
+    if len(tail) == 2 and tail[0] == "admin":
+      if tail[1] in DECLARED_META_RUNTIME_ADMIN_LEAVES:
+        return _KEY
+      return _undeclared(
+        f"'meta.runtime.admin.{tail[1]}' is not a declared key (declared: "
+        f"{', '.join(sorted(DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
+      )
     return _undeclared(
-        f"'meta.{group}' is not a declared meta group (declared: runtime, "
-        f"assembly, workset, box, agent)"
+      f"'meta.runtime.{'.'.join(tail)}' is not a declared key (declared: "
+      f"{', '.join(sorted(DECLARED_META_RUNTIME_LEAVES))}, "
+      f"{', '.join(sorted(f'user.{leaf}' for leaf in DECLARED_META_RUNTIME_USER_LEAVES))}, "
+      f"{', '.join(sorted(f'admin.{leaf}' for leaf in DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
     )
+
+  if group == "assembly":
+    if not tail:
+      return _namespace("'meta.assembly' is a namespace, not a key")
+    if len(tail) == 1 and tail[0] in DECLARED_META_ASSEMBLY_LEAVES:
+      return _KEY
+    return _undeclared(
+      f"'meta.assembly.{'.'.join(tail)}' is not a declared key (declared: "
+      f"{', '.join(sorted(DECLARED_META_ASSEMBLY_LEAVES))})"
+    )
+
+  if group == "workset":
+    if not tail:
+      return _namespace("'meta.workset' is a namespace, not a key")
+    if len(tail) == 1 and tail[0] in DECLARED_META_WORKSET_LEAVES:
+      return _KEY
+    if len(tail) == 1 and tail[0] == "auth":
+      return _namespace("'meta.workset.auth' is a namespace, not a key")
+    if len(tail) == 2 and tail[0] == "auth":
+      if tail[1] in DECLARED_META_WORKSET_AUTH_LEAVES:
+        return _KEY
+      return _undeclared(
+        f"'meta.workset.auth.{tail[1]}' is not a declared key (declared: "
+        f"{', '.join(sorted(DECLARED_META_WORKSET_AUTH_LEAVES))})"
+      )
+    return _undeclared(
+      f"'meta.workset.{'.'.join(tail)}' is not a declared key (declared: "
+      f"{', '.join(sorted(DECLARED_META_WORKSET_LEAVES))})"
+    )
+
+  if group == "box":
+    if not tail:
+      return _namespace("'meta.box' is a namespace, not a key (spec §0)")
+    if len(tail) == 1 and tail[0] in DECLARED_META_BOX_LEAVES:
+      return _KEY
+    if len(tail) == 1 and tail[0] == "auth":
+      return _namespace("'meta.box.auth' is a namespace, not a key")
+    if len(tail) == 2 and tail[0] == "auth":
+      if tail[1] in DECLARED_META_BOX_AUTH_LEAVES:
+        return _KEY
+      return _undeclared(
+        f"'meta.box.auth.{tail[1]}' is not a declared key (declared: "
+        f"{', '.join(sorted(DECLARED_META_BOX_AUTH_LEAVES))})"
+      )
+    if tail[0] == "agent":
+      # meta.box.agent.<key> — the RO MIRROR that gives a box a STATIC,
+      # declarable key path to an ACTIVE-agent value (spec :1077, *"the
+      # meta.box.agent.<key> mirror pattern → avoids a nested dynamic
+      # lookup"*): a symbol inside a key SEGMENT would need a grammar the key
+      # system does not have.
+      #
+      # ⚑ TWO SOURCES, both DECLARED, and both are the mirror's job ([R141] as
+      # amended): the settable ``agent.<agent>`` contract (:859), PLUS
+      # ``auth.*`` capabilities that have no settable form (:1081 declares
+      # ``meta.box.agent.auth.share_support`` as its own row). The ``auth``
+      # leaves are the ``meta.agent`` tier's, so they come from
+      # :data:`DECLARED_META_AGENT_AUTH_LEAVES` and are answered here rather
+      # than by :func:`_agent_tail_reason`, which knows only the first source.
+      # ``auth_chain_floor`` writes that leaf on every launch resolve.
+      mirror = tail[1:]
+      if len(mirror) == 1 and mirror[0] == "auth":
+        return _namespace("'meta.box.agent.auth' is a namespace, not a key")
+      if len(mirror) == 2 and mirror[0] == "auth":
+        if mirror[1] in DECLARED_META_AGENT_AUTH_LEAVES:
+          return _KEY
+        return _undeclared(
+          f"'meta.box.agent.auth.{mirror[1]}' is not a declared key "
+          f"(declared: "
+          f"{', '.join(sorted(DECLARED_META_AGENT_AUTH_LEAVES))})"
+        )
+      return _agent_tail_reason("meta.box.agent", mirror, leaves)
+    return _undeclared(
+      f"'meta.box.{'.'.join(tail)}' is not a declared key (declared: "
+      f"{', '.join(sorted(DECLARED_META_BOX_LEAVES))}, "
+      f"{', '.join('auth.' + leaf for leaf in sorted(DECLARED_META_BOX_AUTH_LEAVES))}, "
+      f"and the agent.* read-back mirror)"
+    )
+
+  if group == "agent":
+    if not tail:
+      return _namespace("'meta.agent' is a namespace, not a key (spec §2d)")
+    name = tail[0]
+    if not is_valid_agent_segment(name, valid_agents):
+      return _undeclared(_bad_agent_reason(name, valid_agents))
+    shown = display_agent_ref(name)
+    sub = tail[1:]
+    # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
+    fence = pseudo_agent_fence(name)
+    if fence is not None and not (fence.meta_leaves or fence.meta_auth_leaves):
+      spelled = ".".join(("meta.agent", shown, *sub))
+      return _undeclared(
+        f"'{spelled}' is not a declared key: '{name}' declares no meta.agent.* keys (spec §2d)"
+      )
+    if not sub:
+      # ⚑ THE OTHER NAMESPACE ONE WORD AWAY ([R141]): this is the agent's own
+      # ANCHOR group; ``meta.box.agent`` above is the RO mirror of the settable
+      # contract. Two namespaces, one word apart — say which, never both.
+      return _namespace(f"'meta.agent.{shown}' is a namespace, not a key")
+    meta_leaves = DECLARED_META_AGENT_LEAVES if fence is None else fence.meta_leaves
+    auth_leaves = DECLARED_META_AGENT_AUTH_LEAVES if fence is None else fence.meta_auth_leaves
+    if len(sub) == 1 and sub[0] in meta_leaves:
+      return _KEY
+    if len(sub) == 1 and sub[0] == "auth" and auth_leaves:
+      # The tier the ``meta.box.agent.auth`` mirror points AT (spec :1081).
+      return _namespace(f"'meta.agent.{shown}.auth' is a namespace, not a key")
+    if len(sub) == 2 and sub[0] == "auth" and auth_leaves:
+      if sub[1] in auth_leaves:
+        return _KEY
+      return _undeclared(
+        f"'meta.agent.{shown}.auth.{sub[1]}' is not a declared key "
+        f"(declared: {', '.join(sorted(auth_leaves))})"
+      )
+    declared = [*sorted(meta_leaves), *(f"auth.{a}" for a in sorted(auth_leaves))]
+    return _undeclared(
+      f"'meta.agent.{shown}.{'.'.join(sub)}' is not a declared key "
+      f"(declared: {', '.join(declared)})"
+    )
+
+  return _undeclared(
+    f"'meta.{group}' is not a declared meta group (declared: runtime, "
+    f"assembly, workset, box, agent)"
+  )
 
 
 def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
-    known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
-    node = agent_segment_case(name)
-    case = (
-        f"; an agent's node is lowercase — spell it '{display_agent_ref(node)}' (spec §0)"
-        if node != name and is_valid_agent_segment(node, valid_agents) else ""
-    )
-    return (
-        f"'{display_agent_ref(name)}' is not a valid agent (valid: {known}){case}. The agent "
-        f"segment of an agent-scope key must name a real agent or a reserved PSEUDO-AGENT "
-        f"tier (spec §2d / §0 L21 — a bare 'agent.<key>' is not a key)"
-    )
+  known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
+  node = agent_segment_case(name)
+  case = (
+    f"; an agent's node is lowercase — spell it '{display_agent_ref(node)}' (spec §0)"
+    if node != name and is_valid_agent_segment(node, valid_agents)
+    else ""
+  )
+  return (
+    f"'{display_agent_ref(name)}' is not a valid agent (valid: {known}){case}. The agent "
+    f"segment of an agent-scope key must name a real agent or a reserved PSEUDO-AGENT "
+    f"tier (spec §2d / §0 L21 — a bare 'agent.<key>' is not a key)"
+  )
 
 
 #: harness → the leaves that harness's PLUGIN declares (spec §0). A PLAIN mapping is
@@ -1294,593 +1388,596 @@ _NOT_ASKED: Final[object] = object()
 
 
 class _UnreadHarnesses(Container[str]):
-    """Every harness a discovery result did NOT read — its concession, as a predicate.
+  """Every harness a discovery result did NOT read — its concession, as a predicate.
 
-    ⚑ A ``Container`` AND NOT A SET, because the honest answer is CO-INFINITE: it
-    holds every agent name this machine has never heard of, which is exactly the
-    population keyspec §0 "The leaf VOCABULARY is partitioned by TIER" concedes
-    (*"the leaf is CONCEDED, never refused"*). :func:`_could_name_an_agent` makes the
-    same point about NAMES — a machine cannot enumerate what it has never heard of, so
-    it cannot judge it.
-    """
+  ⚑ A ``Container`` AND NOT A SET, because the honest answer is CO-INFINITE: it
+  holds every agent name this machine has never heard of, which is exactly the
+  population keyspec §0 "The leaf VOCABULARY is partitioned by TIER" concedes
+  (*"the leaf is CONCEDED, never refused"*). :func:`_could_name_an_agent` makes the
+  same point about NAMES — a machine cannot enumerate what it has never heard of, so
+  it cannot judge it.
+  """
 
-    __slots__ = ("_declared",)
+  __slots__ = ("_declared",)
 
-    def __init__(self, declared: "AgentLeafMap") -> None:
-        self._declared = declared
+  def __init__(self, declared: "AgentLeafMap") -> None:
+    self._declared = declared
 
-    def __contains__(self, item: object) -> bool:
-        return item not in self._declared
+  def __contains__(self, item: object) -> bool:
+    return item not in self._declared
 
 
 def unread_harnesses(declared: "AgentLeafMap") -> "Container[str]":
-    """THE CONCESSION A DISCOVERY RESULT MAKES: every harness *declared* did not read.
+  """THE CONCESSION A DISCOVERY RESULT MAKES: every harness *declared* did not read.
 
-    ⚑ ONE SPELLING FOR IT, and all three discovery-backed suppliers use this one:
-    ``settings_keyspace_probe``, ``config_keys``' lazy view, and
-    ``settings_prefs.default_valid_agents``. A supplier that derived the rule for
-    itself would be a second place for it to be got wrong, and the two states it
-    separates look identical from the outside.
-    ⚑ IT STAYS LAZY: *declared* may be a map that discovers on its first question, and
-    this asks it no sooner than the judgment does.
-    """
-    return _UnreadHarnesses(declared)
+  ⚑ ONE SPELLING FOR IT, and all three discovery-backed suppliers use this one:
+  ``settings_keyspace_probe``, ``config_keys``' lazy view, and
+  ``settings_prefs.default_valid_agents``. A supplier that derived the rule for
+  itself would be a second place for it to be got wrong, and the two states it
+  separates look identical from the outside.
+  ⚑ IT STAYS LAZY: *declared* may be a map that discovers on its first question, and
+  this asks it no sooner than the judgment does.
+  """
+  return _UnreadHarnesses(declared)
 
 
 class ConcedingLeafMap(Mapping[str, "Collection[str]"]):
-    """A leaf map that SAYS which harnesses it could not read
-    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
+  """A leaf map that SAYS which harnesses it could not read
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
 
-    ⚑⚑ THE CONCESSION IS A CLAIM A SUPPLIER MAKES, NEVER A GAP A JUDGE INFERS. It was
-    absence-of-a-key until 2026-08-30, and absence cannot tell apart the two states
-    that wear it: *"this machine has no goose plugin, so goose's vocabulary is
-    unreadable here"* — where keyspec §0 "The leaf VOCABULARY is partitioned by TIER"
-    requires ``agent.goose.provider`` be CONCEDED — and *"no vocabulary was supplied at
-    all"*, where conceding hands every named agent every tail it likes. Both are
-    ``{}``, and the second one was the DEFAULT: a supplier that had read nothing
-    conceded everything, so §0 failed OPEN on an omission.
-    🛑 A PLAIN ``dict`` THEREFORE CONCEDES NOTHING, and that is the fail-closed
-    direction — a map with no standing to concede refuses what it cannot vouch for.
-    The way to concede is to say so here.
+  ⚑⚑ THE CONCESSION IS A CLAIM A SUPPLIER MAKES, NEVER A GAP A JUDGE INFERS. It was
+  absence-of-a-key until 2026-08-30, and absence cannot tell apart the two states
+  that wear it: *"this machine has no goose plugin, so goose's vocabulary is
+  unreadable here"* — where keyspec §0 "The leaf VOCABULARY is partitioned by TIER"
+  requires ``agent.goose.provider`` be CONCEDED — and *"no vocabulary was supplied at
+  all"*, where conceding hands every named agent every tail it likes. Both are
+  ``{}``, and the second one was the DEFAULT: a supplier that had read nothing
+  conceded everything, so §0 failed OPEN on an omission.
+  🛑 A PLAIN ``dict`` THEREFORE CONCEDES NOTHING, and that is the fail-closed
+  direction — a map with no standing to concede refuses what it cannot vouch for.
+  The way to concede is to say so here.
 
-    ⚑ THE PAIR IS STILL ONE PARAMETER. The vocabulary and the concession were two
-    arguments once and were forwarded singly (``key_class``); making the concession
-    explicit must not un-collapse them, so it rides INSIDE the map rather than beside
-    it in a signature.
-    """
+  ⚑ THE PAIR IS STILL ONE PARAMETER. The vocabulary and the concession were two
+  arguments once and were forwarded singly (``key_class``); making the concession
+  explicit must not un-collapse them, so it rides INSIDE the map rather than beside
+  it in a signature.
+  """
 
-    __slots__ = ("_declared", "conceded")
+  __slots__ = ("_declared", "conceded")
 
-    def __init__(
-        self, declared: "AgentLeafMap", conceded: "Container[str]",
-    ) -> None:
-        self._declared = declared
-        #: The harnesses whose vocabulary is UNREADABLE here — conceded, not refused.
-        self.conceded = conceded
+  def __init__(
+    self,
+    declared: "AgentLeafMap",
+    conceded: "Container[str]",
+  ) -> None:
+    self._declared = declared
+    #: The harnesses whose vocabulary is UNREADABLE here — conceded, not refused.
+    self.conceded = conceded
 
-    def __getitem__(self, key: str) -> "Collection[str]":
-        return self._declared[key]
+  def __getitem__(self, key: str) -> "Collection[str]":
+    return self._declared[key]
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._declared)
+  def __iter__(self) -> Iterator[str]:
+    return iter(self._declared)
 
-    def __len__(self) -> int:
-        return len(self._declared)
+  def __len__(self) -> int:
+    return len(self._declared)
 
 
 def agent_declared_leaves(
-    name: str, agent_leaf_map: "AgentLeafMap | None",
+  name: str,
+  agent_leaf_map: "AgentLeafMap | None",
 ) -> "Collection[str] | None":
-    """The leaves agent *name*'s OWN plugin declares, or ``None`` when unreadable here.
+  """The leaves agent *name*'s OWN plugin declares, or ``None`` when unreadable here.
 
-    ``None`` is the CONCESSION and nothing else is: §0 makes agent specifics
-    PLUGIN-declared, so where the plugin is absent there is no vocabulary to judge
-    against and ``agent.goose.provider`` — a real goose ``setting_descriptor`` leaf —
-    must not be refused on a claude-only machine
-    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a narrowing that refuses
-    ``agent.goose.provider`` on a claude-only machine has misread this).
+  ``None`` is the CONCESSION and nothing else is: §0 makes agent specifics
+  PLUGIN-declared, so where the plugin is absent there is no vocabulary to judge
+  against and ``agent.goose.provider`` — a real goose ``setting_descriptor`` leaf —
+  must not be refused on a claude-only machine
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a narrowing that refuses
+  ``agent.goose.provider`` on a claude-only machine has misread this).
 
-    ⚑⚑ AND THE MAP HAS TO SAY SO. A harness the map neither declares nor concedes
-    gets core's table, because the silence of a map is not evidence about this
-    machine: an empty or partial literal says only that its author supplied nothing,
-    and reading that as *"nothing here is knowable"* conceded every leaf of every
-    named agent — the closed keyspace opened by an omission. :class:`ConcedingLeafMap`
-    is how a supplier that HAS looked reports what it could not read.
+  ⚑⚑ AND THE MAP HAS TO SAY SO. A harness the map neither declares nor concedes
+  gets core's table, because the silence of a map is not evidence about this
+  machine: an empty or partial literal says only that its author supplied nothing,
+  and reading that as *"nothing here is knowable"* conceded every leaf of every
+  named agent — the closed keyspace opened by an omission. :class:`ConcedingLeafMap`
+  is how a supplier that HAS looked reports what it could not read.
 
-    ⚑ THE NORMALIZATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
-    :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
-    a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
-    (*"or harness"*, keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), and the
-    ref arrives RAW — ``config_keys`` hands this pre-canonicalization keys — so
-    ``harness_of`` alone is not enough: it splits on ``℘`` only, and a raw
-    ``nav+claude`` would miss the map and be silently CONCEDED.
-    That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
-    while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
-    two answers by spelling.
+  ⚑ THE NORMALIZATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
+  :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
+  a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
+  (*"or harness"*, keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), and the
+  ref arrives RAW — ``config_keys`` hands this pre-canonicalization keys — so
+  ``harness_of`` alone is not enough: it splits on ``℘`` only, and a raw
+  ``nav+claude`` would miss the map and be silently CONCEDED.
+  That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
+  while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
+  two answers by spelling.
 
-    TWO KINDS of segment get NO plugin leaves and NO concession — a §2a category
-    token, and a PSEUDO-AGENT name (``default``, ``shell``), which
-    :class:`AgentVocabulary` then judges against its own §2d fence
-    (:class:`PseudoAgentFence`). Neither is withheld from the concession by policy:
-    their standing is the KEYSPACE's own, so it is knowable on every machine and
-    there is nothing a missing plugin could make unreadable
-    (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalize joins them, for
-    the same reason pointing the other way — it names no agent, so there is no plugin
-    whose absence could excuse it.
-    """
-    if agent_leaf_map is None or not _could_name_an_agent(name):
-        return frozenset()
-    try:
-        node = canonicalize_agent_ref(name)
-    except ConfigError:
-        return frozenset()
-    harness = harness_of(node)
-    # ⚑ ASKED BY ``.get``, never an iteration: the map may be a lazy discovery view (pinned
-    # by ``_NeverAsk``: consulted, never iterated). No case fold (Q87,
-    # :func:`is_valid_agent_segment`).
-    declared = agent_leaf_map.get(harness)
-    if declared is not None:
-        return declared
-    if isinstance(agent_leaf_map, ConcedingLeafMap):
-        return None if harness in agent_leaf_map.conceded else frozenset()
+  TWO KINDS of segment get NO plugin leaves and NO concession — a §2a category
+  token, and a PSEUDO-AGENT name (``default``, ``shell``), which
+  :class:`AgentVocabulary` then judges against its own §2d fence
+  (:class:`PseudoAgentFence`). Neither is withheld from the concession by policy:
+  their standing is the KEYSPACE's own, so it is knowable on every machine and
+  there is nothing a missing plugin could make unreadable
+  (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalize joins them, for
+  the same reason pointing the other way — it names no agent, so there is no plugin
+  whose absence could excuse it.
+  """
+  if agent_leaf_map is None or not _could_name_an_agent(name):
     return frozenset()
+  try:
+    node = canonicalize_agent_ref(name)
+  except ConfigError:
+    return frozenset()
+  harness = harness_of(node)
+  # ⚑ ASKED BY ``.get``, never an iteration: the map may be a lazy discovery view (pinned
+  # by ``_NeverAsk``: consulted, never iterated). No case fold (Q87,
+  # :func:`is_valid_agent_segment`).
+  declared = agent_leaf_map.get(harness)
+  if declared is not None:
+    return declared
+  if isinstance(agent_leaf_map, ConcedingLeafMap):
+    return None if harness in agent_leaf_map.conceded else frozenset()
+  return frozenset()
 
 
 class AgentVocabulary(Collection[str]):
-    """Every leaf legal on ONE agent: core's universal table, plus that agent's own.
+  """Every leaf legal on ONE agent: core's universal table, plus that agent's own.
 
-    ⚑ A PSEUDO-AGENT'S CORE HALF IS ITS OWN §2d FENCE (:class:`PseudoAgentFence`), and
-    it has no plugin half.  ``shell``'s fence lists the universal leaves, since it
-    inherits ``agent.default``.
+  ⚑ A PSEUDO-AGENT'S CORE HALF IS ITS OWN §2d FENCE (:class:`PseudoAgentFence`), and
+  it has no plugin half.  ``shell``'s fence lists the universal leaves, since it
+  inherits ``agent.default``.
 
-    ⚑⚑ THE TIER IS THE PARTITION LINE
-    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). A leaf established at
-    ``agent.default`` is UNIVERSAL — a key on every real agent; every OTHER leaf is
-    legal only on the agent (or harness) whose plugin declared it. So the core §2d
-    table is asked FIRST and unconditionally, and the map is asked only for a leaf
-    core cannot answer for.
+  ⚑⚑ THE TIER IS THE PARTITION LINE
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). A leaf established at
+  ``agent.default`` is UNIVERSAL — a key on every real agent; every OTHER leaf is
+  legal only on the agent (or harness) whose plugin declared it. So the core §2d
+  table is asked FIRST and unconditionally, and the map is asked only for a leaf
+  core cannot answer for.
 
-    ⚑ THAT ORDER IS ALSO THE COST ORDER, and the two agree by construction rather
-    than by coincidence. Asking the map IMPORTS every installed plugin, and those
-    modules parse YAML in their module bodies; it was measured at 73% of a whole
-    settings resolve. ``agent.claude.model`` is a core leaf and pays nothing.
-    🛑 A ``frozenset(...)`` around this restores the cost silently — no classification
-    would move, so nothing but the deferral's own tests would red.
+  ⚑ THAT ORDER IS ALSO THE COST ORDER, and the two agree by construction rather
+  than by coincidence. Asking the map IMPORTS every installed plugin, and those
+  modules parse YAML in their module bodies; it was measured at 73% of a whole
+  settings resolve. ``agent.claude.model`` is a core leaf and pays nothing.
+  🛑 A ``frozenset(...)`` around this restores the cost silently — no classification
+  would move, so nothing but the deferral's own tests would red.
 
-    ⚑ ITERATION FORCES THE MAP, and that is owed: the only iterating caller is the
-    refusal message's ``sorted(leaves)`` in :func:`_agent_tail_reason`, already on its
-    way to UNDECLARED, and a refusal must name the vocabulary the user actually has.
-    ⚑ It names THIS AGENT'S vocabulary, which is the honest list — a cross-agent union
-    would offer the user a leaf that is not a key here.
-    """
+  ⚑ ITERATION FORCES THE MAP, and that is owed: the only iterating caller is the
+  refusal message's ``sorted(leaves)`` in :func:`_agent_tail_reason`, already on its
+  way to UNDECLARED, and a refusal must name the vocabulary the user actually has.
+  ⚑ It names THIS AGENT'S vocabulary, which is the honest list — a cross-agent union
+  would offer the user a leaf that is not a key here.
+  """
 
-    __slots__ = ("_name", "_map", "_own", "_core")
+  __slots__ = ("_name", "_map", "_own", "_core")
 
-    def __init__(self, name: str, agent_leaf_map: "AgentLeafMap | None") -> None:
-        self._name = name
-        self._map = agent_leaf_map
-        self._own: Any = _NOT_ASKED
-        # A pseudo-agent's core table is its own §2d fence (:class:`PseudoAgentFence`).
-        fence = pseudo_agent_fence(name)
-        self._core: frozenset[str] = (
-            DECLARED_AGENT_LEAVES if fence is None else fence.leaves
-        )
+  def __init__(self, name: str, agent_leaf_map: "AgentLeafMap | None") -> None:
+    self._name = name
+    self._map = agent_leaf_map
+    self._own: Any = _NOT_ASKED
+    # A pseudo-agent's core table is its own §2d fence (:class:`PseudoAgentFence`).
+    fence = pseudo_agent_fence(name)
+    self._core: frozenset[str] = DECLARED_AGENT_LEAVES if fence is None else fence.leaves
 
-    def _declared(self) -> "Collection[str] | None":
-        """The agent's own leaves, asked ONCE — ``None`` = conceded."""
-        if self._own is _NOT_ASKED:
-            self._own = agent_declared_leaves(self._name, self._map)
-        return self._own  # type: ignore[no-any-return]
+  def _declared(self) -> "Collection[str] | None":
+    """The agent's own leaves, asked ONCE — ``None`` = conceded."""
+    if self._own is _NOT_ASKED:
+      self._own = agent_declared_leaves(self._name, self._map)
+    return self._own  # type: ignore[no-any-return]
 
-    def is_known(self) -> bool:
-        """Can this machine read this agent's vocabulary at all? (the concession)"""
-        return self._declared() is not None
+  def is_known(self) -> bool:
+    """Can this machine read this agent's vocabulary at all? (the concession)"""
+    return self._declared() is not None
 
-    def __contains__(self, item: object) -> bool:
-        if item in self._core:
-            return True
-        own = self._declared()
-        return own is not None and item in own
+  def __contains__(self, item: object) -> bool:
+    if item in self._core:
+      return True
+    own = self._declared()
+    return own is not None and item in own
 
-    def __iter__(self) -> Iterator[str]:
-        own = self._declared() or ()
-        return iter(self._core | frozenset(own))
+  def __iter__(self) -> Iterator[str]:
+    own = self._declared() or ()
+    return iter(self._core | frozenset(own))
 
-    def __len__(self) -> int:
-        return len(frozenset(self))
+  def __len__(self) -> int:
+    return len(frozenset(self))
 
 
 def agent_leaf_is_declared(
-    name: str, tail: str, agent_leaf_map: "AgentLeafMap | None",
+  name: str,
+  tail: str,
+  agent_leaf_map: "AgentLeafMap | None",
 ) -> bool:
-    """Is *tail* a declared leaf of agent *name* (spec §0)?
+  """Is *tail* a declared leaf of agent *name* (spec §0)?
 
-    ⚑ ONE CARRIER FOR THE PER-AGENT RULE. :func:`key_class` judges through
-    :class:`AgentVocabulary` because it owes a REASON; ``config_keys``' per-node
-    recognizer needs only the bool, and taking it from here is what keeps the two
-    from becoming two keyspaces — which is exactly what they were until 2026-08-30,
-    when the recognizer read a flat cross-agent union the classifier had stopped
-    honoring at the ``agent.default`` tier.
+  ⚑ ONE CARRIER FOR THE PER-AGENT RULE. :func:`key_class` judges through
+  :class:`AgentVocabulary` because it owes a REASON; ``config_keys``' per-node
+  recognizer needs only the bool, and taking it from here is what keeps the two
+  from becoming two keyspaces — which is exactly what they were until 2026-08-30,
+  when the recognizer read a flat cross-agent union the classifier had stopped
+  honoring at the ``agent.default`` tier.
 
-    ⚑ SHAPE IS NOT ASKED HERE: this answers only "is this word in that agent's
-    vocabulary". The tail SHAPE rules (one leaf, or a §2a category) are
-    :func:`_agent_tail_reason`'s, and they apply whoever declares the leaves.
-    """
-    vocabulary = AgentVocabulary(name, agent_leaf_map)
-    return tail in vocabulary or not vocabulary.is_known()
+  ⚑ SHAPE IS NOT ASKED HERE: this answers only "is this word in that agent's
+  vocabulary". The tail SHAPE rules (one leaf, or a §2a category) are
+  :func:`_agent_tail_reason`'s, and they apply whoever declares the leaves.
+  """
+  vocabulary = AgentVocabulary(name, agent_leaf_map)
+  return tail in vocabulary or not vocabulary.is_known()
 
 
 class _EffectiveLeaves(Collection[str]):
-    """The core §2d set with EVERY harness's declared leaves behind it — lazily.
+  """The core §2d set with EVERY harness's declared leaves behind it — lazily.
 
-    🛑 THE FLAT CROSS-AGENT UNION, AND IT HAS EXACTLY ONE QUESTION LEFT TO ANSWER.
-    Keyspec §0 "The leaf VOCABULARY is partitioned by TIER" killed it as a judge — a
-    plugin's leaf is a key only on the agent whose plugin declared it — so what
-    survives is the ONE surface that carries NO DISCRIMINATOR to judge per-agent with,
-    where the partition is not expressible: the RO ``meta.box.agent.*`` mirror, whose
-    agent is a runtime fact, absent from the key.
-    (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
-    when its two call sites started passing the NODE they already held; it was DELETED
-    on 2026-09-15 with the agent file's non-key ``name`` field.)
-    Narrowing it to core alone would refuse a leaf that reads back a real value,
-    which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
-    union is why it is worth a name: a third caller wants an agent, not this.
+  🛑 THE FLAT CROSS-AGENT UNION, AND IT HAS EXACTLY ONE QUESTION LEFT TO ANSWER.
+  Keyspec §0 "The leaf VOCABULARY is partitioned by TIER" killed it as a judge — a
+  plugin's leaf is a key only on the agent whose plugin declared it — so what
+  survives is the ONE surface that carries NO DISCRIMINATOR to judge per-agent with,
+  where the partition is not expressible: the RO ``meta.box.agent.*`` mirror, whose
+  agent is a runtime fact, absent from the key.
+  (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
+  when its two call sites started passing the NODE they already held; it was DELETED
+  on 2026-09-15 with the agent file's non-key ``name`` field.)
+  Narrowing it to core alone would refuse a leaf that reads back a real value,
+  which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
+  union is why it is worth a name: a third caller wants an agent, not this.
 
-    ⚑ THE UNION IS THE COST, and materializing it eagerly made every judgment pay it.
-    ``key_class`` used to build ``frozenset(DECLARED_AGENT_LEAVES) |
-    frozenset(agent_leaves)`` before dispatching on the head, so a ``box.image``
-    resolve paid for a question only an ``agent.*`` leaf can ask.
-    """
+  ⚑ THE UNION IS THE COST, and materializing it eagerly made every judgment pay it.
+  ``key_class`` used to build ``frozenset(DECLARED_AGENT_LEAVES) |
+  frozenset(agent_leaves)`` before dispatching on the head, so a ``box.image``
+  resolve paid for a question only an ``agent.*`` leaf can ask.
+  """
 
-    __slots__ = ("_map",)
+  __slots__ = ("_map",)
 
-    def __init__(self, agent_leaf_map: AgentLeafMap) -> None:
-        self._map = agent_leaf_map
+  def __init__(self, agent_leaf_map: AgentLeafMap) -> None:
+    self._map = agent_leaf_map
 
-    def _union(self) -> "frozenset[str]":
-        return frozenset(DECLARED_AGENT_LEAVES).union(*self._map.values(), frozenset())
+  def _union(self) -> "frozenset[str]":
+    return frozenset(DECLARED_AGENT_LEAVES).union(*self._map.values(), frozenset())
 
-    def __contains__(self, item: object) -> bool:
-        return item in DECLARED_AGENT_LEAVES or any(
-            item in declared for declared in self._map.values()
-        )
+  def __contains__(self, item: object) -> bool:
+    return item in DECLARED_AGENT_LEAVES or any(
+      item in declared for declared in self._map.values()
+    )
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._union())
+  def __iter__(self) -> Iterator[str]:
+    return iter(self._union())
 
-    def __len__(self) -> int:
-        return len(self._union())
+  def __len__(self) -> int:
+    return len(self._union())
 
 
 def effective_agent_leaves(
-    agent_leaf_map: "AgentLeafMap | None",
+  agent_leaf_map: "AgentLeafMap | None",
 ) -> Collection[str]:
-    """Core §2d unioned over EVERY harness in *agent_leaf_map* (``None`` = core alone).
+  """Core §2d unioned over EVERY harness in *agent_leaf_map* (``None`` = core alone).
 
-    THE constructor for :class:`_EffectiveLeaves`.  Its second consumer,
-    ``config_keys._PERSONA_STATE_LEAVES``, was DELETED on 2026-09-02 when
-    ``agent_file_identity_only`` began taking a node, leaving :func:`key_class`'s
-    ``meta.box.agent`` mirror as the only one.  (That function is itself gone since
-    2026-09-15; the mirror is the last union reader either way.)
-    🛑 NOT THE ANSWER FOR A KEY THAT NAMES AN AGENT — that is
-    :func:`agent_leaf_is_declared`. Reach for this only where the key carries no
-    discriminator at all; the class docstring says why those two do not.
-    """
-    return (
-        DECLARED_AGENT_LEAVES if agent_leaf_map is None
-        else _EffectiveLeaves(agent_leaf_map)
-    )
+  THE constructor for :class:`_EffectiveLeaves`.  Its second consumer,
+  ``config_keys._PERSONA_STATE_LEAVES``, was DELETED on 2026-09-02 when
+  ``agent_file_identity_only`` began taking a node, leaving :func:`key_class`'s
+  ``meta.box.agent`` mirror as the only one.  (That function is itself gone since
+  2026-09-15; the mirror is the last union reader either way.)
+  🛑 NOT THE ANSWER FOR A KEY THAT NAMES AN AGENT — that is
+  :func:`agent_leaf_is_declared`. Reach for this only where the key carries no
+  discriminator at all; the class docstring says why those two do not.
+  """
+  return DECLARED_AGENT_LEAVES if agent_leaf_map is None else _EffectiveLeaves(agent_leaf_map)
 
 
 def _leaves_are_known() -> bool:
-    """The default *leaves_known*: a caller that says nothing covers every agent."""
-    return True
+  """The default *leaves_known*: a caller that says nothing covers every agent."""
+  return True
 
 
 def _agent_tail_reason(
-    prefix: str,
-    tail: list[str],
-    leaves: Collection[str] = DECLARED_AGENT_LEAVES,
-    *,
-    leaves_known: Callable[[], bool] = _leaves_are_known,
+  prefix: str,
+  tail: list[str],
+  leaves: Collection[str] = DECLARED_AGENT_LEAVES,
+  *,
+  leaves_known: Callable[[], bool] = _leaves_are_known,
 ) -> KeyJudgment:
-    """Judge the tail of an agent-scope key, after the discriminator.
+  """Judge the tail of an agent-scope key, after the discriminator.
 
-    *leaves* is the effective agent-leaf vocabulary: core's universal §2d table plus
-    whatever the PLUGINS declare for THIS agent (§0 — *"Agent specifics are
-    PLUGIN-declared … Every non-universal specific is established AND modified by the
-    PLUGIN, never hardcoded in core"*;
-    keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). Without the plugin half a
-    real key is refused: goose declares ``provider`` through ``setting_descriptors()``
-    and ``agent.goose.provider`` is legitimate. With it unioned ACROSS agents,
-    ``agent.claude.provider`` was a key too — which it is not.
+  *leaves* is the effective agent-leaf vocabulary: core's universal §2d table plus
+  whatever the PLUGINS declare for THIS agent (§0 — *"Agent specifics are
+  PLUGIN-declared … Every non-universal specific is established AND modified by the
+  PLUGIN, never hardcoded in core"*;
+  keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). Without the plugin half a
+  real key is refused: goose declares ``provider`` through ``setting_descriptors()``
+  and ``agent.goose.provider`` is legitimate. With it unioned ACROSS agents,
+  ``agent.claude.provider`` was a key too — which it is not.
 
-    ⚑ *leaves_known* answers FALSE when the caller could not read this agent's plugin
-    at all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
-    is conceded and nothing else: the SHAPE rules below still apply (a category tail
-    is judged, a multi-segment tail is still not an agent key), and so does the
-    reserved-name floor inside :func:`_leaf`, because that floor is about colliding
-    with the resolved store rather than about what a plugin declares.
+  ⚑ *leaves_known* answers FALSE when the caller could not read this agent's plugin
+  at all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
+  is conceded and nothing else: the SHAPE rules below still apply (a category tail
+  is judged, a multi-segment tail is still not an agent key), and so does the
+  reserved-name floor inside :func:`_leaf`, because that floor is about colliding
+  with the resolved store rather than about what a plugin declares.
 
-    ⚑⚑ IT IS A CALLABLE, AND ASKED LAST, FOR THE REASON :class:`_EffectiveLeaves`
-    GIVES. Its production supplier answers by importing every installed plugin, so
-    evaluating it to a ``bool`` at the call site re-arms on ``agent.<agent>.*`` the
-    whole cost the lazy union defers — ``agent.claude.model``, a plain core leaf,
-    would still pay it. Both operands are PURE, so the disjunction below answers the
-    same whichever is asked first; only the COST differs.
-    """
-    if not tail:
-        # An agent TIER — ``agent.<agent>``, ``agent.default``, or the
-        # ``meta.box.agent`` mirror. The tier is where the leaves hang, so the node
-        # is store structure; only a SCALAR sitting on a tier is a fabrication.
-        return _namespace(f"'{prefix}' names an agent tier, not a key (spec §2d)")
-    if _looks_like_category(tail):
-        return _category_reason(prefix, tail, what=f"'{prefix}'")
-    if len(tail) == 1:
-        # ⚑ CORE FIRST, PLUGINS SECOND, THE CONCESSION LAST — cost order, not rule
-        # order. ``leaves`` asks :data:`DECLARED_AGENT_LEAVES` before the plugin set
-        # it wraps, and ``leaves_known`` is only called when both have missed.
-        if tail[0] in leaves or not leaves_known():
-            return _leaf(tail[0])
-        return _undeclared(
-            # ⚑ THE AGENT IS NAMED, and after
-            # keyspec §0 "The leaf VOCABULARY is partitioned by TIER" it has to be: the
-            # vocabulary is per-agent, so "not a declared agent key" alone reads as
-            # though the leaf were a key NOWHERE. The pinned phrase is kept intact inside it.
-            f"'{tail[0]}' is not a declared agent key of '{prefix}' (declared: "
-            f"{', '.join(sorted(leaves))}, plus the §2a "
-            f"categories) (spec §0 — the keyspace is CLOSED)"
-        )
+  ⚑⚑ IT IS A CALLABLE, AND ASKED LAST, FOR THE REASON :class:`_EffectiveLeaves`
+  GIVES. Its production supplier answers by importing every installed plugin, so
+  evaluating it to a ``bool`` at the call site re-arms on ``agent.<agent>.*`` the
+  whole cost the lazy union defers — ``agent.claude.model``, a plain core leaf,
+  would still pay it. Both operands are PURE, so the disjunction below answers the
+  same whichever is asked first; only the COST differs.
+  """
+  if not tail:
+    # An agent TIER — ``agent.<agent>``, ``agent.default``, or the
+    # ``meta.box.agent`` mirror. The tier is where the leaves hang, so the node
+    # is store structure; only a SCALAR sitting on a tier is a fabrication.
+    return _namespace(f"'{prefix}' names an agent tier, not a key (spec §2d)")
+  if _looks_like_category(tail):
+    return _category_reason(prefix, tail, what=f"'{prefix}'")
+  if len(tail) == 1:
+    # ⚑ CORE FIRST, PLUGINS SECOND, THE CONCESSION LAST — cost order, not rule
+    # order. ``leaves`` asks :data:`DECLARED_AGENT_LEAVES` before the plugin set
+    # it wraps, and ``leaves_known`` is only called when both have missed.
+    if tail[0] in leaves or not leaves_known():
+      return _leaf(tail[0])
     return _undeclared(
-        f"'{prefix}.{'.'.join(tail)}' is not a declared agent key "
-        f"(spec §0 — the keyspace is CLOSED)"
+      # ⚑ THE AGENT IS NAMED, and after
+      # keyspec §0 "The leaf VOCABULARY is partitioned by TIER" it has to be: the
+      # vocabulary is per-agent, so "not a declared agent key" alone reads as
+      # though the leaf were a key NOWHERE. The pinned phrase is kept intact inside it.
+      f"'{tail[0]}' is not a declared agent key of '{prefix}' (declared: "
+      f"{', '.join(sorted(leaves))}, plus the §2a "
+      f"categories) (spec §0 — the keyspace is CLOSED)"
     )
+  return _undeclared(
+    f"'{prefix}.{'.'.join(tail)}' is not a declared agent key (spec §0 — the keyspace is CLOSED)"
+  )
 
 
 def key_validity(
-    key: str,
-    *,
-    valid_agents: Collection[str],
-    agent_leaf_map: "AgentLeafMap | None" = None,
+  key: str,
+  *,
+  valid_agents: Collection[str],
+  agent_leaf_map: "AgentLeafMap | None" = None,
 ) -> str | None:
-    """``None`` when *key* is a legal key under §0; else a REASON naming why not.
+  """``None`` when *key* is a legal key under §0; else a REASON naming why not.
 
-    ⚑ THE KEY-OR-NOT VIEW of :func:`key_class`, and the one every SET boundary
-    wants: at a write site a NAMESPACE and a fabrication are equally not-a-key, so
-    both come back as a reason. A consumer that must tell the two apart — only the
-    store-path classifier does — calls :func:`key_class` instead.
+  ⚑ THE KEY-OR-NOT VIEW of :func:`key_class`, and the one every SET boundary
+  wants: at a write site a NAMESPACE and a fabrication are equally not-a-key, so
+  both come back as a reason. A consumer that must tell the two apart — only the
+  store-path classifier does — calls :func:`key_class` instead.
 
-    A REASON string rather than a bool because every consumer must be able to
-    tell the user WHY (spec §2h: *"the error NAMES which key, at which
-    level, and WHY"*, and §0: an undeclared key errors NAMING the key).
+  A REASON string rather than a bool because every consumer must be able to
+  tell the user WHY (spec §2h: *"the error NAMES which key, at which
+  level, and WHY"*, and §0: an undeclared key errors NAMING the key).
 
-    ⚑⚑ IT FORWARDS THE WHOLE ORACLE, and it did not until 2026-08-30: it took a flat
-    leaf set and had NO concession parameter at all, so its consumers — the ``agent``
-    noun's §0 gate and the LAUNCH boundary behind it, and §2h filter 1 — were
-    STRUCTURALLY incapable of conceding. Measured on a simulated claude-only machine:
-    ``agent.goose.provider`` classified KEY at :func:`key_class` and REFUSED here, so
-    a goose store on a machine where goose had been uninstalled would not launch. One
-    parameter cannot be dropped where there is only one.
-    """
-    judgment = key_class(
-        key, valid_agents=valid_agents, agent_leaf_map=agent_leaf_map,
-    )
-    return None if judgment.cls is KeyClass.KEY else judgment.reason
+  ⚑⚑ IT FORWARDS THE WHOLE ORACLE, and it did not until 2026-08-30: it took a flat
+  leaf set and had NO concession parameter at all, so its consumers — the ``agent``
+  noun's §0 gate and the LAUNCH boundary behind it, and §2h filter 1 — were
+  STRUCTURALLY incapable of conceding. Measured on a simulated claude-only machine:
+  ``agent.goose.provider`` classified KEY at :func:`key_class` and REFUSED here, so
+  a goose store on a machine where goose had been uninstalled would not launch. One
+  parameter cannot be dropped where there is only one.
+  """
+  judgment = key_class(
+    key,
+    valid_agents=valid_agents,
+    agent_leaf_map=agent_leaf_map,
+  )
+  return None if judgment.cls is KeyClass.KEY else judgment.reason
 
 
 def key_class(
-    key: str,
-    *,
-    valid_agents: Collection[str],
-    agent_leaf_map: "AgentLeafMap | None" = None,
+  key: str,
+  *,
+  valid_agents: Collection[str],
+  agent_leaf_map: "AgentLeafMap | None" = None,
 ) -> KeyJudgment:
-    """*key*'s :class:`KeyClass` under §0, with the REASON for a non-key.
+  """*key*'s :class:`KeyClass` under §0, with the REASON for a non-key.
 
-    *valid_agents* is injected (purity) — the set of agent discriminators that
-    are real, exclusive of ``"default"`` which is always legal.
+  *valid_agents* is injected (purity) — the set of agent discriminators that
+  are real, exclusive of ``"default"`` which is always legal.
 
-    ⚑⚑ *agent_leaf_map* IS THE LEAF VOCABULARY, HARNESS BY HARNESS, and the shape is
-    the rule (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"): a leaf established
-    at ``agent.default`` is UNIVERSAL, and every OTHER leaf is legal only on the agent or
-    harness whose plugin declared it.  ``None`` means core's universal table alone.
-    ⮕ **THE MAP CARRIES THE CONCESSION TOO, AND SPEAKS IT** — a
-    :class:`ConcedingLeafMap` names the harnesses it could not read, and every other
-    map concedes nothing. An agent whose plugin this machine cannot read has NO
-    knowable vocabulary, so judging it against any set refuses a key that is genuinely
-    declared — ``agent.goose.provider``, a real goose ``setting_descriptor`` leaf,
-    refused on a machine without goose. 🛑 That concession rode on mere ABSENCE until
-    2026-08-30, which is also what an empty or hand-built map looks like, so a
-    supplier that had read nothing conceded EVERYTHING. It was two
-    parameters until 2026-08-30 (a flat set, plus the agents it covered) and they are
-    a DEPENDENT PAIR: a set is only meaningful for the agents it was read from. Two
-    parameters can be forwarded singly, and the ``pref.<target>`` recursion did
-    exactly that. One cannot.
-    ⚑ It is ASKED, NEVER MATERIALIZED HERE. Its production supplier discovers plugins
-    on the first question put to it, so a ``dict(...)`` around it charges every path
-    judged — ``config.*``, ``box.*``, a bare namespace — for a vocabulary only an
-    agent LEAF can consult. :class:`AgentVocabulary` carries the measurement.
-    🛑 It does NOT reach ``meta.agent.<agent>.*``. That tier's vocabulary is
-    core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``, or a
-    pseudo-agent's :class:`PseudoAgentFence`) and no plugin extends it, so it is
-    knowable whether or not the plugin is here — there is nothing to concede.
+  ⚑⚑ *agent_leaf_map* IS THE LEAF VOCABULARY, HARNESS BY HARNESS, and the shape is
+  the rule (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"): a leaf established
+  at ``agent.default`` is UNIVERSAL, and every OTHER leaf is legal only on the agent or
+  harness whose plugin declared it.  ``None`` means core's universal table alone.
+  ⮕ **THE MAP CARRIES THE CONCESSION TOO, AND SPEAKS IT** — a
+  :class:`ConcedingLeafMap` names the harnesses it could not read, and every other
+  map concedes nothing. An agent whose plugin this machine cannot read has NO
+  knowable vocabulary, so judging it against any set refuses a key that is genuinely
+  declared — ``agent.goose.provider``, a real goose ``setting_descriptor`` leaf,
+  refused on a machine without goose. 🛑 That concession rode on mere ABSENCE until
+  2026-08-30, which is also what an empty or hand-built map looks like, so a
+  supplier that had read nothing conceded EVERYTHING. It was two
+  parameters until 2026-08-30 (a flat set, plus the agents it covered) and they are
+  a DEPENDENT PAIR: a set is only meaningful for the agents it was read from. Two
+  parameters can be forwarded singly, and the ``pref.<target>`` recursion did
+  exactly that. One cannot.
+  ⚑ It is ASKED, NEVER MATERIALIZED HERE. Its production supplier discovers plugins
+  on the first question put to it, so a ``dict(...)`` around it charges every path
+  judged — ``config.*``, ``box.*``, a bare namespace — for a vocabulary only an
+  agent LEAF can consult. :class:`AgentVocabulary` carries the measurement.
+  🛑 It does NOT reach ``meta.agent.<agent>.*``. That tier's vocabulary is
+  core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``, or a
+  pseudo-agent's :class:`PseudoAgentFence`) and no plugin extends it, so it is
+  knowable whether or not the plugin is here — there is nothing to concede.
 
-    The dispatch is on the FIRST segment; every branch reports against the
-    spec section that declares the family.
-    """
-    if not key or not isinstance(key, str):
-        return _undeclared("the empty string is not a key")
-    parts = key.split(".")
-    if any(seg == "" for seg in parts):
-        return _undeclared(
-            f"'{key}' has an empty path segment; a key is dot-separated "
-            f"non-empty segments (spec §0)"
-        )
-    head, rest = parts[0], parts[1:]
-    # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
-    # and materializing the union here charged every ``box.*`` / ``system.*`` /
-    # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
-    # ⚑ THE FLAT UNION, and its ONE reader is ``meta.box.agent.*`` — the RO mirror,
-    # whose agent is a runtime fact absent from the key, so the per-agent partition
-    # (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") has no discriminator to
-    # work from there. The ``agent.<name>`` branch below builds an
-    # :class:`AgentVocabulary` instead and never reads this.
-    leaves: Collection[str] = effective_agent_leaves(agent_leaf_map)
-
-    if head == "config":
-        if not rest:
-            return _namespace("'config' is a namespace, not a key (spec §1)")
-        if len(rest) == 1 and rest[0] in DECLARED_CONFIG_LEAVES:
-            return _KEY
-        return _undeclared(
-            f"'{key}' is not a declared Layer-1 config key (declared: "
-            f"{', '.join('config.' + k for k in sorted(DECLARED_CONFIG_LEAVES))})"
-        )
-
-    if head == "meta":
-        return _meta_reason(rest, valid_agents, leaves)
-
-    if head == "pref":
-        # pref.<target-key> (spec §2h). The family's members are the ALLOWLISTED
-        # targets that are themselves keys — spec §0 declares it as
-        # "pref.<target-key> for the allowlisted targets in §2h", and §2h says the
-        # closed keyspace applies to the allowlist. ⚑ So ``pref.box.image`` is NOT a
-        # key although ``box.image`` is. It was, until 2026-09-25, and the only thing
-        # that refused it was the REQUEST path (``settings_prefs`` filter 2), so a
-        # hand-written ``pref: {box: {image: …}}`` read back through ``box get`` as
-        # if it were declared. The FORBIDDEN TIERS stay a request-time question
-        # (``settings_prefs``): they depend on the requesting LEVEL, not the name.
-        if not rest:
-            return _namespace("'pref' is a namespace, not a key (spec §2h)")
-        if rest[0] == "pref":
-            return _undeclared(
-                "'pref.pref.…' is not a key: a request-of-a-request has no "
-                "termination argument (spec §2h categorical tier)"
-            )
-        target = ".".join(rest)
-        if pref_allowlist_entry(target) is None:
-            # ⚑ THE ALLOWLIST IS ASKED BEFORE THE TARGET, and it is the cost order
-            # too: a non-member is refused without judging its target, so no plugin
-            # vocabulary is consulted for it.
-            if _is_pref_interior(rest):
-                interior = key_class(
-                    target, valid_agents=valid_agents, agent_leaf_map=agent_leaf_map,
-                )
-                if interior.cls is KeyClass.NAMESPACE:
-                    return _namespace(
-                        f"its target names a namespace — {interior.reason}"
-                    )
-                if interior.cls is KeyClass.UNDECLARED:
-                    return _undeclared(
-                        f"its target is not a declared key — {interior.reason}"
-                    )
-            return _undeclared(
-                f"'{key}' is not a key: 'pref.*' holds only the §2h ALLOWLISTED "
-                f"targets ({', '.join('pref.' + p for p in PREF_ALLOWLIST)}), and "
-                f"'{target}' is not one (spec §0, §2h)"
-            )
-        # ⚑ THE TARGET'S CLASS IS INHERITED, all three of them, here and above: an
-        # interior such as ``pref.agent.<a>`` is the request-side spelling of a
-        # namespace, and a resolved store really does carry those nodes above a
-        # requested leaf.
-        # ⚑⚑ EVERY ORACLE PARAMETER RIDES ALONG. Dropping one makes the SAME key
-        # answer differently by SPELLING — ``agent.goose.zippity`` conceded while
-        # ``pref.agent.goose.zippity`` refused — which is not a stricter pref rule,
-        # it is two keyspaces. ``agents_with_known_leaves`` was that omission, and it
-        # was invisible because ``apply_prefs`` happens to pre-filter on a coinciding
-        # set. It is now UNDROPPABLE: the vocabulary and the concession are one
-        # parameter, so there is no half of the pair left to forget.
-        inner = key_class(
-            target,
-            valid_agents=valid_agents,
-            agent_leaf_map=agent_leaf_map,
-        )
-        if inner.cls is KeyClass.KEY:
-            return _KEY
-        if inner.cls is KeyClass.NAMESPACE:
-            return _namespace(f"its target names a namespace — {inner.reason}")
-        return _undeclared(f"its target is not a declared key — {inner.reason}")
-
-    if head == "system":
-        return _scope_reason(
-            "system", rest,
-            leaves=DECLARED_SYSTEM_LEAVES,
-            sub_tables={
-                "channels": DECLARED_SYSTEM_CHANNEL_LEAVES,
-                "helpers": DECLARED_SYSTEM_HELPERS_LEAVES,
-                "auth": DECLARED_SYSTEM_AUTH_LEAVES,
-            },
-            what="system",
-        )
-
-    if head == "workset":
-        return _scope_reason(
-            "workset", rest,
-            leaves=DECLARED_WORKSET_LEAVES,
-            sub_tables={
-                "channels": DECLARED_WORKSET_CHANNEL_LEAVES,
-                "auth": DECLARED_WORKSET_AUTH_LEAVES,
-            },
-            what="workset",
-        )
-
-    if head == "box":
-        return _scope_reason(
-            "box", rest,
-            leaves=DECLARED_BOX_LEAVES,
-            sub_tables={"auth": DECLARED_BOX_AUTH_LEAVES},
-            what="box",
-        )
-
-    if head == "agent":
-        # The agent tier is DISCRIMINATED — ``agent.<agent>`` or
-        # ``agent.default`` (spec §2d, §0). A bare ``agent.<key>`` is
-        # NOT a key, and the code must REFUSE it rather than quietly accept it.
-        if not rest:
-            return _namespace("'agent' is a namespace, not a key (spec §2d)")
-        name = rest[0]
-        # ⚑ BEFORE the validity test: a conceding *valid_agents* would admit the alias as
-        # an unheard-of agent name (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
-        alias = file_alias_reason(name)
-        if alias is not None:
-            return _undeclared(alias)
-        if not is_valid_agent_segment(name, valid_agents):
-            return _undeclared(_bad_agent_reason(name, valid_agents))
-        # ⚑⚑ ONE BRANCH FOR EVERY DISCRIMINATOR, ``default`` INCLUDED, and the
-        # collapse is the map's doing rather than a simplification laid over it.
-        # ``agent.default`` had its own branch pinned to core's table because CORE
-        # OWNS THAT TIER — spec §0 outright: *"the base system owns ONLY universal
-        # keys: agent.default.* + the generic agent.<agent>.<key> contract SHAPE.
-        # Every non-universal specific … is established AND modified by the PLUGIN"* —
-        # so a plugin's specific has no slot there, only under its own agent, and
-        # unioning the plugin set in let goose's ``provider`` classify as
-        # ``agent.default.provider``, which the ratified manifest names not-a-key
-        # twice (``not_keys.code_residue``; ``provider_disposition``, R-37).
-        # :func:`agent_declared_leaves` reaches the same answer from the general rule:
-        # ``_could_name_an_agent`` is False for every PSEUDO-AGENT name, so ``default``
-        # and ``shell`` get their own §2d fence and NO concession — which is also what a §2a
-        # category token gets, and for the same reason. Their standing is the
-        # KEYSPACE's own, so it is knowable on every machine and there is nothing to
-        # concede.
-        # ⚑ THE ORDER INSIDE IS LOAD-BEARING and it is the COST order too: the
-        # universal table is asked first, ``_could_name_an_agent`` second, the map
-        # third. Ask the map first and ``agent.common.plugins`` — the undiscriminated
-        # relic MIGRATION.md § "Housekeeping: renames you almost certainly don't carry"
-        # tells users to grep for — classifies as a KEY, because no plugin declares an
-        # agent named ``common``.
-        # ⚑ DEFERRED, not merely passed: reading the map is the production supplier's
-        # plugin import, and ``AgentVocabulary`` asks it only for a leaf core cannot
-        # answer. ``is_known`` is a bound method rather than a ``bool`` for the same
-        # reason — see :func:`_agent_tail_reason`.
-        vocabulary = AgentVocabulary(name, agent_leaf_map)
-        return _agent_tail_reason(
-            f"agent.{display_agent_ref(name)}", rest[1:], vocabulary,
-            leaves_known=vocabulary.is_known,
-        )
-
+  The dispatch is on the FIRST segment; every branch reports against the
+  spec section that declares the family.
+  """
+  if not key or not isinstance(key, str):
+    return _undeclared("the empty string is not a key")
+  parts = key.split(".")
+  if any(seg == "" for seg in parts):
     return _undeclared(
-        f"'{head}' is not a declared namespace (declared: config, system, "
-        f"agent, workset, box, meta, pref) — the keyspace is CLOSED (spec §0)"
+      f"'{key}' has an empty path segment; a key is dot-separated non-empty segments (spec §0)"
     )
+  head, rest = parts[0], parts[1:]
+  # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
+  # and materializing the union here charged every ``box.*`` / ``system.*`` /
+  # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
+  # ⚑ THE FLAT UNION, and its ONE reader is ``meta.box.agent.*`` — the RO mirror,
+  # whose agent is a runtime fact absent from the key, so the per-agent partition
+  # (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") has no discriminator to
+  # work from there. The ``agent.<name>`` branch below builds an
+  # :class:`AgentVocabulary` instead and never reads this.
+  leaves: Collection[str] = effective_agent_leaves(agent_leaf_map)
+
+  if head == "config":
+    if not rest:
+      return _namespace("'config' is a namespace, not a key (spec §1)")
+    if len(rest) == 1 and rest[0] in DECLARED_CONFIG_LEAVES:
+      return _KEY
+    return _undeclared(
+      f"'{key}' is not a declared Layer-1 config key (declared: "
+      f"{', '.join('config.' + k for k in sorted(DECLARED_CONFIG_LEAVES))})"
+    )
+
+  if head == "meta":
+    return _meta_reason(rest, valid_agents, leaves)
+
+  if head == "pref":
+    # pref.<target-key> (spec §2h). The family's members are the ALLOWLISTED
+    # targets that are themselves keys — spec §0 declares it as
+    # "pref.<target-key> for the allowlisted targets in §2h", and §2h says the
+    # closed keyspace applies to the allowlist. ⚑ So ``pref.box.image`` is NOT a
+    # key although ``box.image`` is. It was, until 2026-09-25, and the only thing
+    # that refused it was the REQUEST path (``settings_prefs`` filter 2), so a
+    # hand-written ``pref: {box: {image: …}}`` read back through ``box get`` as
+    # if it were declared. The FORBIDDEN TIERS stay a request-time question
+    # (``settings_prefs``): they depend on the requesting LEVEL, not the name.
+    if not rest:
+      return _namespace("'pref' is a namespace, not a key (spec §2h)")
+    if rest[0] == "pref":
+      return _undeclared(
+        "'pref.pref.…' is not a key: a request-of-a-request has no "
+        "termination argument (spec §2h categorical tier)"
+      )
+    target = ".".join(rest)
+    if pref_allowlist_entry(target) is None:
+      # ⚑ THE ALLOWLIST IS ASKED BEFORE THE TARGET, and it is the cost order
+      # too: a non-member is refused without judging its target, so no plugin
+      # vocabulary is consulted for it.
+      if _is_pref_interior(rest):
+        interior = key_class(
+          target,
+          valid_agents=valid_agents,
+          agent_leaf_map=agent_leaf_map,
+        )
+        if interior.cls is KeyClass.NAMESPACE:
+          return _namespace(f"its target names a namespace — {interior.reason}")
+        if interior.cls is KeyClass.UNDECLARED:
+          return _undeclared(f"its target is not a declared key — {interior.reason}")
+      return _undeclared(
+        f"'{key}' is not a key: 'pref.*' holds only the §2h ALLOWLISTED "
+        f"targets ({', '.join('pref.' + p for p in PREF_ALLOWLIST)}), and "
+        f"'{target}' is not one (spec §0, §2h)"
+      )
+    # ⚑ THE TARGET'S CLASS IS INHERITED, all three of them, here and above: an
+    # interior such as ``pref.agent.<a>`` is the request-side spelling of a
+    # namespace, and a resolved store really does carry those nodes above a
+    # requested leaf.
+    # ⚑⚑ EVERY ORACLE PARAMETER RIDES ALONG. Dropping one makes the SAME key
+    # answer differently by SPELLING — ``agent.goose.zippity`` conceded while
+    # ``pref.agent.goose.zippity`` refused — which is not a stricter pref rule,
+    # it is two keyspaces. ``agents_with_known_leaves`` was that omission, and it
+    # was invisible because ``apply_prefs`` happens to pre-filter on a coinciding
+    # set. It is now UNDROPPABLE: the vocabulary and the concession are one
+    # parameter, so there is no half of the pair left to forget.
+    inner = key_class(
+      target,
+      valid_agents=valid_agents,
+      agent_leaf_map=agent_leaf_map,
+    )
+    if inner.cls is KeyClass.KEY:
+      return _KEY
+    if inner.cls is KeyClass.NAMESPACE:
+      return _namespace(f"its target names a namespace — {inner.reason}")
+    return _undeclared(f"its target is not a declared key — {inner.reason}")
+
+  if head == "system":
+    return _scope_reason(
+      "system",
+      rest,
+      leaves=DECLARED_SYSTEM_LEAVES,
+      sub_tables={
+        "channels": DECLARED_SYSTEM_CHANNEL_LEAVES,
+        "helpers": DECLARED_SYSTEM_HELPERS_LEAVES,
+        "auth": DECLARED_SYSTEM_AUTH_LEAVES,
+      },
+      what="system",
+    )
+
+  if head == "workset":
+    return _scope_reason(
+      "workset",
+      rest,
+      leaves=DECLARED_WORKSET_LEAVES,
+      sub_tables={
+        "channels": DECLARED_WORKSET_CHANNEL_LEAVES,
+        "auth": DECLARED_WORKSET_AUTH_LEAVES,
+      },
+      what="workset",
+    )
+
+  if head == "box":
+    return _scope_reason(
+      "box",
+      rest,
+      leaves=DECLARED_BOX_LEAVES,
+      sub_tables={"auth": DECLARED_BOX_AUTH_LEAVES},
+      what="box",
+    )
+
+  if head == "agent":
+    # The agent tier is DISCRIMINATED — ``agent.<agent>`` or
+    # ``agent.default`` (spec §2d, §0). A bare ``agent.<key>`` is
+    # NOT a key, and the code must REFUSE it rather than quietly accept it.
+    if not rest:
+      return _namespace("'agent' is a namespace, not a key (spec §2d)")
+    name = rest[0]
+    # ⚑ BEFORE the validity test: a conceding *valid_agents* would admit the alias as
+    # an unheard-of agent name (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
+    alias = file_alias_reason(name)
+    if alias is not None:
+      return _undeclared(alias)
+    if not is_valid_agent_segment(name, valid_agents):
+      return _undeclared(_bad_agent_reason(name, valid_agents))
+    # ⚑⚑ ONE BRANCH FOR EVERY DISCRIMINATOR, ``default`` INCLUDED, and the
+    # collapse is the map's doing rather than a simplification laid over it.
+    # ``agent.default`` had its own branch pinned to core's table because CORE
+    # OWNS THAT TIER — spec §0 outright: *"the base system owns ONLY universal
+    # keys: agent.default.* + the generic agent.<agent>.<key> contract SHAPE.
+    # Every non-universal specific … is established AND modified by the PLUGIN"* —
+    # so a plugin's specific has no slot there, only under its own agent, and
+    # unioning the plugin set in let goose's ``provider`` classify as
+    # ``agent.default.provider``, which the ratified manifest names not-a-key
+    # twice (``not_keys.code_residue``; ``provider_disposition``, R-37).
+    # :func:`agent_declared_leaves` reaches the same answer from the general rule:
+    # ``_could_name_an_agent`` is False for every PSEUDO-AGENT name, so ``default``
+    # and ``shell`` get their own §2d fence and NO concession — which is also what a §2a
+    # category token gets, and for the same reason. Their standing is the
+    # KEYSPACE's own, so it is knowable on every machine and there is nothing to
+    # concede.
+    # ⚑ THE ORDER INSIDE IS LOAD-BEARING and it is the COST order too: the
+    # universal table is asked first, ``_could_name_an_agent`` second, the map
+    # third. Ask the map first and ``agent.common.plugins`` — the undiscriminated
+    # relic MIGRATION.md § "Housekeeping: renames you almost certainly don't carry"
+    # tells users to grep for — classifies as a KEY, because no plugin declares an
+    # agent named ``common``.
+    # ⚑ DEFERRED, not merely passed: reading the map is the production supplier's
+    # plugin import, and ``AgentVocabulary`` asks it only for a leaf core cannot
+    # answer. ``is_known`` is a bound method rather than a ``bool`` for the same
+    # reason — see :func:`_agent_tail_reason`.
+    vocabulary = AgentVocabulary(name, agent_leaf_map)
+    return _agent_tail_reason(
+      f"agent.{display_agent_ref(name)}",
+      rest[1:],
+      vocabulary,
+      leaves_known=vocabulary.is_known,
+    )
+
+  return _undeclared(
+    f"'{head}' is not a declared namespace (declared: config, system, "
+    f"agent, workset, box, meta, pref) — the keyspace is CLOSED (spec §0)"
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -1907,96 +2004,105 @@ def key_class(
 #: SPEC names (:data:`Verdict.RESERVED`) rather than dismissed as an unrooted
 #: fragment whose true path the walker cannot know.
 #: ⚑ Only :func:`classify_store_path` gates on it; see :func:`_classify_whole_store_path`.
-KEYSPACE_ROOTS: Final[frozenset[str]] = (
-    frozenset(SCOPE_CONTAINMENT) | {"config", "meta", "pref", BINDING_DERIVATIONS_NODE}
-)
+KEYSPACE_ROOTS: Final[frozenset[str]] = frozenset(SCOPE_CONTAINMENT) | {
+  "config",
+  "meta",
+  "pref",
+  BINDING_DERIVATIONS_NODE,
+}
 
 
 class Verdict:
-    """The class a store PATH lands in. :data:`FINDING_VERDICTS` are the FINDINGS.
+  """The class a store PATH lands in. :data:`FINDING_VERDICTS` are the FINDINGS.
 
-    A resolved store legitimately holds a great deal that is not a key, and a
-    classifier that flagged all of it would report noise. ⚑⚑ EVERY CLASS IS
-    STRUCTURAL — decided by the path's SHAPE or by a constant the SPEC sanctions.
-    There is no list of blessed key NAMES here, and none may be added: a name-keyed
-    exemption is exactly the carve-out that hides the next finding behind it.
+  A resolved store legitimately holds a great deal that is not a key, and a
+  classifier that flagged all of it would report noise. ⚑⚑ EVERY CLASS IS
+  STRUCTURAL — decided by the path's SHAPE or by a constant the SPEC sanctions.
+  There is no list of blessed key NAMES here, and none may be added: a name-keyed
+  exemption is exactly the carve-out that hides the next finding behind it.
 
-    ``DECLARED``     the oracle accepts the whole path. A key.
-    ``VALUE``        a proper PREFIX is a declared key, so the rest addresses a VALUE
-                     INSIDE it — ``box.caches``'s destinations, ``box.masks``'s
-                     entries, a ``bindings`` arm's map. Structure, not a key.
-    ``DATA_SEGMENT`` a dotted segment in key position under an UNDECLARED table, which
-                     is the finding itself, or at the ``<VAR>`` slot of ``env`` /
-                     ``secret_path`` (:func:`is_var_table`). At the root or under any
-                     other declared namespace it is ``UNDECLARED``
-                     (:func:`dotted_entry_reason`).
-    ``NAMESPACE``    the keyspace DECLARES this path as an interior — a scope table,
-                     an agent tier, a ``meta`` group, an ``auth`` sub-table (see
-                     :class:`KeyClass`). PROVISIONAL, exactly as ``UNDECLARED`` is: a
-                     NODE here is store structure and :func:`container_notes` rescues
-                     it to ``CONTAINER``; a SCALAR here is left alone and IS a
-                     finding, because a namespace is not a place a value may sit.
-    ``CONTAINER``    an intermediate NODE carrying declared keys underneath it
-                     (``box.bindings``), or one the keyspace declares as a
-                     ``NAMESPACE``. Scaffolding. Applied by
-                     :func:`container_notes`, which needs the whole path SET.
-    ``UNROOTED``     the root segment is not a keyspace root, so this is a
-                     scope-LOCAL or fragment store whose key path cannot be known. A
-                     fragment that reaches a real store is judged THERE, with its
-                     true path, so nothing is lost by declining to guess. ⚑ A
-                     FRAGMENT answer only (:func:`_classify_whole_store_path`).
-    ``RESERVED``     the RESERVED INTERNAL NODE the spec names in so many words:
-                     *"The derivation is NOT a key — it is a RESERVED INTERNAL NODE
-                     … rides inside the per-launch snapshot as an internal node named
-                     `binding_derivations`"* (spec §0, ABSTRACT declarations).
-    ``UNDECLARED``   none of the above: something put a path into a store that the
-                     keyspace does not declare.
+  ``DECLARED``     the oracle accepts the whole path. A key.
+  ``VALUE``        a proper PREFIX is a declared key, so the rest addresses a VALUE
+                   INSIDE it — ``box.caches``'s destinations, ``box.masks``'s
+                   entries, a ``bindings`` arm's map. Structure, not a key.
+  ``DATA_SEGMENT`` a dotted segment in key position under an UNDECLARED table, which
+                   is the finding itself, or at the ``<VAR>`` slot of ``env`` /
+                   ``secret_path`` (:func:`is_var_table`). At the root or under any
+                   other declared namespace it is ``UNDECLARED``
+                   (:func:`dotted_entry_reason`).
+  ``NAMESPACE``    the keyspace DECLARES this path as an interior — a scope table,
+                   an agent tier, a ``meta`` group, an ``auth`` sub-table (see
+                   :class:`KeyClass`). PROVISIONAL, exactly as ``UNDECLARED`` is: a
+                   NODE here is store structure and :func:`container_notes` rescues
+                   it to ``CONTAINER``; a SCALAR here is left alone and IS a
+                   finding, because a namespace is not a place a value may sit.
+  ``CONTAINER``    an intermediate NODE carrying declared keys underneath it
+                   (``box.bindings``), or one the keyspace declares as a
+                   ``NAMESPACE``. Scaffolding. Applied by
+                   :func:`container_notes`, which needs the whole path SET.
+  ``UNROOTED``     the root segment is not a keyspace root, so this is a
+                   scope-LOCAL or fragment store whose key path cannot be known. A
+                   fragment that reaches a real store is judged THERE, with its
+                   true path, so nothing is lost by declining to guess. ⚑ A
+                   FRAGMENT answer only (:func:`_classify_whole_store_path`).
+  ``RESERVED``     the RESERVED INTERNAL NODE the spec names in so many words:
+                   *"The derivation is NOT a key — it is a RESERVED INTERNAL NODE
+                   … rides inside the per-launch snapshot as an internal node named
+                   `binding_derivations`"* (spec §0, ABSTRACT declarations).
+  ``UNDECLARED``   none of the above: something put a path into a store that the
+                   keyspace does not declare.
 
-    ⚑ A consumer may add classes of its OWN by subclassing — the pytest census adds
-    ``NEGATIVE`` for a path the running test declared it would write. What it may not
-    do is re-spell one of these.
-    """
-    DECLARED = "DECLARED"
-    VALUE = "VALUE"
-    DATA_SEGMENT = "DATA_SEGMENT"
-    NAMESPACE = "NAMESPACE"
-    CONTAINER = "CONTAINER"
-    UNROOTED = "UNROOTED"
-    RESERVED = "RESERVED"
-    UNDECLARED = "UNDECLARED"
+  ⚑ A consumer may add classes of its OWN by subclassing — the pytest census adds
+  ``NEGATIVE`` for a path the running test declared it would write. What it may not
+  do is re-spell one of these.
+  """
+
+  DECLARED = "DECLARED"
+  VALUE = "VALUE"
+  DATA_SEGMENT = "DATA_SEGMENT"
+  NAMESPACE = "NAMESPACE"
+  CONTAINER = "CONTAINER"
+  UNROOTED = "UNROOTED"
+  RESERVED = "RESERVED"
+  UNDECLARED = "UNDECLARED"
 
 
 #: The verdicts that are STILL a finding once :func:`container_notes` has run.
 #: ⚑ ONE carrier, because the alternative is a consumer that filters on
 #: ``UNDECLARED`` alone and so reports a SCALAR-at-a-namespace as clean — a
 #: widening that fails SILENTLY, by going green.
-FINDING_VERDICTS: Final[frozenset[str]] = frozenset({
-    Verdict.UNDECLARED, Verdict.NAMESPACE,
-})
+FINDING_VERDICTS: Final[frozenset[str]] = frozenset(
+  {
+    Verdict.UNDECLARED,
+    Verdict.NAMESPACE,
+  }
+)
 
 
 #: Why :data:`Verdict.RESERVED` is not an exemption. Sourced from the declaring
 #: constant so a rename cannot leave a stale spelling behind.
 RESERVED_NODE_REASON: Final[str] = (
-    f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
-    f"so many words (§0, ABSTRACT declarations): the materialized binding an abstract "
-    f"declaration derives is machinery output, not a settable surface. Its interior "
-    f"is declaration keys and box DESTINATIONS, which are data."
+  f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
+  f"so many words (§0, ABSTRACT declarations): the materialized binding an abstract "
+  f"declaration derives is machinery output, not a settable surface. Its interior "
+  f"is declaration keys and box DESTINATIONS, which are data."
 )
 
 
 class Judgment(NamedTuple):
-    """One path's class, the declared key it sits in, & where the DATA starts."""
-    verdict: str
-    key: str
-    key_len: int  # how many leading segments are key path; the rest is DATA
-    note: str
+  """One path's class, the declared key it sits in, & where the DATA starts."""
+
+  verdict: str
+  key: str
+  key_len: int  # how many leading segments are key path; the rest is DATA
+  note: str
 
 
 class StoreNode(NamedTuple):
-    """One judged path as :func:`container_notes` needs to see it."""
-    verdict: str
-    is_node: bool
+  """One judged path as :func:`container_notes` needs to see it."""
+
+  verdict: str
+  is_node: bool
 
 
 #: The heads whose NEXT segment is an agent node (spec §0 / §2c / §2h).
@@ -2004,239 +2110,248 @@ _NODE_HEADS: Final = (("agent",), ("meta", "agent"), ("pref", "agent"))
 
 
 def display_segments(segments: Sequence[str]) -> tuple[str, ...]:
-    """*segments* as a USER reads them: the agent node segment in the ``+`` spelling.
+  """*segments* as a USER reads them: the agent node segment in the ``+`` spelling.
 
-    Only the node segment converts; every other segment is shown as stored, being
-    whatever a file or a user spelled.
-    """
-    parts = tuple(segments)
-    for head in _NODE_HEADS:
-        n = len(head)
-        if parts[:n] == head and len(parts) > n:
-            return (*head, display_agent_ref(parts[n]), *parts[n + 1:])
-    return parts
+  Only the node segment converts; every other segment is shown as stored, being
+  whatever a file or a user spelled.
+  """
+  parts = tuple(segments)
+  for head in _NODE_HEADS:
+    n = len(head)
+    if parts[:n] == head and len(parts) > n:
+      return (*head, display_agent_ref(parts[n]), *parts[n + 1 :])
+  return parts
 
 
 def shown_key(key: str) -> str:
-    """The dotted *key* as a USER reads it (:func:`display_segments`)."""
-    return ".".join(display_segments(key.split(".")))
+  """The dotted *key* as a USER reads it (:func:`display_segments`)."""
+  return ".".join(display_segments(key.split(".")))
 
 
 def display_store_path(segments: Sequence[str], key_len: int | None = None) -> str:
-    """:func:`render_store_path` over :func:`display_segments` — the path for a USER."""
-    return render_store_path(display_segments(segments), key_len)
+  """:func:`render_store_path` over :func:`display_segments` — the path for a USER."""
+  return render_store_path(display_segments(segments), key_len)
 
 
 def render_store_path(segments: Collection[str], key_len: int | None = None) -> str:
-    """A display path that NEVER renders non-key data as a dotted key.
+  """A display path that NEVER renders non-key data as a dotted key.
 
-    ⚑⚑ A CORRECTNESS job, not a cosmetic one. A destination is DATA and never
-    appears in a dotted key, so the *key_len* leading segments are dot-joined and
-    everything after them is PIPE-joined inside ``⟨⟩`` — visibly not key path. With
-    no *key_len* the whole path is key path, and even then a segment carrying a dot
-    forces the pipe form rather than forging a segment boundary that is not there.
-    """
-    parts = list(segments)
-    if key_len is None or key_len >= len(parts):
-        return " | ".join(parts) if any("." in s for s in parts) else ".".join(parts)
-    head = ".".join(parts[:key_len])
-    tail = " | ".join(parts[key_len:])
-    return f"{head} ⟨{tail}⟩" if head else f"⟨{tail}⟩"
+  ⚑⚑ A CORRECTNESS job, not a cosmetic one. A destination is DATA and never
+  appears in a dotted key, so the *key_len* leading segments are dot-joined and
+  everything after them is PIPE-joined inside ``⟨⟩`` — visibly not key path. With
+  no *key_len* the whole path is key path, and even then a segment carrying a dot
+  forces the pipe form rather than forging a segment boundary that is not there.
+  """
+  parts = list(segments)
+  if key_len is None or key_len >= len(parts):
+    return " | ".join(parts) if any("." in s for s in parts) else ".".join(parts)
+  head = ".".join(parts[:key_len])
+  tail = " | ".join(parts[key_len:])
+  return f"{head} ⟨{tail}⟩" if head else f"⟨{tail}⟩"
 
 
 def dotted_entry_reason(parent: Sequence[str], name: str) -> str:
-    """Why a stored entry spelled *name* — one segment that CONTAINS A DOT — under the
-    table at *parent* names no key (spec §0).
+  """Why a stored entry spelled *name* — one segment that CONTAINS A DOT — under the
+  table at *parent* names no key (spec §0).
 
-    A settings file nests a key as tables and never splits a dotted name into them, so
-    ``box: {"env.X": …}`` is one entry named ``env.X`` inside the ``box`` table — not
-    the ``box.env.X`` it spells, and not a key.
+  A settings file nests a key as tables and never splits a dotted name into them, so
+  ``box: {"env.X": …}`` is one entry named ``env.X`` inside the ``box`` table — not
+  the ``box.env.X`` it spells, and not a key.
 
-    ⚑ NOT ASKED AT THE ``<VAR>`` SLOT (:func:`is_var_table`): a dotted VAR name under
-    ``env``/``secret_path`` is left as it was, pending the deferred treatment of the
-    dotted var [Jei:2026-08-22].
-    """
-    if not parent:
-        return (
-            f"top-level entry {name!r} is not a keyspace root: a settings file nests "
-            f"a key as tables, and a dotted name is never split into one (spec §0)"
-        )
+  ⚑ NOT ASKED AT THE ``<VAR>`` SLOT (:func:`is_var_table`): a dotted VAR name under
+  ``env``/``secret_path`` is left as it was, pending the deferred treatment of the
+  dotted var [Jei:2026-08-22].
+  """
+  if not parent:
     return (
-        f"entry {name!r} inside the {'.'.join(parent)!r} table is not a key: a "
-        f"settings file nests a key as tables, and a dotted name is never split into "
-        f"one (spec §0)"
+      f"top-level entry {name!r} is not a keyspace root: a settings file nests "
+      f"a key as tables, and a dotted name is never split into one (spec §0)"
     )
+  return (
+    f"entry {name!r} inside the {'.'.join(parent)!r} table is not a key: a "
+    f"settings file nests a key as tables, and a dotted name is never split into "
+    f"one (spec §0)"
+  )
 
 
 def is_var_table(
-    parent: Sequence[str], *, oracle: Callable[[str], KeyJudgment],
+  parent: Sequence[str],
+  *,
+  oracle: Callable[[str], KeyJudgment],
 ) -> bool:
-    """Is the table at *parent* a per-VARIABLE family's root (:data:`VAR_KEYED_CATEGORIES`),
-    so that an entry directly under it sits in the ``<VAR>`` slot?
+  """Is the table at *parent* a per-VARIABLE family's root (:data:`VAR_KEYED_CATEGORIES`),
+  so that an entry directly under it sits in the ``<VAR>`` slot?
 
-    ⚑ LEFT AS-IS AT THAT SLOT, pending the deferred treatment of the dotted var [Jei:2026-08-22]: a
-    dotted VAR name there gets no :func:`dotted_entry_reason` finding from the launch's
-    audit (:func:`_classify_whole_store_path`), and the stored view
-    (``config_interface._undeclared_stored_entries``) keeps its own older arm for it.
-    The two do NOT agree at this slot — the stored view marks ``box.env.A.B`` as
-    undeclared while the launch's audit passes it — and that disagreement is part of
-    the deferred topic, not settled here.
-    """
-    return (
-        bool(parent)
-        and parent[-1] in VAR_KEYED_CATEGORIES
-        and oracle(".".join(parent)).cls is KeyClass.NAMESPACE
-    )
+  ⚑ LEFT AS-IS AT THAT SLOT, pending the deferred treatment of the dotted var [Jei:2026-08-22]: a
+  dotted VAR name there gets no :func:`dotted_entry_reason` finding from the launch's
+  audit (:func:`_classify_whole_store_path`), and the stored view
+  (``config_interface._undeclared_stored_entries``) keeps its own older arm for it.
+  The two do NOT agree at this slot — the stored view marks ``box.env.A.B`` as
+  undeclared while the launch's audit passes it — and that disagreement is part of
+  the deferred topic, not settled here.
+  """
+  return (
+    bool(parent)
+    and parent[-1] in VAR_KEYED_CATEGORIES
+    and oracle(".".join(parent)).cls is KeyClass.NAMESPACE
+  )
 
 
 def classify_store_path(
-    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment],
+  segments: tuple[str, ...],
+  *,
+  oracle: Callable[[str], KeyJudgment],
 ) -> Judgment:
-    """One path's :class:`Judgment`, ignoring what landed UNDER it.
+  """One path's :class:`Judgment`, ignoring what landed UNDER it.
 
-    *oracle* answers :func:`key_class`'s question — KEY, NAMESPACE or UNDECLARED.
-    :func:`key_class` is the production answer; it is injected rather than called so
-    this stays pure and so a caller can memoize (the prefix walk asks about every
-    proper prefix, and prefixes repeat heavily across a store).
+  *oracle* answers :func:`key_class`'s question — KEY, NAMESPACE or UNDECLARED.
+  :func:`key_class` is the production answer; it is injected rather than called so
+  this stays pure and so a caller can memoize (the prefix walk asks about every
+  proper prefix, and prefixes repeat heavily across a store).
 
-    ⚑ THE ORACLE MUST ANSWER ALL THREE. With a key-or-not oracle this function
-    cannot tell a declared interior from a fabrication, and the only distinguisher
-    left is DEPTH — which is what it used, rescuing a namespace at depth 1 and
-    reporting ``meta.box.agent`` / ``agent.<agent>`` / ``meta.box.agent.auth`` as
-    violations whenever their last child happened to be dropped.
+  ⚑ THE ORACLE MUST ANSWER ALL THREE. With a key-or-not oracle this function
+  cannot tell a declared interior from a fabrication, and the only distinguisher
+  left is DEPTH — which is what it used, rescuing a namespace at depth 1 and
+  reporting ``meta.box.agent`` / ``agent.<agent>`` / ``meta.box.agent.auth`` as
+  violations whenever their last child happened to be dropped.
 
-    The CONTAINER rule is NOT applied here: it needs what landed underneath a node
-    and whether this path IS one, neither of which a single path shows. See
-    :func:`container_notes`.
+  The CONTAINER rule is NOT applied here: it needs what landed underneath a node
+  and whether this path IS one, neither of which a single path shows. See
+  :func:`container_notes`.
 
-    ⚑ FRAGMENT-TOLERANT, for the pytest census — see :func:`_classify_whole_store_path`.
-    """
-    if segments and segments[0] not in KEYSPACE_ROOTS:
-        return Judgment(
-            Verdict.UNROOTED, "", len(segments),
-            f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
-            f"store, whose key path this cannot know",
-        )
-    return _classify_whole_store_path(segments, oracle=oracle)
+  ⚑ FRAGMENT-TOLERANT, for the pytest census — see :func:`_classify_whole_store_path`.
+  """
+  if segments and segments[0] not in KEYSPACE_ROOTS:
+    return Judgment(
+      Verdict.UNROOTED,
+      "",
+      len(segments),
+      f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
+      f"store, whose key path this cannot know",
+    )
+  return _classify_whole_store_path(segments, oracle=oracle)
 
 
 def _classify_whole_store_path(
-    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment],
+  segments: tuple[str, ...],
+  *,
+  oracle: Callable[[str], KeyJudgment],
 ) -> Judgment:
-    """:func:`classify_store_path` for a path in a WHOLE store — one whose ROOT is
-    the keyspace root, as the launch snapshot's is.
+  """:func:`classify_store_path` for a path in a WHOLE store — one whose ROOT is
+  the keyspace root, as the launch snapshot's is.
 
-    ⚑⚑ NO ROOT GATE, AND THAT IS THE WHOLE DIFFERENCE. :data:`Verdict.UNROOTED` is a
-    FRAGMENT answer: a scope-local store's top level holds scope CONTENTS, so a
-    top-level ``workspace`` there is not evidence of anything — and the pytest census,
-    judging one WRITE at a time, cannot tell such a fragment from a whole store, which
-    is why :func:`classify_store_path` keeps the gate. In a whole store the
-    top level IS the keyspace's, and spec §0 declares no bare top-level key
-    (*"Namespace = organizational only (no bare top-level keys …)"*). So a top-level
-    ``zzz`` here goes through the oracle like every other path, which is what names
-    it UNDECLARED and says why. Gating it as UNROOTED let a top-level stray in a
-    settings file build silently and ride the snapshot.
+  ⚑⚑ NO ROOT GATE, AND THAT IS THE WHOLE DIFFERENCE. :data:`Verdict.UNROOTED` is a
+  FRAGMENT answer: a scope-local store's top level holds scope CONTENTS, so a
+  top-level ``workspace`` there is not evidence of anything — and the pytest census,
+  judging one WRITE at a time, cannot tell such a fragment from a whole store, which
+  is why :func:`classify_store_path` keeps the gate. In a whole store the
+  top level IS the keyspace's, and spec §0 declares no bare top-level key
+  (*"Namespace = organizational only (no bare top-level keys …)"*). So a top-level
+  ``zzz`` here goes through the oracle like every other path, which is what names
+  it UNDECLARED and says why. Gating it as UNROOTED let a top-level stray in a
+  settings file build silently and ride the snapshot.
 
-    The empty path is the store's root node itself, which no walk yields; it keeps
-    the ``UNROOTED`` answer it has always had, since there is no path to judge.
-    """
-    if not segments:
-        return Judgment(Verdict.UNROOTED, "", 0, "empty path")
-    if segments[0] == BINDING_DERIVATIONS_NODE:
-        return Judgment(
-            Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, RESERVED_NODE_REASON,
-        )
-    for cut in range(1, len(segments) + 1):
-        if "." in segments[cut - 1]:
-            # ⚑ A dotted segment in KEY position. Reached only when NO proper prefix is a
-            # declared key: a destination under one returns VALUE at that key, before its
-            # dotted segment is seen. The oracle may not be asked about the JOINED path —
-            # ``box: {"env.X": …}`` joins to ``box.env.X``, a declared key it is not.
-            # The finding's reason: :func:`dotted_entry_reason`.
-            # ⚑ Only at the ROOT or under a declared NAMESPACE. Under an UNDECLARED table
-            # that table is the finding already, and its dotted child is as likely a
-            # destination (``pref.box.bindings.rw``'s) as a name — a reason about key
-            # spelling would be false for it.
-            # ⚑ NOT at the ``<VAR>`` slot of ``env``/``secret_path`` (:func:`is_var_table`):
-            # a dotted VAR name stops here without a finding, left as-is pending the
-            # deferred treatment of the dotted var [Jei:2026-08-22].
-            parent = segments[:cut - 1]
-            if not parent or (
-                oracle(".".join(parent)).cls is KeyClass.NAMESPACE
-                and not is_var_table(parent, oracle=oracle)
-            ):
-                return Judgment(
-                    Verdict.UNDECLARED, "", len(segments),
-                    dotted_entry_reason(parent, segments[cut - 1]),
-                )
-            return Judgment(
-                Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
-                f"segment {segments[cut - 1]!r} contains a dot, so this is not a "
-                f"key path",
-            )
-        prefix = ".".join(segments[:cut])
-        if oracle(prefix).cls is KeyClass.KEY:
-            if cut == len(segments):
-                return Judgment(Verdict.DECLARED, prefix, cut, "")
-            return Judgment(
-                Verdict.VALUE, prefix, cut,
-                f"a value address inside the declared key {prefix!r}",
-            )
-    full = ".".join(segments)
-    judgment = oracle(full)
-    verdict = (
-        Verdict.NAMESPACE if judgment.cls is KeyClass.NAMESPACE
-        else Verdict.UNDECLARED
+  The empty path is the store's root node itself, which no walk yields; it keeps
+  the ``UNROOTED`` answer it has always had, since there is no path to judge.
+  """
+  if not segments:
+    return Judgment(Verdict.UNROOTED, "", 0, "empty path")
+  if segments[0] == BINDING_DERIVATIONS_NODE:
+    return Judgment(
+      Verdict.RESERVED,
+      BINDING_DERIVATIONS_NODE,
+      1,
+      RESERVED_NODE_REASON,
     )
-    return Judgment(verdict, "", len(segments), judgment.reason)
+  for cut in range(1, len(segments) + 1):
+    if "." in segments[cut - 1]:
+      # ⚑ A dotted segment in KEY position. Reached only when NO proper prefix is a
+      # declared key: a destination under one returns VALUE at that key, before its
+      # dotted segment is seen. The oracle may not be asked about the JOINED path —
+      # ``box: {"env.X": …}`` joins to ``box.env.X``, a declared key it is not.
+      # The finding's reason: :func:`dotted_entry_reason`.
+      # ⚑ Only at the ROOT or under a declared NAMESPACE. Under an UNDECLARED table
+      # that table is the finding already, and its dotted child is as likely a
+      # destination (``pref.box.bindings.rw``'s) as a name — a reason about key
+      # spelling would be false for it.
+      # ⚑ NOT at the ``<VAR>`` slot of ``env``/``secret_path`` (:func:`is_var_table`):
+      # a dotted VAR name stops here without a finding, left as-is pending the
+      # deferred treatment of the dotted var [Jei:2026-08-22].
+      parent = segments[: cut - 1]
+      if not parent or (
+        oracle(".".join(parent)).cls is KeyClass.NAMESPACE
+        and not is_var_table(parent, oracle=oracle)
+      ):
+        return Judgment(
+          Verdict.UNDECLARED,
+          "",
+          len(segments),
+          dotted_entry_reason(parent, segments[cut - 1]),
+        )
+      return Judgment(
+        Verdict.DATA_SEGMENT,
+        ".".join(segments[: cut - 1]),
+        cut - 1,
+        f"segment {segments[cut - 1]!r} contains a dot, so this is not a key path",
+      )
+    prefix = ".".join(segments[:cut])
+    if oracle(prefix).cls is KeyClass.KEY:
+      if cut == len(segments):
+        return Judgment(Verdict.DECLARED, prefix, cut, "")
+      return Judgment(
+        Verdict.VALUE,
+        prefix,
+        cut,
+        f"a value address inside the declared key {prefix!r}",
+      )
+  full = ".".join(segments)
+  judgment = oracle(full)
+  verdict = Verdict.NAMESPACE if judgment.cls is KeyClass.NAMESPACE else Verdict.UNDECLARED
+  return Judgment(verdict, "", len(segments), judgment.reason)
 
 
 def container_notes(
-    nodes: Mapping[tuple[str, ...], StoreNode],
+  nodes: Mapping[tuple[str, ...], StoreNode],
 ) -> dict[tuple[str, ...], str]:
-    """The paths :data:`Verdict.CONTAINER` rescues, each mapped to its NOTE.
+  """The paths :data:`Verdict.CONTAINER` rescues, each mapped to its NOTE.
 
-    *nodes* is the WHOLE judged set — the rule is about relationships between paths,
-    so a partial view gives a wrong answer. Every returned path is re-classed to
-    ``CONTAINER`` by the caller; the value is which of the two rules applied.
+  *nodes* is the WHOLE judged set — the rule is about relationships between paths,
+  so a partial view gives a wrong answer. Every returned path is re-classed to
+  ``CONTAINER`` by the caller; the value is which of the two rules applied.
 
-    TWO RULES, and the ``is_node`` guard is read HERE and nowhere else — a namespace
-    is a NODE, so a SCALAR at one of these paths is an undeclared SHAPE and keeps
-    reddening under both.
+  TWO RULES, and the ``is_node`` guard is read HERE and nowhere else — a namespace
+  is a NODE, so a SCALAR at one of these paths is an undeclared SHAPE and keeps
+  reddening under both.
 
-    ⚑ A DECLARED ``NAMESPACE`` is rescued unconditionally, because its key-hood is
-    the SPEC's and cannot depend on what a given session happened to write beneath
-    it. An empty ``box: {}`` scope table in a settings file is a scope table, not a
-    fabrication; so is a ``meta.box.agent`` whose only child was dropped (spec §0) when
-    its {key}-ref referent was absent. ⚑⚑ THIS REPLACES A DEPTH TEST. The rule used to
-    read ``len(segments) == 1``, which is a POSITIONAL PROXY for namespace-hood: it
-    rescued ``meta`` and reported ``meta.box.agent``, though the spec calls both a
-    namespace one sentence apart (:42, §2b). Ask the keyspace, do not count segments.
+  ⚑ A DECLARED ``NAMESPACE`` is rescued unconditionally, because its key-hood is
+  the SPEC's and cannot depend on what a given session happened to write beneath
+  it. An empty ``box: {}`` scope table in a settings file is a scope table, not a
+  fabrication; so is a ``meta.box.agent`` whose only child was dropped (spec §0) when
+  its {key}-ref referent was absent. ⚑⚑ THIS REPLACES A DEPTH TEST. The rule used to
+  read ``len(segments) == 1``, which is a POSITIONAL PROXY for namespace-hood: it
+  rescued ``meta`` and reported ``meta.box.agent``, though the spec calls both a
+  namespace one sentence apart (:42, §2b). Ask the keyspace, do not count segments.
 
-    ⚑ AN ``UNDECLARED`` INTERMEDIATE node is judged by WHAT LANDED UNDER IT rather
-    than by a list: a node with nothing declared beneath it is not scaffolding, so an
-    empty fabricated subtree stays a violation. That is why this is a filter and not
-    a blanket "nodes are exempt".
-    """
-    real = {Verdict.DECLARED, Verdict.VALUE}
-    carriers: set[tuple[str, ...]] = set()
-    for segments, node in nodes.items():
-        if node.verdict in real:
-            for cut in range(1, len(segments)):
-                carriers.add(segments[:cut])
-    rescued: dict[tuple[str, ...], str] = {}
-    for segments, node in nodes.items():
-        if not node.is_node:
-            continue
-        if node.verdict == Verdict.NAMESPACE:
-            rescued[segments] = (
-                "a node at a path the keyspace declares as a NAMESPACE (spec §0)"
-            )
-        elif node.verdict == Verdict.UNDECLARED and segments in carriers:
-            rescued[segments] = (
-                "an intermediate node carrying declared keys underneath it"
-            )
-    return rescued
+  ⚑ AN ``UNDECLARED`` INTERMEDIATE node is judged by WHAT LANDED UNDER IT rather
+  than by a list: a node with nothing declared beneath it is not scaffolding, so an
+  empty fabricated subtree stays a violation. That is why this is a filter and not
+  a blanket "nodes are exempt".
+  """
+  real = {Verdict.DECLARED, Verdict.VALUE}
+  carriers: set[tuple[str, ...]] = set()
+  for segments, node in nodes.items():
+    if node.verdict in real:
+      for cut in range(1, len(segments)):
+        carriers.add(segments[:cut])
+  rescued: dict[tuple[str, ...], str] = {}
+  for segments, node in nodes.items():
+    if not node.is_node:
+      continue
+    if node.verdict == Verdict.NAMESPACE:
+      rescued[segments] = "a node at a path the keyspace declares as a NAMESPACE (spec §0)"
+    elif node.verdict == Verdict.UNDECLARED and segments in carriers:
+      rescued[segments] = "an intermediate node carrying declared keys underneath it"
+  return rescued
 
 
 #: Cap on :func:`walk_store_paths` recursion; a self-referential store would
@@ -2245,80 +2360,82 @@ MAX_STORE_DEPTH: Final[int] = 64
 
 
 def walk_store_paths(
-    node: Mapping[str, Any], prefix: tuple[str, ...] = (),
+  node: Mapping[str, Any],
+  prefix: tuple[str, ...] = (),
 ) -> Iterator[tuple[tuple[str, ...], bool]]:
-    """Every path in *node*, depth-first: its SEGMENTS and whether it is a NODE.
+  """Every path in *node*, depth-first: its SEGMENTS and whether it is a NODE.
 
-    Segments rather than a dotted string, because a dest-keyed segment is routinely
-    a filesystem path with dots in it and a dotted string loses the very segment
-    boundaries :func:`classify_store_path` turns on.
+  Segments rather than a dotted string, because a dest-keyed segment is routinely
+  a filesystem path with dots in it and a dotted string loses the very segment
+  boundaries :func:`classify_store_path` turns on.
 
-    *node* is a :class:`KeyStore` or a plain mapping; any mapping value is a NODE.
+  *node* is a :class:`KeyStore` or a plain mapping; any mapping value is a NODE.
 
-    ⚑ UNBOUND ``dict.items`` (S3): a resolved snapshot is exactly where a
-    user-named leaf lives, and one spelled ``items`` would shadow the bound method
-    into a crash.
-    """
-    if len(prefix) >= MAX_STORE_DEPTH:
-        return
-    items = dict.items(node) if isinstance(node, dict) else node.items()
-    for key, value in items:
-        segments = prefix + (key,)
-        is_node = isinstance(value, Mapping)
-        yield segments, is_node
-        if is_node:
-            yield from walk_store_paths(value, segments)
+  ⚑ UNBOUND ``dict.items`` (S3): a resolved snapshot is exactly where a
+  user-named leaf lives, and one spelled ``items`` would shadow the bound method
+  into a crash.
+  """
+  if len(prefix) >= MAX_STORE_DEPTH:
+    return
+  items = dict.items(node) if isinstance(node, dict) else node.items()
+  for key, value in items:
+    segments = prefix + (key,)
+    is_node = isinstance(value, Mapping)
+    yield segments, is_node
+    if is_node:
+      yield from walk_store_paths(value, segments)
 
 
 def undeclared_store_paths(
-    store: Mapping[str, Any],
-    *,
-    oracle: Callable[[str], KeyJudgment],
-    prefix: tuple[str, ...] = (),
+  store: Mapping[str, Any],
+  *,
+  oracle: Callable[[str], KeyJudgment],
+  prefix: tuple[str, ...] = (),
 ) -> list[tuple[tuple[str, ...], Judgment]]:
-    """Every path in *store* the CLOSED keyspace does not declare (spec §0).
+  """Every path in *store* the CLOSED keyspace does not declare (spec §0).
 
-    The whole pipeline in one call: walk, classify each path, then apply the
-    CONTAINER rule over the complete set. Returns ``(segments, judgment)`` pairs
-    sorted by path — the SEGMENTS travel with the judgment because a
-    :class:`Judgment` alone cannot be rendered (an ``UNDECLARED`` one names no key,
-    which is the point of it).
+  The whole pipeline in one call: walk, classify each path, then apply the
+  CONTAINER rule over the complete set. Returns ``(segments, judgment)`` pairs
+  sorted by path — the SEGMENTS travel with the judgment because a
+  :class:`Judgment` alone cannot be rendered (an ``UNDECLARED`` one names no key,
+  which is the point of it).
 
-    ⚑ *store* MUST BE A WHOLE STORE (:func:`_classify_whole_store_path`); a scope-local
-    fragment's contents would all be reported as undeclared. A subtree is judged
-    where it WOULD sit by passing that path as *prefix*, which then leads every
-    returned path — judging it without first writing it there.
+  ⚑ *store* MUST BE A WHOLE STORE (:func:`_classify_whole_store_path`); a scope-local
+  fragment's contents would all be reported as undeclared. A subtree is judged
+  where it WOULD sit by passing that path as *prefix*, which then leads every
+  returned path — judging it without first writing it there.
 
-    ⚑ It REPORTS; refusing is the CALLER's decision, and the two snapshot callers take
-    it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
-    returns; ``settings_launch._refuse_undeclared_snapshot`` raises naming every
-    entry. Keeping the verdict here and the policy there is what let the refusal be
-    measured before it was armed. (A third caller refuses nothing:
-    ``settings_launch._drop_non_mirror_keys`` keeps a non-key out of the
-    ``meta.box.agent`` copy it derives.)
-    """
-    judged: dict[tuple[str, ...], Judgment] = {}
-    nodes: dict[tuple[str, ...], StoreNode] = {}
-    for segments, is_node in walk_store_paths(store, prefix):
-        judgment = _classify_whole_store_path(segments, oracle=oracle)
-        judged[segments] = judgment
-        nodes[segments] = StoreNode(judgment.verdict, is_node)
-    rescued = container_notes(nodes)
-    # Paths under an already-reported undeclared prefix are skipped so the report
-    # names only the shallowest violation (e.g. ``box.frob`` and ``box.frob.nard``
-    # report as ``box.frob`` only — spec §0: an undeclared key is an ERROR that NAMES
-    # the offending key; naming the parent names the fix).
-    findings = {
-        seg for seg, jgm in sorted(judged.items())
-        if jgm.verdict in FINDING_VERDICTS and seg not in rescued
-    }
-    skip_under = {
-        seg for seg in findings
-        if any(seg[: len(r)] == r and len(seg) > len(r) for r in findings)
-    }
-    return [
-        (segments, judgment) for segments, judgment in sorted(judged.items())
-        if judgment.verdict in FINDING_VERDICTS
-        and segments not in rescued
-        and segments not in skip_under
-    ]
+  ⚑ It REPORTS; refusing is the CALLER's decision, and the two snapshot callers take
+  it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
+  returns; ``settings_launch._refuse_undeclared_snapshot`` raises naming every
+  entry. Keeping the verdict here and the policy there is what let the refusal be
+  measured before it was armed. (A third caller refuses nothing:
+  ``settings_launch._drop_non_mirror_keys`` keeps a non-key out of the
+  ``meta.box.agent`` copy it derives.)
+  """
+  judged: dict[tuple[str, ...], Judgment] = {}
+  nodes: dict[tuple[str, ...], StoreNode] = {}
+  for segments, is_node in walk_store_paths(store, prefix):
+    judgment = _classify_whole_store_path(segments, oracle=oracle)
+    judged[segments] = judgment
+    nodes[segments] = StoreNode(judgment.verdict, is_node)
+  rescued = container_notes(nodes)
+  # Paths under an already-reported undeclared prefix are skipped so the report
+  # names only the shallowest violation (e.g. ``box.frob`` and ``box.frob.nard``
+  # report as ``box.frob`` only — spec §0: an undeclared key is an ERROR that NAMES
+  # the offending key; naming the parent names the fix).
+  findings = {
+    seg
+    for seg, jgm in sorted(judged.items())
+    if jgm.verdict in FINDING_VERDICTS and seg not in rescued
+  }
+  skip_under = {
+    seg for seg in findings if any(seg[: len(r)] == r and len(seg) > len(r) for r in findings)
+  }
+  return [
+    (segments, judgment)
+    for segments, judgment in sorted(judged.items())
+    if judgment.verdict in FINDING_VERDICTS
+    and segments not in rescued
+    and segments not in skip_under
+  ]

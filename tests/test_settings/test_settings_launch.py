@@ -25,9 +25,9 @@ from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import secret_path_deliveries
 from kanibako.settings.settings_launch import (
-    build_launch_snapshot,
-    effective_behavior,
-    snapshot_category_entries,
+  build_launch_snapshot,
+  effective_behavior,
+  snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 
@@ -35,12 +35,12 @@ from tests.support.filenames import SITE_SETTINGS_FILENAME
 
 
 def _ctx() -> ResolveCtx:
-    return ResolveCtx(
-        agent_name="claude",
-        workset_name=None,
-        host_home="/home/host",
-        xdg={"XDG_DATA_HOME": "/data"},
-    )
+  return ResolveCtx(
+    agent_name="claude",
+    workset_name=None,
+    host_home="/home/host",
+    xdg={"XDG_DATA_HOME": "/data"},
+  )
 
 
 # --------------------------------------------------------------------------- #
@@ -49,19 +49,19 @@ def _ctx() -> ResolveCtx:
 
 
 def test_behavior_floor_maps_to_scope_qualified_agent_key():
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
-    )
-    # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 —
-    # NO bare agent.<key>).
-    assert snap.agent.default.model == "opus"
-    assert snap.agent.default.allow_helpers == "true"
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus", "allow_helpers": "true"},
+  )
+  # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 —
+  # NO bare agent.<key>).
+  assert snap.agent.default.model == "opus"
+  assert snap.agent.default.allow_helpers == "true"
 
 
 # --------------------------------------------------------------------------- #
@@ -76,331 +76,354 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
 
 
 def _snap(agent_name="goose", system_path=None, **floors):
-    return build_launch_snapshot(
-        agent_name=agent_name,
-        ctx=_ctx(),
-        system_path=system_path,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        **floors,
-    )
+  return build_launch_snapshot(
+    agent_name=agent_name,
+    ctx=_ctx(),
+    system_path=system_path,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    **floors,
+  )
 
 
 def test_the_PLUGIN_floor_lands_at_the_AGENT_tier_core_leaves_included():
-    """🛑 Every plugin row floors at ``agent.<active>``, whatever its leaf.
+  """🛑 Every plugin row floors at ``agent.<active>``, whatever its leaf.
 
-    goose declares a plugin-only leaf (``provider``) and a core one (``model``); both
-    are ``agent.goose`` builtin, so neither reaches ``agent.default``.
-    """
-    snap = _snap(agent_behavior_floor={"provider": "openai", "model": "opus"})
-    assert snap.agent.goose.provider == "openai"
-    assert snap.agent.goose.model == "opus"
-    assert "provider" not in snap.agent.get("default", {})
-    assert "model" not in snap.agent.get("default", {})
+  goose declares a plugin-only leaf (``provider``) and a core one (``model``); both
+  are ``agent.goose`` builtin, so neither reaches ``agent.default``.
+  """
+  snap = _snap(agent_behavior_floor={"provider": "openai", "model": "opus"})
+  assert snap.agent.goose.provider == "openai"
+  assert snap.agent.goose.model == "opus"
+  assert "provider" not in snap.agent.get("default", {})
+  assert "model" not in snap.agent.get("default", {})
 
 
 @pytest.mark.writes_undeclared(
-    "agent.default.provider", reason="the undeclared key IS the input the refusal names.",
+  "agent.default.provider",
+  reason="the undeclared key IS the input the refusal names.",
 )
 def test_a_PLUGIN_ONLY_leaf_in_the_CORE_floor_is_refused_by_name():
-    """The core floor writes ``agent.default.<leaf>`` for EVERY row it carries, so a
-    plugin-only leaf there names the undeclared key instead of landing anywhere."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """The core floor writes ``agent.default.<leaf>`` for EVERY row it carries, so a
+  plugin-only leaf there names the undeclared key instead of landing anywhere."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError, match=r"agent\.default\.provider"):
-        _snap(behavior_floor={"provider": "openai"})
+  with pytest.raises(SettingsError, match=r"agent\.default\.provider"):
+    _snap(behavior_floor={"provider": "openai"})
 
 
 def test_BOTH_floors_reach_the_behavior_read():
-    """``effective_behavior``'s active-over-default pick surfaces each floor's rows."""
-    snap = _snap(
-        behavior_floor={"allow_helpers": "true", "model": None},
-        agent_behavior_floor={"provider": "openai", "endpoint": "https://e.example"},
-    )
-    eff = effective_behavior(snap, active_agent="goose")
-    assert eff["provider"] == "openai"             # active slot  (agent.goose)
-    assert eff["endpoint"] == "https://e.example"  # active slot
-    assert eff["allow_helpers"] == "true"          # default slot (agent.default)
-    assert "model" not in eff                      # core <None>, nothing above it
+  """``effective_behavior``'s active-over-default pick surfaces each floor's rows."""
+  snap = _snap(
+    behavior_floor={"allow_helpers": "true", "model": None},
+    agent_behavior_floor={"provider": "openai", "endpoint": "https://e.example"},
+  )
+  eff = effective_behavior(snap, active_agent="goose")
+  assert eff["provider"] == "openai"  # active slot  (agent.goose)
+  assert eff["endpoint"] == "https://e.example"  # active slot
+  assert eff["allow_helpers"] == "true"  # default slot (agent.default)
+  assert "model" not in eff  # core <None>, nothing above it
 
 
 def test_a_PLUGIN_row_beats_a_users_agent_default_setting(tmp_path: Path):
-    """🛑 [Q91] rung 3 over rung 2: the plugin's own row wins the §2d pick over a
-    user's ``agent.default.<key>``.
+  """🛑 [Q91] rung 3 over rung 2: the plugin's own row wins the §2d pick over a
+  user's ``agent.default.<key>``.
 
-    The negative half rides along: with no plugin row the same user value answers,
-    over the core ``<None>`` floor (rung 2 over rung 1).
-    """
-    system_file = tmp_path / "settings.yaml"
-    system_file.write_text("agent:\n  default:\n    model: mine\n    endpoint: mine\n")
-    snap = _snap(
-        system_path=system_file,
-        behavior_floor={"model": None, "endpoint": None},
-        agent_behavior_floor={"model": "plugin-model"},
-    )
-    eff = effective_behavior(snap, active_agent="goose")
-    assert eff["model"] == "plugin-model", "the plugin's row must beat agent.default.model"
-    assert eff["endpoint"] == "mine", "no plugin row: agent.default setting answers"
+  The negative half rides along: with no plugin row the same user value answers,
+  over the core ``<None>`` floor (rung 2 over rung 1).
+  """
+  system_file = tmp_path / "settings.yaml"
+  system_file.write_text("agent:\n  default:\n    model: mine\n    endpoint: mine\n")
+  snap = _snap(
+    system_path=system_file,
+    behavior_floor={"model": None, "endpoint": None},
+    agent_behavior_floor={"model": "plugin-model"},
+  )
+  eff = effective_behavior(snap, active_agent="goose")
+  assert eff["model"] == "plugin-model", "the plugin's row must beat agent.default.model"
+  assert eff["endpoint"] == "mine", "no plugin row: agent.default setting answers"
 
 
 def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
-    """🛑 §2d shell fence: ``agent.shell.label`` is a fence row, so it shadows the
-    ``agent.default.label`` the shell otherwise inherits, while a true agent with no
-    plugin row still reads the user's value (the same snapshot, a different pick).
-    """
-    from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
+  """🛑 §2d shell fence: ``agent.shell.label`` is a fence row, so it shadows the
+  ``agent.default.label`` the shell otherwise inherits, while a true agent with no
+  plugin row still reads the user's value (the same snapshot, a different pick).
+  """
+  from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
 
-    system_file = tmp_path / "settings.yaml"
-    system_file.write_text("agent:\n  default:\n    label: Mine\n")
-    snap = _snap(
-        agent_name="shell",
-        system_path=system_file,
-        behavior_floor=behavior_defaults(),
-        default_categories=pseudo_tier_defaults(),
-    )
-    assert effective_behavior(snap, active_agent="shell")["label"] == "Command Line Shell (shell)"
-    assert effective_behavior(snap, active_agent="other")["label"] == "Mine"
+  system_file = tmp_path / "settings.yaml"
+  system_file.write_text("agent:\n  default:\n    label: Mine\n")
+  snap = _snap(
+    agent_name="shell",
+    system_path=system_file,
+    behavior_floor=behavior_defaults(),
+    default_categories=pseudo_tier_defaults(),
+  )
+  assert effective_behavior(snap, active_agent="shell")["label"] == "Command Line Shell (shell)"
+  assert effective_behavior(snap, active_agent="other")["label"] == "Mine"
 
 
 def test_the_SHELL_inherits_a_users_agent_default_where_its_fence_has_no_row(tmp_path: Path):
-    """🛑 §2d *"Pseudo-agent(s)"*: shell inherits ``agent.default`` (core and settings
-    files), never a plugin. A key the shell fence does not state answers the user's
-    ``agent.default`` value; a fence row (``model``, ``continue_mode``) still shadows it.
-    (Mutation: ``_fallback_node`` answering ``__MISSING__`` for ``shell`` → RED.)"""
-    from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
+  """🛑 §2d *"Pseudo-agent(s)"*: shell inherits ``agent.default`` (core and settings
+  files), never a plugin. A key the shell fence does not state answers the user's
+  ``agent.default`` value; a fence row (``model``, ``continue_mode``) still shadows it.
+  (Mutation: ``_fallback_node`` answering ``__MISSING__`` for ``shell`` → RED.)"""
+  from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
 
-    system_file = tmp_path / "settings.yaml"
-    system_file.write_text(
-        "agent:\n  default:\n    bootstrap: none\n    access: restricted\n"
-        "    endpoint: http://e.example\n    model: mine\n    continue_mode: 'false'\n"
-    )
-    snap = _snap(
-        agent_name="shell",
-        system_path=system_file,
-        behavior_floor=behavior_defaults(),
-        default_categories=pseudo_tier_defaults(),
-    )
-    eff = effective_behavior(snap, active_agent="shell")
-    assert eff["bootstrap"] == "none"
-    assert eff["access"] == "restricted"
-    assert eff["endpoint"] == "http://e.example"
-    assert eff["allow_helpers"] == "true", "core agent.default answers an unset key"
-    assert "model" not in eff and "continue_mode" not in eff, "fence <None> rows shadow"
+  system_file = tmp_path / "settings.yaml"
+  system_file.write_text(
+    "agent:\n  default:\n    bootstrap: none\n    access: restricted\n"
+    "    endpoint: http://e.example\n    model: mine\n    continue_mode: 'false'\n"
+  )
+  snap = _snap(
+    agent_name="shell",
+    system_path=system_file,
+    behavior_floor=behavior_defaults(),
+    default_categories=pseudo_tier_defaults(),
+  )
+  eff = effective_behavior(snap, active_agent="shell")
+  assert eff["bootstrap"] == "none"
+  assert eff["access"] == "restricted"
+  assert eff["endpoint"] == "http://e.example"
+  assert eff["allow_helpers"] == "true", "core agent.default answers an unset key"
+  assert "model" not in eff and "continue_mode" not in eff, "fence <None> rows shadow"
 
 
 def test_the_SHELL_takes_core_agent_default_values_with_no_user_file():
-    """With no settings file, a shell box reads core's ``agent.default`` floor for every
-    key its fence states no row for — and its tier carries only the fence rows."""
-    from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
+  """With no settings file, a shell box reads core's ``agent.default`` floor for every
+  key its fence states no row for — and its tier carries only the fence rows."""
+  from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
 
-    assert set(pseudo_tier_defaults()) == {
-        "agent.shell.label", "agent.shell.continue_mode", "agent.shell.model",
-    }
-    snap = _snap(
-        agent_name="shell",
-        behavior_floor=behavior_defaults(),
-        default_categories=pseudo_tier_defaults(),
-    )
-    eff = effective_behavior(snap, active_agent="shell")
-    assert eff["bootstrap"] == "tmux" and eff["access"] == "full"
-    assert eff["label"] == "Command Line Shell (shell)"
+  assert set(pseudo_tier_defaults()) == {
+    "agent.shell.label",
+    "agent.shell.continue_mode",
+    "agent.shell.model",
+  }
+  snap = _snap(
+    agent_name="shell",
+    behavior_floor=behavior_defaults(),
+    default_categories=pseudo_tier_defaults(),
+  )
+  eff = effective_behavior(snap, active_agent="shell")
+  assert eff["bootstrap"] == "tmux" and eff["access"] == "full"
+  assert eff["label"] == "Command Line Shell (shell)"
 
 
 def test_an_EMPTY_floor_value_survives_as_a_DECLARATION():
-    """``""`` and ABSENT are different declarations, so the plugin floor carries
-    ``""`` through as a PRESENT value at its tier."""
-    snap = _snap(agent_behavior_floor={"provider": "", "model": ""})
-    assert snap.agent.goose.provider == ""
-    eff = effective_behavior(snap, active_agent="goose")
-    # PRESENT, and empty — not omitted. ``in`` is the assertion; the value is the check.
-    assert "provider" in eff and eff["provider"] == ""
-    assert "model" in eff and eff["model"] == ""
+  """``""`` and ABSENT are different declarations, so the plugin floor carries
+  ``""`` through as a PRESENT value at its tier."""
+  snap = _snap(agent_behavior_floor={"provider": "", "model": ""})
+  assert snap.agent.goose.provider == ""
+  eff = effective_behavior(snap, active_agent="goose")
+  # PRESENT, and empty — not omitted. ``in`` is the assertion; the value is the check.
+  assert "provider" in eff and eff["provider"] == ""
+  assert "model" in eff and eff["model"] == ""
 
 
 def test_a_user_set_agent_key_still_BEATS_the_plugin_floor(tmp_path: Path):
-    """🛑 [Q91] rung 4 over rung 3: within one slot, merge level separates the plugin
-    floor from the user's value, and nothing else does.
+  """🛑 [Q91] rung 4 over rung 3: within one slot, merge level separates the plugin
+  floor from the user's value, and nothing else does.
 
-    Both floors ride the ONE floor into ``base_levels[5]``, the LOWEST rung.
-    ⚑ THE SYSTEM FILE IS THE DELIBERATE CHOICE: it is the rung immediately above the
-    floor, so this reds first if the plugin floor is ever promoted (routing it through
-    ``agent_partial``, which sits ABOVE ``system``, is the shape it refuses); and it is
-    the only scope that CAN carry an ``agent:`` table (``SCOPE_CONTAINMENT``: §0
-    directional enforcement drops one written in a workset or box file).
-    """
-    system_file = tmp_path / "settings.yaml"
-    system_file.write_text("agent:\n  goose:\n    provider: openrouter\n")
-    snap = _snap(system_path=system_file, agent_behavior_floor={"provider": "openai"})
-    assert snap.agent.goose.provider == "openrouter"
-    assert effective_behavior(snap, active_agent="goose")["provider"] == "openrouter"
+  Both floors ride the ONE floor into ``base_levels[5]``, the LOWEST rung.
+  ⚑ THE SYSTEM FILE IS THE DELIBERATE CHOICE: it is the rung immediately above the
+  floor, so this reds first if the plugin floor is ever promoted (routing it through
+  ``agent_partial``, which sits ABOVE ``system``, is the shape it refuses); and it is
+  the only scope that CAN carry an ``agent:`` table (``SCOPE_CONTAINMENT``: §0
+  directional enforcement drops one written in a workset or box file).
+  """
+  system_file = tmp_path / "settings.yaml"
+  system_file.write_text("agent:\n  goose:\n    provider: openrouter\n")
+  snap = _snap(system_path=system_file, agent_behavior_floor={"provider": "openai"})
+  assert snap.agent.goose.provider == "openrouter"
+  assert effective_behavior(snap, active_agent="goose")["provider"] == "openrouter"
 
 
 def test_the_plugin_floor_keys_on_the_ACTIVE_NODE_not_the_harness():
-    """⚑ A PERSONA takes the plugin floor at its OWN node (the fix-4a rule).
+  """⚑ A PERSONA takes the plugin floor at its OWN node (the fix-4a rule).
 
-    The read side picks ``agent.<active node>`` ∪ ``agent.default``, and for a persona
-    the active node is ``navigator℘goose``, not the harness ``goose``: keying on the
-    harness would strand the floor at a slot nothing reads.
-    """
-    node = "navigator℘goose"
-    snap = _snap(
-        agent_name=node,
-        behavior_floor={"model": "opus"},
-        agent_behavior_floor={"provider": "openai"},
-    )
-    assert getattr(snap.agent, node).provider == "openai"
-    assert effective_behavior(snap, active_agent=node)["provider"] == "openai"
-    assert snap.agent.default.model == "opus"
+  The read side picks ``agent.<active node>`` ∪ ``agent.default``, and for a persona
+  the active node is ``navigator℘goose``, not the harness ``goose``: keying on the
+  harness would strand the floor at a slot nothing reads.
+  """
+  node = "navigator℘goose"
+  snap = _snap(
+    agent_name=node,
+    behavior_floor={"model": "opus"},
+    agent_behavior_floor={"provider": "openai"},
+  )
+  assert getattr(snap.agent, node).provider == "openai"
+  assert effective_behavior(snap, active_agent=node)["provider"] == "openai"
+  assert snap.agent.default.model == "opus"
 
 
 def test_a_CORE_ONLY_floor_with_no_descriptors_is_UNTOUCHED_by_the_split():
-    """🛑🛑 THE TRAP GUARD. One caller floors a single CORE leaf and has NO descriptors
-    at all — the focused snapshot that exists only so the ``agent`` node is present, so
-    a box whose sole agent-scope setting is a ``box.agent.<key>`` mirror does not lose
-    the override. Its leaf MUST stay at ``agent.default``: anyone who splits the floor
-    by interpolating the agent name into the stamp breaks that caller silently, because
-    it has no plugin population to justify the move.
-    """
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={"bootstrap": "tmux"},
-    )
-    assert snap.agent.default.bootstrap == "tmux"
-    assert "claude" not in snap.agent
+  """🛑🛑 THE TRAP GUARD. One caller floors a single CORE leaf and has NO descriptors
+  at all — the focused snapshot that exists only so the ``agent`` node is present, so
+  a box whose sole agent-scope setting is a ``box.agent.<key>`` mirror does not lose
+  the override. Its leaf MUST stay at ``agent.default``: anyone who splits the floor
+  by interpolating the agent name into the stamp breaks that caller silently, because
+  it has no plugin population to justify the move.
+  """
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"bootstrap": "tmux"},
+  )
+  assert snap.agent.default.bootstrap == "tmux"
+  assert "claude" not in snap.agent
 
 
 @pytest.mark.parametrize("subject_name", ["BOX", "WORKSET", "SYSTEM"])
 def test_the_box_scalar_floor_is_folded_for_every_subject(subject_name):
-    """Spec §0/§2b: every resolve carries each box scalar at its declared default (``box.shell``
-    a present ``None``, keyspec §0 "it must RESOLVE"); a system or workset file may set them
-    downward (design 1D-b)."""
-    from kanibako.settings.config import box_scalar_defaults_floor
-    from kanibako.settings.settings_launch import ResolveSubject, snapshot_leaf
+  """Spec §0/§2b: every resolve carries each box scalar at its declared default (``box.shell``
+  a present ``None``, keyspec §0 "it must RESOLVE"); a system or workset file may set them
+  downward (design 1D-b)."""
+  from kanibako.settings.config import box_scalar_defaults_floor
+  from kanibako.settings.settings_launch import ResolveSubject, snapshot_leaf
 
-    snap = _snap(agent_name="claude", subject=ResolveSubject[subject_name])
-    for key, value in box_scalar_defaults_floor().items():
-        assert snapshot_leaf(snap, key) == value, key
+  snap = _snap(agent_name="claude", subject=ResolveSubject[subject_name])
+  for key, value in box_scalar_defaults_floor().items():
+    assert snapshot_leaf(snap, key) == value, key
 
 
 def test_a_box_file_scalar_beats_the_box_scalar_floor(tmp_path: Path):
-    """The floor sits at the base rung: a box file's ``box.shell`` / ``box.share_images``
-    win by merge level, and an embedded ``{box.shell}`` renders the user's value."""
-    from kanibako.settings.config import box_scalar_defaults_floor
-    from kanibako.settings.config_io import dump_doc
+  """The floor sits at the base rung: a box file's ``box.shell`` / ``box.share_images``
+  win by merge level, and an embedded ``{box.shell}`` renders the user's value."""
+  from kanibako.settings.config import box_scalar_defaults_floor
+  from kanibako.settings.config_io import dump_doc
 
-    box_file = tmp_path / "box.yaml"
-    dump_doc(box_file, {"box": {
-        "shell": "/bin/zsh", "share_images": True, "enable_vault": False,
+  box_file = tmp_path / "box.yaml"
+  dump_doc(
+    box_file,
+    {
+      "box": {
+        "shell": "/bin/zsh",
+        "share_images": True,
+        "enable_vault": False,
         "canon": "{box.shell}/sub",
-    }})
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-        workset_path=None, box_path=box_file,
-    )
-    assert snap.box.shell == "/bin/zsh"
-    assert snap.box.share_images is True
-    assert snap.box.enable_vault is False
-    assert snap.box.canon == "/bin/zsh/sub"
-    assert snap.box.image == box_scalar_defaults_floor()["box.image"]
+      }
+    },
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box_file,
+  )
+  assert snap.box.shell == "/bin/zsh"
+  assert snap.box.share_images is True
+  assert snap.box.enable_vault is False
+  assert snap.box.canon == "/bin/zsh/sub"
+  assert snap.box.image == box_scalar_defaults_floor()["box.image"]
 
 
 def test_category_default_table_folds_into_snapshot():
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        default_categories={
-            # DEST-KEYED arm (R-5): the floor key ENDS at the arm and its value is
-            # the whole ``{box_dest: (src[, opts])}`` map.
-            "box.bindings.rw": {"/home/agent": ("/h/home", "Z,U")},
-            "box.env.FOO": "bar",
-        },
-    )
-    bind = getattr(snap.box.bindings.rw, "/home/agent")
-    assert isinstance(bind, BindEntry)
-    assert bind == BindEntry("/h/home", "Z,U")
-    assert snap.box.env.FOO == "bar"
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories={
+      # DEST-KEYED arm (R-5): the floor key ENDS at the arm and its value is
+      # the whole ``{box_dest: (src[, opts])}`` map.
+      "box.bindings.rw": {"/home/agent": ("/h/home", "Z,U")},
+      "box.env.FOO": "bar",
+    },
+  )
+  bind = getattr(snap.box.bindings.rw, "/home/agent")
+  assert isinstance(bind, BindEntry)
+  assert bind == BindEntry("/h/home", "Z,U")
+  assert snap.box.env.FOO == "bar"
 
 
 def test_empty_string_default_suppression_dropped():
-    # A ""-suppressed DEFAULT means "disabled" → dropped from the floor (absent),
-    # matching the retired by-name resolver's terminal skip (no shipped default uses "").
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        default_categories={"box.bindings.rw": {"/home/agent": ""}},
-    )
-    box = snap.box if "box" in snap else KeyStore()
-    bindings = box.bindings if "bindings" in box else KeyStore()
-    rw = bindings.rw if "rw" in bindings else KeyStore()
-    assert "/home/agent" not in rw
+  # A ""-suppressed DEFAULT means "disabled" → dropped from the floor (absent),
+  # matching the retired by-name resolver's terminal skip (no shipped default uses "").
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories={"box.bindings.rw": {"/home/agent": ""}},
+  )
+  box = snap.box if "box" in snap else KeyStore()
+  bindings = box.bindings if "bindings" in box else KeyStore()
+  rw = bindings.rw if "rw" in bindings else KeyStore()
+  assert "/home/agent" not in rw
 
 
 def test_agent_partial_inserted():
-    # 7a partial supplies the default delivery bind under the active agent's
-    # DISCRIMINATED slot (agent.<name>.bindings.*; §2d/§0 — NO bare agent).
-    agent_partial = KeyStore(
-        {"agent": {"claude": {"bindings": {
-            "ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
-    )
-    snap_default = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        agent_partial=agent_partial,
-    )
-    assert snap_default.agent.claude.bindings.ro.share.host == "/orig"
+  # 7a partial supplies the default delivery bind under the active agent's
+  # DISCRIMINATED slot (agent.<name>.bindings.*; §2d/§0 — NO bare agent).
+  agent_partial = KeyStore(
+    {"agent": {"claude": {"bindings": {"ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
+  )
+  snap_default = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    agent_partial=agent_partial,
+  )
+  assert snap_default.agent.claude.bindings.ro.share.host == "/orig"
 
 
 def test_agent_partial_surfaces_flat_secret_path():
-    # REGRESSION (2026-07-15c): the 2026-07-14b flatten moved the per-agent file's
-    # secret_path to the TOP-LEVEL ``self.secret_path`` (self IS agent.<node>), but
-    # the cascade reader kept reading the nested ``self.<node>`` sub-table — so an
-    # agent-scope secret_path became INVISIBLE to the launch cascade (which drives
-    # the token ro-mount + $VAR export), silently breaking persona auth. The active
-    # layer must surface the flat secret_path as ``agent.<node>.secret_path``; the
-    # all-agents ``default`` layer must NOT (it is the file's own node's secret).
-    from kanibako.settings.settings_assemble import agent_file_partial
+  # REGRESSION (2026-07-15c): the 2026-07-14b flatten moved the per-agent file's
+  # secret_path to the TOP-LEVEL ``self.secret_path`` (self IS agent.<node>), but
+  # the cascade reader kept reading the nested ``self.<node>`` sub-table — so an
+  # agent-scope secret_path became INVISIBLE to the launch cascade (which drives
+  # the token ro-mount + $VAR export), silently breaking persona auth. The active
+  # layer must surface the flat secret_path as ``agent.<node>.secret_path``; the
+  # all-agents ``default`` layer must NOT (it is the file's own node's secret).
+  from kanibako.settings.settings_assemble import agent_file_partial
 
-    raw = {"self": {
-        "secret_path": {"API_KEY": "/home/agent/.config/personas/navigator/token"},
-    }}
-    active = agent_file_partial(raw, sub_key="navigator℘codex")
-    assert (active.agent["navigator℘codex"].secret_path["API_KEY"]
-            == "/home/agent/.config/personas/navigator/token")
-    # The default layer never carries the file's own secret_path.
-    assert agent_file_partial(raw, sub_key="default") == KeyStore()
+  raw = {
+    "self": {
+      "secret_path": {"API_KEY": "/home/agent/.config/personas/navigator/token"},
+    }
+  }
+  active = agent_file_partial(raw, sub_key="navigator℘codex")
+  assert (
+    active.agent["navigator℘codex"].secret_path["API_KEY"]
+    == "/home/agent/.config/personas/navigator/token"
+  )
+  # The default layer never carries the file's own secret_path.
+  assert agent_file_partial(raw, sub_key="default") == KeyStore()
 
 
 def test_agent_partial_surfaces_flat_env():
-    # MBR-1 P3 (N-1): the per-agent file's ``self.env`` is flat for exactly the reason
-    # ``self.secret_path`` is — ``self`` IS ``agent.<node>`` — and it was re-rooted for
-    # neither. So an ``agent.<node>.env.<VAR>`` was no snapshot leaf at all: it reached
-    # the box only as a separate under-layer BELOW every ``<scope>.env.<VAR>`` slot
-    # (inverting the cascade bracket, where agent outranks system) and never saw the
-    # expand pass. Same arm, same ACTIVE-layer-only rule as the secret above.
-    from kanibako.settings.settings_assemble import agent_file_partial
+  # MBR-1 P3 (N-1): the per-agent file's ``self.env`` is flat for exactly the reason
+  # ``self.secret_path`` is — ``self`` IS ``agent.<node>`` — and it was re-rooted for
+  # neither. So an ``agent.<node>.env.<VAR>`` was no snapshot leaf at all: it reached
+  # the box only as a separate under-layer BELOW every ``<scope>.env.<VAR>`` slot
+  # (inverting the cascade bracket, where agent outranks system) and never saw the
+  # expand pass. Same arm, same ACTIVE-layer-only rule as the secret above.
+  from kanibako.settings.settings_assemble import agent_file_partial
 
-    raw = {"self": {
-        "env": {"CODEX_HOME": "~/.codex"},
-    }}
-    active = agent_file_partial(raw, sub_key="navigator℘codex")
-    assert active.agent["navigator℘codex"].env["CODEX_HOME"] == "~/.codex"
-    # The default layer never carries the file's own env (it is this node's, not
-    # every agent's) — the same discrimination the secret above is held to.
-    assert agent_file_partial(raw, sub_key="default") == KeyStore()
+  raw = {
+    "self": {
+      "env": {"CODEX_HOME": "~/.codex"},
+    }
+  }
+  active = agent_file_partial(raw, sub_key="navigator℘codex")
+  assert active.agent["navigator℘codex"].env["CODEX_HOME"] == "~/.codex"
+  # The default layer never carries the file's own env (it is this node's, not
+  # every agent's) — the same discrimination the secret above is held to.
+  assert agent_file_partial(raw, sub_key="default") == KeyStore()
 
 
 #: A sample entry per CATEGORY, so a parametrized case can assert the CURE it renders (the
@@ -412,253 +435,289 @@ def test_agent_partial_surfaces_flat_env():
 #: category leaving it cannot leave a stale pin behind. A hand-written list here would be a
 #: second copy of the constant, drifting the moment either moved.
 _CATEGORY_SAMPLES: dict[str, tuple[str, object]] = {
-    "env": ("EDITOR", "vim"),
-    "secret_path": ("API_KEY", "/t/token"),
-    "bindings": ("ro", {"/box/x": ["/h/x"]}),
+  "env": ("EDITOR", "vim"),
+  "secret_path": ("API_KEY", "/t/token"),
+  "bindings": ("ro", {"/box/x": ["/h/x"]}),
 }
 _DEST_KEYED_SAMPLE = ("/box/d", ["/h/s"])
 _REFUSED_NESTED = [
-    (c, *_CATEGORY_SAMPLES.get(c, _DEST_KEYED_SAMPLE))
-    for c in _FLAT_AGENT_CATEGORIES
+  (c, *_CATEGORY_SAMPLES.get(c, _DEST_KEYED_SAMPLE)) for c in _FLAT_AGENT_CATEGORIES
 ]
 
 
 @pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
 class TestNothingNestsUnderSelfButTheCategories:
-    """[spec:14-18, "self"] — *"There is no self:<agent>:foo. It is just
-    self:foo"*.
+  """[spec:14-18, "self"] — *"There is no self:<agent>:foo. It is just
+  self:foo"*.
 
-    ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
-    ``agent.<agent>``, so ``self.<sub>.<category>`` READS ``agent.<agent>.<sub>.<category>`` — a key
-    that cannot exist, because *"agent.claude does not contain 'claude'"* (*"That would be
-    agent.claude.claude"*). ⚑ That argument is UNIFORM over any ``<sub>``, which is why the literal
-    ``default`` refuses on exactly the same ground and is NOT a generic-``<node>`` construction.
+  ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
+  ``agent.<agent>``, so ``self.<sub>.<category>`` READS ``agent.<agent>.<sub>.<category>`` — a key
+  that cannot exist, because *"agent.claude does not contain 'claude'"* (*"That would be
+  agent.claude.claude"*). ⚑ That argument is UNIFORM over any ``<sub>``, which is why the literal
+  ``default`` refuses on exactly the same ground and is NOT a generic-``<node>`` construction.
 
-    ⚑ SCOPE: EVERY category, ``bindings`` included since S2 landed its flat route
-    (*"None of them should"* have existed). The parametrization is DERIVED from the production
-    tuple rather than listed, because the refusal itself is one predicate over the root table
-    and not a list of names — see ``_REFUSED_NESTED`` above.
+  ⚑ SCOPE: EVERY category, ``bindings`` included since S2 landed its flat route
+  (*"None of them should"* have existed). The parametrization is DERIVED from the production
+  tuple rather than listed, because the refusal itself is one predicate over the root table
+  and not a list of names — see ``_REFUSED_NESTED`` above.
 
-    ⚑ A DIFFERENT REFUSAL AT A DIFFERENT LAYER from the cross-scope twin
-    (``store_collapse._refuse_env_twin``, rows 35-38): that one arbitrates two DECLARED keys
-    contesting one slot at collapse time; this one rejects a FILE SPELLING at assembly time,
-    before any key exists. Neither weakens the other, and a test here must not stand in for one
-    there.
-    """
+  ⚑ A DIFFERENT REFUSAL AT A DIFFERENT LAYER from the cross-scope twin
+  (``store_collapse._refuse_env_twin``, rows 35-38): that one arbitrates two DECLARED keys
+  contesting one slot at collapse time; this one rejects a FILE SPELLING at assembly time,
+  before any key exists. Neither weakens the other, and a test here must not stand in for one
+  there.
+  """
 
-    def test_the_nested_spelling_refuses_when_no_flat_table_exists(
-        self, category, var, value,
-    ):
-        # ⚑ THE COMMON CASE, and the one a check placed after the flat splice would miss
-        # entirely: a hand-written file carrying ONLY the nested table. Before the refusal it
-        # resolved to the very same ``agent.<node>.<category>.<VAR>`` keys as the flat spelling,
-        # so nothing distinguished it and nothing told the user.
-        from kanibako.settings.settings_assemble import agent_file_partial
-        from kanibako.settings.settings_resolve import SettingsError
-
-        raw = {"self": {"codex": {category: {var: value}}}}
-        with pytest.raises(SettingsError) as exc:
-            agent_file_partial(
-                raw, sub_key="codex", path=Path("/a/agent.yaml"), node="codex",
-            )
-        message = str(exc.value)
-        # Names the offending SPELLING and the cure — a refusal that does not is a crash.
-        assert f"self.codex.{category}" in message
-        assert var in message
-        assert "/a/agent.yaml" in message
-        # The CURE every category gets: the FLAT table, spelled as the YAML to write — and
-        # that YAML, read back, IS the table (a list value is YAML, not a Python repr).
-        import textwrap
-
-        import yaml
-
-        printed = message.split("sits DIRECTLY under it):\n", 1)[1].splitlines()
-        block = "\n".join(line for line in printed if line.startswith("    "))
-        assert yaml.safe_load(textwrap.dedent(block)) == {"self": {category: {var: value}}}
-        # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
-        # is ``env`` / ``secret_path`` and nothing else: the dest-keyed families take a
-        # LIST value it cannot express, and it would store a dotted literal instead. A
-        # message must never prescribe a verb that does not work — the same rule
-        # ``config_keys``' retired-bind cure follows, and the reason the hand edit above is
-        # what all nine share.
-        verb = f"kanibako agent set codex {category}.{var}={value}"
-        assert (verb in message) is (category in ("env", "secret_path"))
-
-    def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
-        self, category, var, value,
-    ):
-        # [spec:14-18, "self"], pinned as the WORDING it is: the user
-        # is told the key their spelling
-        # actually reads. Without the expansion the refusal is an assertion of authority; with
-        # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
-        # point — the node appears TWICE.
-        from kanibako.settings.settings_assemble import agent_file_partial
-        from kanibako.settings.settings_resolve import SettingsError
-
-        raw = {"self": {"codex": {category: {var: value}}}}
-        with pytest.raises(SettingsError) as exc:
-            agent_file_partial(raw, sub_key="codex", node="codex")
-        message = str(exc.value)
-        assert f"agent.codex.codex.{category}" in message
-        assert "alias" in message.lower()
-
-    def test_both_spellings_refuse_rather_than_losing_the_nested_table(
-        self, category, var, value,
-    ):
-        # THE SILENT LOSS THIS REMOVES: the flat splice REPLACED a same-named nested table
-        # WHOLESALE, so ``ONLY_NESTED`` below simply was not in the cascade — no warning, no
-        # key, no trace. The refusal names it instead. ⚑ Asserting the NESTED name (not the flat
-        # one) is what catches a check placed on the wrong side of the splice.
-        from kanibako.settings.settings_assemble import agent_file_partial
-        from kanibako.settings.settings_resolve import SettingsError
-
-        raw = {"self": {
-            category: {"ONLY_FLAT": value},
-            "codex": {category: {"ONLY_NESTED": value}},
-        }}
-        with pytest.raises(SettingsError) as exc:
-            agent_file_partial(raw, sub_key="codex", node="codex")
-        assert "ONLY_NESTED" in str(exc.value)
-
-    def test_the_literal_default_sub_table_refuses_on_the_same_ground(
-        self, category, var, value,
-    ):
-        # ⚑ NOT a generic-``<node>`` construction: ``self.default.<category>`` expands to
-        # ``agent.<agent>.default.<category>``, equally non-existent. Only the CURE differs —
-        # the flat table is re-rooted for the ACTIVE layer only, so the all-agents tier has no
-        # agent-file spelling at all and is written in the SYSTEM file (both routes MEASURED
-        # live 2026-08-14: the value arrives, and it does not beat the active node).
-        from kanibako.settings.settings_assemble import agent_file_partial
-        from kanibako.settings.settings_resolve import SettingsError
-
-        raw = {"self": {"default": {category: {var: value}}}}
-        with pytest.raises(SettingsError) as exc:
-            agent_file_partial(
-                raw, sub_key="default", path=Path("/a/agent.yaml"), node="codex",
-            )
-        message = str(exc.value)
-        assert f"self.default.{category}" in message
-        assert f"agent.codex.default.{category}" in message
-        assert "SYSTEM settings file" in message
-        # The cure must NOT send an all-agents value to the flat table, which would silently
-        # narrow it to this one node.
-        assert "kanibako agent set" not in message
-
-    def test_a_bare_category_leaf_refuses_on_presence_not_truthiness(
-        self, category, var, value,
-    ):
-        # ``<category>:`` with nothing under it parses to None. It is still the refused
-        # spelling, and catching it here is what stops a user adding the first entry under a
-        # table kanibako was never going to read.
-        from kanibako.settings.settings_assemble import agent_file_partial
-        from kanibako.settings.settings_resolve import SettingsError
-
-        with pytest.raises(SettingsError, match=rf"self\.codex\.{category}"):
-            agent_file_partial({"self": {"codex": {category: None}}}, sub_key="codex")
-
-
-def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
-    # ⚑⚑ INVERTED, NOT DELETED ([spec:14-18, "self"]). This used to be the SCOPE
-    # CONTROL for
-    # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
-    # because nested was its ONLY spelling, and refusing it before a flat route existed
-    # would have deleted a live delivery path. S2 landed that flat route, so the
-    # exclusion's whole reason is spent — *"self: claude: bindings should never have
-    # existed. None of them should"*. Keeping the test as an INVERSION is what records
-    # that the change was MADE rather than assumed; a deletion would have left the
-    # widening unwitnessed.
+  def test_the_nested_spelling_refuses_when_no_flat_table_exists(
+    self,
+    category,
+    var,
+    value,
+  ):
+    # ⚑ THE COMMON CASE, and the one a check placed after the flat splice would miss
+    # entirely: a hand-written file carrying ONLY the nested table. Before the refusal it
+    # resolved to the very same ``agent.<node>.<category>.<VAR>`` keys as the flat spelling,
+    # so nothing distinguished it and nothing told the user.
     from kanibako.settings.settings_assemble import agent_file_partial
     from kanibako.settings.settings_resolve import SettingsError
 
-    raw = {"self": {"codex": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}}
+    raw = {"self": {"codex": {category: {var: value}}}}
     with pytest.raises(SettingsError) as exc:
-        agent_file_partial(raw, sub_key="codex", node="codex")
-    assert "self.codex.bindings" in str(exc.value)
+      agent_file_partial(
+        raw,
+        sub_key="codex",
+        path=Path("/a/agent.yaml"),
+        node="codex",
+      )
+    message = str(exc.value)
+    # Names the offending SPELLING and the cure — a refusal that does not is a crash.
+    assert f"self.codex.{category}" in message
+    assert var in message
+    assert "/a/agent.yaml" in message
+    # The CURE every category gets: the FLAT table, spelled as the YAML to write — and
+    # that YAML, read back, IS the table (a list value is YAML, not a Python repr).
+    import textwrap
+
+    import yaml
+
+    printed = message.split("sits DIRECTLY under it):\n", 1)[1].splitlines()
+    block = "\n".join(line for line in printed if line.startswith("    "))
+    assert yaml.safe_load(textwrap.dedent(block)) == {"self": {category: {var: value}}}
+    # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
+    # is ``env`` / ``secret_path`` and nothing else: the dest-keyed families take a
+    # LIST value it cannot express, and it would store a dotted literal instead. A
+    # message must never prescribe a verb that does not work — the same rule
+    # ``config_keys``' retired-bind cure follows, and the reason the hand edit above is
+    # what all nine share.
+    verb = f"kanibako agent set codex {category}.{var}={value}"
+    assert (verb in message) is (category in ("env", "secret_path"))
+
+  def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
+    self,
+    category,
+    var,
+    value,
+  ):
+    # [spec:14-18, "self"], pinned as the WORDING it is: the user
+    # is told the key their spelling
+    # actually reads. Without the expansion the refusal is an assertion of authority; with
+    # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
+    # point — the node appears TWICE.
+    from kanibako.settings.settings_assemble import agent_file_partial
+    from kanibako.settings.settings_resolve import SettingsError
+
+    raw = {"self": {"codex": {category: {var: value}}}}
+    with pytest.raises(SettingsError) as exc:
+      agent_file_partial(raw, sub_key="codex", node="codex")
+    message = str(exc.value)
+    assert f"agent.codex.codex.{category}" in message
+    assert "alias" in message.lower()
+
+  def test_both_spellings_refuse_rather_than_losing_the_nested_table(
+    self,
+    category,
+    var,
+    value,
+  ):
+    # THE SILENT LOSS THIS REMOVES: the flat splice REPLACED a same-named nested table
+    # WHOLESALE, so ``ONLY_NESTED`` below simply was not in the cascade — no warning, no
+    # key, no trace. The refusal names it instead. ⚑ Asserting the NESTED name (not the flat
+    # one) is what catches a check placed on the wrong side of the splice.
+    from kanibako.settings.settings_assemble import agent_file_partial
+    from kanibako.settings.settings_resolve import SettingsError
+
+    raw = {
+      "self": {
+        category: {"ONLY_FLAT": value},
+        "codex": {category: {"ONLY_NESTED": value}},
+      }
+    }
+    with pytest.raises(SettingsError) as exc:
+      agent_file_partial(raw, sub_key="codex", node="codex")
+    assert "ONLY_NESTED" in str(exc.value)
+
+  def test_the_literal_default_sub_table_refuses_on_the_same_ground(
+    self,
+    category,
+    var,
+    value,
+  ):
+    # ⚑ NOT a generic-``<node>`` construction: ``self.default.<category>`` expands to
+    # ``agent.<agent>.default.<category>``, equally non-existent. Only the CURE differs —
+    # the flat table is re-rooted for the ACTIVE layer only, so the all-agents tier has no
+    # agent-file spelling at all and is written in the SYSTEM file (both routes MEASURED
+    # live 2026-08-14: the value arrives, and it does not beat the active node).
+    from kanibako.settings.settings_assemble import agent_file_partial
+    from kanibako.settings.settings_resolve import SettingsError
+
+    raw = {"self": {"default": {category: {var: value}}}}
+    with pytest.raises(SettingsError) as exc:
+      agent_file_partial(
+        raw,
+        sub_key="default",
+        path=Path("/a/agent.yaml"),
+        node="codex",
+      )
+    message = str(exc.value)
+    assert f"self.default.{category}" in message
+    assert f"agent.codex.default.{category}" in message
+    assert "SYSTEM settings file" in message
+    # The cure must NOT send an all-agents value to the flat table, which would silently
+    # narrow it to this one node.
+    assert "kanibako agent set" not in message
+
+  def test_a_bare_category_leaf_refuses_on_presence_not_truthiness(
+    self,
+    category,
+    var,
+    value,
+  ):
+    # ``<category>:`` with nothing under it parses to None. It is still the refused
+    # spelling, and catching it here is what stops a user adding the first entry under a
+    # table kanibako was never going to read.
+    from kanibako.settings.settings_assemble import agent_file_partial
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError, match=rf"self\.codex\.{category}"):
+      agent_file_partial({"self": {"codex": {category: None}}}, sub_key="codex")
+
+
+def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
+  # ⚑⚑ INVERTED, NOT DELETED ([spec:14-18, "self"]). This used to be the SCOPE
+  # CONTROL for
+  # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
+  # because nested was its ONLY spelling, and refusing it before a flat route existed
+  # would have deleted a live delivery path. S2 landed that flat route, so the
+  # exclusion's whole reason is spent — *"self: claude: bindings should never have
+  # existed. None of them should"*. Keeping the test as an INVERSION is what records
+  # that the change was MADE rather than assumed; a deletion would have left the
+  # widening unwitnessed.
+  from kanibako.settings.settings_assemble import agent_file_partial
+  from kanibako.settings.settings_resolve import SettingsError
+
+  raw = {"self": {"codex": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}}
+  with pytest.raises(SettingsError) as exc:
+    agent_file_partial(raw, sub_key="codex", node="codex")
+  assert "self.codex.bindings" in str(exc.value)
 
 
 def test_the_flat_bindings_table_is_the_route_that_replaced_it():
-    # The other half of the same fact, and the reason the refusal above is legitimate:
-    # the value still has a spelling, one level up.
-    from kanibako.settings.settings_assemble import agent_file_partial
+  # The other half of the same fact, and the reason the refusal above is legitimate:
+  # the value still has a spelling, one level up.
+  from kanibako.settings.settings_assemble import agent_file_partial
 
-    raw = {"self": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}
-    active = agent_file_partial(raw, sub_key="codex", node="codex")
-    assert "x" in str(active.agent["codex"].bindings.rw)
+  raw = {"self": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}
+  active = agent_file_partial(raw, sub_key="codex", node="codex")
+  assert "x" in str(active.agent["codex"].bindings.rw)
 
 
 def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
-    # A user-settable ``agent.<name>.bindings.{ro,rw}`` ENTRY written on a scope
-    # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
-    # cascade — the plural-arm route that REPLACED the retired singular
-    # ``agent.<name>.binding.<key>`` override bridge. ⚑ The entry is matched BY
-    # DESTINATION, not by the descriptor's ``binding.key`` (R-10 dropped the name
-    # from the keyspace; the arm is a terminal dest-keyed map, R-5). Exercises the
-    # FULL emit path
-    # (build_launch_snapshot → snapshot_category_entries → the ONE category
-    # emitter), so it proves the repoint reaches the emitted Mount.
-    from kanibako.settings.agent_representation import agent_default_partial
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.targets.base import (
-        AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin, PluginDescriptor,
-    )
+  # A user-settable ``agent.<name>.bindings.{ro,rw}`` ENTRY written on a scope
+  # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
+  # cascade — the plural-arm route that REPLACED the retired singular
+  # ``agent.<name>.binding.<key>`` override bridge. ⚑ The entry is matched BY
+  # DESTINATION, not by the descriptor's ``binding.key`` (R-10 dropped the name
+  # from the keyspace; the arm is a terminal dest-keyed map, R-5). Exercises the
+  # FULL emit path
+  # (build_launch_snapshot → snapshot_category_entries → the ONE category
+  # emitter), so it proves the repoint reaches the emitted Mount.
+  from kanibako.settings.agent_representation import agent_default_partial
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    BindScope,
+    Binding,
+    HostSrcOrigin,
+    PluginDescriptor,
+  )
 
-    # The shipped descriptor delivery bind (claude 'share' = INSTALL_DIR, ro,
-    # AGENT_CRITICAL) + a real install whose install_dir EXISTS (so the origin
-    # default would itself resolve — the mutation guard below is meaningful).
-    orig_share = tmp_path / "orig-share"
-    orig_share.mkdir()
-    install = AgentInstall(
-        name="claude",
-        binary=tmp_path / "claude-bin",
-        launcher=tmp_path / "claude-launcher",
-        install_dir=orig_share,
-    )
-    binding = Binding(
-        key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/box/share",
-        kind=BindKind.DIR, scope=BindScope.AGENT_CRITICAL, ro=True,
-    )
-    desc = PluginDescriptor(command=("claude",), bindings=(binding,), mode={})
-    # 7a delivers the descriptor default under agent.claude.bindings.ro.share.
-    partial = agent_default_partial(desc, install, node_name="claude")
+  # The shipped descriptor delivery bind (claude 'share' = INSTALL_DIR, ro,
+  # AGENT_CRITICAL) + a real install whose install_dir EXISTS (so the origin
+  # default would itself resolve — the mutation guard below is meaningful).
+  orig_share = tmp_path / "orig-share"
+  orig_share.mkdir()
+  install = AgentInstall(
+    name="claude",
+    binary=tmp_path / "claude-bin",
+    launcher=tmp_path / "claude-launcher",
+    install_dir=orig_share,
+  )
+  binding = Binding(
+    key="share",
+    origin=HostSrcOrigin.INSTALL_DIR,
+    box_dest="/box/share",
+    kind=BindKind.DIR,
+    scope=BindScope.AGENT_CRITICAL,
+    ro=True,
+  )
+  desc = PluginDescriptor(command=("claude",), bindings=(binding,), mode={})
+  # 7a delivers the descriptor default under agent.claude.bindings.ro.share.
+  partial = agent_default_partial(desc, install, node_name="claude")
 
-    # The user repoint: the agent-scope FILE sets an entry at the SAME box
-    # DESTINATION with a DIFFERENT existing host source. The agent file sits ABOVE
-    # the 7a descriptor-default rung, so it wins the host source at that dest.
-    # ⚑ The entry is ONE element — ``[src]``. Under dest-keying the destination is
-    # the map KEY and the value is ``[src[, options]]``, so the retired
-    # ``{"share": [src, "/box/share"]}`` spelling would parse as an entry named
-    # ``share`` whose OPTIONS are ``/box/share`` (R-9's accepted loss: both shapes
-    # are 2-element lists, so only the reader's context tells them apart) and BOTH
-    # entries would mount.
-    repoint = tmp_path / "user-repoint"
-    repoint.mkdir()
-    agent_file = tmp_path / "agent-settings.yaml"
-    dump_doc(
-        agent_file,
-        {"self": {"bindings": {"ro": {"/box/share": [str(repoint)]}}}},
-    )
+  # The user repoint: the agent-scope FILE sets an entry at the SAME box
+  # DESTINATION with a DIFFERENT existing host source. The agent file sits ABOVE
+  # the 7a descriptor-default rung, so it wins the host source at that dest.
+  # ⚑ The entry is ONE element — ``[src]``. Under dest-keying the destination is
+  # the map KEY and the value is ``[src[, options]]``, so the retired
+  # ``{"share": [src, "/box/share"]}`` spelling would parse as an entry named
+  # ``share`` whose OPTIONS are ``/box/share`` (R-9's accepted loss: both shapes
+  # are 2-element lists, so only the reader's context tells them apart) and BOTH
+  # entries would mount.
+  repoint = tmp_path / "user-repoint"
+  repoint.mkdir()
+  agent_file = tmp_path / "agent-settings.yaml"
+  dump_doc(
+    agent_file,
+    {"self": {"bindings": {"ro": {"/box/share": [str(repoint)]}}}},
+  )
 
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=agent_file, workset_path=None, box_path=None,
-        agent_partial=partial,
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    # ⚑ must_exist holds DESTINATIONS, not descriptor key names (H6) — and since
-    # cutover 2a-3 the delivery binds come out of the ONE category emitter, so this
-    # is the live emission seam rather than a second route that shadowed it.
-    mounts = _emit_category_mounts(
-        _bind_map_from_mounts(entries), label="delivery",
-        must_exist=frozenset({"/box/share"}),
-    )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=agent_file,
+    workset_path=None,
+    box_path=None,
+    agent_partial=partial,
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  # ⚑ must_exist holds DESTINATIONS, not descriptor key names (H6) — and since
+  # cutover 2a-3 the delivery binds come out of the ONE category emitter, so this
+  # is the live emission seam rather than a second route that shadowed it.
+  mounts = _emit_category_mounts(
+    _bind_map_from_mounts(entries),
+    label="delivery",
+    must_exist=frozenset({"/box/share"}),
+  )
 
-    sources = {str(m.source) for m in mounts}
-    # The file-set arm entry repoints the emitted delivery Mount's source.
-    assert str(repoint) in sources
-    # MUTATION guard (non-vacuous): the descriptor origin (install_dir) is REPLACED,
-    # not carried alongside — if the repoint were ignored the emit would still carry
-    # ``orig_share`` and this assert would go RED.
-    assert str(orig_share) not in sources
+  sources = {str(m.source) for m in mounts}
+  # The file-set arm entry repoints the emitted delivery Mount's source.
+  assert str(repoint) in sources
+  # MUTATION guard (non-vacuous): the descriptor origin (install_dir) is REPLACED,
+  # not carried alongside — if the repoint were ignored the emit would still carry
+  # ``orig_share`` and this assert would go RED.
+  assert str(orig_share) not in sources
 
 
 # --------------------------------------------------------------------------- #
@@ -668,46 +727,54 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
 
 
 def test_workset_anchor_floor_default_resolves_when_unset():
-    # With NO workset file, the ``workset.*`` layout anchors resolve to the FLOOR
-    # default (byte-identical to today — the floor is the ultimate fallback).
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        workset_anchor={
-            "workset.boxes": "/floor/boxes",
-            "workset.auth.path": "/floor/auth",
-        },
-    )
-    assert snap.workset.boxes == "/floor/boxes"
-    assert snap.workset.auth.path == "/floor/auth"
+  # With NO workset file, the ``workset.*`` layout anchors resolve to the FLOOR
+  # default (byte-identical to today — the floor is the ultimate fallback).
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    workset_anchor={
+      "workset.boxes": "/floor/boxes",
+      "workset.auth.path": "/floor/auth",
+    },
+  )
+  assert snap.workset.boxes == "/floor/boxes"
+  assert snap.workset.auth.path == "/floor/auth"
 
 
 def test_workset_anchor_user_override_wins_over_floor(tmp_path: Path):
-    # A user ``config set workset workset.boxes=…`` writes an EXPLICIT workset-level
-    # value; it must OUT-PRECEDE the base floor default in the resolved snapshot.
-    # MUTATION-PROOF: if the floor were a hard construct-set value that shadowed the
-    # override (or the override were ignored), the snapshot would carry the FLOOR
-    # value ``/floor/boxes`` and these asserts go RED.
-    from kanibako.settings.config_io import dump_doc
+  # A user ``config set workset workset.boxes=…`` writes an EXPLICIT workset-level
+  # value; it must OUT-PRECEDE the base floor default in the resolved snapshot.
+  # MUTATION-PROOF: if the floor were a hard construct-set value that shadowed the
+  # override (or the override were ignored), the snapshot would carry the FLOOR
+  # value ``/floor/boxes`` and these asserts go RED.
+  from kanibako.settings.config_io import dump_doc
 
-    ws_file = tmp_path / "workset-settings.yaml"
-    dump_doc(
-        ws_file,
-        {"workset": {"boxes": "/override/boxes", "auth": {"path": "/override/auth"}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=ws_file, box_path=None,
-        workset_anchor={
-            "workset.boxes": "/floor/boxes",
-            "workset.auth.path": "/floor/auth",
-        },
-    )
-    # The workset-scope EXPLICIT set wins over the base floor default (workset ⊐ base).
-    assert snap.workset.boxes == "/override/boxes"
-    assert snap.workset.auth.path == "/override/auth"
-    # And it is NOT the floor value (mutation guard made explicit).
-    assert snap.workset.boxes != "/floor/boxes"
+  ws_file = tmp_path / "workset-settings.yaml"
+  dump_doc(
+    ws_file,
+    {"workset": {"boxes": "/override/boxes", "auth": {"path": "/override/auth"}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=ws_file,
+    box_path=None,
+    workset_anchor={
+      "workset.boxes": "/floor/boxes",
+      "workset.auth.path": "/floor/auth",
+    },
+  )
+  # The workset-scope EXPLICIT set wins over the base floor default (workset ⊐ base).
+  assert snap.workset.boxes == "/override/boxes"
+  assert snap.workset.auth.path == "/override/auth"
+  # And it is NOT the floor value (mutation guard made explicit).
+  assert snap.workset.boxes != "/floor/boxes"
 
 
 # --------------------------------------------------------------------------- #
@@ -716,336 +783,373 @@ def test_workset_anchor_user_override_wins_over_floor(tmp_path: Path):
 
 
 def test_adapter_emits_bind_entry_with_box_side_resolution():
-    # DEST-KEYED arm (R-6): the arm KEY is the destination, the leaf is a
-    # 2-element BindEntry(src, opts) that carries no destination at all.
-    snap = KeyStore(
-        {"box": {"bindings": {"rw": {"~/": BindEntry("/h/home", "Z,U")}}}}
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.scope == "box"
-    assert e.category == "bindings.rw"
-    assert e.host_src == "/h/home"
-    # box-side ~/ resolved exactly as today's space="guest" (trailing slash kept).
-    assert e.box_dest == GUEST_HOME + "/"
-    assert e.options == "Z,U"  # per-entry opts override carried.
+  # DEST-KEYED arm (R-6): the arm KEY is the destination, the leaf is a
+  # 2-element BindEntry(src, opts) that carries no destination at all.
+  snap = KeyStore({"box": {"bindings": {"rw": {"~/": BindEntry("/h/home", "Z,U")}}}})
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  assert len(entries) == 1
+  e = entries[0]
+  assert e.scope == "box"
+  assert e.category == "bindings.rw"
+  assert e.host_src == "/h/home"
+  # box-side ~/ resolved exactly as today's space="guest" (trailing slash kept).
+  assert e.box_dest == GUEST_HOME + "/"
+  assert e.options == "Z,U"  # per-entry opts override carried.
 
 
 def test_adapter_emits_the_stored_host_src_verbatim():
-    """The adapter passes ``host_src`` through UNTOUCHED (spec §2a).
+  """The adapter passes ``host_src`` through UNTOUCHED (spec §2a).
 
-    Replaces the retired ``test_adapter_root_joins_relative_host_src``: the
-    assembly-time prepend it asserted is the shape §2a calls FORBIDDEN,
-    and the mechanism is gone. Sources are rooted at DECLARATION now, so the
-    adapter's whole contract on this axis is "do not touch it".
+  Replaces the retired ``test_adapter_root_joins_relative_host_src``: the
+  assembly-time prepend it asserted is the shape §2a calls FORBIDDEN,
+  and the mechanism is gone. Sources are rooted at DECLARATION now, so the
+  adapter's whole contract on this axis is "do not touch it".
 
-    The agent scope is DISCRIMINATED (agent.<active>.*); the adapter does the §2d
-    active-over-default pick and emits the BARE agent scope token.
-    """
-    snap = KeyStore(
-        {"agent": {"claude": {"common": {
-            "/box/plugins": BindEntry(
-                "/data/agents/claude/common/plugins", None)}}}}
-    )
-    entries = snapshot_category_entries(
-        snap, active_agent="claude", box_ctx=_ctx(),
-    )
-    assert entries[0].scope == "agent"  # BARE scope token (not the discriminator).
-    assert entries[0].host_src == "/data/agents/claude/common/plugins"
-    # rw category default options (common → Z,U) when opts is None.
-    assert entries[0].options == "Z,U"
+  The agent scope is DISCRIMINATED (agent.<active>.*); the adapter does the §2d
+  active-over-default pick and emits the BARE agent scope token.
+  """
+  snap = KeyStore(
+    {
+      "agent": {
+        "claude": {
+          "common": {"/box/plugins": BindEntry("/data/agents/claude/common/plugins", None)}
+        }
+      }
+    }
+  )
+  entries = snapshot_category_entries(
+    snap,
+    active_agent="claude",
+    box_ctx=_ctx(),
+  )
+  assert entries[0].scope == "agent"  # BARE scope token (not the discriminator).
+  assert entries[0].host_src == "/data/agents/claude/common/plugins"
+  # rw category default options (common → Z,U) when opts is None.
+  assert entries[0].options == "Z,U"
 
 
 def test_adapter_absolute_host_src_not_joined():
-    """The surviving control from the retired pair: an absolute source passes
-    through — which is now the ONLY behavior, for every source shape."""
-    snap = KeyStore(
-        {"agent": {"claude": {"common": {"/box/x": BindEntry("/abs/x", None)}}}}
-    )
-    entries = snapshot_category_entries(
-        snap, active_agent="claude", box_ctx=_ctx(),
-    )
-    assert entries[0].host_src == "/abs/x"
+  """The surviving control from the retired pair: an absolute source passes
+  through — which is now the ONLY behavior, for every source shape."""
+  snap = KeyStore({"agent": {"claude": {"common": {"/box/x": BindEntry("/abs/x", None)}}}})
+  entries = snapshot_category_entries(
+    snap,
+    active_agent="claude",
+    box_ctx=_ctx(),
+  )
+  assert entries[0].host_src == "/abs/x"
 
 
 def test_adapter_does_not_root_a_relative_host_src():
-    """⚑ A bare-relative source is emitted AS-IS — it is NOT silently rooted.
+  """⚑ A bare-relative source is emitted AS-IS — it is NOT silently rooted.
 
-    Such a value should never reach here (the declaration loaders root it, and
-    both write surfaces refuse or absolutize it), but if one does, the adapter must
-    not invent a root: an invented root is exactly the silent-wrong-path failure
-    §2a exists to prevent. Pinning the pass-through is what makes a
-    re-introduced prepend RED.
+  Such a value should never reach here (the declaration loaders root it, and
+  both write surfaces refuse or absolutize it), but if one does, the adapter must
+  not invent a root: an invented root is exactly the silent-wrong-path failure
+  §2a exists to prevent. Pinning the pass-through is what makes a
+  re-introduced prepend RED.
 
-    ⚑ THE "SHOULD NEVER REACH HERE" PREMISE IS NOW TRUE, and it was not when this
-    was written: a source spelled ``@box.canon/handbook`` passed the declaration
-    parse and only became relative once the key it dereferences was read, so it
-    reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
-    keyspec §2a "A path key's stored value" closed that on both sides
-    (``settings_expand._refuse_relative_host_src`` post-expansion, and the path-value
-    refusal at set time).  The pass-through this
-    case pins is unchanged; only its premise moved from hope to guarantee.
-    """
-    snap = KeyStore(
-        {"agent": {"claude": {"common": {"/box/p": BindEntry("plugins", None)}}}}
-    )
-    entries = snapshot_category_entries(
-        snap, active_agent="claude", box_ctx=_ctx(),
-    )
-    assert entries[0].host_src == "plugins"
+  ⚑ THE "SHOULD NEVER REACH HERE" PREMISE IS NOW TRUE, and it was not when this
+  was written: a source spelled ``@box.canon/handbook`` passed the declaration
+  parse and only became relative once the key it dereferences was read, so it
+  reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
+  keyspec §2a "A path key's stored value" closed that on both sides
+  (``settings_expand._refuse_relative_host_src`` post-expansion, and the path-value
+  refusal at set time).  The pass-through this
+  case pins is unchanged; only its premise moved from hope to guarantee.
+  """
+  snap = KeyStore({"agent": {"claude": {"common": {"/box/p": BindEntry("plugins", None)}}}})
+  entries = snapshot_category_entries(
+    snap,
+    active_agent="claude",
+    box_ctx=_ctx(),
+  )
+  assert entries[0].host_src == "plugins"
 
 
 def test_adapter_active_over_default_pick():
-    # §2d: the active slot wins a DESTINATION; agent.default fills the gaps. Both
-    # an active-only and a default-only common bind survive (no sibling clobber).
-    #
-    # ⚑ The unit the pick operates on is the DESTINATION, not an entry name
-    # (2026-08-08c): ``common`` is a terminal dest-keyed map, so "the active slot
-    # wins that name" is now "the active slot wins that dest". The overlay is still
-    # PER ENTRY (_overlay_into recurses into the map), which is exactly what the
-    # default-only ``/box/common`` surviving below proves.
-    snap = KeyStore({"agent": {
-        "default": {"common": {
+  # §2d: the active slot wins a DESTINATION; agent.default fills the gaps. Both
+  # an active-only and a default-only common bind survive (no sibling clobber).
+  #
+  # ⚑ The unit the pick operates on is the DESTINATION, not an entry name
+  # (2026-08-08c): ``common`` is a terminal dest-keyed map, so "the active slot
+  # wins that name" is now "the active slot wins that dest". The overlay is still
+  # PER ENTRY (_overlay_into recurses into the map), which is exactly what the
+  # default-only ``/box/common`` surviving below proves.
+  snap = KeyStore(
+    {
+      "agent": {
+        "default": {
+          "common": {
             "/box/common": BindEntry("/abs/common", None),
             "/box/plugins": BindEntry("/abs/default-plugins", None),
-        }},
-        "claude": {"common": {
+          }
+        },
+        "claude": {
+          "common": {
             "/box/plugins": BindEntry("/abs/active-plugins", None),
-        }},
-    }})
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    by_dest = {e.box_dest: e for e in entries}
-    assert set(by_dest) == {"/box/common", "/box/plugins"}
-    assert by_dest["/box/plugins"].host_src == "/abs/active-plugins"  # active wins.
-    assert by_dest["/box/common"].host_src == "/abs/common"           # default fills.
-    assert all(e.scope == "agent" for e in entries)
+          }
+        },
+      }
+    }
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  by_dest = {e.box_dest: e for e in entries}
+  assert set(by_dest) == {"/box/common", "/box/plugins"}
+  assert by_dest["/box/plugins"].host_src == "/abs/active-plugins"  # active wins.
+  assert by_dest["/box/common"].host_src == "/abs/common"  # default fills.
+  assert all(e.scope == "agent" for e in entries)
 
 
 def test_adapter_masks_and_env():
-    snap = KeyStore(
-        {"box": {"masks": {"/box/secret": True}, "env": {"FOO": "bar"}}}
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    masks = [e for e in entries if e.category == "masks"]
-    envs = [e for e in entries if e.category == "env"]
-    assert masks[0].box_dest == "/box/secret"
-    assert masks[0].host_src is None and masks[0].options == "ro"
-    assert envs[0].box_dest == "FOO" and envs[0].options == "bar"
+  snap = KeyStore({"box": {"masks": {"/box/secret": True}, "env": {"FOO": "bar"}}})
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  masks = [e for e in entries if e.category == "masks"]
+  envs = [e for e in entries if e.category == "env"]
+  assert masks[0].box_dest == "/box/secret"
+  assert masks[0].host_src is None and masks[0].options == "ro"
+  assert envs[0].box_dest == "FOO" and envs[0].options == "bar"
 
 
 class TestAMasksListInTheFloorReachesTheEmit:
-    """The ``masks`` LIST→keyed-dict BRIDGE in the floor fold, end to end.
+  """The ``masks`` LIST→keyed-dict BRIDGE in the floor fold, end to end.
 
-    ⚑ WHY THIS EXISTS AS A DIRECT TEST. The FLOOR hands masks over as a plain
-    ``list[box_dest]`` (e.g. ``core_defaults.vault_mask_default()``, which returns
-    the shipped MAP's keys), while the KeyStore model — and the spec's own
-    declaration, §2a ``dict[box_dest → bool|None]``, "NOT a bare list" — is KEYED
-    (S5), and the adapter's masks emit only walks a ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
-    ``default_categories`` fold (``settings_launch.py``, the ``masks BRIDGE``
-    branch). Delete that branch and the list stays a ``list``, the emit's
-    ``isinstance(masks, KeyStore)`` guard skips it, and EVERY floor-declared mask
-    disappears — SILENTLY, with no error and no mount.
+  ⚑ WHY THIS EXISTS AS A DIRECT TEST. The FLOOR hands masks over as a plain
+  ``list[box_dest]`` (e.g. ``core_defaults.vault_mask_default()``, which returns
+  the shipped MAP's keys), while the KeyStore model — and the spec's own
+  declaration, §2a ``dict[box_dest → bool|None]``, "NOT a bare list" — is KEYED
+  (S5), and the adapter's masks emit only walks a ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
+  ``default_categories`` fold (``settings_launch.py``, the ``masks BRIDGE``
+  branch). Delete that branch and the list stays a ``list``, the emit's
+  ``isinstance(masks, KeyStore)`` guard skips it, and EVERY floor-declared mask
+  disappears — SILENTLY, with no error and no mount.
 
-    ⚑ THE ASSERTION IS THE EMITTED OUTPUT, deliberately: ``test_adapter_masks_and_env``
-    above pins the adapter when it is HANDED the keyed dict, so it is green with the
-    bridge deleted. Only a test that starts from the LIST covers the bridge.
+  ⚑ THE ASSERTION IS THE EMITTED OUTPUT, deliberately: ``test_adapter_masks_and_env``
+  above pins the adapter when it is HANDED the keyed dict, so it is green with the
+  bridge deleted. Only a test that starts from the LIST covers the bridge.
 
-    MUTATION-PROOF (RUN, not inferred from the shape): neutering the bridge branch
-    turns FIVE of the six tests below RED. The one that stays green is
-    ``test_an_already_keyed_masks_floor_passes_through_unbridged`` — by
-    construction, since it never hands the fold a list.
+  MUTATION-PROOF (RUN, not inferred from the shape): neutering the bridge branch
+  turns FIVE of the six tests below RED. The one that stays green is
+  ``test_an_already_keyed_masks_floor_passes_through_unbridged`` — by
+  construction, since it never hands the fold a list.
+  """
+
+  @staticmethod
+  def _emit(cats):
+    ctx = _ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=cats,
+    )
+    return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+
+  @classmethod
+  def _tmpfs_masks(cls, cats):
+    """The mask destinations the ADAPTER produces — the BRIDGE\'s output.
+
+    ⚑ NOT the launch\'s own split: since cutover 2a-4 the tmpfs arm comes from the
+    collapsed bind map (``commands/start._bind_map_masks``), and what these six
+    cases test is the FLOOR-FOLD BRIDGE, which sits UPSTREAM of every delivery
+    seam. So the oracle is the entry list itself, sorted the way the emitter
+    sorts (shallowest dest first). ⚑ It was the retired by-dest reconcile\'s mask
+    winners until 6-R3; reading the declarations is the same answer with nothing
+    between it and the bridge. The arm itself is pinned in
+    ``test_start_assembly.py::TestTheMaskArm``.
     """
+    from kanibako.settings.settings_categories import path_depth
 
-    @staticmethod
-    def _emit(cats):
-        ctx = _ctx()
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx,
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            default_categories=cats,
-        )
-        return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    masks = [e for e in cls._emit(cats) if e.category == "masks"]
+    masks.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
+    return [e.box_dest for e in masks]
 
-    @classmethod
-    def _tmpfs_masks(cls, cats):
-        """The mask destinations the ADAPTER produces — the BRIDGE\'s output.
+  def test_a_box_masks_list_becomes_masked_destinations(self):
+    entries = self._emit({"box.masks": ["/home/agent/secret", "~/other"]})
+    masks = [e for e in entries if e.category == "masks"]
+    assert [e.box_dest for e in masks] == ["/home/agent/other", "/home/agent/secret"]
+    assert all(e.scope == "box" for e in masks)
+    # A mask is a value-LESS mount: no host source, ro tmpfs shadow.
+    assert all(e.host_src is None and e.options == "ro" for e in masks)
+    # The reported KEY carries the CANONICAL dest: a mask dest is canonicalized at
+    # parse (spec §2a "A MOUNT DESTINATION IS CANONICALIZED"), as a bind dest is.
+    assert {e.key for e in masks} == {
+      "box.masks./home/agent/secret",
+      "box.masks./home/agent/other",
+    }
+    # ...and they arrive in the order the launch's tmpfs mask list takes.
+    assert self._tmpfs_masks({"box.masks": ["/home/agent/secret", "~/other"]}) == [
+      "/home/agent/other",
+      "/home/agent/secret",
+    ]
 
-        ⚑ NOT the launch\'s own split: since cutover 2a-4 the tmpfs arm comes from the
-        collapsed bind map (``commands/start._bind_map_masks``), and what these six
-        cases test is the FLOOR-FOLD BRIDGE, which sits UPSTREAM of every delivery
-        seam. So the oracle is the entry list itself, sorted the way the emitter
-        sorts (shallowest dest first). ⚑ It was the retired by-dest reconcile\'s mask
-        winners until 6-R3; reading the declarations is the same answer with nothing
-        between it and the bridge. The arm itself is pinned in
-        ``test_start_assembly.py::TestTheMaskArm``.
-        """
-        from kanibako.settings.settings_categories import path_depth
+  def test_a_masks_tuple_is_bridged_like_a_list(self):
+    # The bridge accepts ``(list, tuple)``: a YAML list loads as a list, but a
+    # defaults table may hand over a frozen tuple. Both are the same declaration.
+    assert self._tmpfs_masks({"box.masks": ("/t/one", "/t/two")}) == [
+      "/t/one",
+      "/t/two",
+    ]
 
-        masks = [e for e in cls._emit(cats) if e.category == "masks"]
-        masks.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
-        return [e.box_dest for e in masks]
+  def test_an_agent_scope_masks_list_is_bridged_under_the_active_node(self):
+    # The bridge keys off the ``.masks`` TAIL, not the ``box`` scope, so a
+    # DISCRIMINATED agent-scope declaration bridges too (spec §0 — there is no
+    # bare ``agent.masks``).
+    entries = self._emit({"agent.claude.masks": ["/home/agent/agentmask"]})
+    masks = [e for e in entries if e.category == "masks"]
+    assert len(masks) == 1
+    assert masks[0].box_dest == "/home/agent/agentmask"
+    # The emitted precedence scope is the bare ``agent`` token; the KEY carries
+    # the discriminated node the user actually writes.
+    assert masks[0].scope == "agent"
+    assert masks[0].key == "agent.claude.masks./home/agent/agentmask"
 
-    def test_a_box_masks_list_becomes_masked_destinations(self):
-        entries = self._emit({"box.masks": ["/home/agent/secret", "~/other"]})
-        masks = [e for e in entries if e.category == "masks"]
-        assert [e.box_dest for e in masks] == ["/home/agent/other", "/home/agent/secret"]
-        assert all(e.scope == "box" for e in masks)
-        # A mask is a value-LESS mount: no host source, ro tmpfs shadow.
-        assert all(e.host_src is None and e.options == "ro" for e in masks)
-        # The reported KEY carries the CANONICAL dest: a mask dest is canonicalized at
-        # parse (spec §2a "A MOUNT DESTINATION IS CANONICALIZED"), as a bind dest is.
-        assert {e.key for e in masks} == {
-            "box.masks./home/agent/secret", "box.masks./home/agent/other",
-        }
-        # ...and they arrive in the order the launch's tmpfs mask list takes.
-        assert self._tmpfs_masks({"box.masks": ["/home/agent/secret", "~/other"]}) == [
-            "/home/agent/other", "/home/agent/secret",
-        ]
+  def test_an_already_keyed_masks_floor_passes_through_unbridged(self):
+    # The bridge is shape-gated (``isinstance(val, (list, tuple))``), so the
+    # keyed form a settings FILE carries is left exactly as it is — no
+    # double-conversion into ``{"/keyed": True}`` keyed by a bool.
+    assert self._tmpfs_masks({"box.masks": {"/keyed": True}}) == ["/keyed"]
 
-    def test_a_masks_tuple_is_bridged_like_a_list(self):
-        # The bridge accepts ``(list, tuple)``: a YAML list loads as a list, but a
-        # defaults table may hand over a frozen tuple. Both are the same declaration.
-        assert self._tmpfs_masks({"box.masks": ("/t/one", "/t/two")}) == [
-            "/t/one", "/t/two",
-        ]
+  def test_a_whole_arm_empty_string_suppresses_only_its_own_masks_default(self):
+    # ``masks`` is a TERMINAL dest-keyed key (R-5), so the floor fold's
+    # ""-suppression lands on the WHOLE arm: that scope's masks default is
+    # disabled (absent ≡ no default) and another scope's is untouched.
+    assert self._tmpfs_masks({"box.masks": "", "system.masks": ["/keep"]}) == ["/keep"]
 
-    def test_an_agent_scope_masks_list_is_bridged_under_the_active_node(self):
-        # The bridge keys off the ``.masks`` TAIL, not the ``box`` scope, so a
-        # DISCRIMINATED agent-scope declaration bridges too (spec §0 — there is no
-        # bare ``agent.masks``).
-        entries = self._emit({"agent.claude.masks": ["/home/agent/agentmask"]})
-        masks = [e for e in entries if e.category == "masks"]
-        assert len(masks) == 1
-        assert masks[0].box_dest == "/home/agent/agentmask"
-        # The emitted precedence scope is the bare ``agent`` token; the KEY carries
-        # the discriminated node the user actually writes.
-        assert masks[0].scope == "agent"
-        assert masks[0].key == "agent.claude.masks./home/agent/agentmask"
-
-    def test_an_already_keyed_masks_floor_passes_through_unbridged(self):
-        # The bridge is shape-gated (``isinstance(val, (list, tuple))``), so the
-        # keyed form a settings FILE carries is left exactly as it is — no
-        # double-conversion into ``{"/keyed": True}`` keyed by a bool.
-        assert self._tmpfs_masks({"box.masks": {"/keyed": True}}) == ["/keyed"]
-
-    def test_a_whole_arm_empty_string_suppresses_only_its_own_masks_default(self):
-        # ``masks`` is a TERMINAL dest-keyed key (R-5), so the floor fold's
-        # ""-suppression lands on the WHOLE arm: that scope's masks default is
-        # disabled (absent ≡ no default) and another scope's is untouched.
-        assert self._tmpfs_masks(
-            {"box.masks": "", "system.masks": ["/keep"]}
-        ) == ["/keep"]
-
-    def test_the_bindings_per_entry_suppression_still_applies_beside_masks(self):
-        # The masks bridge and the bindings-arm PER-ENTRY ""-suppression are two
-        # branches of the SAME floor-fold loop, each ending in ``continue``. Pinning
-        # them together is what proves neither short-circuits the other: the mask is
-        # bridged AND the suppressed binding entry is dropped while its sibling
-        # survives. (``test_empty_string_default_suppression_dropped`` above pins the
-        # per-entry suppression on its own, at the snapshot rather than the emit.)
-        entries = self._emit({
-            "box.masks": ["/m/one"],
-            "box.bindings.rw": {
-                "/home/agent": ("/h/home", "Z,U"),
-                "/home/agent/drop": "",
-            },
-        })
-        assert [(e.category, e.box_dest) for e in entries] == [
-            ("bindings.rw", "/home/agent"),
-            ("masks", "/m/one"),
-        ]
+  def test_the_bindings_per_entry_suppression_still_applies_beside_masks(self):
+    # The masks bridge and the bindings-arm PER-ENTRY ""-suppression are two
+    # branches of the SAME floor-fold loop, each ending in ``continue``. Pinning
+    # them together is what proves neither short-circuits the other: the mask is
+    # bridged AND the suppressed binding entry is dropped while its sibling
+    # survives. (``test_empty_string_default_suppression_dropped`` above pins the
+    # per-entry suppression on its own, at the snapshot rather than the emit.)
+    entries = self._emit(
+      {
+        "box.masks": ["/m/one"],
+        "box.bindings.rw": {
+          "/home/agent": ("/h/home", "Z,U"),
+          "/home/agent/drop": "",
+        },
+      }
+    )
+    assert [(e.category, e.box_dest) for e in entries] == [
+      ("bindings.rw", "/home/agent"),
+      ("masks", "/m/one"),
+    ]
 
 
 class TestAMasksListInASETTINGSFILEIsRefusedByName:
-    """A ``masks`` LIST written in a settings FILE is an ERROR that names the key.
+  """A ``masks`` LIST written in a settings FILE is an ERROR that names the key.
 
-    ⚑ WHAT THIS REPLACES — a SILENT DROP, measured twice (once on real podman):
-    ``box.masks: ["~/m"]`` in a box settings file resolved to a plain ``list``,
-    missed the emit's ``isinstance(masks, KeyStore)`` guard, and produced NO tmpfs
-    mount and NO warning. The host path the user asked to hide stayed plainly
-    readable inside the box. A category that vanishes without a word is the one
-    outcome the closed keyspace forbids (spec §0).
+  ⚑ WHAT THIS REPLACES — a SILENT DROP, measured twice (once on real podman):
+  ``box.masks: ["~/m"]`` in a box settings file resolved to a plain ``list``,
+  missed the emit's ``isinstance(masks, KeyStore)`` guard, and produced NO tmpfs
+  mount and NO warning. The host path the user asked to hide stayed plainly
+  readable inside the box. A category that vanishes without a word is the one
+  outcome the closed keyspace forbids (spec §0).
 
-    ⚑ WHY REFUSED AND NOT BRIDGED. Spec §2a declares ``masks`` as
-    ``dict[box_dest -> bool|None]`` and says *"NOT a bare list"* in as many words;
-    the 3-state VALUE is what carries the unmask. Teaching the file path to accept
-    a list would be re-declaring the shape, which is a SPEC edit. Refusing conforms
-    the code to the spec and is no spec delta.
+  ⚑ WHY REFUSED AND NOT BRIDGED. Spec §2a declares ``masks`` as
+  ``dict[box_dest -> bool|None]`` and says *"NOT a bare list"* in as many words;
+  the 3-state VALUE is what carries the unmask. Teaching the file path to accept
+  a list would be re-declaring the shape, which is a SPEC edit. Refusing conforms
+  the code to the spec and is no spec delta.
 
-    ⚑ THE FLOOR IS A DIFFERENT SEAM and still bridges a list
-    (:class:`TestAMasksListInTheFloorReachesTheEmit` above): a floor table is
-    written by kanibako or a plugin, never by a user, and it is converted BEFORE
-    assembly, so it reaches this check already keyed.
-    """
+  ⚑ THE FLOOR IS A DIFFERENT SEAM and still bridges a list
+  (:class:`TestAMasksListInTheFloorReachesTheEmit` above): a floor table is
+  written by kanibako or a plugin, never by a user, and it is converted BEFORE
+  assembly, so it reaches this check already keyed.
+  """
 
-    @staticmethod
-    def _emit_from_box_file(path: Path, body: str):
-        path.write_text(body)
-        ctx = _ctx()
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx,
-            system_path=None, agent_path=None, workset_path=None, box_path=path,
-        )
-        return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+  @staticmethod
+  def _emit_from_box_file(path: Path, body: str):
+    path.write_text(body)
+    ctx = _ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=path,
+    )
+    return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
 
-    def test_a_list_at_box_masks_raises_naming_the_key(self, tmp_path: Path):
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_a_list_at_box_masks_raises_naming_the_key(self, tmp_path: Path):
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError) as excinfo:
-            self._emit_from_box_file(
-                tmp_path / "box.yaml", 'box:\n  masks:\n    - "~/m"\n',
-            )
-        message = str(excinfo.value)
-        assert "box.masks" in message
-        # The cure is PRINTED, in the shape a mask actually takes — a mask has no
-        # source, so the bind example would send the reader somewhere wrong.
-        assert "{box_dest: true}" in message
+    with pytest.raises(SettingsError) as excinfo:
+      self._emit_from_box_file(
+        tmp_path / "box.yaml",
+        'box:\n  masks:\n    - "~/m"\n',
+      )
+    message = str(excinfo.value)
+    assert "box.masks" in message
+    # The cure is PRINTED, in the shape a mask actually takes — a mask has no
+    # source, so the bind example would send the reader somewhere wrong.
+    assert "{box_dest: true}" in message
 
-    def test_the_keyed_form_in_the_same_file_still_masks(self, tmp_path: Path):
-        # The refusal's counterpart: the DECLARED shape reaches the seam. Without
-        # this, a refusal that swallowed every mask would look identical.
-        entries = self._emit_from_box_file(
-            tmp_path / "box.yaml", 'box:\n  masks:\n    "~/m": true\n',
-        )
-        masks = [e for e in entries if e.category == "masks"]
-        assert [e.box_dest for e in masks] == [f"{GUEST_HOME}/m"]
-        assert masks[0].host_src is None and masks[0].options == "ro"
+  def test_the_keyed_form_in_the_same_file_still_masks(self, tmp_path: Path):
+    # The refusal's counterpart: the DECLARED shape reaches the seam. Without
+    # this, a refusal that swallowed every mask would look identical.
+    entries = self._emit_from_box_file(
+      tmp_path / "box.yaml",
+      'box:\n  masks:\n    "~/m": true\n',
+    )
+    masks = [e for e in entries if e.category == "masks"]
+    assert [e.box_dest for e in masks] == [f"{GUEST_HOME}/m"]
+    assert masks[0].host_src is None and masks[0].options == "ro"
 
-    def test_a_list_at_a_workset_file_masks_is_refused_too(self, tmp_path: Path):
-        # The check runs per SCOPE NODE, so the refusal is not box-local.
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_a_list_at_a_workset_file_masks_is_refused_too(self, tmp_path: Path):
+    # The check runs per SCOPE NODE, so the refusal is not box-local.
+    from kanibako.settings.settings_resolve import SettingsError
 
-        ws = tmp_path / "workset.yaml"
-        ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
-        ctx = _ctx()
-        # ⚑ BOTH CALLS ARE INSIDE THE ``raises``, as in the box case above: the refusal
-        # fires while the file is PARSED, which is what lets it name the file to edit.
-        with pytest.raises(SettingsError) as excinfo:
-            snap = build_launch_snapshot(
-                agent_name="claude", ctx=ctx,
-                system_path=None, agent_path=None, workset_path=ws, box_path=None,
-            )
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        assert "workset.masks" in str(excinfo.value)
-        assert str(ws) in str(excinfo.value)
+    ws = tmp_path / "workset.yaml"
+    ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
+    ctx = _ctx()
+    # ⚑ BOTH CALLS ARE INSIDE THE ``raises``, as in the box case above: the refusal
+    # fires while the file is PARSED, which is what lets it name the file to edit.
+    with pytest.raises(SettingsError) as excinfo:
+      snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=ctx,
+        system_path=None,
+        agent_path=None,
+        workset_path=ws,
+        box_path=None,
+      )
+      snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    assert "workset.masks" in str(excinfo.value)
+    assert str(ws) in str(excinfo.value)
 
-    def test_an_empty_map_is_not_an_error(self, tmp_path: Path):
-        # PRESENT-BUT-EMPTY stays a no-op, exactly as it is for the bind families:
-        # an empty node is indistinguishable from an absent one after assemble.
-        entries = self._emit_from_box_file(
-            tmp_path / "box.yaml", "box:\n  masks: {}\n",
-        )
-        assert [e for e in entries if e.category == "masks"] == []
+  def test_an_empty_map_is_not_an_error(self, tmp_path: Path):
+    # PRESENT-BUT-EMPTY stays a no-op, exactly as it is for the bind families:
+    # an empty node is indistinguishable from an absent one after assemble.
+    entries = self._emit_from_box_file(
+      tmp_path / "box.yaml",
+      "box:\n  masks: {}\n",
+    )
+    assert [e for e in entries if e.category == "masks"] == []
 
 
 def test_adapter_skips_a_none_entry_and_keeps_its_sibling():
-    # A ``None`` entry is a ``<None>`` SOURCE (spec §0): skipped, never refused ([Q80] (a)).
-    snap = KeyStore({"box": {"bindings": {"rw": {
-        "/bad": None, "/ok": BindEntry("/h/ok"),
-    }}}})
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    assert [(e.box_dest, e.host_src) for e in entries] == [("/ok", "/h/ok")]
+  # A ``None`` entry is a ``<None>`` SOURCE (spec §0): skipped, never refused ([Q80] (a)).
+  snap = KeyStore(
+    {
+      "box": {
+        "bindings": {
+          "rw": {
+            "/bad": None,
+            "/ok": BindEntry("/h/ok"),
+          }
+        }
+      }
+    }
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  assert [(e.box_dest, e.host_src) for e in entries] == [("/ok", "/h/ok")]
 
 
 # The agent FILE is a settings file, so the same rule holds there: a value where a
@@ -1055,238 +1159,288 @@ def test_adapter_skips_a_none_entry_and_keeps_its_sibling():
 # repaired. Pinned by both halves below — a rule that refused on BOTH, or on NEITHER,
 # reads identically from either test alone.
 _AGENT_FILE_REFUSALS = (
-    # (the doc the agent file holds, the key the refusal must name)
-    ("self: {caches: 5}", "agent.claude.caches"),
-    ("self: {masks: 5}", "agent.claude.masks"),
-    ("self: {transform_settings: 5}", "agent.claude.transform_settings"),
-    ("agent: {claude: {caches: x}}", "agent.claude.caches"),
-    ("agent: {default: {masks: 5}}", "agent.default.masks"),
-    ("workset: {caches: 5}", "workset.caches"),
+  # (the doc the agent file holds, the key the refusal must name)
+  ("self: {caches: 5}", "agent.claude.caches"),
+  ("self: {masks: 5}", "agent.claude.masks"),
+  ("self: {transform_settings: 5}", "agent.claude.transform_settings"),
+  ("agent: {claude: {caches: x}}", "agent.claude.caches"),
+  ("agent: {default: {masks: 5}}", "agent.default.masks"),
+  ("workset: {caches: 5}", "workset.caches"),
 )
 
 
 class TestAScalarWhereACategorysMapGoesIsRefusedInTheAgentFile:
-    """A wrong SHAPE in the agent file stops the launch, naming the key and the file.
+  """A wrong SHAPE in the agent file stops the launch, naming the key and the file.
 
-    Every entry of ``_AGENT_FILE_REFUSALS`` is a shape a user can write by hand, and
-    every one is a SCALAR where a TABLE belongs: ``self:``'s own categories, the
-    ``agent:`` table's node tables, the table-valued §2d leaf, and a contained
-    ``workset:`` table. The refusal is the settings file's own
-    (:func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key`), so the
-    agent file is not a second rule with its own wording.
+  Every entry of ``_AGENT_FILE_REFUSALS`` is a shape a user can write by hand, and
+  every one is a SCALAR where a TABLE belongs: ``self:``'s own categories, the
+  ``agent:`` table's node tables, the table-valued §2d leaf, and a contained
+  ``workset:`` table. The refusal is the settings file's own
+  (:func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key`), so the
+  agent file is not a second rule with its own wording.
+  """
+
+  @pytest.mark.parametrize(("body", "key"), _AGENT_FILE_REFUSALS)
+  def test_the_launch_refuses_it_naming_the_key_and_the_file(
+    self,
+    tmp_path: Path,
+    body: str,
+    key: str,
+  ):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    agent = tmp_path / "agent.yaml"
+    agent.write_text(body)
+    with pytest.raises(SettingsError) as excinfo:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=agent,
+        workset_path=None,
+        box_path=None,
+      )
+    message = str(excinfo.value)
+    assert f"'{key}'" in message  # the DISCRIMINATED key, re-rooted under its node
+    assert str(agent) in message  # and the file to edit — the address, not the key alone
+
+  @pytest.mark.parametrize(
+    "body",
+    (
+      # the OMIT at each of the six positions above
+      "self: {caches: null}",
+      "self: {masks: null}",
+      "self: {transform_settings: null}",
+      "agent: {claude: {caches: null}}",
+      "agent: {default: {masks: null}}",
+      "workset: {caches: null}",
+      # and the DECLARED table at each of them
+      'self: {caches: {"/opt/x": ["/src/a"]}}',
+      'self: {masks: {"~/s": true}}',
+      "self: {transform_settings: {a: 1}}",
+      'agent: {claude: {caches: {"/opt/x": ["/src/a"]}}}',
+      'agent: {default: {masks: {"~/s": true}}}',
+      'workset: {caches: {"/opt/x": ["/src/a"]}}',
+      # and the leaf's NAME away from its position, which is DATA
+      'self: {env: {transform_settings: "1"}}',
+      "self: {secret_path: {transform_settings: /x}}",
+      "self: {transform_settings: {transform_settings: 5}}",
+    ),
+  )
+  def test_the_legal_shapes_in_the_same_place_still_read(self, tmp_path: Path, body: str):
+    """⚑ THE OTHER SIDE OF THE SAME VERDICT, at the SAME positions: a present ``null``
+    is spec §2h's OMIT and a real map is the declared shape, so neither refuses.
+
+    Without this a rule that refused everything would read exactly like the one
+    that refuses the right thing.
     """
+    from kanibako.settings.settings_resolve import SettingsError
 
-    @pytest.mark.parametrize(("body", "key"), _AGENT_FILE_REFUSALS)
-    def test_the_launch_refuses_it_naming_the_key_and_the_file(
-        self, tmp_path: Path, body: str, key: str,
-    ):
-        from kanibako.settings.settings_resolve import SettingsError
-
-        agent = tmp_path / "agent.yaml"
-        agent.write_text(body)
-        with pytest.raises(SettingsError) as excinfo:
-            build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(),
-                system_path=None, agent_path=agent, workset_path=None, box_path=None,
-            )
-        message = str(excinfo.value)
-        assert f"'{key}'" in message      # the DISCRIMINATED key, re-rooted under its node
-        assert str(agent) in message       # and the file to edit — the address, not the key alone
-
-    @pytest.mark.parametrize(
-        "body",
-        (
-            # the OMIT at each of the six positions above
-            "self: {caches: null}",
-            "self: {masks: null}",
-            "self: {transform_settings: null}",
-            "agent: {claude: {caches: null}}",
-            "agent: {default: {masks: null}}",
-            "workset: {caches: null}",
-            # and the DECLARED table at each of them
-            'self: {caches: {"/opt/x": ["/src/a"]}}',
-            'self: {masks: {"~/s": true}}',
-            "self: {transform_settings: {a: 1}}",
-            'agent: {claude: {caches: {"/opt/x": ["/src/a"]}}}',
-            'agent: {default: {masks: {"~/s": true}}}',
-            'workset: {caches: {"/opt/x": ["/src/a"]}}',
-            # and the leaf's NAME away from its position, which is DATA
-            'self: {env: {transform_settings: "1"}}',
-            "self: {secret_path: {transform_settings: /x}}",
-            "self: {transform_settings: {transform_settings: 5}}",
-        ),
-    )
-    def test_the_legal_shapes_in_the_same_place_still_read(self, tmp_path: Path, body: str):
-        """⚑ THE OTHER SIDE OF THE SAME VERDICT, at the SAME positions: a present ``null``
-        is spec §2h's OMIT and a real map is the declared shape, so neither refuses.
-
-        Without this a rule that refused everything would read exactly like the one
-        that refuses the right thing.
-        """
-        from kanibako.settings.settings_resolve import SettingsError
-
-        agent = tmp_path / "agent.yaml"
-        agent.write_text(body)
-        try:
-            build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(),
-                system_path=None, agent_path=agent, workset_path=None, box_path=None,
-            )
-        except SettingsError as exc:   # pragma: no cover — the pin that must hold
-            pytest.fail(f"{body!r} refused: {exc}")
+    agent = tmp_path / "agent.yaml"
+    agent.write_text(body)
+    try:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=agent,
+        workset_path=None,
+        box_path=None,
+      )
+    except SettingsError as exc:  # pragma: no cover — the pin that must hold
+      pytest.fail(f"{body!r} refused: {exc}")
 
 
 def test_agent_info_warns_and_still_exits_zero_over_a_broken_agent_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
 ):
-    """The REPAIR DOOR: the real CLI, the real broken file, rc 0 and a named warning.
+  """The REPAIR DOOR: the real CLI, the real broken file, rc 0 and a named warning.
 
-    ⛔ A subprocess on purpose. The pin is that ``agent info`` reaches the file and
-    SURVIVES it; calling ``run_info`` in process would pass just as well while saying
-    nothing about which env the verb really reads. The child imports THIS tree.
-    """
-    import os
-    import subprocess
-    import sys
+  ⛔ A subprocess on purpose. The pin is that ``agent info`` reaches the file and
+  SURVIVES it; calling ``run_info`` in process would pass just as well while saying
+  nothing about which env the verb really reads. The child imports THIS tree.
+  """
+  import os
+  import subprocess
+  import sys
 
-    repo_src = Path(__file__).resolve().parents[2] / "src"
-    dirs = {name: tmp_path / name for name in
-            ("home", "config", "data", "state", "cache", "runtime")}
-    for directory in dirs.values():
-        directory.mkdir()
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(dirs["home"]),
-        "XDG_CONFIG_HOME": str(dirs["config"]),
-        "XDG_DATA_HOME": str(dirs["data"]),
-        "XDG_STATE_HOME": str(dirs["state"]),
-        "XDG_CACHE_HOME": str(dirs["cache"]),
-        # Without it the CLI falls back to a fresh /tmp runtime dir and prints a
-        # warning over the very output these assertions read.
-        "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-        "PYTHONPATH": str(repo_src),
-    })
-    # ⚑ THE SETUP BELOW RUNS IN THIS PROCESS, so it must see the SAME tree the child
-    # does — otherwise ``load_std_paths`` writes the agent file under the developer's
-    # own data dir and the child reads an empty one. Set both, not just ``env``.
-    for name in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
-                 "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"):
-        monkeypatch.setenv(name, env[name])
+  repo_src = Path(__file__).resolve().parents[2] / "src"
+  dirs = {
+    name: tmp_path / name for name in ("home", "config", "data", "state", "cache", "runtime")
+  }
+  for directory in dirs.values():
+    directory.mkdir()
+  env = os.environ.copy()
+  env.update(
+    {
+      "HOME": str(dirs["home"]),
+      "XDG_CONFIG_HOME": str(dirs["config"]),
+      "XDG_DATA_HOME": str(dirs["data"]),
+      "XDG_STATE_HOME": str(dirs["state"]),
+      "XDG_CACHE_HOME": str(dirs["cache"]),
+      # Without it the CLI falls back to a fresh /tmp runtime dir and prints a
+      # warning over the very output these assertions read.
+      "XDG_RUNTIME_DIR": str(dirs["runtime"]),
+      "PYTHONPATH": str(repo_src),
+    }
+  )
+  # ⚑ THE SETUP BELOW RUNS IN THIS PROCESS, so it must see the SAME tree the child
+  # does — otherwise ``load_std_paths`` writes the agent file under the developer's
+  # own data dir and the child reads an empty one. Set both, not just ``env``.
+  for name in (
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_RUNTIME_DIR",
+  ):
+    monkeypatch.setenv(name, env[name])
 
-    from kanibako.settings.agent_config import agents_dir
-    from kanibako.settings.agent_file import agent_settings_path
-    from kanibako.settings.config import write_global_config
-    from kanibako.settings.paths import load_config, load_std_paths
+  from kanibako.settings.agent_config import agents_dir
+  from kanibako.settings.agent_file import agent_settings_path
+  from kanibako.settings.config import write_global_config
+  from kanibako.settings.paths import load_config, load_std_paths
 
-    write_global_config(dirs["config"] / "kanibako.cfg")
-    std = load_std_paths(load_config(dirs["config"] / "kanibako.cfg"))
-    agent = agent_settings_path(agents_dir(std.data_path), "claude")
-    agent.parent.mkdir(parents=True, exist_ok=True)
-    agent.write_text("self:\n  model: opus\n  caches: 5\n")
+  write_global_config(dirs["config"] / "kanibako.cfg")
+  std = load_std_paths(load_config(dirs["config"] / "kanibako.cfg"))
+  agent = agent_settings_path(agents_dir(std.data_path), "claude")
+  agent.parent.mkdir(parents=True, exist_ok=True)
+  agent.write_text("self:\n  model: opus\n  caches: 5\n")
 
-    result = subprocess.run(
-        [sys.executable, "-m", "kanibako", "agent", "info", "claude"],
-        env=env, capture_output=True, text=True, timeout=300, cwd=tmp_path, check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    # ⚑ THE WARNING IS STDERR, and that is the contract: a broken file is announced on the
-    # stream a script can drop, and the DISPLAY still lands on stdout.
-    assert "agent.claude.caches" in result.stderr
-    assert "model = opus" in result.stdout      # ...and the file's LEGAL leaf still reads
+  result = subprocess.run(
+    [sys.executable, "-m", "kanibako", "agent", "info", "claude"],
+    env=env,
+    capture_output=True,
+    text=True,
+    timeout=300,
+    cwd=tmp_path,
+    check=False,
+  )
+  assert result.returncode == 0, result.stderr
+  # ⚑ THE WARNING IS STDERR, and that is the contract: a broken file is announced on the
+  # stream a script can drop, and the DISPLAY still lands on stdout.
+  assert "agent.claude.caches" in result.stderr
+  assert "model = opus" in result.stdout  # ...and the file's LEGAL leaf still reads
 
 
 class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
-    """P7 — the emit boundary takes PRIMITIVES, so the leaf TYPE is ruled in above it.
+  """P7 — the emit boundary takes PRIMITIVES, so the leaf TYPE is ruled in above it.
 
-    ⚑ THE FAILURE THESE EXIST TO PREVENT is not a crash, it is a MOUNT AT THE
-    WRONG DESTINATION. Before P7 the shared emitter's only guard was
-    ``isinstance(bind, Bind)``, so a stale 3-element ``Bind`` sitting in a
-    DEST-KEYED ``bindings`` arm was ACCEPTED and its destination was taken from
-    the VALUE — silently ignoring the arm key that IS the destination (R-6/R-8).
-    The cure is structural (``_emit_bind`` holds no leaf type at all), and these
-    tests are what proves the structure is load-bearing rather than incidental.
+  ⚑ THE FAILURE THESE EXIST TO PREVENT is not a crash, it is a MOUNT AT THE
+  WRONG DESTINATION. Before P7 the shared emitter's only guard was
+  ``isinstance(bind, Bind)``, so a stale 3-element ``Bind`` sitting in a
+  DEST-KEYED ``bindings`` arm was ACCEPTED and its destination was taken from
+  the VALUE — silently ignoring the arm key that IS the destination (R-6/R-8).
+  The cure is structural (``_emit_bind`` holds no leaf type at all), and these
+  tests are what proves the structure is load-bearing rather than incidental.
 
-    ⚑ THE CLASS NAME NOW OVERSTATES ITS SUBJECT, deliberately left rather than
-    quietly renamed: since 2026-08-08c there is only ONE bind shape in the
-    keyspace. ``caches`` / ``seeded`` / ``common`` / ``synced`` went dest-keyed
-    alongside the two ``bindings`` arms, so the 3-element ``Bind`` is the RETIRED
-    shape everywhere and there is no longer a name-keyed category for it to live
-    in legitimately. What is still worth pinning — and is pinned below — is that
-    the refusal reaches BOTH routes into ``_emit_bind_map``: the ARM route, where
-    the map sits under ``bindings.{ro,rw}``, and the TERMINAL route, where the map
-    sits at the category token itself. The two are one loop now; a regression that
-    re-split them and dropped the check on one side is exactly what these catch.
-    """
+  ⚑ THE CLASS NAME NOW OVERSTATES ITS SUBJECT, deliberately left rather than
+  quietly renamed: since 2026-08-08c there is only ONE bind shape in the
+  keyspace. ``caches`` / ``seeded`` / ``common`` / ``synced`` went dest-keyed
+  alongside the two ``bindings`` arms, so the 3-element ``Bind`` is the RETIRED
+  shape everywhere and there is no longer a name-keyed category for it to live
+  in legitimately. What is still worth pinning — and is pinned below — is that
+  the refusal reaches BOTH routes into ``_emit_bind_map``: the ARM route, where
+  the map sits under ``bindings.{ro,rw}``, and the TERMINAL route, where the map
+  sits at the category token itself. The two are one loop now; a regression that
+  re-split them and dropped the check on one side is exactly what these catch.
+  """
 
-    @staticmethod
-    def _entries(raw):
-        return snapshot_category_entries(
-            KeyStore(raw), active_agent="claude", box_ctx=_ctx(),
-        )
+  @staticmethod
+  def _entries(raw):
+    return snapshot_category_entries(
+      KeyStore(raw),
+      active_agent="claude",
+      box_ctx=_ctx(),
+    )
 
-    @pytest.mark.parametrize("mode", ["ro", "rw"])
-    def test_a_three_element_bind_in_a_dest_keyed_arm_is_refused(self, mode):
-        from kanibako.settings.settings_resolve import SettingsError
+  @pytest.mark.parametrize("mode", ["ro", "rw"])
+  def test_a_three_element_bind_in_a_dest_keyed_arm_is_refused(self, mode):
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError) as exc:
-            self._entries({"box": {"bindings": {mode: {
+    with pytest.raises(SettingsError) as exc:
+      self._entries(
+        {
+          "box": {
+            "bindings": {
+              mode: {
                 "/box/home": Bind("/h/home", "/somewhere/else", None),
-            }}}})
-        text = str(exc.value)
-        assert f"box.bindings.{mode}[/box/home]" in text  # names the ENTRY
-        assert "BindEntry" in text                        # names the shape wanted
-        assert "Bind" in text                             # names the shape found
+              }
+            }
+          }
+        }
+      )
+    text = str(exc.value)
+    assert f"box.bindings.{mode}[/box/home]" in text  # names the ENTRY
+    assert "BindEntry" in text  # names the shape wanted
+    assert "Bind" in text  # names the shape found
 
-    @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
-    def test_a_three_element_bind_in_a_terminal_category_is_refused(self, category):
-        """The TERMINAL route's half of the same refusal (2026-08-08c).
+  @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
+  def test_a_three_element_bind_in_a_terminal_category_is_refused(self, category):
+    """The TERMINAL route's half of the same refusal (2026-08-08c).
 
-        ⚑ THE DIRECTION FLIPPED, and that is the whole of the change: this used to
-        assert that a 2-element ``BindEntry`` was refused HERE, because these four
-        were the name-keyed categories and the 3-element ``Bind`` was their native
-        leaf. They are dest-keyed now, so ``BindEntry`` is what belongs and the
-        stale ``Bind`` — carrying a destination of its OWN, which would silently
-        beat the map key that IS the destination — is the R-8 hazard worth refusing.
-        The dest below (``/box/thing``) and the ``Bind``'s own box (``/elsewhere``)
-        deliberately DIFFER, so an emitter that read the destination off the value
-        could not pass by coincidence.
-        """
-        from kanibako.settings.settings_resolve import SettingsError
+    ⚑ THE DIRECTION FLIPPED, and that is the whole of the change: this used to
+    assert that a 2-element ``BindEntry`` was refused HERE, because these four
+    were the name-keyed categories and the 3-element ``Bind`` was their native
+    leaf. They are dest-keyed now, so ``BindEntry`` is what belongs and the
+    stale ``Bind`` — carrying a destination of its OWN, which would silently
+    beat the map key that IS the destination — is the R-8 hazard worth refusing.
+    The dest below (``/box/thing``) and the ``Bind``'s own box (``/elsewhere``)
+    deliberately DIFFER, so an emitter that read the destination off the value
+    could not pass by coincidence.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError) as exc:
-            self._entries({"box": {category: {
-                "/box/thing": Bind("/h/thing", "/elsewhere", None),
-            }}})
-        text = str(exc.value)
-        assert f"box.{category}[/box/thing]" in text       # names the ENTRY
-        assert "expected a BindEntry" in text              # names the shape wanted
-        assert "is Bind," in text                          # names the shape found
-        assert f"{category} is dest-keyed" in text         # says WHY
+    with pytest.raises(SettingsError) as exc:
+      self._entries(
+        {
+          "box": {
+            category: {
+              "/box/thing": Bind("/h/thing", "/elsewhere", None),
+            }
+          }
+        }
+      )
+    text = str(exc.value)
+    assert f"box.{category}[/box/thing]" in text  # names the ENTRY
+    assert "expected a BindEntry" in text  # names the shape wanted
+    assert "is Bind," in text  # names the shape found
+    assert f"{category} is dest-keyed" in text  # says WHY
 
 
 def test_adapter_feeds_the_emitter_unchanged(tmp_path):
-    # End-to-end: adapter entries flow into the ONE emitter cleanly.
-    # ⚑ REAL host dirs: the emitter guarantee-creates a MISSING rw source, so
-    # absolute literals would try to mkdir them on the machine running the suite.
-    home, ws = tmp_path / "home", tmp_path / "ws"
-    home.mkdir()
-    ws.mkdir()
-    snap = KeyStore(
-        {"box": {"bindings": {"rw": {
+  # End-to-end: adapter entries flow into the ONE emitter cleanly.
+  # ⚑ REAL host dirs: the emitter guarantee-creates a MISSING rw source, so
+  # absolute literals would try to mkdir them on the machine running the suite.
+  home, ws = tmp_path / "home", tmp_path / "ws"
+  home.mkdir()
+  ws.mkdir()
+  snap = KeyStore(
+    {
+      "box": {
+        "bindings": {
+          "rw": {
             "/home/agent": BindEntry(str(home), "Z,U"),
             "/home/agent/workspace": BindEntry(str(ws), "Z,U"),
-        }}}}
+          }
+        }
+      }
+    }
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  emitted = [
+    m.destination
+    for m in _emit_category_mounts(
+      _bind_map_from_mounts(entries),
+      label="adapter-feed",
     )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    emitted = [
-        m.destination for m in _emit_category_mounts(
-            _bind_map_from_mounts(entries), label="adapter-feed",
-        )
-    ]
-    assert set(emitted) == {"/home/agent", "/home/agent/workspace"}
-    # depth-sort: shallower (/home/agent) first. ⚑ It is the EMITTER\'s since a
-    # dest-keyed map carries no order (the retired reconcile handed a sorted list).
-    assert emitted[0] == "/home/agent"
+  ]
+  assert set(emitted) == {"/home/agent", "/home/agent/workspace"}
+  # depth-sort: shallower (/home/agent) first. ⚑ It is the EMITTER\'s since a
+  # dest-keyed map carries no order (the retired reconcile handed a sorted list).
+  assert emitted[0] == "/home/agent"
 
 
 # --------------------------------------------------------------------------- #
@@ -1295,137 +1449,166 @@ def test_adapter_feeds_the_emitter_unchanged(tmp_path):
 
 
 def test_effective_behavior_reads_agent_default_backstop():
-    # No active-slot override → the agent.default backstop value is read (§2d).
-    snap = KeyStore({"agent": {"default": {"model": "opus", "allow_helpers": True}}})
-    eff = effective_behavior(
-        snap, active_agent="claude", keys=["model", "allow_helpers", "missing"],
-    )
-    assert eff == {"model": "opus", "allow_helpers": "True"}
+  # No active-slot override → the agent.default backstop value is read (§2d).
+  snap = KeyStore({"agent": {"default": {"model": "opus", "allow_helpers": True}}})
+  eff = effective_behavior(
+    snap,
+    active_agent="claude",
+    keys=["model", "allow_helpers", "missing"],
+  )
+  assert eff == {"model": "opus", "allow_helpers": "True"}
 
 
 def test_effective_behavior_active_over_default():
-    # §2d: the active slot wins; agent.default fills a gap.
-    snap = KeyStore({"agent": {
+  # §2d: the active slot wins; agent.default fills a gap.
+  snap = KeyStore(
+    {
+      "agent": {
         "default": {"model": "sonnet", "allow_helpers": True},
         "claude": {"model": "opus"},
-    }})
-    eff = effective_behavior(
-        snap, active_agent="claude", keys=["model", "allow_helpers"],
-    )
-    assert eff == {"model": "opus", "allow_helpers": "True"}
+      }
+    }
+  )
+  eff = effective_behavior(
+    snap,
+    active_agent="claude",
+    keys=["model", "allow_helpers"],
+  )
+  assert eff == {"model": "opus", "allow_helpers": "True"}
 
 
 def test_effective_behavior_resolves_allow_helpers_default_tier():
-    # allow_helpers moved to the AGENT keyspace (spec §2d): with only the
-    # agent.default backstop set, that value resolves (the launch gate reads it).
-    snap = KeyStore({"agent": {"default": {"allow_helpers": "false"}}})
-    eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
-    assert eff == {"allow_helpers": "false"}
+  # allow_helpers moved to the AGENT keyspace (spec §2d): with only the
+  # agent.default backstop set, that value resolves (the launch gate reads it).
+  snap = KeyStore({"agent": {"default": {"allow_helpers": "false"}}})
+  eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
+  assert eff == {"allow_helpers": "false"}
 
 
 def test_effective_behavior_allow_helpers_per_agent_override_wins():
-    # §2d: a per-agent allow_helpers overrides the agent.default backstop.
-    snap = KeyStore({"agent": {
+  # §2d: a per-agent allow_helpers overrides the agent.default backstop.
+  snap = KeyStore(
+    {
+      "agent": {
         "default": {"allow_helpers": "false"},
         "claude": {"allow_helpers": "true"},
-    }})
-    eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
-    assert eff == {"allow_helpers": "true"}
-    # A DIFFERENT active agent that has no override falls back to the default.
-    eff_other = effective_behavior(
-        snap, active_agent="goose", keys=["allow_helpers"],
-    )
-    assert eff_other == {"allow_helpers": "false"}
+      }
+    }
+  )
+  eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
+  assert eff == {"allow_helpers": "true"}
+  # A DIFFERENT active agent that has no override falls back to the default.
+  eff_other = effective_behavior(
+    snap,
+    active_agent="goose",
+    keys=["allow_helpers"],
+  )
+  assert eff_other == {"allow_helpers": "false"}
 
 
 def test_effective_behavior_omits_present_none():
-    # A present-None reset in the WINNING (active) slot SETS + shadows default →
-    # omitted (the consumer applies its own default, §3).
-    snap = KeyStore({"agent": {
+  # A present-None reset in the WINNING (active) slot SETS + shadows default →
+  # omitted (the consumer applies its own default, §3).
+  snap = KeyStore(
+    {
+      "agent": {
         "default": {"model": "sonnet"},
         "claude": {"model": None},
-    }})
-    eff = effective_behavior(snap, active_agent="claude", keys=["model"])
-    assert eff == {}
+      }
+    }
+  )
+  eff = effective_behavior(snap, active_agent="claude", keys=["model"])
+  assert eff == {}
 
 
-@pytest.mark.parametrize(("agent", "expected"), [
+@pytest.mark.parametrize(
+  ("agent", "expected"),
+  [
     ({"default": {"model": "sonnet"}, "claude": {"model": "opus"}}, ("active", "opus")),
     ({"default": {"model": "sonnet"}, "claude": {"model": None}}, ("active", None)),
     ({"default": {"model": "sonnet"}, "claude": {}}, ("default", "sonnet")),
     ({"default": {"model": None}}, ("default", None)),
     ({"default": {}, "claude": {}}, (None, "MISSING")),
     (None, (None, "MISSING")),
-])
+  ],
+)
 def test_behavior_pick_is_raw_and_names_its_slot(agent, expected):
-    # The ONE carrier of the §2d pick, RAW: a present-None comes back as ``None``
-    # (``effective_behavior`` collapses it; ``null_behavior_setter`` must not),
-    # ABSENT as ``__MISSING__``; ``behavior_slot`` is its slot half.
-    # (Mutation: fold a present-None into ``__MISSING__`` → the None rows go RED.)
-    from kanibako.settings.kb_store import __MISSING__
-    from kanibako.settings.settings_launch import behavior_pick, behavior_slot
+  # The ONE carrier of the §2d pick, RAW: a present-None comes back as ``None``
+  # (``effective_behavior`` collapses it; ``null_behavior_setter`` must not),
+  # ABSENT as ``__MISSING__``; ``behavior_slot`` is its slot half.
+  # (Mutation: fold a present-None into ``__MISSING__`` → the None rows go RED.)
+  from kanibako.settings.kb_store import __MISSING__
+  from kanibako.settings.settings_launch import behavior_pick, behavior_slot
 
-    snap = KeyStore({} if agent is None else {"agent": agent})
-    slot, value = behavior_pick(snap, active_agent="claude", key="model")
-    want_slot, want_value = expected
-    assert slot == want_slot
-    if want_value == "MISSING":
-        assert value is __MISSING__
-    elif want_value is None:
-        assert value is None
-    else:
-        assert value == want_value
-    assert behavior_slot(snap, active_agent="claude", key="model") == want_slot
+  snap = KeyStore({} if agent is None else {"agent": agent})
+  slot, value = behavior_pick(snap, active_agent="claude", key="model")
+  want_slot, want_value = expected
+  assert slot == want_slot
+  if want_value == "MISSING":
+    assert value is __MISSING__
+  elif want_value is None:
+    assert value is None
+  else:
+    assert value == want_value
+  assert behavior_slot(snap, active_agent="claude", key="model") == want_slot
 
 
 def test_effective_behavior_discovers_all_keys_when_keys_none():
-    # keys=None (the LIVE default): DISCOVER every scalar behavior leaf across both
-    # slots rather than reading a fixed list, skipping category subtrees. It has to
-    # DISCOVER because the agent-leaf set is PLUGIN-declared (spec §0), so a leaf this
-    # call was never told about must still surface.
-    snap = KeyStore({"agent": {
+  # keys=None (the LIVE default): DISCOVER every scalar behavior leaf across both
+  # slots rather than reading a fixed list, skipping category subtrees. It has to
+  # DISCOVER because the agent-leaf set is PLUGIN-declared (spec §0), so a leaf this
+  # call was never told about must still surface.
+  snap = KeyStore(
+    {
+      "agent": {
         "default": {"model": "sonnet", "allow_helpers": True},
         "claude": {
-            "model": "opus",            # active wins
-            "transform": "jq .",        # a leaf outside the two named below
-            "bindings": {"ro": {"x": Bind("/h", "/b", "ro")}},  # category → skip
-            "env": {"SOME_VAR": "x"},   # category subtree → skip
+          "model": "opus",  # active wins
+          "transform": "jq .",  # a leaf outside the two named below
+          "bindings": {"ro": {"x": Bind("/h", "/b", "ro")}},  # category → skip
+          "env": {"SOME_VAR": "x"},  # category subtree → skip
         },
-    }})
-    eff = effective_behavior(snap, active_agent="claude")
-    assert eff == {
-        "model": "opus",            # active over default
-        "allow_helpers": "True",    # default fills the gap
-        "transform": "jq .",        # discovered without this call naming it
+      }
     }
-    # category subtrees are NOT behavior → never surface.
-    assert "bindings" not in eff and "env" not in eff
+  )
+  eff = effective_behavior(snap, active_agent="claude")
+  assert eff == {
+    "model": "opus",  # active over default
+    "allow_helpers": "True",  # default fills the gap
+    "transform": "jq .",  # discovered without this call naming it
+  }
+  # category subtrees are NOT behavior → never surface.
+  assert "bindings" not in eff and "env" not in eff
 
 
 def test_effective_behavior_endpoint_resolves_per_active_node():
-    # Block B (persona): endpoint is a per-node scalar read by the SAME §2d pick as
-    # model. The active NODE slot wins; a sibling node's endpoint does NOT leak.
-    snap = KeyStore({"agent": {
+  # Block B (persona): endpoint is a per-node scalar read by the SAME §2d pick as
+  # model. The active NODE slot wins; a sibling node's endpoint does NOT leak.
+  snap = KeyStore(
+    {
+      "agent": {
         "default": {"endpoint": ""},  # <None> floor (empty)
         "navigator℘claude": {"endpoint": "http://gemma:9000"},
-        "claude": {"endpoint": ""},   # bare node stays unset
-    }})
-    eff_persona = effective_behavior(snap, active_agent="navigator℘claude")
-    assert eff_persona["endpoint"] == "http://gemma:9000"
-    # Bare node: the empty floor/slot yields NO usable endpoint (falsy) → the
-    # assembler emits no ANTHROPIC_BASE_URL. Non-vacuous vs the persona above.
-    eff_bare = effective_behavior(snap, active_agent="claude")
-    assert eff_bare.get("endpoint", "") == ""
+        "claude": {"endpoint": ""},  # bare node stays unset
+      }
+    }
+  )
+  eff_persona = effective_behavior(snap, active_agent="navigator℘claude")
+  assert eff_persona["endpoint"] == "http://gemma:9000"
+  # Bare node: the empty floor/slot yields NO usable endpoint (falsy) → the
+  # assembler emits no ANTHROPIC_BASE_URL. Non-vacuous vs the persona above.
+  eff_bare = effective_behavior(snap, active_agent="claude")
+  assert eff_bare.get("endpoint", "") == ""
 
 
 def test_effective_behavior_endpoint_default_none_omits_emission():
-    # <None> = the empty floor default: present but falsy, so assemble_env's
-    # `if value:` gate emits nothing (bare/harness-default). Byte-identical to
-    # today for a box with no endpoint set.
-    snap = KeyStore({"agent": {"default": {"endpoint": "", "model": "opus"}}})
-    eff = effective_behavior(snap, active_agent="claude", keys=["endpoint", "model"])
-    assert eff.get("endpoint", "") == ""
-    assert eff["model"] == "opus"
+  # <None> = the empty floor default: present but falsy, so assemble_env's
+  # `if value:` gate emits nothing (bare/harness-default). Byte-identical to
+  # today for a box with no endpoint set.
+  snap = KeyStore({"agent": {"default": {"endpoint": "", "model": "opus"}}})
+  eff = effective_behavior(snap, active_agent="claude", keys=["endpoint", "model"])
+  assert eff.get("endpoint", "") == ""
+  assert eff["model"] == "opus"
 
 
 # --------------------------------------------------------------------------- #
@@ -1446,500 +1629,548 @@ def test_effective_behavior_endpoint_default_none_omits_emission():
 # --------------------------------------------------------------------------- #
 
 from kanibako.settings.settings_launch import (  # noqa: E402
-    auth_chain_floor,
-    meta_identity_floor as _mid_floor,
-    meta_runtime_floor as _mr_floor,
-    resolve_auth_source,
+  auth_chain_floor,
+  meta_identity_floor as _mid_floor,
+  meta_runtime_floor as _mr_floor,
+  resolve_auth_source,
 )
 
 
 def _auth_snapshot(
-    mode: str,
-    *,
-    tmp_path: Path,
-    agent_name: str = "claude",
-    support: bool = True,
-    box_file: dict | None = None,
-    system_file: dict | None = None,
-    workset_file: dict | None = None,
+  mode: str,
+  *,
+  tmp_path: Path,
+  agent_name: str = "claude",
+  support: bool = True,
+  box_file: dict | None = None,
+  system_file: dict | None = None,
+  workset_file: dict | None = None,
 ):
-    """Build a focused snapshot carrying the auth chain + the agent capability.
+  """Build a focused snapshot carrying the auth chain + the agent capability.
 
-    The capability ``meta.agent.<agent>.auth.share_support`` rides the meta
-    identity floor (as it does in the real launch). Each of *box_file*,
-    *workset_file*, *system_file* is written to a temp settings file at ITS OWN
-    scope path — a settable key must be injected at the scope that OWNS it (spec
-    §0 directional enforcement drops a containing-scope key from a lower file, so
-    a ``system.*`` gate must ride the SYSTEM file, a ``workset.*`` opt-out the
-    WORKSET file; only genuine ``box.*`` settings ride *box_file*).
-    """
-    from itertools import count
+  The capability ``meta.agent.<agent>.auth.share_support`` rides the meta
+  identity floor (as it does in the real launch). Each of *box_file*,
+  *workset_file*, *system_file* is written to a temp settings file at ITS OWN
+  scope path — a settable key must be injected at the scope that OWNS it (spec
+  §0 directional enforcement drops a containing-scope key from a lower file, so
+  a ``system.*`` gate must ride the SYSTEM file, a ``workset.*`` opt-out the
+  WORKSET file; only genuine ``box.*`` settings ride *box_file*).
+  """
+  from itertools import count
 
-    from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc
 
-    chain = auth_chain_floor(mode=mode, agent_name=agent_name)
-    meta_id = _mid_floor(
-        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, agent_name=agent_name,
-        agent_real_name=agent_name, agent_auth_share_support=support,
-    )
-    mr = _mr_floor(
-        mode=mode,
-        ws_name={
-            "primary": "__PRIMARY__", "standalone": "__STANDALONE__",
-        }.get(mode, "ws"),
-        ws_root_literal=("/ws" if mode != "primary" else None),
-    )
+  chain = auth_chain_floor(mode=mode, agent_name=agent_name)
+  meta_id = _mid_floor(
+    box_name="b",
+    project_path="/p",
+    inbox="/i",
+    share_global="/sg",
+    share_workset=None,
+    agent_name=agent_name,
+    agent_real_name=agent_name,
+    agent_auth_share_support=support,
+  )
+  mr = _mr_floor(
+    mode=mode,
+    ws_name={
+      "primary": "__PRIMARY__",
+      "standalone": "__STANDALONE__",
+    }.get(mode, "ws"),
+    ws_root_literal=("/ws" if mode != "primary" else None),
+  )
 
-    counter = count()
+  counter = count()
 
-    def _to_path(data: dict | None) -> Path | None:
-        if data is None:
-            return None
-        p = tmp_path / f"settings-{next(counter)}.yaml"
-        dump_doc(p, data)
-        return p
+  def _to_path(data: dict | None) -> Path | None:
+    if data is None:
+      return None
+    p = tmp_path / f"settings-{next(counter)}.yaml"
+    dump_doc(p, data)
+    return p
 
-    return build_launch_snapshot(
-        agent_name=agent_name, ctx=_ctx(),
-        system_path=_to_path(system_file), agent_path=None,
-        workset_path=_to_path(workset_file), box_path=_to_path(box_file),
-        auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
-        # ⚑ P7: ``meta.box.auth.workset_path`` is now the spec's
-        # ``{workset.auth.path}/{system.agent}`` (§2c) rather than a
-        # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
-        # resolved agent — exactly as the launch does. A blank agent_name is the
-        # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
-        cli_level=({"system.agent": agent_name} if agent_name else None),
-    )
+  return build_launch_snapshot(
+    agent_name=agent_name,
+    ctx=_ctx(),
+    system_path=_to_path(system_file),
+    agent_path=None,
+    workset_path=_to_path(workset_file),
+    box_path=_to_path(box_file),
+    auth_chain=chain,
+    meta_runtime=mr,
+    meta_identity=meta_id,
+    # ⚑ P7: ``meta.box.auth.workset_path`` is now the spec's
+    # ``{workset.auth.path}/{system.agent}`` (§2c) rather than a
+    # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
+    # resolved agent — exactly as the launch does. A blank agent_name is the
+    # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
+    cli_level=({"system.agent": agent_name} if agent_name else None),
+  )
 
 
 def test_auth_primary_default_workset_tier(tmp_path):
-    """PRIMARY, capable, all-default: both enables true → WORKSET wins
-    (precedence workset>global) and global_sync is on."""
-    a = resolve_auth_source(_auth_snapshot("primary", tmp_path=tmp_path), mode="primary")
-    assert a.tier == "workset"
-    assert a.global_enabled and a.workset_enabled
-    assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
-    assert a.global_sync is True
-    assert a.creds_shared is True
+  """PRIMARY, capable, all-default: both enables true → WORKSET wins
+  (precedence workset>global) and global_sync is on."""
+  a = resolve_auth_source(_auth_snapshot("primary", tmp_path=tmp_path), mode="primary")
+  assert a.tier == "workset"
+  assert a.global_enabled and a.workset_enabled
+  assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
+  assert a.global_sync is True
+  assert a.creds_shared is True
 
 
 def test_auth_named_default_workset_tier(tmp_path):
-    """NAMED resolves the same as primary (all-default → workset tier)."""
-    a = resolve_auth_source(_auth_snapshot("named", tmp_path=tmp_path), mode="named")
-    assert a.tier == "workset"
+  """NAMED resolves the same as primary (all-default → workset tier)."""
+  a = resolve_auth_source(_auth_snapshot("named", tmp_path=tmp_path), mode="named")
+  assert a.tier == "workset"
 
 
 @pytest.mark.parametrize("agent_name", ["navigator℘claude", "kimi_k3℘claude"])
 def test_auth_persona_node_name_with_punctuation_resolves(tmp_path, agent_name):
-    """A persona node-name containing ``_`` must resolve the capability MIRROR.
+  """A persona node-name containing ``_`` must resolve the capability MIRROR.
 
-    ``meta.box.agent.auth.share_support`` is the interpolated {key}-ref
-    ``{meta.agent.<node>.auth.share_support}``.  When the ref grammar omitted a
-    character a persona segment allowed, the name truncated mid-node, the
-    leftover survived as a literal, and ``as_bool`` raised "expected bool, got
-    str".  The ref grammar is composed from the name rule's charset (spec §0),
-    so a segment the rule admits is matched whole.
-    """
-    a = resolve_auth_source(
-        _auth_snapshot("primary", tmp_path=tmp_path, agent_name=agent_name),
-        mode="primary",
-    )
-    assert isinstance(a.creds_shared, bool)
-    assert a.tier == "workset"
-    assert a.workset_source is not None
-    assert a.workset_source.endswith(f"/auth/{agent_name}")
+  ``meta.box.agent.auth.share_support`` is the interpolated {key}-ref
+  ``{meta.agent.<node>.auth.share_support}``.  When the ref grammar omitted a
+  character a persona segment allowed, the name truncated mid-node, the
+  leftover survived as a literal, and ``as_bool`` raised "expected bool, got
+  str".  The ref grammar is composed from the name rule's charset (spec §0),
+  so a segment the rule admits is matched whole.
+  """
+  a = resolve_auth_source(
+    _auth_snapshot("primary", tmp_path=tmp_path, agent_name=agent_name),
+    mode="primary",
+  )
+  assert isinstance(a.creds_shared, bool)
+  assert a.tier == "workset"
+  assert a.workset_source is not None
+  assert a.workset_source.endswith(f"/auth/{agent_name}")
 
 
 def test_auth_capability_gating_no_share_support(tmp_path):
-    """share_support=False (a non-capable agent) → NO sharing at any tier
-    (tier box), regardless of the allow flags (the hard capability floor)."""
-    a = resolve_auth_source(
-        _auth_snapshot("primary", tmp_path=tmp_path, support=False), mode="primary"
-    )
-    assert a.tier == "box"
-    assert not a.global_enabled and not a.workset_enabled
-    assert a.creds_shared is False
+  """share_support=False (a non-capable agent) → NO sharing at any tier
+  (tier box), regardless of the allow flags (the hard capability floor)."""
+  a = resolve_auth_source(
+    _auth_snapshot("primary", tmp_path=tmp_path, support=False), mode="primary"
+  )
+  assert a.tier == "box"
+  assert not a.global_enabled and not a.workset_enabled
+  assert a.creds_shared is False
 
 
 def test_auth_box_opts_out_of_workset_falls_to_global(tmp_path):
-    """box.auth.workset_enabled=false → global tier (precedence still workset>global
-    but workset is disabled, so global wins)."""
-    a = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            box_file={"box": {"auth": {"workset_enabled": False}}},
-        ),
-        mode="primary",
-    )
-    assert a.tier == "global"
-    assert a.global_enabled and not a.workset_enabled
+  """box.auth.workset_enabled=false → global tier (precedence still workset>global
+  but workset is disabled, so global wins)."""
+  a = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      box_file={"box": {"auth": {"workset_enabled": False}}},
+    ),
+    mode="primary",
+  )
+  assert a.tier == "global"
+  assert a.global_enabled and not a.workset_enabled
 
 
 def test_auth_box_opts_out_of_both_is_private(tmp_path):
-    """A box disabling BOTH enables → private (tier box), the distinct-auth
-    replacement (no flag, just the settable knobs)."""
-    a = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            box_file={"box": {"auth": {"workset_enabled": False, "global_enabled": False}}},
-        ),
-        mode="primary",
-    )
-    assert a.tier == "box"
-    assert a.creds_shared is False
+  """A box disabling BOTH enables → private (tier box), the distinct-auth
+  replacement (no flag, just the settable knobs)."""
+  a = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      box_file={"box": {"auth": {"workset_enabled": False, "global_enabled": False}}},
+    ),
+    mode="primary",
+  )
+  assert a.tier == "box"
+  assert a.creds_shared is False
 
 
 def test_auth_standalone_global_only(tmp_path):
-    """STANDALONE (deliberate behavior change): the workset tier degenerates false
-    (no workset group), but the GLOBAL tier still applies — a standalone box CAN
-    use global/host creds."""
-    a = resolve_auth_source(
-        _auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone"
-    )
-    assert a.tier == "global"
-    assert a.global_enabled and not a.workset_enabled
+  """STANDALONE (deliberate behavior change): the workset tier degenerates false
+  (no workset group), but the GLOBAL tier still applies — a standalone box CAN
+  use global/host creds."""
+  a = resolve_auth_source(_auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone")
+  assert a.tier == "global"
+  assert a.global_enabled and not a.workset_enabled
 
 
 def test_auth_system_disallow_is_private(tmp_path):
-    """system.auth.share_allowed=false → the global gate is off; the workset allow
-    defaults to @system so it is off too → private everywhere. The gate is set at
-    the SYSTEM scope (spec §0: system.* is settable ONLY from the system file —
-    injecting it via a box file would be an upward write and be dropped)."""
-    a = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            system_file={"system": {"auth": {"share_allowed": False}}},
-        ),
-        mode="primary",
-    )
-    assert a.tier == "box"
+  """system.auth.share_allowed=false → the global gate is off; the workset allow
+  defaults to @system so it is off too → private everywhere. The gate is set at
+  the SYSTEM scope (spec §0: system.* is settable ONLY from the system file —
+  injecting it via a box file would be an upward write and be dropped)."""
+  a = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      system_file={"system": {"auth": {"share_allowed": False}}},
+    ),
+    mode="primary",
+  )
+  assert a.tier == "box"
 
 
 def test_auth_workset_allow_off_falls_to_global(tmp_path):
-    """workset.auth.share_allowed=false (workset opts out) but the global gate is on
-    → the box uses the global tier. The opt-out is set at the WORKSET scope (spec
-    §0: workset.* is settable from the workset file, not a lower box file)."""
-    a = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            workset_file={"workset": {"auth": {"share_allowed": False}}},
-        ),
-        mode="primary",
-    )
-    assert a.tier == "global"
+  """workset.auth.share_allowed=false (workset opts out) but the global gate is on
+  → the box uses the global tier. The opt-out is set at the WORKSET scope (spec
+  §0: workset.* is settable from the workset file, not a lower box file)."""
+  a = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      workset_file={"workset": {"auth": {"share_allowed": False}}},
+    ),
+    mode="primary",
+  )
+  assert a.tier == "global"
 
 
 @pytest.mark.parametrize(
-    ("system_allow", "workset_allow", "global_sync", "global_on", "workset_on", "tier"),
-    [
-        # system.auth.share_allowed, workset.auth.share_allowed,
-        # workset.auth.global_sync, box.auth.global_enabled,
-        # box.auth.workset_enabled → the sync tier the spec selects.
-        (True,  True,  True,  True,  True,  "workset"),
-        (True,  True,  True,  True,  False, "global"),
-        (True,  True,  True,  False, True,  "workset"),
-        (True,  True,  True,  False, False, "box"),
-        (True,  True,  False, True,  True,  "global"),
-        (True,  True,  False, True,  False, "global"),
-        (True,  True,  False, False, True,  "workset"),
-        (True,  True,  False, False, False, "box"),
-        (True,  False, True,  True,  True,  "global"),
-        (True,  False, True,  True,  False, "global"),
-        (True,  False, True,  False, True,  "box"),
-        (True,  False, True,  False, False, "box"),
-        (True,  False, False, True,  True,  "global"),
-        (True,  False, False, True,  False, "global"),
-        (True,  False, False, False, True,  "box"),
-        (True,  False, False, False, False, "box"),
-        (False, True,  True,  True,  True,  "workset"),
-        (False, True,  True,  True,  False, "box"),
-        (False, True,  True,  False, True,  "workset"),
-        (False, True,  True,  False, False, "box"),
-        (False, True,  False, True,  True,  "workset"),
-        (False, True,  False, True,  False, "box"),
-        (False, True,  False, False, True,  "workset"),
-        (False, True,  False, False, False, "box"),
-        (False, False, True,  True,  True,  "box"),
-        (False, False, True,  True,  False, "box"),
-        (False, False, True,  False, True,  "box"),
-        (False, False, True,  False, False, "box"),
-        (False, False, False, True,  True,  "box"),
-        (False, False, False, True,  False, "box"),
-        (False, False, False, False, True,  "box"),
-        (False, False, False, False, False, "box"),
-    ],
+  ("system_allow", "workset_allow", "global_sync", "global_on", "workset_on", "tier"),
+  [
+    # system.auth.share_allowed, workset.auth.share_allowed,
+    # workset.auth.global_sync, box.auth.global_enabled,
+    # box.auth.workset_enabled → the sync tier the spec selects.
+    (True, True, True, True, True, "workset"),
+    (True, True, True, True, False, "global"),
+    (True, True, True, False, True, "workset"),
+    (True, True, True, False, False, "box"),
+    (True, True, False, True, True, "global"),
+    (True, True, False, True, False, "global"),
+    (True, True, False, False, True, "workset"),
+    (True, True, False, False, False, "box"),
+    (True, False, True, True, True, "global"),
+    (True, False, True, True, False, "global"),
+    (True, False, True, False, True, "box"),
+    (True, False, True, False, False, "box"),
+    (True, False, False, True, True, "global"),
+    (True, False, False, True, False, "global"),
+    (True, False, False, False, True, "box"),
+    (True, False, False, False, False, "box"),
+    (False, True, True, True, True, "workset"),
+    (False, True, True, True, False, "box"),
+    (False, True, True, False, True, "workset"),
+    (False, True, True, False, False, "box"),
+    (False, True, False, True, True, "workset"),
+    (False, True, False, True, False, "box"),
+    (False, True, False, False, True, "workset"),
+    (False, True, False, False, False, "box"),
+    (False, False, True, True, True, "box"),
+    (False, False, True, True, False, "box"),
+    (False, False, True, False, True, "box"),
+    (False, False, True, False, False, "box"),
+    (False, False, False, True, True, "box"),
+    (False, False, False, True, False, "box"),
+    (False, False, False, False, True, "box"),
+    (False, False, False, False, False, "box"),
+  ],
 )
 def test_auth_tier_follows_the_spec_active_values(
-    tmp_path, system_allow, workset_allow, global_sync, global_on, workset_on, tier,
+  tmp_path,
+  system_allow,
+  workset_allow,
+  global_sync,
+  global_on,
+  workset_on,
+  tier,
 ):
-    """The FULL truth table of the sync tier (keyspec ``meta.box.auth.*_active``).
+  """The FULL truth table of the sync tier (keyspec ``meta.box.auth.*_active``).
 
-    global is active when the system allows AND the box global knob is on;
-    workset is active when the workset allows AND the box workset knob is on,
-    and then only when the workset syncs globally or the box is NOT globally
-    active. Precedence workset>global picks among the ACTIVE tiers. The row
-    (True, True, False, True, True) is the isolated-workset case (HIS 191-IW):
-    a box allowed to sync globally syncs with global, not the workset store.
-    """
-    a = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            system_file={"system": {"auth": {"share_allowed": system_allow}}},
-            workset_file={"workset": {"auth": {
-                "share_allowed": workset_allow, "global_sync": global_sync,
-            }}},
-            box_file={"box": {"auth": {
-                "global_enabled": global_on, "workset_enabled": workset_on,
-            }}},
-        ),
-        mode="primary",
-    )
-    assert a.tier == tier
-    # AuthSource.global_sync is meta.workset.auth.global_active (system AND sync).
-    assert a.global_sync is (system_allow and global_sync)
-    assert (a.workset_source is not None) is (tier == "workset")
-    assert a.creds_shared is (tier != "box")
+  global is active when the system allows AND the box global knob is on;
+  workset is active when the workset allows AND the box workset knob is on,
+  and then only when the workset syncs globally or the box is NOT globally
+  active. Precedence workset>global picks among the ACTIVE tiers. The row
+  (True, True, False, True, True) is the isolated-workset case (HIS 191-IW):
+  a box allowed to sync globally syncs with global, not the workset store.
+  """
+  a = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      system_file={"system": {"auth": {"share_allowed": system_allow}}},
+      workset_file={
+        "workset": {
+          "auth": {
+            "share_allowed": workset_allow,
+            "global_sync": global_sync,
+          }
+        }
+      },
+      box_file={
+        "box": {
+          "auth": {
+            "global_enabled": global_on,
+            "workset_enabled": workset_on,
+          }
+        }
+      },
+    ),
+    mode="primary",
+  )
+  assert a.tier == tier
+  # AuthSource.global_sync is meta.workset.auth.global_active (system AND sync).
+  assert a.global_sync is (system_allow and global_sync)
+  assert (a.workset_source is not None) is (tier == "workset")
+  assert a.creds_shared is (tier != "box")
 
 
 def test_auth_no_box_node_fails_closed():
-    """resolve_auth_source fails CLOSED (tier box) when the chain floor was not
-    injected — never launders into sharing."""
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-        workset_path=None, box_path=None,
-    )
-    a = resolve_auth_source(snap)
-    assert a.tier == "box" and a.creds_shared is False
+  """resolve_auth_source fails CLOSED (tier box) when the chain floor was not
+  injected — never launders into sharing."""
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+  )
+  a = resolve_auth_source(snap)
+  assert a.tier == "box" and a.creds_shared is False
 
 
 def test_auth_clean_break_no_group_auth_keys():
-    """CLEAN BREAK: the old group_auth chain keys are GONE — the floor emits only
-    the new auth.* keys, no group_auth_capable / group_auth_on / group_auth_available."""
-    chain = auth_chain_floor(mode="primary", agent_name="claude")
-    joined = " ".join(chain.keys())
-    assert "group_auth" not in joined
-    assert "system.auth.share_allowed" in chain
-    assert "box.auth.global_enabled" in chain
-    assert "box.auth.workset_enabled" in chain
-    # change 8: the per-box source root moved to the RO meta anchor; the settable
-    # box.auth node keeps ONLY the two enable knobs (no workset_path leaks back).
-    assert "box.auth.workset_path" not in chain
-    assert "meta.box.auth.workset_path" in chain
-    # ⮕ P7: SPELLED as the spec writes it (§2c) rather than interpolated; the
-    # per-box variation now arrives through {system.agent} (the pref layer + the §1A
-    # selection level), which resolves strictly EARLIER than this L4.1 anchor.
-    # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
-    # launch would resolve the WRONG per-agent credential dir).
-    assert chain["meta.box.auth.workset_path"] == "{workset.auth.path}/{system.agent}"
+  """CLEAN BREAK: the old group_auth chain keys are GONE — the floor emits only
+  the new auth.* keys, no group_auth_capable / group_auth_on / group_auth_available."""
+  chain = auth_chain_floor(mode="primary", agent_name="claude")
+  joined = " ".join(chain.keys())
+  assert "group_auth" not in joined
+  assert "system.auth.share_allowed" in chain
+  assert "box.auth.global_enabled" in chain
+  assert "box.auth.workset_enabled" in chain
+  # change 8: the per-box source root moved to the RO meta anchor; the settable
+  # box.auth node keeps ONLY the two enable knobs (no workset_path leaks back).
+  assert "box.auth.workset_path" not in chain
+  assert "meta.box.auth.workset_path" in chain
+  # ⮕ P7: SPELLED as the spec writes it (§2c) rather than interpolated; the
+  # per-box variation now arrives through {system.agent} (the pref layer + the §1A
+  # selection level), which resolves strictly EARLIER than this L4.1 anchor.
+  # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
+  # launch would resolve the WRONG per-agent credential dir).
+  assert chain["meta.box.auth.workset_path"] == "{workset.auth.path}/{system.agent}"
 
 
 def test_auth_capability_mirror_is_ref_to_agent_slot():
-    """The box mirror meta.box.agent.auth.share_support is a {key}-ref to the active
-    agent's capability slot (the 29g box.agent mirror pattern)."""
-    chain = auth_chain_floor(mode="primary", agent_name="goose")
-    assert (
-        chain["meta.box.agent.auth.share_support"]
-        == "{meta.agent.goose.auth.share_support}"
-    )
+  """The box mirror meta.box.agent.auth.share_support is a {key}-ref to the active
+  agent's capability slot (the 29g box.agent mirror pattern)."""
+  chain = auth_chain_floor(mode="primary", agent_name="goose")
+  assert chain["meta.box.agent.auth.share_support"] == "{meta.agent.goose.auth.share_support}"
 
 
 # --------------------------------------------------------------------------- #
 # Q61: the three computed sharing-state keys                                  #
 # --------------------------------------------------------------------------- #
 
+
 def _auth_active(snap):
-    """The three computed sharing-state keys off a launch snapshot, as
-    (workset-global-active, box-global-active, box-workset-active)."""
-    return (
-        snap.meta.workset.auth.global_active,
-        snap.meta.box.auth.global_active,
-        snap.meta.box.auth.workset_active,
-    )
+  """The three computed sharing-state keys off a launch snapshot, as
+  (workset-global-active, box-global-active, box-workset-active)."""
+  return (
+    snap.meta.workset.auth.global_active,
+    snap.meta.box.auth.global_active,
+    snap.meta.box.auth.workset_active,
+  )
 
 
 class TestAuthActiveKeys:
-    """The FULL truth table for the computed ``meta.*.auth.*_active`` keys.
+  """The FULL truth table for the computed ``meta.*.auth.*_active`` keys.
 
-    The sketch (Q61, ratified): workset-global-active is system-allow AND
-    workset-sync; box-global-active is system-allow AND the box global knob;
-    box-workset-active is false unless the workset allows AND the box workset
-    knob is on, then true when the workset globally syncs, else NOT
-    box-global-active. All three are false when the agent does not support
-    sharing. Each case below names which arm it pins, so a red names its row.
-    """
+  The sketch (Q61, ratified): workset-global-active is system-allow AND
+  workset-sync; box-global-active is system-allow AND the box global knob;
+  box-workset-active is false unless the workset allows AND the box workset
+  knob is on, then true when the workset globally syncs, else NOT
+  box-global-active. All three are false when the agent does not support
+  sharing. Each case below names which arm it pins, so a red names its row.
+  """
 
-    def test_all_default_primary_is_all_active(self, tmp_path):
-        """Capable agent, every gate open (primary defaults) → all three True,
-        and all three are REAL bools, not truthy terminals."""
-        wga, bga, wsa = _auth_active(_auth_snapshot("primary", tmp_path=tmp_path))
-        assert wga is True and bga is True and wsa is True
+  def test_all_default_primary_is_all_active(self, tmp_path):
+    """Capable agent, every gate open (primary defaults) → all three True,
+    and all three are REAL bools, not truthy terminals."""
+    wga, bga, wsa = _auth_active(_auth_snapshot("primary", tmp_path=tmp_path))
+    assert wga is True and bga is True and wsa is True
 
-    def test_agent_without_support_is_all_inactive(self, tmp_path):
-        """share_support=False → all three False, regardless of the allow flags
-        (the hard capability floor)."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot("primary", tmp_path=tmp_path, support=False)
-        )
-        assert wga is False and bga is False and wsa is False
+  def test_agent_without_support_is_all_inactive(self, tmp_path):
+    """share_support=False → all three False, regardless of the allow flags
+    (the hard capability floor)."""
+    wga, bga, wsa = _auth_active(_auth_snapshot("primary", tmp_path=tmp_path, support=False))
+    assert wga is False and bga is False and wsa is False
 
-    def test_system_disallow_is_all_inactive(self, tmp_path):
-        """system.auth.share_allowed=false → the global gate is off and the
-        workset allow defaults to @system, so it is off too → all three False."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                system_file={"system": {"auth": {"share_allowed": False}}},
-            )
-        )
-        assert wga is False and bga is False and wsa is False
+  def test_system_disallow_is_all_inactive(self, tmp_path):
+    """system.auth.share_allowed=false → the global gate is off and the
+    workset allow defaults to @system, so it is off too → all three False."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        system_file={"system": {"auth": {"share_allowed": False}}},
+      )
+    )
+    assert wga is False and bga is False and wsa is False
 
-    def test_workset_allow_off_clears_only_workset_active(self, tmp_path):
-        """workset.auth.share_allowed=false → the workset tier is unavailable
-        (workset-active False) but both global-actives stay True."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                workset_file={"workset": {"auth": {"share_allowed": False}}},
-            )
-        )
-        assert wga is True and bga is True and wsa is False
+  def test_workset_allow_off_clears_only_workset_active(self, tmp_path):
+    """workset.auth.share_allowed=false → the workset tier is unavailable
+    (workset-active False) but both global-actives stay True."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"share_allowed": False}}},
+      )
+    )
+    assert wga is True and bga is True and wsa is False
 
-    def test_box_workset_opt_out_clears_only_workset_active(self, tmp_path):
-        """box.auth.workset_enabled=false → workset-active False, both
-        global-actives True (the opt-out is set at the BOX scope)."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                box_file={"box": {"auth": {"workset_enabled": False}}},
-            )
-        )
-        assert wga is True and bga is True and wsa is False
+  def test_box_workset_opt_out_clears_only_workset_active(self, tmp_path):
+    """box.auth.workset_enabled=false → workset-active False, both
+    global-actives True (the opt-out is set at the BOX scope)."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        box_file={"box": {"auth": {"workset_enabled": False}}},
+      )
+    )
+    assert wga is True and bga is True and wsa is False
 
-    def test_no_workset_sync_with_box_global_on_clears_workset_active(
-        self, tmp_path,
-    ):
-        """THE SYNC-CONDITIONAL, FIRST WAY: workset.auth.global_sync=false while
-        the box still globally shares → workset-global-active False,
-        box-global-active True, and box-workset-active is NOT box-global-active,
-        i.e. False (one store at a time)."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                workset_file={"workset": {"auth": {"global_sync": False}}},
-            )
-        )
-        assert wga is False and bga is True and wsa is False
+  def test_no_workset_sync_with_box_global_on_clears_workset_active(
+    self,
+    tmp_path,
+  ):
+    """THE SYNC-CONDITIONAL, FIRST WAY: workset.auth.global_sync=false while
+    the box still globally shares → workset-global-active False,
+    box-global-active True, and box-workset-active is NOT box-global-active,
+    i.e. False (one store at a time)."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"global_sync": False}}},
+      )
+    )
+    assert wga is False and bga is True and wsa is False
 
-    def test_no_workset_sync_with_box_global_off_sets_workset_active(
-        self, tmp_path,
-    ):
-        """THE SYNC-CONDITIONAL, SECOND WAY: workset.auth.global_sync=false AND
-        box.auth.global_enabled=false → box-global-active False, and
-        box-workset-active is NOT box-global-active, i.e. True (the box shares
-        with the workset store instead of the global one)."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                workset_file={"workset": {"auth": {"global_sync": False}}},
-                box_file={"box": {"auth": {"global_enabled": False}}},
-            )
-        )
-        assert wga is False and bga is False and wsa is True
+  def test_no_workset_sync_with_box_global_off_sets_workset_active(
+    self,
+    tmp_path,
+  ):
+    """THE SYNC-CONDITIONAL, SECOND WAY: workset.auth.global_sync=false AND
+    box.auth.global_enabled=false → box-global-active False, and
+    box-workset-active is NOT box-global-active, i.e. True (the box shares
+    with the workset store instead of the global one)."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"global_sync": False}}},
+        box_file={"box": {"auth": {"global_enabled": False}}},
+      )
+    )
+    assert wga is False and bga is False and wsa is True
 
-    def test_box_global_opt_out_alone_clears_only_box_global_active(
-        self, tmp_path,
-    ):
-        """SOLO KNOB-OFF: box.auth.global_enabled=false with the workset still
-        globally syncing → workset-global-active True, box-global-active False,
-        and box-workset-active is NOT box-global-active, i.e. True — isolating
-        the knob from the sync arm the second sync-conditional pairs it with."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot(
-                "primary", tmp_path=tmp_path,
-                box_file={"box": {"auth": {"global_enabled": False}}},
-            )
-        )
-        assert wga is True and bga is False and wsa is True
+  def test_box_global_opt_out_alone_clears_only_box_global_active(
+    self,
+    tmp_path,
+  ):
+    """SOLO KNOB-OFF: box.auth.global_enabled=false with the workset still
+    globally syncing → workset-global-active True, box-global-active False,
+    and box-workset-active is NOT box-global-active, i.e. True — isolating
+    the knob from the sync arm the second sync-conditional pairs it with."""
+    wga, bga, wsa = _auth_active(
+      _auth_snapshot(
+        "primary",
+        tmp_path=tmp_path,
+        box_file={"box": {"auth": {"global_enabled": False}}},
+      )
+    )
+    assert wga is True and bga is False and wsa is True
 
-    def test_standalone_is_global_active_only(self, tmp_path):
-        """STANDALONE has no workset group (both workset inputs degenerate
-        False) but the global tier still applies → only box-global-active."""
-        wga, bga, wsa = _auth_active(
-            _auth_snapshot("standalone", tmp_path=tmp_path)
-        )
-        assert wga is False and bga is True and wsa is False
+  def test_standalone_is_global_active_only(self, tmp_path):
+    """STANDALONE has no workset group (both workset inputs degenerate
+    False) but the global tier still applies → only box-global-active."""
+    wga, bga, wsa = _auth_active(_auth_snapshot("standalone", tmp_path=tmp_path))
+    assert wga is False and bga is True and wsa is False
 
 
 def test_a_value_reads_the_mirror_and_the_computed_auth_keys(tmp_path):
-    """A reference to ``meta.box.agent.*`` or a computed ``meta.*.auth.*_active`` key sees
-    its value (spec §2b), though both are materialized after expansion."""
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        box_file={"box": {
-            "auth": {"global_enabled": False},
-            "bindings": {"ro": {"/q": ["{meta.box.agent.canon}/q"]}},
-            "env": {
-                "SHARE": "{meta.box.agent.auth.share_support}",
-                "MODEL": "m-{meta.box.agent.model}",
-                "WHOLE": "{meta.box.agent.model}",
-                "ACTIVE": "{meta.box.auth.global_active}-{meta.box.auth.workset_active}",
-                "WS": "{meta.workset.auth.global_active}",
-            },
-        }},
-        system_file={"agent": {"claude": {"model": "sonnet", "canon": "/canon"}}},
-    )
-    assert snap.box.bindings.ro["/q"].src == "/canon/q"
-    env = snap.box.env
-    assert env.MODEL == "m-sonnet" == f"m-{snap.meta.box.agent.model}"
-    assert env.WHOLE == "sonnet"
-    assert env.ACTIVE == "False-True" == "{}-{}".format(*_auth_active(snap)[1:])
-    assert env.WS is True is snap.meta.workset.auth.global_active
-    assert env.SHARE is True
+  """A reference to ``meta.box.agent.*`` or a computed ``meta.*.auth.*_active`` key sees
+  its value (spec §2b), though both are materialized after expansion."""
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    box_file={
+      "box": {
+        "auth": {"global_enabled": False},
+        "bindings": {"ro": {"/q": ["{meta.box.agent.canon}/q"]}},
+        "env": {
+          "SHARE": "{meta.box.agent.auth.share_support}",
+          "MODEL": "m-{meta.box.agent.model}",
+          "WHOLE": "{meta.box.agent.model}",
+          "ACTIVE": "{meta.box.auth.global_active}-{meta.box.auth.workset_active}",
+          "WS": "{meta.workset.auth.global_active}",
+        },
+      }
+    },
+    system_file={"agent": {"claude": {"model": "sonnet", "canon": "/canon"}}},
+  )
+  assert snap.box.bindings.ro["/q"].src == "/canon/q"
+  env = snap.box.env
+  assert env.MODEL == "m-sonnet" == f"m-{snap.meta.box.agent.model}"
+  assert env.WHOLE == "sonnet"
+  assert env.ACTIVE == "False-True" == "{}-{}".format(*_auth_active(snap)[1:])
+  assert env.WS is True is snap.meta.workset.auth.global_active
+  assert env.SHARE is True
 
 
 def test_a_mirror_reference_falls_back_as_the_mirror_does(tmp_path, monkeypatch):
-    """An active-agent key whose reference resolves absent is gone from the expanded tree
-    (spec §0), so the mirror reads ``agent.default``'s value; a reference to it does too."""
-    monkeypatch.delenv("NOPE_UNSET", raising=False)
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        box_file={"box": {"env": {"WHOLE": "{meta.box.agent.model}"}}},
-        system_file={"agent": {
-            "default": {"model": "dflt"},
-            "claude": {"model": "{system.env.NOPE_UNSET}"},
-        }},
-    )
-    assert snap.meta.box.agent.model == "dflt"
-    assert snap.box.env.WHOLE == "dflt"
+  """An active-agent key whose reference resolves absent is gone from the expanded tree
+  (spec §0), so the mirror reads ``agent.default``'s value; a reference to it does too."""
+  monkeypatch.delenv("NOPE_UNSET", raising=False)
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    box_file={"box": {"env": {"WHOLE": "{meta.box.agent.model}"}}},
+    system_file={
+      "agent": {
+        "default": {"model": "dflt"},
+        "claude": {"model": "{system.env.NOPE_UNSET}"},
+      }
+    },
+  )
+  assert snap.meta.box.agent.model == "dflt"
+  assert snap.box.env.WHOLE == "dflt"
 
 
 def test_a_pseudo_agent_mirror_reference_falls_back_like_a_true_agent(tmp_path, monkeypatch):
-    """Shell inherits ``agent.default`` (§2d "Pseudo-agent(s)"): an absent shell leaf
-    falls back to the default tier, in the mirror and in a reference to it."""
-    monkeypatch.delenv("NOPE_UNSET", raising=False)
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path, agent_name="shell",
-        box_file={"box": {"env": {"WHOLE": "{meta.box.agent.label}"}}},
-        system_file={"agent": {
-            "default": {"label": "dflt"},
-            "shell": {"label": "{system.env.NOPE_UNSET}"},
-        }},
-    )
-    assert snap.meta.box.agent.label == "dflt"
-    assert snap.box.env.WHOLE == "dflt"
+  """Shell inherits ``agent.default`` (§2d "Pseudo-agent(s)"): an absent shell leaf
+  falls back to the default tier, in the mirror and in a reference to it."""
+  monkeypatch.delenv("NOPE_UNSET", raising=False)
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    agent_name="shell",
+    box_file={"box": {"env": {"WHOLE": "{meta.box.agent.label}"}}},
+    system_file={
+      "agent": {
+        "default": {"label": "dflt"},
+        "shell": {"label": "{system.env.NOPE_UNSET}"},
+      }
+    },
+  )
+  assert snap.meta.box.agent.label == "dflt"
+  assert snap.box.env.WHOLE == "dflt"
 
 
 def test_a_mirror_reference_to_itself_is_a_cycle(tmp_path):
-    """A mirror key whose own value reaches the mirror is refused as a cycle, not dropped."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """A mirror key whose own value reaches the mirror is refused as a cycle, not dropped."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError, match="Cyclic"):
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            system_file={"agent": {"claude": {"model": "{meta.box.agent.model}"}}},
-        )
+  with pytest.raises(SettingsError, match="Cyclic"):
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      system_file={"agent": {"claude": {"model": "{meta.box.agent.model}"}}},
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1948,85 +2179,88 @@ def test_a_mirror_reference_to_itself_is_a_cycle(tmp_path):
 
 
 def _snap_meta_box_auth_workset_path(snap):
-    """Navigate snapshot → meta → box → auth → workset_path, or None if absent."""
-    meta = snap.meta if "meta" in snap else None
-    if meta is None or "box" not in meta:
-        return None
-    mbox = meta.box
-    if "auth" not in mbox:
-        return None
-    mauth = mbox.auth
-    return mauth.workset_path if "workset_path" in mauth else None
+  """Navigate snapshot → meta → box → auth → workset_path, or None if absent."""
+  meta = snap.meta if "meta" in snap else None
+  if meta is None or "box" not in meta:
+    return None
+  mbox = meta.box
+  if "auth" not in mbox:
+    return None
+  mauth = mbox.auth
+  return mauth.workset_path if "workset_path" in mauth else None
 
 
 def test_p6d2_meta_anchor_resolves_and_box_auth_has_no_workset_path(tmp_path):
-    """change 8: meta.box.auth.workset_path resolves to {workset.auth.path}/<agent>
-    in the snapshot; the settable box.auth node carries ONLY the enable knobs (the
-    source path no longer lives under box.auth)."""
-    snap = _auth_snapshot("primary", tmp_path=tmp_path)
-    wp = _snap_meta_box_auth_workset_path(snap)
-    assert isinstance(wp, str) and wp.endswith("/auth/claude")
-    # The settable box.auth node has the two knobs but NOT workset_path (moved to meta).
-    box_auth = snap.box.auth
-    assert "global_enabled" in box_auth and "workset_enabled" in box_auth
-    assert "workset_path" not in box_auth
+  """change 8: meta.box.auth.workset_path resolves to {workset.auth.path}/<agent>
+  in the snapshot; the settable box.auth node carries ONLY the enable knobs (the
+  source path no longer lives under box.auth)."""
+  snap = _auth_snapshot("primary", tmp_path=tmp_path)
+  wp = _snap_meta_box_auth_workset_path(snap)
+  assert isinstance(wp, str) and wp.endswith("/auth/claude")
+  # The settable box.auth node has the two knobs but NOT workset_path (moved to meta).
+  box_auth = snap.box.auth
+  assert "global_enabled" in box_auth and "workset_enabled" in box_auth
+  assert "workset_path" not in box_auth
 
 
 def test_p6d2_resolved_workset_source_reads_meta_node(tmp_path):
-    """EQUIVALENCE BAR: the resolved workset_source is byte-identical to the meta
-    anchor's resolved value (the consumer reads the meta node, not box.auth).
-    Mutation: pointing the consumer at box.auth (which no longer holds the key)
-    would yield None → tier global, breaking this."""
-    snap = _auth_snapshot("primary", tmp_path=tmp_path)
-    a = resolve_auth_source(snap, mode="primary")
-    assert a.tier == "workset"
-    assert a.workset_source == _snap_meta_box_auth_workset_path(snap)
-    assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
+  """EQUIVALENCE BAR: the resolved workset_source is byte-identical to the meta
+  anchor's resolved value (the consumer reads the meta node, not box.auth).
+  Mutation: pointing the consumer at box.auth (which no longer holds the key)
+  would yield None → tier global, breaking this."""
+  snap = _auth_snapshot("primary", tmp_path=tmp_path)
+  a = resolve_auth_source(snap, mode="primary")
+  assert a.tier == "workset"
+  assert a.workset_source == _snap_meta_box_auth_workset_path(snap)
+  assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
 
 
 def test_p6d2_meta_anchor_none_for_standalone(tmp_path):
-    """change 7/8: standalone pins meta.box.auth.workset_path = None (the meta-
-    anchor-is-None-for-standalone pattern). Mutation: dropping the None pin would
-    let {workset.auth.path}/<agent> resolve to garbage /<agent>."""
-    snap = _auth_snapshot("standalone", tmp_path=tmp_path)
-    assert _snap_meta_box_auth_workset_path(snap) is None
+  """change 7/8: standalone pins meta.box.auth.workset_path = None (the meta-
+  anchor-is-None-for-standalone pattern). Mutation: dropping the None pin would
+  let {workset.auth.path}/<agent> resolve to garbage /<agent>."""
+  snap = _auth_snapshot("standalone", tmp_path=tmp_path)
+  assert _snap_meta_box_auth_workset_path(snap) is None
 
 
 def test_p6d2_safety_meta_anchor_dropped_from_settings_file(tmp_path):
-    """SAFETY WIN: meta.box.auth.workset_path is meta.* → a box/workset FILE trying
-    to set it is DROPPED in assembly (never reaches the resolved source). Mutation:
-    if the meta drop leaked, workset_source would become the /evil garbage."""
-    # A box file trying to plant a top-level meta table (the only way to reach the
-    # dotted key) — dropped by assemble's meta-RO guard.
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        box_file={"meta": {"box": {"auth": {"workset_path": "/evil"}}}},
-    )
-    wp = _snap_meta_box_auth_workset_path(snap)
-    # The floor's resolved value survives; the /evil injection did NOT.
-    assert wp is not None and wp.endswith("/auth/claude")
-    assert wp != "/evil"
-    a = resolve_auth_source(snap, mode="primary")
-    assert a.workset_source is not None and not a.workset_source.startswith("/evil")
+  """SAFETY WIN: meta.box.auth.workset_path is meta.* → a box/workset FILE trying
+  to set it is DROPPED in assembly (never reaches the resolved source). Mutation:
+  if the meta drop leaked, workset_source would become the /evil garbage."""
+  # A box file trying to plant a top-level meta table (the only way to reach the
+  # dotted key) — dropped by assemble's meta-RO guard.
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    box_file={"meta": {"box": {"auth": {"workset_path": "/evil"}}}},
+  )
+  wp = _snap_meta_box_auth_workset_path(snap)
+  # The floor's resolved value survives; the /evil injection did NOT.
+  assert wp is not None and wp.endswith("/auth/claude")
+  assert wp != "/evil"
+  a = resolve_auth_source(snap, mode="primary")
+  assert a.workset_source is not None and not a.workset_source.startswith("/evil")
 
 
 def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
-    """change 8: workset.auth.path is the ONLY settable auth-location surface. A
-    workset FILE value OVERRIDES the {meta.workset.path}/auth floor default, and the
-    derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
-    the route / drop the override handling → the custom root is not honored."""
-    from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, _KEY_ROUTES
-    # (a) it IS registered settable (P6a) and routes to the workset:auth nested slot.
-    assert "workset.auth.path" in KNOWN_CONFIG_KEYS
-    assert _KEY_ROUTES["workset.auth.path"] == (("workset", "auth"), "path")
-    # (b) a workset-file override is honored end-to-end (out-precedes the base floor).
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        workset_file={"workset": {"auth": {"path": "/custom/store"}}},
-    )
-    a = resolve_auth_source(snap, mode="primary")
-    assert a.tier == "workset"
-    assert a.workset_source == "/custom/store/claude"
+  """change 8: workset.auth.path is the ONLY settable auth-location surface. A
+  workset FILE value OVERRIDES the {meta.workset.path}/auth floor default, and the
+  derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
+  the route / drop the override handling → the custom root is not honored."""
+  from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, _KEY_ROUTES
+
+  # (a) it IS registered settable (P6a) and routes to the workset:auth nested slot.
+  assert "workset.auth.path" in KNOWN_CONFIG_KEYS
+  assert _KEY_ROUTES["workset.auth.path"] == (("workset", "auth"), "path")
+  # (b) a workset-file override is honored end-to-end (out-precedes the base floor).
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    workset_file={"workset": {"auth": {"path": "/custom/store"}}},
+  )
+  a = resolve_auth_source(snap, mode="primary")
+  assert a.tier == "workset"
+  assert a.workset_source == "/custom/store/claude"
 
 
 # --------------------------------------------------------------------------- #
@@ -2041,303 +2275,345 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
 
 
 def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path, monkeypatch):
-    """A bare relative ``workset.auth.path`` in the workset file refuses, naming both readings."""
-    # Mutation: drop ``_refuse_ambiguous_path_values`` from ``build_launch_snapshot``
-    # → the snapshot builds and credsync's source root becomes ``auth/claude``.
-    from kanibako.settings.settings_resolve import SettingsError
+  """A bare relative ``workset.auth.path`` in the workset file refuses, naming both readings."""
+  # Mutation: drop ``_refuse_ambiguous_path_values`` from ``build_launch_snapshot``
+  # → the snapshot builds and credsync's source root becomes ``auth/claude``.
+  from kanibako.settings.settings_resolve import SettingsError
 
-    # Run from a link, as a shell does: only ``$PWD`` names the link.
-    real, link = tmp_path / "run-real", tmp_path / "run-from"
-    real.mkdir()
-    link.symlink_to(real)
-    monkeypatch.chdir(link)
-    monkeypatch.setenv("PWD", str(link))
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            workset_file={"workset": {"auth": {"path": "auth"}}},
-        )
-    msg = str(exc.value)
-    assert "workset.auth.path is set to 'auth' in " in msg
-    assert "BARE RELATIVE" in msg
-    # The FILE that carries it is named — ``_auth_snapshot`` writes under tmp_path.
-    assert f" in {tmp_path}" in msg
-    # BOTH readings are named: the key's own root, and the cwd.
-    assert "{meta.workset.path}" in msg
-    assert str(link / "auth") in msg
-    assert str(real.resolve() / "auth") not in msg
+  # Run from a link, as a shell does: only ``$PWD`` names the link.
+  real, link = tmp_path / "run-real", tmp_path / "run-from"
+  real.mkdir()
+  link.symlink_to(real)
+  monkeypatch.chdir(link)
+  monkeypatch.setenv("PWD", str(link))
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      workset_file={"workset": {"auth": {"path": "auth"}}},
+    )
+  msg = str(exc.value)
+  assert "workset.auth.path is set to 'auth' in " in msg
+  assert "BARE RELATIVE" in msg
+  # The FILE that carries it is named — ``_auth_snapshot`` writes under tmp_path.
+  assert f" in {tmp_path}" in msg
+  # BOTH readings are named: the key's own root, and the cwd.
+  assert "{meta.workset.path}" in msg
+  assert str(link / "auth") in msg
+  assert str(real.resolve() / "auth") not in msg
 
 
 def test_R147_the_sweep_reaches_workset_auth_path_in_a_real_snapshot(tmp_path):
-    """Anti-vacuity: the sweep reaches ``workset.auth.path`` and every carried ``type: path`` key."""
-    from kanibako.settings.config_keys import KEY_TYPES
-    from kanibako.settings.kb_store import __MISSING__
-    from kanibako.settings.settings_launch import _path_key_leaves, snapshot_leaf
+  """Anti-vacuity: the sweep reaches ``workset.auth.path`` and every carried ``type: path`` key."""
+  from kanibako.settings.config_keys import KEY_TYPES
+  from kanibako.settings.kb_store import __MISSING__
+  from kanibako.settings.settings_launch import _path_key_leaves, snapshot_leaf
 
-    snap = _auth_snapshot("primary", tmp_path=tmp_path)
-    swept = {key for key, _value in _path_key_leaves(snap)}
-    assert "workset.auth.path" in swept
-    carried = {
-        key for key, kind in KEY_TYPES.items()
-        if kind == "path" and snapshot_leaf(snap, key) is not __MISSING__
-    }
-    assert carried, "the snapshot carries no registry path key: the check is vacuous"
-    assert carried <= swept
+  snap = _auth_snapshot("primary", tmp_path=tmp_path)
+  swept = {key for key, _value in _path_key_leaves(snap)}
+  assert "workset.auth.path" in swept
+  carried = {
+    key
+    for key, kind in KEY_TYPES.items()
+    if kind == "path" and snapshot_leaf(snap, key) is not __MISSING__
+  }
+  assert carried, "the snapshot carries no registry path key: the check is vacuous"
+  assert carried <= swept
 
 
 def test_R147_every_offending_path_key_is_named_in_one_refusal(tmp_path):
-    """One refusal names every offending key the sweep reaches, not only the first."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """One refusal names every offending key the sweep reaches, not only the first."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            workset_file={"workset": {"auth": {"path": "auth"}, "logs": "./logs"}},
-            box_file={"box": {"canon": "../canon"}},
-        )
-    msg = str(exc.value)
-    assert "workset.auth.path is set to 'auth'" in msg
-    assert "workset.logs is set to './logs'" in msg
-    assert "box.canon is set to '../canon'" in msg
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      workset_file={"workset": {"auth": {"path": "auth"}, "logs": "./logs"}},
+      box_file={"box": {"canon": "../canon"}},
+    )
+  msg = str(exc.value)
+  assert "workset.auth.path is set to 'auth'" in msg
+  assert "workset.logs is set to './logs'" in msg
+  assert "box.canon is set to '../canon'" in msg
 
 
 def test_R147_a_bare_relative_in_the_SITE_base_file_is_refused(tmp_path, monkeypatch):
-    """A value the site ``base`` file stores is judged like any other, and names that file."""
-    # ONLY ``settings_launch``'s binding is patched: the launch resolves the base path
-    # ONCE and hands it to ``assemble_levels``, so the two cannot name different files.
-    from kanibako.settings import settings_launch as _launch
-    from kanibako.settings.settings_resolve import SettingsError
+  """A value the site ``base`` file stores is judged like any other, and names that file."""
+  # ONLY ``settings_launch``'s binding is patched: the launch resolves the base path
+  # ONCE and hands it to ``assemble_levels``, so the two cannot name different files.
+  from kanibako.settings import settings_launch as _launch
+  from kanibako.settings.settings_resolve import SettingsError
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("workset:\n  auth:\n    path: auth\n", encoding="utf-8")
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot("primary", tmp_path=tmp_path)
-    assert f"workset.auth.path is set to 'auth' in {base}" in str(exc.value)
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("workset:\n  auth:\n    path: auth\n", encoding="utf-8")
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot("primary", tmp_path=tmp_path)
+  assert f"workset.auth.path is set to 'auth' in {base}" in str(exc.value)
 
 
 def test_R147_a_value_kanibako_supplies_itself_is_not_judged():
-    """A floor or descriptor default is kanibako's own, so the sweep never judges it."""
-    # Mutation: judge the MERGE instead of the written levels → red.
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"template": "unset"},
-        agent_partial=KeyStore({"agent": {"claude": {"canon": "descriptor-canon"}}}),
-    )
-    assert snap.agent.default.template == "unset"
-    assert snap.agent.claude.canon == "descriptor-canon"
+  """A floor or descriptor default is kanibako's own, so the sweep never judges it."""
+  # Mutation: judge the MERGE instead of the written levels → red.
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"template": "unset"},
+    agent_partial=KeyStore({"agent": {"claude": {"canon": "descriptor-canon"}}}),
+  )
+  assert snap.agent.default.template == "unset"
+  assert snap.agent.claude.canon == "descriptor-canon"
 
 
-@pytest.mark.parametrize("value", [
-    "/custom/store", "~/store", "{$XDG_DATA_HOME}/store", "{meta.workset.path}/store",
-])
+@pytest.mark.parametrize(
+  "value",
+  [
+    "/custom/store",
+    "~/store",
+    "{$XDG_DATA_HOME}/store",
+    "{meta.workset.path}/store",
+  ],
+)
 def test_R147_an_unambiguous_workset_auth_path_passes_the_sweep(tmp_path, value):
-    """Each of the four legal spellings builds."""
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        workset_file={"workset": {"auth": {"path": value}}},
-    )
-    assert isinstance(snap.workset.auth.path, str)
-    assert snap.workset.auth.path.startswith("/")
+  """Each of the four legal spellings builds."""
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    workset_file={"workset": {"auth": {"path": value}}},
+  )
+  assert isinstance(snap.workset.auth.path, str)
+  assert snap.workset.auth.path.startswith("/")
 
 
 @pytest.mark.writes_undeclared(
-    "agent.claude.nav", "agent.claude.nav.template",
-    "agent.claude.nav.secret_path", "agent.claude.nav.secret_path.X",
-    reason="the undeclared nested persona shapes ARE the input under test: the sweep "
-           "must skip them because the §0 oracle does not call them keys.",
+  "agent.claude.nav",
+  "agent.claude.nav.template",
+  "agent.claude.nav.secret_path",
+  "agent.claude.nav.secret_path.X",
+  reason="the undeclared nested persona shapes ARE the input under test: the sweep "
+  "must skip them because the §0 oracle does not call them keys.",
 )
 def test_R147_a_leaf_the_keyspace_does_not_declare_is_never_swept():
-    """A path-shaped leaf the §0 oracle calls UNDECLARED is not a key, so the sweep skips it."""
-    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the bare CLI
-    # spellings and the nested persona shapes all parse as path keys).
-    from kanibako.settings.settings_launch import _path_key_leaves
+  """A path-shaped leaf the §0 oracle calls UNDECLARED is not a key, so the sweep skips it."""
+  # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the bare CLI
+  # spellings and the nested persona shapes all parse as path keys).
+  from kanibako.settings.settings_launch import _path_key_leaves
 
-    store = KeyStore({
-        "template": "foo", "canon": "foo",
-        "agent": {"claude": {"nav": {"template": "x", "secret_path": {"X": "t"}}}},
-        "box": {"canon": "rel"},
-    })
-    assert _path_key_leaves(store) == [("box.canon", "rel")]
-    # ⚑ Skipped by the sweep is not ACCEPTED: the bare top-level spellings are §0
-    # findings of the same oracle, so the refusal that follows the sweep names them.
-    from kanibako.settings.settings_keyspace import undeclared_store_paths
-    from kanibako.settings.settings_launch import keyspace_verdict
-
-    refused = {
-        segments for segments, _ in undeclared_store_paths(
-            store, oracle=keyspace_verdict,
-        )
+  store = KeyStore(
+    {
+      "template": "foo",
+      "canon": "foo",
+      "agent": {"claude": {"nav": {"template": "x", "secret_path": {"X": "t"}}}},
+      "box": {"canon": "rel"},
     }
-    assert {("template",), ("canon",)} <= refused
+  )
+  assert _path_key_leaves(store) == [("box.canon", "rel")]
+  # ⚑ Skipped by the sweep is not ACCEPTED: the bare top-level spellings are §0
+  # findings of the same oracle, so the refusal that follows the sweep names them.
+  from kanibako.settings.settings_keyspace import undeclared_store_paths
+  from kanibako.settings.settings_launch import keyspace_verdict
+
+  refused = {
+    segments
+    for segments, _ in undeclared_store_paths(
+      store,
+      oracle=keyspace_verdict,
+    )
+  }
+  assert {("template",), ("canon",)} <= refused
 
 
 _R147_UNDECLARED_REASON = (
-    "the refused entry IS an undeclared nested persona shape in a settings file; "
-    "assemble_levels writes it before §0 refuses it."
+  "the refused entry IS an undeclared nested persona shape in a settings file; "
+  "assemble_levels writes it before §0 refuses it."
 )
 
 
-@pytest.mark.parametrize("stored,named", [
+@pytest.mark.parametrize(
+  "stored,named",
+  [
     pytest.param(
-        {"agent": {"claude": {"nav": {"template": "x"}}}}, "agent.claude.nav",
-        marks=pytest.mark.writes_undeclared(
-            "agent.claude.nav", "agent.claude.nav.template",
-            reason=_R147_UNDECLARED_REASON,
-        ),
-        id="nested-persona-template",
+      {"agent": {"claude": {"nav": {"template": "x"}}}},
+      "agent.claude.nav",
+      marks=pytest.mark.writes_undeclared(
+        "agent.claude.nav",
+        "agent.claude.nav.template",
+        reason=_R147_UNDECLARED_REASON,
+      ),
+      id="nested-persona-template",
     ),
     pytest.param(
-        {"agent": {"claude": {"nav": {"secret_path": {"X": "t"}}}}},
+      {"agent": {"claude": {"nav": {"secret_path": {"X": "t"}}}}},
+      "agent.claude.nav",
+      marks=pytest.mark.writes_undeclared(
         "agent.claude.nav",
-        marks=pytest.mark.writes_undeclared(
-            "agent.claude.nav", "agent.claude.nav.secret_path",
-            "agent.claude.nav.secret_path.X",
-            reason=_R147_UNDECLARED_REASON,
-        ),
-        id="nested-persona-secret",
+        "agent.claude.nav.secret_path",
+        "agent.claude.nav.secret_path.X",
+        reason=_R147_UNDECLARED_REASON,
+      ),
+      id="nested-persona-secret",
     ),
     # The bare CLI spelling at a file's TOP LEVEL. No census marker: the census judges
     # a single write, and a top-level write it cannot place is UNROOTED, not a finding.
     pytest.param({"template": "foo"}, "template", id="bare-top-level-template"),
-])
+  ],
+)
 def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
-    tmp_path, stored, named,
+  tmp_path,
+  stored,
+  named,
 ):
-    """An undeclared path-shaped entry is refused by §0 by name — never as a BARE RELATIVE.
+  """An undeclared path-shaped entry is refused by §0 by name — never as a BARE RELATIVE.
 
-    When a parent and its child are both undeclared, only the parent is named (spec §0: an
-    undeclared key is an ERROR that NAMES the offending key; naming the parent names the fix).
-    """
-    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the path-value
-    # refusal (keyspec §2a "A path key's stored value") fires first and names a key that does not
-    # exist).
-    from kanibako.settings.settings_resolve import SettingsError
+  When a parent and its child are both undeclared, only the parent is named (spec §0: an
+  undeclared key is an ERROR that NAMES the offending key; naming the parent names the fix).
+  """
+  # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the path-value
+  # refusal (keyspec §2a "A path key's stored value") fires first and names a key that does not
+  # exist).
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
-    msg = str(exc.value)
-    assert "BARE RELATIVE" not in msg
-    assert "(spec §0 — the keyspace is CLOSED):\n" in msg
-    assert f"\n  - {named}: " in msg
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
+  msg = str(exc.value)
+  assert "BARE RELATIVE" not in msg
+  assert "(spec §0 — the keyspace is CLOSED):\n" in msg
+  assert f"\n  - {named}: " in msg
 
 
-@pytest.mark.parametrize("stored,key", [
+@pytest.mark.parametrize(
+  "stored,key",
+  [
     ({"box": {"secret_path": {"X": "token.txt"}}}, "box.secret_path.X"),
     (
-        {"agent": {"claude": {"secret_path": {"X": "token.txt"}}}},
-        "agent.claude.secret_path.X",
+      {"agent": {"claude": {"secret_path": {"X": "token.txt"}}}},
+      "agent.claude.secret_path.X",
     ),
-], ids=["box-scope", "agent-node"])
+  ],
+  ids=["box-scope", "agent-node"],
+)
 def test_R147_a_bare_relative_secret_path_in_a_file_gets_the_two_readings_refusal(
-    tmp_path, stored, key,
+  tmp_path,
+  stored,
+  key,
 ):
-    """A file-stored ``secret_path.<VAR>`` refuses at read time with the two-readings message."""
-    # Mutation: exclude ``secret_path`` from ``_path_key_leaves`` → both go red.
-    from kanibako.settings.settings_resolve import SettingsError
+  """A file-stored ``secret_path.<VAR>`` refuses at read time with the two-readings message."""
+  # Mutation: exclude ``secret_path`` from ``_path_key_leaves`` → both go red.
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
-    msg = str(exc.value)
-    # ``_auth_snapshot`` writes the system file first, as settings-0.yaml.
-    assert f"{key} is set to 'token.txt' in {tmp_path / 'settings-0.yaml'}" in msg
-    assert "kanibako will not guess what it is relative to" in msg
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
+  msg = str(exc.value)
+  # ``_auth_snapshot`` writes the system file first, as settings-0.yaml.
+  assert f"{key} is set to 'token.txt' in {tmp_path / 'settings-0.yaml'}" in msg
+  assert "kanibako will not guess what it is relative to" in msg
 
 
 @pytest.mark.parametrize("value", [None, ""], ids=["none", "empty"])
 def test_R147_a_reset_or_empty_value_is_not_judged(tmp_path, value):
-    """``None`` and ``""`` are not path spellings, so the sweep passes them."""
-    _auth_snapshot(
-        "primary", tmp_path=tmp_path,
-        workset_file={"workset": {"auth": {"path": value}}},
-    )
+  """``None`` and ``""`` are not path spellings, so the sweep passes them."""
+  _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    workset_file={"workset": {"auth": {"path": value}}},
+  )
 
 
 def test_R147_an_AGENT_rooted_value_is_refused(tmp_path):
-    """``{$AGENT}`` expands to a bare name, so ``{$AGENT}/x`` is as relative as ``x``."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """``{$AGENT}`` expands to a bare name, so ``{$AGENT}/x`` is as relative as ``x``."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            workset_file={"workset": {"auth": {"path": "{$AGENT}/x"}}},
-        )
-    assert "workset.auth.path is set to '{$AGENT}/x'" in str(exc.value)
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      workset_file={"workset": {"auth": {"path": "{$AGENT}/x"}}},
+    )
+  assert "workset.auth.path is set to '{$AGENT}/x'" in str(exc.value)
 
 
 def test_R147_a_shadowed_value_is_judged_and_names_its_own_file(tmp_path):
-    """A bare relative under a winning absolute value still refuses, naming the lower file."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """A bare relative under a winning absolute value still refuses, naming the lower file."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            system_file={"agent": {"claude": {"canon": "rel"}}},
-            box_file={"agent": {"claude": {"canon": "/abs"}}},
-        )
-    msg = str(exc.value)
-    assert f"agent.claude.canon is set to 'rel' in {tmp_path / 'settings-0.yaml'}" in msg
-    assert "'/abs'" not in msg
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      system_file={"agent": {"claude": {"canon": "rel"}}},
+      box_file={"agent": {"claude": {"canon": "/abs"}}},
+    )
+  msg = str(exc.value)
+  assert f"agent.claude.canon is set to 'rel' in {tmp_path / 'settings-0.yaml'}" in msg
+  assert "'/abs'" not in msg
 
 
 def test_R147_a_pref_request_is_judged_and_names_its_file(tmp_path):
-    """A bare relative in a box file's ``pref.*`` request refuses, naming the box file."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """A bare relative in a box file's ``pref.*`` request refuses, naming the box file."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            box_file={"pref": {"agent": {"claude": {"secret_path": {"X": "t.txt"}}}}},
-        )
-    # No system or workset file, so the box file is the first written: settings-0.yaml.
-    assert (
-        f"agent.claude.secret_path.X is set to 't.txt' in {tmp_path / 'settings-0.yaml'}"
-        in str(exc.value)
+  with pytest.raises(SettingsError) as exc:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      box_file={"pref": {"agent": {"claude": {"secret_path": {"X": "t.txt"}}}}},
     )
+  # No system or workset file, so the box file is the first written: settings-0.yaml.
+  assert f"agent.claude.secret_path.X is set to 't.txt' in {tmp_path / 'settings-0.yaml'}" in str(
+    exc.value
+  )
 
 
 def test_R147_an_agent_file_level_names_the_file_it_carries(tmp_path):
-    """An agent-file root scalar rides the file's own level and names that file."""
-    # Mutation: label the agent level with no path → the refusal names no file.
-    from kanibako.settings.settings_resolve import SettingsError
+  """An agent-file root scalar rides the file's own level and names that file."""
+  # Mutation: label the agent level with no path → the refusal names no file.
+  from kanibako.settings.settings_resolve import SettingsError
 
-    agent_yaml = _write_yaml(
-        agent_settings_path(tmp_path / "agents", "claude"), {"self": {"canon": "rel"}},
+  agent_yaml = _write_yaml(
+    agent_settings_path(tmp_path / "agents", "claude"),
+    {"self": {"canon": "rel"}},
+  )
+  with pytest.raises(SettingsError) as exc:
+    build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=agent_yaml,
+      workset_path=None,
+      box_path=None,
+      behavior_floor={"bootstrap": "tmux"},
     )
-    with pytest.raises(SettingsError) as exc:
-        build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=agent_yaml, workset_path=None, box_path=None,
-            behavior_floor={"bootstrap": "tmux"},
-        )
-    assert f"agent.claude.canon is set to 'rel' in {agent_yaml}" in str(exc.value)
+  assert f"agent.claude.canon is set to 'rel' in {agent_yaml}" in str(exc.value)
 
 
 def test_p6d2_standalone_scrub_stray_agent_garbage(tmp_path):
-    """change 7: standalone → workset.auth.path None + meta.box.auth.workset_path
-    None + workset tier disabled → workset_source None (NO /<agent> garbage that
-    credsync would mkdir against host root). The None pins + resolver scrub are
-    belt-and-braces; both are load-bearing."""
-    a = resolve_auth_source(
-        _auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone"
-    )
-    assert a.workset_source is None
-    assert a.tier != "workset"
-    # SCRUB isolation (independent of the standalone None pin): a PRIMARY box that
-    # opts OUT of the workset tier resolves the meta anchor to a REAL /auth/claude
-    # root, but — tier != "workset" — the resolver MUST scrub workset_source to None
-    # so no non-workset AuthSource carries a stray source. Mutation: dropping the
-    # ``if tier != "workset": workset_source = None`` scrub surfaces /auth/claude here.
-    g = resolve_auth_source(
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path,
-            box_file={"box": {"auth": {"workset_enabled": False}}},
-        ),
-        mode="primary",
-    )
-    assert g.tier == "global"
-    assert g.workset_source is None
+  """change 7: standalone → workset.auth.path None + meta.box.auth.workset_path
+  None + workset tier disabled → workset_source None (NO /<agent> garbage that
+  credsync would mkdir against host root). The None pins + resolver scrub are
+  belt-and-braces; both are load-bearing."""
+  a = resolve_auth_source(_auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone")
+  assert a.workset_source is None
+  assert a.tier != "workset"
+  # SCRUB isolation (independent of the standalone None pin): a PRIMARY box that
+  # opts OUT of the workset tier resolves the meta anchor to a REAL /auth/claude
+  # root, but — tier != "workset" — the resolver MUST scrub workset_source to None
+  # so no non-workset AuthSource carries a stray source. Mutation: dropping the
+  # ``if tier != "workset": workset_source = None`` scrub surfaces /auth/claude here.
+  g = resolve_auth_source(
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      box_file={"box": {"auth": {"workset_enabled": False}}},
+    ),
+    mode="primary",
+  )
+  assert g.tier == "global"
+  assert g.workset_source is None
 
 
 # --------------------------------------------------------------------------- #
@@ -2349,357 +2625,359 @@ from kanibako.settings.settings_resolve import SettingsError as _SettingsError  
 
 
 def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveCtx:
-    """A ctx carrying the Layer-1 config foundation so {config.primary_workset}
-    resolves (mirrors settings_launch.resolve_inputs, #3a)."""
-    return ResolveCtx(
-        agent_name="claude",
-        workset_name=None,
-        host_home="/home/host",
-        xdg={"XDG_DATA_HOME": "/data"},
-        config={
-            "config.data": "/data",
-            "config.agents": "/data/agents",
-            "config.primary_workset": primary_workset,
-        },
-    )
+  """A ctx carrying the Layer-1 config foundation so {config.primary_workset}
+  resolves (mirrors settings_launch.resolve_inputs, #3a)."""
+  return ResolveCtx(
+    agent_name="claude",
+    workset_name=None,
+    host_home="/home/host",
+    xdg={"XDG_DATA_HOME": "/data"},
+    config={
+      "config.data": "/data",
+      "config.agents": "/data/agents",
+      "config.primary_workset": primary_workset,
+    },
+  )
 
 
 _WS_TOKEN_BY_MODE = {"primary": "__PRIMARY__", "standalone": "__STANDALONE__"}
 
 
 def _meta_snapshot(
-    mode: str, *, ws_root_literal: str | None = None, ws_name: str | None = None,
-    ctx=None,
+  mode: str,
+  *,
+  ws_root_literal: str | None = None,
+  ws_name: str | None = None,
+  ctx=None,
 ):
-    """Build a focused snapshot carrying ONLY the meta.runtime floor.
+  """Build a focused snapshot carrying ONLY the meta.runtime floor.
 
-    *ws_name* defaults to the reserved token for primary/standalone, or the
-    named-workset stand-in ``"kento"`` for named — the partition token threaded
-    into ``meta_runtime_floor`` (spec §1A ws_name).
-    """
-    if ws_name is None:
-        ws_name = _WS_TOKEN_BY_MODE.get(mode, "kento")
-    meta = meta_runtime_floor(
-        mode=mode, ws_name=ws_name, ws_root_literal=ws_root_literal,
-    )
-    return build_launch_snapshot(
-        agent_name="claude",
-        ctx=ctx if ctx is not None else _ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        meta_runtime=meta,
-    )
+  *ws_name* defaults to the reserved token for primary/standalone, or the
+  named-workset stand-in ``"kento"`` for named — the partition token threaded
+  into ``meta_runtime_floor`` (spec §1A ws_name).
+  """
+  if ws_name is None:
+    ws_name = _WS_TOKEN_BY_MODE.get(mode, "kento")
+  meta = meta_runtime_floor(
+    mode=mode,
+    ws_name=ws_name,
+    ws_root_literal=ws_root_literal,
+  )
+  return build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx if ctx is not None else _ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    meta_runtime=meta,
+  )
 
 
 def _meta_node(snap, *path):
-    node = snap
-    for seg in path:
-        node = dict.get(node, seg)
-    return node
+  node = snap
+  for seg in path:
+    node = dict.get(node, seg)
+  return node
 
 
 def test_meta_runtime_primary_ws_root_resolves_via_config_foundation():
-    """PRIMARY: meta.runtime.ws_root = {config.primary_workset} → the foundation
-    literal (spec §1A); meta.workset.path single-sources from it."""
-    snap = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
-    runtime = _meta_node(snap, "meta", "runtime")
-    assert dict.get(runtime, "ws_root") == "/data/primary_workset"
-    assert dict.get(runtime, "project_type") == "primary"
+  """PRIMARY: meta.runtime.ws_root = {config.primary_workset} → the foundation
+  literal (spec §1A); meta.workset.path single-sources from it."""
+  snap = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
+  runtime = _meta_node(snap, "meta", "runtime")
+  assert dict.get(runtime, "ws_root") == "/data/primary_workset"
+  assert dict.get(runtime, "project_type") == "primary"
 
 
 def test_meta_runtime_named_ws_root_is_detected_root_literal():
-    """NAMED: meta.runtime.ws_root = the detected workset root literal (spec §1A
-    ); meta.workset.settings derives under it."""
-    snap = _meta_snapshot("named", ws_root_literal="/code/kento")
-    runtime = _meta_node(snap, "meta", "runtime")
-    assert dict.get(runtime, "ws_root") == "/code/kento"
-    assert dict.get(runtime, "project_type") == "named"
+  """NAMED: meta.runtime.ws_root = the detected workset root literal (spec §1A
+  ); meta.workset.settings derives under it."""
+  snap = _meta_snapshot("named", ws_root_literal="/code/kento")
+  runtime = _meta_node(snap, "meta", "runtime")
+  assert dict.get(runtime, "ws_root") == "/code/kento"
+  assert dict.get(runtime, "project_type") == "named"
 
 
 def test_meta_runtime_standalone_ws_root_is_the_project_dir():
-    """STANDALONE: ws_root = the project dir literal, so the workset tier resolves
-    to <root>/workset.yaml (the ROOT file plays the WORKSET tier)."""
-    snap = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
-    runtime = _meta_node(snap, "meta", "runtime")
-    assert dict.get(runtime, "ws_root") == "/scratch/myproj"
-    assert dict.get(runtime, "project_type") == "standalone"
+  """STANDALONE: ws_root = the project dir literal, so the workset tier resolves
+  to <root>/workset.yaml (the ROOT file plays the WORKSET tier)."""
+  snap = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+  runtime = _meta_node(snap, "meta", "runtime")
+  assert dict.get(runtime, "ws_root") == "/scratch/myproj"
+  assert dict.get(runtime, "project_type") == "standalone"
 
 
 def test_meta_runtime_has_no_ws_settings_key_in_any_mode():
-    """⚑ ``meta.runtime.ws_settings`` is CUT from the keyspace (spec §1A,
-    "no longer needed (unified path)").  Under §0's CLOSED KEYSPACE an undeclared key
-    is NOT a key, so it must be ABSENT — not present-with-a-value, not an alias.
-    (Mutation: re-adding the floor line → RED.)"""
-    for snap in (
-        _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset")),
-        _meta_snapshot("named", ws_root_literal="/code/kento"),
-        _meta_snapshot("standalone", ws_root_literal="/scratch/myproj"),
-    ):
-        runtime = _meta_node(snap, "meta", "runtime")
-        assert not dict.__contains__(runtime, "ws_settings")
+  """⚑ ``meta.runtime.ws_settings`` is CUT from the keyspace (spec §1A,
+  "no longer needed (unified path)").  Under §0's CLOSED KEYSPACE an undeclared key
+  is NOT a key, so it must be ABSENT — not present-with-a-value, not an alias.
+  (Mutation: re-adding the floor line → RED.)"""
+  for snap in (
+    _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset")),
+    _meta_snapshot("named", ws_root_literal="/code/kento"),
+    _meta_snapshot("standalone", ws_root_literal="/scratch/myproj"),
+  ):
+    runtime = _meta_node(snap, "meta", "runtime")
+    assert not dict.__contains__(runtime, "ws_settings")
 
 
 def test_meta_workset_path_single_sources_from_ws_root_all_modes():
-    """meta.workset.path == meta.runtime.ws_root (UNIFORM all modes, spec §1A)."""
-    # primary
-    snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/pw"))
-    assert dict.get(_meta_node(snap_p, "meta", "workset"), "path") == "/data/pw"
-    assert (
-        dict.get(_meta_node(snap_p, "meta", "workset"), "path")
-        == dict.get(_meta_node(snap_p, "meta", "runtime"), "ws_root")
-    )
-    # named
-    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
-    assert dict.get(_meta_node(snap_n, "meta", "workset"), "path") == "/code/kento"
-    # standalone
-    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
-    assert dict.get(_meta_node(snap_s, "meta", "workset"), "path") == "/scratch/myproj"
+  """meta.workset.path == meta.runtime.ws_root (UNIFORM all modes, spec §1A)."""
+  # primary
+  snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/pw"))
+  assert dict.get(_meta_node(snap_p, "meta", "workset"), "path") == "/data/pw"
+  assert dict.get(_meta_node(snap_p, "meta", "workset"), "path") == dict.get(
+    _meta_node(snap_p, "meta", "runtime"), "ws_root"
+  )
+  # named
+  snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
+  assert dict.get(_meta_node(snap_n, "meta", "workset"), "path") == "/code/kento"
+  # standalone
+  snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+  assert dict.get(_meta_node(snap_s, "meta", "workset"), "path") == "/scratch/myproj"
 
 
 def test_meta_workset_settings_single_sources_all_modes():
-    """meta.workset.settings = {meta.runtime.ws_root}/workset.yaml, UNIFORM across ALL
-    modes incl. standalone (whose ROOT file plays the workset tier).
+  """meta.workset.settings = {meta.runtime.ws_root}/workset.yaml, UNIFORM across ALL
+  modes incl. standalone (whose ROOT file plays the workset tier).
 
-    ⚑ EQUIVALENCE BAR for the ``meta.runtime.ws_settings`` CUT: these EXPECTED VALUES
-    are UNCHANGED from before the cut.  The cut substituted a one-consumer alias's
-    definition into its single consumer, so it removed a hop WITHOUT moving a resolved
-    value — and this test, untouched across that change, is the proof."""
-    snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
-    assert (
-        dict.get(_meta_node(snap_p, "meta", "workset"), "settings")
-        == "/data/primary_workset/workset.yaml"
-    )
-    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
-    assert (
-        dict.get(_meta_node(snap_n, "meta", "workset"), "settings")
-        == "/code/kento/workset.yaml"
-    )
-    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
-    assert (
-        dict.get(_meta_node(snap_s, "meta", "workset"), "settings")
-        == "/scratch/myproj/workset.yaml"
-    )
+  ⚑ EQUIVALENCE BAR for the ``meta.runtime.ws_settings`` CUT: these EXPECTED VALUES
+  are UNCHANGED from before the cut.  The cut substituted a one-consumer alias's
+  definition into its single consumer, so it removed a hop WITHOUT moving a resolved
+  value — and this test, untouched across that change, is the proof."""
+  snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
+  assert (
+    dict.get(_meta_node(snap_p, "meta", "workset"), "settings")
+    == "/data/primary_workset/workset.yaml"
+  )
+  snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
+  assert dict.get(_meta_node(snap_n, "meta", "workset"), "settings") == "/code/kento/workset.yaml"
+  snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+  assert (
+    dict.get(_meta_node(snap_s, "meta", "workset"), "settings") == "/scratch/myproj/workset.yaml"
+  )
 
 
 def test_meta_runtime_ws_name_per_mode():
-    """meta.runtime.ws_name holds the workset partition TOKEN per mode (spec §1A,
-    2026-07-04): primary=__PRIMARY__ · named=<detected name> · standalone=
-    __STANDALONE__ (P6b — the token threaded in by the caller)."""
-    snap_p = _meta_snapshot(
-        "primary", ws_name="__PRIMARY__", ctx=_ctx_with_config()
-    )
-    assert dict.get(_meta_node(snap_p, "meta", "runtime"), "ws_name") == "__PRIMARY__"
-    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
-    assert dict.get(_meta_node(snap_n, "meta", "runtime"), "ws_name") == "kento"
-    snap_s = _meta_snapshot(
-        "standalone", ws_root_literal="/scratch/myproj", ws_name="__STANDALONE__"
-    )
-    assert (
-        dict.get(_meta_node(snap_s, "meta", "runtime"), "ws_name")
-        == "__STANDALONE__"
-    )
+  """meta.runtime.ws_name holds the workset partition TOKEN per mode (spec §1A,
+  2026-07-04): primary=__PRIMARY__ · named=<detected name> · standalone=
+  __STANDALONE__ (P6b — the token threaded in by the caller)."""
+  snap_p = _meta_snapshot("primary", ws_name="__PRIMARY__", ctx=_ctx_with_config())
+  assert dict.get(_meta_node(snap_p, "meta", "runtime"), "ws_name") == "__PRIMARY__"
+  snap_n = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
+  assert dict.get(_meta_node(snap_n, "meta", "runtime"), "ws_name") == "kento"
+  snap_s = _meta_snapshot(
+    "standalone", ws_root_literal="/scratch/myproj", ws_name="__STANDALONE__"
+  )
+  assert dict.get(_meta_node(snap_s, "meta", "runtime"), "ws_name") == "__STANDALONE__"
 
 
 def test_meta_workset_name_single_sources_from_ws_name_all_modes():
-    """meta.workset.name resolves VIA the {meta.runtime.ws_name} anchor (spec §2c
-    , 2026-07-04) — the SAME token per mode B2 formerly set directly.
-    Proving it is the ANCHOR: the resolved meta.workset.name EQUALS the resolved
-    meta.runtime.ws_name for every mode (would go RED if the anchor were absent /
-    the key reverted to a direct literal that could drift)."""
-    for mode, kw in (
-        ("primary", {"ws_name": "__PRIMARY__", "ctx": _ctx_with_config()}),
-        ("named", {"ws_root_literal": "/code/kento", "ws_name": "kento"}),
-        (
-            "standalone",
-            {"ws_root_literal": "/scratch/myproj", "ws_name": "__STANDALONE__"},
-        ),
-    ):
-        snap = _meta_snapshot(mode, **kw)
-        ws_name_resolved = dict.get(_meta_node(snap, "meta", "runtime"), "ws_name")
-        name = dict.get(_meta_node(snap, "meta", "workset"), "name")
-        # The anchor resolved to the runtime token (single source) …
-        assert name == ws_name_resolved
-        # … and to the exact expected literal for this mode.
-        assert name == kw["ws_name"]
+  """meta.workset.name resolves VIA the {meta.runtime.ws_name} anchor (spec §2c
+  , 2026-07-04) — the SAME token per mode B2 formerly set directly.
+  Proving it is the ANCHOR: the resolved meta.workset.name EQUALS the resolved
+  meta.runtime.ws_name for every mode (would go RED if the anchor were absent /
+  the key reverted to a direct literal that could drift)."""
+  for mode, kw in (
+    ("primary", {"ws_name": "__PRIMARY__", "ctx": _ctx_with_config()}),
+    ("named", {"ws_root_literal": "/code/kento", "ws_name": "kento"}),
+    (
+      "standalone",
+      {"ws_root_literal": "/scratch/myproj", "ws_name": "__STANDALONE__"},
+    ),
+  ):
+    snap = _meta_snapshot(mode, **kw)
+    ws_name_resolved = dict.get(_meta_node(snap, "meta", "runtime"), "ws_name")
+    name = dict.get(_meta_node(snap, "meta", "workset"), "name")
+    # The anchor resolved to the runtime token (single source) …
+    assert name == ws_name_resolved
+    # … and to the exact expected literal for this mode.
+    assert name == kw["ws_name"]
 
 
 def test_meta_workset_name_view_typed():
-    """MetaWorksetView.name reads the anchored partition token (str) — the anchor
-    surfaces at the view layer for every mode."""
-    import kanibako.settings.settings_views as views
+  """MetaWorksetView.name reads the anchored partition token (str) — the anchor
+  surfaces at the view layer for every mode."""
+  import kanibako.settings.settings_views as views
 
-    snap = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
-    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
-    assert ws.name == "kento"
+  snap = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
+  ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
+  assert ws.name == "kento"
 
 
 def test_meta_box_mode_equals_project_type_all_modes():
-    """meta.box.mode == meta.runtime.project_type (the RO identity anchor, spec
-    §2b)."""
-    for mode, lit, ctx in (
-        ("primary", None, _ctx_with_config()),
-        ("named", "/code/kento", None),
-        ("standalone", "/scratch/myproj", None),
-    ):
-        snap = _meta_snapshot(mode, ws_root_literal=lit, ctx=ctx)
-        assert dict.get(_meta_node(snap, "meta", "box"), "mode") == mode
-        assert (
-            dict.get(_meta_node(snap, "meta", "box"), "mode")
-            == dict.get(_meta_node(snap, "meta", "runtime"), "project_type")
-        )
+  """meta.box.mode == meta.runtime.project_type (the RO identity anchor, spec
+  §2b)."""
+  for mode, lit, ctx in (
+    ("primary", None, _ctx_with_config()),
+    ("named", "/code/kento", None),
+    ("standalone", "/scratch/myproj", None),
+  ):
+    snap = _meta_snapshot(mode, ws_root_literal=lit, ctx=ctx)
+    assert dict.get(_meta_node(snap, "meta", "box"), "mode") == mode
+    assert dict.get(_meta_node(snap, "meta", "box"), "mode") == dict.get(
+      _meta_node(snap, "meta", "runtime"), "project_type"
+    )
 
 
 def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
-    caplog: pytest.LogCaptureFixture,
-    tmp_path: Path,
+  caplog: pytest.LogCaptureFixture,
+  tmp_path: Path,
 ) -> None:
-    """END-TO-END (spec §0 / clause 4 — the brief's snapshot-level gate): a
-    hostile box settings file carrying a TOP-LEVEL ``meta:`` table
-    (``meta.box.mode`` / ``meta.workset.path``) must NOT reach the resolved
-    launch snapshot — the drop at assembly strips it, so the snapshot's meta
-    anchors are the FLOOR values (byte-identical), and a RO warning fires.
+  """END-TO-END (spec §0 / clause 4 — the brief's snapshot-level gate): a
+  hostile box settings file carrying a TOP-LEVEL ``meta:`` table
+  (``meta.box.mode`` / ``meta.workset.path``) must NOT reach the resolved
+  launch snapshot — the drop at assembly strips it, so the snapshot's meta
+  anchors are the FLOOR values (byte-identical), and a RO warning fires.
 
-    Baseline-RED at 4b3083b: the top-level ``meta:`` table was NOT dropped, so
-    the box file's ``meta.box.mode`` flowed into the snapshot and OVERRODE the
-    ``meta.runtime.project_type`` identity anchor. GREEN here — the floor's
-    ``standalone`` mode + ``/scratch/myproj`` workset path stand; the hostile
-    ``named`` / ``/evil`` values are gone. Both directions asserted
-    unconditionally (the meta table is a real present top-level table, so the
-    "anchor == floor value" assert is NON-vacuous — it fails if the drop is
-    removed). This pins the anchors against a hostile FILE end-to-end, which the
-    assembly-level pins (no snapshot) do not reach.
-    """
-    from kanibako.settings.config_io import dump_doc
+  Baseline-RED at 4b3083b: the top-level ``meta:`` table was NOT dropped, so
+  the box file's ``meta.box.mode`` flowed into the snapshot and OVERRODE the
+  ``meta.runtime.project_type`` identity anchor. GREEN here — the floor's
+  ``standalone`` mode + ``/scratch/myproj`` workset path stand; the hostile
+  ``named`` / ``/evil`` values are gone. Both directions asserted
+  unconditionally (the meta table is a real present top-level table, so the
+  "anchor == floor value" assert is NON-vacuous — it fails if the drop is
+  removed). This pins the anchors against a hostile FILE end-to-end, which the
+  assembly-level pins (no snapshot) do not reach.
+  """
+  from kanibako.settings.config_io import dump_doc
 
-    # A box file that tries to forge the identity anchors via a top-level meta:.
-    hostile = tmp_path / "hostile.yaml"
-    dump_doc(
-        hostile,
-        {
-            "box": {"image": "img"},  # a legitimate same-scope key — must survive
-            "meta": {
-                "box": {"mode": "named"},          # forge the RO mode anchor
-                "workset": {"path": "/evil"},      # forge the RO workset path
-            },
-        },
+  # A box file that tries to forge the identity anchors via a top-level meta:.
+  hostile = tmp_path / "hostile.yaml"
+  dump_doc(
+    hostile,
+    {
+      "box": {"image": "img"},  # a legitimate same-scope key — must survive
+      "meta": {
+        "box": {"mode": "named"},  # forge the RO mode anchor
+        "workset": {"path": "/evil"},  # forge the RO workset path
+      },
+    },
+  )
+  meta = meta_runtime_floor(
+    mode="standalone",
+    ws_name="__STANDALONE__",
+    ws_root_literal="/scratch/myproj",
+  )
+  with caplog.at_level("WARNING"):
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=hostile,
+      meta_runtime=meta,
     )
-    meta = meta_runtime_floor(
-        mode="standalone", ws_name="__STANDALONE__",
-        ws_root_literal="/scratch/myproj",
-    )
-    with caplog.at_level("WARNING"):
-        snap = build_launch_snapshot(
-            agent_name="claude",
-            ctx=_ctx(),
-            system_path=None,
-            agent_path=None,
-            workset_path=None,
-            box_path=hostile,
-            meta_runtime=meta,
-        )
-    # The FLOOR anchors stand byte-identical — the hostile values never landed.
-    assert dict.get(_meta_node(snap, "meta", "box"), "mode") == "standalone"
-    assert dict.get(_meta_node(snap, "meta", "workset"), "path") == "/scratch/myproj"
-    assert (
-        dict.get(_meta_node(snap, "meta", "box"), "mode")
-        == dict.get(_meta_node(snap, "meta", "runtime"), "project_type")
-    )
-    # The box's legitimate same-scope key still flows (the drop is surgical).
-    assert dict.get(_meta_node(snap, "box"), "image") == "img"
-    # The RO-drop warning fired, naming the hostile file + the meta token.
-    meta_warns = [
-        r.getMessage()
-        for r in caplog.records
-        if r.levelname == "WARNING"
-        and "meta" in r.getMessage()
-        and str(hostile) in r.getMessage()
-    ]
-    assert meta_warns, [r.getMessage() for r in caplog.records]
+  # The FLOOR anchors stand byte-identical — the hostile values never landed.
+  assert dict.get(_meta_node(snap, "meta", "box"), "mode") == "standalone"
+  assert dict.get(_meta_node(snap, "meta", "workset"), "path") == "/scratch/myproj"
+  assert dict.get(_meta_node(snap, "meta", "box"), "mode") == dict.get(
+    _meta_node(snap, "meta", "runtime"), "project_type"
+  )
+  # The box's legitimate same-scope key still flows (the drop is surgical).
+  assert dict.get(_meta_node(snap, "box"), "image") == "img"
+  # The RO-drop warning fired, naming the hostile file + the meta token.
+  meta_warns = [
+    r.getMessage()
+    for r in caplog.records
+    if r.levelname == "WARNING" and "meta" in r.getMessage() and str(hostile) in r.getMessage()
+  ]
+  assert meta_warns, [r.getMessage() for r in caplog.records]
 
 
 def test_meta_views_read_runtime_typed():
-    """MetaRuntimeView / MetaBoxView / MetaWorksetView read the materialized keys
-    at their EXACT types (Path / Path|None / str)."""
-    from pathlib import Path as _Path
+  """MetaRuntimeView / MetaBoxView / MetaWorksetView read the materialized keys
+  at their EXACT types (Path / Path|None / str)."""
+  from pathlib import Path as _Path
 
-    import kanibako.settings.settings_views as views
+  import kanibako.settings.settings_views as views
 
-    # named: every field present + typed.
-    snap = _meta_snapshot("named", ws_root_literal="/code/kento")
-    rt = views.MetaRuntimeView(_meta_node(snap, "meta", "runtime"))
-    assert rt.ws_root == _Path("/code/kento")
-    assert rt.project_type == "named"
-    # The view carries NO ws_settings field — the key is CUT (spec §1A);
-    # the workset-tier FILE is MetaWorksetView.settings, below.
-    assert not hasattr(views.MetaRuntimeView, "ws_settings")
-    bx = views.MetaBoxView(_meta_node(snap, "meta", "box"))
-    assert bx.mode == "named"
-    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
-    assert ws.path == _Path("/code/kento")
-    assert ws.settings == _Path("/code/kento/workset.yaml")
+  # named: every field present + typed.
+  snap = _meta_snapshot("named", ws_root_literal="/code/kento")
+  rt = views.MetaRuntimeView(_meta_node(snap, "meta", "runtime"))
+  assert rt.ws_root == _Path("/code/kento")
+  assert rt.project_type == "named"
+  # The view carries NO ws_settings field — the key is CUT (spec §1A);
+  # the workset-tier FILE is MetaWorksetView.settings, below.
+  assert not hasattr(views.MetaRuntimeView, "ws_settings")
+  bx = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+  assert bx.mode == "named"
+  ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
+  assert ws.path == _Path("/code/kento")
+  assert ws.settings == _Path("/code/kento/workset.yaml")
 
-    # standalone: workset.settings is the <root>/workset.yaml the ROOT file plays as
-    # the WORKSET tier, NOT None.
-    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
-    rt_s = views.MetaRuntimeView(_meta_node(snap_s, "meta", "runtime"))
-    assert rt_s.ws_root == _Path("/scratch/myproj")
-    ws_s = views.MetaWorksetView(_meta_node(snap_s, "meta", "workset"))
-    assert ws_s.settings == _Path("/scratch/myproj/workset.yaml")
+  # standalone: workset.settings is the <root>/workset.yaml the ROOT file plays as
+  # the WORKSET tier, NOT None.
+  snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+  rt_s = views.MetaRuntimeView(_meta_node(snap_s, "meta", "runtime"))
+  assert rt_s.ws_root == _Path("/scratch/myproj")
+  ws_s = views.MetaWorksetView(_meta_node(snap_s, "meta", "workset"))
+  assert ws_s.settings == _Path("/scratch/myproj/workset.yaml")
 
 
 def test_meta_runtime_floor_requires_literal_for_non_primary():
-    """A named/standalone floor needs the resolved ws_root literal (only primary
-    uses the {config.primary_workset} reference)."""
-    with pytest.raises(_SettingsError):
-        meta_runtime_floor(mode="named", ws_name="kento")
-    with pytest.raises(_SettingsError):
-        meta_runtime_floor(mode="standalone", ws_name="__STANDALONE__")
-    # primary ignores the literal.
-    floor = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
-    assert floor["meta.runtime.ws_root"] == "{config.primary_workset}"
+  """A named/standalone floor needs the resolved ws_root literal (only primary
+  uses the {config.primary_workset} reference)."""
+  with pytest.raises(_SettingsError):
+    meta_runtime_floor(mode="named", ws_name="kento")
+  with pytest.raises(_SettingsError):
+    meta_runtime_floor(mode="standalone", ws_name="__STANDALONE__")
+  # primary ignores the literal.
+  floor = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
+  assert floor["meta.runtime.ws_root"] == "{config.primary_workset}"
 
 
 @pytest.mark.parametrize("mode", ["primary", "named", "standalone"])
 def test_meta_runtime_floor_carries_the_host_files(mode, tmp_home):
-    """Spec §1A: every mode's floor names the three HOST files, at the paths the reads open
-    (host ``XDG_CONFIG_HOME`` honored for the user file)."""
-    from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
+  """Spec §1A: every mode's floor names the three HOST files, at the paths the reads open
+  (host ``XDG_CONFIG_HOME`` honored for the user file)."""
+  from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
 
-    site = "/etc/kanibako"
-    floor = meta_runtime_floor(mode=mode, ws_name="__TOKEN__", ws_root_literal="/root")
-    assert {k: v for k, v in floor.items() if k.startswith(("meta.runtime.user.",
-                                                            "meta.runtime.admin."))} == {
-        "meta.runtime.user.config": str(tmp_home / "config" / CONFIG_FILENAME),
-        "meta.runtime.admin.config": f"{site}/{SITE_CONFIG_FILENAME}",
-        "meta.runtime.admin.settings": f"{site}/{SITE_SETTINGS_FILENAME}",
-    }
-
+  site = "/etc/kanibako"
+  floor = meta_runtime_floor(mode=mode, ws_name="__TOKEN__", ws_root_literal="/root")
+  assert {
+    k: v for k, v in floor.items() if k.startswith(("meta.runtime.user.", "meta.runtime.admin."))
+  } == {
+    "meta.runtime.user.config": str(tmp_home / "config" / CONFIG_FILENAME),
+    "meta.runtime.admin.config": f"{site}/{SITE_CONFIG_FILENAME}",
+    "meta.runtime.admin.settings": f"{site}/{SITE_SETTINGS_FILENAME}",
+  }
 
 
 def test_meta_runtime_coexists_with_auth_chain():
-    """The B1 meta.runtime floor + the auth chain BOTH inject under meta.box.* —
-    distinct leaves, no collision (the main launch path passes both)."""
-    meta = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
-    chain = auth_chain_floor(mode="primary", agent_name="claude")
-    meta_id = _mid_floor(
-        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, agent_name="claude",
-        agent_real_name="claude", agent_auth_share_support=True,
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx_with_config("/data/pw"),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        meta_runtime=meta, auth_chain=chain, meta_identity=meta_id,
-    )
-    box_meta = _meta_node(snap, "meta", "box")
-    # B1 identity anchor present; the auth mirror capability resolved.
-    assert dict.get(box_meta, "mode") == "primary"
-    # auth still resolves to sharing (the chain is untouched by B1).
-    a = resolve_auth_source(snap, mode="primary")
-    assert a.creds_shared is True
+  """The B1 meta.runtime floor + the auth chain BOTH inject under meta.box.* —
+  distinct leaves, no collision (the main launch path passes both)."""
+  meta = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
+  chain = auth_chain_floor(mode="primary", agent_name="claude")
+  meta_id = _mid_floor(
+    box_name="b",
+    project_path="/p",
+    inbox="/i",
+    share_global="/sg",
+    share_workset=None,
+    agent_name="claude",
+    agent_real_name="claude",
+    agent_auth_share_support=True,
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx_with_config("/data/pw"),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    meta_runtime=meta,
+    auth_chain=chain,
+    meta_identity=meta_id,
+  )
+  box_meta = _meta_node(snap, "meta", "box")
+  # B1 identity anchor present; the auth mirror capability resolved.
+  assert dict.get(box_meta, "mode") == "primary"
+  # auth still resolves to sharing (the chain is untouched by B1).
+  a = resolve_auth_source(snap, mode="primary")
+  assert a.creds_shared is True
 
 
 # --------------------------------------------------------------------------- #
@@ -2711,199 +2989,209 @@ from kanibako.settings.settings_launch import meta_identity_floor  # noqa: E402
 
 
 def _identity_snapshot(
-    *,
-    box_name="droste",
-    project_path="/code/droste",
-    inbox="/data/channels/mailboxes/__PRIMARY__/droste",
-    share_global="/data/channels/share/__PRIMARY__/droste",
-    share_workset="/code/kento/channels/share/droste",
-    box_settings=None,
-    agent_name="claude",
-    default_categories=None,
-    ctx=None,
+  *,
+  box_name="droste",
+  project_path="/code/droste",
+  inbox="/data/channels/mailboxes/__PRIMARY__/droste",
+  share_global="/data/channels/share/__PRIMARY__/droste",
+  share_workset="/code/kento/channels/share/droste",
+  box_settings=None,
+  agent_name="claude",
+  default_categories=None,
+  ctx=None,
 ):
-    """Build a snapshot carrying the B2 identity floor + optional {meta.*}-routed
-    core-bind default tables (matching core-defaults.yaml's meta_ref entries)."""
-    ident = meta_identity_floor(
-        box_name=box_name,
-        project_path=project_path,
-        inbox=inbox,
-        share_global=share_global,
-        share_workset=share_workset,
-        box_settings=box_settings,
-        agent_name=agent_name,
-        agent_real_name=agent_name,
-    )
-    return build_launch_snapshot(
-        agent_name="claude",
-        ctx=ctx if ctx is not None else _ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        meta_identity=ident,
-        default_categories=default_categories,
-    )
+  """Build a snapshot carrying the B2 identity floor + optional {meta.*}-routed
+  core-bind default tables (matching core-defaults.yaml's meta_ref entries)."""
+  ident = meta_identity_floor(
+    box_name=box_name,
+    project_path=project_path,
+    inbox=inbox,
+    share_global=share_global,
+    share_workset=share_workset,
+    box_settings=box_settings,
+    agent_name=agent_name,
+    agent_real_name=agent_name,
+  )
+  return build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx if ctx is not None else _ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    meta_identity=ident,
+    default_categories=default_categories,
+  )
 
 
 def test_meta_identity_box_keys_materialized():
-    """meta.box.{name,workspace,inbox,share_global,share_workset} are REAL keys
-    holding the resolved literals (spec §2c). (meta.workset.name is now a
-    meta_runtime_floor anchor — covered in the B1 block.)"""
-    snap = _identity_snapshot()
-    mb = _meta_node(snap, "meta", "box")
-    assert dict.get(mb, "name") == "droste"
-    assert dict.get(mb, "workspace") == "/code/droste"
-    assert dict.get(mb, "inbox") == "/data/channels/mailboxes/__PRIMARY__/droste"
-    assert dict.get(mb, "share_global") == "/data/channels/share/__PRIMARY__/droste"
-    assert dict.get(mb, "share_workset") == "/code/kento/channels/share/droste"
-    # B2 no longer sets meta.workset.name (it anchors into meta.runtime.ws_name,
-    # which this identity-only snapshot does not carry) — so there is no
-    # meta.workset.name in an identity-only snapshot.
-    workset_node = dict.get(_meta_node(snap, "meta"), "workset")
-    assert workset_node is None or not dict.__contains__(workset_node, "name")
+  """meta.box.{name,workspace,inbox,share_global,share_workset} are REAL keys
+  holding the resolved literals (spec §2c). (meta.workset.name is now a
+  meta_runtime_floor anchor — covered in the B1 block.)"""
+  snap = _identity_snapshot()
+  mb = _meta_node(snap, "meta", "box")
+  assert dict.get(mb, "name") == "droste"
+  assert dict.get(mb, "workspace") == "/code/droste"
+  assert dict.get(mb, "inbox") == "/data/channels/mailboxes/__PRIMARY__/droste"
+  assert dict.get(mb, "share_global") == "/data/channels/share/__PRIMARY__/droste"
+  assert dict.get(mb, "share_workset") == "/code/kento/channels/share/droste"
+  # B2 no longer sets meta.workset.name (it anchors into meta.runtime.ws_name,
+  # which this identity-only snapshot does not carry) — so there is no
+  # meta.workset.name in an identity-only snapshot.
+  workset_node = dict.get(_meta_node(snap, "meta"), "workset")
+  assert workset_node is None or not dict.__contains__(workset_node, "name")
 
 
 def test_meta_identity_agent_name_under_discriminated_slot():
-    """meta.agent.<a>.name is materialized under the agent's discriminated slot
-    (spec §2d)."""
-    snap = _identity_snapshot(agent_name="claude")
-    ma = _meta_node(snap, "meta", "agent", "claude")
-    assert dict.get(ma, "name") == "claude"
+  """meta.agent.<a>.name is materialized under the agent's discriminated slot
+  (spec §2d)."""
+  snap = _identity_snapshot(agent_name="claude")
+  ma = _meta_node(snap, "meta", "agent", "claude")
+  assert dict.get(ma, "name") == "claude"
 
 
 class TestMetaAgentNameIsTheStoreDirname:
-    """``meta.agent.<a>.name`` NAMES THE STORE DIR, so it carries the ``+``
-    spelling while its own key DISCRIMINATOR stays canonical (``℘``).
+  """``meta.agent.<a>.name`` NAMES THE STORE DIR, so it carries the ``+``
+  spelling while its own key DISCRIMINATOR stays canonical (``℘``).
 
-    ⚑ This is not a preference — it is what §2d's formula
-    ``meta.agent.<a>.path = {config.agents}/{meta.agent.<a>.name}`` REQUIRES. Spell
-    the value with ``℘`` and the formula composes a directory that is not there.
-    A bare agent cannot show any of it (node == harness ⇒ one string), which is
-    why the persona case carries the weight and the bare case is the control.
+  ⚑ This is not a preference — it is what §2d's formula
+  ``meta.agent.<a>.path = {config.agents}/{meta.agent.<a>.name}`` REQUIRES. Spell
+  the value with ``℘`` and the formula composes a directory that is not there.
+  A bare agent cannot show any of it (node == harness ⇒ one string), which is
+  why the persona case carries the weight and the bare case is the control.
+  """
+
+  def _floor(self, node, real=None):
+    return meta_identity_floor(
+      box_name="x",
+      project_path="/p",
+      inbox="/i",
+      share_global="/s",
+      share_workset=None,
+      agent_name=node,
+      agent_real_name=real,
+    )
+
+  def test_the_persona_name_value_is_the_plus_spelling(self):
+    """LITERALS on both sides — this is the assertion that pins the spelling,
+    so it must not derive either half from ``store_dirname``."""
+    floor = self._floor("navigator℘claude")
+    # The KEY keeps ``℘`` (it is a key path); the VALUE is the store dirname.
+    assert floor["meta.agent.navigator℘claude.name"] == "navigator+claude"
+
+  def test_the_spec_formula_composes(self):
+    """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
+    ``{config.agents}/%tolower({meta.agent.<a>.name})%``.  Asserting
+    the COMPOSITION reds if EITHER half drifts, which a literal on one half
+    alone would not.  ⚑ The ``tolower`` is part of the rule and belongs in the
+    assertion: leave it out and a case-carrying name reads as a drift.
     """
+    for node, real in (
+      ("navigator℘claude", None),
+      ("claude", None),
+      ("kirobo", "Kirobo"),
+      ("navigator℘kirobo", "Kirobo"),
+    ):
+      floor = self._floor(node, real)
+      name = floor[f"meta.agent.{node}.name"]
+      assert f"{{config.agents}}/{name.lower()}" == floor[f"meta.agent.{node}.path"], (node, real)
 
-    def _floor(self, node, real=None):
-        return meta_identity_floor(
-            box_name="x", project_path="/p", inbox="/i", share_global="/s",
-            share_workset=None, agent_name=node, agent_real_name=real,
-        )
+  def test_a_bare_agent_is_byte_identical(self):
+    """THE NO-CHANGE CONTROL: ``store_dirname`` is identity on a name with no
+    separator, so a bare agent's value is exactly what it always was."""
+    assert self._floor("claude")["meta.agent.claude.name"] == "claude"
 
-    def test_the_persona_name_value_is_the_plus_spelling(self):
-        """LITERALS on both sides — this is the assertion that pins the spelling,
-        so it must not derive either half from ``store_dirname``."""
-        floor = self._floor("navigator℘claude")
-        # The KEY keeps ``℘`` (it is a key path); the VALUE is the store dirname.
-        assert floor["meta.agent.navigator℘claude.name"] == "navigator+claude"
+  def test_the_name_KEEPS_the_declared_case_while_the_key_is_the_node(self):
+    """🛑 THE KEY IS THE FOLD OF THE VALUE, NOT A SECOND SPELLING OF IT.
 
-    def test_the_spec_formula_composes(self):
-        """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
-        ``{config.agents}/%tolower({meta.agent.<a>.name})%``.  Asserting
-        the COMPOSITION reds if EITHER half drifts, which a literal on one half
-        alone would not.  ⚑ The ``tolower`` is part of the rule and belongs in the
-        assertion: leave it out and a case-carrying name reads as a drift.
-        """
-        for node, real in (
-            ("navigator℘claude", None),
-            ("claude", None),
-            ("kirobo", "Kirobo"),
-            ("navigator℘kirobo", "Kirobo"),
-        ):
-            floor = self._floor(node, real)
-            name = floor[f"meta.agent.{node}.name"]
-            assert (
-                f"{{config.agents}}/{name.lower()}" == floor[f"meta.agent.{node}.path"]
-            ), (node, real)
+    keyspec §0 "An agent's canonical case is carried by its _name_": an agent's canonical case
+    lives in its NAME, and
+    ``meta.agent.<a>.name`` is one of the two values named as carrying it.
+    Materializing the already-folded node here instead would leave the plugin's
+    declared spelling in NO stored carrier — and would satisfy §2d's
+    ``%tolower(…)%``, written precisely to keep the name case-carrying, with a
+    no-op.  That is the retired fold-to-store cure re-spelled.
+    """
+    floor = self._floor("kirobo", "Kirobo")
+    assert floor["meta.agent.kirobo.name"] == "Kirobo"
+    assert floor["meta.agent.kirobo.path"] == "{config.agents}/kirobo"
 
-    def test_a_bare_agent_is_byte_identical(self):
-        """THE NO-CHANGE CONTROL: ``store_dirname`` is identity on a name with no
-        separator, so a bare agent's value is exactly what it always was."""
-        assert self._floor("claude")["meta.agent.claude.name"] == "claude"
+  def test_only_the_HARNESS_segment_takes_the_declared_case(self):
+    """A persona segment is the user's; neither ruling reaches it (``Q35``).
 
-    def test_the_name_KEEPS_the_declared_case_while_the_key_is_the_node(self):
-        """🛑 THE KEY IS THE FOLD OF THE VALUE, NOT A SECOND SPELLING OF IT.
-
-        keyspec §0 "An agent's canonical case is carried by its _name_": an agent's canonical case
-        lives in its NAME, and
-        ``meta.agent.<a>.name`` is one of the two values named as carrying it.
-        Materializing the already-folded node here instead would leave the plugin's
-        declared spelling in NO stored carrier — and would satisfy §2d's
-        ``%tolower(…)%``, written precisely to keep the name case-carrying, with a
-        no-op.  That is the retired fold-to-store cure re-spelled.
-        """
-        floor = self._floor("kirobo", "Kirobo")
-        assert floor["meta.agent.kirobo.name"] == "Kirobo"
-        assert floor["meta.agent.kirobo.path"] == "{config.agents}/kirobo"
-
-    def test_only_the_HARNESS_segment_takes_the_declared_case(self):
-        """A persona segment is the user's; neither ruling reaches it (``Q35``).
-
-        And the splice is IDEMPOTENT — every existing caller hands the whole node
-        over as *agent_real_name*, so a bare declared name and a whole ref must
-        answer the same.
-        """
-        assert (
-            self._floor("navigator℘kirobo", "Kirobo")["meta.agent.navigator℘kirobo.name"]
-            == "navigator+Kirobo"
-        )
-        assert (
-            self._floor("navigator℘kirobo", "navigator℘Kirobo")[
-                "meta.agent.navigator℘kirobo.name"
-            ]
-            == "navigator+Kirobo"
-        )
+    And the splice is IDEMPOTENT — every existing caller hands the whole node
+    over as *agent_real_name*, so a bare declared name and a whole ref must
+    answer the same.
+    """
+    assert (
+      self._floor("navigator℘kirobo", "Kirobo")["meta.agent.navigator℘kirobo.name"]
+      == "navigator+Kirobo"
+    )
+    assert (
+      self._floor("navigator℘kirobo", "navigator℘Kirobo")["meta.agent.navigator℘kirobo.name"]
+      == "navigator+Kirobo"
+    )
 
 
 class TestMetaAgentPath:
-    """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d) that is also
-    §2a's agent DECLARATION ROOT: an abstract-category source stores
-    ``{meta.agent.<a>.path}/<category>/<leaf>``, so this key MUST resolve or every
-    such source dangles."""
+  """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d) that is also
+  §2a's agent DECLARATION ROOT: an abstract-category source stores
+  ``{meta.agent.<a>.path}/<category>/<leaf>``, so this key MUST resolve or every
+  such source dangles."""
 
-    def test_meta_agent_path_materialized_for_node_and_harness(self):
-        """A PERSONA materializes BOTH slots. ``load_common`` keys its entries on
-        the plugin's own ``Target.name`` (the HARNESS), while this floor is built
-        with the ACTIVE NODE — so a node-only materialization would leave the
-        harness-keyed refs dangling.
+  def test_meta_agent_path_materialized_for_node_and_harness(self):
+    """A PERSONA materializes BOTH slots. ``load_common`` keys its entries on
+    the plugin's own ``Target.name`` (the HARNESS), while this floor is built
+    with the ACTIVE NODE — so a node-only materialization would leave the
+    harness-keyed refs dangling.
 
-        (Mutation: dropping the harness from the loop → the harness key is absent
-        → RED, and a persona's ``common`` ref would resolve to nothing.)"""
-        floor = meta_identity_floor(
-            box_name="x", project_path="/p", inbox="/i", share_global="/s",
-            share_workset=None, agent_name="navigator℘claude",
-        )
-        # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY, AND BOTH LITERALS ARE THE POINT:
-        # the KEY is a key path so the node stays canonical (``℘``); the VALUE is a
-        # DIRECTORY so it carries the ``+`` store spelling.
-        assert floor["meta.agent.navigator℘claude.path"] == (
-            "{config.agents}/navigator+claude"
-        )
-        assert floor["meta.agent.claude.path"] == "{config.agents}/claude"
+    (Mutation: dropping the harness from the loop → the harness key is absent
+    → RED, and a persona's ``common`` ref would resolve to nothing.)"""
+    floor = meta_identity_floor(
+      box_name="x",
+      project_path="/p",
+      inbox="/i",
+      share_global="/s",
+      share_workset=None,
+      agent_name="navigator℘claude",
+    )
+    # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY, AND BOTH LITERALS ARE THE POINT:
+    # the KEY is a key path so the node stays canonical (``℘``); the VALUE is a
+    # DIRECTORY so it carries the ``+`` store spelling.
+    assert floor["meta.agent.navigator℘claude.path"] == ("{config.agents}/navigator+claude")
+    assert floor["meta.agent.claude.path"] == "{config.agents}/claude"
 
-    def test_bare_agent_materializes_one_slot(self):
-        """node == harness for a bare agent → ONE entry, byte-identical to the
-        pre-P3 single-slot shape."""
-        floor = meta_identity_floor(
-            box_name="x", project_path="/p", inbox="/i", share_global="/s",
-            share_workset=None, agent_name="claude",
-        )
-        paths = {k for k in floor if k.endswith(".path")}
-        assert paths == {"meta.agent.claude.path"}
+  def test_bare_agent_materializes_one_slot(self):
+    """node == harness for a bare agent → ONE entry, byte-identical to the
+    pre-P3 single-slot shape."""
+    floor = meta_identity_floor(
+      box_name="x",
+      project_path="/p",
+      inbox="/i",
+      share_global="/s",
+      share_workset=None,
+      agent_name="claude",
+    )
+    paths = {k for k in floor if k.endswith(".path")}
+    assert paths == {"meta.agent.claude.path"}
 
-    def test_meta_agent_path_resolves_to_the_store_dir(self):
-        """It RESOLVES (the whole point): the {config.agents} chain expands to the
-        real per-agent store dir in the built snapshot.  The ctx carries the
-        Layer-1 ``config.agents`` foundation, as every live caller's does
-        (``resolve_inputs`` / ``_print_effective_shares``)."""
-        snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
-        ma = _meta_node(snap, "meta", "agent", "claude")
-        assert dict.get(ma, "path") == "/data/agents/claude"
+  def test_meta_agent_path_resolves_to_the_store_dir(self):
+    """It RESOLVES (the whole point): the {config.agents} chain expands to the
+    real per-agent store dir in the built snapshot.  The ctx carries the
+    Layer-1 ``config.agents`` foundation, as every live caller's does
+    (``resolve_inputs`` / ``_print_effective_shares``)."""
+    snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
+    ma = _meta_node(snap, "meta", "agent", "claude")
+    assert dict.get(ma, "path") == "/data/agents/claude"
 
-    def test_view_exposes_path(self):
-        """``MetaAgentView.path`` is materialized now — its docstring no longer
-        defers it."""
-        from kanibako.settings import settings_views as views
+  def test_view_exposes_path(self):
+    """``MetaAgentView.path`` is materialized now — its docstring no longer
+    defers it."""
+    from kanibako.settings import settings_views as views
 
-        snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
-        ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
-        assert ma.path == "/data/agents/claude"
+    snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
+    ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+    assert ma.path == "/data/agents/claude"
 
 
 # --------------------------------------------------------------------------- #
@@ -2914,421 +3202,466 @@ class TestMetaAgentPath:
 # --------------------------------------------------------------------------- #
 
 from kanibako.settings.settings_launch import (  # noqa: E402
-    meta_agent_grammar,
-    meta_agent_grammar_floor,
+  meta_agent_grammar,
+  meta_agent_grammar_floor,
 )
 
 
 class TestMetaAgentGrammarFloor:
-    """The SINGLE descriptor→keyspace seam materializes each shipped plugin's
-    launch grammar EXACTLY as its descriptor (⟵ its ``*-defaults.yaml``)
-    declares it — values cross-checked against the descriptor so a yaml edit
-    that changes the grammar changes this floor with it (one seam, no drift)."""
+  """The SINGLE descriptor→keyspace seam materializes each shipped plugin's
+  launch grammar EXACTLY as its descriptor (⟵ its ``*-defaults.yaml``)
+  declares it — values cross-checked against the descriptor so a yaml edit
+  that changes the grammar changes this floor with it (one seam, no drift)."""
 
-    def test_claude_mode_and_exec(self):
-        from kanibako.plugins.claude.target import ClaudeTarget
+  def test_claude_mode_and_exec(self):
+    from kanibako.plugins.claude.target import ClaudeTarget
 
-        desc = ClaudeTarget().descriptor
-        floor = meta_agent_grammar_floor("claude", desc)
-        assert floor["meta.agent.claude.mode"] == {
-            "start": [], "continue": ["--continue"],
-        }
-        assert floor["meta.agent.claude.exec"] == ["-p"]
-        # The values ARE the descriptor's (tuples normalized to lists).
-        assert floor["meta.agent.claude.mode"] == {
-            k: list(v) for k, v in desc.mode.items()
-        }
-        assert floor["meta.agent.claude.exec"] == list(
-            desc.operations["exec"].fragment
-        )
+    desc = ClaudeTarget().descriptor
+    floor = meta_agent_grammar_floor("claude", desc)
+    assert floor["meta.agent.claude.mode"] == {
+      "start": [],
+      "continue": ["--continue"],
+    }
+    assert floor["meta.agent.claude.exec"] == ["-p"]
+    # The values ARE the descriptor's (tuples normalized to lists).
+    assert floor["meta.agent.claude.mode"] == {k: list(v) for k, v in desc.mode.items()}
+    assert floor["meta.agent.claude.exec"] == list(desc.operations["exec"].fragment)
 
-    def test_codex_mode_and_exec(self):
-        from kanibako.plugins.codex.target import CodexTarget
+  def test_codex_mode_and_exec(self):
+    from kanibako.plugins.codex.target import CodexTarget
 
-        floor = meta_agent_grammar_floor("codex", CodexTarget().descriptor)
-        assert floor["meta.agent.codex.mode"] == {
-            "start": [], "continue": ["resume", "--last"],
-        }
-        assert floor["meta.agent.codex.exec"] == ["exec"]
+    floor = meta_agent_grammar_floor("codex", CodexTarget().descriptor)
+    assert floor["meta.agent.codex.mode"] == {
+      "start": [],
+      "continue": ["resume", "--last"],
+    }
+    assert floor["meta.agent.codex.exec"] == ["exec"]
 
-    def test_goose_mode_and_exec(self):
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_goose_mode_and_exec(self):
+    from kanibako.plugins.goose.target import GooseTarget
 
-        floor = meta_agent_grammar_floor("goose", GooseTarget().descriptor)
-        assert floor["meta.agent.goose.mode"] == {
-            "start": ["session"], "continue": ["session", "--resume"],
-        }
-        assert floor["meta.agent.goose.exec"] == ["run", "--no-session", "-t"]
+    floor = meta_agent_grammar_floor("goose", GooseTarget().descriptor)
+    assert floor["meta.agent.goose.mode"] == {
+      "start": ["session"],
+      "continue": ["session", "--resume"],
+    }
+    assert floor["meta.agent.goose.exec"] == ["run", "--no-session", "-t"]
 
-    def test_descriptor_less_agent_materializes_nothing(self):
-        assert meta_agent_grammar_floor("whatever", None) == {}
+  def test_descriptor_less_agent_materializes_nothing(self):
+    assert meta_agent_grammar_floor("whatever", None) == {}
 
-    def test_shell_materializes_empty_mode(self):
-        """D2/D4: the shell grammar IS EMPTY (``{}``), not absent.
+  def test_shell_materializes_empty_mode(self):
+    """D2/D4: the shell grammar IS EMPTY (``{}``), not absent.
 
-        Spec §2d fence: ``meta.agent.shell.mode | {}`` is a POSITIVE
-        declaration.  Absence would say "no grammar was materialized" (and the
-        reader raises on it); ``{}`` says the grammar is empty.  Every other
-        descriptor-less node still materializes nothing.
-        """
-        assert meta_agent_grammar_floor("shell", None) == {
-            "meta.agent.shell.mode": {},
-        }
+    Spec §2d fence: ``meta.agent.shell.mode | {}`` is a POSITIVE
+    declaration.  Absence would say "no grammar was materialized" (and the
+    reader raises on it); ``{}`` says the grammar is empty.  Every other
+    descriptor-less node still materializes nothing.
+    """
+    assert meta_agent_grammar_floor("shell", None) == {
+      "meta.agent.shell.mode": {},
+    }
 
-    def test_exec_omitted_when_no_exec_operation(self):
-        from kanibako.targets.base import PluginDescriptor
+  def test_exec_omitted_when_no_exec_operation(self):
+    from kanibako.targets.base import PluginDescriptor
 
-        d = PluginDescriptor(command=("a",), bindings=(), mode={"start": ()})
-        floor = meta_agent_grammar_floor("a", d)
-        assert floor == {"meta.agent.a.mode": {"start": []}}
-        assert "meta.agent.a.exec" not in floor
+    d = PluginDescriptor(command=("a",), bindings=(), mode={"start": ()})
+    floor = meta_agent_grammar_floor("a", d)
+    assert floor == {"meta.agent.a.mode": {"start": []}}
+    assert "meta.agent.a.exec" not in floor
 
 
 def _grammar_snapshot(agent_name="claude", *, with_grammar=True):
-    """An identity snapshot that ALSO carries the B5 grammar floor, folded in
-    exactly as ``resolve_inputs`` does (identity dict + grammar dict →
-    one ``meta_identity``)."""
-    from kanibako.plugins.claude.target import ClaudeTarget
+  """An identity snapshot that ALSO carries the B5 grammar floor, folded in
+  exactly as ``resolve_inputs`` does (identity dict + grammar dict →
+  one ``meta_identity``)."""
+  from kanibako.plugins.claude.target import ClaudeTarget
 
-    ident = meta_identity_floor(
-        box_name="droste", project_path="/code/droste", inbox="/i",
-        share_global="/s", share_workset=None, agent_name=agent_name,
-        agent_real_name=agent_name,
-    )
-    if with_grammar:
-        ident.update(
-            meta_agent_grammar_floor(agent_name, ClaudeTarget().descriptor)
-        )
-    return build_launch_snapshot(
-        agent_name=agent_name,
-        ctx=_ctx_with_config(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        meta_identity=ident,
-    )
+  ident = meta_identity_floor(
+    box_name="droste",
+    project_path="/code/droste",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+    agent_name=agent_name,
+    agent_real_name=agent_name,
+  )
+  if with_grammar:
+    ident.update(meta_agent_grammar_floor(agent_name, ClaudeTarget().descriptor))
+  return build_launch_snapshot(
+    agent_name=agent_name,
+    ctx=_ctx_with_config(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    meta_identity=ident,
+  )
 
 
 class TestMetaAgentGrammarSnapshot:
-    """The three B5 leaves land in the EXPANDED snapshot and the launch reader
-    returns them typed — the keyspace is the argv-fragment source of truth."""
+  """The three B5 leaves land in the EXPANDED snapshot and the launch reader
+  returns them typed — the keyspace is the argv-fragment source of truth."""
 
-    def test_mode_and_exec_leaves_materialized(self):
-        snap = _grammar_snapshot()
-        ma = _meta_node(snap, "meta", "agent", "claude")
-        mode = dict.get(ma, "mode")
-        assert isinstance(mode, KeyStore)
-        assert dict.get(mode, "start") == []
-        assert dict.get(mode, "continue") == ["--continue"]
-        assert dict.get(ma, "exec") == ["-p"]
+  def test_mode_and_exec_leaves_materialized(self):
+    snap = _grammar_snapshot()
+    ma = _meta_node(snap, "meta", "agent", "claude")
+    mode = dict.get(ma, "mode")
+    assert isinstance(mode, KeyStore)
+    assert dict.get(mode, "start") == []
+    assert dict.get(mode, "continue") == ["--continue"]
+    assert dict.get(ma, "exec") == ["-p"]
 
-    def test_settings_leaf_resolves_through_the_path_anchor(self):
-        """``meta.agent.<a>.settings`` = {meta.agent.<a>.path}/agent.yaml —
-        the {key}-ref chain resolves through the sibling ``path`` anchor to the SAME
-        file ``agent_settings_path`` composes (agents/<a>/agent.yaml)."""
-        from kanibako.settings.agent_config import agent_settings_path
+  def test_settings_leaf_resolves_through_the_path_anchor(self):
+    """``meta.agent.<a>.settings`` = {meta.agent.<a>.path}/agent.yaml —
+    the {key}-ref chain resolves through the sibling ``path`` anchor to the SAME
+    file ``agent_settings_path`` composes (agents/<a>/agent.yaml)."""
+    from kanibako.settings.agent_config import agent_settings_path
 
-        snap = _grammar_snapshot()
-        ma = _meta_node(snap, "meta", "agent", "claude")
-        assert dict.get(ma, "settings") == "/data/agents/claude/agent.yaml"
-        assert dict.get(ma, "settings") == str(
-            agent_settings_path(Path("/data/agents"), "claude")
-        )
+    snap = _grammar_snapshot()
+    ma = _meta_node(snap, "meta", "agent", "claude")
+    assert dict.get(ma, "settings") == "/data/agents/claude/agent.yaml"
+    assert dict.get(ma, "settings") == str(agent_settings_path(Path("/data/agents"), "claude"))
 
-    def test_reader_returns_the_grammar(self):
-        snap = _grammar_snapshot()
-        g = meta_agent_grammar(snap, active_agent="claude")
-        assert g.mode == {"start": [], "continue": ["--continue"]}
-        assert g.exec_fragment == ["-p"]
+  def test_reader_returns_the_grammar(self):
+    snap = _grammar_snapshot()
+    g = meta_agent_grammar(snap, active_agent="claude")
+    assert g.mode == {"start": [], "continue": ["--continue"]}
+    assert g.exec_fragment == ["-p"]
 
-    def test_reader_refuses_an_unmaterialized_snapshot(self):
-        """NO descriptor fallback (single source): a snapshot without the
-        grammar is a build bug and the reader raises, naming the key —
-        falling back to the descriptor would silently regrow the second path."""
-        snap = _grammar_snapshot(with_grammar=False)
-        with pytest.raises(_SettingsError, match="meta.agent.claude.mode"):
-            meta_agent_grammar(snap, active_agent="claude")
+  def test_reader_refuses_an_unmaterialized_snapshot(self):
+    """NO descriptor fallback (single source): a snapshot without the
+    grammar is a build bug and the reader raises, naming the key —
+    falling back to the descriptor would silently regrow the second path."""
+    snap = _grammar_snapshot(with_grammar=False)
+    with pytest.raises(_SettingsError, match="meta.agent.claude.mode"):
+      meta_agent_grammar(snap, active_agent="claude")
 
-    def test_reader_exec_none_when_absent(self):
-        from kanibako.targets.base import PluginDescriptor
+  def test_reader_exec_none_when_absent(self):
+    from kanibako.targets.base import PluginDescriptor
 
-        ident = meta_identity_floor(
-            box_name="x", project_path="/p", inbox="/i", share_global="/s",
-            share_workset=None, agent_name="a", agent_real_name="a",
-        )
-        ident.update(meta_agent_grammar_floor(
-            "a", PluginDescriptor(command=("a",), bindings=(), mode={"start": ()}),
-        ))
-        snap = build_launch_snapshot(
-            agent_name="a", ctx=_ctx_with_config(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            meta_identity=ident,
-        )
-        g = meta_agent_grammar(snap, active_agent="a")
-        assert g.mode == {"start": []}
-        assert g.exec_fragment is None
+    ident = meta_identity_floor(
+      box_name="x",
+      project_path="/p",
+      inbox="/i",
+      share_global="/s",
+      share_workset=None,
+      agent_name="a",
+      agent_real_name="a",
+    )
+    ident.update(
+      meta_agent_grammar_floor(
+        "a",
+        PluginDescriptor(command=("a",), bindings=(), mode={"start": ()}),
+      )
+    )
+    snap = build_launch_snapshot(
+      agent_name="a",
+      ctx=_ctx_with_config(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      meta_identity=ident,
+    )
+    g = meta_agent_grammar(snap, active_agent="a")
+    assert g.mode == {"start": []}
+    assert g.exec_fragment is None
 
-    def test_view_exposes_the_trio(self):
-        """MetaAgentView displays settings/mode/exec beside name/path — the
-        'settings unmaterialized' deferral note is dead (B5, step 3)."""
-        from kanibako.settings import settings_views as views
+  def test_view_exposes_the_trio(self):
+    """MetaAgentView displays settings/mode/exec beside name/path — the
+    'settings unmaterialized' deferral note is dead (B5, step 3)."""
+    from kanibako.settings import settings_views as views
 
-        snap = _grammar_snapshot()
-        ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
-        assert ma.settings == Path("/data/agents/claude/agent.yaml")
-        assert ma.mode == {"start": [], "continue": ["--continue"]}
-        assert ma.exec == ["-p"]
+    snap = _grammar_snapshot()
+    ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+    assert ma.settings == Path("/data/agents/claude/agent.yaml")
+    assert ma.mode == {"start": [], "continue": ["--continue"]}
+    assert ma.exec == ["-p"]
 
-    def test_view_docstring_no_longer_defers_settings(self):
-        """The ~:578-579 'still unmaterialized' note died honestly."""
-        from kanibako.settings import settings_views as views
+  def test_view_docstring_no_longer_defers_settings(self):
+    """The ~:578-579 'still unmaterialized' note died honestly."""
+    from kanibako.settings import settings_views as views
 
-        assert "unmaterialized" not in (views.MetaAgentView.__doc__ or "")
+    assert "unmaterialized" not in (views.MetaAgentView.__doc__ or "")
 
 
 def test_meta_identity_agentless_omits_agent_key():
-    """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
-    floor = meta_identity_floor(
-        box_name="x", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None, agent_name=None,
-    )
-    assert not any(k.startswith("meta.agent.") for k in floor)
-    # And B2 no longer emits meta.workset.name at all.
-    assert "meta.workset.name" not in floor
+  """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
+  floor = meta_identity_floor(
+    box_name="x",
+    project_path="/p",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+    agent_name=None,
+  )
+  assert not any(k.startswith("meta.agent.") for k in floor)
+  # And B2 no longer emits meta.workset.name at all.
+  assert "meta.workset.name" not in floor
 
 
 def test_shell_snapshot_carries_empty_mode():
-    """D2/D4 end to end: a shell launch snapshot holds ``meta.agent.shell.mode``
-    as an EMPTY map — declared and present, not absent."""
-    from kanibako.settings.settings_launch import meta_identity_floor
+  """D2/D4 end to end: a shell launch snapshot holds ``meta.agent.shell.mode``
+  as an EMPTY map — declared and present, not absent."""
+  from kanibako.settings.settings_launch import meta_identity_floor
 
-    ident = meta_identity_floor(
-        box_name="x", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None, agent_name="shell", agent_real_name="shell",
-    )
-    ident.update(meta_agent_grammar_floor("shell", None))
-    snap = build_launch_snapshot(
-        agent_name="shell", ctx=_ctx_with_config(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        meta_identity=ident,
-    )
-    ma = _meta_node(snap, "meta", "agent", "shell")
-    mode = dict.get(ma, "mode")
-    assert mode is not None and len(mode) == 0
-    # The shell identity triple materializes too (spec §2d fence).
-    assert dict.get(ma, "name") == "shell"
-    assert "exec" not in ma  # <None> ⇒ absent, not a null leaf
+  ident = meta_identity_floor(
+    box_name="x",
+    project_path="/p",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+    agent_name="shell",
+    agent_real_name="shell",
+  )
+  ident.update(meta_agent_grammar_floor("shell", None))
+  snap = build_launch_snapshot(
+    agent_name="shell",
+    ctx=_ctx_with_config(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    meta_identity=ident,
+  )
+  ma = _meta_node(snap, "meta", "agent", "shell")
+  mode = dict.get(ma, "mode")
+  assert mode is not None and len(mode) == 0
+  # The shell identity triple materializes too (spec §2d fence).
+  assert dict.get(ma, "name") == "shell"
+  assert "exec" not in ma  # <None> ⇒ absent, not a null leaf
 
 
 def test_shell_canon_is_its_own_store_through_the_default_tier(tmp_path):
-    """``agent.shell.canon`` forwards to ``agent.default.canon`` like any node (shell
-    inherits ``agent.default``, §2d), and core's value there is the shell's own store
-    (``{meta.self.path}/canon``), with or without a ``canon/`` dir in it."""
-    from kanibako.settings.core_defaults import canon_default_categories
+  """``agent.shell.canon`` forwards to ``agent.default.canon`` like any node (shell
+  inherits ``agent.default``, §2d), and core's value there is the shell's own store
+  (``{meta.self.path}/canon``), with or without a ``canon/`` dir in it."""
+  from kanibako.settings.core_defaults import canon_default_categories
 
-    out = canon_default_categories("shell")
-    assert out["agent.default.canon"] == "{config.agents}/shell/canon"
-    assert out["agent.shell.canon"] == "{agent.default.canon}"
+  out = canon_default_categories("shell")
+  assert out["agent.default.canon"] == "{config.agents}/shell/canon"
+  assert out["agent.shell.canon"] == "{agent.default.canon}"
 
 
 def test_meta_identity_standalone_share_workset_none_terminal():
-    """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
-    value None (spec §2c), not dropped.  It is now the ONLY standalone None
-    terminal in this floor: a lone box genuinely has no workset-LOCAL channel dir,
-    whereas it DOES have a box settings tier (cf. meta.box.settings below)."""
-    snap = _identity_snapshot(
-        share_workset=None,
-    )
-    mb = _meta_node(snap, "meta", "box")
-    assert dict.__contains__(mb, "share_workset")
-    assert dict.get(mb, "share_workset") is None
+  """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
+  value None (spec §2c), not dropped.  It is now the ONLY standalone None
+  terminal in this floor: a lone box genuinely has no workset-LOCAL channel dir,
+  whereas it DOES have a box settings tier (cf. meta.box.settings below)."""
+  snap = _identity_snapshot(
+    share_workset=None,
+  )
+  mb = _meta_node(snap, "meta", "box")
+  assert dict.__contains__(mb, "share_workset")
+  assert dict.get(mb, "share_workset") is None
 
 
 def test_meta_box_settings_anchor_primary_named_and_standalone():
-    """meta.box.settings is the RO box-TIER file anchor, materialized VERBATIM from
-    the box-tier path the cascade uses — and it is a real path in EVERY mode now
-    (spec §2c ALL PROJECTS), standalone's being <root>/box_data/box.yaml.
-    Mutation-guard: dropping the floor dict entry → the path asserts → RED."""
-    # primary/named: the box's own box.yaml path is materialized verbatim.
-    floor_pn = meta_identity_floor(
-        box_name="droste", project_path="/code/droste", inbox="/i",
-        share_global="/s", share_workset=None,
-        box_settings="/data/pw/boxes/droste/box.yaml",
-    )
-    assert floor_pn["meta.box.settings"] == "/data/pw/boxes/droste/box.yaml"
-    # STANDALONE: NOT a None terminal — the box tier is a real path under box_data/.
-    floor_std = meta_identity_floor(
-        box_name="x", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None,
-        box_settings="/scratch/myproj/box_data/box.yaml",
-    )
-    assert floor_std["meta.box.settings"] == "/scratch/myproj/box_data/box.yaml"
-    # And it survives into the resolved snapshot as a real meta.box leaf.
-    snap_std = _identity_snapshot(
-        share_workset=None, box_settings="/scratch/myproj/box_data/box.yaml",
-    )
-    mb = _meta_node(snap_std, "meta", "box")
-    assert dict.get(mb, "settings") == "/scratch/myproj/box_data/box.yaml"
+  """meta.box.settings is the RO box-TIER file anchor, materialized VERBATIM from
+  the box-tier path the cascade uses — and it is a real path in EVERY mode now
+  (spec §2c ALL PROJECTS), standalone's being <root>/box_data/box.yaml.
+  Mutation-guard: dropping the floor dict entry → the path asserts → RED."""
+  # primary/named: the box's own box.yaml path is materialized verbatim.
+  floor_pn = meta_identity_floor(
+    box_name="droste",
+    project_path="/code/droste",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+    box_settings="/data/pw/boxes/droste/box.yaml",
+  )
+  assert floor_pn["meta.box.settings"] == "/data/pw/boxes/droste/box.yaml"
+  # STANDALONE: NOT a None terminal — the box tier is a real path under box_data/.
+  floor_std = meta_identity_floor(
+    box_name="x",
+    project_path="/p",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+    box_settings="/scratch/myproj/box_data/box.yaml",
+  )
+  assert floor_std["meta.box.settings"] == "/scratch/myproj/box_data/box.yaml"
+  # And it survives into the resolved snapshot as a real meta.box leaf.
+  snap_std = _identity_snapshot(
+    share_workset=None,
+    box_settings="/scratch/myproj/box_data/box.yaml",
+  )
+  mb = _meta_node(snap_std, "meta", "box")
+  assert dict.get(mb, "settings") == "/scratch/myproj/box_data/box.yaml"
 
 
 def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
-    """The standalone box tier is the BOX level (L4.2) — it BEATS the workset tier
-    (L3.2), exactly as in primary/named.  It is not a new level and needs no new
-    ordering code: it is passed in ``build_launch_snapshot``'s ``box_path`` slot.
+  """The standalone box tier is the BOX level (L4.2) — it BEATS the workset tier
+  (L3.2), exactly as in primary/named.  It is not a new level and needs no new
+  ordering code: it is passed in ``build_launch_snapshot``'s ``box_path`` slot.
 
-    ⚑ The two files are written at LITERAL spec positions and only the SNAPSHOT
-    ARGUMENTS come from ``_box_settings_files``.  Sourcing both from the function
-    under test would make the test self-consistent and therefore BLIND to a swapped
-    pair — confirmed by mutation: an earlier version of this test stayed GREEN when
-    the pair was reversed.
+  ⚑ The two files are written at LITERAL spec positions and only the SNAPSHOT
+  ARGUMENTS come from ``_box_settings_files``.  Sourcing both from the function
+  under test would make the test self-consistent and therefore BLIND to a swapped
+  pair — confirmed by mutation: an earlier version of this test stayed GREEN when
+  the pair was reversed.
 
-    (Mutations: swapping the pair returned by ``_box_settings_files`` → the ROOT
-    value wins → RED; reverting the standalone arm to a ``None`` box tier → the box
-    value is never read → RED.)"""
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.paths import STANDALONE_META_DIR, BoxMode, _box_settings_files
+  (Mutations: swapping the pair returned by ``_box_settings_files`` → the ROOT
+  value wins → RED; reverting the standalone arm to a ``None`` box tier → the box
+  value is never read → RED.)"""
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.paths import STANDALONE_META_DIR, BoxMode, _box_settings_files
 
-    root = tmp_path / "myproj"
-    (root / STANDALONE_META_DIR).mkdir(parents=True)
-    # LITERAL positions (spec §4 STANDALONE tree), independent of the code under test.
-    literal_ws = root / "workset.yaml"
-    literal_box = root / STANDALONE_META_DIR / "box.yaml"
-    dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
-    dump_doc(literal_box, {"box": {"image": "box/img:2"}})
+  root = tmp_path / "myproj"
+  (root / STANDALONE_META_DIR).mkdir(parents=True)
+  # LITERAL positions (spec §4 STANDALONE tree), independent of the code under test.
+  literal_ws = root / "workset.yaml"
+  literal_box = root / STANDALONE_META_DIR / "box.yaml"
+  dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
+  dump_doc(literal_box, {"box": {"image": "box/img:2"}})
 
-    from kanibako.channels.channels import WS_TOKEN_STANDALONE
-    from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
+  from kanibako.channels.channels import WS_TOKEN_STANDALONE
+  from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
-    # ⚑ A COMPOSED layout — no ``workset.boxes`` to resolve — so the scope carries no
-    # tier and the box tier is the spec's default leaf, which is exactly what this test
-    # pins.
-    early = EarlyScope(
-        EarlySystem(tier={}, file=literal_ws, system_paths={}),
-        WS_TOKEN_STANDALONE,
+  # ⚑ A COMPOSED layout — no ``workset.boxes`` to resolve — so the scope carries no
+  # tier and the box tier is the spec's default leaf, which is exactly what this test
+  # pins.
+  early = EarlyScope(
+    EarlySystem(tier={}, file=literal_ws, system_paths={}),
+    WS_TOKEN_STANDALONE,
+  )
+
+  def _image():
+    box_tier, ws_tier = _box_settings_files(BoxMode.standalone, root, None, early=early)
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=ws_tier,
+      box_path=box_tier,
     )
+    return dict.get(_meta_node(snap, "box"), "image")
 
-    def _image():
-        box_tier, ws_tier = _box_settings_files(
-            BoxMode.standalone, root, None, early=early)
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=ws_tier, box_path=box_tier,
-        )
-        return dict.get(_meta_node(snap, "box"), "image")
-
-    assert _image() == "box/img:2"
-    # Remove the box file: the tier is EMPTY, and the workset value resolves as the
-    # R2 downward-default — the "absent by default is byte-identical" claim.
-    literal_box.unlink()
-    assert _image() == "root/img:1"
+  assert _image() == "box/img:2"
+  # Remove the box file: the tier is EMPTY, and the workset value resolves as the
+  # R2 downward-default — the "absent by default is byte-identical" claim.
+  literal_box.unlink()
+  assert _image() == "root/img:1"
 
 
 def test_meta_box_settings_anchor_tolerates_a_narrow_resolve():
-    """The ``box_settings`` PARAMETER stays optional for a narrow/partial resolve that
-    materializes no box tier — the key is then a PRESENT-key None terminal, never a
-    dropped key.  ⚑ This is NOT the standalone case any more (see above); it is the
-    no-box-tier-supplied case."""
-    floor = meta_identity_floor(
-        box_name="x", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None,
-    )
-    assert "meta.box.settings" in floor
-    assert floor["meta.box.settings"] is None
+  """The ``box_settings`` PARAMETER stays optional for a narrow/partial resolve that
+  materializes no box tier — the key is then a PRESENT-key None terminal, never a
+  dropped key.  ⚑ This is NOT the standalone case any more (see above); it is the
+  no-box-tier-supplied case."""
+  floor = meta_identity_floor(
+    box_name="x",
+    project_path="/p",
+    inbox="/i",
+    share_global="/s",
+    share_workset=None,
+  )
+  assert "meta.box.settings" in floor
+  assert floor["meta.box.settings"] is None
 
 
 def test_workspace_bind_routes_through_meta_box_workspace():
-    """box.bindings.rw.workspace = ({meta.box.workspace}, ~/workspace) expands to the
-    SAME host_src as the proj-attr literal (byte-identical, JC-B2-4)."""
-    snap = _identity_snapshot(
-        project_path="/code/droste",
-        default_categories={
-            "box.bindings.rw": {"~/workspace": ("{meta.box.workspace}", "Z,U")},
-        },
-    )
-    # The DEST is now the map KEY, canonicalized by R-11 (``~/workspace`` →
-    # ``/home/agent/workspace``); the entry carries (src, opts) only.
-    bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/workspace")
-    assert isinstance(bind, BindEntry)
-    # The {meta.box.workspace} ref resolved to str(proj.project_path) — byte-identical
-    # to the old `source: project_path` injection.
-    assert bind.src == "/code/droste"
-    assert bind.opts == "Z,U"
+  """box.bindings.rw.workspace = ({meta.box.workspace}, ~/workspace) expands to the
+  SAME host_src as the proj-attr literal (byte-identical, JC-B2-4)."""
+  snap = _identity_snapshot(
+    project_path="/code/droste",
+    default_categories={
+      "box.bindings.rw": {"~/workspace": ("{meta.box.workspace}", "Z,U")},
+    },
+  )
+  # The DEST is now the map KEY, canonicalized by R-11 (``~/workspace`` →
+  # ``/home/agent/workspace``); the entry carries (src, opts) only.
+  bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/workspace")
+  assert isinstance(bind, BindEntry)
+  # The {meta.box.workspace} ref resolved to str(proj.project_path) — byte-identical
+  # to the old `source: project_path` injection.
+  assert bind.src == "/code/droste"
+  assert bind.opts == "Z,U"
 
 
 def test_inbox_bind_routes_through_meta_box_inbox():
-    """box.bindings.rw.inbox = ({meta.box.inbox}, ~/channels/inbox) expands to the
-    SAME host_src as the channels.box_channel_addresses literal (JC-B2-4)."""
-    snap = _identity_snapshot(
-        inbox="/data/channels/mailboxes/__PRIMARY__/droste",
-        default_categories={
-            "box.bindings.rw": {"~/channels/inbox": ("{meta.box.inbox}",)},
-        },
-    )
-    bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/channels/inbox")
-    assert isinstance(bind, BindEntry)
-    assert bind.src == "/data/channels/mailboxes/__PRIMARY__/droste"
+  """box.bindings.rw.inbox = ({meta.box.inbox}, ~/channels/inbox) expands to the
+  SAME host_src as the channels.box_channel_addresses literal (JC-B2-4)."""
+  snap = _identity_snapshot(
+    inbox="/data/channels/mailboxes/__PRIMARY__/droste",
+    default_categories={
+      "box.bindings.rw": {"~/channels/inbox": ("{meta.box.inbox}",)},
+    },
+  )
+  bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/channels/inbox")
+  assert isinstance(bind, BindEntry)
+  assert bind.src == "/data/channels/mailboxes/__PRIMARY__/droste"
 
 
 def test_meta_box_view_reads_b2_fields_typed():
-    """MetaBoxView reads the B2 leaves at their EXACT types; MetaAgentView reads
-    the agent name."""
-    import kanibako.settings.settings_views as views
+  """MetaBoxView reads the B2 leaves at their EXACT types; MetaAgentView reads
+  the agent name."""
+  import kanibako.settings.settings_views as views
 
-    snap = _identity_snapshot(
-        share_workset="/code/kento/channels/share/droste",
-    )
-    mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
-    assert mb.name == "droste"
-    assert mb.workspace == Path("/code/droste")
-    assert mb.inbox == Path("/data/channels/mailboxes/__PRIMARY__/droste")
-    assert mb.share_global == Path("/data/channels/share/__PRIMARY__/droste")
-    assert mb.share_workset == Path("/code/kento/channels/share/droste")
-    ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
-    assert ma.name == "claude"
-    # meta.workset.name is now a meta_runtime_floor anchor (B1) — not part of this
-    # identity-only snapshot; MetaWorksetView.name coverage lives in the B1 block.
+  snap = _identity_snapshot(
+    share_workset="/code/kento/channels/share/droste",
+  )
+  mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+  assert mb.name == "droste"
+  assert mb.workspace == Path("/code/droste")
+  assert mb.inbox == Path("/data/channels/mailboxes/__PRIMARY__/droste")
+  assert mb.share_global == Path("/data/channels/share/__PRIMARY__/droste")
+  assert mb.share_workset == Path("/code/kento/channels/share/droste")
+  ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+  assert ma.name == "claude"
+  # meta.workset.name is now a meta_runtime_floor anchor (B1) — not part of this
+  # identity-only snapshot; MetaWorksetView.name coverage lives in the B1 block.
 
 
 def test_meta_box_view_standalone_share_workset_none():
-    """MetaBoxView.share_workset is None (typed Path|None) for standalone."""
-    import kanibako.settings.settings_views as views
+  """MetaBoxView.share_workset is None (typed Path|None) for standalone."""
+  import kanibako.settings.settings_views as views
 
-    snap = _identity_snapshot(share_workset=None)
-    mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
-    assert mb.share_workset is None
+  snap = _identity_snapshot(share_workset=None)
+  mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+  assert mb.share_workset is None
 
 
 def test_routed_bind_equivalence_vs_literal_injection():
-    """EQUIVALENCE BAR (JC-B2-4): for workspace + inbox, the {meta.*}-routed bind
-    resolves to the IDENTICAL (host_src, box_dest, opts) the OLD literal-source
-    injection produced — proving the route swap is byte-identical."""
-    project_path = "/code/droste"
-    inbox = "/data/channels/mailboxes/__PRIMARY__/droste"
+  """EQUIVALENCE BAR (JC-B2-4): for workspace + inbox, the {meta.*}-routed bind
+  resolves to the IDENTICAL (host_src, box_dest, opts) the OLD literal-source
+  injection produced — proving the route swap is byte-identical."""
+  project_path = "/code/droste"
+  inbox = "/data/channels/mailboxes/__PRIMARY__/droste"
 
-    # NEW: {meta.*} routed (what core-defaults.yaml now emits via meta_ref).
-    routed = _identity_snapshot(
-        project_path=project_path, inbox=inbox,
-        default_categories={
-            "box.bindings.rw": {
-                "~/workspace": ("{meta.box.workspace}", "Z,U"),
-                "~/channels/inbox": ("{meta.box.inbox}",),
-            },
-        },
-    )
-    # OLD: literal proj-attr source (pre-B2 form).
-    literal = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories={
-            "box.bindings.rw": {
-                "~/workspace": (project_path, "Z,U"),
-                "~/channels/inbox": (inbox,),
-            },
-        },
-    )
-    # Keyed by the CANONICALIZED destination (R-11) on both sides.
-    for key in ("/home/agent/workspace", "/home/agent/channels/inbox"):
-        rb = _meta_node(routed, "box", "bindings", "rw", key)
-        lb = _meta_node(literal, "box", "bindings", "rw", key)
-        assert (rb.src, rb.opts) == (lb.src, lb.opts), key
+  # NEW: {meta.*} routed (what core-defaults.yaml now emits via meta_ref).
+  routed = _identity_snapshot(
+    project_path=project_path,
+    inbox=inbox,
+    default_categories={
+      "box.bindings.rw": {
+        "~/workspace": ("{meta.box.workspace}", "Z,U"),
+        "~/channels/inbox": ("{meta.box.inbox}",),
+      },
+    },
+  )
+  # OLD: literal proj-attr source (pre-B2 form).
+  literal = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories={
+      "box.bindings.rw": {
+        "~/workspace": (project_path, "Z,U"),
+        "~/channels/inbox": (inbox,),
+      },
+    },
+  )
+  # Keyed by the CANONICALIZED destination (R-11) on both sides.
+  for key in ("/home/agent/workspace", "/home/agent/channels/inbox"):
+    rb = _meta_node(routed, "box", "bindings", "rw", key)
+    lb = _meta_node(literal, "box", "bindings", "rw", key)
+    assert (rb.src, rb.opts) == (lb.src, lb.opts), key
 
 
 # --------------------------------------------------------------------------- #
@@ -3338,217 +3671,260 @@ import yaml  # noqa: E402
 
 
 def _yaml(path: Path, data: dict) -> Path:
-    path.write_text(yaml.safe_dump(data, sort_keys=False))
-    return path
+  path.write_text(yaml.safe_dump(data, sort_keys=False))
+  return path
 
 
 def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
-    """(a) ``meta.box.agent.<key>`` READS BACK the resolved active-agent subtree.
+  """(a) ``meta.box.agent.<key>`` READS BACK the resolved active-agent subtree.
 
-    ⮕ P7: the mirror moved from the SETTABLE ``box.agent.*`` to the RO
-    ``meta.box.agent.*`` (spec §2b). Values are still readable; they are no
-    longer settable.
-    """
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
-        default_categories={
-            # ⚑ ``common`` is TERMINAL and DEST-KEYED (2026-08-08c): the key names
-            # the CATEGORY and the value is the whole {box_dest: (src[, opts])} map.
-            # The stored map key is the R-11 NORMALIZED dest, so ``~/.claude/plugins``
-            # is read back at ``/home/agent/.claude/plugins``.
-            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
-        },
-    )
-    assert snap.meta.box.agent.model == snap.agent.default.model == "opus"
-    assert snap.meta.box.agent.allow_helpers == "true"
-    # The whole subtree mirrors — including category subtrees (a BindEntry leaf).
-    dest = "/home/agent/.claude/plugins"
-    mirrored = _meta_node(snap, "meta", "box", "agent", "common", dest)
-    assert isinstance(mirrored, BindEntry)
-    assert mirrored == _meta_node(snap, "agent", "claude", "common", dest)
-    # …and the RETIRED settable location is NOT materialized.
-    assert "box" not in snap or "agent" not in snap.box
+  ⮕ P7: the mirror moved from the SETTABLE ``box.agent.*`` to the RO
+  ``meta.box.agent.*`` (spec §2b). Values are still readable; they are no
+  longer settable.
+  """
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus", "allow_helpers": "true"},
+    default_categories={
+      # ⚑ ``common`` is TERMINAL and DEST-KEYED (2026-08-08c): the key names
+      # the CATEGORY and the value is the whole {box_dest: (src[, opts])} map.
+      # The stored map key is the R-11 NORMALIZED dest, so ``~/.claude/plugins``
+      # is read back at ``/home/agent/.claude/plugins``.
+      "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
+    },
+  )
+  assert snap.meta.box.agent.model == snap.agent.default.model == "opus"
+  assert snap.meta.box.agent.allow_helpers == "true"
+  # The whole subtree mirrors — including category subtrees (a BindEntry leaf).
+  dest = "/home/agent/.claude/plugins"
+  mirrored = _meta_node(snap, "meta", "box", "agent", "common", dest)
+  assert isinstance(mirrored, BindEntry)
+  assert mirrored == _meta_node(snap, "agent", "claude", "common", dest)
+  # …and the RETIRED settable location is NOT materialized.
+  assert "box" not in snap or "agent" not in snap.box
 
 
 def test_a_box_file_box_agent_table_is_REFUSED_BY_NAME(tmp_path: Path):
-    """⮕ **SUBJECT CHANGED.** This test used to pin the table as INERT — the box
-    launched, the table contributed nothing, and the user was told NOTHING.
+  """⮕ **SUBJECT CHANGED.** This test used to pin the table as INERT — the box
+  launched, the table contributed nothing, and the user was told NOTHING.
 
-    That silence WAS the defect: §0 requires a retired spelling to be refused BY
-    NAME, so ``box.agent`` joined ``RETIRED_FILE_KEYS`` and the launch now stops at
-    the selection seam. What is pinned here is the refusal, its NAME, and the fact
-    that the TABLE shape gets the agent-MIRROR story (R-4, spec §2b) rather than the
-    agent-SELECTION one — the two spellings share this file path and nothing else.
-    INVERT: drop the ``("box", "agent")`` entry and this reddens.
-    """
-    from kanibako.settings.settings_assemble import refuse_retired_keys
-    from kanibako.settings.settings_resolve import SettingsError
+  That silence WAS the defect: §0 requires a retired spelling to be refused BY
+  NAME, so ``box.agent`` joined ``RETIRED_FILE_KEYS`` and the launch now stops at
+  the selection seam. What is pinned here is the refusal, its NAME, and the fact
+  that the TABLE shape gets the agent-MIRROR story (R-4, spec §2b) rather than the
+  agent-SELECTION one — the two spellings share this file path and nothing else.
+  INVERT: drop the ``("box", "agent")`` entry and this reddens.
+  """
+  from kanibako.settings.settings_assemble import refuse_retired_keys
+  from kanibako.settings.settings_resolve import SettingsError
 
-    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
-    with pytest.raises(SettingsError) as ei:
-        refuse_retired_keys(
-            yaml.safe_load(box.read_text()), level="box", path=box, box_ref="mybox",
-        )
-    msg = str(ei.value)
-    assert "'box.agent' is RETIRED" in msg
-    assert str(box) in msg
-    # The MIRROR story, not the selection story — the user was tweaking an agent,
-    # not naming one. Its discriminating clause, and the wrong story's, both pinned.
-    assert "SETTABLE mirror of its agent's settings" in msg
-    assert "no longer names its agent with a key of its own" not in msg
-    # A COPY-PASTEABLE cure: the box positional, the §2h request, the stored value.
-    assert "kanibako box set mybox pref.agent.<agent>.model=sonnet" in msg
+  box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+  with pytest.raises(SettingsError) as ei:
+    refuse_retired_keys(
+      yaml.safe_load(box.read_text()),
+      level="box",
+      path=box,
+      box_ref="mybox",
+    )
+  msg = str(ei.value)
+  assert "'box.agent' is RETIRED" in msg
+  assert str(box) in msg
+  # The MIRROR story, not the selection story — the user was tweaking an agent,
+  # not naming one. Its discriminating clause, and the wrong story's, both pinned.
+  assert "SETTABLE mirror of its agent's settings" in msg
+  assert "no longer names its agent with a key of its own" not in msg
+  # A COPY-PASTEABLE cure: the box positional, the §2h request, the stored value.
+  assert "kanibako box set mybox pref.agent.<agent>.model=sonnet" in msg
 
 
 def test_a_box_file_box_agent_SCALAR_gets_the_selection_story(tmp_path: Path):
-    """The SAME file path, the OTHER retired spelling: a scalar ``box: agent: claude``
-    is the agent-NAME key (``box.crab`` → ``box.agent`` → ``box.agent_name``), so it
-    gets the SELECTION story and the ``pref.system.agent`` cure.
+  """The SAME file path, the OTHER retired spelling: a scalar ``box: agent: claude``
+  is the agent-NAME key (``box.crab`` → ``box.agent`` → ``box.agent_name``), so it
+  gets the SELECTION story and the ``pref.system.agent`` cure.
 
-    ⚑ THE DISCRIMINATOR IS THE VALUE SHAPE, and it is the whole reason one entry can
-    serve two retirements. INVERT: cure on the key alone and this reddens with the
-    mirror's text.
-    """
-    from kanibako.settings.settings_assemble import refuse_retired_keys
-    from kanibako.settings.settings_resolve import SettingsError
+  ⚑ THE DISCRIMINATOR IS THE VALUE SHAPE, and it is the whole reason one entry can
+  serve two retirements. INVERT: cure on the key alone and this reddens with the
+  mirror's text.
+  """
+  from kanibako.settings.settings_assemble import refuse_retired_keys
+  from kanibako.settings.settings_resolve import SettingsError
 
-    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": "claude"}})
-    with pytest.raises(SettingsError) as ei:
-        refuse_retired_keys(
-            yaml.safe_load(box.read_text()), level="box", path=box, box_ref="mybox",
-        )
-    msg = str(ei.value)
-    assert "'box.agent' is RETIRED" in msg
-    assert "no longer names its agent with a key of its own" in msg
-    assert "SETTABLE mirror" not in msg
-    assert "kanibako box set mybox pref.system.agent=claude" in msg
+  box = _yaml(tmp_path / "box.yaml", {"box": {"agent": "claude"}})
+  with pytest.raises(SettingsError) as ei:
+    refuse_retired_keys(
+      yaml.safe_load(box.read_text()),
+      level="box",
+      path=box,
+      box_ref="mybox",
+    )
+  msg = str(ei.value)
+  assert "'box.agent' is RETIRED" in msg
+  assert "no longer names its agent with a key of its own" in msg
+  assert "SETTABLE mirror" not in msg
+  assert "kanibako box set mybox pref.system.agent=claude" in msg
 
 
 def test_meta_box_agent_mirror_keeps_the_auth_capability_floor_key():
-    """The auth floor materializes ``meta.box.agent.auth.share_support`` BEFORE the
-    mirror copies; the copy must not clobber it (it gap-fills, per name)."""
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus"},
-        auth_chain=auth_chain_floor(mode="primary", agent_name="claude"),
-        meta_identity=_mid_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, agent_name="claude", agent_real_name="claude",
-            agent_auth_share_support=True,
-        ),
-        cli_level={"system.agent": "claude"},
-    )
-    assert snap.meta.box.agent.auth.share_support is True
-    assert snap.meta.box.agent.model == "opus"
+  """The auth floor materializes ``meta.box.agent.auth.share_support`` BEFORE the
+  mirror copies; the copy must not clobber it (it gap-fills, per name)."""
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus"},
+    auth_chain=auth_chain_floor(mode="primary", agent_name="claude"),
+    meta_identity=_mid_floor(
+      box_name="b",
+      project_path="/p",
+      inbox="/i",
+      share_global="/sg",
+      share_workset=None,
+      agent_name="claude",
+      agent_real_name="claude",
+      agent_auth_share_support=True,
+    ),
+    cli_level={"system.agent": "claude"},
+  )
+  assert snap.meta.box.agent.auth.share_support is True
+  assert snap.meta.box.agent.model == "opus"
 
 
 def test_meta_box_agent_mirror_copy_is_not_an_alias():
-    # (c) the materialized meta.box.agent subtree is a FRESH deep copy — mutating a
-    # nested node never reaches the shared agent subtree (no alias).
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories={
-            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
-        },
-    )
-    dest = "/home/agent/.claude/plugins"
-    assert snap.meta.box.agent.common is not snap.agent.claude.common
-    snap.meta.box.agent.common[dest] = BindEntry("/tweaked")
-    assert _meta_node(snap, "agent", "claude", "common", dest).src == "/store/plugins"
+  # (c) the materialized meta.box.agent subtree is a FRESH deep copy — mutating a
+  # nested node never reaches the shared agent subtree (no alias).
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories={
+      "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
+    },
+  )
+  dest = "/home/agent/.claude/plugins"
+  assert snap.meta.box.agent.common is not snap.agent.claude.common
+  snap.meta.box.agent.common[dest] = BindEntry("/tweaked")
+  assert _meta_node(snap, "agent", "claude", "common", dest).src == "/store/plugins"
 
 
 def test_meta_box_agent_mirror_repoints_on_agent_change():
-    # Re-materialized when the SELECTED agent changes: agent_name IS the resolved
-    # active agent (``{system.agent}`` — the stored key, a pref, or --agent), so a
-    # different agent_name mirrors a different subtree.
-    common = dict(
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus"},
-    )
-    snap_claude = build_launch_snapshot(
-        agent_name="claude",
-        default_categories={
-            "agent.claude.common": {"~/.claude/plugins": ("/claude/plugins",)},
-        },
-        **common,
-    )
-    snap_goose = build_launch_snapshot(
-        agent_name="goose",
-        default_categories={
-            "agent.goose.common": {"~/.goose/plugins": ("/goose/plugins",)},
-        },
-        **common,
-    )
-    claude_dest = "/home/agent/.claude/plugins"
-    goose_dest = "/home/agent/.goose/plugins"
-    assert _meta_node(
-        snap_claude, "meta", "box", "agent", "common", claude_dest,
-    ).src == "/claude/plugins"
-    assert _meta_node(
-        snap_goose, "meta", "box", "agent", "common", goose_dest,
-    ).src == "/goose/plugins"
-    assert (
-        _meta_node(snap_claude, "meta", "box", "agent", "common", claude_dest)
-        == _meta_node(snap_claude, "agent", "claude", "common", claude_dest)
-    )
-    assert (
-        _meta_node(snap_goose, "meta", "box", "agent", "common", goose_dest)
-        == _meta_node(snap_goose, "agent", "goose", "common", goose_dest)
-    )
+  # Re-materialized when the SELECTED agent changes: agent_name IS the resolved
+  # active agent (``{system.agent}`` — the stored key, a pref, or --agent), so a
+  # different agent_name mirrors a different subtree.
+  common = dict(
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus"},
+  )
+  snap_claude = build_launch_snapshot(
+    agent_name="claude",
+    default_categories={
+      "agent.claude.common": {"~/.claude/plugins": ("/claude/plugins",)},
+    },
+    **common,
+  )
+  snap_goose = build_launch_snapshot(
+    agent_name="goose",
+    default_categories={
+      "agent.goose.common": {"~/.goose/plugins": ("/goose/plugins",)},
+    },
+    **common,
+  )
+  claude_dest = "/home/agent/.claude/plugins"
+  goose_dest = "/home/agent/.goose/plugins"
+  assert (
+    _meta_node(
+      snap_claude,
+      "meta",
+      "box",
+      "agent",
+      "common",
+      claude_dest,
+    ).src
+    == "/claude/plugins"
+  )
+  assert (
+    _meta_node(
+      snap_goose,
+      "meta",
+      "box",
+      "agent",
+      "common",
+      goose_dest,
+    ).src
+    == "/goose/plugins"
+  )
+  assert _meta_node(snap_claude, "meta", "box", "agent", "common", claude_dest) == _meta_node(
+    snap_claude, "agent", "claude", "common", claude_dest
+  )
+  assert _meta_node(snap_goose, "meta", "box", "agent", "common", goose_dest) == _meta_node(
+    snap_goose, "agent", "goose", "common", goose_dest
+  )
 
 
 def test_a_blank_active_agent_has_no_meta_box_agent_mirror():
-    # A BLANK active agent → no subtree to mirror → meta.box.agent.* absent.
-    snap = build_launch_snapshot(
-        agent_name="",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus"},
-    )
-    meta = snap.meta if "meta" in snap else KeyStore()
-    box = meta.box if "box" in meta else KeyStore()
-    assert "agent" not in box
+  # A BLANK active agent → no subtree to mirror → meta.box.agent.* absent.
+  snap = build_launch_snapshot(
+    agent_name="",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus"},
+  )
+  meta = snap.meta if "meta" in snap else KeyStore()
+  box = meta.box if "box" in meta else KeyStore()
+  assert "agent" not in box
 
 
 def test_the_shell_LAUNCH_shape_mirrors_the_shell_tier_over_agent_default():
-    """⚑ THE MEASURED LAUNCH SHAPE: a shell mirror is the shell tier over ``agent.default``.
+  """⚑ THE MEASURED LAUNCH SHAPE: a shell mirror is the shell tier over ``agent.default``.
 
-    A no-agent/shell launch passes ``agent_name="shell"`` (start.py:
-    ``agent_id = with_harness(...) if target else GENERAL_SLOT``), NOT a blank — so the
-    blank short-circuit above does NOT fire and the mirror is the §2d pick. Shell
-    inherits ``agent.default`` (§2d "Pseudo-agent(s)"), but its fence's ``<None>``
-    ``model`` row shadows the default floor's ``model: opus``.
+  A no-agent/shell launch passes ``agent_name="shell"`` (start.py:
+  ``agent_id = with_harness(...) if target else GENERAL_SLOT``), NOT a blank — so the
+  blank short-circuit above does NOT fire and the mirror is the §2d pick. Shell
+  inherits ``agent.default`` (§2d "Pseudo-agent(s)"), but its fence's ``<None>``
+  ``model`` row shadows the default floor's ``model: opus``.
 
-    The auth capability key is materialized by the FLOOR (pre-expand) and must
-    survive the copy either way.
-    """
-    from kanibako.settings.core_defaults import pseudo_tier_defaults
+  The auth capability key is materialized by the FLOOR (pre-expand) and must
+  survive the copy either way.
+  """
+  from kanibako.settings.core_defaults import pseudo_tier_defaults
 
-    snap = build_launch_snapshot(
-        agent_name="shell",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "allow_helpers": "true", "endpoint": "e"},
-        default_categories=pseudo_tier_defaults(),
-        auth_chain=auth_chain_floor(mode="primary", agent_name=""),
-    )
-    mirror = snap.meta.box.agent
-    assert "auth" in mirror
-    assert dict.get(mirror, "model") is None     # the fence <None>, never "opus"
-    assert mirror.endpoint == "e"                # inherited from agent.default
-    assert mirror.label == "Command Line Shell (shell)"           # the shell tier's own leaf
-    assert mirror.allow_helpers == "true"
-    # NOTHING consumes these leaves: the only runtime reader under
-    # meta.box.agent is auth.share_support, which the FLOOR supplies.
-    assert "share_support" in snap.meta.box.agent.auth
+  snap = build_launch_snapshot(
+    agent_name="shell",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus", "allow_helpers": "true", "endpoint": "e"},
+    default_categories=pseudo_tier_defaults(),
+    auth_chain=auth_chain_floor(mode="primary", agent_name=""),
+  )
+  mirror = snap.meta.box.agent
+  assert "auth" in mirror
+  assert dict.get(mirror, "model") is None  # the fence <None>, never "opus"
+  assert mirror.endpoint == "e"  # inherited from agent.default
+  assert mirror.label == "Command Line Shell (shell)"  # the shell tier's own leaf
+  assert mirror.allow_helpers == "true"
+  # NOTHING consumes these leaves: the only runtime reader under
+  # meta.box.agent is auth.share_support, which the FLOOR supplies.
+  assert "share_support" in snap.meta.box.agent.auth
 
 
 # --------------------------------------------------------------------------- #
@@ -3557,166 +3933,172 @@ def test_the_shell_LAUNCH_shape_mirrors_the_shell_tier_over_agent_default():
 
 
 def _shell_and_default_snap():
-    """One RAW snapshot holding a default tier and a sparse shell tier."""
-    return KeyStore({"agent": {
+  """One RAW snapshot holding a default tier and a sparse shell tier."""
+  return KeyStore(
+    {
+      "agent": {
         "default": {
-            "model": "sonnet", "continue_mode": "true", "endpoint": "https://d",
-            "env": {"TERM": "xterm-default"},
-            "bindings": {"ro": {"/box/d": BindEntry("/host/d", None)}},
+          "model": "sonnet",
+          "continue_mode": "true",
+          "endpoint": "https://d",
+          "env": {"TERM": "xterm-default"},
+          "bindings": {"ro": {"/box/d": BindEntry("/host/d", None)}},
         },
         "shell": {"label": "Command Line Shell (shell)", "env": {"FOO": "shell"}},
         "claude": {"label": "Claude"},
-    }})
+      }
+    }
+  )
 
 
 @pytest.mark.parametrize("key", ["model", "continue_mode", "endpoint"])
 def test_a_shell_pick_falls_back_to_agent_default(key):
-    """``behavior_pick`` for ``shell`` falls back to ``agent.default`` where its own tier
-    holds no value, as a TRUE agent's does.
-    (Mutation: ``_fallback_node`` answering ``__MISSING__`` for ``shell`` → RED.)"""
-    from kanibako.settings.settings_launch import behavior_pick
+  """``behavior_pick`` for ``shell`` falls back to ``agent.default`` where its own tier
+  holds no value, as a TRUE agent's does.
+  (Mutation: ``_fallback_node`` answering ``__MISSING__`` for ``shell`` → RED.)"""
+  from kanibako.settings.settings_launch import behavior_pick
 
-    snap = _shell_and_default_snap()
-    for agent in ("shell", "claude"):
-        slot, _ = behavior_pick(snap, active_agent=agent, key=key)
-        assert slot == "default"
+  snap = _shell_and_default_snap()
+  for agent in ("shell", "claude"):
+    slot, _ = behavior_pick(snap, active_agent=agent, key=key)
+    assert slot == "default"
 
 
 def test_shell_discovery_unions_both_tiers():
-    """``effective_behavior``'s discovery unions the shell tier and ``agent.default``."""
-    snap = _shell_and_default_snap()
-    assert effective_behavior(snap, active_agent="shell") == {
-        "label": "Command Line Shell (shell)", "model": "sonnet",
-        "continue_mode": "true", "endpoint": "https://d",
-    }
-    claude = effective_behavior(snap, active_agent="claude")
-    assert claude["model"] == "sonnet" and claude["label"] == "Claude"
+  """``effective_behavior``'s discovery unions the shell tier and ``agent.default``."""
+  snap = _shell_and_default_snap()
+  assert effective_behavior(snap, active_agent="shell") == {
+    "label": "Command Line Shell (shell)",
+    "model": "sonnet",
+    "continue_mode": "true",
+    "endpoint": "https://d",
+  }
+  claude = effective_behavior(snap, active_agent="claude")
+  assert claude["model"] == "sonnet" and claude["label"] == "Claude"
 
 
 def test_the_env_twin_check_reads_the_tiers_the_pick_reads():
-    """``start._declared_agent_env_key`` names an ``agent.default.env`` entry for a shell
-    box too: its pick reads that tier.
-    (Mutation: check ``("shell",)`` alone for ``shell`` → the first assert REDs.)"""
-    from kanibako.commands.start import _declared_agent_env_key
+  """``start._declared_agent_env_key`` names an ``agent.default.env`` entry for a shell
+  box too: its pick reads that tier.
+  (Mutation: check ``("shell",)`` alone for ``shell`` → the first assert REDs.)"""
+  from kanibako.commands.start import _declared_agent_env_key
 
-    snap = _shell_and_default_snap()
-    assert _declared_agent_env_key(snap, "shell", "TERM") == "agent.default.env.TERM"
-    assert _declared_agent_env_key(snap, "shell", "FOO") == "agent.shell.env.FOO"
-    assert _declared_agent_env_key(snap, "claude", "TERM") == "agent.default.env.TERM"
+  snap = _shell_and_default_snap()
+  assert _declared_agent_env_key(snap, "shell", "TERM") == "agent.default.env.TERM"
+  assert _declared_agent_env_key(snap, "shell", "FOO") == "agent.shell.env.FOO"
+  assert _declared_agent_env_key(snap, "claude", "TERM") == "agent.default.env.TERM"
 
 
 def test_a_shell_boxs_declared_bool_floor_is_its_fence_row_else_agent_default(monkeypatch):
-    """The launch's None-guard floor for a shell box is ``agent.shell.<key>`` where the
-    fence states that row, else ``agent.default.<key>`` (§2d); a true agent keeps the
-    default's. The two tables are given DIFFERENT values so the read is told apart."""
-    from kanibako.commands.start import _declared_behavior_bool
-    from kanibako.settings import core_defaults
+  """The launch's None-guard floor for a shell box is ``agent.shell.<key>`` where the
+  fence states that row, else ``agent.default.<key>`` (§2d); a true agent keeps the
+  default's. The two tables are given DIFFERENT values so the read is told apart."""
+  from kanibako.commands.start import _declared_behavior_bool
+  from kanibako.settings import core_defaults
 
-    monkeypatch.setattr(core_defaults, "pseudo_tier_default", lambda agent_id, key: "false")
-    monkeypatch.setattr(core_defaults, "behavior_default", lambda key: "true")
-    monkeypatch.setattr(
-        core_defaults, "pseudo_tier_defaults", lambda: {"agent.shell.allow_helpers": "false"},
-    )
-    assert _declared_behavior_bool("allow_helpers", "shell") is False
-    assert _declared_behavior_bool("allow_helpers", "claude") is True
-    monkeypatch.setattr(core_defaults, "pseudo_tier_defaults", lambda: {})
-    assert _declared_behavior_bool("allow_helpers", "shell") is True
+  monkeypatch.setattr(core_defaults, "pseudo_tier_default", lambda agent_id, key: "false")
+  monkeypatch.setattr(core_defaults, "behavior_default", lambda key: "true")
+  monkeypatch.setattr(
+    core_defaults,
+    "pseudo_tier_defaults",
+    lambda: {"agent.shell.allow_helpers": "false"},
+  )
+  assert _declared_behavior_bool("allow_helpers", "shell") is False
+  assert _declared_behavior_bool("allow_helpers", "claude") is True
+  monkeypatch.setattr(core_defaults, "pseudo_tier_defaults", lambda: {})
+  assert _declared_behavior_bool("allow_helpers", "shell") is True
 
 
 def test_pseudo_tier_default_reads_the_named_tier_and_fails_closed():
-    """``pseudo_tier_default(agent_id, key)`` reads ``agent.<agent_id>.<key>``; an
-    undeclared tier, an undeclared key, and a ``<None>`` row each RAISE."""
-    from kanibako.settings import core_defaults
+  """``pseudo_tier_default(agent_id, key)`` reads ``agent.<agent_id>.<key>``; an
+  undeclared tier, an undeclared key, and a ``<None>`` row each RAISE."""
+  from kanibako.settings import core_defaults
 
-    assert core_defaults.pseudo_tier_default("shell", "label") == "Command Line Shell (shell)"
-    with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
-        core_defaults.pseudo_tier_default("default", "label")
-    with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
-        core_defaults.pseudo_tier_default("claude", "label")
-    with pytest.raises(PackagingError, match="declares no 'agent_shell.no_such_key'"):
-        core_defaults.pseudo_tier_default("shell", "no_such_key")
-    with pytest.raises(PackagingError, match="as <None>"):
-        core_defaults.pseudo_tier_default("shell", "model")
+  assert core_defaults.pseudo_tier_default("shell", "label") == "Command Line Shell (shell)"
+  with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
+    core_defaults.pseudo_tier_default("default", "label")
+  with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
+    core_defaults.pseudo_tier_default("claude", "label")
+  with pytest.raises(PackagingError, match="declares no 'agent_shell.no_such_key'"):
+    core_defaults.pseudo_tier_default("shell", "no_such_key")
+  with pytest.raises(PackagingError, match="as <None>"):
+    core_defaults.pseudo_tier_default("shell", "model")
 
 
 def test_pseudo_tier_defaults_is_the_shell_table_while_the_set_holds_only_shell():
-    """While ``ADDRESSABLE_PSEUDO_AGENTS == {"shell"}``, the union is EXACTLY the
-    ``agent_shell:`` table keyed ``agent.shell.<key>`` — the output the retired
-    shell-only read produced, ``<None>`` rows kept PRESENT."""
-    from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
-    from kanibako.settings import core_defaults
+  """While ``ADDRESSABLE_PSEUDO_AGENTS == {"shell"}``, the union is EXACTLY the
+  ``agent_shell:`` table keyed ``agent.shell.<key>`` — the output the retired
+  shell-only read produced, ``<None>`` rows kept PRESENT."""
+  from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
+  from kanibako.settings import core_defaults
 
-    assert ADDRESSABLE_PSEUDO_AGENTS == {"shell"}
-    table = core_defaults._load_doc()["agent_shell"]
-    assert table
-    assert core_defaults.pseudo_tier_defaults() == {
-        f"agent.shell.{key}": None if value is None else str(value)
-        for key, value in table.items()
-    }
+  assert ADDRESSABLE_PSEUDO_AGENTS == {"shell"}
+  table = core_defaults._load_doc()["agent_shell"]
+  assert table
+  assert core_defaults.pseudo_tier_defaults() == {
+    f"agent.shell.{key}": None if value is None else str(value) for key, value in table.items()
+  }
 
 
 def test_shell_category_entries_carry_the_agent_default_entries():
-    """Every ``agent.default`` bind and env entry reaches a plain-shell box, declared at
-    ``agent.default`` (``_agent_decl_scope_fn``), beside its own at ``agent.shell``; a
-    true agent receives the same default-tier entries."""
-    snap = _shell_and_default_snap()
-    shell = {e.key for e in snapshot_category_entries(snap, active_agent="shell", box_ctx=_ctx())}
-    assert "agent.shell.env.FOO" in shell
-    assert "agent.default.env.TERM" in shell
-    assert any(k.startswith("agent.default.bindings.ro") for k in shell)
-    claude = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    claude_keys = {e.key for e in claude}
-    assert "agent.default.env.TERM" in claude_keys
-    assert any(k.startswith("agent.default.bindings.ro") for k in claude_keys)
+  """Every ``agent.default`` bind and env entry reaches a plain-shell box, declared at
+  ``agent.default`` (``_agent_decl_scope_fn``), beside its own at ``agent.shell``; a
+  true agent receives the same default-tier entries."""
+  snap = _shell_and_default_snap()
+  shell = {e.key for e in snapshot_category_entries(snap, active_agent="shell", box_ctx=_ctx())}
+  assert "agent.shell.env.FOO" in shell
+  assert "agent.default.env.TERM" in shell
+  assert any(k.startswith("agent.default.bindings.ro") for k in shell)
+  claude = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  claude_keys = {e.key for e in claude}
+  assert "agent.default.env.TERM" in claude_keys
+  assert any(k.startswith("agent.default.bindings.ro") for k in claude_keys)
 
 
 def test_the_shell_floor_holds_only_the_fence_rows():
-    """§2d shell fence: the shell tier floors only the rows its block states
-    (``template`` has its own producer, ``launch.templates``); every other key
-    inherits ``agent.default``, ``env.TERM`` included."""
-    from kanibako.settings.core_defaults import env_default_categories, pseudo_tier_defaults
+  """§2d shell fence: the shell tier floors only the rows its block states
+  (``template`` has its own producer, ``launch.templates``); every other key
+  inherits ``agent.default``, ``env.TERM`` included."""
+  from kanibako.settings.core_defaults import env_default_categories, pseudo_tier_defaults
 
-    floored = {
-        k.removeprefix("agent.shell.") for k in pseudo_tier_defaults()
-        if k.startswith("agent.shell.")
-    }
-    assert floored == {"label", "continue_mode", "model"}
-    for key in ("continue_mode", "model"):
-        assert pseudo_tier_defaults()[f"agent.shell.{key}"] is None
-    assert "agent.shell.env.TERM" not in env_default_categories()
+  floored = {
+    k.removeprefix("agent.shell.") for k in pseudo_tier_defaults() if k.startswith("agent.shell.")
+  }
+  assert floored == {"label", "continue_mode", "model"}
+  for key in ("continue_mode", "model"):
+    assert pseudo_tier_defaults()[f"agent.shell.{key}"] is None
+  assert "agent.shell.env.TERM" not in env_default_categories()
 
 
 def test_a_users_agent_default_values_reach_the_shell_launch_but_its_fence_rows(
-    tmp_path: Path,
+  tmp_path: Path,
 ):
-    """End to end through ``build_launch_snapshot``: a system file's ``agent.default`` env
-    entry reaches the shell's category list, while its ``model`` is shadowed by the
-    fence's ``<None>``."""
-    from kanibako.settings.core_defaults import (
-        behavior_defaults,
-        env_default_categories,
-        pseudo_tier_defaults,
-    )
+  """End to end through ``build_launch_snapshot``: a system file's ``agent.default`` env
+  entry reaches the shell's category list, while its ``model`` is shadowed by the
+  fence's ``<None>``."""
+  from kanibako.settings.core_defaults import (
+    behavior_defaults,
+    env_default_categories,
+    pseudo_tier_defaults,
+  )
 
-    system_file = tmp_path / "settings.yaml"
-    system_file.write_text(
-        "agent:\n  default:\n    model: mine\n    env:\n      FOO: bar\n"
-    )
-    snap = _snap(
-        agent_name="shell",
-        system_path=system_file,
-        behavior_floor=behavior_defaults(),
-        default_categories={**pseudo_tier_defaults(), **env_default_categories()},
-    )
-    assert "model" not in effective_behavior(snap, active_agent="shell")
-    envs = {
-        e.name: e for e in snapshot_category_entries(
-            snap, active_agent="shell", box_ctx=_ctx())
-        if e.category == "env"
-    }
-    assert envs["FOO"].key == "agent.default.env.FOO"
-    assert envs["TERM"].key == "agent.default.env.TERM"
-    assert effective_behavior(snap, active_agent="other")["model"] == "mine"
+  system_file = tmp_path / "settings.yaml"
+  system_file.write_text("agent:\n  default:\n    model: mine\n    env:\n      FOO: bar\n")
+  snap = _snap(
+    agent_name="shell",
+    system_path=system_file,
+    behavior_floor=behavior_defaults(),
+    default_categories={**pseudo_tier_defaults(), **env_default_categories()},
+  )
+  assert "model" not in effective_behavior(snap, active_agent="shell")
+  envs = {
+    e.name: e
+    for e in snapshot_category_entries(snap, active_agent="shell", box_ctx=_ctx())
+    if e.category == "env"
+  }
+  assert envs["FOO"].key == "agent.default.env.FOO"
+  assert envs["TERM"].key == "agent.default.env.TERM"
+  assert effective_behavior(snap, active_agent="other")["model"] == "mine"
 
 
 # --------------------------------------------------------------------------- #
@@ -3725,149 +4107,178 @@ def test_a_users_agent_default_values_reach_the_shell_launch_but_its_fence_rows(
 
 
 def test_box_pref_category_merges_into_active_agent_slot(tmp_path: Path):
-    # A box ``pref.agent.<a>.<category>`` tweak merges into the active agent slot as
-    # an ORDINARY cascade level (§2h), so a box override of ONE deep leaf coexists
-    # with the sibling default (per-DEST merge) and shows in the RO read-back.
-    #
-    # ⚑ The per-entry merge is the property under test and it is NOT free: since
-    # 2026-08-08c ``common`` is a TERMINAL key whose value is the whole dest-keyed
-    # map, so a merge that replaced the value wholesale would drop the untouched
-    # ``~/.claude/cache`` default. It survives because ``parse_bind_map`` returns a
-    # nested KeyStore NODE rather than an opaque leaf.
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"common": {
-            "~/.claude/plugins": ["/box/plugins"],
-        }}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={
-            "agent.claude.common": {
-                "~/.claude/plugins": ("/store/plugins",),
-                "~/.claude/cache": ("/store/cache",),
-            },
-        },
-    )
-    plugins, cache = "/home/agent/.claude/plugins", "/home/agent/.claude/cache"
-    for root in (("meta", "box", "agent"), ("agent", "claude")):
-        assert _meta_node(snap, *root, "common", plugins).src == "/box/plugins"
-        assert _meta_node(snap, *root, "common", cache).src == "/store/cache"
+  # A box ``pref.agent.<a>.<category>`` tweak merges into the active agent slot as
+  # an ORDINARY cascade level (§2h), so a box override of ONE deep leaf coexists
+  # with the sibling default (per-DEST merge) and shows in the RO read-back.
+  #
+  # ⚑ The per-entry merge is the property under test and it is NOT free: since
+  # 2026-08-08c ``common`` is a TERMINAL key whose value is the whole dest-keyed
+  # map, so a merge that replaced the value wholesale would drop the untouched
+  # ``~/.claude/cache`` default. It survives because ``parse_bind_map`` returns a
+  # nested KeyStore NODE rather than an opaque leaf.
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {
+      "pref": {
+        "agent": {
+          "claude": {
+            "common": {
+              "~/.claude/plugins": ["/box/plugins"],
+            }
+          }
+        }
+      }
+    },
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    default_categories={
+      "agent.claude.common": {
+        "~/.claude/plugins": ("/store/plugins",),
+        "~/.claude/cache": ("/store/cache",),
+      },
+    },
+  )
+  plugins, cache = "/home/agent/.claude/plugins", "/home/agent/.claude/cache"
+  for root in (("meta", "box", "agent"), ("agent", "claude")):
+    assert _meta_node(snap, *root, "common", plugins).src == "/box/plugins"
+    assert _meta_node(snap, *root, "common", cache).src == "/store/cache"
 
 
 def test_box_pref_category_present_none_suppresses_through_adapter(tmp_path: Path):
-    # A box pref CATEGORY present-None (``null``) SUPPRESSES the inherited default
-    # bind AT MERGE (spec §2h "Values are installed VERBATIM"), so it never reaches
-    # the category adapter.
-    # ⚑ §2h: present-None installs VERBATIM — ``if value is None: continue`` in the
-    # pref loop would silently delete this capability.
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
-    )
-    dests = {
-        e.box_dest
-        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        if e.category == "seeded"
-    }
-    assert "/home/agent/x" not in dests
-    agent_node = snap.agent.claude if "claude" in snap.agent else KeyStore()
-    seeded = agent_node.seeded if "seeded" in agent_node else KeyStore()
-    assert "/home/agent/x" not in seeded
+  # A box pref CATEGORY present-None (``null``) SUPPRESSES the inherited default
+  # bind AT MERGE (spec §2h "Values are installed VERBATIM"), so it never reaches
+  # the category adapter.
+  # ⚑ §2h: present-None installs VERBATIM — ``if value is None: continue`` in the
+  # pref loop would silently delete this capability.
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
+  )
+  dests = {
+    e.box_dest
+    for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    if e.category == "seeded"
+  }
+  assert "/home/agent/x" not in dests
+  agent_node = snap.agent.claude if "claude" in snap.agent else KeyStore()
+  seeded = agent_node.seeded if "seeded" in agent_node else KeyStore()
+  assert "/home/agent/x" not in seeded
 
 
 def test_box_pref_category_positive_tweak_delivers_through_adapter(tmp_path: Path):
-    # A POSITIVE box pref category entry DELIVERS as an agent-scope entry.
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/bx": ["/box/src"]}}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    seeded = {e.box_dest: e for e in entries if e.category == "seeded"}
-    assert seeded["/home/agent/bx"].scope == "agent"
-    assert seeded["/home/agent/bx"].host_src == "/box/src"
-    assert seeded["/home/agent/x"].host_src == "/store/x"
+  # A POSITIVE box pref category entry DELIVERS as an agent-scope entry.
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/bx": ["/box/src"]}}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  seeded = {e.box_dest: e for e in entries if e.category == "seeded"}
+  assert seeded["/home/agent/bx"].scope == "agent"
+  assert seeded["/home/agent/bx"].host_src == "/box/src"
+  assert seeded["/home/agent/x"].host_src == "/store/x"
 
 
 def test_workset_pref_delivers_and_suppresses(tmp_path: Path):
-    # A WORKSET file's pref applies to its boxes (§2h: prefs are legal in the
-    # workset and box files only), delivering a positive entry and suppressing with
-    # a present-None.
-    ws_pos = _yaml(
-        tmp_path / "ws_pos.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/wy": ["/ws/src"]}}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=ws_pos, box_path=None,
-        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
-    )
-    seeded = {
-        e.box_dest: e.host_src
-        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        if e.category == "seeded"
-    }
-    assert seeded == {"/home/agent/wy": "/ws/src", "/home/agent/x": "/store/x"}
+  # A WORKSET file's pref applies to its boxes (§2h: prefs are legal in the
+  # workset and box files only), delivering a positive entry and suppressing with
+  # a present-None.
+  ws_pos = _yaml(
+    tmp_path / "ws_pos.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/wy": ["/ws/src"]}}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=ws_pos,
+    box_path=None,
+    default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
+  )
+  seeded = {
+    e.box_dest: e.host_src
+    for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    if e.category == "seeded"
+  }
+  assert seeded == {"/home/agent/wy": "/ws/src", "/home/agent/x": "/store/x"}
 
-    ws_null = _yaml(
-        tmp_path / "ws_null.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
-    )
-    snap2 = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=ws_null, box_path=None,
-        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
-    )
-    dests = {
-        e.box_dest
-        for e in snapshot_category_entries(snap2, active_agent="claude", box_ctx=_ctx())
-        if e.category == "seeded"
-    }
-    assert "/home/agent/x" not in dests
+  ws_null = _yaml(
+    tmp_path / "ws_null.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
+  )
+  snap2 = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=ws_null,
+    box_path=None,
+    default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
+  )
+  dests = {
+    e.box_dest
+    for e in snapshot_category_entries(snap2, active_agent="claude", box_ctx=_ctx())
+    if e.category == "seeded"
+  }
+  assert "/home/agent/x" not in dests
 
 
 def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
-    # §1A: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
-    # as a scalar. ⮕ P7 FLIP: while the retired ``box.agent.<category>`` fold
-    # existed it out-ranked a box pref (P6's transitional pin); the fold is gone.
-    # ⚑ RESPELLED 2026-08-08c, and it was PASSING before the respell — for the
-    # wrong reason. Under the old name-keyed reading ``{"k": ["/ws/k", "~/k"]}``
-    # meant "entry k, src /ws/k, dest ~/k"; the dest-keyed reader takes ``k`` for a
-    # DESTINATION and ``~/k`` for mount OPTIONS, so the assertion still held while
-    # the fixture had stopped meaning what it says. Green is not evidence here.
-    ws = _yaml(
-        tmp_path / "ws.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/ws/k"]}}}}},
-    )
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/box/k"]}}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=ws, box_path=box,
-        default_categories={},
-    )
-    seeded = {
-        e.box_dest: e.host_src
-        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        if e.category == "seeded"
-    }
-    assert seeded == {"/home/agent/k": "/box/k"}
+  # §1A: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
+  # as a scalar. ⮕ P7 FLIP: while the retired ``box.agent.<category>`` fold
+  # existed it out-ranked a box pref (P6's transitional pin); the fold is gone.
+  # ⚑ RESPELLED 2026-08-08c, and it was PASSING before the respell — for the
+  # wrong reason. Under the old name-keyed reading ``{"k": ["/ws/k", "~/k"]}``
+  # meant "entry k, src /ws/k, dest ~/k"; the dest-keyed reader takes ``k`` for a
+  # DESTINATION and ``~/k`` for mount OPTIONS, so the assertion still held while
+  # the fixture had stopped meaning what it says. Green is not evidence here.
+  ws = _yaml(
+    tmp_path / "ws.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/ws/k"]}}}}},
+  )
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/box/k"]}}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=ws,
+    box_path=box,
+    default_categories={},
+  )
+  seeded = {
+    e.box_dest: e.host_src
+    for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    if e.category == "seeded"
+  }
+  assert seeded == {"/home/agent/k": "/box/k"}
 
 
 # --------------------------------------------------------------------------- #
@@ -3876,101 +4287,127 @@ def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
 
 
 def test_box_pref_changes_effective_behavior(tmp_path: Path):
-    # A box ``pref.agent.claude.model`` must change effective_behavior OUTPUT.
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"model": "sonnet"}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
-    )
-    eff = effective_behavior(snap, active_agent="claude")
-    assert eff["model"] == "sonnet"
-    assert eff["allow_helpers"] == "true"
+  # A box ``pref.agent.claude.model`` must change effective_behavior OUTPUT.
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {"pref": {"agent": {"claude": {"model": "sonnet"}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    behavior_floor={"model": "opus", "allow_helpers": "true"},
+  )
+  eff = effective_behavior(snap, active_agent="claude")
+  assert eff["model"] == "sonnet"
+  assert eff["allow_helpers"] == "true"
 
 
 def test_box_agent_no_override_effective_behavior_identical_to_baseline():
-    # EQUIVALENCE GUARD: with NO box tweak the effective behavior is byte-identical
-    # to the agent.default ⊕ agent.<active> pick.
-    common = dict(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
-    )
-    snap = build_launch_snapshot(**common)
-    eff = effective_behavior(snap, active_agent="claude")
-    assert eff == {"model": "opus", "allow_helpers": "true"}
+  # EQUIVALENCE GUARD: with NO box tweak the effective behavior is byte-identical
+  # to the agent.default ⊕ agent.<active> pick.
+  common = dict(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "opus", "allow_helpers": "true"},
+  )
+  snap = build_launch_snapshot(**common)
+  eff = effective_behavior(snap, active_agent="claude")
+  assert eff == {"model": "opus", "allow_helpers": "true"}
 
 
 def test_box_pref_bindings_override_changes_category_entries(tmp_path: Path):
-    # A box pref on a category must produce a category entry under the box's
-    # effective agent (the request feeds category resolution).
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"common": {
-            "~/.claude/plugins": ["/box/plugins"],
-        }}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={
-            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
-        },
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    plug = [
-        e for e in entries
-        if e.category == "common" and e.box_dest == "/home/agent/.claude/plugins"
-    ]
-    assert len(plug) == 1, entries
-    assert plug[0].host_src == "/box/plugins"
-    assert plug[0].scope == "agent"
+  # A box pref on a category must produce a category entry under the box's
+  # effective agent (the request feeds category resolution).
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {
+      "pref": {
+        "agent": {
+          "claude": {
+            "common": {
+              "~/.claude/plugins": ["/box/plugins"],
+            }
+          }
+        }
+      }
+    },
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    default_categories={
+      "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
+    },
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  plug = [
+    e for e in entries if e.category == "common" and e.box_dest == "/home/agent/.claude/plugins"
+  ]
+  assert len(plug) == 1, entries
+  assert plug[0].host_src == "/box/plugins"
+  assert plug[0].scope == "agent"
 
 
 def test_box_pref_env_override_changes_category_entries(tmp_path: Path):
-    # A box pref on env.* appears as an agent-scope env entry.
-    box = _yaml(
-        tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"env": {"MY_VAR": "box_val"}}}}},
-    )
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.claude.env.MY_VAR": "agent_val"},
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    envs = [e for e in entries if e.category == "env" and e.name == "MY_VAR"]
-    assert len(envs) == 1, entries
-    assert envs[0].options == "box_val"
+  # A box pref on env.* appears as an agent-scope env entry.
+  box = _yaml(
+    tmp_path / "box.yaml",
+    {"pref": {"agent": {"claude": {"env": {"MY_VAR": "box_val"}}}}},
+  )
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=box,
+    default_categories={"agent.claude.env.MY_VAR": "agent_val"},
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  envs = [e for e in entries if e.category == "env" and e.name == "MY_VAR"]
+  assert len(envs) == 1, entries
+  assert envs[0].options == "box_val"
 
 
 def test_box_agent_no_override_category_entries_identical_to_baseline():
-    # EQUIVALENCE GUARD (category side): NO box tweak → the category entry set is
-    # byte-identical to the baseline.
-    common = dict(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories={
-            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
-            "agent.claude.env.MY_VAR": "agent_val",
-        },
-    )
-    snap = build_launch_snapshot(**common)
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    agent_entries = sorted(
-        (e.category, e.name, e.host_src, e.options)
-        for e in entries if e.scope == "agent"
-    )
-    # ⚑ ``name`` IS the destination for a bind-shaped category now (R-10), so the
-    # ``common`` row names ``/home/agent/.claude/plugins`` where it once named
-    # ``plugins``. ``env`` is unaffected — its name is still the VAR.
-    assert agent_entries == [
-        ("common", "/home/agent/.claude/plugins", "/store/plugins", "Z,U"),
-        ("env", "MY_VAR", None, "agent_val"),
-    ]
+  # EQUIVALENCE GUARD (category side): NO box tweak → the category entry set is
+  # byte-identical to the baseline.
+  common = dict(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories={
+      "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
+      "agent.claude.env.MY_VAR": "agent_val",
+    },
+  )
+  snap = build_launch_snapshot(**common)
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  agent_entries = sorted(
+    (e.category, e.name, e.host_src, e.options) for e in entries if e.scope == "agent"
+  )
+  # ⚑ ``name`` IS the destination for a bind-shaped category now (R-10), so the
+  # ``common`` row names ``/home/agent/.claude/plugins`` where it once named
+  # ``plugins``. ``env`` is unaffected — its name is still the VAR.
+  assert agent_entries == [
+    ("common", "/home/agent/.claude/plugins", "/store/plugins", "Z,U"),
+    ("env", "MY_VAR", None, "agent_val"),
+  ]
 
 
 # --------------------------------------------------------------------------- #
@@ -3980,361 +4417,391 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
 
 
 def test_workset_anchor_floor_rejects_unknown_mode():
-    """An undeclared mode is REFUSED, never silently given the primary/named arm.
+  """An undeclared mode is REFUSED, never silently given the primary/named arm.
 
-    The floor picks a per-mode arm for ``workset.boxes`` / ``workset.logs`` /
-    ``meta.box.path``; a typo'd or new mode taking the wrong arm would relocate the
-    box root SILENTLY, so the variant is checked rather than defaulted.
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  The floor picks a per-mode arm for ``workset.boxes`` / ``workset.logs`` /
+  ``meta.box.path``; a typo'd or new mode taking the wrong arm would relocate the
+  box root SILENTLY, so the variant is checked rather than defaulted.
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    with pytest.raises(_SettingsError) as exc:
-        workset_anchor_floor(mode="local")
-    assert "local" in str(exc.value)
-    # The three real modes are accepted.
-    for mode in ("primary", "named", "standalone"):
-        assert workset_anchor_floor(mode=mode)
+  with pytest.raises(_SettingsError) as exc:
+    workset_anchor_floor(mode="local")
+  assert "local" in str(exc.value)
+  # The three real modes are accepted.
+  for mode in ("primary", "named", "standalone"):
+    assert workset_anchor_floor(mode=mode)
 
 
 def test_workset_anchor_floor_refuses_an_undeclared_channel_leaf():
-    """The floor MANUFACTURES ``workset.channels.<leaf>`` from a caller mapping.
+  """The floor MANUFACTURES ``workset.channels.<leaf>`` from a caller mapping.
 
-    Without a check that is a free-form passthrough: whatever leaf the caller
-    invents becomes a key, which is exactly what spec §0's CLOSED keyspace
-    forbids — an undeclared key is not a key and must be REFUSED, not quietly
-    accepted. The error names the leaf so the fabrication is visible.
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  Without a check that is a free-form passthrough: whatever leaf the caller
+  invents becomes a key, which is exactly what spec §0's CLOSED keyspace
+  forbids — an undeclared key is not a key and must be REFUSED, not quietly
+  accepted. The error names the leaf so the fabrication is visible.
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    with pytest.raises(_SettingsError) as exc:
-        workset_anchor_floor(
-            mode="primary", workset_channels={"scratchpad": "/ws/scratchpad"},
-        )
-    assert "scratchpad" in str(exc.value)
-    assert "not a declared key" in str(exc.value)
-
-    # The leaves the live caller passes all survive, spelled as spec §2c keys.
-    floor = workset_anchor_floor(
-        mode="primary",
-        workset_channels={
-            "common": "/ws/channels/common",
-            "chat": "/ws/channels/chat",
-            "share": "/ws/channels/share",
-        },
+  with pytest.raises(_SettingsError) as exc:
+    workset_anchor_floor(
+      mode="primary",
+      workset_channels={"scratchpad": "/ws/scratchpad"},
     )
-    assert floor["workset.channels.common"] == "/ws/channels/common"
-    assert floor["workset.channels.chat"] == "/ws/channels/chat"
-    assert floor["workset.channels.share"] == "/ws/channels/share"
+  assert "scratchpad" in str(exc.value)
+  assert "not a declared key" in str(exc.value)
+
+  # The leaves the live caller passes all survive, spelled as spec §2c keys.
+  floor = workset_anchor_floor(
+    mode="primary",
+    workset_channels={
+      "common": "/ws/channels/common",
+      "chat": "/ws/channels/chat",
+      "share": "/ws/channels/share",
+    },
+  )
+  assert floor["workset.channels.common"] == "/ws/channels/common"
+  assert floor["workset.channels.chat"] == "/ws/channels/chat"
+  assert floor["workset.channels.share"] == "/ws/channels/share"
 
 
 @pytest.mark.parametrize("leaf", ["common", "chat", "broadcast", "share"])
 def test_workset_anchor_floor_refuses_a_standalone_local_channel_path(leaf):
-    """A standalone box has no workset-local channels (spec §2c declares ``<None>``).
+  """A standalone box has no workset-local channels (spec §2c declares ``<None>``).
 
-    The floor supplies that ``None`` itself, so a caller path for one of the four
-    LOCAL leaves would overwrite a declared value — it is REFUSED, naming the key.
-    The two ALL-PROJECTS leaves are still accepted in the same call shape.
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  The floor supplies that ``None`` itself, so a caller path for one of the four
+  LOCAL leaves would overwrite a declared value — it is REFUSED, naming the key.
+  The two ALL-PROJECTS leaves are still accepted in the same call shape.
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    with pytest.raises(_SettingsError) as exc:
-        workset_anchor_floor(
-            mode="standalone", workset_channels={leaf: f"/ws/{leaf}"},
-        )
-    assert f"workset.channels.{leaf}" in str(exc.value)
-    floor = workset_anchor_floor(
-        mode="standalone", workset_channels={"mailboxes": "/sys/mailboxes/x"},
+  with pytest.raises(_SettingsError) as exc:
+    workset_anchor_floor(
+      mode="standalone",
+      workset_channels={leaf: f"/ws/{leaf}"},
     )
-    assert floor["workset.channels.mailboxes"] == "/sys/mailboxes/x"
+  assert f"workset.channels.{leaf}" in str(exc.value)
+  floor = workset_anchor_floor(
+    mode="standalone",
+    workset_channels={"mailboxes": "/sys/mailboxes/x"},
+  )
+  assert floor["workset.channels.mailboxes"] == "/sys/mailboxes/x"
 
 
 def test_workset_anchor_floor_refuses_a_standalone_channelroot():
-    """``workset.channelroot`` is ``<None>`` for standalone (spec §2c); the floor
-    supplies the ``None``, and a caller path is REFUSED rather than overwriting it."""
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  """``workset.channelroot`` is ``<None>`` for standalone (spec §2c); the floor
+  supplies the ``None``, and a caller path is REFUSED rather than overwriting it."""
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    with pytest.raises(_SettingsError) as exc:
-        workset_anchor_floor(mode="standalone", channelroot="/ws/channels")
-    assert "workset.channelroot" in str(exc.value)
-    assert workset_anchor_floor(mode="standalone")["workset.channelroot"] is None
+  with pytest.raises(_SettingsError) as exc:
+    workset_anchor_floor(mode="standalone", channelroot="/ws/channels")
+  assert "workset.channelroot" in str(exc.value)
+  assert workset_anchor_floor(mode="standalone")["workset.channelroot"] is None
 
 
 def test_workset_anchor_floor_allows_every_spec_declared_channel_leaf():
-    """The allowlist is the SPEC's family, not the subset today's caller passes.
+  """The allowlist is the SPEC's family, not the subset today's caller passes.
 
-    Pinning it to the live call would refuse a declared key the moment a second
-    caller supplied one; the check exists to stop FABRICATION.
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  Pinning it to the live call would refuse a declared key the moment a second
+  caller supplied one; the check exists to stop FABRICATION.
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    floor = workset_anchor_floor(
-        mode="named",
-        workset_channels={
-            leaf: f"/ws/{leaf}"
-            for leaf in (
-                "common", "chat", "broadcast", "share", "mailboxes",
-                "share_global",
-            )
-        },
-    )
-    assert floor["workset.channels.broadcast"] == "/ws/broadcast"
-    assert floor["workset.channels.mailboxes"] == "/ws/mailboxes"
-    assert floor["workset.channels.share_global"] == "/ws/share_global"
+  floor = workset_anchor_floor(
+    mode="named",
+    workset_channels={
+      leaf: f"/ws/{leaf}"
+      for leaf in (
+        "common",
+        "chat",
+        "broadcast",
+        "share",
+        "mailboxes",
+        "share_global",
+      )
+    },
+  )
+  assert floor["workset.channels.broadcast"] == "/ws/broadcast"
+  assert floor["workset.channels.mailboxes"] == "/ws/mailboxes"
+  assert floor["workset.channels.share_global"] == "/ws/share_global"
 
 
 def test_workset_anchor_floor_meta_box_path_per_mode():
-    """``meta.box.path`` carries the per-mode box-root formula — and ONLY here.
+  """``meta.box.path`` carries the per-mode box-root formula — and ONLY here.
 
-    primary/named append the box-name leaf; standalone is the EMPTY LEAF (a BARE
-    whole-value ref: ``workset.boxes`` IS the box root), so no separator is emitted
-    and nothing downstream needs a per-mode arm.
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  primary/named append the box-name leaf; standalone is the EMPTY LEAF (a BARE
+  whole-value ref: ``workset.boxes`` IS the box root), so no separator is emitted
+  and nothing downstream needs a per-mode arm.
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    for mode in ("primary", "named"):
-        floor = workset_anchor_floor(mode=mode)
-        assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
-        assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
-        assert floor["workset.logs"] == "{meta.workset.path}/logs"
+  for mode in ("primary", "named"):
+    floor = workset_anchor_floor(mode=mode)
+    assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
+    assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
+    assert floor["workset.logs"] == "{meta.workset.path}/logs"
 
-    floor = workset_anchor_floor(mode="standalone")
-    assert floor["meta.box.path"] == "{workset.boxes}"
-    assert not floor["meta.box.path"].endswith("/")
-    assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
-    assert floor["workset.logs"] == "{workset.boxes}"
+  floor = workset_anchor_floor(mode="standalone")
+  assert floor["meta.box.path"] == "{workset.boxes}"
+  assert not floor["meta.box.path"].endswith("/")
+  assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
+  assert floor["workset.logs"] == "{workset.boxes}"
 
-    # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
-    # BOX BIND differs (the per-box subdir a lone box does not need).
-    for mode in ("primary", "named", "standalone"):
-        floor = workset_anchor_floor(mode=mode)
-        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
-        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
+  # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
+  # BOX BIND differs (the per-box subdir a lone box does not need).
+  for mode in ("primary", "named", "standalone"):
+    floor = workset_anchor_floor(mode=mode)
+    assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+    assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
 
 
 def _box_root_floor(mode: str) -> dict[str, object]:
-    """The minimum floor that lets the box root (and so ``meta.box.home``) resolve."""
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  """The minimum floor that lets the box root (and so ``meta.box.home``) resolve."""
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
-    floor.update(workset_anchor_floor(mode=mode))
-    return floor
+  floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
+  floor.update(workset_anchor_floor(mode=mode))
+  return floor
 
 
 def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
-    """``meta.box.home`` is the RO DERIVED box-home SOURCE ``{meta.box.path}/home``.
+  """``meta.box.home`` is the RO DERIVED box-home SOURCE ``{meta.box.path}/home``.
 
-    UNIFORM in every mode (spec §2c ALL PROJECTS), exactly like
-    ``meta.box.settings``: ONE formula, with the whole per-mode variation living in
-    ``meta.box.path`` and nothing downstream. Asserted through a REAL resolve rather
-    than as a string, so a box root whose own per-mode arm changed shape (the empty
-    standalone leaf especially) is caught here too.
+  UNIFORM in every mode (spec §2c ALL PROJECTS), exactly like
+  ``meta.box.settings``: ONE formula, with the whole per-mode variation living in
+  ``meta.box.path`` and nothing downstream. Asserted through a REAL resolve rather
+  than as a string, so a box root whose own per-mode arm changed shape (the empty
+  standalone leaf especially) is caught here too.
 
-    MUTATION-PROOF: removing the ``meta.box.home`` line from
-    ``workset_anchor_floor`` → the key is absent from the snapshot → RED.
-    """
-    expected = {
-        "primary": "/data/ws/boxes/b/home",
-        "named": "/data/ws/boxes/b/home",
-        # The EMPTY LEAF: workset.boxes IS the box root, so there is no name join
-        # and no doubled separator in the home path either.
-        "standalone": "/data/ws/box_data/home",
-    }
-    for mode, want in expected.items():
-        floor = _box_root_floor(mode)
-        assert floor["meta.box.home"] == "{meta.box.path}/home", mode
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            default_categories=floor,
-            workset_anchor=floor,
-        )
-        assert snap.meta.box.home == want, mode
-        assert snap.meta.box.home == f"{snap.meta.box.path}/home", mode
+  MUTATION-PROOF: removing the ``meta.box.home`` line from
+  ``workset_anchor_floor`` → the key is absent from the snapshot → RED.
+  """
+  expected = {
+    "primary": "/data/ws/boxes/b/home",
+    "named": "/data/ws/boxes/b/home",
+    # The EMPTY LEAF: workset.boxes IS the box root, so there is no name join
+    # and no doubled separator in the home path either.
+    "standalone": "/data/ws/box_data/home",
+  }
+  for mode, want in expected.items():
+    floor = _box_root_floor(mode)
+    assert floor["meta.box.home"] == "{meta.box.path}/home", mode
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=floor,
+      workset_anchor=floor,
+    )
+    assert snap.meta.box.home == want, mode
+    assert snap.meta.box.home == f"{snap.meta.box.path}/home", mode
 
 
 def test_home_bind_names_the_derived_key_and_resolves_through_it():
-    """The FOUNDATION's src IS ``meta.box.home`` — ONE spelling, read AT THE SEAM.
+  """The FOUNDATION's src IS ``meta.box.home`` — ONE spelling, read AT THE SEAM.
 
-    ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point), and it is
-    RE-AIMED, never deleted. While the derivation existed TWICE — the key, and an
-    inline ``@meta.box.path/home`` in the ``home`` row of ``core-defaults.yaml`` — a
-    guard held the two spellings equal. Then the row NAMED the key. At cutover 6-H the
-    row went away entirely: home does NOT route through ``bindings.rw`` (spec
-    ``:1015``), and ``commands.start._install_assembly_collapse`` builds the pid-0
-    foundation by READING the key. So the thing that needs pinning is unchanged in
-    kind — that nothing quietly went back to re-deriving — and moved in place: from
-    the YAML row to the seam.
+  ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point), and it is
+  RE-AIMED, never deleted. While the derivation existed TWICE — the key, and an
+  inline ``@meta.box.path/home`` in the ``home`` row of ``core-defaults.yaml`` — a
+  guard held the two spellings equal. Then the row NAMED the key. At cutover 6-H the
+  row went away entirely: home does NOT route through ``bindings.rw`` (spec
+  ``:1015``), and ``commands.start._install_assembly_collapse`` builds the pid-0
+  foundation by READING the key. So the thing that needs pinning is unchanged in
+  kind — that nothing quietly went back to re-deriving — and moved in place: from
+  the YAML row to the seam.
 
-    The three facts, none of them hardcoded twice:
+  The three facts, none of them hardcoded twice:
 
-    * ``core-defaults.yaml`` declares NO ``home`` row (re-adding one is a second bind
-      at pid 0's point, which the collapse refuses);
-    * the collapsed foundation's src is EXACTLY the resolved ``meta.box.home``, in all
-      three modes — a chain of two embedded hops the launch path actually consumes;
-    * its options are the seam's BARE ``Z,U`` — the foundation never passes the arm
-      fold, so nothing appends ``rw`` to it.
+  * ``core-defaults.yaml`` declares NO ``home`` row (re-adding one is a second bind
+    at pid 0's point, which the collapse refuses);
+  * the collapsed foundation's src is EXACTLY the resolved ``meta.box.home``, in all
+    three modes — a chain of two embedded hops the launch path actually consumes;
+  * its options are the seam's BARE ``Z,U`` — the foundation never passes the arm
+    fold, so nothing appends ``rw`` to it.
 
-    MUTATION-PROOF: re-deriving the foundation from ``proj.shell_path`` or re-inlining
-    ``{meta.box.path}/home`` at the seam → RED on the src; producing
-    ``{meta.box.path}/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
-    ``store_collapse.HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
-    """
-    from kanibako.commands.start import _install_assembly_collapse
-    from kanibako.settings.core_defaults import _load_doc
-    from kanibako.settings.store_collapse import HOME_DEST
+  MUTATION-PROOF: re-deriving the foundation from ``proj.shell_path`` or re-inlining
+  ``{meta.box.path}/home`` at the seam → RED on the src; producing
+  ``{meta.box.path}/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
+  ``store_collapse.HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
+  """
+  from kanibako.commands.start import _install_assembly_collapse
+  from kanibako.settings.core_defaults import _load_doc
+  from kanibako.settings.store_collapse import HOME_DEST
 
-    rows = [r for r in _load_doc().get("core", []) if r.get("key") == "home"]
-    assert rows == [], (
-        "core-defaults.yaml must carry NO `home` bind row — home is pid 0 and is "
-        "built at the assembly seam from `meta.box.home` (spec :1015)"
+  rows = [r for r in _load_doc().get("core", []) if r.get("key") == "home"]
+  assert rows == [], (
+    "core-defaults.yaml must carry NO `home` bind row — home is pid 0 and is "
+    "built at the assembly seam from `meta.box.home` (spec :1015)"
+  )
+
+  expected = {
+    "primary": "/data/ws/boxes/b/home",
+    "named": "/data/ws/boxes/b/home",
+    "standalone": "/data/ws/box_data/home",
+  }
+  for mode, want in expected.items():
+    floor = _box_root_floor(mode)
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=floor,
+      workset_anchor=floor,
     )
-
-    expected = {
-        "primary": "/data/ws/boxes/b/home",
-        "named": "/data/ws/boxes/b/home",
-        "standalone": "/data/ws/box_data/home",
-    }
-    for mode, want in expected.items():
-        floor = _box_root_floor(mode)
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            default_categories=floor,
-            workset_anchor=floor,
-        )
-        _install_assembly_collapse(snap, [], whole_box=True)
-        home = dict.__getitem__(snap.meta.assembly.bindings, HOME_DEST)
-        assert home.src == snap.meta.box.home, mode
-        assert home.src == want, mode
-        assert home.opts == "Z,U", mode
+    _install_assembly_collapse(snap, [], whole_box=True)
+    home = dict.__getitem__(snap.meta.assembly.bindings, HOME_DEST)
+    assert home.src == snap.meta.box.home, mode
+    assert home.src == want, mode
+    assert home.opts == "Z,U", mode
 
 
 def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
-    """A box root that resolves to nothing RAISES, naming the key.
+  """A box root that resolves to nothing RAISES, naming the key.
 
-    ⚑ WHY THIS EXISTS. ``box.bindings.rw.home`` is ``{meta.box.path}/home`` — an
-    EMBEDDED ref, and the embedded rule coerces an absent / present-None referent
-    to ``""``. So a box root that fails to resolve does not error: it yields the
-    host_src ``/home``, which the L7 guarantee-create then mkdir's and mounts OVER
-    the box home. Silent, catastrophic, and user-reachable — a workset settings
-    file may set ``workset.boxes: null``, which the cascade honors as a
-    present-None terminal.
+  ⚑ WHY THIS EXISTS. ``box.bindings.rw.home`` is ``{meta.box.path}/home`` — an
+  EMBEDDED ref, and the embedded rule coerces an absent / present-None referent
+  to ``""``. So a box root that fails to resolve does not error: it yields the
+  host_src ``/home``, which the L7 guarantee-create then mkdir's and mounts OVER
+  the box home. Silent, catastrophic, and user-reachable — a workset settings
+  file may set ``workset.boxes: null``, which the cascade honors as a
+  present-None terminal.
 
-    MUTATION-PROOF: without the assertion in ``build_launch_snapshot`` this test
-    observes a successfully-built snapshot whose home host_src is ``/home`` (that
-    was confirmed RED before the guard was added), so it cannot pass vacuously.
-    """
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  MUTATION-PROOF: without the assertion in ``build_launch_snapshot`` this test
+  observes a successfully-built snapshot whose home host_src is ``/home`` (that
+  was confirmed RED before the guard was added), so it cannot pass vacuously.
+  """
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    ws_file = tmp_path / "workset-settings.yaml"
-    dump_doc(ws_file, {"workset": {"boxes": None}})
-    # BOTH arms are covered because they fail DIFFERENTLY: primary/named dereference
-    # the box root through an EMBEDDED ref (-> "/mybox"), standalone through a
-    # WHOLE-VALUE ref (-> the host "/home"). Confirmed pre-guard.
-    for mode in ("primary", "standalone"):
-        floor: dict[str, object] = {
-            "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
-            "meta.box.name": "mybox",
-            "meta.workset.path": "/data/ws",
-        }
-        floor.update(workset_anchor_floor(mode=mode))
-        with pytest.raises(_SettingsError) as exc:
-            build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(),
-                system_path=None, agent_path=None, workset_path=ws_file,
-                box_path=None,
-                default_categories=floor,
-                workset_anchor=floor,
-            )
-        assert "meta.box.path" in str(exc.value), mode
-        assert "workset.boxes" in str(exc.value), mode
+  ws_file = tmp_path / "workset-settings.yaml"
+  dump_doc(ws_file, {"workset": {"boxes": None}})
+  # BOTH arms are covered because they fail DIFFERENTLY: primary/named dereference
+  # the box root through an EMBEDDED ref (-> "/mybox"), standalone through a
+  # WHOLE-VALUE ref (-> the host "/home"). Confirmed pre-guard.
+  for mode in ("primary", "standalone"):
+    floor: dict[str, object] = {
+      "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
+      "meta.box.name": "mybox",
+      "meta.workset.path": "/data/ws",
+    }
+    floor.update(workset_anchor_floor(mode=mode))
+    with pytest.raises(_SettingsError) as exc:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=ws_file,
+        box_path=None,
+        default_categories=floor,
+        workset_anchor=floor,
+      )
+    assert "meta.box.path" in str(exc.value), mode
+    assert "workset.boxes" in str(exc.value), mode
 
 
 def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
-    """An EMPTY ``meta.box.name`` must not silently yield the SHARED box store.
+  """An EMPTY ``meta.box.name`` must not silently yield the SHARED box store.
 
-    primary/named spell the root ``{workset.boxes}/{meta.box.name}``, so an empty name
-    leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``, which is the
-    box STORE's home rather than this box's (every box in the workset would resolve
-    the same home directory); a None name makes the root None (spec §0).
+  primary/named spell the root ``{workset.boxes}/{meta.box.name}``, so an empty name
+  leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``, which is the
+  box STORE's home rather than this box's (every box in the workset would resolve
+  the same home directory); a None name makes the root None (spec §0).
 
-    Reachable today: ``paths._resolve_local_dir``'s unregistered-primary fallback
-    returns an empty name and the launch passes ``proj.name`` through unexamined.
-    The value is a perfectly good non-empty string, so only the trailing-separator
-    shape distinguishes it (confirmed: pre-fix this produced
-    ``/data/ws/boxes//home`` with no error).
-    """
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  Reachable today: ``paths._resolve_local_dir``'s unregistered-primary fallback
+  returns an empty name and the launch passes ``proj.name`` through unexamined.
+  The value is a perfectly good non-empty string, so only the trailing-separator
+  shape distinguishes it (confirmed: pre-fix this produced
+  ``/data/ws/boxes//home`` with no error).
+  """
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    for name in ("", None):
-        floor: dict[str, object] = {
-            "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
-            "meta.box.name": name,
-            "meta.workset.path": "/data/ws",
-        }
-        floor.update(workset_anchor_floor(mode="primary"))
-        with pytest.raises(_SettingsError) as exc:
-            build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(),
-                system_path=None, agent_path=None, workset_path=None, box_path=None,
-                default_categories=floor,
-                workset_anchor=floor,
-            )
-        assert "meta.box.path" in str(exc.value), name
-        if name == "":
-            assert "trailing separator" in str(exc.value), name
-        else:
-            # Spec §0: an embedded ref to a present None makes the root None.
-            assert "got None" in str(exc.value), name
+  for name in ("", None):
+    floor: dict[str, object] = {
+      "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
+      "meta.box.name": name,
+      "meta.workset.path": "/data/ws",
+    }
+    floor.update(workset_anchor_floor(mode="primary"))
+    with pytest.raises(_SettingsError) as exc:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        default_categories=floor,
+        workset_anchor=floor,
+      )
+    assert "meta.box.path" in str(exc.value), name
+    if name == "":
+      assert "trailing separator" in str(exc.value), name
+    else:
+      # Spec §0: an embedded ref to a present None makes the root None.
+      assert "got None" in str(exc.value), name
 
 
 def test_box_root_assertion_is_skipped_for_a_partial_floor():
-    """A caller that does not supply the box root is NOT forced to.
+  """A caller that does not supply the box root is NOT forced to.
 
-    Narrow resolves and focused tests fold only part of the floor; the check keys
-    on the anchor being SUPPLIED, so those callers are unaffected.
-    """
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        workset_anchor={"workset.boxes": "/floor/boxes"},
-    )
-    assert snap.workset.boxes == "/floor/boxes"
+  Narrow resolves and focused tests fold only part of the floor; the check keys
+  on the anchor being SUPPLIED, so those callers are unaffected.
+  """
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    workset_anchor={"workset.boxes": "/floor/boxes"},
+  )
+  assert snap.workset.boxes == "/floor/boxes"
 
 
 def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
-    """A settings file's top-level ``meta:`` cannot repoint the RO box root.
+  """A settings file's top-level ``meta:`` cannot repoint the RO box root.
 
-    ``meta.box.path`` is RO by contract (§0 meta ⟺ not-settable). Relocating box
-    data is done one level up, through the SETTABLE ``workset.boxes``. This pins
-    the file half of that contract for the box root specifically: the anchor is a
-    mount SOURCE, so a file that could forge it could redirect the box home to any
-    host directory. (The CLI half — ``config set`` refusing every ``meta.*`` key —
-    is pinned in ``tests/test_settings/test_config_interface.py``.)
-    """
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.settings_launch import workset_anchor_floor
+  ``meta.box.path`` is RO by contract (§0 meta ⟺ not-settable). Relocating box
+  data is done one level up, through the SETTABLE ``workset.boxes``. This pins
+  the file half of that contract for the box root specifically: the anchor is a
+  mount SOURCE, so a file that could forge it could redirect the box home to any
+  host directory. (The CLI half — ``config set`` refusing every ``meta.*`` key —
+  is pinned in ``tests/test_settings/test_config_interface.py``.)
+  """
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.settings_launch import workset_anchor_floor
 
-    hostile = tmp_path / "hostile.yaml"
-    dump_doc(
-        hostile,
-        {
-            "box": {"image": "img"},  # a legitimate same-scope key — must survive
-            "meta": {"box": {"path": "/evil"}},  # forge the RO box root
-        },
-    )
-    floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
-    floor.update(workset_anchor_floor(mode="primary"))
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=hostile,
-        default_categories=floor,
-        workset_anchor=floor,
-    )
-    # The floor's derivation stands; the forged value is gone.
-    assert snap.meta.box.path == "/data/ws/boxes/b"
-    assert snap.box.image == "img"  # the legitimate key survived the meta drop
+  hostile = tmp_path / "hostile.yaml"
+  dump_doc(
+    hostile,
+    {
+      "box": {"image": "img"},  # a legitimate same-scope key — must survive
+      "meta": {"box": {"path": "/evil"}},  # forge the RO box root
+    },
+  )
+  floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
+  floor.update(workset_anchor_floor(mode="primary"))
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=hostile,
+    default_categories=floor,
+    workset_anchor=floor,
+  )
+  # The floor's derivation stands; the forged value is gone.
+  assert snap.meta.box.path == "/data/ws/boxes/b"
+  assert snap.box.image == "img"  # the legitimate key survived the meta drop
 
 
 # --------------------------------------------------------------------------- #
@@ -4343,179 +4810,201 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
 
 
 class TestCategoryRootRefusal:
-    """T8 — a VALUE at a category root is an UNDECLARED shape and ERRORS.
+  """T8 — a VALUE at a category root is an UNDECLARED shape and ERRORS.
 
-    ⚑ Before P3 every one of these was SILENTLY DROPPED by an
-    ``isinstance(x, KeyStore)`` guard: the user's binding simply never appeared,
-    with nothing said anywhere.  Silent acceptance of an undeclared shape is
-    exactly what the closed-keyspace rule (spec §0) forbids — an undeclared key is
-    an ERROR that names itself.
+  ⚑ Before P3 every one of these was SILENTLY DROPPED by an
+  ``isinstance(x, KeyStore)`` guard: the user's binding simply never appeared,
+  with nothing said anywhere.  Silent acceptance of an undeclared shape is
+  exactly what the closed-keyspace rule (spec §0) forbids — an undeclared key is
+  an ERROR that names itself.
 
-    The refusal lives in ``_emit_scope_node`` because that is the ONE site that
-    sees the MERGED snapshot, so it catches such a value from ANY origin (a plugin
-    defaults table, a workset/box YAML, a ``config set``) without duplication.
+  The refusal lives in ``_emit_scope_node`` because that is the ONE site that
+  sees the MERGED snapshot, so it catches such a value from ANY origin (a plugin
+  defaults table, a workset/box YAML, a ``config set``) without duplication.
+  """
+
+  @staticmethod
+  def _entries(node: dict):
+    return snapshot_category_entries(
+      KeyStore(node),
+      active_agent="claude",
+      box_ctx=_ctx(),
+    )
+
+  @pytest.mark.writes_undeclared(
+    "agent.default.bindings",
+    reason="the refused shape IS a scalar at the category root; the store write "
+    "happens in the fixture, before _emit_scope_node gets to refuse it.",
+  )
+  def test_scalar_at_bindings_root_errors(self):
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"agent": {"default": {"bindings": "/some/path"}}})
+    msg = str(e.value)
+    assert "CATEGORY ROOT" in msg
+    # It names the per-arm declaration form the user actually wants — the ARM,
+    # which IS the whole key (R-5), and never the retired ``.<name>`` entry.
+    assert "agent.default.bindings.{ro,rw}" in msg
+    assert "agent.default.bindings.{ro,rw}.<name>" not in msg
+    # ...and it says what the arm's VALUE has to be, since the arm alone does
+    # not tell a reader that entries are keyed by destination.
+    assert "keyed by box destination" in msg
+
+  @pytest.mark.parametrize("tier", ["default", "claude"])
+  def test_agent_message_names_the_DISCRIMINATED_tier(self, tier):
+    """⚑ The message must name ``agent.<tier>.bindings``, NEVER the bare
+    ``agent.bindings``.
+
+    The bare form is not a key (spec §0: the agent tier is DISCRIMINATED
+    everywhere). An error naming it would be telling the reader to go look at —
+    or worse, write — a shape the keyspace forbids, which is exactly the
+    confusion the closed-keyspace rule exists to prevent. It also has to say
+    WHICH tier holds the bad value, since ``agent.default`` and
+    ``agent.<active>`` are different files.
+
+    This is why the refusal runs on the RAW tiers rather than on the merged
+    agent node: after ``_agent_pick_node`` the tier of origin is gone and only
+    the bare token remains.
     """
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"agent": {tier: {"common": "/some/path"}}})
+    msg = str(e.value)
+    assert f"agent.{tier}.common" in msg
+    # The forbidden bare form must not appear ANYWHERE in the message.
+    assert "agent.common" not in msg
 
-    @staticmethod
-    def _entries(node: dict):
-        return snapshot_category_entries(
-            KeyStore(node), active_agent="claude", box_ctx=_ctx(),
-        )
-
-    @pytest.mark.writes_undeclared(
-        "agent.default.bindings",
-        reason="the refused shape IS a scalar at the category root; the store write "
-               "happens in the fixture, before _emit_scope_node gets to refuse it.",
-    )
-    def test_scalar_at_bindings_root_errors(self):
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"agent": {"default": {"bindings": "/some/path"}}})
-        msg = str(e.value)
-        assert "CATEGORY ROOT" in msg
-        # It names the per-arm declaration form the user actually wants — the ARM,
-        # which IS the whole key (R-5), and never the retired ``.<name>`` entry.
-        assert "agent.default.bindings.{ro,rw}" in msg
-        assert "agent.default.bindings.{ro,rw}.<name>" not in msg
-        # ...and it says what the arm's VALUE has to be, since the arm alone does
-        # not tell a reader that entries are keyed by destination.
-        assert "keyed by box destination" in msg
-
-    @pytest.mark.parametrize("tier", ["default", "claude"])
-    def test_agent_message_names_the_DISCRIMINATED_tier(self, tier):
-        """⚑ The message must name ``agent.<tier>.bindings``, NEVER the bare
-        ``agent.bindings``.
-
-        The bare form is not a key (spec §0: the agent tier is DISCRIMINATED
-        everywhere). An error naming it would be telling the reader to go look at —
-        or worse, write — a shape the keyspace forbids, which is exactly the
-        confusion the closed-keyspace rule exists to prevent. It also has to say
-        WHICH tier holds the bad value, since ``agent.default`` and
-        ``agent.<active>`` are different files.
-
-        This is why the refusal runs on the RAW tiers rather than on the merged
-        agent node: after ``_agent_pick_node`` the tier of origin is gone and only
-        the bare token remains.
-        """
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"agent": {tier: {"common": "/some/path"}}})
-        msg = str(e.value)
-        assert f"agent.{tier}.common" in msg
-        # The forbidden bare form must not appear ANYWHERE in the message.
-        assert "agent.common" not in msg
-
-    @pytest.mark.writes_undeclared(
-        "agent.claude.bindings.mydir",
-        reason="the RETIRED name-keyed bindings.<name> spelling is the input whose "
-               "refusal is under test, so the fixture has to build it.",
-    )
-    def test_arm_less_agent_message_names_the_discriminated_tier(self):
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"agent": {"claude": {"bindings": {
+  @pytest.mark.writes_undeclared(
+    "agent.claude.bindings.mydir",
+    reason="the RETIRED name-keyed bindings.<name> spelling is the input whose "
+    "refusal is under test, so the fixture has to build it.",
+  )
+  def test_arm_less_agent_message_names_the_discriminated_tier(self):
+    with pytest.raises(_SettingsError) as e:
+      self._entries(
+        {
+          "agent": {
+            "claude": {
+              "bindings": {
                 "mydir": Bind("/h", "/b", None),
-            }}}})
-        msg = str(e.value)
-        assert "agent.claude.bindings.mydir" in msg
-        # The prescribed arms carry the DISCRIMINATOR — the point of this test.
-        # (They are the bare arms since R-5: the arm is the whole key.)
-        assert "agent.claude.bindings.ro" in msg
-        assert "agent.bindings" not in msg
+              }
+            }
+          }
+        }
+      )
+    msg = str(e.value)
+    assert "agent.claude.bindings.mydir" in msg
+    # The prescribed arms carry the DISCRIMINATOR — the point of this test.
+    # (They are the bare arms since R-5: the arm is the whole key.)
+    assert "agent.claude.bindings.ro" in msg
+    assert "agent.bindings" not in msg
 
-    def test_a_NON_ACTIVE_agent_tier_is_still_checked(self):
-        """Every discriminated tier present in the snapshot is validated, not just
-        the active one — a malformed ``agent.goose.*`` is undeclared whether or not
-        goose is the agent being launched."""
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"agent": {"goose": {"caches": "/x"}}})
-        assert "agent.goose.caches" in str(e.value)
+  def test_a_NON_ACTIVE_agent_tier_is_still_checked(self):
+    """Every discriminated tier present in the snapshot is validated, not just
+    the active one — a malformed ``agent.goose.*`` is undeclared whether or not
+    goose is the agent being launched."""
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"agent": {"goose": {"caches": "/x"}}})
+    assert "agent.goose.caches" in str(e.value)
 
-    def test_bind_at_a_leaf_category_root_errors(self):
-        """⚑ The prescribed CURE changed with the 2026-08-08c flip, exactly as it
-        did for the ``bindings`` arms at R-5: ``workset.common`` IS the key now, so
-        the message must point at the category itself and say its value is a
-        dest-keyed map. Prescribing the retired ``workset.common.<name>`` would be
-        telling the reader to write a shape that is no longer a key at all."""
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"workset": {"common": Bind("/h", "/b", None)}})
-        msg = str(e.value)
-        assert "workset.common is a value at a CATEGORY ROOT" in msg
-        assert "declare workset.common as a map keyed by box destination" in msg
-        assert "workset.common.<name>" not in msg
+  def test_bind_at_a_leaf_category_root_errors(self):
+    """⚑ The prescribed CURE changed with the 2026-08-08c flip, exactly as it
+    did for the ``bindings`` arms at R-5: ``workset.common`` IS the key now, so
+    the message must point at the category itself and say its value is a
+    dest-keyed map. Prescribing the retired ``workset.common.<name>`` would be
+    telling the reader to write a shape that is no longer a key at all."""
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"workset": {"common": Bind("/h", "/b", None)}})
+    msg = str(e.value)
+    assert "workset.common is a value at a CATEGORY ROOT" in msg
+    assert "declare workset.common as a map keyed by box destination" in msg
+    assert "workset.common.<name>" not in msg
 
-    def test_list_at_a_category_root_errors(self):
-        with pytest.raises(_SettingsError):
-            self._entries({"box": {"caches": ["/a", "/b"]}})
+  def test_list_at_a_category_root_errors(self):
+    with pytest.raises(_SettingsError):
+      self._entries({"box": {"caches": ["/a", "/b"]}})
 
-    def test_none_at_a_category_root_errors(self):
-        """``null`` is a VALUE too — a whole-category present-None is not a
-        declared reset shape (per-NAME present-None is, and is handled at merge)."""
-        with pytest.raises(_SettingsError):
-            self._entries({"box": {"seeded": None}})
+  def test_none_at_a_category_root_errors(self):
+    """``null`` is a VALUE too — a whole-category present-None is not a
+    declared reset shape (per-NAME present-None is, and is handled at merge)."""
+    with pytest.raises(_SettingsError):
+      self._entries({"box": {"seeded": None}})
 
-    @pytest.mark.writes_undeclared(
-        "box.bindings.mydir",
-        reason="the arm-less bind is the input being refused; writing the retired "
-               "name-keyed entry is what the test exists to do.",
+  @pytest.mark.writes_undeclared(
+    "box.bindings.mydir",
+    reason="the arm-less bind is the input being refused; writing the retired "
+    "name-keyed entry is what the test exists to do.",
+  )
+  def test_arm_less_binding_errors(self):
+    """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind.
+
+    ⚑ The CURE the message prescribes changed with R-5/R-10: the arm IS the
+    key now, so it points at ``box.bindings.ro`` / ``box.bindings.rw`` and
+    says to re-key the entry by its destination — it must NOT prescribe the
+    retired ``box.bindings.ro.mydir``, which is no longer a key at all.
+    """
+    with pytest.raises(_SettingsError) as e:
+      self._entries(
+        {
+          "box": {
+            "bindings": {
+              "mydir": Bind("/h", "/b", None),
+            }
+          }
+        }
+      )
+    msg = str(e.value)
+    assert "box.bindings.mydir" in msg
+    assert "box.bindings.ro" in msg and "box.bindings.rw" in msg
+    assert "keyed by its destination" in msg
+    assert "box.bindings.ro.mydir" not in msg
+
+  def test_value_at_an_arm_root_errors(self):
+    """A value AT an arm (``bindings.ro = "/x"``) is an undeclared shape: the
+    arm's value must be a MAP node.
+
+    ⚑ Under R-5 that is a map of DESTINATIONS rather than of names, but the
+    assertion is unchanged — a scalar there was wrong before and is wrong now.
+
+    ⚑ Slightly WIDER than the boundary the P3 plan spelled out (which named the
+    category root and the arm-less child).  Left silent it would be the one
+    remaining hole in the function whose entire purpose is to close silent
+    drops; it is a separate branch so it can be removed on its own.
+    """
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"box": {"bindings": {"ro": "/x"}}})
+    assert "box.bindings.ro" in str(e.value)
+
+  @pytest.mark.writes_undeclared(
+    "agent.default.bindings",
+    reason="the subject is the EMPTY node at the category root — §2d's own "
+    "'documentation of intent' row — which is the undeclared shape the "
+    "test proves is tolerated rather than refused.",
+  )
+  def test_present_but_empty_is_not_an_error(self):
+    """An empty node is byte-indistinguishable from an absent one after
+    ``assemble``, so erroring would trap a no-op.  §2d itself calls the
+    ``agent.default.bindings | {}`` row "documentation of intent"."""
+    assert self._entries({"agent": {"default": {"bindings": KeyStore({})}}}) == []
+    assert self._entries({"workset": {"common": KeyStore({})}}) == []
+    assert self._entries({"box": {"bindings": KeyStore({"ro": KeyStore({})})}}) == []
+
+  def test_a_valid_declaration_still_emits(self):
+    """Control: the refusal does not eat well-formed declarations."""
+    entries = self._entries(
+      {
+        "box": {
+          "bindings": {
+            "rw": {
+              "/box/home": BindEntry("/h/home", None),
+            }
+          }
+        }
+      }
     )
-    def test_arm_less_binding_errors(self):
-        """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind.
-
-        ⚑ The CURE the message prescribes changed with R-5/R-10: the arm IS the
-        key now, so it points at ``box.bindings.ro`` / ``box.bindings.rw`` and
-        says to re-key the entry by its destination — it must NOT prescribe the
-        retired ``box.bindings.ro.mydir``, which is no longer a key at all.
-        """
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"box": {"bindings": {
-                "mydir": Bind("/h", "/b", None),
-            }}})
-        msg = str(e.value)
-        assert "box.bindings.mydir" in msg
-        assert "box.bindings.ro" in msg and "box.bindings.rw" in msg
-        assert "keyed by its destination" in msg
-        assert "box.bindings.ro.mydir" not in msg
-
-    def test_value_at_an_arm_root_errors(self):
-        """A value AT an arm (``bindings.ro = "/x"``) is an undeclared shape: the
-        arm's value must be a MAP node.
-
-        ⚑ Under R-5 that is a map of DESTINATIONS rather than of names, but the
-        assertion is unchanged — a scalar there was wrong before and is wrong now.
-
-        ⚑ Slightly WIDER than the boundary the P3 plan spelled out (which named the
-        category root and the arm-less child).  Left silent it would be the one
-        remaining hole in the function whose entire purpose is to close silent
-        drops; it is a separate branch so it can be removed on its own.
-        """
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"box": {"bindings": {"ro": "/x"}}})
-        assert "box.bindings.ro" in str(e.value)
-
-    @pytest.mark.writes_undeclared(
-        "agent.default.bindings",
-        reason="the subject is the EMPTY node at the category root — §2d's own "
-               "'documentation of intent' row — which is the undeclared shape the "
-               "test proves is tolerated rather than refused.",
-    )
-    def test_present_but_empty_is_not_an_error(self):
-        """An empty node is byte-indistinguishable from an absent one after
-        ``assemble``, so erroring would trap a no-op.  §2d itself calls the
-        ``agent.default.bindings | {}`` row "documentation of intent"."""
-        assert self._entries({"agent": {"default": {"bindings": KeyStore({})}}}) == []
-        assert self._entries({"workset": {"common": KeyStore({})}}) == []
-        assert self._entries(
-            {"box": {"bindings": KeyStore({"ro": KeyStore({})})}}
-        ) == []
-
-    def test_a_valid_declaration_still_emits(self):
-        """Control: the refusal does not eat well-formed declarations."""
-        entries = self._entries({"box": {"bindings": {"rw": {
-            "/box/home": BindEntry("/h/home", None),
-        }}}})
-        # ⚑ Dest-keyed (R-6): the entry's ``name`` IS its destination — there is
-        # no separate name to carry any more.
-        assert [(e.scope, e.category, e.name) for e in entries] == [
-            ("box", "bindings.rw", "/box/home"),
-        ]
+    # ⚑ Dest-keyed (R-6): the entry's ``name`` IS its destination — there is
+    # no separate name to carry any more.
+    assert [(e.scope, e.category, e.name) for e in entries] == [
+      ("box", "bindings.rw", "/box/home"),
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -4524,89 +5013,96 @@ class TestCategoryRootRefusal:
 
 
 class TestScalarFamilyNonScalarRefusal:
-    """§2a: *"BOTH FAMILIES ARE SCALAR. A non-scalar (list, map, etc) is REFUSED at
-    resolve and the key is named, irrespective of origin … Its value is never coerced
-    into a string or shell-split."*
+  """§2a: *"BOTH FAMILIES ARE SCALAR. A non-scalar (list, map, etc) is REFUSED at
+  resolve and the key is named, irrespective of origin … Its value is never coerced
+  into a string or shell-split."*
 
-    🛑 IT IS NOT A DISPLAY DEFECT, which is why the refusal lives HERE and not in a
-    renderer.  Both branches coerced with ``str(value)``: a list at ``box.env.FOO``
-    reached the guest as the literal text ``['--x', '--w']``, and a list at
-    ``secret_path.<VAR>`` became a MOUNT SOURCE spelled as a Python repr.  A renderer
-    fix would have cured the screen and left the box wrong.
+  🛑 IT IS NOT A DISPLAY DEFECT, which is why the refusal lives HERE and not in a
+  renderer.  Both branches coerced with ``str(value)``: a list at ``box.env.FOO``
+  reached the guest as the literal text ``['--x', '--w']``, and a list at
+  ``secret_path.<VAR>`` became a MOUNT SOURCE spelled as a Python repr.  A renderer
+  fix would have cured the screen and left the box wrong.
 
-    ⚑ ONE SITE FOR THE WHOLE LAUNCH: ``snapshot_category_entries`` is the sole producer
-    every downstream seam reads, so this covers the collapse, ``LaunchDeliveries``, the
-    launch env map and ``box show --effective`` without a second guard.
-    """
+  ⚑ ONE SITE FOR THE WHOLE LAUNCH: ``snapshot_category_entries`` is the sole producer
+  every downstream seam reads, so this covers the collapse, ``LaunchDeliveries``, the
+  launch env map and ``box show --effective`` without a second guard.
+  """
 
-    @staticmethod
-    def _entries(node: dict):
-        return snapshot_category_entries(
-            KeyStore(node), active_agent="claude", box_ctx=_ctx(),
-        )
+  @staticmethod
+  def _entries(node: dict):
+    return snapshot_category_entries(
+      KeyStore(node),
+      active_agent="claude",
+      box_ctx=_ctx(),
+    )
 
-    def test_a_list_at_env_VAR_is_refused_naming_the_key(self):
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"box": {"env": {"FOO": ["--x", "--w"]}}})
-        msg = str(e.value)
-        assert "box.env.FOO" in msg
-        assert "SCALAR" in msg and "list" in msg
-        # The remedy is the SCALAR rule, never the shell-split one: teaching a
-        # user-named VAR to split is a promise nothing keeps.
-        assert "never coerced" in msg and "shell-split" in msg
+  def test_a_list_at_env_VAR_is_refused_naming_the_key(self):
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"box": {"env": {"FOO": ["--x", "--w"]}}})
+    msg = str(e.value)
+    assert "box.env.FOO" in msg
+    assert "SCALAR" in msg and "list" in msg
+    # The remedy is the SCALAR rule, never the shell-split one: teaching a
+    # user-named VAR to split is a promise nothing keeps.
+    assert "never coerced" in msg and "shell-split" in msg
 
-    def test_a_list_at_secret_path_VAR_is_refused_naming_the_key(self):
-        """⚑ AND IT REPORTS THE RIGHT DEFECT.  The repr ``"['/a', '/b']"`` begins with
-        ``[``, so the coercion used to hand it to the BARE-RELATIVE refusal, which told
-        the user their absolute paths were relative."""
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"box": {"secret_path": {"TOK": ["/a", "/b"]}}})
-        msg = str(e.value)
-        assert "box.secret_path.TOK" in msg
-        assert "SCALAR" in msg and "ONE host path" in msg
-        assert "BARE RELATIVE" not in msg
+  def test_a_list_at_secret_path_VAR_is_refused_naming_the_key(self):
+    """⚑ AND IT REPORTS THE RIGHT DEFECT.  The repr ``"['/a', '/b']"`` begins with
+    ``[``, so the coercion used to hand it to the BARE-RELATIVE refusal, which told
+    the user their absolute paths were relative."""
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"box": {"secret_path": {"TOK": ["/a", "/b"]}}})
+    msg = str(e.value)
+    assert "box.secret_path.TOK" in msg
+    assert "SCALAR" in msg and "ONE host path" in msg
+    assert "BARE RELATIVE" not in msg
 
-    @pytest.mark.parametrize("category", ["env", "secret_path"])
-    def test_a_MAP_is_refused_and_named_as_a_map(self, category):
-        """The file's word, not the store's: a nested table is a ``map`` to whoever
-        wrote it, and ``KeyStore`` names nothing they can see."""
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"box": {category: {"FOO": KeyStore({"a": "b"})}}})
-        msg = str(e.value)
-        assert f"box.{category}.FOO holds a map" in msg
-        assert "KeyStore" not in msg
+  @pytest.mark.parametrize("category", ["env", "secret_path"])
+  def test_a_MAP_is_refused_and_named_as_a_map(self, category):
+    """The file's word, not the store's: a nested table is a ``map`` to whoever
+    wrote it, and ``KeyStore`` names nothing they can see."""
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"box": {category: {"FOO": KeyStore({"a": "b"})}}})
+    msg = str(e.value)
+    assert f"box.{category}.FOO holds a map" in msg
+    assert "KeyStore" not in msg
 
-    @pytest.mark.parametrize("tier", ["default", "claude"])
-    def test_the_agent_tier_is_named_DISCRIMINATED(self, tier):
-        """``agent.env.FOO`` is not a key (§0), so the refusal may not print one."""
-        with pytest.raises(_SettingsError) as e:
-            self._entries({"agent": {tier: {"env": {"FOO": ["--x"]}}}})
-        msg = str(e.value)
-        assert f"agent.{tier}.env.FOO" in msg
-        assert "agent.env.FOO" not in msg
+  @pytest.mark.parametrize("tier", ["default", "claude"])
+  def test_the_agent_tier_is_named_DISCRIMINATED(self, tier):
+    """``agent.env.FOO`` is not a key (§0), so the refusal may not print one."""
+    with pytest.raises(_SettingsError) as e:
+      self._entries({"agent": {tier: {"env": {"FOO": ["--x"]}}}})
+    msg = str(e.value)
+    assert f"agent.{tier}.env.FOO" in msg
+    assert "agent.env.FOO" not in msg
 
-    @pytest.mark.parametrize("value, exported", [
-        ("plain", "plain"), (8080, "8080"), (True, "True"),
-    ])
-    def test_every_SCALAR_still_emits(self, value, exported):
-        """CONTROL, and it is the spec's line rather than a softening: §2a refuses the
-        NON-scalars, so a YAML ``8080`` at ``box.env.PORT`` stays the value it was."""
-        entries = self._entries({"box": {"env": {"PORT": value}}})
-        assert [(e.category, e.name, e.options) for e in entries] == [
-            ("env", "PORT", exported),
-        ]
+  @pytest.mark.parametrize(
+    "value, exported",
+    [
+      ("plain", "plain"),
+      (8080, "8080"),
+      (True, "True"),
+    ],
+  )
+  def test_every_SCALAR_still_emits(self, value, exported):
+    """CONTROL, and it is the spec's line rather than a softening: §2a refuses the
+    NON-scalars, so a YAML ``8080`` at ``box.env.PORT`` stays the value it was."""
+    entries = self._entries({"box": {"env": {"PORT": value}}})
+    assert [(e.category, e.name, e.options) for e in entries] == [
+      ("env", "PORT", exported),
+    ]
 
-    def test_a_present_None_env_is_the_OMIT_and_is_not_refused(self):
-        """A present-``None`` is the tri-state OMIT, not a non-scalar."""
-        assert self._entries({"box": {"env": {"FOO": None}}}) == []
+  def test_a_present_None_env_is_the_OMIT_and_is_not_refused(self):
+    """A present-``None`` is the tri-state OMIT, not a non-scalar."""
+    assert self._entries({"box": {"env": {"FOO": None}}}) == []
 
-    def test_a_present_None_secret_path_is_a_KEYLESS_entry_not_a_refusal(self):
-        """§2a/§2h: a present-``None`` secret is a VALUE that wins its VAR, so it is
-        emitted, source-less, for the per-VAR cascade to pick."""
-        entries = self._entries({"box": {"secret_path": {"FOO": None}}})
-        assert [(e.category, e.name, e.host_src) for e in entries] == [
-            ("secret_path", "FOO", None),
-        ]
+  def test_a_present_None_secret_path_is_a_KEYLESS_entry_not_a_refusal(self):
+    """§2a/§2h: a present-``None`` secret is a VALUE that wins its VAR, so it is
+    emitted, source-less, for the per-VAR cascade to pick."""
+    entries = self._entries({"box": {"secret_path": {"FOO": None}}})
+    assert [(e.category, e.name, e.host_src) for e in entries] == [
+      ("secret_path", "FOO", None),
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -4615,63 +5111,60 @@ class TestScalarFamilyNonScalarRefusal:
 
 
 class TestNoImplicitRootPrepend:
-    """T10 — the DELETION instrument.
+  """T10 — the DELETION instrument.
 
-    ⚑ THE BEHAVIORAL GATE CANNOT SEE THIS CHANGE, and saying so out loud is the
-    point. Once every source is rooted at DECLARATION, an assembly-time join
-    no-ops on the (now absolute) inputs — so leaving the mechanism in place
-    produces a byte-identical mount map. A gate that silently cannot see half the
-    change is worse than no gate, so the deletion gets a STRUCTURAL instrument
-    instead: the identifiers must appear NOWHERE in the shipped source, comments
-    included (the prose truth pass is part of the change — a comment describing a
-    mechanism that no longer exists is worse than no comment).
+  ⚑ THE BEHAVIORAL GATE CANNOT SEE THIS CHANGE, and saying so out loud is the
+  point. Once every source is rooted at DECLARATION, an assembly-time join
+  no-ops on the (now absolute) inputs — so leaving the mechanism in place
+  produces a byte-identical mount map. A gate that silently cannot see half the
+  change is worse than no gate, so the deletion gets a STRUCTURAL instrument
+  instead: the identifiers must appear NOWHERE in the shipped source, comments
+  included (the prose truth pass is part of the change — a comment describing a
+  mechanism that no longer exists is worse than no comment).
 
-    Spec §2a does not merely prefer this; it names ``scope_roots`` and
-    says it MUST BE DELETED. Re-adding an inert, defaulted parameter would already
-    be the invitation to re-populate it — which is why this scan is not limited to
-    live call sites.
-    """
+  Spec §2a does not merely prefer this; it names ``scope_roots`` and
+  says it MUST BE DELETED. Re-adding an inert, defaulted parameter would already
+  be the invitation to re-populate it — which is why this scan is not limited to
+  live call sites.
+  """
 
-    _FORBIDDEN = ("scope_roots", "_root_join")
+  _FORBIDDEN = ("scope_roots", "_root_join")
 
-    @staticmethod
-    def _shipped_sources():
-        from tests.support.repo import REPO_ROOT as root
+  @staticmethod
+  def _shipped_sources():
+    from tests.support.repo import REPO_ROOT as root
 
-        files = list((root / "src" / "kanibako").rglob("*.py"))
-        for pkg in sorted((root / "packages").glob("*")):
-            src = pkg / "src"
-            if src.is_dir():
-                files.extend(src.rglob("*.py"))
-        # ``build/`` holds stale wheel-build copies of the plugin trees, and
-        # ``.claude/worktrees/`` may hold another agent's live worktree — neither
-        # is shipped source and neither is ours to edit.
-        return [
-            f for f in files
-            if "build" not in f.parts and ".claude" not in f.parts
-        ]
+    files = list((root / "src" / "kanibako").rglob("*.py"))
+    for pkg in sorted((root / "packages").glob("*")):
+      src = pkg / "src"
+      if src.is_dir():
+        files.extend(src.rglob("*.py"))
+    # ``build/`` holds stale wheel-build copies of the plugin trees, and
+    # ``.claude/worktrees/`` may hold another agent's live worktree — neither
+    # is shipped source and neither is ours to edit.
+    return [f for f in files if "build" not in f.parts and ".claude" not in f.parts]
 
-    def test_scan_covers_a_representative_source_set(self):
-        """Guard the guard: an empty or tiny file list would make the scan below
-        pass vacuously."""
-        files = self._shipped_sources()
-        names = {f.name for f in files}
-        assert len(files) > 50, len(files)
-        assert {"settings_launch.py", "settings_categories.py", "start.py"} <= names
-        # The plugin packages are in scope too (they declare category defaults).
-        assert any("plugins" in f.parts for f in files), sorted(names)[:5]
+  def test_scan_covers_a_representative_source_set(self):
+    """Guard the guard: an empty or tiny file list would make the scan below
+    pass vacuously."""
+    files = self._shipped_sources()
+    names = {f.name for f in files}
+    assert len(files) > 50, len(files)
+    assert {"settings_launch.py", "settings_categories.py", "start.py"} <= names
+    # The plugin packages are in scope too (they declare category defaults).
+    assert any("plugins" in f.parts for f in files), sorted(names)[:5]
 
-    def test_scope_roots_mechanism_is_absent(self):
-        hits = []
-        for path in self._shipped_sources():
-            text = path.read_text(encoding="utf-8")
-            for lineno, line in enumerate(text.splitlines(), 1):
-                if any(token in line for token in self._FORBIDDEN):
-                    hits.append(f"{path}:{lineno}: {line.strip()}")
-        assert not hits, (
-            "the implicit root-prepend mechanism reappeared in shipped source "
-            "(spec §2a L474-486 requires its deletion):\n" + "\n".join(hits)
-        )
+  def test_scope_roots_mechanism_is_absent(self):
+    hits = []
+    for path in self._shipped_sources():
+      text = path.read_text(encoding="utf-8")
+      for lineno, line in enumerate(text.splitlines(), 1):
+        if any(token in line for token in self._FORBIDDEN):
+          hits.append(f"{path}:{lineno}: {line.strip()}")
+    assert not hits, (
+      "the implicit root-prepend mechanism reappeared in shipped source "
+      "(spec §2a L474-486 requires its deletion):\n" + "\n".join(hits)
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -4687,351 +5180,414 @@ from kanibako.settings.settings_resolve import SettingsError  # noqa: E402
 #: keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), so what an omission would cost
 #: here is the vocabulary, not the concession.
 _PREF_AGENTS = _AgentNames(
-    {"claude", "goose", "codex"},
-    leaf_map={"claude": frozenset(), "goose": frozenset(), "codex": frozenset()},
+  {"claude", "goose", "codex"},
+  leaf_map={"claude": frozenset(), "goose": frozenset(), "codex": frozenset()},
 )
 
 
 def _write_yaml(path, doc):
-    """Write *doc* as YAML, creating parents (the module-level ``_yaml`` helper
-    above assumes the parent exists)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return _yaml(path, doc)
+  """Write *doc* as YAML, creating parents (the module-level ``_yaml`` helper
+  above assumes the parent exists)."""
+  path.parent.mkdir(parents=True, exist_ok=True)
+  return _yaml(path, doc)
 
 
 def _pref_snap(tmp_path, *, box=None, workset=None, floor=None, **kw):
-    """A launch snapshot over hand-written box / workset files.
+  """A launch snapshot over hand-written box / workset files.
 
-    *floor* injects declared defaults through ``default_categories`` — the floor
-    folds UNDER ``base`` (``assemble_levels_at(floor=…)``), which is exactly the
-    "inherited value a pref overrides or suppresses" position. ``build_launch_
-    snapshot`` takes no ``base_path``, and widening a production signature for a
-    test affordance would be the wrong trade; the base FILE path is exercised
-    where it belongs, against ``assemble_levels`` in test_settings_assemble.py.
+  *floor* injects declared defaults through ``default_categories`` — the floor
+  folds UNDER ``base`` (``assemble_levels_at(floor=…)``), which is exactly the
+  "inherited value a pref overrides or suppresses" position. ``build_launch_
+  snapshot`` takes no ``base_path``, and widening a production signature for a
+  test affordance would be the wrong trade; the base FILE path is exercised
+  where it belongs, against ``assemble_levels`` in test_settings_assemble.py.
+  """
+  box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
+  ws_p = _write_yaml(tmp_path / "ws.yaml", workset) if workset is not None else None
+  return build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=ws_p,
+    box_path=box_p,
+    default_categories=floor,
+    valid_agents=_PREF_AGENTS,
+    **kw,
+  )
+
+
+class TestPrefRecomputeNotDelta:
+  """spec §2h — 'RECOMPUTE, not delta.'"""
+
+  def test_a_key_derived_from_a_prefd_value_updates(self, tmp_path):
+    """⚑ THE discriminator for the delta implementation.
+
+    ``box.bindings.rw.probe``'s host is ``{agent.claude.template}/sub``. If
+    prefs were installed by patching the EXPANDED snapshot (the delta), the
+    target key would be right but this DERIVED value would still carry the
+    old root — here, an empty substitution yielding ``/sub``.
+    INVERT: install prefs after ``expand`` -> this reddens.
     """
-    box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
-    ws_p = _write_yaml(tmp_path / "ws.yaml", workset) if workset is not None else None
-    return build_launch_snapshot(
+    snap = _pref_snap(
+      tmp_path,
+      box={
+        "pref": {"agent": {"claude": {"template": "/custom/tpl"}}},
+        "box": {
+          "bindings": {
+            "rw": {
+              "~/probe": ["{agent.claude.template}/sub"],
+            }
+          }
+        },
+      },
+    )
+    assert snap.agent.claude.template == "/custom/tpl"
+    probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
+    assert probe.src == "/custom/tpl/sub"
+
+  def test_a_key_derived_from_a_prefd_system_agent_updates(self, tmp_path):
+    """The P7-critical key: ``{system.agent}`` resolves to the REQUESTED
+    value everywhere it is referenced, not just at its own key."""
+    snap = _pref_snap(
+      tmp_path,
+      box={
+        "pref": {"system": {"agent": "goose"}},
+        "box": {
+          "bindings": {
+            "rw": {
+              "~/probe": ["/src/{system.agent}"],
+            }
+          }
+        },
+      },
+    )
+    assert snap.system.agent == "goose"
+    probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
+    assert probe.src == "/src/goose"
+
+  def test_a_pref_need_not_be_a_literal(self, tmp_path):
+    """§2h — the value is installed as an ordinary (possibly
+    UNRESOLVED) value and resolution handles it like any other key."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"template": "{workset.template}/x"}}}},
+      workset={"workset": {"template": "/ws/tpl"}},
+    )
+    assert snap.agent.claude.template == "/ws/tpl/x"
+
+
+class TestPrefNullSuppression:
+  """spec §2h — values install VERBATIM, including ``None``."""
+
+  def test_a_null_pref_suppresses_an_inherited_agent_bind(self, tmp_path):
+    """⚑ The named silent hazard. ``if value is None: continue`` in the
+    install loop deletes a box's ONLY suppression channel with no error and
+    no diff. INVERT: add that guard -> this reddens."""
+    snap = _pref_snap(
+      tmp_path,
+      box={
+        "pref": {
+          "agent": {
+            "claude": {
+              "common": {
+                "~/.claude/plugins": None,
+              }
+            }
+          }
+        }
+      },
+      floor={
+        "agent.claude.common": {"~/.claude/plugins": ("/host/plugins",)},
+      },
+    )
+    # The inherited bind is GONE (present-None on a category ENTRY -> OMIT).
+    # ⚑ The entry is addressed by DESTINATION since 2026-08-08c; the merge's
+    # own classification did not have to change, because "an ancestor segment
+    # is a bind category" never cared whether the leaf below it was a name or
+    # a path (settings_merge._resolve_present_none).
+    dest = "/home/agent/.claude/plugins"
+    common = snap.agent.claude.common if "common" in snap.agent.claude else None
+    assert common is None or dest not in dict.keys(common)
+
+  def test_the_request_itself_stays_visible_after_resolution(self, tmp_path):
+    """§2h read verbs — prefs are KEPT IN MEMORY, so ``--effective`` can
+    show the request beside the result."""
+    snap = _pref_snap(
+      tmp_path,
+      box={
+        "pref": {
+          "agent": {
+            "claude": {
+              "common": {
+                "~/.claude/plugins": None,
+              }
+            }
+          }
+        }
+      },
+    )
+    node = snap["pref"]["agent"]["claude"]["common"]
+    # ⚑ The request is kept VERBATIM in VALUE (still ``None``) but its KEY is
+    # the R-11 NORMALIZED destination — ``common`` is a dest-keyed map now, so
+    # the pref subtree is parsed by ``parse_bind_map`` like any other.
+    assert dict.__getitem__(node, "/home/agent/.claude/plugins") is None
+
+  def test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none(self, tmp_path):
+    """§2b — ``pref.system.agent: null`` is how the NO-AGENT
+    plain-shell box is expressed, and it is a capability GAIN. Present-None
+    on a SCALAR leaf is KEPT."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"system": {"agent": None}}},
+      floor={"system.agent": "claude"},
+    )
+    assert "agent" in dict.keys(snap.system)
+    assert dict.__getitem__(snap.system, "agent") is None
+
+
+class TestPrefLevelPrecedence:
+  def test_box_pref_beats_workset_pref(self, tmp_path):
+    """§1A — box beats workset by ASSIGNMENT ORDER.
+    INVERT: swap the two overlays' splice positions -> this reddens."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"system": {"agent": "goose"}}},
+      workset={"pref": {"system": {"agent": "codex"}}},
+    )
+    assert snap.system.agent == "goose"
+
+  def test_a_workset_pref_applies_when_the_box_is_silent(self, tmp_path):
+    snap = _pref_snap(
+      tmp_path,
+      box={"box": {"image": "x"}},
+      workset={"pref": {"system": {"agent": "codex"}}},
+    )
+    assert snap.system.agent == "codex"
+
+  def test_a_pref_beats_the_base_floor_value(self, tmp_path):
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"model": "opus"}}}},
+      floor={"agent.claude.model": "sonnet"},
+    )
+    assert snap.agent.claude.model == "opus"
+
+  def test_a_box_pref_wins_now_that_the_box_agent_fold_is_gone(self, tmp_path):
+    """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately, and NARROWED again since.**
+
+    P6 recorded a TRANSITIONAL contest: ``_box_agent_category_fold`` spliced
+    the retiring ``box.agent.<category>`` tweak ABOVE ``box``, while a pref
+    sits BELOW its own level's partial (§2h expands prefs before the level
+    resolves), so for a CATEGORY the legacy mirror won. P7 RETIRES settable
+    ``box.agent.*`` (spec §2b) and deletes the fold, which removes the
+    contender — the pref now wins a CATEGORY exactly as it already won a
+    SCALAR (the test below is the discriminator proving only the category
+    half of the contest was ever real).
+
+    ⮕ **SUBJECT NARROWED.** The fixture used to leave the retired table in
+    the same file to show the pref beat it. It cannot: ``box.agent`` is now a
+    ``RETIRED_FILE_KEYS`` entry, so that file is REFUSED BY NAME before it
+    reaches this merge, and staging it here would have pinned a contest no
+    user can reach. Both halves are pinned separately below.
+
+    INVERT: restore the fold and this reddens.
+    """
+    snap = _pref_snap(
+      tmp_path,
+      box={
+        "pref": {
+          "agent": {
+            "claude": {
+              "common": {
+                "~/.claude/plugins": ["/from/pref"],
+              }
+            }
+          }
+        },
+      },
+    )
+    dest = "/home/agent/.claude/plugins"
+    assert _meta_node(snap, "agent", "claude", "common", dest).src == "/from/pref"
+    # …and the pref reaches the RO read-back too, not just the agent tier.
+    assert (
+      _meta_node(
+        snap,
+        "meta",
+        "box",
+        "agent",
+        "common",
+        dest,
+      ).src
+      == "/from/pref"
+    )
+
+  def test_a_box_file_carrying_the_retired_category_table_never_reaches_the_merge(
+    self,
+    tmp_path,
+  ):
+    """The OTHER half of the pin above: the retired ``box.agent.<category>``
+    table is not merely out-ranked by a pref, it is REFUSED BY NAME.
+
+    ⚑ A CATEGORY sub-value is a nested map, so the cure cannot spell a value —
+    it names the request one level deeper instead of quoting a Python repr the
+    shell would choke on. INVERT: render the raw value and this reddens.
+    """
+    from kanibako.settings.settings_assemble import refuse_retired_keys
+    from kanibako.settings.settings_resolve import SettingsError
+
+    box = _write_yaml(
+      tmp_path / "box.yaml",
+      {
+        "box": {"agent": {"common": {"~/.claude/plugins": ["/from/mirror"]}}},
+      },
+    )
+    with pytest.raises(SettingsError) as ei:
+      refuse_retired_keys(
+        yaml.safe_load(box.read_text()),
+        level="box",
+        path=box,
+        box_ref="mybox",
+      )
+    msg = str(ei.value)
+    assert "'box.agent' is RETIRED" in msg
+    assert "kanibako box set mybox pref.agent.<agent>.common.<key>=<value>" in msg
+
+  def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
+    """⚑ MEASURED, and it corrects the brief's prediction.
+
+    Nothing splices a SCALAR ``box.agent.<key>`` into ``agent.<active>``:
+    settable ``box.agent.*`` is RETIRED (spec §2b), and the only surviving
+    ``box.agent``-shaped mechanism is ``_materialize_box_agent_mirror``, a
+    post-expand READ-BACK that WRITES ``meta.box.agent`` FROM the resolved
+    agent tier and never feeds it. So there is no scalar contest and the
+    pref, which really does target the agent tier, wins. The brief predicted
+    the mirror would win here; it does not. (The category half of the
+    transitional contest was real, but it went with
+    ``_box_agent_category_fold`` — see the sibling test above.)
+
+    ⮕ **SUBJECT NARROWED**, same reason as the sibling: the retired table is
+    no longer staged alongside the pref, because a file carrying it is refused
+    before this merge runs. The refusal is pinned in the test below.
+    """
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
+    )
+    assert snap.agent.claude.model == "from-pref"
+
+  def test_a_box_file_carrying_the_retired_scalar_key_table_is_refused(
+    self,
+    tmp_path,
+  ):
+    """The refusal half of the scalar pin: ``box: agent: {model: …}`` names a
+    BEHAVIOR leaf, so it is the MIRROR spelling and the cure is the §2h
+    per-agent request carrying the value the file actually holds.
+    """
+    from kanibako.settings.settings_assemble import refuse_retired_keys
+    from kanibako.settings.settings_resolve import SettingsError
+
+    box = _write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"agent": {"model": "from-mirror"}}},
+    )
+    with pytest.raises(SettingsError) as ei:
+      refuse_retired_keys(
+        yaml.safe_load(box.read_text()),
+        level="box",
+        path=box,
+        box_ref="mybox",
+      )
+    msg = str(ei.value)
+    assert "'box.agent' is RETIRED" in msg
+    assert "kanibako box set mybox pref.agent.<agent>.model=from-mirror" in msg
+
+
+class TestPrefRejectionAtLaunch:
+  def test_a_bad_pref_fails_the_launch(self, tmp_path):
+    """§2h — the launch FAILS rather than proceeding with a
+    partially-applied request. INVERT: warn-and-continue -> reddens."""
+    box_p = _write_yaml(
+      tmp_path / "box.yaml",
+      {"pref": {"agent": {"zippity": {"model": "x"}}}},
+    )
+    with pytest.raises(_SettingsError) as exc:
+      build_launch_snapshot(
         agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=box_p,
+        valid_agents=_PREF_AGENTS,
+      )
+    msg = str(exc.value)
+    assert "pref.agent.zippity.model" in msg
+    assert "at the box level" in msg
+    assert str(box_p) in msg
+
+
+class TestPrefIsInertWhereItMustBe:
+  def test_a_pref_subtree_yields_no_category_entries(self, tmp_path):
+    """``snapshot_category_entries`` walks ``_SCOPES`` only, so ``pref`` is
+    never read as a category. Asserted because a future scope-loop edit
+    would break it silently."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"common": {"~/d": ["/s"]}}}}},
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent="claude",
+      box_ctx=_ctx(),
+    )
+    assert all(not e.key.startswith("pref.") for e in entries)
+    # ...but the INSTALLED target IS emitted. ⚑ The declaration key's last
+    # segment is the DESTINATION now, not an entry name (R-10).
+    assert any(e.key == "agent.claude.common./home/agent/d" for e in entries)
+
+
+class TestPrefFreeByteIdentity:
+  """GATE HALF A — a pref-free config must resolve EXACTLY as before.
+
+  Compares the ordinary path against an explicitly pref-disabled build over
+  the same inputs, across modes x agent shapes. The delivery goldens
+  (test_delivery_manifest / test_defaults_golden) are the cross-check against
+  the pre-P6 world; this is the in-suite proof that the splice is inert when
+  there is nothing to splice.
+  """
+
+  @pytest.mark.parametrize("agent_name", ["claude", "shell", "navigator℘claude"])
+  def test_identical_when_no_pref_table_exists(self, tmp_path, agent_name):
+    box = {
+      "box": {
+        "image": "img",
+        "bindings": {
+          "rw": {
+            "home": ["/host/home", "~/"],
+          }
+        },
+      }
+    }
+    ws = {"workset": {"boxes": "/ws/boxes"}}
+    box_p = _write_yaml(tmp_path / "box.yaml", box)
+    ws_p = _write_yaml(tmp_path / "ws.yaml", ws)
+
+    def build(prefs):
+      return build_launch_snapshot(
+        agent_name=agent_name,
         ctx=_ctx(),
         system_path=None,
         agent_path=None,
         workset_path=ws_p,
         box_path=box_p,
-        default_categories=floor,
+        default_categories={"agent.default.model": "sonnet"},
+        prefs=prefs,
         valid_agents=_PREF_AGENTS,
-        **kw,
-    )
+      )
 
-
-class TestPrefRecomputeNotDelta:
-    """spec §2h — 'RECOMPUTE, not delta.'"""
-
-    def test_a_key_derived_from_a_prefd_value_updates(self, tmp_path):
-        """⚑ THE discriminator for the delta implementation.
-
-        ``box.bindings.rw.probe``'s host is ``{agent.claude.template}/sub``. If
-        prefs were installed by patching the EXPANDED snapshot (the delta), the
-        target key would be right but this DERIVED value would still carry the
-        old root — here, an empty substitution yielding ``/sub``.
-        INVERT: install prefs after ``expand`` -> this reddens.
-        """
-        snap = _pref_snap(
-            tmp_path,
-            box={
-                "pref": {"agent": {"claude": {"template": "/custom/tpl"}}},
-                "box": {"bindings": {"rw": {
-                    "~/probe": ["{agent.claude.template}/sub"],
-                }}},
-            },
-        )
-        assert snap.agent.claude.template == "/custom/tpl"
-        probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
-        assert probe.src == "/custom/tpl/sub"
-
-    def test_a_key_derived_from_a_prefd_system_agent_updates(self, tmp_path):
-        """The P7-critical key: ``{system.agent}`` resolves to the REQUESTED
-        value everywhere it is referenced, not just at its own key."""
-        snap = _pref_snap(
-            tmp_path,
-            box={
-                "pref": {"system": {"agent": "goose"}},
-                "box": {"bindings": {"rw": {
-                    "~/probe": ["/src/{system.agent}"],
-                }}},
-            },
-        )
-        assert snap.system.agent == "goose"
-        probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
-        assert probe.src == "/src/goose"
-
-    def test_a_pref_need_not_be_a_literal(self, tmp_path):
-        """§2h — the value is installed as an ordinary (possibly
-        UNRESOLVED) value and resolution handles it like any other key."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"template": "{workset.template}/x"}}}},
-            workset={"workset": {"template": "/ws/tpl"}},
-        )
-        assert snap.agent.claude.template == "/ws/tpl/x"
-
-
-class TestPrefNullSuppression:
-    """spec §2h — values install VERBATIM, including ``None``."""
-
-    def test_a_null_pref_suppresses_an_inherited_agent_bind(self, tmp_path):
-        """⚑ The named silent hazard. ``if value is None: continue`` in the
-        install loop deletes a box's ONLY suppression channel with no error and
-        no diff. INVERT: add that guard -> this reddens."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {
-                "~/.claude/plugins": None,
-            }}}}},
-            floor={
-                "agent.claude.common": {"~/.claude/plugins": ("/host/plugins",)},
-            },
-        )
-        # The inherited bind is GONE (present-None on a category ENTRY -> OMIT).
-        # ⚑ The entry is addressed by DESTINATION since 2026-08-08c; the merge's
-        # own classification did not have to change, because "an ancestor segment
-        # is a bind category" never cared whether the leaf below it was a name or
-        # a path (settings_merge._resolve_present_none).
-        dest = "/home/agent/.claude/plugins"
-        common = snap.agent.claude.common if "common" in snap.agent.claude else None
-        assert common is None or dest not in dict.keys(common)
-
-    def test_the_request_itself_stays_visible_after_resolution(self, tmp_path):
-        """§2h read verbs — prefs are KEPT IN MEMORY, so ``--effective`` can
-        show the request beside the result."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {
-                "~/.claude/plugins": None,
-            }}}}},
-        )
-        node = snap["pref"]["agent"]["claude"]["common"]
-        # ⚑ The request is kept VERBATIM in VALUE (still ``None``) but its KEY is
-        # the R-11 NORMALIZED destination — ``common`` is a dest-keyed map now, so
-        # the pref subtree is parsed by ``parse_bind_map`` like any other.
-        assert dict.__getitem__(node, "/home/agent/.claude/plugins") is None
-
-    def test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none(self, tmp_path):
-        """§2b — ``pref.system.agent: null`` is how the NO-AGENT
-        plain-shell box is expressed, and it is a capability GAIN. Present-None
-        on a SCALAR leaf is KEPT."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"system": {"agent": None}}},
-            floor={"system.agent": "claude"},
-        )
-        assert "agent" in dict.keys(snap.system)
-        assert dict.__getitem__(snap.system, "agent") is None
-
-
-class TestPrefLevelPrecedence:
-    def test_box_pref_beats_workset_pref(self, tmp_path):
-        """§1A — box beats workset by ASSIGNMENT ORDER.
-        INVERT: swap the two overlays' splice positions -> this reddens."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"system": {"agent": "goose"}}},
-            workset={"pref": {"system": {"agent": "codex"}}},
-        )
-        assert snap.system.agent == "goose"
-
-    def test_a_workset_pref_applies_when_the_box_is_silent(self, tmp_path):
-        snap = _pref_snap(
-            tmp_path,
-            box={"box": {"image": "x"}},
-            workset={"pref": {"system": {"agent": "codex"}}},
-        )
-        assert snap.system.agent == "codex"
-
-    def test_a_pref_beats_the_base_floor_value(self, tmp_path):
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"model": "opus"}}}},
-            floor={"agent.claude.model": "sonnet"},
-        )
-        assert snap.agent.claude.model == "opus"
-
-    def test_a_box_pref_wins_now_that_the_box_agent_fold_is_gone(self, tmp_path):
-        """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately, and NARROWED again since.**
-
-        P6 recorded a TRANSITIONAL contest: ``_box_agent_category_fold`` spliced
-        the retiring ``box.agent.<category>`` tweak ABOVE ``box``, while a pref
-        sits BELOW its own level's partial (§2h expands prefs before the level
-        resolves), so for a CATEGORY the legacy mirror won. P7 RETIRES settable
-        ``box.agent.*`` (spec §2b) and deletes the fold, which removes the
-        contender — the pref now wins a CATEGORY exactly as it already won a
-        SCALAR (the test below is the discriminator proving only the category
-        half of the contest was ever real).
-
-        ⮕ **SUBJECT NARROWED.** The fixture used to leave the retired table in
-        the same file to show the pref beat it. It cannot: ``box.agent`` is now a
-        ``RETIRED_FILE_KEYS`` entry, so that file is REFUSED BY NAME before it
-        reaches this merge, and staging it here would have pinned a contest no
-        user can reach. Both halves are pinned separately below.
-
-        INVERT: restore the fold and this reddens.
-        """
-        snap = _pref_snap(
-            tmp_path,
-            box={
-                "pref": {"agent": {"claude": {"common": {
-                    "~/.claude/plugins": ["/from/pref"],
-                }}}},
-            },
-        )
-        dest = "/home/agent/.claude/plugins"
-        assert _meta_node(snap, "agent", "claude", "common", dest).src == "/from/pref"
-        # …and the pref reaches the RO read-back too, not just the agent tier.
-        assert _meta_node(
-            snap, "meta", "box", "agent", "common", dest,
-        ).src == "/from/pref"
-
-    def test_a_box_file_carrying_the_retired_category_table_never_reaches_the_merge(
-        self, tmp_path,
-    ):
-        """The OTHER half of the pin above: the retired ``box.agent.<category>``
-        table is not merely out-ranked by a pref, it is REFUSED BY NAME.
-
-        ⚑ A CATEGORY sub-value is a nested map, so the cure cannot spell a value —
-        it names the request one level deeper instead of quoting a Python repr the
-        shell would choke on. INVERT: render the raw value and this reddens.
-        """
-        from kanibako.settings.settings_assemble import refuse_retired_keys
-        from kanibako.settings.settings_resolve import SettingsError
-
-        box = _write_yaml(tmp_path / "box.yaml", {
-            "box": {"agent": {"common": {"~/.claude/plugins": ["/from/mirror"]}}},
-        })
-        with pytest.raises(SettingsError) as ei:
-            refuse_retired_keys(
-                yaml.safe_load(box.read_text()), level="box", path=box,
-                box_ref="mybox",
-            )
-        msg = str(ei.value)
-        assert "'box.agent' is RETIRED" in msg
-        assert "kanibako box set mybox pref.agent.<agent>.common.<key>=<value>" in msg
-
-    def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
-        """⚑ MEASURED, and it corrects the brief's prediction.
-
-        Nothing splices a SCALAR ``box.agent.<key>`` into ``agent.<active>``:
-        settable ``box.agent.*`` is RETIRED (spec §2b), and the only surviving
-        ``box.agent``-shaped mechanism is ``_materialize_box_agent_mirror``, a
-        post-expand READ-BACK that WRITES ``meta.box.agent`` FROM the resolved
-        agent tier and never feeds it. So there is no scalar contest and the
-        pref, which really does target the agent tier, wins. The brief predicted
-        the mirror would win here; it does not. (The category half of the
-        transitional contest was real, but it went with
-        ``_box_agent_category_fold`` — see the sibling test above.)
-
-        ⮕ **SUBJECT NARROWED**, same reason as the sibling: the retired table is
-        no longer staged alongside the pref, because a file carrying it is refused
-        before this merge runs. The refusal is pinned in the test below.
-        """
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
-        )
-        assert snap.agent.claude.model == "from-pref"
-
-    def test_a_box_file_carrying_the_retired_scalar_key_table_is_refused(
-        self, tmp_path,
-    ):
-        """The refusal half of the scalar pin: ``box: agent: {model: …}`` names a
-        BEHAVIOR leaf, so it is the MIRROR spelling and the cure is the §2h
-        per-agent request carrying the value the file actually holds.
-        """
-        from kanibako.settings.settings_assemble import refuse_retired_keys
-        from kanibako.settings.settings_resolve import SettingsError
-
-        box = _write_yaml(
-            tmp_path / "box.yaml", {"box": {"agent": {"model": "from-mirror"}}},
-        )
-        with pytest.raises(SettingsError) as ei:
-            refuse_retired_keys(
-                yaml.safe_load(box.read_text()), level="box", path=box,
-                box_ref="mybox",
-            )
-        msg = str(ei.value)
-        assert "'box.agent' is RETIRED" in msg
-        assert (
-            "kanibako box set mybox pref.agent.<agent>.model=from-mirror" in msg
-        )
-
-
-class TestPrefRejectionAtLaunch:
-    def test_a_bad_pref_fails_the_launch(self, tmp_path):
-        """§2h — the launch FAILS rather than proceeding with a
-        partially-applied request. INVERT: warn-and-continue -> reddens."""
-        box_p = _write_yaml(
-            tmp_path / "box.yaml",
-            {"pref": {"agent": {"zippity": {"model": "x"}}}},
-        )
-        with pytest.raises(_SettingsError) as exc:
-            build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(),
-                system_path=None, agent_path=None,
-                workset_path=None, box_path=box_p,
-                valid_agents=_PREF_AGENTS,
-            )
-        msg = str(exc.value)
-        assert "pref.agent.zippity.model" in msg
-        assert "at the box level" in msg
-        assert str(box_p) in msg
-
-class TestPrefIsInertWhereItMustBe:
-    def test_a_pref_subtree_yields_no_category_entries(self, tmp_path):
-        """``snapshot_category_entries`` walks ``_SCOPES`` only, so ``pref`` is
-        never read as a category. Asserted because a future scope-loop edit
-        would break it silently."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {"~/d": ["/s"]}}}}},
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=_ctx(),
-        )
-        assert all(not e.key.startswith("pref.") for e in entries)
-        # ...but the INSTALLED target IS emitted. ⚑ The declaration key's last
-        # segment is the DESTINATION now, not an entry name (R-10).
-        assert any(e.key == "agent.claude.common./home/agent/d" for e in entries)
-
-
-class TestPrefFreeByteIdentity:
-    """GATE HALF A — a pref-free config must resolve EXACTLY as before.
-
-    Compares the ordinary path against an explicitly pref-disabled build over
-    the same inputs, across modes x agent shapes. The delivery goldens
-    (test_delivery_manifest / test_defaults_golden) are the cross-check against
-    the pre-P6 world; this is the in-suite proof that the splice is inert when
-    there is nothing to splice.
-    """
-
-    @pytest.mark.parametrize("agent_name", ["claude", "shell", "navigator℘claude"])
-    def test_identical_when_no_pref_table_exists(self, tmp_path, agent_name):
-        box = {"box": {"image": "img", "bindings": {"rw": {
-            "home": ["/host/home", "~/"],
-        }}}}
-        ws = {"workset": {"boxes": "/ws/boxes"}}
-        box_p = _write_yaml(tmp_path / "box.yaml", box)
-        ws_p = _write_yaml(tmp_path / "ws.yaml", ws)
-
-        def build(prefs):
-            return build_launch_snapshot(
-                agent_name=agent_name, ctx=_ctx(),
-                system_path=None, agent_path=None,
-                workset_path=ws_p, box_path=box_p,
-                default_categories={"agent.default.model": "sonnet"},
-                prefs=prefs, valid_agents=_PREF_AGENTS,
-            )
-
-        assert build(None) == build([])
-        assert "pref" not in build(None)
+    assert build(None) == build([])
+    assert "pref" not in build(None)
 
 
 # --------------------------------------------------------------------------- #
@@ -5040,200 +5596,215 @@ class TestPrefFreeByteIdentity:
 
 
 class TestCliLevelPrecedence:
-    """spec §1A — *"its OWN LEVEL — the highest, above everything"*.
+  """spec §1A — *"its OWN LEVEL — the highest, above everything"*.
 
-    The unit-level shape of the level lives in ``test_settings_cli_level.py``;
-    these pin what it BEATS once spliced, which is the only thing that makes it a
-    level rather than a dict.
+  The unit-level shape of the level lives in ``test_settings_cli_level.py``;
+  these pin what it BEATS once spliced, which is the only thing that makes it a
+  level rather than a dict.
+  """
+
+  def _agent_file_snap(self, tmp_path, *, stored, cli_level):
+    """A snapshot over an AGENT-tier settings file, through the PRODUCTION pair.
+
+    ⚑ Not a BOX file: §0 directional enforcement DROPS an ``agent.*`` table
+    from a box file (a file contributes keys of its OWN scope), so the box
+    tier cannot hold the contender. The agent FILE is where a stored
+    ``agent.<active>.model`` legitimately lives — and a box that wants one
+    writes ``pref.agent.<agent>.model``, covered separately below.
+
+    ⚑⚑ A behavior scalar lives FLAT in the file (``self:`` IS ``agent.claude``, and a
+    ``self: claude:`` sub-table is REFUSED — [spec:14-18, "self"]), and it rides the
+    file's own ``agent.claude`` level beside the categories, so ``agent_path`` alone
+    carries the contender.
     """
+    agent_file = _yaml(tmp_path / "agent.yaml", {"self": {"model": stored}})
+    return build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=agent_file,
+      workset_path=None,
+      box_path=None,
+      cli_level=cli_level,
+    )
 
-    def _agent_file_snap(self, tmp_path, *, stored, cli_level):
-        """A snapshot over an AGENT-tier settings file, through the PRODUCTION pair.
+  def test_the_cli_level_beats_an_agent_file(self, tmp_path):
+    """INVERT: drop ``cli_level`` and the agent file's value stands."""
+    snap = self._agent_file_snap(
+      tmp_path,
+      stored="from-file",
+      cli_level={"agent.claude.model": "from-cli"},
+    )
+    assert snap.agent.claude.model == "from-cli"
+    assert effective_behavior(snap, active_agent="claude")["model"] == "from-cli"
 
-        ⚑ Not a BOX file: §0 directional enforcement DROPS an ``agent.*`` table
-        from a box file (a file contributes keys of its OWN scope), so the box
-        tier cannot hold the contender. The agent FILE is where a stored
-        ``agent.<active>.model`` legitimately lives — and a box that wants one
-        writes ``pref.agent.<agent>.model``, covered separately below.
+    without = self._agent_file_snap(
+      tmp_path,
+      stored="from-file",
+      cli_level=None,
+    )
+    assert without.agent.claude.model == "from-file"
 
-        ⚑⚑ A behavior scalar lives FLAT in the file (``self:`` IS ``agent.claude``, and a
-        ``self: claude:`` sub-table is REFUSED — [spec:14-18, "self"]), and it rides the
-        file's own ``agent.claude`` level beside the categories, so ``agent_path`` alone
-        carries the contender.
-        """
-        agent_file = _yaml(tmp_path / "agent.yaml", {"self": {"model": stored}})
-        return build_launch_snapshot(
-            agent_name="claude",
-            ctx=_ctx(),
-            system_path=None, agent_path=agent_file,
-            workset_path=None, box_path=None,
-            cli_level=cli_level,
-        )
+  def test_the_cli_level_beats_a_box_pref(self, tmp_path):
+    """Above every settings file AND every pref (§1A) — the pref is the
+    strongest thing a FILE can say about another scope's key."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
+      cli_level={"agent.claude.model": "from-cli"},
+    )
+    assert snap.agent.claude.model == "from-cli"
 
-    def test_the_cli_level_beats_an_agent_file(self, tmp_path):
-        """INVERT: drop ``cli_level`` and the agent file's value stands."""
-        snap = self._agent_file_snap(
-            tmp_path, stored="from-file",
-            cli_level={"agent.claude.model": "from-cli"},
-        )
-        assert snap.agent.claude.model == "from-cli"
-        assert effective_behavior(snap, active_agent="claude")["model"] == "from-cli"
+  def test_the_cli_level_beats_a_pref_on_the_selection_key(self, tmp_path):
+    """The P7 case, restated at the generalized seam: ``--agent`` over
+    ``pref.system.agent`` (spec §2h precedence chain)."""
+    snap = _pref_snap(
+      tmp_path,
+      box={"pref": {"system": {"agent": "goose"}}},
+      cli_level={"system.agent": "codex"},
+    )
+    assert snap.system.agent == "codex"
 
-        without = self._agent_file_snap(
-            tmp_path, stored="from-file", cli_level=None,
-        )
-        assert without.agent.claude.model == "from-file"
+  def test_the_active_slot_is_why_the_default_slot_is_not_used(self, tmp_path):
+    """⚑ R1, proven rather than asserted.
 
-    def test_the_cli_level_beats_a_box_pref(self, tmp_path):
-        """Above every settings file AND every pref (§1A) — the pref is the
-        strongest thing a FILE can say about another scope's key."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
-            cli_level={"agent.claude.model": "from-cli"},
-        )
-        assert snap.agent.claude.model == "from-cli"
-
-    def test_the_cli_level_beats_a_pref_on_the_selection_key(self, tmp_path):
-        """The P7 case, restated at the generalized seam: ``--agent`` over
-        ``pref.system.agent`` (spec §2h precedence chain)."""
-        snap = _pref_snap(
-            tmp_path,
-            box={"pref": {"system": {"agent": "goose"}}},
-            cli_level={"system.agent": "codex"},
-        )
-        assert snap.system.agent == "codex"
-
-    def test_the_active_slot_is_why_the_default_slot_is_not_used(self, tmp_path):
-        """⚑ R1, proven rather than asserted.
-
-        ``effective_behavior`` picks active-over-default AFTER the merge, so a CLI
-        value at ``agent.default.model`` would LOSE to a file's
-        ``agent.claude.model`` even from level index 0. That is why
-        ``build_cli_level`` spells the ACTIVE slot; this is the failure it avoids.
-        """
-        snap = self._agent_file_snap(
-            tmp_path, stored="from-file",
-            cli_level={"agent.default.model": "from-cli"},
-        )
-        assert effective_behavior(snap, active_agent="claude")["model"] == "from-file"
+    ``effective_behavior`` picks active-over-default AFTER the merge, so a CLI
+    value at ``agent.default.model`` would LOSE to a file's
+    ``agent.claude.model`` even from level index 0. That is why
+    ``build_cli_level`` spells the ACTIVE slot; this is the failure it avoids.
+    """
+    snap = self._agent_file_snap(
+      tmp_path,
+      stored="from-file",
+      cli_level={"agent.default.model": "from-cli"},
+    )
+    assert effective_behavior(snap, active_agent="claude")["model"] == "from-file"
 
 
 class TestCliLevelGuardIsNotBypassable:
-    """spec §1A — the guard lives INSIDE ``build_launch_snapshot``.
+  """spec §1A — the guard lives INSIDE ``build_launch_snapshot``.
 
-    A guard a caller can forget to run is not a guard, so it is asserted at the
-    production seam and not only against ``guard_cli_level`` directly.
-    """
+  A guard a caller can forget to run is not a guard, so it is asserted at the
+  production seam and not only against ``guard_cli_level`` directly.
+  """
 
-    def test_a_locator_key_from_the_cli_is_refused(self, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            _pref_snap(tmp_path, cli_level={"workset.boxes": "/tmp/elsewhere"})
-        assert "workset.boxes" in str(exc.value)
+  def test_a_locator_key_from_the_cli_is_refused(self, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      _pref_snap(tmp_path, cli_level={"workset.boxes": "/tmp/elsewhere"})
+    assert "workset.boxes" in str(exc.value)
 
-    def test_an_undeclared_key_from_the_cli_is_refused(self, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            _pref_snap(tmp_path, cli_level={"box.wibble": "x"})
-        assert "box.wibble" in str(exc.value)
+  def test_an_undeclared_key_from_the_cli_is_refused(self, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      _pref_snap(tmp_path, cli_level={"box.wibble": "x"})
+    assert "box.wibble" in str(exc.value)
 
-    def test_a_meta_key_from_the_cli_is_refused(self, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            _pref_snap(tmp_path, cli_level={"meta.box.path": "/tmp/x"})
-        assert "meta.box.path" in str(exc.value)
+  def test_a_meta_key_from_the_cli_is_refused(self, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      _pref_snap(tmp_path, cli_level={"meta.box.path": "/tmp/x"})
+    assert "meta.box.path" in str(exc.value)
 
-    def test_the_wired_keys_pass_the_seam(self, tmp_path):
-        snap = _pref_snap(
-            tmp_path,
-            cli_level={
-                "system.agent": "claude",
-                "agent.claude.model": "opus",
-                "agent.claude.continue_mode": False,
-            },
-        )
-        assert snap.agent.claude.continue_mode is False
+  def test_the_wired_keys_pass_the_seam(self, tmp_path):
+    snap = _pref_snap(
+      tmp_path,
+      cli_level={
+        "system.agent": "claude",
+        "agent.claude.model": "opus",
+        "agent.claude.continue_mode": False,
+      },
+    )
+    assert snap.agent.claude.continue_mode is False
 
 
 class TestOneAgentCollectionPerResolve:
-    """``assemble_cascade`` resolves ``valid_agents`` ONCE and forwards the same object to
-    the pref door (``apply_prefs``) and the CLI door (``guard_cli_level``).
+  """``assemble_cascade`` resolves ``valid_agents`` ONCE and forwards the same object to
+  the pref door (``apply_prefs``) and the CLI door (``guard_cli_level``).
 
-    Discovery is counted at ``discover_targets`` (the real plugin walk), not timed.
-    """
+  Discovery is counted at ``discover_targets`` (the real plugin walk), not timed.
+  """
 
-    PERSONA_KEY = "agent.navigator℘goose.model"
+  PERSONA_KEY = "agent.navigator℘goose.model"
 
-    def _discovery(self, monkeypatch):
-        """Discover ``claude`` + ``goose``, declaring nothing; return the call counter."""
-        calls: list[int] = []
+  def _discovery(self, monkeypatch):
+    """Discover ``claude`` + ``goose``, declaring nothing; return the call counter."""
+    calls: list[int] = []
 
-        class _Target:
-            def setting_descriptors(self):
-                return []
+    class _Target:
+      def setting_descriptors(self):
+        return []
 
-        def discover():
-            calls.append(1)
-            return {"claude": _Target, "goose": _Target}
+    def discover():
+      calls.append(1)
+      return {"claude": _Target, "goose": _Target}
 
-        monkeypatch.setattr("kanibako.targets.discover_targets", discover)
-        return calls
+    monkeypatch.setattr("kanibako.targets.discover_targets", discover)
+    return calls
 
-    def _snap(self, tmp_path, *, box=None, cli_level=None):
-        box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
-        return build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None, box_path=box_p, cli_level=cli_level,
-        )
+  def _snap(self, tmp_path, *, box=None, cli_level=None):
+    box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
+    return build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_p,
+      cli_level=cli_level,
+    )
 
-    def test_a_persona_node_on_a_discovered_harness_passes_the_cli_door(
-        self, tmp_path, monkeypatch,
-    ):
-        """The row's case: before, the CLI door was handed ``None`` and refused it with
-        *"'navigator℘goose' is not a valid agent"* though discovery admits it."""
-        self._discovery(monkeypatch)
-        snap = self._snap(tmp_path, cli_level={self.PERSONA_KEY: "opus"})
-        assert snap.agent["navigator℘goose"].model == "opus"
+  def test_a_persona_node_on_a_discovered_harness_passes_the_cli_door(
+    self,
+    tmp_path,
+    monkeypatch,
+  ):
+    """The row's case: before, the CLI door was handed ``None`` and refused it with
+    *"'navigator℘goose' is not a valid agent"* though discovery admits it."""
+    self._discovery(monkeypatch)
+    snap = self._snap(tmp_path, cli_level={self.PERSONA_KEY: "opus"})
+    assert snap.agent["navigator℘goose"].model == "opus"
 
-    def test_both_doors_get_ONE_collection_and_discovery_runs_once(
-        self, tmp_path, monkeypatch,
-    ):
-        from kanibako.settings import settings_launch
+  def test_both_doors_get_ONE_collection_and_discovery_runs_once(
+    self,
+    tmp_path,
+    monkeypatch,
+  ):
+    from kanibako.settings import settings_launch
 
-        calls = self._discovery(monkeypatch)
-        seen: list[object] = []
-        real_apply, real_guard = settings_launch.apply_prefs, settings_launch.guard_cli_level
+    calls = self._discovery(monkeypatch)
+    seen: list[object] = []
+    real_apply, real_guard = settings_launch.apply_prefs, settings_launch.guard_cli_level
 
-        def apply_spy(requests, *, valid_agents=None, **kw):
-            seen.append(valid_agents)
-            return real_apply(requests, valid_agents=valid_agents, **kw)
+    def apply_spy(requests, *, valid_agents=None, **kw):
+      seen.append(valid_agents)
+      return real_apply(requests, valid_agents=valid_agents, **kw)
 
-        def guard_spy(level, *, valid_agents=None, **kw):
-            seen.append(valid_agents)
-            return real_guard(level, valid_agents=valid_agents, **kw)
+    def guard_spy(level, *, valid_agents=None, **kw):
+      seen.append(valid_agents)
+      return real_guard(level, valid_agents=valid_agents, **kw)
 
-        monkeypatch.setattr(settings_launch, "apply_prefs", apply_spy)
-        monkeypatch.setattr(settings_launch, "guard_cli_level", guard_spy)
-        self._snap(
-            tmp_path,
-            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
-            cli_level={self.PERSONA_KEY: "opus"},
-        )
-        assert len(seen) == 2 and seen[0] is not None and seen[0] is seen[1]
-        assert calls == [1]
+    monkeypatch.setattr(settings_launch, "apply_prefs", apply_spy)
+    monkeypatch.setattr(settings_launch, "guard_cli_level", guard_spy)
+    self._snap(
+      tmp_path,
+      box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
+      cli_level={self.PERSONA_KEY: "opus"},
+    )
+    assert len(seen) == 2 and seen[0] is not None and seen[0] is seen[1]
+    assert calls == [1]
 
-    def test_a_pref_free_agent_free_launch_never_discovers(self, tmp_path, monkeypatch):
-        """Laziness: the CLI keys ``build_cli_level`` spells on the ACTIVE agent are
-        answered by the guard's union, so they cost no plugin walk either."""
-        calls = self._discovery(monkeypatch)
-        self._snap(
-            tmp_path,
-            cli_level={
-                "system.agent": "claude",
-                "agent.claude.model": "opus",
-                "agent.claude.continue_mode": True,
-                "box.image": "ghcr.io/x:y",
-            },
-        )
-        assert calls == []
+  def test_a_pref_free_agent_free_launch_never_discovers(self, tmp_path, monkeypatch):
+    """Laziness: the CLI keys ``build_cli_level`` spells on the ACTIVE agent are
+    answered by the guard's union, so they cost no plugin walk either."""
+    calls = self._discovery(monkeypatch)
+    self._snap(
+      tmp_path,
+      cli_level={
+        "system.agent": "claude",
+        "agent.claude.model": "opus",
+        "agent.claude.continue_mode": True,
+        "box.image": "ghcr.io/x:y",
+      },
+    )
+    assert calls == []
 
 
 # --------------------------------------------------------------------------- #
@@ -5252,10 +5823,10 @@ class TestOneAgentCollectionPerResolve:
 #: ``agent.<active>``. The two bare keys are behavior scalars; the two dotted ones
 #: are the open categories, whose ``<VAR>`` half is arbitrary user text.
 _PERSONA_CLASSES = [
-    ("endpoint", ("endpoint",)),
-    ("model", ("model",)),
-    ("secret_path.ANTHROPIC_AUTH_TOKEN", ("secret_path", "ANTHROPIC_AUTH_TOKEN")),
-    ("env.PERSONA_FLAG", ("env", "PERSONA_FLAG")),
+  ("endpoint", ("endpoint",)),
+  ("model", ("model",)),
+  ("secret_path.ANTHROPIC_AUTH_TOKEN", ("secret_path", "ANTHROPIC_AUTH_TOKEN")),
+  ("env.PERSONA_FLAG", ("env", "PERSONA_FLAG")),
 ]
 
 #: Marker for "no leaf at that path" — distinct from a stored ``None``.
@@ -5263,43 +5834,43 @@ _NO_LEAF = object()
 
 
 def _leaf(snap, path, *, agent_name="claude"):
-    """Read the leaf at ``agent.<agent_name>.<path>`` off *snap*, or ``_NO_LEAF``.
+  """Read the leaf at ``agent.<agent_name>.<path>`` off *snap*, or ``_NO_LEAF``.
 
-    Unbound ``dict`` ops (S3) throughout, and tolerant of a missing intermediate
-    node, so an ABSENCE assertion cannot be satisfied by an exception instead.
-    """
-    node = dict.get(snap, "agent", _NO_LEAF)
-    for seg in (agent_name, *path):
-        if not isinstance(node, KeyStore):
-            return _NO_LEAF
-        node = dict.get(node, seg, _NO_LEAF)
-    return node
+  Unbound ``dict`` ops (S3) throughout, and tolerant of a missing intermediate
+  node, so an ABSENCE assertion cannot be satisfied by an exception instead.
+  """
+  node = dict.get(snap, "agent", _NO_LEAF)
+  for seg in (agent_name, *path):
+    if not isinstance(node, KeyStore):
+      return _NO_LEAF
+    node = dict.get(node, seg, _NO_LEAF)
+  return node
 
 
 def _nested(key, value):
-    """Spell one persona key as the nested FILE shape it corresponds to.
+  """Spell one persona key as the nested FILE shape it corresponds to.
 
-    ``"model"`` → ``{"model": v}``; ``"env.FOO"`` → ``{"env": {"FOO": v}}``. First
-    dot only — the same split the production helper does, for the same reason.
-    """
-    category, sep, var = key.partition(".")
-    return {category: {var: value}} if sep else {key: value}
+  ``"model"`` → ``{"model": v}``; ``"env.FOO"`` → ``{"env": {"FOO": v}}``. First
+  dot only — the same split the production helper does, for the same reason.
+  """
+  category, sep, var = key.partition(".")
+  return {category: {var: value}} if sep else {key: value}
 
 
 def _agent_file_contender(key, value):
-    """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE.
+  """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE.
 
-    There is ONE file shape: everything sits DIRECTLY under ``self:``, which IS
-    ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:14-18, "self"]). A CATEGORY
-    table and a BEHAVIOR scalar both ride ``agent_file_partial``'s ``agent.<active>`` level; only
-    the spelling differs, as a category is nested by its dotted name.
+  There is ONE file shape: everything sits DIRECTLY under ``self:``, which IS
+  ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:14-18, "self"]). A CATEGORY
+  table and a BEHAVIOR scalar both ride ``agent_file_partial``'s ``agent.<active>`` level; only
+  the spelling differs, as a category is nested by its dotted name.
 
-    Keyed off the PRODUCTION tuple, so a category joining or leaving it cannot leave a stale
-    spelling behind.
-    """
-    if key.partition(".")[0] in _FLAT_AGENT_CATEGORIES:
-        return {"agent_file": {"self": _nested(key, value)}}
-    return {"agent_file": {"self": {key: value}}}
+  Keyed off the PRODUCTION tuple, so a category joining or leaving it cannot leave a stale
+  spelling behind.
+  """
+  if key.partition(".")[0] in _FLAT_AGENT_CATEGORIES:
+    return {"agent_file": {"self": _nested(key, value)}}
+  return {"agent_file": {"self": {key: value}}}
 
 
 # ⚑ Imported as a FUNCTION, not as the module: ``_persona_snap`` below has a
@@ -5308,314 +5879,348 @@ from kanibako.settings.settings_assemble import ReadPurpose, agent_record as age
 
 
 def _persona_snap(
-    tmp_path,
-    *,
-    persona_values,
-    agent_file=None,
-    system=None,
-    workset=None,
-    box=None,
+  tmp_path,
+  *,
+  persona_values,
+  agent_file=None,
+  system=None,
+  workset=None,
+  box=None,
 ):
-    """A launch snapshot with the persona tier and any subset of its contenders."""
-    return build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=(
-            _write_yaml(tmp_path / "system.yaml", system) if system else None
-        ),
-        agent_path=(
-            _write_yaml(tmp_path / "agent.yaml", agent_file) if agent_file else None
-        ),
-        workset_path=(
-            _write_yaml(tmp_path / "ws.yaml", workset) if workset else None
-        ),
-        box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
-        persona_values=persona_values,
-        valid_agents=_PREF_AGENTS,
-    )
+  """A launch snapshot with the persona tier and any subset of its contenders."""
+  return build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=(_write_yaml(tmp_path / "system.yaml", system) if system else None),
+    agent_path=(_write_yaml(tmp_path / "agent.yaml", agent_file) if agent_file else None),
+    workset_path=(_write_yaml(tmp_path / "ws.yaml", workset) if workset else None),
+    box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
+    persona_values=persona_values,
+    valid_agents=_PREF_AGENTS,
+  )
 
 
 @pytest.mark.parametrize("key,path", _PERSONA_CLASSES, ids=lambda v: str(v))
 class TestPersonaRungOrdering:
-    """The ruled precedence, asserted once per persona VALUE CLASS.
+  """The ruled precedence, asserted once per persona VALUE CLASS.
 
-    Each test is MUTATION-PROOF by construction: the contender and the persona
-    carry different values, so a rung spliced on the wrong side of a neighbor
-    flips exactly one of these red.
+  Each test is MUTATION-PROOF by construction: the contender and the persona
+  carry different values, so a rung spliced on the wrong side of a neighbor
+  flips exactly one of these red.
+  """
+
+  # ⚑ A contender a SETTINGS FILE stores is spelled ABSOLUTE: the ``secret_path``
+  # class is a path key, and keyspec §2a "A path key's stored value" refuses a bare relative in
+  # any file at read time.
+  # The persona and descriptor values are kanibako's own, which the sweep never judges.
+
+  def test_persona_beats_the_descriptor_default_partial(self, tmp_path, key, path):
+    """The 7a descriptor DEFAULT (``agent_partial``) is the LEAST-specific level
+    that spells the ACTIVE slot, and it sits below ``agent.default``.
+
+    ⚑ This — not ``agent.default`` — is the nearest level the persona rung
+    actually CONTENDS with going down. ``agent.default.*`` is a DISJOINT name
+    from ``agent.<active>.*`` (§2d keeps the two slots distinct), so the merge
+    never puts them in the same contest; see the sibling test below for where
+    that comparison really happens.
     """
+    category, sep, var = key.partition(".")
+    node = {category: {var: "from-descriptor"}} if sep else {key: "from-descriptor"}
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      agent_partial=KeyStore({"agent": {"claude": node}}),
+      persona_values={key: "from-persona"},
+    )
+    assert _leaf(snap, path) == "from-persona"
+    # CONTROL: without the persona the descriptor default lands, so the assert
+    # above is a contest and not an absence.
+    control = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      agent_partial=KeyStore({"agent": {"claude": node}}),
+    )
+    assert _leaf(control, path) == "from-descriptor"
 
-    # ⚑ A contender a SETTINGS FILE stores is spelled ABSOLUTE: the ``secret_path``
-    # class is a path key, and keyspec §2a "A path key's stored value" refuses a bare relative in
-    # any file at read time.
-    # The persona and descriptor values are kanibako's own, which the sweep never judges.
+  def test_the_agent_default_backstop_is_a_disjoint_name_not_a_contest(
+    self,
+    tmp_path,
+    key,
+    path,
+  ):
+    """⚑ Recorded rather than papered over.
 
-    def test_persona_beats_the_descriptor_default_partial(self, tmp_path, key, path):
-        """The 7a descriptor DEFAULT (``agent_partial``) is the LEAST-specific level
-        that spells the ACTIVE slot, and it sits below ``agent.default``.
+    The ruling puts the persona rung ABOVE ``agent.default``, and semantically
+    it is: the §2d active-over-default pick (``effective_behavior``) takes the
+    active slot unconditionally, and the persona writes the active slot. But
+    the two are DIFFERENT KEYS, so the MERGE never contends them — both survive
+    side by side, and the level order between them is unobservable. A test that
+    asserted an ordering there would be asserting nothing.
 
-        ⚑ This — not ``agent.default`` — is the nearest level the persona rung
-        actually CONTENDS with going down. ``agent.default.*`` is a DISJOINT name
-        from ``agent.<active>.*`` (§2d keeps the two slots distinct), so the merge
-        never puts them in the same contest; see the sibling test below for where
-        that comparison really happens.
-        """
-        category, sep, var = key.partition(".")
-        node = {category: {var: "from-descriptor"}} if sep else {key: "from-descriptor"}
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            agent_partial=KeyStore({"agent": {"claude": node}}),
-            persona_values={key: "from-persona"},
-        )
-        assert _leaf(snap, path) == "from-persona"
-        # CONTROL: without the persona the descriptor default lands, so the assert
-        # above is a contest and not an absence.
-        control = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            agent_partial=KeyStore({"agent": {"claude": node}}),
-        )
-        assert _leaf(control, path) == "from-descriptor"
+    ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
+    file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
+    refuses ([spec:14-18, "self"]). Which FILE supplies it is incidental to the
+    claim — that two
+    disjoint names never meet is exactly why the level does not matter.
+    """
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={key: "from-persona"},
+      system={"agent": {"default": _nested(key, "/from-agent-default")}},
+    )
+    assert _leaf(snap, path) == "from-persona"
+    # The backstop is untouched under its OWN true name — no clobber, no merge.
+    assert _leaf(snap, path, agent_name="default") == "/from-agent-default"
 
-    def test_the_agent_default_backstop_is_a_disjoint_name_not_a_contest(
-        self, tmp_path, key, path,
-    ):
-        """⚑ Recorded rather than papered over.
+  def test_persona_beats_the_system_file(self, tmp_path, key, path):
+    """``system`` CONTAINS ``agent``, so a system file may legally set
+    ``agent.<node>.*`` as a machine-wide default — and the persona outranks it."""
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={key: "from-persona"},
+      system={"agent": {"claude": _nested(key, "/from-system")}},
+    )
+    assert _leaf(snap, path) == "from-persona"
 
-        The ruling puts the persona rung ABOVE ``agent.default``, and semantically
-        it is: the §2d active-over-default pick (``effective_behavior``) takes the
-        active slot unconditionally, and the persona writes the active slot. But
-        the two are DIFFERENT KEYS, so the MERGE never contends them — both survive
-        side by side, and the level order between them is unobservable. A test that
-        asserted an ordering there would be asserting nothing.
+  def test_persona_loses_to_the_agent_file_active_table(self, tmp_path, key, path):
+    """FILE-BEATS-PERSONA. The agent file holds only non-default values, so an
+    ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
+    self._contended(
+      tmp_path,
+      key,
+      path,
+      "/from-agent-file",
+      **_agent_file_contender(key, "/from-agent-file"),
+    )
 
-        ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
-        file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
-        refuses ([spec:14-18, "self"]). Which FILE supplies it is incidental to the
-        claim — that two
-        disjoint names never meet is exactly why the level does not matter.
-        """
-        snap = _persona_snap(
-            tmp_path,
-            persona_values={key: "from-persona"},
-            system={"agent": {"default": _nested(key, "/from-agent-default")}},
-        )
-        assert _leaf(snap, path) == "from-persona"
-        # The backstop is untouched under its OWN true name — no clobber, no merge.
-        assert _leaf(snap, path, agent_name="default") == "/from-agent-default"
+  def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):
+    """A workset/box FILE may not write ``agent.*`` directly (§0 directional
+    enforcement drops the upward table); ``pref.agent.<agent>.*`` (§2h) is how
+    those scopes reach the agent tier — and both pref overlays sit above the
+    persona rung."""
+    self._contended(
+      tmp_path,
+      key,
+      path,
+      "/from-workset",
+      workset={"pref": {"agent": {"claude": _nested(key, "/from-workset")}}},
+    )
 
-    def test_persona_beats_the_system_file(self, tmp_path, key, path):
-        """``system`` CONTAINS ``agent``, so a system file may legally set
-        ``agent.<node>.*`` as a machine-wide default — and the persona outranks it."""
-        snap = _persona_snap(
-            tmp_path,
-            persona_values={key: "from-persona"},
-            system={"agent": {"claude": _nested(key, "/from-system")}},
-        )
-        assert _leaf(snap, path) == "from-persona"
+  def test_persona_loses_to_a_box_pref(self, tmp_path, key, path):
+    self._contended(
+      tmp_path,
+      key,
+      path,
+      "/from-box",
+      box={"pref": {"agent": {"claude": _nested(key, "/from-box")}}},
+    )
 
-    def test_persona_loses_to_the_agent_file_active_table(self, tmp_path, key, path):
-        """FILE-BEATS-PERSONA. The agent file holds only non-default values, so an
-        ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
-        self._contended(
-            tmp_path, key, path, "/from-agent-file",
-            **_agent_file_contender(key, "/from-agent-file"),
-        )
+  @staticmethod
+  def _contended(tmp_path, key, path, expected, **contender):
+    """Assert the *contender* wins the key — and that it had to.
 
-    def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):
-        """A workset/box FILE may not write ``agent.*`` directly (§0 directional
-        enforcement drops the upward table); ``pref.agent.<agent>.*`` (§2h) is how
-        those scopes reach the agent tier — and both pref overlays sit above the
-        persona rung."""
-        self._contended(
-            tmp_path, key, path, "/from-workset",
-            workset={"pref": {"agent": {"claude": _nested(key, "/from-workset")}}},
-        )
-
-    def test_persona_loses_to_a_box_pref(self, tmp_path, key, path):
-        self._contended(
-            tmp_path, key, path, "/from-box",
-            box={"pref": {"agent": {"claude": _nested(key, "/from-box")}}},
-        )
-
-    @staticmethod
-    def _contended(tmp_path, key, path, expected, **contender):
-        """Assert the *contender* wins the key — and that it had to.
-
-        ⚑ The CONTROL is what makes a "persona loses" assertion non-vacuous: on its
-        own it would also pass if the persona tier did nothing whatsoever. So the
-        same build is repeated WITHOUT the contender and must yield the persona
-        value; only then does the first assert pin an ORDERING rather than an
-        absence.
-        """
-        snap = _persona_snap(
-            tmp_path / "contended",
-            persona_values={key: "from-persona"},
-            **contender,
-        )
-        assert _leaf(snap, path) == expected
-        control = _persona_snap(
-            tmp_path / "control", persona_values={key: "from-persona"},
-        )
-        assert _leaf(control, path) == "from-persona"
+    ⚑ The CONTROL is what makes a "persona loses" assertion non-vacuous: on its
+    own it would also pass if the persona tier did nothing whatsoever. So the
+    same build is repeated WITHOUT the contender and must yield the persona
+    value; only then does the first assert pin an ORDERING rather than an
+    absence.
+    """
+    snap = _persona_snap(
+      tmp_path / "contended",
+      persona_values={key: "from-persona"},
+      **contender,
+    )
+    assert _leaf(snap, path) == expected
+    control = _persona_snap(
+      tmp_path / "control",
+      persona_values={key: "from-persona"},
+    )
+    assert _leaf(control, path) == "from-persona"
 
 
 @pytest.mark.parametrize("key,path", _PERSONA_CLASSES[:2], ids=lambda v: str(v))
 def test_persona_loses_to_the_agent_file_flat_state(tmp_path, key, path):
-    """The agent file's FLAT root scalar also beats the persona.
+  """The agent file's FLAT root scalar also beats the persona.
 
-    ⚑ Only the two BARE classes are exercised, and that is structural, not an
-    omission: a root scalar is a bare name, while a dict-valued ``env:`` /
-    ``secret_path:`` table is a category (covered above). So a flat scalar cannot
-    carry a dotted class at all.
-    """
-    snap = _persona_snap(
-        tmp_path / "contended",
-        persona_values={key: "from-persona"},
-        agent_file={"self": {key: "from-flat-state"}},
-    )
-    assert _leaf(snap, path) == "from-flat-state"
-    # CONTROL (see TestPersonaRungOrdering._contended): without the flat state the
-    # persona value lands, so the assert above pins an ORDERING, not an absence.
-    control = _persona_snap(tmp_path / "control", persona_values={key: "from-persona"})
-    assert _leaf(control, path) == "from-persona"
+  ⚑ Only the two BARE classes are exercised, and that is structural, not an
+  omission: a root scalar is a bare name, while a dict-valued ``env:`` /
+  ``secret_path:`` table is a category (covered above). So a flat scalar cannot
+  carry a dotted class at all.
+  """
+  snap = _persona_snap(
+    tmp_path / "contended",
+    persona_values={key: "from-persona"},
+    agent_file={"self": {key: "from-flat-state"}},
+  )
+  assert _leaf(snap, path) == "from-flat-state"
+  # CONTROL (see TestPersonaRungOrdering._contended): without the flat state the
+  # persona value lands, so the assert above pins an ORDERING, not an absence.
+  control = _persona_snap(tmp_path / "control", persona_values={key: "from-persona"})
+  assert _leaf(control, path) == "from-persona"
 
 
 @pytest.mark.parametrize("key", ["endpoint", "model"])
 def test_persona_beats_the_agent_default_backstop_at_the_behavior_read(tmp_path, key):
-    """Where persona-beats-``agent.default`` is REALLY decided: the §2d
-    active-over-default pick, AFTER the merge.
+  """Where persona-beats-``agent.default`` is REALLY decided: the §2d
+  active-over-default pick, AFTER the merge.
 
-    ⚑ Bare behavior classes only, and that is structural: ``env`` / ``secret_path``
-    are CATEGORIES, read off the discriminated active node by the category adapter,
-    with no default-slot pick to win in the first place.
-    """
-    snap = _persona_snap(
-        tmp_path,
-        persona_values={key: "from-persona"},
-        system={"agent": {"default": {key: "from-agent-default"}}},
-    )
-    assert effective_behavior(snap, active_agent="claude")[key] == "from-persona"
-    # CONTROL: the backstop is what a persona-free launch reads.
-    control = _persona_snap(
-        tmp_path / "control",
-        persona_values=None,
-        system={"agent": {"default": {key: "from-agent-default"}}},
-    )
-    assert (effective_behavior(control, active_agent="claude")[key]
-            == "from-agent-default")
+  ⚑ Bare behavior classes only, and that is structural: ``env`` / ``secret_path``
+  are CATEGORIES, read off the discriminated active node by the category adapter,
+  with no default-slot pick to win in the first place.
+  """
+  snap = _persona_snap(
+    tmp_path,
+    persona_values={key: "from-persona"},
+    system={"agent": {"default": {key: "from-agent-default"}}},
+  )
+  assert effective_behavior(snap, active_agent="claude")[key] == "from-persona"
+  # CONTROL: the backstop is what a persona-free launch reads.
+  control = _persona_snap(
+    tmp_path / "control",
+    persona_values=None,
+    system={"agent": {"default": {key: "from-agent-default"}}},
+  )
+  assert effective_behavior(control, active_agent="claude")[key] == "from-agent-default"
 
 
 @pytest.mark.parametrize("value", [None, ""], ids=["null", "empty"])
 def test_a_persona_null_or_empty_model_is_a_set_value(tmp_path, value):
-    """Keyspec §2 PERSONA-STORE INPUT: a store ``model`` of ``null`` or ``""`` is a
-    SET value — it beats ``agent.default.model`` and loses to the agent file."""
-    from kanibako.settings.settings_launch import behavior_pick
+  """Keyspec §2 PERSONA-STORE INPUT: a store ``model`` of ``null`` or ``""`` is a
+  SET value — it beats ``agent.default.model`` and loses to the agent file."""
+  from kanibako.settings.settings_launch import behavior_pick
 
-    snap = _persona_snap(
-        tmp_path / "default",
-        persona_values={"model": value},
-        system={"agent": {"default": {"model": "D"}}},
-    )
-    assert behavior_pick(snap, active_agent="claude", key="model") == ("active", value)
-    file_snap = _persona_snap(
-        tmp_path / "file",
-        persona_values={"model": value},
-        agent_file={"self": {"model": "F"}},
-    )
-    assert behavior_pick(file_snap, active_agent="claude", key="model") == ("active", "F")
+  snap = _persona_snap(
+    tmp_path / "default",
+    persona_values={"model": value},
+    system={"agent": {"default": {"model": "D"}}},
+  )
+  assert behavior_pick(snap, active_agent="claude", key="model") == ("active", value)
+  file_snap = _persona_snap(
+    tmp_path / "file",
+    persona_values={"model": value},
+    agent_file={"self": {"model": "F"}},
+  )
+  assert behavior_pick(file_snap, active_agent="claude", key="model") == ("active", "F")
 
 
 class TestPersonaTierIsInertWhenEmpty:
-    """No persona values ⇒ the snapshot is what it was before the tier existed."""
+  """No persona values ⇒ the snapshot is what it was before the tier existed."""
 
-    @staticmethod
-    def _rich(tmp_path, **persona_kw):
-        # Deliberately NOT a bare snapshot: floor + agent file + both pref-legal
-        # files, so an injected empty ``agent.claude`` node (or a shifted level
-        # index) has somewhere to show up. ``persona_kw`` is passed through so the
-        # ARGUMENT-ABSENT case really omits the parameter (exercising its default).
-        return build_launch_snapshot(
-            agent_name="claude",
-            ctx=_ctx(),
-            system_path=None,
-            agent_path=_write_yaml(
-                tmp_path / "agent.yaml",
-                {"self": {"env": {"STORED": "x"}, "endpoint": "stored-endpoint"}},
-            ),
-            workset_path=_write_yaml(
-                tmp_path / "ws.yaml", {"workset": {"boxes": "/ws/boxes"}},
-            ),
-            box_path=_write_yaml(
-                tmp_path / "box.yaml",
-                {"pref": {"agent": {"claude": {"access": "full"}}}},
-            ),
-            behavior_floor={"model": "opus", "allow_helpers": "true"},
-            default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
-            valid_agents=_PREF_AGENTS,
-            **persona_kw,
-        )
+  @staticmethod
+  def _rich(tmp_path, **persona_kw):
+    # Deliberately NOT a bare snapshot: floor + agent file + both pref-legal
+    # files, so an injected empty ``agent.claude`` node (or a shifted level
+    # index) has somewhere to show up. ``persona_kw`` is passed through so the
+    # ARGUMENT-ABSENT case really omits the parameter (exercising its default).
+    return build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=_write_yaml(
+        tmp_path / "agent.yaml",
+        {"self": {"env": {"STORED": "x"}, "endpoint": "stored-endpoint"}},
+      ),
+      workset_path=_write_yaml(
+        tmp_path / "ws.yaml",
+        {"workset": {"boxes": "/ws/boxes"}},
+      ),
+      box_path=_write_yaml(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"access": "full"}}}},
+      ),
+      behavior_floor={"model": "opus", "allow_helpers": "true"},
+      default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
+      valid_agents=_PREF_AGENTS,
+      **persona_kw,
+    )
 
-    def test_none_and_empty_and_absent_all_agree(self, tmp_path):
-        absent = self._rich(tmp_path / "a")
-        explicit_none = self._rich(tmp_path / "b", persona_values=None)
-        empty = self._rich(tmp_path / "c", persona_values={})
-        assert absent == explicit_none
-        assert absent == empty
+  def test_none_and_empty_and_absent_all_agree(self, tmp_path):
+    absent = self._rich(tmp_path / "a")
+    explicit_none = self._rich(tmp_path / "b", persona_values=None)
+    empty = self._rich(tmp_path / "c", persona_values={})
+    assert absent == explicit_none
+    assert absent == empty
 
-    def test_no_empty_node_is_injected_for_the_active_agent(self, tmp_path):
-        """``{}`` must add NOTHING — not even the ``agent.<active>`` scaffolding."""
-        snap = build_launch_snapshot(
-            agent_name="ghost", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            persona_values={},
-        )
-        agent_node = dict.get(snap, "agent")
-        assert agent_node is None or "ghost" not in agent_node
+  def test_no_empty_node_is_injected_for_the_active_agent(self, tmp_path):
+    """``{}`` must add NOTHING — not even the ``agent.<active>`` scaffolding."""
+    snap = build_launch_snapshot(
+      agent_name="ghost",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      persona_values={},
+    )
+    agent_node = dict.get(snap, "agent")
+    assert agent_node is None or "ghost" not in agent_node
 
 
 def test_a_persona_env_var_name_with_a_dot_is_ONE_literal_leaf(tmp_path):
-    """⚑ REGRESSION PIN for the divergence from ``dotted_partial``.
+  """⚑ REGRESSION PIN for the divergence from ``dotted_partial``.
 
-    A ``<VAR>`` is arbitrary user-supplied text out of a JSON file. Routing it
-    through the dotted exploder would split on EVERY dot and turn one leaf into a
-    nested subtree — the var would then never be exported, silently. Split on the
-    FIRST dot only: everything after it is a literal leaf key.
-    """
-    snap = _persona_snap(
-        tmp_path, persona_values={"env.WEIRD.VAR": "v", "env.PLAIN": "p"},
-    )
-    env = _leaf(snap, ("env",))
-    assert isinstance(env, KeyStore)
-    assert dict.get(env, "WEIRD.VAR") == "v"
-    # MUTATION guard: the exploded shape must NOT exist in any form.
-    assert "WEIRD" not in env
-    assert _leaf(snap, ("env", "WEIRD", "VAR")) is _NO_LEAF
-    # The sibling ordinary var is unaffected by the neighbor's spelling.
-    assert dict.get(env, "PLAIN") == "p"
+  A ``<VAR>`` is arbitrary user-supplied text out of a JSON file. Routing it
+  through the dotted exploder would split on EVERY dot and turn one leaf into a
+  nested subtree — the var would then never be exported, silently. Split on the
+  FIRST dot only: everything after it is a literal leaf key.
+  """
+  snap = _persona_snap(
+    tmp_path,
+    persona_values={"env.WEIRD.VAR": "v", "env.PLAIN": "p"},
+  )
+  env = _leaf(snap, ("env",))
+  assert isinstance(env, KeyStore)
+  assert dict.get(env, "WEIRD.VAR") == "v"
+  # MUTATION guard: the exploded shape must NOT exist in any form.
+  assert "WEIRD" not in env
+  assert _leaf(snap, ("env", "WEIRD", "VAR")) is _NO_LEAF
+  # The sibling ordinary var is unaffected by the neighbor's spelling.
+  assert dict.get(env, "PLAIN") == "p"
 
 
 def test_a_persona_secret_path_discriminates_onto_the_active_agent(tmp_path):
-    """``secret_path.<VAR>`` arrives UN-discriminated and must land under the
-    ACTIVE node — the launch SECRET export reads ``agent.<node>.secret_path.*``,
-    so a bare or mis-discriminated landing is an invisible auth break."""
-    token = "/home/host/.config/personas/navigator/token"
-    snap = build_launch_snapshot(
-        agent_name="navigator℘claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        persona_values={"secret_path.ANTHROPIC_AUTH_TOKEN": token},
+  """``secret_path.<VAR>`` arrives UN-discriminated and must land under the
+  ACTIVE node — the launch SECRET export reads ``agent.<node>.secret_path.*``,
+  so a bare or mis-discriminated landing is an invisible auth break."""
+  token = "/home/host/.config/personas/navigator/token"
+  snap = build_launch_snapshot(
+    agent_name="navigator℘claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    persona_values={"secret_path.ANTHROPIC_AUTH_TOKEN": token},
+  )
+  assert (
+    _leaf(
+      snap,
+      ("secret_path", "ANTHROPIC_AUTH_TOKEN"),
+      agent_name="navigator℘claude",
     )
-    assert _leaf(
-        snap, ("secret_path", "ANTHROPIC_AUTH_TOKEN"), agent_name="navigator℘claude",
-    ) == token
-    # Not bare — §0 forbids a bare ``agent.<key>``, so the category may not sit
-    # directly on the ``agent`` node, and must not have landed on the ALL-AGENTS
-    # ``default`` slot either.
-    agent_node = dict.get(snap, "agent")
-    assert "secret_path" not in agent_node
-    assert _leaf(
-        snap, ("secret_path", "ANTHROPIC_AUTH_TOKEN"), agent_name="default",
-    ) is _NO_LEAF
+    == token
+  )
+  # Not bare — §0 forbids a bare ``agent.<key>``, so the category may not sit
+  # directly on the ``agent`` node, and must not have landed on the ALL-AGENTS
+  # ``default`` slot either.
+  agent_node = dict.get(snap, "agent")
+  assert "secret_path" not in agent_node
+  assert (
+    _leaf(
+      snap,
+      ("secret_path", "ANTHROPIC_AUTH_TOKEN"),
+      agent_name="default",
+    )
+    is _NO_LEAF
+  )
 
 
 # --------------------------------------------------------------------------- #
@@ -5631,94 +6236,104 @@ from kanibako.settings import settings_keyspace_probe as _probe  # noqa: E402
 
 
 def _box_yaml(tmp_path: Path, text: str) -> Path:
-    path = tmp_path / "box.yaml"
-    path.write_text(text, encoding="utf-8")
-    return path
+  path = tmp_path / "box.yaml"
+  path.write_text(text, encoding="utf-8")
+  return path
 
 
 def _snapshot(box_path: Path | None = None, **kwargs):
-    """One launch resolve, with every tier absent unless the caller names it."""
-    kwargs.setdefault("system_path", None)
-    kwargs.setdefault("agent_path", None)
-    kwargs.setdefault("workset_path", None)
-    return build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(), box_path=box_path,
-        valid_agents=("claude",), **kwargs,
-    )
+  """One launch resolve, with every tier absent unless the caller names it."""
+  kwargs.setdefault("system_path", None)
+  kwargs.setdefault("agent_path", None)
+  kwargs.setdefault("workset_path", None)
+  return build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    box_path=box_path,
+    valid_agents=("claude",),
+    **kwargs,
+  )
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the refused entry IS an undeclared key in a box.yaml; assemble_levels "
-           "writes it into the store, and the seam is what refuses it after.",
+  "box.zippity",
+  reason="the refused entry IS an undeclared key in a box.yaml; assemble_levels "
+  "writes it into the store, and the seam is what refuses it after.",
 )
 def test_an_undeclared_key_in_a_settings_file_refuses_the_resolve(tmp_path):
-    """Spec §0: RESOLVING an undeclared key is an error that NAMES it.
+  """Spec §0: RESOLVING an undeclared key is an error that NAMES it.
 
-    The read and set halves were already enforced (``config_keys``); this is the
-    third. A ``box.yaml`` carrying ``box: {zippity: wibble}`` used to resolve to
-    ``'wibble'`` with no error and no warning, because nothing between the file
-    parser and the expanded snapshot ever asked the keyspace anything.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
-    msg = str(e.value)
-    # NAMES the offending key — the whole of what §0 asks for — and says WHY.
-    assert "box.zippity" in msg
-    assert "not a declared box key" in msg
+  The read and set halves were already enforced (``config_keys``); this is the
+  third. A ``box.yaml`` carrying ``box: {zippity: wibble}`` used to resolve to
+  ``'wibble'`` with no error and no warning, because nothing between the file
+  parser and the expanded snapshot ever asked the keyspace anything.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  msg = str(e.value)
+  # NAMES the offending key — the whole of what §0 asks for — and says WHY.
+  assert "box.zippity" in msg
+  assert "not a declared box key" in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.bindings",
-    reason="the refused entry IS a null at the bare bindings namespace in a box.yaml; "
-           "the file partial and the merge both write it, and the seam refuses it.",
+  "box.bindings",
+  reason="the refused entry IS a null at the bare bindings namespace in a box.yaml; "
+  "the file partial and the merge both write it, and the seam refuses it.",
 )
 def test_a_null_at_the_bare_bindings_node_refuses_the_resolve(tmp_path):
-    """Spec §0/§2a: a bindings reset sits AT THE ARM; a bare ``box.bindings`` is not a
-    key, so ``bindings: null`` is refused by name instead of silently emptying both
-    arms. Every scope: ``test_settings_merge``'s bare-bindings test.
+  """Spec §0/§2a: a bindings reset sits AT THE ARM; a bare ``box.bindings`` is not a
+  key, so ``bindings: null`` is refused by name instead of silently emptying both
+  arms. Every scope: ``test_settings_merge``'s bare-bindings test.
 
-    MUTATION: restore the ``f"{key}.ro"`` arm in ``settings_merge._is_category_root``
-    and this builds, with both arms gone.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  bindings: null\n"))
-    msg = str(e.value)
-    assert "1 entry that is not a settings key" in msg
-    assert "\n  - box.bindings: " in msg
-    assert "declared per ARM" in msg
+  MUTATION: restore the ``f"{key}.ro"`` arm in ``settings_merge._is_category_root``
+  and this builds, with both arms gone.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  bindings: null\n"))
+  msg = str(e.value)
+  assert "1 entry that is not a settings key" in msg
+  assert "\n  - box.bindings: " in msg
+  assert "declared per ARM" in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.frob", "box.frob.nard", "box.zippity",
-    reason="a MULTI-entry refusal needs multiple undeclared writes; the nested one "
-           "is there because a fabricated NODE and its leaf are two findings.",
+  "box.frob",
+  "box.frob.nard",
+  "box.zippity",
+  reason="a MULTI-entry refusal needs multiple undeclared writes; the nested one "
+  "is there because a fabricated NODE and its leaf are two findings.",
 )
 def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
-    """⚑ EVERY entry, because the cure is a hand-edit.
+  """⚑ EVERY entry, because the cure is a hand-edit.
 
-    A refusal that named one entry per attempt would turn a single edit into N
-    launches, each revealing one more line to delete.
+  A refusal that named one entry per attempt would turn a single edit into N
+  launches, each revealing one more line to delete.
 
-    When a parent and its child are both undeclared, only the parent is named —
-    removing the parent cures the child too (spec §0: an undeclared key is an ERROR that
-    NAMES the offending key; naming the parent names the fix).
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(
-            tmp_path, "box:\n  zippity: wibble\n  frob:\n    nard: 1\n",
-        ))
-    msg = str(e.value)
-    for path in ("box.zippity", "box.frob"):
-        assert path in msg
-    # box.frob.nard is skipped because it is under the already-reported box.frob
-    assert "box.frob.nard" not in msg
-    # The count is stated, so a truncated reading of the list is visible as one.
-    assert "2 entries that are not settings keys" in msg
+  When a parent and its child are both undeclared, only the parent is named —
+  removing the parent cures the child too (spec §0: an undeclared key is an ERROR that
+  NAMES the offending key; naming the parent names the fix).
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(
+      _box_yaml(
+        tmp_path,
+        "box:\n  zippity: wibble\n  frob:\n    nard: 1\n",
+      )
+    )
+  msg = str(e.value)
+  for path in ("box.zippity", "box.frob"):
+    assert path in msg
+  # box.frob.nard is skipped because it is under the already-reported box.frob
+  assert "box.frob.nard" not in msg
+  # The count is stated, so a truncated reading of the list is visible as one.
+  assert "2 entries that are not settings keys" in msg
 
 
 @pytest.mark.parametrize("scope", ["system", "workset", "box"])
-@pytest.mark.parametrize("stray,named", [
+@pytest.mark.parametrize(
+  "stray,named",
+  [
     ({"zzz": "foo"}, ("zzz",)),
     ({"template": "foo"}, ("template",)),
     ({"canon": "/foo"}, ("canon",)),
@@ -5731,39 +6346,52 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
     # rule would drop these before §0 sees them.
     ({"masks": None}, ("masks",)),
     ({"seeded": None}, ("seeded",)),
-], ids=[
-    "leaf", "bare-template", "bare-canon", "table", "dotted-name", "bare-masks",
+  ],
+  ids=[
+    "leaf",
+    "bare-template",
+    "bare-canon",
+    "table",
+    "dotted-name",
+    "bare-masks",
     "bare-seeded",
-])
+  ],
+)
 def test_a_top_level_stray_in_a_settings_file_refuses_the_resolve(
-    tmp_path, scope, stray, named,
+  tmp_path,
+  scope,
+  stray,
+  named,
 ):
-    """Spec §0: no bare top-level keys, and an undeclared key is an ERROR that NAMES it.
+  """Spec §0: no bare top-level keys, and an undeclared key is an ERROR that NAMES it.
 
-    Every file tier merges its top level into the snapshot's top level, and before
-    this refusal existed a stray there was judged ``UNROOTED`` — a FRAGMENT verdict,
-    which is no finding — so ``zzz: foo`` built silently and rode the snapshot.
-    ⚑ The dotted name is the same subject: a file never splits ``box.env.X`` into
-    tables, so it is one top-level entry that names no root, not the key it spells.
+  Every file tier merges its top level into the snapshot's top level, and before
+  this refusal existed a stray there was judged ``UNROOTED`` — a FRAGMENT verdict,
+  which is no finding — so ``zzz: foo`` built silently and rode the snapshot.
+  ⚑ The dotted name is the same subject: a file never splits ``box.env.X`` into
+  tables, so it is one top-level entry that names no root, not the key it spells.
 
-    MUTATION: judge the whole store with ``classify_store_path`` again (the root
-    gate back) and every case here builds.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": stray})
-    msg = str(e.value)
-    assert "(spec §0 — the keyspace is CLOSED):\n" in msg
-    count = len(named)
-    assert (
-        "1 entry that is not a settings key" if count == 1
-        else f"{count} entries that are not settings keys"
-    ) in msg
-    for path in named:
-        assert f"\n  - {path}: " in msg
+  MUTATION: judge the whole store with ``classify_store_path`` again (the root
+  gate back) and every case here builds.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": stray})
+  msg = str(e.value)
+  assert "(spec §0 — the keyspace is CLOSED):\n" in msg
+  count = len(named)
+  assert (
+    "1 entry that is not a settings key"
+    if count == 1
+    else f"{count} entries that are not settings keys"
+  ) in msg
+  for path in named:
+    assert f"\n  - {path}: " in msg
 
 
 @pytest.mark.parametrize("scope", ["system", "workset", "box"])
-@pytest.mark.parametrize("table,moved,deleted", [
+@pytest.mark.parametrize(
+  "table,moved,deleted",
+  [
     ({"data": "/elsewhere", "registry": "/r.yaml"}, ("config.data", "config.registry"), ()),
     ({"zzz": "/x"}, (), ("config.zzz",)),
     ({"box": {"image": "x"}}, (), ("config.box.image",)),
@@ -5771,38 +6399,48 @@ def test_a_top_level_stray_in_a_settings_file_refuses_the_resolve(
     ("/str", (), ("config",)),
     (None, (), ("config",)),
     ({}, (), ("config",)),
-], ids=["declared", "undeclared-leaf", "nested", "mixed", "non-table", "bare", "empty"])
+  ],
+  ids=["declared", "undeclared-leaf", "nested", "mixed", "non-table", "bare", "empty"],
+)
 def test_a_config_table_in_a_settings_file_refuses_the_resolve(
-    tmp_path, scope, table, moved, deleted,
+  tmp_path,
+  scope,
+  table,
+  moved,
+  deleted,
 ):
-    """Spec §1: the ``config.*`` keys *"Live ONLY in the two .cfg files"* and are *"NOT a
-    settings tier"* — so a settings file carrying a ``config:`` table REFUSES, naming the
-    file and every entry with ITS cure: a declared key moves to the resolved
-    ``kanibako.cfg`` (and relocates that path for every box), anything else is deleted:
-    the ``.cfg`` file would refuse it too, or — a ``config:`` holding nothing — read it as
-    nothing (``test_the_config_table_cure_is_what_the_cfg_reader_does``).
+  """Spec §1: the ``config.*`` keys *"Live ONLY in the two .cfg files"* and are *"NOT a
+  settings tier"* — so a settings file carrying a ``config:`` table REFUSES, naming the
+  file and every entry with ITS cure: a declared key moves to the resolved
+  ``kanibako.cfg`` (and relocates that path for every box), anything else is deleted:
+  the ``.cfg`` file would refuse it too, or — a ``config:`` holding nothing — read it as
+  nothing (``test_the_config_table_cure_is_what_the_cfg_reader_does``).
 
-    MUTATION: delete the ``refuse_config_table`` loop in ``build_launch_snapshot`` and
-    every case reds: the declared and empty ones build, and the rest refuse with §0's
-    generic message instead of this one.
-    """
-    from kanibako.settings.config import user_config_file
+  MUTATION: delete the ``refuse_config_table`` loop in ``build_launch_snapshot`` and
+  every case reds: the declared and empty ones build, and the rest refuse with §0's
+  generic message instead of this one.
+  """
+  from kanibako.settings.config import user_config_file
 
-    with pytest.raises(_SettingsError) as e:
-        _auth_snapshot(
-            "primary", tmp_path=tmp_path, **{f"{scope}_file": {"config": table}},
-        )
-    msg = str(e.value)
-    assert f"the {scope} settings file {tmp_path}" in msg, msg
-    for key in (*moved, *deleted):
-        assert f"\n  {key}\n" in msg, msg
-    move = f"Fix: move under 'config:' in {user_config_file()}"
-    assert (move in msg) is bool(moved), msg
-    assert ("for every box" in msg) is bool(moved), msg
-    assert ("not a key anywhere" in msg) is bool(deleted), msg
+  with pytest.raises(_SettingsError) as e:
+    _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      **{f"{scope}_file": {"config": table}},
+    )
+  msg = str(e.value)
+  assert f"the {scope} settings file {tmp_path}" in msg, msg
+  for key in (*moved, *deleted):
+    assert f"\n  {key}\n" in msg, msg
+  move = f"Fix: move under 'config:' in {user_config_file()}"
+  assert (move in msg) is bool(moved), msg
+  assert ("for every box" in msg) is bool(moved), msg
+  assert ("not a key anywhere" in msg) is bool(deleted), msg
 
 
-@pytest.mark.parametrize("table,reader", [
+@pytest.mark.parametrize(
+  "table,reader",
+  [
     ({"data": "/elsewhere"}, "accepts"),
     ({"registry": "/r.yaml"}, "accepts"),
     ({"zzz": "/x"}, "refuses"),
@@ -5811,330 +6449,397 @@ def test_a_config_table_in_a_settings_file_refuses_the_resolve(
     (None, "reads nothing"),
     ({}, "reads nothing"),
     ({"box": {}}, "reads nothing"),
-], ids=[
-    "data", "registry", "undeclared", "nested", "non-table", "bare", "empty",
+  ],
+  ids=[
+    "data",
+    "registry",
+    "undeclared",
+    "nested",
+    "non-table",
+    "bare",
+    "empty",
     "only-empty-tables",
-])
+  ],
+)
 def test_the_config_table_cure_is_what_the_cfg_reader_does(tmp_path, table, reader):
-    """The cure is TRUE: an entry the refusal says to MOVE is one the ``.cfg`` reader
-    accepts, and one it says to DELETE is one that reader refuses — or, for a ``config:``
-    holding nothing, reads as nothing, so deleting it loses nothing. The outside oracle
-    is ``config.bootstrap_config_paths`` on a real file holding exactly that table.
+  """The cure is TRUE: an entry the refusal says to MOVE is one the ``.cfg`` reader
+  accepts, and one it says to DELETE is one that reader refuses — or, for a ``config:``
+  holding nothing, reads as nothing, so deleting it loses nothing. The outside oracle
+  is ``config.bootstrap_config_paths`` on a real file holding exactly that table.
 
-    MUTATION: send every entry to the move cure and the refused and empty cases red.
-    """
-    from kanibako.errors import ConfigError
-    from kanibako.settings.config import bootstrap_config_paths
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.settings_assemble import (
-        config_entry_groups,
-        stored_config_entries,
-    )
+  MUTATION: send every entry to the move cure and the refused and empty cases red.
+  """
+  from kanibako.errors import ConfigError
+  from kanibako.settings.config import bootstrap_config_paths
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.settings_assemble import (
+    config_entry_groups,
+    stored_config_entries,
+  )
 
-    entries = stored_config_entries({"config": table})
-    groups = config_entry_groups(entries)
-    assert len(groups) == 1, groups
-    moves = groups[0][0].startswith("move ")
-    assert moves is (reader == "accepts"), groups
-    cfg = tmp_path / "kanibako.cfg"
-    dump_doc(cfg, {"config": table})
-    if reader == "refuses":
-        with pytest.raises(ConfigError):
-            bootstrap_config_paths(cfg)
-    else:
-        assert set(bootstrap_config_paths(cfg)) == (set(entries) if moves else set())
+  entries = stored_config_entries({"config": table})
+  groups = config_entry_groups(entries)
+  assert len(groups) == 1, groups
+  moves = groups[0][0].startswith("move ")
+  assert moves is (reader == "accepts"), groups
+  cfg = tmp_path / "kanibako.cfg"
+  dump_doc(cfg, {"config": table})
+  if reader == "refuses":
+    with pytest.raises(ConfigError):
+      bootstrap_config_paths(cfg)
+  else:
+    assert set(bootstrap_config_paths(cfg)) == (set(entries) if moves else set())
 
 
 def test_a_config_table_in_the_site_base_file_refuses_too(tmp_path, monkeypatch):
-    """The site base settings file is a settings file like the rest (spec §2). Both
-    bindings are patched because both read it (see the retired-spelling base test)."""
-    from kanibako.settings import settings_assemble as _assemble
-    from kanibako.settings import settings_launch as _launch
+  """The site base settings file is a settings file like the rest (spec §2). Both
+  bindings are patched because both read it (see the retired-spelling base test)."""
+  from kanibako.settings import settings_assemble as _assemble
+  from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("config:\n  data: /elsewhere\n", encoding="utf-8")
-    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(_SettingsError) as e:
-        _auth_snapshot("primary", tmp_path=tmp_path)
-    assert f"the base settings file {base}" in str(e.value)
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("config:\n  data: /elsewhere\n", encoding="utf-8")
+  monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(_SettingsError) as e:
+    _auth_snapshot("primary", tmp_path=tmp_path)
+  assert f"the base settings file {base}" in str(e.value)
 
 
 def test_the_narrow_box_scalar_resolve_does_not_refuse_a_config_table(tmp_path):
-    """The refusal belongs to the LAUNCH seam, not to ``assemble_levels``: that also runs
-    the narrow ``box.enable_vault`` resolve behind every box verb, and ``box show`` has to
-    answer so the user can see the line to delete. MUTATION: call
-    ``refuse_config_table`` from ``assemble_levels`` and this raises."""
-    from kanibako.settings.config_io import dump_doc
-    from tests.support.assembly import assemble_levels_at
+  """The refusal belongs to the LAUNCH seam, not to ``assemble_levels``: that also runs
+  the narrow ``box.enable_vault`` resolve behind every box verb, and ``box show`` has to
+  answer so the user can see the line to delete. MUTATION: call
+  ``refuse_config_table`` from ``assemble_levels`` and this raises."""
+  from kanibako.settings.config_io import dump_doc
+  from tests.support.assembly import assemble_levels_at
 
-    box = tmp_path / "box.yaml"
-    dump_doc(box, {"config": {"data": "/elsewhere"}})
-    assemble_levels_at(agent_name="claude", box_path=box)
+  box = tmp_path / "box.yaml"
+  dump_doc(box, {"config": {"data": "/elsewhere"}})
+  assemble_levels_at(agent_name="claude", box_path=box)
 
 
 _DOTTED_REASON = "a dotted name inside a scope table is the subject, so the file has to carry one."
 
 
-@pytest.mark.parametrize("scope,tables,named", [
+@pytest.mark.parametrize(
+  "scope,tables,named",
+  [
     pytest.param(
-        "box", {"box": {"env.X": "1"}}, "box | env.X",
-        marks=pytest.mark.writes_undeclared("box.env.X", reason=_DOTTED_REASON),
+      "box",
+      {"box": {"env.X": "1"}},
+      "box | env.X",
+      marks=pytest.mark.writes_undeclared("box.env.X", reason=_DOTTED_REASON),
     ),
     pytest.param(
-        "box", {"box": {"zzz.q": 1}}, "box | zzz.q",
-        marks=pytest.mark.writes_undeclared("box.zzz.q", reason=_DOTTED_REASON),
+      "box",
+      {"box": {"zzz.q": 1}},
+      "box | zzz.q",
+      marks=pytest.mark.writes_undeclared("box.zzz.q", reason=_DOTTED_REASON),
     ),
     pytest.param(
-        "workset", {"workset": {"env.X": "1"}}, "workset | env.X",
-        marks=pytest.mark.writes_undeclared("workset.env.X", reason=_DOTTED_REASON),
+      "workset",
+      {"workset": {"env.X": "1"}},
+      "workset | env.X",
+      marks=pytest.mark.writes_undeclared("workset.env.X", reason=_DOTTED_REASON),
     ),
     pytest.param(
-        "system", {"system": {"zzz.q": 1}}, "system | zzz.q",
-        marks=pytest.mark.writes_undeclared("system.zzz.q", reason=_DOTTED_REASON),
+      "system",
+      {"system": {"zzz.q": 1}},
+      "system | zzz.q",
+      marks=pytest.mark.writes_undeclared("system.zzz.q", reason=_DOTTED_REASON),
     ),
-], ids=["box-env-X", "box-zzz", "workset-env-X", "system-zzz"])
+  ],
+  ids=["box-env-X", "box-zzz", "workset-env-X", "system-zzz"],
+)
 def test_a_dotted_name_inside_a_scope_table_refuses_the_resolve(
-    tmp_path, scope, tables, named,
+  tmp_path,
+  scope,
+  tables,
+  named,
 ):
-    """Spec §0: ``box: {"env.X": "1"}`` is ONE entry named ``env.X`` — a settings file
-    nests a key as tables and never splits a dotted name into one — so it is not the
-    ``box.env.X`` it spells, and an undeclared entry is an ERROR that NAMES it.
+  """Spec §0: ``box: {"env.X": "1"}`` is ONE entry named ``env.X`` — a settings file
+  nests a key as tables and never splits a dotted name into one — so it is not the
+  ``box.env.X`` it spells, and an undeclared entry is an ERROR that NAMES it.
 
-    MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
-    ``settings_keyspace._classify_whole_store_path`` and every case builds.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": tables})
-    msg = str(e.value)
-    assert "1 entry that is not a settings key" in msg
-    assert f"\n  - {named}: " in msg
+  MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
+  ``settings_keyspace._classify_whole_store_path`` and every case builds.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": tables})
+  msg = str(e.value)
+  assert "1 entry that is not a settings key" in msg
+  assert f"\n  - {named}: " in msg
 
 
 #: The drop warning each dropped top-level table must leave (settings_assemble /
 #: settings_prefs), keyed by the table.
 _TOP_LEVEL_DROP_WARNING = {
-    "meta": "Dropping top-level 'meta' table",
-    "binding_derivations": "Dropping top-level 'binding_derivations' table",
-    "system": "Dropping upward-scope key 'system'",
-    "pref": "Dropping top-level 'pref' table",
+  "meta": "Dropping top-level 'meta' table",
+  "binding_derivations": "Dropping top-level 'binding_derivations' table",
+  "system": "Dropping upward-scope key 'system'",
+  "pref": "Dropping top-level 'pref' table",
 }
 
 
-@pytest.mark.parametrize("scope,tables,dropped", [
-    ("system", {
-        "system": {"env": {"X": "1"}}, "agent": {"claude": {"env": {"Y": "1"}}},
-        "workset": {"env": {"Z": "1"}}, "box": {"env": {"W": "1"}},
-    }, ()),
+@pytest.mark.parametrize(
+  "scope,tables,dropped",
+  [
+    (
+      "system",
+      {
+        "system": {"env": {"X": "1"}},
+        "agent": {"claude": {"env": {"Y": "1"}}},
+        "workset": {"env": {"Z": "1"}},
+        "box": {"env": {"W": "1"}},
+      },
+      (),
+    ),
     ("workset", {"workset": {"env": {"Z": "1"}}, "box": {"env": {"W": "1"}}}, ()),
-    ("workset", {
+    (
+      "workset",
+      {
         "workset": {"env": {"Z": "1"}},
         "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
-    }, ()),
-    ("box", {
+      },
+      (),
+    ),
+    (
+      "box",
+      {
         "box": {"env": {"W": "1"}},
         "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
-    }, ()),
+      },
+      (),
+    ),
     # Tables the cascade DROPS before the merge still build — with their warning.
     ("box", {"box": {"env": {"W": "1"}}, "meta": {"box": {"name": "x"}}}, ("meta",)),
-    ("box", {"box": {"env": {"W": "1"}}, "binding_derivations": {"x": 1}},
-     ("binding_derivations",)),
+    (
+      "box",
+      {"box": {"env": {"W": "1"}}, "binding_derivations": {"x": 1}},
+      ("binding_derivations",),
+    ),
     ("box", {"box": {"env": {"W": "1"}}, "system": {"env": {"X": "1"}}}, ("system",)),
-    ("system", {
+    (
+      "system",
+      {
         "system": {"env": {"X": "1"}},
         "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
-    }, ("pref",)),
-], ids=[
-    "system", "workset", "workset-with-pref", "box-with-pref", "box-meta-dropped",
-    "box-derivations-dropped", "box-upward-dropped", "system-pref-dropped",
-])
+      },
+      ("pref",),
+    ),
+  ],
+  ids=[
+    "system",
+    "workset",
+    "workset-with-pref",
+    "box-with-pref",
+    "box-meta-dropped",
+    "box-derivations-dropped",
+    "box-upward-dropped",
+    "system-pref-dropped",
+  ],
+)
 def test_every_legal_top_level_table_still_builds(
-    tmp_path, caplog, scope, tables, dropped,
+  tmp_path,
+  caplog,
+  scope,
+  tables,
+  dropped,
 ):
-    """The control for the refusal above: it is the ROOT GATE that moved, not the roots.
+  """The control for the refusal above: it is the ROOT GATE that moved, not the roots.
 
-    Each file carries only the scope tables it may hold (spec §0 defaults-down, §2h
-    ``pref:`` in a workset or box file), plus the tables the cascade drops — each of
-    which must still say so.
-    """
-    with caplog.at_level("WARNING"):
-        snap = _auth_snapshot(
-            "primary", tmp_path=tmp_path, **{f"{scope}_file": tables},
-        )
-    assert set(dict.keys(snap)) <= {
-        "system", "agent", "workset", "box", "meta", "pref",
-    }
-    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-    for table in dropped:
-        assert any(_TOP_LEVEL_DROP_WARNING[table] in w for w in warnings), warnings
+  Each file carries only the scope tables it may hold (spec §0 defaults-down, §2h
+  ``pref:`` in a workset or box file), plus the tables the cascade drops — each of
+  which must still say so.
+  """
+  with caplog.at_level("WARNING"):
+    snap = _auth_snapshot(
+      "primary",
+      tmp_path=tmp_path,
+      **{f"{scope}_file": tables},
+    )
+  assert set(dict.keys(snap)) <= {
+    "system",
+    "agent",
+    "workset",
+    "box",
+    "meta",
+    "pref",
+  }
+  warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+  for table in dropped:
+    assert any(_TOP_LEVEL_DROP_WARNING[table] in w for w in warnings), warnings
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the message under test is the one produced by an undeclared key, so "
-           "the fixture has to write one.",
+  "box.zippity",
+  reason="the message under test is the one produced by an undeclared key, so "
+  "the fixture has to write one.",
 )
 def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
-    """⚑ THE CURE IS A HAND-EDIT, AND THE MESSAGE HAS TO SAY SO.
+  """⚑ THE CURE IS A HAND-EDIT, AND THE MESSAGE HAS TO SAY SO.
 
-    ``kanibako box reset box.zippity`` cannot remove what is not a key, and
-    ``kanibako box show --effective`` resolves through this same seam — so a user
-    told to reach for either has no working move. The message names the settings
-    file that carries the entry instead.
+  ``kanibako box reset box.zippity`` cannot remove what is not a key, and
+  ``kanibako box show --effective`` resolves through this same seam — so a user
+  told to reach for either has no working move. The message names the settings
+  file that carries the entry instead.
 
-    ⚑ THE DISCLAIMER NAMES THE PER-KEY FORM: ``box reset --all --force`` DOES remove
-    ``box.zippity`` (it drops the whole ``box`` table — measured), so a bare
-    "'kanibako box reset' cannot remove" would be a false claim to the user.
-    """
-    box_path = _box_yaml(tmp_path, "box:\n  zippity: wibble\n")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(box_path)
-    msg = str(e.value)
-    assert "BY HAND" in msg
-    assert str(box_path) in msg
-    # It says what the two obvious CLI moves will do, rather than leaving the user
-    # to discover that both refuse.
-    assert "'kanibako box reset <key>' cannot remove what is not a key" in msg
-    assert "kanibako box show --effective" in msg
+  ⚑ THE DISCLAIMER NAMES THE PER-KEY FORM: ``box reset --all --force`` DOES remove
+  ``box.zippity`` (it drops the whole ``box`` table — measured), so a bare
+  "'kanibako box reset' cannot remove" would be a false claim to the user.
+  """
+  box_path = _box_yaml(tmp_path, "box:\n  zippity: wibble\n")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(box_path)
+  msg = str(e.value)
+  assert "BY HAND" in msg
+  assert str(box_path) in msg
+  # It says what the two obvious CLI moves will do, rather than leaving the user
+  # to discover that both refuse.
+  assert "'kanibako box reset <key>' cannot remove what is not a key" in msg
+  assert "kanibako box show --effective" in msg
 
 
 @pytest.mark.writes_undeclared(
-    "system.bogus_sys", "system.bogus_base",
-    reason="the message under test names the file carrying each undeclared key, so "
-           "the fixtures have to write them.",
+  "system.bogus_sys",
+  "system.bogus_base",
+  reason="the message under test names the file carrying each undeclared key, so "
+  "the fixtures have to write them.",
 )
 def test_the_refusal_files_each_entry_under_the_file_that_carries_it(tmp_path, monkeypatch):
-    """Each finding is named beside ITS file, not beside every file the resolve loaded.
+  """Each finding is named beside ITS file, not beside every file the resolve loaded.
 
-    Mutation: list every loaded file for every entry → red (the box.yaml line).
-    """
-    from kanibako.settings import settings_launch as _launch
+  Mutation: list every loaded file for every entry → red (the box.yaml line).
+  """
+  from kanibako.settings import settings_launch as _launch
 
-    system = tmp_path / "settings.yaml"
-    system.write_text("system:\n  bogus_sys: 1\n", encoding="utf-8")
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("system:\n  bogus_base: 1\n", encoding="utf-8")
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    box_path = _box_yaml(tmp_path, "box:\n  image: x\n")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(box_path, system_path=system)
-    msg = str(e.value)
-    assert f"    - {system}: system.bogus_sys\n" in msg
-    assert f"    - {base}: system.bogus_base\n" in msg
-    assert str(box_path) not in msg
-    assert "in no settings file" not in msg
+  system = tmp_path / "settings.yaml"
+  system.write_text("system:\n  bogus_sys: 1\n", encoding="utf-8")
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("system:\n  bogus_base: 1\n", encoding="utf-8")
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  box_path = _box_yaml(tmp_path, "box:\n  image: x\n")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(box_path, system_path=system)
+  msg = str(e.value)
+  assert f"    - {system}: system.bogus_sys\n" in msg
+  assert f"    - {base}: system.bogus_base\n" in msg
+  assert str(box_path) not in msg
+  assert "in no settings file" not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "agent.claude.zippity",
-    reason="the entry under test arrives on a non-file input, so the fixture has to "
-           "supply an undeclared one.",
+  "agent.claude.zippity",
+  reason="the entry under test arrives on a non-file input, so the fixture has to "
+  "supply an undeclared one.",
 )
 def test_an_entry_no_file_carries_is_named_as_a_non_file_input(tmp_path):
-    """An entry from a partial is filed under no settings file; the message says so."""
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(
-            _box_yaml(tmp_path, "box:\n  image: x\n"),
-            agent_partial=KeyStore({"agent": {"claude": {"zippity": "x"}}}),
-        )
-    msg = str(e.value)
-    assert "agent.claude.zippity: in no settings file this resolve read" in msg
-    assert str(tmp_path / "box.yaml") not in msg
+  """An entry from a partial is filed under no settings file; the message says so."""
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(
+      _box_yaml(tmp_path, "box:\n  image: x\n"),
+      agent_partial=KeyStore({"agent": {"claude": {"zippity": "x"}}}),
+    )
+  msg = str(e.value)
+  assert "agent.claude.zippity: in no settings file this resolve read" in msg
+  assert str(tmp_path / "box.yaml") not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "system.helpers",
-    reason="the entry under test sits at a path kanibako's floor also holds, so the "
-           "base file has to write an undeclared scalar there.",
+  "system.helpers",
+  reason="the entry under test sits at a path kanibako's floor also holds, so the "
+  "base file has to write an undeclared scalar there.",
 )
 def test_a_base_file_entry_at_a_floor_held_path_is_filed_under_the_base_file(
-    tmp_path, monkeypatch,
+  tmp_path,
+  monkeypatch,
 ):
-    """The base FILE decides what it carries, not the floor folded into its level.
+  """The base FILE decides what it carries, not the floor folded into its level.
 
-    Mutation: subtract every floor path from the base level → red (filed nowhere).
-    """
-    from kanibako.settings import settings_launch as _launch
+  Mutation: subtract every floor path from the base level → red (filed nowhere).
+  """
+  from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("system:\n  helpers: 5\n", encoding="utf-8")
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(None)
-    msg = str(e.value)
-    assert f"    - {base}: system.helpers\n" in msg, msg
-    assert "in no settings file" not in msg
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("system:\n  helpers: 5\n", encoding="utf-8")
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(None)
+  msg = str(e.value)
+  assert f"    - {base}: system.helpers\n" in msg, msg
+  assert "in no settings file" not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "agent.default.zippity",
-    reason="the entry under test is a floor-only undeclared key, so the fixture's "
-           "floor has to carry one.",
+  "agent.default.zippity",
+  reason="the entry under test is a floor-only undeclared key, so the fixture's "
+  "floor has to carry one.",
 )
 def test_a_floor_only_entry_is_never_filed_under_the_base_file(tmp_path, monkeypatch):
-    """A loaded base file is not named for an entry only kanibako's floor carries."""
-    from kanibako.settings import settings_launch as _launch
+  """A loaded base file is not named for an entry only kanibako's floor carries."""
+  from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("system:\n  setup_completed: 1.8.0\n", encoding="utf-8")
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(None, behavior_floor={"zippity": "x"})
-    msg = str(e.value)
-    assert "agent.default.zippity: in no settings file this resolve read" in msg, msg
-    assert str(base) not in msg
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("system:\n  setup_completed: 1.8.0\n", encoding="utf-8")
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(None, behavior_floor={"zippity": "x"})
+  msg = str(e.value)
+  assert "agent.default.zippity: in no settings file this resolve read" in msg, msg
+  assert str(base) not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "system.bindings",
-    reason="the entry under test is an undeclared scalar the merge hides, so the base "
-           "file has to carry one.",
+  "system.bindings",
+  reason="the entry under test is an undeclared scalar the merge hides, so the base "
+  "file has to carry one.",
 )
 def test_an_entry_the_merge_hides_in_the_base_file_names_that_file(tmp_path, monkeypatch):
-    """Stage (h) audits the system and base files too (design 2B-iii).
+  """Stage (h) audits the system and base files too (design 2B-iii).
 
-    The system file's ``bindings`` table hides the base file's scalar from the merge, so
-    only the per-file audit sees it. Mutation: drop ``base`` from the audited levels → red.
-    """
-    from kanibako.settings import settings_launch as _launch
+  The system file's ``bindings`` table hides the base file's scalar from the merge, so
+  only the per-file audit sees it. Mutation: drop ``base`` from the audited levels → red.
+  """
+  from kanibako.settings import settings_launch as _launch
 
-    system = tmp_path / "settings.yaml"
-    system.write_text("system:\n  bindings:\n    ro:\n      /x: [/tmp]\n", encoding="utf-8")
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("system:\n  bindings: 5\n", encoding="utf-8")
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(None, system_path=system)
-    msg = str(e.value)
-    assert f"the base settings file {base} carries 1 entry" in msg
-    assert "system.bindings" in msg
+  system = tmp_path / "settings.yaml"
+  system.write_text("system:\n  bindings:\n    ro:\n      /x: [/tmp]\n", encoding="utf-8")
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("system:\n  bindings: 5\n", encoding="utf-8")
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(None, system_path=system)
+  msg = str(e.value)
+  assert f"the base settings file {base} carries 1 entry" in msg
+  assert "system.bindings" in msg
 
 
 @pytest.mark.parametrize("node", ["claude", "default"])
 def test_a_table_at_a_node_scalar_leaf_in_the_system_file_refuses(tmp_path, node):
-    """``agent: {<node>: {model: {x: 1}}}`` is refused naming the key and file (spec §0).
+  """``agent: {<node>: {model: {x: 1}}}`` is refused naming the key and file (spec §0).
 
-    The undeclared audit judges NAMES and ``model`` is one, so the table rode in
-    silently. Mutation: skip the shape check in ``fold_agent_nodes`` → red.
-    """
-    system = tmp_path / "settings.yaml"
-    system.write_text(f"agent:\n  {node}:\n    model:\n      x: 1\n", encoding="utf-8")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(None, system_path=system)
-    msg = str(e.value)
-    assert f"the settings file {system} holds a table where a single value belongs" in msg
-    assert f"  - agent.{node}.model\n" in msg
+  The undeclared audit judges NAMES and ``model`` is one, so the table rode in
+  silently. Mutation: skip the shape check in ``fold_agent_nodes`` → red.
+  """
+  system = tmp_path / "settings.yaml"
+  system.write_text(f"agent:\n  {node}:\n    model:\n      x: 1\n", encoding="utf-8")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(None, system_path=system)
+  msg = str(e.value)
+  assert f"the settings file {system} holds a table where a single value belongs" in msg
+  assert f"  - agent.{node}.model\n" in msg
 
 
 def test_a_category_table_in_a_node_still_resolves(tmp_path):
-    """A category IS a table in every node; only a scalar leaf refuses one."""
-    system = tmp_path / "settings.yaml"
-    system.write_text(
-        "agent:\n  default:\n    env:\n      FOO: bar\n  claude:\n    model: opus\n",
-        encoding="utf-8",
-    )
-    snap = _snapshot(None, system_path=system)
-    assert snap.agent.claude.model == "opus"
+  """A category IS a table in every node; only a scalar leaf refuses one."""
+  system = tmp_path / "settings.yaml"
+  system.write_text(
+    "agent:\n  default:\n    env:\n      FOO: bar\n  claude:\n    model: opus\n",
+    encoding="utf-8",
+  )
+  snap = _snapshot(None, system_path=system)
+  assert snap.agent.claude.model == "opus"
 
 
 #: Every ``'kanibako …'`` spelling the refusal quotes. The message quotes a command
@@ -6143,233 +6848,247 @@ _QUOTED_COMMAND = re.compile(r"'kanibako ([^']+)'")
 
 
 def _unparsable_word(spelling: str) -> str | None:
-    """The first word of *spelling* the real CLI parser will not take, or ``None``.
+  """The first word of *spelling* the real CLI parser will not take, or ``None``.
 
-    Walks ``build_parser()``'s subcommand tree word by word, checking a ``-``-word
-    against the options of the subparser reached so far. ⚑ THE PARSER, not a list of
-    known verbs: a list would have to be kept in step with ``cli.py`` by hand, which
-    is the same proof-reading duty this exists to replace.
-    """
-    parser = build_parser()
-    for word in spelling.split():
-        if word.startswith("-"):
-            if not any(word in a.option_strings for a in parser._actions):
-                return word
-            continue
-        subs = next(
-            (a for a in parser._actions
-             if isinstance(a, argparse._SubParsersAction)),
-            None,
-        )
-        if subs is None:
-            # ⚑ THE VERB CHAIN HAS ENDED. Every remaining bare word is an ARGUMENT —
-            # a positional, a `key=value`, a `<box>` placeholder — which the parser
-            # cannot judge and this must not reject. Stopping here is what lets the
-            # check reach the cures, which all carry a subject positional; the part
-            # it does judge is the part that shipped wrong (`config show`).
-            continue
-        if word not in subs.choices:
-            return word
-        parser = subs.choices[word]
-    return None
+  Walks ``build_parser()``'s subcommand tree word by word, checking a ``-``-word
+  against the options of the subparser reached so far. ⚑ THE PARSER, not a list of
+  known verbs: a list would have to be kept in step with ``cli.py`` by hand, which
+  is the same proof-reading duty this exists to replace.
+  """
+  parser = build_parser()
+  for word in spelling.split():
+    if word.startswith("-"):
+      if not any(word in a.option_strings for a in parser._actions):
+        return word
+      continue
+    subs = next(
+      (a for a in parser._actions if isinstance(a, argparse._SubParsersAction)),
+      None,
+    )
+    if subs is None:
+      # ⚑ THE VERB CHAIN HAS ENDED. Every remaining bare word is an ARGUMENT —
+      # a positional, a `key=value`, a `<box>` placeholder — which the parser
+      # cannot judge and this must not reject. Stopping here is what lets the
+      # check reach the cures, which all carry a subject positional; the part
+      # it does judge is the part that shipped wrong (`config show`).
+      continue
+    if word not in subs.choices:
+      return word
+    parser = subs.choices[word]
+  return None
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the message under test is the one an undeclared key produces, so the "
-           "fixture has to write one.",
+  "box.zippity",
+  reason="the message under test is the one an undeclared key produces, so the "
+  "fixture has to write one.",
 )
 def test_every_command_the_refusal_names_is_a_real_command(tmp_path):
-    """⚑ THE SPELLINGS ARE CHECKED AGAINST THE PARSER, NOT PROOF-READ (P15).
+  """⚑ THE SPELLINGS ARE CHECKED AGAINST THE PARSER, NOT PROOF-READ (P15).
 
-    The first revision of this message named ``kanibako config unset`` and
-    ``kanibako config show``. There is no ``config`` noun and no ``unset`` verb — so
-    the one sentence telling a user which CLI moves will NOT work named two commands
-    that do not exist, and it shipped into ``MIGRATION.md`` and ``CHANGELOG.md``
-    beside a block presented as literal output. Prose cannot guard a spelling; the
-    parser can.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
-    spellings = _QUOTED_COMMAND.findall(str(e.value))
-    # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped naming a cure at all would
-    # otherwise pass this vacuously.
-    assert spellings, "the refusal names no command at all"
-    for spelling in spellings:
-        assert _unparsable_word(spelling) is None, (
-            f"the refusal names 'kanibako {spelling}', whose word "
-            f"{_unparsable_word(spelling)!r} is not in the CLI parser"
-        )
+  The first revision of this message named ``kanibako config unset`` and
+  ``kanibako config show``. There is no ``config`` noun and no ``unset`` verb — so
+  the one sentence telling a user which CLI moves will NOT work named two commands
+  that do not exist, and it shipped into ``MIGRATION.md`` and ``CHANGELOG.md``
+  beside a block presented as literal output. Prose cannot guard a spelling; the
+  parser can.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  spellings = _QUOTED_COMMAND.findall(str(e.value))
+  # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped naming a cure at all would
+  # otherwise pass this vacuously.
+  assert spellings, "the refusal names no command at all"
+  for spelling in spellings:
+    assert _unparsable_word(spelling) is None, (
+      f"the refusal names 'kanibako {spelling}', whose word "
+      f"{_unparsable_word(spelling)!r} is not in the CLI parser"
+    )
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the probe only writes a FINDING row when the snapshot carries an "
-           "undeclared path, which is the ordering under test.",
+  "box.zippity",
+  reason="the probe only writes a FINDING row when the snapshot carries an "
+  "undeclared path, which is the ordering under test.",
 )
 def test_the_probe_still_records_the_finding_before_the_refusal(tmp_path, monkeypatch):
-    """⚑ MEASUREMENT FIRST, THEN ENFORCEMENT — the order at the seam.
+  """⚑ MEASUREMENT FIRST, THEN ENFORCEMENT — the order at the seam.
 
-    A raise placed before ``observe`` would blind the instrument to precisely the
-    resolves that matter, so a later re-measurement would see only the snapshots
-    that already conform and report a clean sheet it never measured.
-    """
-    rows = tmp_path / "probe.jsonl"
-    monkeypatch.setenv(_probe.ENV_FLAG, "1")
-    monkeypatch.setenv(_probe.ENV_FILE, str(rows))
-    with pytest.raises(_SettingsError):
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
-    row = json.loads(rows.read_text(encoding="utf-8").splitlines()[-1])
-    assert row["origin"] == "build_launch_snapshot"
-    assert [finding["path"] for finding in row["undeclared"]] == ["box.zippity"]
+  A raise placed before ``observe`` would blind the instrument to precisely the
+  resolves that matter, so a later re-measurement would see only the snapshots
+  that already conform and report a clean sheet it never measured.
+  """
+  rows = tmp_path / "probe.jsonl"
+  monkeypatch.setenv(_probe.ENV_FLAG, "1")
+  monkeypatch.setenv(_probe.ENV_FILE, str(rows))
+  with pytest.raises(_SettingsError):
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  row = json.loads(rows.read_text(encoding="utf-8").splitlines()[-1])
+  assert row["origin"] == "build_launch_snapshot"
+  assert [finding["path"] for finding in row["undeclared"]] == ["box.zippity"]
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the bypass under test is the refusal's, so every parametrization has "
-           "to present it with an undeclared key.",
+  "box.zippity",
+  reason="the bypass under test is the refusal's, so every parametrization has "
+  "to present it with an undeclared key.",
 )
 @pytest.mark.parametrize("flag", ["0", "off", "", "1"])
 def test_the_refusal_has_no_probe_flag_bypass(tmp_path, monkeypatch, flag):
-    """⚑ NO BYPASS — not by the probe's own flag, and not by anything else.
+  """⚑ NO BYPASS — not by the probe's own flag, and not by anything else.
 
-    The probe is OFF by default and the refusal is a SIBLING of it, not a mode of
-    it. An env var that turned enforcement off would be the carve-out class the
-    closed keyspace exists to refuse.
-    """
-    monkeypatch.setenv(_probe.ENV_FLAG, flag)
-    monkeypatch.setenv(_probe.ENV_FILE, str(tmp_path / "probe.jsonl"))
-    with pytest.raises(_SettingsError):
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  The probe is OFF by default and the refusal is a SIBLING of it, not a mode of
+  it. An env var that turned enforcement off would be the carve-out class the
+  closed keyspace exists to refuse.
+  """
+  monkeypatch.setenv(_probe.ENV_FLAG, flag)
+  monkeypatch.setenv(_probe.ENV_FILE, str(tmp_path / "probe.jsonl"))
+  with pytest.raises(_SettingsError):
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
 
 
 def test_an_agent_tier_for_an_uninstalled_agent_is_not_refused(tmp_path):
-    """STATED SCOPE: agent-name discrimination is NOT enforced at this seam.
+  """STATED SCOPE: agent-name discrimination is NOT enforced at this seam.
 
-    The oracle is the probe's, and it concedes the agent DISCRIMINATOR — so a
-    settings file carrying keys for an agent that is not installed on THIS machine
-    still resolves. Refusing on it would be a finding about a discriminator rather
-    than about the keyspace, and it was never measured.
-    """
-    system_path = tmp_path / "settings.yaml"
-    system_path.write_text(
-        "agent:\n  zzznotinstalled:\n    model: opus\n", encoding="utf-8",
-    )
-    snap = _snapshot(system_path=system_path)
-    assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").model == "opus"
+  The oracle is the probe's, and it concedes the agent DISCRIMINATOR — so a
+  settings file carrying keys for an agent that is not installed on THIS machine
+  still resolves. Refusing on it would be a finding about a discriminator rather
+  than about the keyspace, and it was never measured.
+  """
+  system_path = tmp_path / "settings.yaml"
+  system_path.write_text(
+    "agent:\n  zzznotinstalled:\n    model: opus\n",
+    encoding="utf-8",
+  )
+  snap = _snapshot(system_path=system_path)
+  assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").model == "opus"
 
 
 def test_an_uninstalled_agents_leaf_is_conceded_with_its_name(tmp_path):
-    """⚑ THE DISCRIMINATOR AND ITS LEAVES ARE A DEPENDENT PAIR.
+  """⚑ THE DISCRIMINATOR AND ITS LEAVES ARE A DEPENDENT PAIR.
 
-    An agent's leaves are its PLUGIN's (§0), so where the plugin is absent there is
-    no vocabulary to judge against. Judging anyway refused ``agent.goose.provider``
-    — a real goose ``setting_descriptor`` leaf — on a claude-only machine, with a
-    reason naming the wrong cause. The keyspace rule is pinned in
-    ``test_settings_keyspace.py``; this pins that the SEAM inherits it.
+  An agent's leaves are its PLUGIN's (§0), so where the plugin is absent there is
+  no vocabulary to judge against. Judging anyway refused ``agent.goose.provider``
+  — a real goose ``setting_descriptor`` leaf — on a claude-only machine, with a
+  reason naming the wrong cause. The keyspace rule is pinned in
+  ``test_settings_keyspace.py``; this pins that the SEAM inherits it.
 
-    🛑 THE STATED COST: the leaf need not be a real plugin key either, so
-    ``agent.<uninstalled>.zippity`` resolves here too. That is bounded by install
-    state, not by a name list — the same key under an INSTALLED agent still refuses,
-    which the next test pins.
-    """
-    system_path = tmp_path / "settings.yaml"
-    system_path.write_text(
-        "agent:\n  zzznotinstalled:\n    zippity: wibble\n", encoding="utf-8",
-    )
-    snap = _snapshot(system_path=system_path)
-    assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").zippity == "wibble"
+  🛑 THE STATED COST: the leaf need not be a real plugin key either, so
+  ``agent.<uninstalled>.zippity`` resolves here too. That is bounded by install
+  state, not by a name list — the same key under an INSTALLED agent still refuses,
+  which the next test pins.
+  """
+  system_path = tmp_path / "settings.yaml"
+  system_path.write_text(
+    "agent:\n  zzznotinstalled:\n    zippity: wibble\n",
+    encoding="utf-8",
+  )
+  snap = _snapshot(system_path=system_path)
+  assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").zippity == "wibble"
 
 
 def _assert_names_only(msg: str, key: str, carrier: Path) -> None:
-    """*msg* is a §0 refusal naming *key* and no other entry, with *carrier* among its files.
+  """*msg* is a §0 refusal naming *key* and no other entry, with *carrier* among its files.
 
-    ⚑ Exactly one: the ``meta.box.agent.*`` mirror is DERIVED from the active agent's
-    tier, so a stray there has no mirror row (spec §2b) and no file carries a copy for
-    the hand-edit cure to remove.
-    """
-    assert "1 entry that is not a settings key" in msg, msg
-    assert f"\n  - {key}: " in msg, msg
-    assert "meta.box.agent" not in msg, msg
-    assert f"\n    - {carrier}: {key}\n" in msg, msg
+  ⚑ Exactly one: the ``meta.box.agent.*`` mirror is DERIVED from the active agent's
+  tier, so a stray there has no mirror row (spec §2b) and no file carries a copy for
+  the hand-edit cure to remove.
+  """
+  assert "1 entry that is not a settings key" in msg, msg
+  assert f"\n  - {key}: " in msg, msg
+  assert "meta.box.agent" not in msg, msg
+  assert f"\n    - {carrier}: {key}\n" in msg, msg
 
 
 @pytest.mark.writes_undeclared(
-    "agent.claude.zippity",
-    reason="the concession must stop at agents this machine CAN see; the undeclared "
-           "leaf under an installed one is the write that proves it.",
+  "agent.claude.zippity",
+  reason="the concession must stop at agents this machine CAN see; the undeclared "
+  "leaf under an installed one is the write that proves it.",
 )
 def test_an_installed_agents_undeclared_leaf_still_refuses(tmp_path):
-    """Where the vocabulary is knowable, §0 is enforced against it exactly as before.
+  """Where the vocabulary is knowable, §0 is enforced against it exactly as before.
 
-    Without this the fix above reads as "the agent tier is unenforced", which is a
-    different and much larger change than the one that was made.
+  Without this the fix above reads as "the agent tier is unenforced", which is a
+  different and much larger change than the one that was made.
 
-    MUTATION: drop the ``_drop_non_mirror_keys`` call in
-    ``settings_launch._materialize_box_agent_mirror`` and this names 2 entries.
-    """
-    system_path = tmp_path / "settings.yaml"
-    system_path.write_text(
-        "agent:\n  claude:\n    zippity: wibble\n", encoding="utf-8",
-    )
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(system_path=system_path)
-    _assert_names_only(str(e.value), "agent.claude.zippity", system_path)
+  MUTATION: drop the ``_drop_non_mirror_keys`` call in
+  ``settings_launch._materialize_box_agent_mirror`` and this names 2 entries.
+  """
+  system_path = tmp_path / "settings.yaml"
+  system_path.write_text(
+    "agent:\n  claude:\n    zippity: wibble\n",
+    encoding="utf-8",
+  )
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(system_path=system_path)
+  _assert_names_only(str(e.value), "agent.claude.zippity", system_path)
 
 
 @pytest.mark.writes_undeclared(
-    "agent.default.zippity",
-    reason="the all-agents tier must stay judged though no plugin declares it; the "
-           "undeclared leaf on it is the write that proves it.",
+  "agent.default.zippity",
+  reason="the all-agents tier must stay judged though no plugin declares it; the "
+  "undeclared leaf on it is the write that proves it.",
 )
 def test_the_all_agents_tier_stays_judged(tmp_path):
-    """``agent.default`` is CORE's tier, so the concession never reaches it.
+  """``agent.default`` is CORE's tier, so the concession never reaches it.
 
-    It is also where the behavior floor lands, so conceding it would unarm §0 over
-    the largest agent-scope subtree there is. It feeds the mirror too (§2d pick), so
-    the MUTATION above reds this as well.
-    """
-    system_path = tmp_path / "settings.yaml"
-    system_path.write_text(
-        "agent:\n  default:\n    zippity: wibble\n", encoding="utf-8",
-    )
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(system_path=system_path)
-    _assert_names_only(str(e.value), "agent.default.zippity", system_path)
+  It is also where the behavior floor lands, so conceding it would unarm §0 over
+  the largest agent-scope subtree there is. It feeds the mirror too (§2d pick), so
+  the MUTATION above reds this as well.
+  """
+  system_path = tmp_path / "settings.yaml"
+  system_path.write_text(
+    "agent:\n  default:\n    zippity: wibble\n",
+    encoding="utf-8",
+  )
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(system_path=system_path)
+  _assert_names_only(str(e.value), "agent.default.zippity", system_path)
 
 
 def test_a_conceded_leaf_on_the_active_agent_is_not_refused_through_its_copy(tmp_path):
-    """Spec §0 concedes a leaf whose agent's plugin is not installed; that holds for the
-    ACTIVE agent too. The mirror's copy of it used to be refused in its place — the only
-    entry named, and one no file carries. §2b mirrors only a KEY, so neither the leaf
-    nor a nested table reaches ``meta.box.agent``; the declared sibling still does.
+  """Spec §0 concedes a leaf whose agent's plugin is not installed; that holds for the
+  ACTIVE agent too. The mirror's copy of it used to be refused in its place — the only
+  entry named, and one no file carries. §2b mirrors only a KEY, so neither the leaf
+  nor a nested table reaches ``meta.box.agent``; the declared sibling still does.
 
-    MUTATION: drop the ``_drop_non_mirror_keys`` call and this refuses
-    ``meta.box.agent.zippity``.
-    """
-    snap = _auth_snapshot(
-        "primary", tmp_path=tmp_path, agent_name="zzznotinstalled",
-        system_file={"agent": {"zzznotinstalled": {
-            "model": "opus", "zippity": "wibble", "frob": {"nard": 1},
-        }}},
-    )
-    # The user's entries stay where they wrote them.
-    written = dict.get(dict.get(snap, "agent"), "zzznotinstalled")
-    assert {"frob", "model", "zippity"} <= set(dict.keys(written))
-    mirror = dict.keys(snap.meta.box.agent)
-    assert "model" in mirror
-    assert "zippity" not in mirror and "frob" not in mirror
+  MUTATION: drop the ``_drop_non_mirror_keys`` call and this refuses
+  ``meta.box.agent.zippity``.
+  """
+  snap = _auth_snapshot(
+    "primary",
+    tmp_path=tmp_path,
+    agent_name="zzznotinstalled",
+    system_file={
+      "agent": {
+        "zzznotinstalled": {
+          "model": "opus",
+          "zippity": "wibble",
+          "frob": {"nard": 1},
+        }
+      }
+    },
+  )
+  # The user's entries stay where they wrote them.
+  written = dict.get(dict.get(snap, "agent"), "zzznotinstalled")
+  assert {"frob", "model", "zippity"} <= set(dict.keys(written))
+  mirror = dict.keys(snap.meta.box.agent)
+  assert "model" in mirror
+  assert "zippity" not in mirror and "frob" not in mirror
 
 
 def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):
-    """The positive control: enforcement that refused everything would pass every
-    test above while bricking every box, so one settings file of ORDINARY declared
-    keys has to come through untouched."""
-    snap = _snapshot(_box_yaml(
-        tmp_path, "box:\n  image: myrig\n  shell: zsh\n  enable_vault: true\n",
-    ))
-    assert snap.box.image == "myrig"
-    assert snap.box.shell == "zsh"
+  """The positive control: enforcement that refused everything would pass every
+  test above while bricking every box, so one settings file of ORDINARY declared
+  keys has to come through untouched."""
+  snap = _snapshot(
+    _box_yaml(
+      tmp_path,
+      "box:\n  image: myrig\n  shell: zsh\n  enable_vault: true\n",
+    )
+  )
+  assert snap.box.image == "myrig"
+  assert snap.box.shell == "zsh"
 
 
 # --------------------------------------------------------------------------- #
@@ -6384,7 +7103,7 @@ def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):
 # the generic one, so neither can silently re-preempt the other.
 
 from kanibako.settings.settings_assemble import (  # noqa: E402
-    RETIRED_FILE_KEYS as _RETIRED_FILE_KEYS,
+  RETIRED_FILE_KEYS as _RETIRED_FILE_KEYS,
 )
 
 #: The settings tier each retired spelling has to be WRITTEN in to survive the read.
@@ -6395,151 +7114,159 @@ _RETIRED_ROOT_TIER = {"box": "box_path", "agent": "system_path"}
 
 
 def _nested_yaml(parts: tuple[str, ...], value: str) -> str:
-    """A YAML document holding *value* at the nested *parts* path."""
-    lines = [f"{'  ' * depth}{part}:" for depth, part in enumerate(parts)]
-    lines[-1] += f" {value}"
-    return "\n".join(lines) + "\n"
+  """A YAML document holding *value* at the nested *parts* path."""
+  lines = [f"{'  ' * depth}{part}:" for depth, part in enumerate(parts)]
+  lines[-1] += f" {value}"
+  return "\n".join(lines) + "\n"
 
 
 @pytest.mark.writes_undeclared(
-    "box.agent", "box.agent_name",
-    "agent.default.default_agent",
-    reason="each parametrization writes the retired spelling it is named for.",
+  "box.agent",
+  "box.agent_name",
+  "agent.default.default_agent",
+  reason="each parametrization writes the retired spelling it is named for.",
 )
 @pytest.mark.parametrize(
-    "parts,key", sorted(_RETIRED_FILE_KEYS.items()), ids=lambda v: str(v),
+  "parts,key",
+  sorted(_RETIRED_FILE_KEYS.items()),
+  ids=lambda v: str(v),
 )
 def test_a_retired_spelling_still_gets_its_own_refusal(tmp_path, parts, key):
-    """⚑ THE SET IS DERIVED FROM ``RETIRED_FILE_KEYS``, NOT LISTED HERE (P13).
+  """⚑ THE SET IS DERIVED FROM ``RETIRED_FILE_KEYS``, NOT LISTED HERE (P13).
 
-    A fourth retirement row added to that table without a route to this seam reds
-    instead of shipping a key whose documented cure the user never sees.
+  A fourth retirement row added to that table without a route to this seam reds
+  instead of shipping a key whose documented cure the user never sees.
 
-    ⚑ WHAT WOULD BE LOST: ``MIGRATION.md`` § "Settings keys renamed or retired"
-    spends ~40 lines on these three, quoting the message verbatim and handing over a
-    copy-pasteable cure, because a guessed agent seeds a DIFFERENT agent's
-    credentials into the box. The generic §0 text says only that the key is not a
-    key.
-    """
-    tier = _RETIRED_ROOT_TIER[parts[0]]
-    path = tmp_path / ("box.yaml" if tier == "box_path" else "settings.yaml")
-    path.write_text(_nested_yaml(parts, "claude"), encoding="utf-8")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(**{tier: path})
-    msg = str(e.value)
-    assert f"'{key}' is RETIRED" in msg, msg
-    # The cure, with the user's own value interpolated so it can be pasted.
-    assert "claude" in msg
-    assert str(path) in msg
-    # ⚑ AND NOT THE GENERIC ONE. Without this the test passes on a message that
-    # merely MENTIONS the key, which is what the defect already did.
-    assert "is not a settings key" not in msg
+  ⚑ WHAT WOULD BE LOST: ``MIGRATION.md`` § "Settings keys renamed or retired"
+  spends ~40 lines on these three, quoting the message verbatim and handing over a
+  copy-pasteable cure, because a guessed agent seeds a DIFFERENT agent's
+  credentials into the box. The generic §0 text says only that the key is not a
+  key.
+  """
+  tier = _RETIRED_ROOT_TIER[parts[0]]
+  path = tmp_path / ("box.yaml" if tier == "box_path" else "settings.yaml")
+  path.write_text(_nested_yaml(parts, "claude"), encoding="utf-8")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(**{tier: path})
+  msg = str(e.value)
+  assert f"'{key}' is RETIRED" in msg, msg
+  # The cure, with the user's own value interpolated so it can be pasted.
+  assert "claude" in msg
+  assert str(path) in msg
+  # ⚑ AND NOT THE GENERIC ONE. Without this the test passes on a message that
+  # merely MENTIONS the key, which is what the defect already did.
+  assert "is not a settings key" not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.agent", "box.agent.model",
-    reason="the retired MIRROR is a TABLE-valued box.agent, so the node and its "
-           "leaf are two undeclared writes.",
+  "box.agent",
+  "box.agent.model",
+  reason="the retired MIRROR is a TABLE-valued box.agent, so the node and its "
+  "leaf are two undeclared writes.",
 )
 def test_the_retired_mirror_table_gets_the_mirror_story_not_the_generic_one(tmp_path):
-    """The OTHER spelling behind ``box.agent``, told apart by the value's SHAPE.
+  """The OTHER spelling behind ``box.agent``, told apart by the value's SHAPE.
 
-    A TABLE is the settable agent MIRROR (R-4), retired for a different reason than
-    the agent-NAME scalar and cured at a different key — so telling one story for
-    both would send half of these users at the wrong key, and telling the generic
-    story sends all of them nowhere.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  agent:\n    model: sonnet\n"))
-    msg = str(e.value)
-    assert "'box.agent' is RETIRED" in msg, msg
-    assert "SETTABLE mirror" in msg
-    assert "pref.agent.<agent>.model=sonnet" in msg
-    assert "is not a settings key" not in msg
+  A TABLE is the settable agent MIRROR (R-4), retired for a different reason than
+  the agent-NAME scalar and cured at a different key — so telling one story for
+  both would send half of these users at the wrong key, and telling the generic
+  story sends all of them nowhere.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  agent:\n    model: sonnet\n"))
+  msg = str(e.value)
+  assert "'box.agent' is RETIRED" in msg, msg
+  assert "SETTABLE mirror" in msg
+  assert "pref.agent.<agent>.model=sonnet" in msg
+  assert "is not a settings key" not in msg
 
 
 def test_the_retired_behavior_key_gets_its_own_refusal(tmp_path):
-    """⚑ THE SECOND INSTANCE OF THE DEFECT CLASS, not a second defect.
+  """⚑ THE SECOND INSTANCE OF THE DEFECT CLASS, not a second defect.
 
-    ``auto_approve`` (R-41 / M-22) was preempted exactly as the selection keys were,
-    and on a PERMISSION axis: the generic text does not say that the box would come
-    up at the DEFAULT tier, which is the whole reason that refusal was written.
-    Repairing one instance and walking past this one is how a class survives.
-    The builder now refuses it BEFORE the resolve (``_refuse_retired_behavior``), so
-    nothing undeclared reaches the snapshot.
-    """
-    system_path = tmp_path / "settings.yaml"
-    system_path.write_text(
-        "agent:\n  claude:\n    auto_approve: true\n", encoding="utf-8",
-    )
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(system_path=system_path)
-    msg = str(e.value)
-    assert "'auto_approve' is RETIRED" in msg, msg
-    # The user's own boolean, translated to the tier it means (R-41) — the part the
-    # generic message could never carry.
-    assert "means `access: full`" in msg
-    assert "is not a settings key" not in msg
+  ``auto_approve`` (R-41 / M-22) was preempted exactly as the selection keys were,
+  and on a PERMISSION axis: the generic text does not say that the box would come
+  up at the DEFAULT tier, which is the whole reason that refusal was written.
+  Repairing one instance and walking past this one is how a class survives.
+  The builder now refuses it BEFORE the resolve (``_refuse_retired_behavior``), so
+  nothing undeclared reaches the snapshot.
+  """
+  system_path = tmp_path / "settings.yaml"
+  system_path.write_text(
+    "agent:\n  claude:\n    auto_approve: true\n",
+    encoding="utf-8",
+  )
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(system_path=system_path)
+  msg = str(e.value)
+  assert "'auto_approve' is RETIRED" in msg, msg
+  # The user's own boolean, translated to the tier it means (R-41) — the part the
+  # generic message could never carry.
+  assert "means `access: full`" in msg
+  assert "is not a settings key" not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the control for the retirement pins above: an ordinary undeclared key "
-           "must keep the GENERIC message, so the fixture writes one.",
+  "box.zippity",
+  reason="the control for the retirement pins above: an ordinary undeclared key "
+  "must keep the GENERIC message, so the fixture writes one.",
 )
 def test_an_ordinary_undeclared_key_keeps_the_generic_refusal(tmp_path):
-    """The other direction of the same pin, and it is not redundant.
+  """The other direction of the same pin, and it is not redundant.
 
-    Routing a retirement message through this seam could just as easily have made
-    the tailored text the answer for EVERYTHING — the retirement scan runs over the
-    whole file, not over the offending path. A key nothing has retired must still
-    read as what it is.
-    """
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
-    msg = str(e.value)
-    assert "is not a settings key" in msg
-    assert "RETIRED" not in msg
+  Routing a retirement message through this seam could just as easily have made
+  the tailored text the answer for EVERYTHING — the retirement scan runs over the
+  whole file, not over the offending path. A key nothing has retired must still
+  read as what it is.
+  """
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  msg = str(e.value)
+  assert "is not a settings key" in msg
+  assert "RETIRED" not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the laziness under test is only observable on a resolve that refuses, "
-           "so the second half of the fixture writes an undeclared key.",
+  "box.zippity",
+  reason="the laziness under test is only observable on a resolve that refuses, "
+  "so the second half of the fixture writes an undeclared key.",
 )
 def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
-    tmp_path, monkeypatch,
+  tmp_path,
+  monkeypatch,
 ):
-    """⚑ THE SCAN IS LAZY, and the happy path must not pay for it.
+  """⚑ THE SCAN IS LAZY, and the happy path must not pay for it.
 
-    It runs only after §0 has already decided to refuse, over the files the resolve
-    already read, so a conforming resolve never reaches it.
-    """
-    from kanibako.settings import settings_launch as _launch
+  It runs only after §0 has already decided to refuse, over the files the resolve
+  already read, so a conforming resolve never reaches it.
+  """
+  from kanibako.settings import settings_launch as _launch
 
-    seen: list[Path | None] = []
-    real = _launch.retired_cure
+  seen: list[Path | None] = []
+  real = _launch.retired_cure
 
-    def recording(files):
-        files = tuple(files)
-        seen.extend(f.path for f in files if f.loaded)
-        return real(files)
+  def recording(files):
+    files = tuple(files)
+    seen.extend(f.path for f in files if f.loaded)
+    return real(files)
 
-    # ⚑ The seam's OWN binding, not ``settings_assemble``'s: the import is at module
-    # scope, so patching the source module would leave this caller on the original.
-    monkeypatch.setattr(_launch, "retired_cure", recording)
-    # ⚑ The scan also appends the BASE tier, so this pins the FILES it read rather
-    # than the machine it ran on: point base at an absent path deliberately.
-    monkeypatch.setattr(
-        _launch, "settings_base_path", lambda: tmp_path / "no-base.yaml",
-    )
-    box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
+  # ⚑ The seam's OWN binding, not ``settings_assemble``'s: the import is at module
+  # scope, so patching the source module would leave this caller on the original.
+  monkeypatch.setattr(_launch, "retired_cure", recording)
+  # ⚑ The scan also appends the BASE tier, so this pins the FILES it read rather
+  # than the machine it ran on: point base at an absent path deliberately.
+  monkeypatch.setattr(
+    _launch,
+    "settings_base_path",
+    lambda: tmp_path / "no-base.yaml",
+  )
+  box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
+  _snapshot(box_path)
+  assert seen == [], "a conforming resolve re-read its settings files for nothing"
+  box_path.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+  with pytest.raises(_SettingsError):
     _snapshot(box_path)
-    assert seen == [], "a conforming resolve re-read its settings files for nothing"
-    box_path.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
-    with pytest.raises(_SettingsError):
-        _snapshot(box_path)
-    assert seen == [box_path], "the refusing resolve skipped the retirement table"
+  assert seen == [box_path], "the refusing resolve skipped the retirement table"
 
 
 # --------------------------------------------------------------------------- #
@@ -6555,155 +7282,159 @@ def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
 #: so it carries a RETIRED spelling the scan has a cure for. Fields: the tier the
 #: file belongs to, its filename, the text, and the rule that drops it.
 _DROPPED_TABLE_CASES = [
-    pytest.param(
-        "box_path", "box.yaml",
-        "agent:\n  claude:\n    auto_approve: true\nbox:\n  zippity: wibble\n",
-        id="upward-scope-agent-table-in-a-box-file",
-    ),
-    pytest.param(
-        "system_path", "settings.yaml",
-        "pref:\n  agent:\n    claude:\n      auto_approve: true\n"
-        "system:\n  zippity: wibble\n",
-        id="pref-table-in-a-system-file",
-    ),
+  pytest.param(
+    "box_path",
+    "box.yaml",
+    "agent:\n  claude:\n    auto_approve: true\nbox:\n  zippity: wibble\n",
+    id="upward-scope-agent-table-in-a-box-file",
+  ),
+  pytest.param(
+    "system_path",
+    "settings.yaml",
+    "pref:\n  agent:\n    claude:\n      auto_approve: true\nsystem:\n  zippity: wibble\n",
+    id="pref-table-in-a-system-file",
+  ),
 ]
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity", "system.zippity",
-    reason="the scan only runs once §0 has decided to refuse, so each case needs a "
-           "real undeclared key beside the dropped table it is about.",
+  "box.zippity",
+  "system.zippity",
+  reason="the scan only runs once §0 has decided to refuse, so each case needs a "
+  "real undeclared key beside the dropped table it is about.",
 )
 @pytest.mark.parametrize("tier,filename,text", _DROPPED_TABLE_CASES)
 def test_a_dropped_table_cannot_produce_a_cure(tmp_path, tier, filename, text):
-    """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE.
+  """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE.
 
-    MEASURED before the fix: a ``box.yaml`` carrying both an ``agent:`` table and
-    ``box.zippity`` refused by naming ``auto_approve``, telling the user their box
-    "would come up at the DEFAULT tier" and handing over a ``pref.agent.<agent>``
-    write — for a table directional enforcement had dropped one log line earlier,
-    with ``box.zippity`` never mentioned at all. ``MIGRATION.md`` § "Settings keys
-    renamed or retired" says of that table *"deleting it changes nothing"*, and it is
-    right; the code was wrong.
-    """
-    path = tmp_path / filename
-    path.write_text(text, encoding="utf-8")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(**{tier: path})
-    msg = str(e.value)
-    assert "RETIRED" not in msg, msg
-    assert "zippity" in msg
+  MEASURED before the fix: a ``box.yaml`` carrying both an ``agent:`` table and
+  ``box.zippity`` refused by naming ``auto_approve``, telling the user their box
+  "would come up at the DEFAULT tier" and handing over a ``pref.agent.<agent>``
+  write — for a table directional enforcement had dropped one log line earlier,
+  with ``box.zippity`` never mentioned at all. ``MIGRATION.md`` § "Settings keys
+  renamed or retired" says of that table *"deleting it changes nothing"*, and it is
+  right; the code was wrong.
+  """
+  path = tmp_path / filename
+  path.write_text(text, encoding="utf-8")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(**{tier: path})
+  msg = str(e.value)
+  assert "RETIRED" not in msg, msg
+  assert "zippity" in msg
 
 
 def test_a_table_the_cascade_reads_still_produces_its_cure(tmp_path):
-    """The other direction, and it is what keeps the fix a NARROWING.
+  """The other direction, and it is what keeps the fix a NARROWING.
 
-    The same ``agent: claude: auto_approve:`` table, one tier up, IS merged — a
-    system file may set the agent scope — so the tailored refusal is still exactly
-    what the user needs. Silencing the scan wholesale would pass the test above and
-    lose everything ``633fc6d`` restored.
-    """
-    path = tmp_path / "settings.yaml"
-    path.write_text(
-        "agent:\n  claude:\n    auto_approve: true\n", encoding="utf-8",
-    )
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(system_path=path)
-    assert "'auto_approve' is RETIRED" in str(e.value)
+  The same ``agent: claude: auto_approve:`` table, one tier up, IS merged — a
+  system file may set the agent scope — so the tailored refusal is still exactly
+  what the user needs. Silencing the scan wholesale would pass the test above and
+  lose everything ``633fc6d`` restored.
+  """
+  path = tmp_path / "settings.yaml"
+  path.write_text(
+    "agent:\n  claude:\n    auto_approve: true\n",
+    encoding="utf-8",
+  )
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(system_path=path)
+  assert "'auto_approve' is RETIRED" in str(e.value)
 
 
 @pytest.mark.writes_undeclared(
-    "box.agent_name",
-    reason="the base file's retired spelling is an undeclared key too, so the "
-           "cascade writes it into the snapshot — which is what fires §0 here.",
+  "box.agent_name",
+  reason="the base file's retired spelling is an undeclared key too, so the "
+  "cascade writes it into the snapshot — which is what fires §0 here.",
 )
 def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
-    """⚑ A SITE-WIDE STALE KEY DEFAULTS DOWN INTO EVERY BOX ON THE MACHINE.
+  """⚑ A SITE-WIDE STALE KEY DEFAULTS DOWN INTO EVERY BOX ON THE MACHINE.
 
-    ``agent_select`` has always scanned ``/etc/kanibako/settings_base.yaml`` for
-    exactly that reason. Arming the resolve put THIS seam first, so leaving base out
-    would have given the most widely-felt fault strictly LESS help than it got
-    before. ``build_launch_snapshot`` reads ``settings_base_path()`` once and hands
-    the path to both ``assemble_levels`` and the refusal's tier list; both bindings
-    are patched here so the test does not depend on which module does the reading.
-    """
-    from kanibako.settings import settings_assemble as _assemble
-    from kanibako.settings import settings_launch as _launch
+  ``agent_select`` has always scanned ``/etc/kanibako/settings_base.yaml`` for
+  exactly that reason. Arming the resolve put THIS seam first, so leaving base out
+  would have given the most widely-felt fault strictly LESS help than it got
+  before. ``build_launch_snapshot`` reads ``settings_base_path()`` once and hands
+  the path to both ``assemble_levels`` and the refusal's tier list; both bindings
+  are patched here so the test does not depend on which module does the reading.
+  """
+  from kanibako.settings import settings_assemble as _assemble
+  from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
-    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    with pytest.raises(_SettingsError) as e:
-        _snapshot()
-    msg = str(e.value)
-    assert "'box.agent_name' is RETIRED" in msg, msg
-    assert str(base) in msg
-    # The cure is level-appropriate: §2h allows no request at the base tier at all.
-    assert "a request may be written ONLY in a workset or box settings file" in msg
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
+  monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  with pytest.raises(_SettingsError) as e:
+    _snapshot()
+  msg = str(e.value)
+  assert "'box.agent_name' is RETIRED" in msg, msg
+  assert str(base) in msg
+  # The cure is level-appropriate: §2h allows no request at the base tier at all.
+  assert "a request may be written ONLY in a workset or box settings file" in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the generic message is the one under test, so the base file has to "
-           "carry an ordinary undeclared key rather than a retired spelling.",
+  "box.zippity",
+  reason="the generic message is the one under test, so the base file has to "
+  "carry an ordinary undeclared key rather than a retired spelling.",
 )
 def test_the_generic_message_names_the_base_file_the_scan_reads(
-    tmp_path, monkeypatch,
+  tmp_path,
+  monkeypatch,
 ):
-    """⚑⚑ BOTH HALVES OF THE REFUSAL SEE THE SAME TIERS, or it points at the wrong file.
+  """⚑⚑ BOTH HALVES OF THE REFUSAL SEE THE SAME TIERS, or it points at the wrong file.
 
-    MEASURED before the fix: an undeclared key in ``settings_base.yaml`` ALONE
-    refused with a list naming the box's ``box.yaml`` — a file that does not carry
-    it — while the same message disclaimed ``box reset`` and ``box show
-    --effective``. The user is told to hand-edit, told which CLI moves will not
-    work, and handed a file the entry is not in: no working move at all. The scan
-    half had been taught the base tier; the naming half had not.
-    """
-    from kanibako.settings import settings_assemble as _assemble
-    from kanibako.settings import settings_launch as _launch
+  MEASURED before the fix: an undeclared key in ``settings_base.yaml`` ALONE
+  refused with a list naming the box's ``box.yaml`` — a file that does not carry
+  it — while the same message disclaimed ``box reset`` and ``box show
+  --effective``. The user is told to hand-edit, told which CLI moves will not
+  work, and handed a file the entry is not in: no working move at all. The scan
+  half had been taught the base tier; the naming half had not.
+  """
+  from kanibako.settings import settings_assemble as _assemble
+  from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / SITE_SETTINGS_FILENAME
-    base.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
-    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(box_path)
-    msg = str(e.value)
-    assert "box.zippity" in msg
-    assert f"    - {base}: box.zippity\n" in msg, msg
-    # ⚑ AND THE BOX FILE IS NOT NAMED: it does not carry the entry, and each entry
-    # is filed under the file that does.
-    assert str(box_path) not in msg
+  base = tmp_path / SITE_SETTINGS_FILENAME
+  base.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+  monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(box_path)
+  msg = str(e.value)
+  assert "box.zippity" in msg
+  assert f"    - {base}: box.zippity\n" in msg, msg
+  # ⚑ AND THE BOX FILE IS NOT NAMED: it does not carry the entry, and each entry
+  # is filed under the file that does.
+  assert str(box_path) not in msg
 
 
 @pytest.mark.writes_undeclared(
-    "box.zippity",
-    reason="the list under test only appears on a resolve that refuses, so the "
-           "box file carries an undeclared key.",
+  "box.zippity",
+  reason="the list under test only appears on a resolve that refuses, so the "
+  "box file carries an undeclared key.",
 )
 def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
-    """⚑ AN ABSENT FILE WAS NEVER LOADED, and must not be listed as one.
+  """⚑ AN ABSENT FILE WAS NEVER LOADED, and must not be listed as one.
 
-    ``/etc/kanibako/settings_base.yaml`` does not exist on most machines, so this
-    is the common case rather than a corner of it: naming it in the cure would send
-    every user who hits the refusal to open a file that is not there. The cure names
-    only the file that carries each entry, so an absent file is never named.
-    """
-    from kanibako.settings import settings_assemble as _assemble
-    from kanibako.settings import settings_launch as _launch
+  ``/etc/kanibako/settings_base.yaml`` does not exist on most machines, so this
+  is the common case rather than a corner of it: naming it in the cure would send
+  every user who hits the refusal to open a file that is not there. The cure names
+  only the file that carries each entry, so an absent file is never named.
+  """
+  from kanibako.settings import settings_assemble as _assemble
+  from kanibako.settings import settings_launch as _launch
 
-    absent = tmp_path / f"no-such-{SITE_SETTINGS_FILENAME}"
-    monkeypatch.setattr(_assemble, "settings_base_path", lambda: absent)
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: absent)
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
-    msg = str(e.value)
-    assert str(absent) not in msg, msg
-    # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped listing files at all
-    # would otherwise pass this without naming anything.
-    assert str(tmp_path / "box.yaml") in msg
+  absent = tmp_path / f"no-such-{SITE_SETTINGS_FILENAME}"
+  monkeypatch.setattr(_assemble, "settings_base_path", lambda: absent)
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: absent)
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+  msg = str(e.value)
+  assert str(absent) not in msg, msg
+  # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped listing files at all
+  # would otherwise pass this without naming anything.
+  assert str(tmp_path / "box.yaml") in msg
 
 
 #: Which settings file an undiscriminated ``agent.<category>.*`` relic actually stops,
@@ -6711,55 +7442,59 @@ def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
 #: the oracle judges it undeclared at every tier (``test_settings_keyspace.py``) — but
 #: of whether a top-level ``agent:`` table is that file's CONTRIBUTION at all.
 _RELIC_TIER_CASES = [
-    pytest.param("system_path", "settings.yaml", True, id="system-refuses"),
-    pytest.param("base", SITE_SETTINGS_FILENAME, True, id="base-refuses"),
-    pytest.param("box_path", "box.yaml", False, id="box-file-drops-the-table"),
-    pytest.param("workset_path", "workset.yaml", False, id="workset-file-drops-it"),
-    # Q92: the agent file's ``agent:`` table is READ, like the system file's.
-    pytest.param("agent_path", "agent.yaml", True, id="agent-file-refuses"),
+  pytest.param("system_path", "settings.yaml", True, id="system-refuses"),
+  pytest.param("base", SITE_SETTINGS_FILENAME, True, id="base-refuses"),
+  pytest.param("box_path", "box.yaml", False, id="box-file-drops-the-table"),
+  pytest.param("workset_path", "workset.yaml", False, id="workset-file-drops-it"),
+  # Q92: the agent file's ``agent:`` table is READ, like the system file's.
+  pytest.param("agent_path", "agent.yaml", True, id="agent-file-refuses"),
 ]
 
 
 @pytest.mark.writes_undeclared(
-    "agent.common.plugins",
-    reason="the three refusing tiers resolve the relic into the snapshot, which is "
-           "what §0 then refuses; the two others never merge the table at all.",
+  "agent.common.plugins",
+  reason="the three refusing tiers resolve the relic into the snapshot, which is "
+  "what §0 then refuses; the two others never merge the table at all.",
 )
 @pytest.mark.parametrize("tier,filename,refuses", _RELIC_TIER_CASES)
 def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
-    tmp_path, monkeypatch, tier, filename, refuses,
+  tmp_path,
+  monkeypatch,
+  tier,
+  filename,
+  refuses,
 ):
-    """⚑ ``MIGRATION.md`` § "Housekeeping: renames you almost certainly don't carry"
-    SAYS THIS PER FILE, so a pin says it per file.
+  """⚑ ``MIGRATION.md`` § "Housekeeping: renames you almost certainly don't carry"
+  SAYS THIS PER FILE, so a pin says it per file.
 
-    The bullet used to claim flatly that a leftover ``agent.common.plugins`` "stops
-    the resolve". It does in the system and base files, and (Q92: its ``agent:``
-    table is read) in an ``agent.yaml``. In a ``box.yaml`` or ``workset.yaml`` the
-    whole ``agent:`` table is a containing scope's and is dropped before the merge,
-    so there the relic resolves and the only trace is a log line.
+  The bullet used to claim flatly that a leftover ``agent.common.plugins`` "stops
+  the resolve". It does in the system and base files, and (Q92: its ``agent:``
+  table is read) in an ``agent.yaml``. In a ``box.yaml`` or ``workset.yaml`` the
+  whole ``agent:`` table is a containing scope's and is dropped before the merge,
+  so there the relic resolves and the only trace is a log line.
 
-    That is not a defect to fix here: the table genuinely contributes nothing, and
-    refusing on it would be the cure-for-a-no-op the retirement scan already
-    rejects. It is a fact about where a grep is the only diagnostic, which is what
-    the migration guide has to get right.
-    """
-    from kanibako.settings import settings_assemble as _assemble
-    from kanibako.settings import settings_launch as _launch
+  That is not a defect to fix here: the table genuinely contributes nothing, and
+  refusing on it would be the cure-for-a-no-op the retirement scan already
+  rejects. It is a fact about where a grep is the only diagnostic, which is what
+  the migration guide has to get right.
+  """
+  from kanibako.settings import settings_assemble as _assemble
+  from kanibako.settings import settings_launch as _launch
 
-    path = tmp_path / filename
-    path.write_text("agent:\n  common:\n    plugins: /tmp/x\n", encoding="utf-8")
-    # ⚑ base is patched in EVERY case, so a real ``/etc/kanibako/settings_base.yaml``
-    # on the machine running this cannot decide the outcome either way.
-    base = path if tier == "base" else tmp_path / "no-base.yaml"
-    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
-    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-    kwargs = {} if tier == "base" else {tier: path}
-    if not refuses:
-        assert _snapshot(**kwargs) is not None
-        return
-    with pytest.raises(_SettingsError) as e:
-        _snapshot(**kwargs)
-    assert "agent.common.plugins" in str(e.value)
+  path = tmp_path / filename
+  path.write_text("agent:\n  common:\n    plugins: /tmp/x\n", encoding="utf-8")
+  # ⚑ base is patched in EVERY case, so a real ``/etc/kanibako/settings_base.yaml``
+  # on the machine running this cannot decide the outcome either way.
+  base = path if tier == "base" else tmp_path / "no-base.yaml"
+  monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+  monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+  kwargs = {} if tier == "base" else {tier: path}
+  if not refuses:
+    assert _snapshot(**kwargs) is not None
+    return
+  with pytest.raises(_SettingsError) as e:
+    _snapshot(**kwargs)
+  assert "agent.common.plugins" in str(e.value)
 
 
 #: Every ``kanibako …`` spelling inside ONE cure string, quoted or not. The quoted
@@ -6773,43 +7508,52 @@ _CURE_LEVELS = (*SCOPE_CONTAINMENT, "base")
 
 
 def test_every_command_a_retirement_cure_names_is_a_real_command():
-    """⚑ THE OTHER HALF OF THE SPELLING GUARD, and the half that was unguarded.
+  """⚑ THE OTHER HALF OF THE SPELLING GUARD, and the half that was unguarded.
 
-    ``_QUOTED_COMMAND`` matches SINGLE-QUOTED spellings, which the generic §0 refusal
-    uses and the retirement cures do not — so the commands a user is most likely to
-    paste shipped past the parser check. This asks the CURE BUILDERS directly rather
-    than scraping their message: they are pure, every level is reachable, and their
-    output carries no prose to trip over (the refusal's own "in kanibako 1.8.0" does).
-    """
-    from kanibako.settings.settings_assemble import (
-        RETIRED_BEHAVIOR_KEYS,
-        RETIRED_FILE_KEYS,
-        retired_behavior_cure,
-        retired_key_cure,
+  ``_QUOTED_COMMAND`` matches SINGLE-QUOTED spellings, which the generic §0 refusal
+  uses and the retirement cures do not — so the commands a user is most likely to
+  paste shipped past the parser check. This asks the CURE BUILDERS directly rather
+  than scraping their message: they are pure, every level is reachable, and their
+  output carries no prose to trip over (the refusal's own "in kanibako 1.8.0" does).
+  """
+  from kanibako.settings.settings_assemble import (
+    RETIRED_BEHAVIOR_KEYS,
+    RETIRED_FILE_KEYS,
+    retired_behavior_cure,
+    retired_key_cure,
+  )
+
+  cures: list[str] = []
+  for level in _CURE_LEVELS:
+    for key in RETIRED_FILE_KEYS.values():
+      cures.append(retired_key_cure(key, level=level, value="claude"))
+    # The TABLE-valued spelling of ``box.agent`` takes the other builder.
+    cures.append(
+      retired_key_cure(
+        "box.agent",
+        level=level,
+        value="claude",
+        mirror={"model": "sonnet"},
+      )
     )
-
-    cures: list[str] = []
-    for level in _CURE_LEVELS:
-        for key in RETIRED_FILE_KEYS.values():
-            cures.append(retired_key_cure(key, level=level, value="claude"))
-        # The TABLE-valued spelling of ``box.agent`` takes the other builder.
-        cures.append(retired_key_cure(
-            "box.agent", level=level, value="claude", mirror={"model": "sonnet"},
-        ))
-        for successor in RETIRED_BEHAVIOR_KEYS.values():
-            cures.append(retired_behavior_cure(
-                successor, level=level, tier="full", subject=None,
-            ))
-    # ⚑ REDS ON ITS OWN EMPTINESS (P15): a builder that stopped emitting commands
-    # would otherwise pass this without a single spelling checked.
-    spellings = [s for cure in cures for s in _ANY_COMMAND.findall(cure)]
-    assert len(spellings) >= len(_CURE_LEVELS), spellings
-    for spelling in spellings:
-        bad = _unparsable_word(spelling)
-        assert bad is None, (
-            f"a retirement cure names 'kanibako {spelling}', whose word {bad!r} "
-            f"is not in the CLI parser"
+    for successor in RETIRED_BEHAVIOR_KEYS.values():
+      cures.append(
+        retired_behavior_cure(
+          successor,
+          level=level,
+          tier="full",
+          subject=None,
         )
+      )
+  # ⚑ REDS ON ITS OWN EMPTINESS (P15): a builder that stopped emitting commands
+  # would otherwise pass this without a single spelling checked.
+  spellings = [s for cure in cures for s in _ANY_COMMAND.findall(cure)]
+  assert len(spellings) >= len(_CURE_LEVELS), spellings
+  for spelling in spellings:
+    bad = _unparsable_word(spelling)
+    assert bad is None, (
+      f"a retirement cure names 'kanibako {spelling}', whose word {bad!r} is not in the CLI parser"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -6819,35 +7563,35 @@ def test_every_command_a_retirement_cure_names_is_a_real_command():
 
 
 def test_a_bare_relative_secret_path_is_refused_at_the_emit_seam():
-    """⚑ ``secret_path`` is in the corpus of keyspec §2a "A path key's stored value" and a
-    ``type: path`` GREP MISSES IT —
-    the manifest declares it ``value: path``, parametric on VAR, so the family's rows
-    carry no ``type:`` line at all.
+  """⚑ ``secret_path`` is in the corpus of keyspec §2a "A path key's stored value" and a
+  ``type: path`` GREP MISSES IT —
+  the manifest declares it ``value: path``, parametric on VAR, so the family's rows
+  carry no ``type:`` line at all.
 
-    🛑 TWO REFUSALS, SPLIT BY WHERE THE VALUE CAME FROM. A value a settings FILE stores
-    is refused first, at ``build_launch_snapshot``, with the two-readings message
-    anchored at the scope root by ``path_key_anchor`` (the ``test_R147_*`` pins). This
-    §2a SOURCE refusal is for what that check does not judge — a value kanibako supplies
-    itself, or a snapshot ``build_launch_snapshot`` did not build, as here — and it names
-    the mount hazard: a source beginning with neither ``.`` nor ``/`` is a NAMED VOLUME
-    to podman, so the box gets an empty directory where its credential should be.
-    ⚑ NOT covered by ``fail_soft``: the file is neither missing nor unreadable, and
-    the volume makes the mount "succeed", so nothing warns.
-    """
-    snap = KeyStore({"box": {"secret_path": {"API_KEY": "tokens/api"}}})
-    with pytest.raises(SettingsError) as exc:
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    message = str(exc.value)
-    assert "secret_path.API_KEY" in message
-    assert "'tokens/api'" in message
-    assert "NAMED VOLUME" in message
+  🛑 TWO REFUSALS, SPLIT BY WHERE THE VALUE CAME FROM. A value a settings FILE stores
+  is refused first, at ``build_launch_snapshot``, with the two-readings message
+  anchored at the scope root by ``path_key_anchor`` (the ``test_R147_*`` pins). This
+  §2a SOURCE refusal is for what that check does not judge — a value kanibako supplies
+  itself, or a snapshot ``build_launch_snapshot`` did not build, as here — and it names
+  the mount hazard: a source beginning with neither ``.`` nor ``/`` is a NAMED VOLUME
+  to podman, so the box gets an empty directory where its credential should be.
+  ⚑ NOT covered by ``fail_soft``: the file is neither missing nor unreadable, and
+  the volume makes the mount "succeed", so nothing warns.
+  """
+  snap = KeyStore({"box": {"secret_path": {"API_KEY": "tokens/api"}}})
+  with pytest.raises(SettingsError) as exc:
+    snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  message = str(exc.value)
+  assert "secret_path.API_KEY" in message
+  assert "'tokens/api'" in message
+  assert "NAMED VOLUME" in message
 
 
 def test_an_absolute_secret_path_still_emits_its_mount():
-    """Anti-vacuity for the case above."""
-    snap = KeyStore({"box": {"secret_path": {"API_KEY": "/t/api"}}})
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    assert [(e.category, e.host_src) for e in entries] == [("secret_path", "/t/api")]
+  """Anti-vacuity for the case above."""
+  snap = KeyStore({"box": {"secret_path": {"API_KEY": "/t/api"}}})
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  assert [(e.category, e.host_src) for e in entries] == [("secret_path", "/t/api")]
 
 
 # --------------------------------------------------------------------------- #
@@ -6857,128 +7601,145 @@ def test_an_absolute_secret_path_still_emits_its_mount():
 
 
 def _run_args_launch(tmp_path, *, system_doc, agent_doc):
-    """The launch's `run_args`, read the way ``start.py``'s ``all_extra`` seam reads it.
+  """The launch's `run_args`, read the way ``start.py``'s ``all_extra`` seam reads it.
 
-    ⚑ THROUGH A REAL SETTINGS FILE, not a hand-built floor: the rung is the same
-    ``KeyStore`` slot either way, but the claim these cases make is about what a user
-    WRITES, and only this path exercises `assemble_levels`' read of it.
-    """
-    from kanibako.settings.agent_file import argv_words
+  ⚑ THROUGH A REAL SETTINGS FILE, not a hand-built floor: the rung is the same
+  ``KeyStore`` slot either way, but the claim these cases make is about what a user
+  WRITES, and only this path exercises `assemble_levels`' read of it.
+  """
+  from kanibako.settings.agent_file import argv_words
 
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=_write_yaml(tmp_path / "system.yaml", system_doc),
-        agent_path=_write_yaml(tmp_path / "agent.yaml", agent_doc),
-        workset_path=None, box_path=None,
-        behavior_floor={"model": "haiku"},
-    )
-    state = effective_behavior(snap, active_agent="claude")
-    return argv_words(state.get("run_args", ""))
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=_write_yaml(tmp_path / "system.yaml", system_doc),
+    agent_path=_write_yaml(tmp_path / "agent.yaml", agent_doc),
+    workset_path=None,
+    box_path=None,
+    behavior_floor={"model": "haiku"},
+  )
+  state = effective_behavior(snap, active_agent="claude")
+  return argv_words(state.get("run_args", ""))
 
 
 def test_an_any_agent_run_args_in_a_settings_file_reaches_the_launch(tmp_path):
-    """keyspec §2d agent.default.run_args: ``agent.default.run_args`` is a real default,
-    read at launch.
+  """keyspec §2d agent.default.run_args: ``agent.default.run_args`` is a real default,
+  read at launch.
 
-    (Mutation: read the agent FILE at the seam instead of the snapshot → this stays
-    green and the next two red, which is why all three are here.)
-    """
-    assert _run_args_launch(
-        tmp_path,
-        system_doc={"agent": {"default": {"run_args": ["--a", "--b"]}}},
-        agent_doc={"self": {}},
-    ) == ["--a", "--b"]
+  (Mutation: read the agent FILE at the seam instead of the snapshot → this stays
+  green and the next two red, which is why all three are here.)
+  """
+  assert _run_args_launch(
+    tmp_path,
+    system_doc={"agent": {"default": {"run_args": ["--a", "--b"]}}},
+    agent_doc={"self": {}},
+  ) == ["--a", "--b"]
 
 
 def test_a_per_agent_run_args_REPLACES_the_any_agent_default(tmp_path):
-    """§2d ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``.
+  """§2d ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``.
 
-    The active slot wins WHOLE — the §2d pick concatenates nothing.
-    (Mutation: merge the two slots instead → ``--a``/``--b`` ride along → RED.)
-    """
-    assert _run_args_launch(
-        tmp_path,
-        system_doc={"agent": {"default": {"run_args": ["--a", "--b"]},
-                              "claude": {"run_args": ["--only-mine"]}}},
-        agent_doc={"self": {}},
-    ) == ["--only-mine"]
+  The active slot wins WHOLE — the §2d pick concatenates nothing.
+  (Mutation: merge the two slots instead → ``--a``/``--b`` ride along → RED.)
+  """
+  assert _run_args_launch(
+    tmp_path,
+    system_doc={
+      "agent": {"default": {"run_args": ["--a", "--b"]}, "claude": {"run_args": ["--only-mine"]}}
+    },
+    agent_doc={"self": {}},
+  ) == ["--only-mine"]
 
 
 def test_an_agent_files_EMPTY_run_args_opts_that_agent_out_of_the_default(tmp_path):
-    """THE OPT-OUT: the file's ``run_args: []`` rides its level verbatim.
+  """THE OPT-OUT: the file's ``run_args: []`` rides its level verbatim.
 
-    ``run_args: []`` in ``agents/<agent>/agent.yaml`` is the user's "no arguments" and
-    must beat a populated ``agent.default.run_args``; a file that never mentions the key
-    must let that default through (the case above).
-    (Mutation: set the file's root scalars on its level only when truthy → this agent
-    silently gets ``--dangerous`` → RED.)
-    """
-    assert _run_args_launch(
-        tmp_path,
-        system_doc={"agent": {"default": {"run_args": ["--dangerous"]}}},
-        agent_doc={"self": {"run_args": []}},
-    ) == []
+  ``run_args: []`` in ``agents/<agent>/agent.yaml`` is the user's "no arguments" and
+  must beat a populated ``agent.default.run_args``; a file that never mentions the key
+  must let that default through (the case above).
+  (Mutation: set the file's root scalars on its level only when truthy → this agent
+  silently gets ``--dangerous`` → RED.)
+  """
+  assert (
+    _run_args_launch(
+      tmp_path,
+      system_doc={"agent": {"default": {"run_args": ["--dangerous"]}}},
+      agent_doc={"self": {"run_args": []}},
+    )
+    == []
+  )
 
 
 def test_a_hand_written_run_args_STRING_in_a_settings_file_is_split_not_rewritten(
-    tmp_path,
+  tmp_path,
 ):
-    """keyspec §2d agent.default.run_args: the same parser coerces a string on READ, and
-    nobody's file is rewritten.
+  """keyspec §2d agent.default.run_args: the same parser coerces a string on READ, and
+  nobody's file is rewritten.
 
-    ⚑ ONE COERCION: the behavior table hands the argv over as the command-line string its
-    owner joined, so a stored list and a hand-written string arrive identically.
-    """
-    doc = {"agent": {"default": {"run_args": "--a --b"}}}
-    assert _run_args_launch(tmp_path, system_doc=doc, agent_doc={"self": {}}) == [
-        "--a", "--b",
-    ]
-    assert (tmp_path / "system.yaml").read_text().count("--a --b") == 1
+  ⚑ ONE COERCION: the behavior table hands the argv over as the command-line string its
+  owner joined, so a stored list and a hand-written string arrive identically.
+  """
+  doc = {"agent": {"default": {"run_args": "--a --b"}}}
+  assert _run_args_launch(tmp_path, system_doc=doc, agent_doc={"self": {}}) == [
+    "--a",
+    "--b",
+  ]
+  assert (tmp_path / "system.yaml").read_text().count("--a --b") == 1
 
 
 class TestANamelessBoxGetsNoNameDerivedKey:
-    """``resolve_inputs`` for a box whose name is not decided yet (the pre-create read)."""
+  """``resolve_inputs`` for a box whose name is not decided yet (the pre-create read)."""
 
-    _DERIVED = ("meta.box.path", "meta.box.home", "box.canon", "meta.box.settings")
+  _DERIVED = ("meta.box.path", "meta.box.home", "box.canon", "meta.box.settings")
 
-    def _floors(self, std, proj):
-        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+  def _floors(self, std, proj):
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
-        inputs = resolve_inputs(
-            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="shell",
-            system_path=std.settings,
-        )
-        return {
-            **inputs.meta_runtime, **inputs.meta_identity,
-            **inputs.workset_anchor, **inputs.auth_chain,
-        }
+    inputs = resolve_inputs(
+      subject=ResolveSubject.BOX,
+      std=std,
+      proj=proj,
+      agent_name="shell",
+      system_path=std.settings,
+    )
+    return {
+      **inputs.meta_runtime,
+      **inputs.meta_identity,
+      **inputs.workset_anchor,
+      **inputs.auth_chain,
+    }
 
-    def test_every_name_derived_key_is_absent(self, std, config, project_dir):
-        """§0: never a fabricated default — ABSENT, and nothing left refers to one."""
-        from kanibako.settings.paths import resolve_box_target
-        from kanibako.settings.settings_launch import _BOX_NAME_KEYS
+  def test_every_name_derived_key_is_absent(self, std, config, project_dir):
+    """§0: never a fabricated default — ABSENT, and nothing left refers to one."""
+    from kanibako.settings.paths import resolve_box_target
+    from kanibako.settings.settings_launch import _BOX_NAME_KEYS
 
-        proj = resolve_box_target(
-            std, config, str(project_dir), initialize=False, register=False, warn=False,
-        )
-        assert not proj.name
-        floors = self._floors(std, proj)
-        omitted = (*_BOX_NAME_KEYS, *self._DERIVED)
-        assert not [k for k in omitted if k in floors]
-        assert not [
-            (k, v) for k, v in floors.items()
-            if isinstance(v, str) and any(f"{{{o}}}" in v for o in omitted)
-        ]
+    proj = resolve_box_target(
+      std,
+      config,
+      str(project_dir),
+      initialize=False,
+      register=False,
+      warn=False,
+    )
+    assert not proj.name
+    floors = self._floors(std, proj)
+    omitted = (*_BOX_NAME_KEYS, *self._DERIVED)
+    assert not [k for k in omitted if k in floors]
+    assert not [
+      (k, v)
+      for k, v in floors.items()
+      if isinstance(v, str) and any(f"{{{o}}}" in v for o in omitted)
+    ]
 
-    def test_a_named_box_keeps_them(self, std, config, project_dir):
-        """The control: the omission is keyed on the missing name, nothing else."""
-        from kanibako.settings.paths import resolve_project
-        from kanibako.settings.settings_launch import _BOX_NAME_KEYS
+  def test_a_named_box_keeps_them(self, std, config, project_dir):
+    """The control: the omission is keyed on the missing name, nothing else."""
+    from kanibako.settings.paths import resolve_project
+    from kanibako.settings.settings_launch import _BOX_NAME_KEYS
 
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        floors = self._floors(std, proj)
-        assert {*_BOX_NAME_KEYS, *self._DERIVED} <= set(floors)
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    floors = self._floors(std, proj)
+    assert {*_BOX_NAME_KEYS, *self._DERIVED} <= set(floors)
 
 
 # --------------------------------------------------------------------------- #
@@ -6988,289 +7749,349 @@ class TestANamelessBoxGetsNoNameDerivedKey:
 
 
 class TestLoneNoneStandardBind:
-    """Spec §2a + companion "Delivery at launch": a standard bind is omitted by setting
-    its entry AND its source key to ``<None>``; a file that sets only one gets a warning
-    naming both keys and that file.  Both is silent; a user-added bind is silent
-    ([Q94] 2); a ``<None>`` source is SKIPPED at the collapse, never refused ([Q80]).
-    """
+  """Spec §2a + companion "Delivery at launch": a standard bind is omitted by setting
+  its entry AND its source key to ``<None>``; a file that sets only one gets a warning
+  naming both keys and that file.  Both is silent; a user-added bind is silent
+  ([Q94] 2); a ``<None>`` source is SKIPPED at the collapse, never refused ([Q80]).
+  """
 
-    _DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
-    _FLOOR = {
-        "workset.logs": "/h/logs",
-        "box.bindings.ro": {_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
+  _DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
+  _FLOOR = {
+    "workset.logs": "/h/logs",
+    "box.bindings.ro": {_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
+  }
+  _NULL_ENTRY = {"box": {"bindings": {"ro": {"~/.kanibako/state/helpers.jsonl": None}}}}
+  _NULL_SOURCE = {"workset": {"logs": None}}
+
+  def _resolve(self, tmp_path, caplog, *, box=None, workset=None, floor=None):
+    from kanibako.settings.settings_launch import reset_none_warnings
+
+    reset_none_warnings()
+    box_path = _write_yaml(tmp_path / "box.yaml", box) if box else None
+    ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    for _ in range(2):  # one command, several resolves: ONE warning.
+      snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=ws_path,
+        box_path=box_path,
+        default_categories=self._FLOOR if floor is None else floor,
+        meta_identity={"meta.box.name": "b1"},
+        valid_agents=("claude",),
+      )
+    mounted = {
+      e.box_dest
+      for e in snapshot_category_entries(
+        snap,
+        active_agent="claude",
+        box_ctx=_ctx(),
+      )
+      if e.category.startswith("bindings")
     }
-    _NULL_ENTRY = {"box": {"bindings": {"ro": {"~/.kanibako/state/helpers.jsonl": None}}}}
-    _NULL_SOURCE = {"workset": {"logs": None}}
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    return mounted, warnings
 
-    def _resolve(self, tmp_path, caplog, *, box=None, workset=None, floor=None):
-        from kanibako.settings.settings_launch import reset_none_warnings
+  def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
+    assert self._resolve(tmp_path, caplog) == ({self._DEST}, [])
 
-        reset_none_warnings()
-        box_path = _write_yaml(tmp_path / "box.yaml", box) if box else None
-        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        for _ in range(2):  # one command, several resolves: ONE warning.
-            snap = build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-                workset_path=ws_path, box_path=box_path,
-                default_categories=self._FLOOR if floor is None else floor,
-                meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
-            )
-        mounted = {
-            e.box_dest for e in snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=_ctx(),
-            )
-            if e.category.startswith("bindings")
-        }
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        return mounted, warnings
+  def test_a_lone_null_source_is_skipped_and_warns_once(self, tmp_path, caplog):
+    mounted, warnings = self._resolve(tmp_path, caplog, workset=self._NULL_SOURCE)
+    assert mounted == set()
+    assert len(warnings) == 1, warnings
+    text = warnings[0]
+    assert f"box.bindings.ro[{self._DEST}]" in text
+    assert "workset.logs" in text
+    assert str(tmp_path / "workset.yaml") in text
 
-    def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
-        assert self._resolve(tmp_path, caplog) == ({self._DEST}, [])
+  def test_a_lone_null_entry_warns_naming_the_source_key(self, tmp_path, caplog):
+    mounted, warnings = self._resolve(tmp_path, caplog, box=self._NULL_ENTRY)
+    assert mounted == set()
+    assert len(warnings) == 1, warnings
+    text = warnings[0]
+    assert f"box.bindings.ro[{self._DEST}]" in text
+    assert str(tmp_path / "box.yaml") in text
+    assert "Set workset.logs to null" in text
+    assert "meta.box.name" not in text  # read-only: never offered as a cure.
 
-    def test_a_lone_null_source_is_skipped_and_warns_once(self, tmp_path, caplog):
-        mounted, warnings = self._resolve(tmp_path, caplog, workset=self._NULL_SOURCE)
-        assert mounted == set()
-        assert len(warnings) == 1, warnings
-        text = warnings[0]
-        assert f"box.bindings.ro[{self._DEST}]" in text
-        assert "workset.logs" in text
-        assert str(tmp_path / "workset.yaml") in text
+  def test_a_null_ARM_is_a_null_entry_for_each_standard_bind(self, tmp_path, caplog):
+    # [Q94] 1: ``box.bindings.ro: null`` warns unless the source is null too.
+    mounted, warnings = self._resolve(
+      tmp_path,
+      caplog,
+      box={"box": {"bindings": {"ro": None}}},
+    )
+    assert mounted == set()
+    assert len(warnings) == 1, warnings
+    assert str(tmp_path / "box.yaml") in warnings[0]
 
-    def test_a_lone_null_entry_warns_naming_the_source_key(self, tmp_path, caplog):
-        mounted, warnings = self._resolve(tmp_path, caplog, box=self._NULL_ENTRY)
-        assert mounted == set()
-        assert len(warnings) == 1, warnings
-        text = warnings[0]
-        assert f"box.bindings.ro[{self._DEST}]" in text
-        assert str(tmp_path / "box.yaml") in text
-        assert "Set workset.logs to null" in text
-        assert "meta.box.name" not in text  # read-only: never offered as a cure.
+  def test_both_null_is_silent(self, tmp_path, caplog):
+    assert self._resolve(
+      tmp_path,
+      caplog,
+      box=self._NULL_ENTRY,
+      workset=self._NULL_SOURCE,
+    ) == (set(), [])
 
-    def test_a_null_ARM_is_a_null_entry_for_each_standard_bind(self, tmp_path, caplog):
-        # [Q94] 1: ``box.bindings.ro: null`` warns unless the source is null too.
-        mounted, warnings = self._resolve(
-            tmp_path, caplog, box={"box": {"bindings": {"ro": None}}},
-        )
-        assert mounted == set()
-        assert len(warnings) == 1, warnings
-        assert str(tmp_path / "box.yaml") in warnings[0]
+  def test_a_user_added_bind_with_a_null_source_is_skipped_silently(
+    self,
+    tmp_path,
+    caplog,
+  ):
+    # [Q94] 2 / [Q80] (a): skipped — not refused, not warned.
+    mounted, warnings = self._resolve(
+      tmp_path,
+      caplog,
+      box={"box": {"bindings": {"rw": {"~/mine": ["{workset.logs}/x"]}}}},
+      workset=self._NULL_SOURCE,
+      floor={"workset.logs": "/h/logs"},
+    )
+    assert (mounted, warnings) == (set(), [])
 
-    def test_both_null_is_silent(self, tmp_path, caplog):
-        assert self._resolve(
-            tmp_path, caplog, box=self._NULL_ENTRY, workset=self._NULL_SOURCE,
-        ) == (set(), [])
+  def test_a_null_the_floor_supplies_is_not_set_by_anyone(self, tmp_path, caplog):
+    # A standalone ``<None>`` row: the bind is omitted with no warning.
+    floor = {**self._FLOOR, "workset.logs": None}
+    assert self._resolve(tmp_path, caplog, floor=floor) == (set(), [])
 
-    def test_a_user_added_bind_with_a_null_source_is_skipped_silently(
-        self, tmp_path, caplog,
-    ):
-        # [Q94] 2 / [Q80] (a): skipped — not refused, not warned.
-        mounted, warnings = self._resolve(
-            tmp_path, caplog,
-            box={"box": {"bindings": {"rw": {"~/mine": ["{workset.logs}/x"]}}}},
-            workset=self._NULL_SOURCE, floor={"workset.logs": "/h/logs"},
-        )
-        assert (mounted, warnings) == (set(), [])
-
-    def test_a_null_the_floor_supplies_is_not_set_by_anyone(self, tmp_path, caplog):
-        # A standalone ``<None>`` row: the bind is omitted with no warning.
-        floor = {**self._FLOOR, "workset.logs": None}
-        assert self._resolve(tmp_path, caplog, floor=floor) == (set(), [])
-
-    def test_a_literal_source_floor_entry_is_internal(self, tmp_path, caplog):
-        # No ``{key}``-ref ⇒ no source key ⇒ not STANDARD ([Q95] 2): no warning.
-        floor = {"box.bindings.ro": {self._DEST: ("/h/pkg", "ro")}}
-        assert self._resolve(
-            tmp_path, caplog, box=self._NULL_ENTRY, floor=floor,
-        ) == (set(), [])
+  def test_a_literal_source_floor_entry_is_internal(self, tmp_path, caplog):
+    # No ``{key}``-ref ⇒ no source key ⇒ not STANDARD ([Q95] 2): no warning.
+    floor = {"box.bindings.ro": {self._DEST: ("/h/pkg", "ro")}}
+    assert self._resolve(
+      tmp_path,
+      caplog,
+      box=self._NULL_ENTRY,
+      floor=floor,
+    ) == (set(), [])
 
 
 class TestHalfNullCureOnlyWhereADoorAdmitsIt:
-    """The half-null warning offers its source key as the cure only where a door would
-    admit that ``<None>``, so the sentence can never name a remedy the ``set`` and read
-    doors refuse.
+  """The half-null warning offers its source key as the cure only where a door would
+  admit that ``<None>``, so the sentence can never name a remedy the ``set`` and read
+  doors refuse.
 
-    ⚑ ``system.canon`` WAS the refused example here: it is a STANDARD bind's source key,
-    so a null at it is now an OMISSION (spec §2a) and BOTH branches of this class moved.
-    It is the OFFERED side now, and the refused side is a ``system.*`` key that sources
-    no bind — ``system.channelroot``, which the same membership still refuses.
-    """
+  ⚑ ``system.canon`` WAS the refused example here: it is a STANDARD bind's source key,
+  so a null at it is now an OMISSION (spec §2a) and BOTH branches of this class moved.
+  It is the OFFERED side now, and the refused side is a ``system.*`` key that sources
+  no bind — ``system.channelroot``, which the same membership still refuses.
+  """
 
-    _ROOT_DEST = f"{GUEST_HOME}/cache"
-    _ROOT_FLOOR = {
-        "system.cache": "/h/cache",
-        "box.bindings.ro": {_ROOT_DEST: ("{system.cache}", "ro")},
-    }
-    _LOG_DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
-    _LOG_FLOOR = {
-        "workset.logs": "/h/logs",
-        "box.bindings.ro": {_LOG_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
-    }
+  _ROOT_DEST = f"{GUEST_HOME}/cache"
+  _ROOT_FLOOR = {
+    "system.cache": "/h/cache",
+    "box.bindings.ro": {_ROOT_DEST: ("{system.cache}", "ro")},
+  }
+  _LOG_DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
+  _LOG_FLOOR = {
+    "workset.logs": "/h/logs",
+    "box.bindings.ro": {_LOG_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
+  }
 
-    def _resolve(self, tmp_path, caplog, *, floor, entry_dest):
-        from kanibako.settings.settings_launch import reset_none_warnings
+  def _resolve(self, tmp_path, caplog, *, floor, entry_dest):
+    from kanibako.settings.settings_launch import reset_none_warnings
 
-        reset_none_warnings()
-        box_path = _write_yaml(
-            tmp_path / "box.yaml", {"box": {"bindings": {"ro": {entry_dest: None}}}},
-        )
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None, box_path=box_path,
-            default_categories=floor, meta_identity={"meta.box.name": "b1"},
-            valid_agents=("claude",),
-        )
-        return [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
+    reset_none_warnings()
+    box_path = _write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"bindings": {"ro": {entry_dest: None}}}},
+    )
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_path,
+      default_categories=floor,
+      meta_identity={"meta.box.name": "b1"},
+      valid_agents=("claude",),
+    )
+    return [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
 
-    def test_a_refused_source_key_is_named_but_not_offered(self, tmp_path, caplog):
-        """``system.cache`` sources no STANDARD bind, so its null stays a refusal."""
-        warnings = self._resolve(
-            tmp_path, caplog, floor=self._ROOT_FLOOR, entry_dest="~/cache",
-        )
-        assert len(warnings) == 1, warnings
-        text = warnings[0]
-        assert f"box.bindings.ro[{self._ROOT_DEST}]" in text
-        assert str(tmp_path / "box.yaml") in text
-        assert "system.cache" in text  # NAMED: the warning names both keys and the file
-        assert "Set system.cache to null" not in text  # ...never offered as the cure
+  def test_a_refused_source_key_is_named_but_not_offered(self, tmp_path, caplog):
+    """``system.cache`` sources no STANDARD bind, so its null stays a refusal."""
+    warnings = self._resolve(
+      tmp_path,
+      caplog,
+      floor=self._ROOT_FLOOR,
+      entry_dest="~/cache",
+    )
+    assert len(warnings) == 1, warnings
+    text = warnings[0]
+    assert f"box.bindings.ro[{self._ROOT_DEST}]" in text
+    assert str(tmp_path / "box.yaml") in text
+    assert "system.cache" in text  # NAMED: the warning names both keys and the file
+    assert "Set system.cache to null" not in text  # ...never offered as the cure
 
-    def test_a_source_key_the_doors_admit_is_offered_the_cure(self, tmp_path, caplog):
-        """⭐ THE OTHER SIDE, and the reason the message filters at all: ``system.canon``
-        is a STANDARD bind's source, so ``system set --null system.canon`` is ACCEPTED
-        and the sentence it offers is a command that works."""
-        canon_dest = f"{GUEST_HOME}/canon/handbook/general"
-        warnings = self._resolve(
-            tmp_path, caplog,
-            floor={
-                "system.canon": "/h/canon",
-                "box.bindings.ro": {canon_dest: ("{system.canon}/handbook/general", "ro")},
-            },
-            entry_dest="~/canon/handbook/general",
-        )
-        assert len(warnings) == 1, warnings
-        text = warnings[0]
-        assert "system.canon" in text
-        assert "Set system.canon to null" in text  # ...and it is a remedy that WORKS
+  def test_a_source_key_the_doors_admit_is_offered_the_cure(self, tmp_path, caplog):
+    """⭐ THE OTHER SIDE, and the reason the message filters at all: ``system.canon``
+    is a STANDARD bind's source, so ``system set --null system.canon`` is ACCEPTED
+    and the sentence it offers is a command that works."""
+    canon_dest = f"{GUEST_HOME}/canon/handbook/general"
+    warnings = self._resolve(
+      tmp_path,
+      caplog,
+      floor={
+        "system.canon": "/h/canon",
+        "box.bindings.ro": {canon_dest: ("{system.canon}/handbook/general", "ro")},
+      },
+      entry_dest="~/canon/handbook/general",
+    )
+    assert len(warnings) == 1, warnings
+    text = warnings[0]
+    assert "system.canon" in text
+    assert "Set system.canon to null" in text  # ...and it is a remedy that WORKS
 
-    def test_an_admitted_source_key_is_still_offered(self, tmp_path, caplog):
-        warnings = self._resolve(
-            tmp_path, caplog, floor=self._LOG_FLOOR,
-            entry_dest="~/.kanibako/state/helpers.jsonl",
-        )
-        assert len(warnings) == 1, warnings
-        assert "Set workset.logs to null" in warnings[0]
+  def test_an_admitted_source_key_is_still_offered(self, tmp_path, caplog):
+    warnings = self._resolve(
+      tmp_path,
+      caplog,
+      floor=self._LOG_FLOOR,
+      entry_dest="~/.kanibako/state/helpers.jsonl",
+    )
+    assert len(warnings) == 1, warnings
+    assert "Set workset.logs to null" in warnings[0]
 
-    def test_the_cure_follows_the_doors_own_membership(self):
-        from kanibako.settings.config import refuses_null_path_key
+  def test_the_cure_follows_the_doors_own_membership(self):
+    from kanibako.settings.config import refuses_null_path_key
 
-        for key in ("system.canon", "system.channels.common", "system.channels.chat",
-                    "system.channels.mailboxes", "system.channels.share"):
-            assert not refuses_null_path_key(key), key  # a null there OMITS a bind
-        # ...and a key that sources no bind still refuses, which is what keeps the
-        # OFFERED side above honest: the filter is not "never offer".
-        for key in ("system.cache", "system.channelroot"):
-            assert refuses_null_path_key(key), key
-        assert not refuses_null_path_key("workset.logs")  # never a path key to begin with
+    for key in (
+      "system.canon",
+      "system.channels.common",
+      "system.channels.chat",
+      "system.channels.mailboxes",
+      "system.channels.share",
+    ):
+      assert not refuses_null_path_key(key), key  # a null there OMITS a bind
+    # ...and a key that sources no bind still refuses, which is what keeps the
+    # OFFERED side above honest: the filter is not "never offer".
+    for key in ("system.cache", "system.channelroot"):
+      assert refuses_null_path_key(key), key
+    assert not refuses_null_path_key("workset.logs")  # never a path key to begin with
 
 
 class TestNullRefSecretPath:
-    """[Q94] 3: a ``secret_path`` whose value references a present ``<None>`` is
-    ``<None>`` itself (spec §0), so the box starts WITHOUT that secret, and the
-    launch warns, naming the key and where the ``<None>`` was set (fail-soft).
-    """
+  """[Q94] 3: a ``secret_path`` whose value references a present ``<None>`` is
+  ``<None>`` itself (spec §0), so the box starts WITHOUT that secret, and the
+  launch warns, naming the key and where the ``<None>`` was set (fail-soft).
+  """
 
-    _SECRET = {"box": {"secret_path": {"TOK": "{workset.auth.path}/tok"}}}
+  _SECRET = {"box": {"secret_path": {"TOK": "{workset.auth.path}/tok"}}}
 
-    def _resolve(self, tmp_path, caplog, *, box, floor, workset=None):
-        from kanibako.settings.settings_launch import reset_none_warnings
+  def _resolve(self, tmp_path, caplog, *, box, floor, workset=None):
+    from kanibako.settings.settings_launch import reset_none_warnings
 
-        reset_none_warnings()
-        box_path = _write_yaml(tmp_path / "box.yaml", box)
-        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        for _ in range(2):  # one command, several resolves: ONE warning.
-            snap = build_launch_snapshot(
-                agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-                workset_path=ws_path, box_path=box_path, default_categories=floor,
-                meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
-            )
-        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        delivered = {e.name for e in entries if e.category == "env"} | {
-            e.name for e in secret_path_deliveries(entries)
-        }
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        return delivered, warnings
+    reset_none_warnings()
+    box_path = _write_yaml(tmp_path / "box.yaml", box)
+    ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    for _ in range(2):  # one command, several resolves: ONE warning.
+      snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=ws_path,
+        box_path=box_path,
+        default_categories=floor,
+        meta_identity={"meta.box.name": "b1"},
+        valid_agents=("claude",),
+      )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    delivered = {e.name for e in entries if e.category == "env"} | {
+      e.name for e in secret_path_deliveries(entries)
+    }
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    return delivered, warnings
 
-    def test_the_control_mounts_the_secret_silently(self, tmp_path, caplog):
-        assert self._resolve(
-            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": "/h/auth"},
-        ) == ({"TOK"}, [])
+  def test_the_control_mounts_the_secret_silently(self, tmp_path, caplog):
+    assert self._resolve(
+      tmp_path,
+      caplog,
+      box=self._SECRET,
+      floor={"workset.auth.path": "/h/auth"},
+    ) == ({"TOK"}, [])
 
-    def test_a_null_the_floor_supplies_leaves_the_secret_out_and_warns(
-        self, tmp_path, caplog,
-    ):
-        # The standalone case: ``workset.auth.path`` is the floor's ``<None>`` row.
-        delivered, warnings = self._resolve(
-            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": None},
-        )
-        assert delivered == set()
-        assert len(warnings) == 1, warnings
-        assert "box.secret_path.TOK" in warnings[0]
-        assert "workset.auth.path (null in kanibako's defaults" in warnings[0]
+  def test_a_null_the_floor_supplies_leaves_the_secret_out_and_warns(
+    self,
+    tmp_path,
+    caplog,
+  ):
+    # The standalone case: ``workset.auth.path`` is the floor's ``<None>`` row.
+    delivered, warnings = self._resolve(
+      tmp_path,
+      caplog,
+      box=self._SECRET,
+      floor={"workset.auth.path": None},
+    )
+    assert delivered == set()
+    assert len(warnings) == 1, warnings
+    assert "box.secret_path.TOK" in warnings[0]
+    assert "workset.auth.path (null in kanibako's defaults" in warnings[0]
 
-    def test_the_standalone_auth_floor_warns_through_the_launch_floors(
-        self, tmp_path, caplog,
-    ):
-        # The production auth floor (``auth_chain_floor``), not a hand-built one.
-        from kanibako.settings.settings_launch import reset_none_warnings
+  def test_the_standalone_auth_floor_warns_through_the_launch_floors(
+    self,
+    tmp_path,
+    caplog,
+  ):
+    # The production auth floor (``auth_chain_floor``), not a hand-built one.
+    from kanibako.settings.settings_launch import reset_none_warnings
 
-        reset_none_warnings()
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        snap = _auth_snapshot("standalone", tmp_path=tmp_path, box_file=self._SECRET)
-        assert not secret_path_deliveries(snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=_ctx(),
-        ))
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        assert warnings == [
-            "box.secret_path.TOK is '{workset.auth.path}/tok', which references "
-            "workset.auth.path (null in kanibako's defaults for this box), so it is "
-            "null and the secret TOK is not mounted from it."
-        ]
+    reset_none_warnings()
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    snap = _auth_snapshot("standalone", tmp_path=tmp_path, box_file=self._SECRET)
+    assert not secret_path_deliveries(
+      snapshot_category_entries(
+        snap,
+        active_agent="claude",
+        box_ctx=_ctx(),
+      )
+    )
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    assert warnings == [
+      "box.secret_path.TOK is '{workset.auth.path}/tok', which references "
+      "workset.auth.path (null in kanibako's defaults for this box), so it is "
+      "null and the secret TOK is not mounted from it."
+    ]
 
-    def test_a_null_a_file_sets_is_named_by_that_file(self, tmp_path, caplog):
-        delivered, warnings = self._resolve(
-            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": "/h/auth"},
-            workset={"workset": {"auth": {"path": None}}},
-        )
-        assert delivered == set()
-        assert len(warnings) == 1, warnings
-        assert f"workset.auth.path (null in {tmp_path / 'workset.yaml'})" in warnings[0]
+  def test_a_null_a_file_sets_is_named_by_that_file(self, tmp_path, caplog):
+    delivered, warnings = self._resolve(
+      tmp_path,
+      caplog,
+      box=self._SECRET,
+      floor={"workset.auth.path": "/h/auth"},
+      workset={"workset": {"auth": {"path": None}}},
+    )
+    assert delivered == set()
+    assert len(warnings) == 1, warnings
+    assert f"workset.auth.path (null in {tmp_path / 'workset.yaml'})" in warnings[0]
 
-    def test_a_secret_path_set_to_null_is_a_silent_reset(self, tmp_path, caplog):
-        assert self._resolve(
-            tmp_path, caplog, box={"box": {"secret_path": {"TOK": None}}},
-            floor={"workset.auth.path": "/h/auth"},
-        ) == (set(), [])
+  def test_a_secret_path_set_to_null_is_a_silent_reset(self, tmp_path, caplog):
+    assert self._resolve(
+      tmp_path,
+      caplog,
+      box={"box": {"secret_path": {"TOK": None}}},
+      floor={"workset.auth.path": "/h/auth"},
+    ) == (set(), [])
 
-    def test_an_env_value_with_a_null_ref_is_left_out(self, tmp_path, caplog):
-        # B5: ``env`` skips a ``<None>`` value, an embedded one included; no warning.
-        assert self._resolve(
-            tmp_path, caplog, box={"box": {"env": {"PROBE": "{workset.auth.path}/y"}}},
-            floor={"workset.auth.path": None},
-        ) == (set(), [])
+  def test_an_env_value_with_a_null_ref_is_left_out(self, tmp_path, caplog):
+    # B5: ``env`` skips a ``<None>`` value, an embedded one included; no warning.
+    assert self._resolve(
+      tmp_path,
+      caplog,
+      box={"box": {"env": {"PROBE": "{workset.auth.path}/y"}}},
+      floor={"workset.auth.path": None},
+    ) == (set(), [])
 
 
 # --------------------------------------------------------------------------- #
@@ -7279,209 +8100,244 @@ class TestNullRefSecretPath:
 
 
 class TestAgentFileCategoryReset:
-    """2C: a category key in the agent file reaches the cascade whatever it holds."""
+  """2C: a category key in the agent file reaches the cascade whatever it holds."""
 
-    def test_a_null_category_resets_the_system_files_table(self, tmp_path):
-        # §2a: ``caches: null`` at the agent file's tier RESETS the category the system file
-        # supplies — the capability the old ``isinstance(flat, dict) and flat`` filter lost.
-        # (INVERT: the control file says nothing about ``caches`` and ``/c`` stands.)
-        from kanibako.settings.settings_launch import snapshot_leaf
+  def test_a_null_category_resets_the_system_files_table(self, tmp_path):
+    # §2a: ``caches: null`` at the agent file's tier RESETS the category the system file
+    # supplies — the capability the old ``isinstance(flat, dict) and flat`` filter lost.
+    # (INVERT: the control file says nothing about ``caches`` and ``/c`` stands.)
+    from kanibako.settings.settings_launch import snapshot_leaf
 
-        system = {"agent": {"claude": {"caches": {"/c": ["/h/c"]}}}}
-        snap = TestAgentFileAgentTable._snap(tmp_path, {"self": {"caches": None}}, system=system)
-        reset = snapshot_leaf(snap, "agent.claude.caches")
-        assert not isinstance(reset, dict) or "/c" not in reset
-        control = TestAgentFileAgentTable._snap(tmp_path, {"self": {}}, system=system)
-        assert "/c" in snapshot_leaf(control, "agent.claude.caches")
+    system = {"agent": {"claude": {"caches": {"/c": ["/h/c"]}}}}
+    snap = TestAgentFileAgentTable._snap(tmp_path, {"self": {"caches": None}}, system=system)
+    reset = snapshot_leaf(snap, "agent.claude.caches")
+    assert not isinstance(reset, dict) or "/c" not in reset
+    control = TestAgentFileAgentTable._snap(tmp_path, {"self": {}}, system=system)
+    assert "/c" in snapshot_leaf(control, "agent.claude.caches")
 
 
 class TestAgentFileAgentTable:
-    """What "by construction" means for Q92, pinned on the launch snapshot: the file is read
-    only while its agent is active, so its ``agent:`` nodes apply only then."""
+  """What "by construction" means for Q92, pinned on the launch snapshot: the file is read
+  only while its agent is active, so its ``agent:`` nodes apply only then."""
 
-    @staticmethod
-    def _snap(tmp_path, doc, *, system=None):
-        agent_file = _yaml(tmp_path / "agent.yaml", doc)
-        system_file = _yaml(tmp_path / "system.yaml", system) if system else None
-        # The production pair: the launch's record read judges the file by name
-        # (``start.py``'s ``agent_record``), then the snapshot reads it by path.
-        agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE)
-        return build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=system_file, agent_path=agent_file,
-            workset_path=None, box_path=None,
-        )
+  @staticmethod
+  def _snap(tmp_path, doc, *, system=None):
+    agent_file = _yaml(tmp_path / "agent.yaml", doc)
+    system_file = _yaml(tmp_path / "system.yaml", system) if system else None
+    # The production pair: the launch's record read judges the file by name
+    # (``start.py``'s ``agent_record``), then the snapshot reads it by path.
+    agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE)
+    return build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=system_file,
+      agent_path=agent_file,
+      workset_path=None,
+      box_path=None,
+    )
 
-    def test_a_box_table_applies_above_the_system_file(self, tmp_path):
-        # 2E (Q85): the agent file's ``box:`` table merges defaults-down — below the box
-        # file, above the system file. (Mutation: drop ``level.contained`` from
-        # ``agent_file_partial`` → ``A`` is absent → RED.)
-        from kanibako.settings.settings_launch import snapshot_leaf
+  def test_a_box_table_applies_above_the_system_file(self, tmp_path):
+    # 2E (Q85): the agent file's ``box:`` table merges defaults-down — below the box
+    # file, above the system file. (Mutation: drop ``level.contained`` from
+    # ``agent_file_partial`` → ``A`` is absent → RED.)
+    from kanibako.settings.settings_launch import snapshot_leaf
 
-        snap = self._snap(tmp_path, {"self": {}, "box": {"env": {"A": "agent"}}},
-                          system={"box": {"env": {"A": "system"}}})
-        assert snapshot_leaf(snap, "box.env.A") == "agent"
+    snap = self._snap(
+      tmp_path,
+      {"self": {}, "box": {"env": {"A": "agent"}}},
+      system={"box": {"env": {"A": "system"}}},
+    )
+    assert snapshot_leaf(snap, "box.env.A") == "agent"
 
-    def test_the_own_node_sets_the_active_agent(self, tmp_path):
-        snap = self._snap(tmp_path, {"agent": {"claude": {"model": "own"}}})
-        assert effective_behavior(snap, active_agent="claude")["model"] == "own"
+  def test_the_own_node_sets_the_active_agent(self, tmp_path):
+    snap = self._snap(tmp_path, {"agent": {"claude": {"model": "own"}}})
+    assert effective_behavior(snap, active_agent="claude")["model"] == "own"
 
-    def test_the_default_node_applies_and_outranks_the_system_file(self, tmp_path):
-        # The agent file is MORE specific than the system file, for ``agent.default.*`` too.
-        # (INVERT: drop the agent file's table and the system's ``s`` stands.)
-        system = {"agent": {"default": {"model": "s"}}}
-        snap = self._snap(tmp_path, {"agent": {"default": {"model": "d"}}}, system=system)
-        assert effective_behavior(snap, active_agent="claude")["model"] == "d"
-        control = self._snap(tmp_path, {"self": {"env": {"A": "1"}}}, system=system)
-        assert effective_behavior(control, active_agent="claude")["model"] == "s"
+  def test_the_default_node_applies_and_outranks_the_system_file(self, tmp_path):
+    # The agent file is MORE specific than the system file, for ``agent.default.*`` too.
+    # (INVERT: drop the agent file's table and the system's ``s`` stands.)
+    system = {"agent": {"default": {"model": "s"}}}
+    snap = self._snap(tmp_path, {"agent": {"default": {"model": "d"}}}, system=system)
+    assert effective_behavior(snap, active_agent="claude")["model"] == "d"
+    control = self._snap(tmp_path, {"self": {"env": {"A": "1"}}}, system=system)
+    assert effective_behavior(control, active_agent="claude")["model"] == "s"
 
-    def test_the_root_still_beats_the_files_own_default(self, tmp_path):
-        snap = self._snap(tmp_path, {
-            "self": {"model": "own"}, "agent": {"default": {"model": "d"}},
-        })
-        assert effective_behavior(snap, active_agent="claude")["model"] == "own"
+  def test_the_root_still_beats_the_files_own_default(self, tmp_path):
+    snap = self._snap(
+      tmp_path,
+      {
+        "self": {"model": "own"},
+        "agent": {"default": {"model": "d"}},
+      },
+    )
+    assert effective_behavior(snap, active_agent="claude")["model"] == "own"
 
-    def test_another_agents_node_merges_but_is_never_picked(self, tmp_path):
-        snap = self._snap(tmp_path, {"agent": {"goose": {"model": "g"}}})
-        assert snap.agent.goose.model == "g"
-        assert effective_behavior(snap, active_agent="claude").get("model") != "g"
+  def test_another_agents_node_merges_but_is_never_picked(self, tmp_path):
+    snap = self._snap(tmp_path, {"agent": {"goose": {"model": "g"}}})
+    assert snap.agent.goose.model == "g"
+    assert effective_behavior(snap, active_agent="claude").get("model") != "g"
 
-    @pytest.mark.parametrize(("doc", "expected"), (
-        # D1: the own node as a VALUE beside ``self:`` — merged, it replaced ``agent.claude``
-        # and every ``self:`` category silently vanished from the snapshot.
-        ({"self": {"model": "a", "env": {"A": "1"}}, "agent": {"claude": 5}},
-         "writes agent 'claude' a second time"),
-        # A table at a scalar leaf: the file's read refuses its shape first.
-        ({"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}},
-         "holds a table where a single value belongs"),
-        # The fold-in: an undeclared key in the table, refused as ``self:``'s would be.
-        ({"agent": {"claude": {"bogus": 1}}}, "carries 'agent.claude.bogus'"),
-    ))
-    def test_the_production_pair_refuses_by_name(self, tmp_path, doc, expected):
-        with pytest.raises(SettingsError) as exc:
-            self._snap(tmp_path, doc)
-        assert expected in str(exc.value)
+  @pytest.mark.parametrize(
+    ("doc", "expected"),
+    (
+      # D1: the own node as a VALUE beside ``self:`` — merged, it replaced ``agent.claude``
+      # and every ``self:`` category silently vanished from the snapshot.
+      (
+        {"self": {"model": "a", "env": {"A": "1"}}, "agent": {"claude": 5}},
+        "writes agent 'claude' a second time",
+      ),
+      # A table at a scalar leaf: the file's read refuses its shape first.
+      (
+        {"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}},
+        "holds a table where a single value belongs",
+      ),
+      # The fold-in: an undeclared key in the table, refused as ``self:``'s would be.
+      ({"agent": {"claude": {"bogus": 1}}}, "carries 'agent.claude.bogus'"),
+    ),
+  )
+  def test_the_production_pair_refuses_by_name(self, tmp_path, doc, expected):
+    with pytest.raises(SettingsError) as exc:
+      self._snap(tmp_path, doc)
+    assert expected in str(exc.value)
 
-    def test_self_and_the_own_node_setting_one_leaf_refuse(self, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            self._snap(tmp_path, {
-                "self": {"model": "a"}, "agent": {"claude": {"model": "b"}},
-            })
-        assert "`self.model` and `agent.claude.model`" in str(exc.value)
+  def test_self_and_the_own_node_setting_one_leaf_refuse(self, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      self._snap(
+        tmp_path,
+        {
+          "self": {"model": "a"},
+          "agent": {"claude": {"model": "b"}},
+        },
+      )
+    assert "`self.model` and `agent.claude.model`" in str(exc.value)
 
 
 class TestTheAgentFileGetsOneVerdict:
-    """S4: every shape of an agent file gets the SAME verdict from ``load`` (the ``agent`` verbs'
-    reader) as from the launch — category CONTENTS, a category holding a value under ``self:``,
-    and ``self`` spelled as a node."""
+  """S4: every shape of an agent file gets the SAME verdict from ``load`` (the ``agent`` verbs'
+  reader) as from the launch — category CONTENTS, a category holding a value under ``self:``,
+  and ``self`` spelled as a node."""
 
-    _ARM = {"/box/x": ["/h/x"]}
+  _ARM = {"/box/x": ["/h/x"]}
 
-    @staticmethod
-    def _launch(tmp_path, doc, *, system=None):
-        return TestAgentFileAgentTable._snap(tmp_path, doc, system=system)
+  @staticmethod
+  def _launch(tmp_path, doc, *, system=None):
+    return TestAgentFileAgentTable._snap(tmp_path, doc, system=system)
 
-    @pytest.mark.parametrize(("doc", "expected"), (
-        ({"self": {"bindings": {"zz": _ARM}}}, "carries 'agent.claude.bindings.zz'"),
-        ({"agent": {"claude": {"bindings": {"zz": _ARM}}}}, "carries 'agent.claude.bindings.zz'"),
-        ({"agent": {"default": {"bindings": {"zz": _ARM}}}}, "carries 'agent.default.bindings.zz'"),
-        ({"self": {"env": {"1BAD": "x"}}}, "carries 'agent.claude.env.1BAD'"),
-        # Silently dropped by BOTH readers before: ``level_table`` keeps only a TABLE category,
-        # and ``load`` kept every modeled key out of what it judged.
-        ({"self": {"env": 5}}, "'agent.claude.env' is a namespace"),
-        ({"self": {"secret_path": 5}}, "'agent.claude.secret_path' is a namespace"),
-        # ``self`` is the file's alias, never a key segment — as a node, spelled any way.
-        ({"agent": {"self": {"model": "x"}}}, "carries 'agent.self.model'"),
-        ({"agent": {"Self": {"model": "x"}}}, "carries 'agent.Self.model'"),
-        ({"agent": {"self": {}}}, "carries 'agent.self'"),
-    ))
-    def test_load_and_the_launch_refuse_alike(self, tmp_path, doc, expected):
-        with pytest.raises(SettingsError) as launched:
-            self._launch(tmp_path, doc)
-        path = _yaml(tmp_path / "agent.yaml", doc)
-        with pytest.raises(SettingsError) as loaded:
-            agent_file_load(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert expected in str(launched.value)
-        assert str(loaded.value) == str(launched.value)
+  @pytest.mark.parametrize(
+    ("doc", "expected"),
+    (
+      ({"self": {"bindings": {"zz": _ARM}}}, "carries 'agent.claude.bindings.zz'"),
+      ({"agent": {"claude": {"bindings": {"zz": _ARM}}}}, "carries 'agent.claude.bindings.zz'"),
+      ({"agent": {"default": {"bindings": {"zz": _ARM}}}}, "carries 'agent.default.bindings.zz'"),
+      ({"self": {"env": {"1BAD": "x"}}}, "carries 'agent.claude.env.1BAD'"),
+      # Silently dropped by BOTH readers before: ``level_table`` keeps only a TABLE category,
+      # and ``load`` kept every modeled key out of what it judged.
+      ({"self": {"env": 5}}, "'agent.claude.env' is a namespace"),
+      ({"self": {"secret_path": 5}}, "'agent.claude.secret_path' is a namespace"),
+      # ``self`` is the file's alias, never a key segment — as a node, spelled any way.
+      ({"agent": {"self": {"model": "x"}}}, "carries 'agent.self.model'"),
+      ({"agent": {"Self": {"model": "x"}}}, "carries 'agent.Self.model'"),
+      ({"agent": {"self": {}}}, "carries 'agent.self'"),
+    ),
+  )
+  def test_load_and_the_launch_refuse_alike(self, tmp_path, doc, expected):
+    with pytest.raises(SettingsError) as launched:
+      self._launch(tmp_path, doc)
+    path = _yaml(tmp_path / "agent.yaml", doc)
+    with pytest.raises(SettingsError) as loaded:
+      agent_file_load(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert expected in str(launched.value)
+    assert str(loaded.value) == str(launched.value)
 
-    @pytest.mark.parametrize("doc", (
-        {"self": {"bindings": {"ro": _ARM}, "env": {"A": "1"}, "masks": {"/m": True}}},
-        {"agent": {"claude": {"bindings": {"ro": _ARM}}, "default": {"env": {"A": "1"}}}},
-    ))
-    def test_the_declared_shapes_pass_both(self, tmp_path, doc):
-        # The CONTROL: the new judgment refuses the shapes above, not the category tables.
-        self._launch(tmp_path, doc)
-        agent_file_load(_yaml(tmp_path / "agent.yaml", doc), node="claude", purpose=ReadPurpose.RESOLVE)
-
-    @pytest.mark.writes_undeclared(
-        "agent.self", "agent.self.model",
-        reason="the system file's agent table is assembled into the snapshot, which is what "
-               "the §0 audit then refuses — naming the alias as no agent.",
+  @pytest.mark.parametrize(
+    "doc",
+    (
+      {"self": {"bindings": {"ro": _ARM}, "env": {"A": "1"}, "masks": {"/m": True}}},
+      {"agent": {"claude": {"bindings": {"ro": _ARM}}, "default": {"env": {"A": "1"}}}},
+    ),
+  )
+  def test_the_declared_shapes_pass_both(self, tmp_path, doc):
+    # The CONTROL: the new judgment refuses the shapes above, not the category tables.
+    self._launch(tmp_path, doc)
+    agent_file_load(
+      _yaml(tmp_path / "agent.yaml", doc), node="claude", purpose=ReadPurpose.RESOLVE
     )
-    def test_the_system_file_refuses_self_as_a_node(self, tmp_path):
-        # When a parent and its child are both undeclared, only the parent is named
-        # (spec §0: an undeclared key is an ERROR that NAMES the offending key; naming the
-        # parent names the fix).
-        with pytest.raises(SettingsError) as exc:
-            self._launch(tmp_path, {"self": {}}, system={"agent": {"self": {"model": "x"}}})
-        assert "agent.self: 'self' is not an agent" in str(exc.value)
 
-    def test_the_own_node_value_reaches_the_launch_once(self, tmp_path):
-        # ``agent: <own>:`` rides the file's level once, through its ``agent:`` table:
-        # one value, one node, one answer.
-        snap = self._launch(tmp_path, {"agent": {"claude": {"model": "b"}}})
-        assert effective_behavior(snap, active_agent="claude")["model"] == "b"
+  @pytest.mark.writes_undeclared(
+    "agent.self",
+    "agent.self.model",
+    reason="the system file's agent table is assembled into the snapshot, which is what "
+    "the §0 audit then refuses — naming the alias as no agent.",
+  )
+  def test_the_system_file_refuses_self_as_a_node(self, tmp_path):
+    # When a parent and its child are both undeclared, only the parent is named
+    # (spec §0: an undeclared key is an ERROR that NAMES the offending key; naming the
+    # parent names the fix).
+    with pytest.raises(SettingsError) as exc:
+      self._launch(tmp_path, {"self": {}}, system={"agent": {"self": {"model": "x"}}})
+    assert "agent.self: 'self' is not an agent" in str(exc.value)
+
+  def test_the_own_node_value_reaches_the_launch_once(self, tmp_path):
+    # ``agent: <own>:`` rides the file's level once, through its ``agent:`` table:
+    # one value, one node, one answer.
+    snap = self._launch(tmp_path, {"agent": {"claude": {"model": "b"}}})
+    assert effective_behavior(snap, active_agent="claude")["model"] == "b"
 
 
 class TestPersonaValuesAreDataNotExpressions:
-    """A persona-store value comes from a HARNESS config, not a settings file, so
-    ``@`` / ``$`` / ``~`` / ``\\`` in it are characters, never tokens.
+  """A persona-store value comes from a HARNESS config, not a settings file, so
+  ``@`` / ``$`` / ``~`` / ``\\`` in it are characters, never tokens.
 
-    The incident: ``https://user:key@host.invalid/v1`` lost ``@host.invalid`` to
-    ``{key}``-ref expansion (an unknown ref coerces to ``""`` when embedded), which
-    corrupted the delivered ``ANTHROPIC_BASE_URL`` and left the userinfo scrub no
-    ``@`` to find, so the credential printed.
-    """
+  The incident: ``https://user:key@host.invalid/v1`` lost ``@host.invalid`` to
+  ``{key}``-ref expansion (an unknown ref coerces to ``""`` when embedded), which
+  corrupted the delivered ``ANTHROPIC_BASE_URL`` and left the userinfo scrub no
+  ``@`` to find, so the credential printed.
+  """
 
-    _RAW = {
-        "endpoint": "https://SEKRITU:SEKRITP@host.invalid/v1",
-        "model": "~org/m@{x}",
-        "secret_path.ANTHROPIC_AUTH_TOKEN": "/tok/$NOPE/@a.b/tok",
-        "env.PERSONA_FLAG": "a$NOPE ${X} \\@y \\",
-    }
+  _RAW = {
+    "endpoint": "https://SEKRITU:SEKRITP@host.invalid/v1",
+    "model": "~org/m@{x}",
+    "secret_path.ANTHROPIC_AUTH_TOKEN": "/tok/$NOPE/@a.b/tok",
+    "env.PERSONA_FLAG": "a$NOPE ${X} \\@y \\",
+  }
 
-    @pytest.mark.parametrize("key,path", _PERSONA_CLASSES, ids=lambda v: str(v))
-    def test_every_value_class_arrives_verbatim(self, tmp_path, key, path):
-        raw = self._RAW[key]
-        snap = _persona_snap(tmp_path, persona_values={key: raw})
-        assert _leaf(snap, path) == raw
+  @pytest.mark.parametrize("key,path", _PERSONA_CLASSES, ids=lambda v: str(v))
+  def test_every_value_class_arrives_verbatim(self, tmp_path, key, path):
+    raw = self._RAW[key]
+    snap = _persona_snap(tmp_path, persona_values={key: raw})
+    assert _leaf(snap, path) == raw
 
-    def test_the_delivered_base_url_is_the_endpoint_as_written(self, tmp_path):
-        from kanibako.targets.assembly import assemble_env
-        from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
+  def test_the_delivered_base_url_is_the_endpoint_as_written(self, tmp_path):
+    from kanibako.targets.assembly import assemble_env
+    from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
 
-        raw = self._RAW["endpoint"]
-        snap = _persona_snap(tmp_path, persona_values={"endpoint": raw})
-        values = effective_behavior(snap, active_agent="claude")
-        descriptor = PluginDescriptor(
-            command=("claude",), bindings=(), mode={"start": ()},
-            settings=(SettingArg(
-                setting_key="endpoint", channel=Channel.ENV, env_var="ANTHROPIC_BASE_URL",
-            ),),
-        )
-        env = assemble_env(descriptor, access="full", setting_values=values)
-        assert env["ANTHROPIC_BASE_URL"] == raw
+    raw = self._RAW["endpoint"]
+    snap = _persona_snap(tmp_path, persona_values={"endpoint": raw})
+    values = effective_behavior(snap, active_agent="claude")
+    descriptor = PluginDescriptor(
+      command=("claude",),
+      bindings=(),
+      mode={"start": ()},
+      settings=(
+        SettingArg(
+          setting_key="endpoint",
+          channel=Channel.ENV,
+          env_var="ANTHROPIC_BASE_URL",
+        ),
+      ),
+    )
+    env = assemble_env(descriptor, access="full", setting_values=values)
+    assert env["ANTHROPIC_BASE_URL"] == raw
 
-    def test_a_settings_file_endpoint_is_no_longer_unescaped(self, tmp_path):
-        """The ``\\@`` a settings file once needed is two characters now (keyspec
-        ``agent.default.endpoint``: VERBATIM TEXT), so it is delivered as written."""
-        snap = _persona_snap(
-            tmp_path, persona_values={},
-            system={"agent": {"claude": {"endpoint": "https://u:k\\@h/v1"}}},
-        )
-        assert effective_behavior(snap, active_agent="claude")["endpoint"] == (
-            "https://u:k\\@h/v1"
-        )
+  def test_a_settings_file_endpoint_is_no_longer_unescaped(self, tmp_path):
+    """The ``\\@`` a settings file once needed is two characters now (keyspec
+    ``agent.default.endpoint``: VERBATIM TEXT), so it is delivered as written."""
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={},
+      system={"agent": {"claude": {"endpoint": "https://u:k\\@h/v1"}}},
+    )
+    assert effective_behavior(snap, active_agent="claude")["endpoint"] == ("https://u:k\\@h/v1")
 
 
 #: Every character a settings EXPRESSION reads as syntax, in one endpoint.
@@ -7489,115 +8345,164 @@ _TEXT_ENDPOINT = "https://SEKRITU:SEKRITP@host.invalid/v1/$NOPE/~x/@{a.b}/a\\b"
 
 
 def _file_endpoint(tier: str, node: str) -> dict:
-    """``_persona_snap`` kwargs carrying :data:`_TEXT_ENDPOINT` at *node* in *tier*'s file."""
-    if tier == "agent_file":
-        return {"agent_file": {"self": {"endpoint": _TEXT_ENDPOINT}}}
-    return {tier: {"agent": {node: {"endpoint": _TEXT_ENDPOINT}}}}
+  """``_persona_snap`` kwargs carrying :data:`_TEXT_ENDPOINT` at *node* in *tier*'s file."""
+  if tier == "agent_file":
+    return {"agent_file": {"self": {"endpoint": _TEXT_ENDPOINT}}}
+  return {tier: {"agent": {node: {"endpoint": _TEXT_ENDPOINT}}}}
 
 
 class TestASettingsFileEndpointIsText:
-    """Keyspec ``agent.default.endpoint``: VERBATIM TEXT in every settings file — no
-    ``{key}``-ref, ``{$VAR}``/``~`` expansion or ``\\`` unescape [Jei:2026-10-04].
+  """Keyspec ``agent.default.endpoint``: VERBATIM TEXT in every settings file — no
+  ``{key}``-ref, ``{$VAR}``/``~`` expansion or ``\\`` unescape [Jei:2026-10-04].
 
-    The persona store's half is :class:`TestPersonaValuesAreDataNotExpressions`.
-    """
+  The persona store's half is :class:`TestPersonaValuesAreDataNotExpressions`.
+  """
 
-    @pytest.mark.parametrize("tier,node", [
-        ("system", "default"), ("system", "claude"), ("agent_file", "claude"),
-    ])
-    def test_the_endpoint_resolves_as_written(self, tmp_path, tier, node):
-        snap = _persona_snap(tmp_path, persona_values={}, **_file_endpoint(tier, node))
-        assert effective_behavior(snap, active_agent="claude")["endpoint"] == _TEXT_ENDPOINT
+  @pytest.mark.parametrize(
+    "tier,node",
+    [
+      ("system", "default"),
+      ("system", "claude"),
+      ("agent_file", "claude"),
+    ],
+  )
+  def test_the_endpoint_resolves_as_written(self, tmp_path, tier, node):
+    snap = _persona_snap(tmp_path, persona_values={}, **_file_endpoint(tier, node))
+    assert effective_behavior(snap, active_agent="claude")["endpoint"] == _TEXT_ENDPOINT
 
-    def test_the_delivered_base_url_is_the_file_endpoint_as_written(self, tmp_path):
-        from kanibako.targets.assembly import assemble_env
-        from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
+  def test_the_delivered_base_url_is_the_file_endpoint_as_written(self, tmp_path):
+    from kanibako.targets.assembly import assemble_env
+    from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
 
-        snap = _persona_snap(
-            tmp_path, persona_values={}, **_file_endpoint("system", "default"),
-        )
-        values = effective_behavior(snap, active_agent="claude")
-        descriptor = PluginDescriptor(
-            command=("claude",), bindings=(), mode={"start": ()},
-            settings=(SettingArg(
-                setting_key="endpoint", channel=Channel.ENV, env_var="ANTHROPIC_BASE_URL",
-            ),),
-        )
-        env = assemble_env(descriptor, access="full", setting_values=values)
-        assert env["ANTHROPIC_BASE_URL"] == _TEXT_ENDPOINT
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={},
+      **_file_endpoint("system", "default"),
+    )
+    values = effective_behavior(snap, active_agent="claude")
+    descriptor = PluginDescriptor(
+      command=("claude",),
+      bindings=(),
+      mode={"start": ()},
+      settings=(
+        SettingArg(
+          setting_key="endpoint",
+          channel=Channel.ENV,
+          env_var="ANTHROPIC_BASE_URL",
+        ),
+      ),
+    )
+    env = assemble_env(descriptor, access="full", setting_values=values)
+    assert env["ANTHROPIC_BASE_URL"] == _TEXT_ENDPOINT
 
-    def test_a_ref_to_the_endpoint_reads_its_text(self, tmp_path):
-        """The referent is text too: ``{agent.claude.endpoint}`` from another key
-        substitutes the endpoint as written, not an expansion of it."""
-        snap = _persona_snap(
-            tmp_path, persona_values={},
-            system={"agent": {"claude": {
-                "endpoint": _TEXT_ENDPOINT, "env": {"BASE": "{agent.claude.endpoint}"},
-            }}},
-        )
-        assert _leaf(snap, ("env", "BASE")) == _TEXT_ENDPOINT
+  def test_a_ref_to_the_endpoint_reads_its_text(self, tmp_path):
+    """The referent is text too: ``{agent.claude.endpoint}`` from another key
+    substitutes the endpoint as written, not an expansion of it."""
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={},
+      system={
+        "agent": {
+          "claude": {
+            "endpoint": _TEXT_ENDPOINT,
+            "env": {"BASE": "{agent.claude.endpoint}"},
+          }
+        }
+      },
+    )
+    assert _leaf(snap, ("env", "BASE")) == _TEXT_ENDPOINT
 
-    def test_other_keys_still_expand(self, tmp_path):
-        """CONTROL — the rule is the endpoint's alone: a sibling key still resolves
-        its ``{key}``-ref and escape."""
-        snap = _persona_snap(
-            tmp_path, persona_values={},
-            system={"agent": {"claude": {
-                "model": "m-{agent.claude.env.TAG}@x\\~", "env": {"TAG": "t"},
-            }}},
-        )
-        assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x~"
+  def test_other_keys_still_expand(self, tmp_path):
+    """CONTROL — the rule is the endpoint's alone: a sibling key still resolves
+    its ``{key}``-ref and escape."""
+    snap = _persona_snap(
+      tmp_path,
+      persona_values={},
+      system={
+        "agent": {
+          "claude": {
+            "model": "m-{agent.claude.env.TAG}@x\\~",
+            "env": {"TAG": "t"},
+          }
+        }
+      },
+    )
+    assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x~"
 
 
-@pytest.mark.parametrize("box, named", [
+@pytest.mark.parametrize(
+  "box, named",
+  [
     ({"bindings": {"rw": {"{meta.agent.home}/x": ["/h/src"]}}}, "{meta.agent.home}"),
     ({"bindings": {"rw": {"{meta.agent.home}": ["/h/src"]}}}, "{meta.agent.home}"),
     ({"bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}}}, "{box.nope}"),
     ({"env": {"ZED": "{box.nope}"}}, "{box.nope}"),
     ({"env": {"ODD": "/e{v}$q"}}, "{v}"),
-], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
+  ],
+  ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"],
+)
 def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
-    """Spec §0: the keyspace is closed, so a ``{key}``-ref to an undeclared key is refused
-    NAMING it — never resolved as absence, which drops the key or empties the path."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """Spec §0: the keyspace is closed, so a ``{key}``-ref to an undeclared key is refused
+  NAMING it — never resolved as absence, which drops the key or empties the path."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError, match="references no key") as exc:
-        build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None, box_path=_write_yaml(tmp_path / "box.yaml", {"box": box}),
-        )
-    assert f"'{named}'" in str(exc.value)
+  with pytest.raises(SettingsError, match="references no key") as exc:
+    build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=_write_yaml(tmp_path / "box.yaml", {"box": box}),
+    )
+  assert f"'{named}'" in str(exc.value)
 
 
-@pytest.mark.parametrize("env", [
+@pytest.mark.parametrize(
+  "env",
+  [
     {"A": "x-{box.env.B}", "B": "{box.nope}"},
     {"B": "{box.nope}", "A": "x-{box.env.B}"},
-], ids=["holder-reached-through-a-ref", "holder-resolved-first"])
+  ],
+  ids=["holder-reached-through-a-ref", "holder-resolved-first"],
+)
 def test_the_refusal_names_the_key_that_holds_the_ref(tmp_path: Path, env):
-    """The key named is the one HOLDING the bad ref, whichever key the resolve reached first."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """The key named is the one HOLDING the bad ref, whichever key the resolve reached first."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None,
-            box_path=_write_yaml(tmp_path / "box.yaml", {"box": {"env": env}}),
-        )
-    assert str(exc.value).startswith("box.env.B: '{box.nope}' references no key"), exc.value
+  with pytest.raises(SettingsError) as exc:
+    build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=_write_yaml(tmp_path / "box.yaml", {"box": {"env": env}}),
+    )
+  assert str(exc.value).startswith("box.env.B: '{box.nope}' references no key"), exc.value
 
 
 def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
-    """Spec §0: a binding entry is ``box.bindings.ro[/opt/u]``; a dotted tail is not a key."""
-    from kanibako.settings.settings_resolve import SettingsError
+  """Spec §0: a binding entry is ``box.bindings.ro[/opt/u]``; a dotted tail is not a key."""
+  from kanibako.settings.settings_resolve import SettingsError
 
-    with pytest.raises(SettingsError) as exc:
-        build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None, box_path=_write_yaml(tmp_path / "box.yaml", {"box": {
-                "bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}},
-            }}),
-        )
-    assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '{box.nope}'"), exc.value
+  with pytest.raises(SettingsError) as exc:
+    build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=_write_yaml(
+        tmp_path / "box.yaml",
+        {
+          "box": {
+            "bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}},
+          }
+        },
+      ),
+    )
+  assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '{box.nope}'"), exc.value
 
 
 # --------------------------------------------------------------------------- #
@@ -7606,148 +8511,180 @@ def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
 
 
 class TestAFloorNullAddressNamesTheFileKeyBehindIt:
-    """``meta.box.inbox`` is SUPPLIED as a ``<None>`` whenever the mailboxes key it reads
-    is null, so a file that nulled that key dropped the ``~/channels/inbox`` bind without
-    saying which key did it.  ``meta.*`` is read-only (§0): naming the address names
-    something the user cannot set, so the warning must name the file key instead.
+  """``meta.box.inbox`` is SUPPLIED as a ``<None>`` whenever the mailboxes key it reads
+  is null, so a file that nulled that key dropped the ``~/channels/inbox`` bind without
+  saying which key did it.  ``meta.*`` is read-only (§0): naming the address names
+  something the user cannot set, so the warning must name the file key instead.
 
-    ⚑ THE ORDER IS DERIVATION ORDER — ``workset.channels.mailboxes`` reads
-    ``{system.channels.mailboxes}`` (spec §Channels table) — so a workset-local null is
-    reported ahead of the system default it shadows, and the two are not conflated.
-    """
+  ⚑ THE ORDER IS DERIVATION ORDER — ``workset.channels.mailboxes`` reads
+  ``{system.channels.mailboxes}`` (spec §Channels table) — so a workset-local null is
+  reported ahead of the system default it shadows, and the two are not conflated.
+  """
 
-    _DEST = f"{GUEST_HOME}/.kanibako/state/inbox"
-    _INBOX = f"{GUEST_HOME}/channels/inbox"
-    _FLOOR = {
-        "box.bindings.rw": {_DEST: ("{meta.box.inbox}",)},
-        "meta.box.inbox": None,
+  _DEST = f"{GUEST_HOME}/.kanibako/state/inbox"
+  _INBOX = f"{GUEST_HOME}/channels/inbox"
+  _FLOOR = {
+    "box.bindings.rw": {_DEST: ("{meta.box.inbox}",)},
+    "meta.box.inbox": None,
+  }
+
+  def _resolve(self, tmp_path, caplog, *, workset=None, floor=None):
+    from kanibako.settings.settings_launch import reset_none_warnings
+
+    reset_none_warnings()
+    ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=ws_path,
+      box_path=None,
+      default_categories=self._FLOOR if floor is None else floor,
+      meta_identity={"meta.box.name": "b1"},
+      valid_agents=("claude",),
+    )
+    mounted = {
+      e.box_dest
+      for e in snapshot_category_entries(
+        snap,
+        active_agent="claude",
+        box_ctx=_ctx(),
+      )
+      if e.category.startswith("bindings")
     }
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    return mounted, warnings
 
-    def _resolve(self, tmp_path, caplog, *, workset=None, floor=None):
-        from kanibako.settings.settings_launch import reset_none_warnings
+  def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
+    floor = {**self._FLOOR, "meta.box.inbox": "/h/inbox/b1"}
+    assert self._resolve(tmp_path, caplog, floor=floor) == ({self._DEST}, [])
 
-        reset_none_warnings()
-        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=ws_path, box_path=None,
-            default_categories=self._FLOOR if floor is None else floor,
-            meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
-        )
-        mounted = {
-            e.box_dest for e in snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=_ctx(),
-            )
-            if e.category.startswith("bindings")
+  def test_a_null_workset_mailboxes_names_that_key_and_its_file(self, tmp_path, caplog):
+    mounted, warnings = self._resolve(
+      tmp_path,
+      caplog,
+      workset={"workset": {"channels": {"mailboxes": None}}},
+    )
+    assert mounted == set()
+    assert len(warnings) == 1, warnings
+    text = warnings[0]
+    assert f"box.bindings.rw[{self._DEST}]" in text
+    assert "workset.channels.mailboxes" in text  # the key a user can set
+    assert str(tmp_path / "workset.yaml") in text  # and the file that set it
+    assert "meta.box.inbox" not in text  # read-only: never the blame
+
+  def test_a_null_system_mailboxes_names_that_key_instead(self, tmp_path, caplog):
+    """The SYSTEM key is the origin when no workset file nulled the local one."""
+    system = _write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "system": {
+          "channels": {
+            "mailboxes": None,
+          }
         }
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        return mounted, warnings
+      },
+    )
+    from kanibako.settings.settings_launch import reset_none_warnings
 
-    def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
-        floor = {**self._FLOOR, "meta.box.inbox": "/h/inbox/b1"}
-        assert self._resolve(tmp_path, caplog, floor=floor) == ({self._DEST}, [])
+    reset_none_warnings()
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=system,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=self._FLOOR,
+      meta_identity={"meta.box.name": "b1"},
+      valid_agents=("claude",),
+    )
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    assert len(warnings) == 1, warnings
+    assert "system.channels.mailboxes" in warnings[0]
+    assert str(system) in warnings[0]
+    assert "meta.box.inbox" not in warnings[0]
 
-    def test_a_null_workset_mailboxes_names_that_key_and_its_file(self, tmp_path, caplog):
-        mounted, warnings = self._resolve(
-            tmp_path, caplog, workset={"workset": {"channels": {"mailboxes": None}}},
-        )
-        assert mounted == set()
-        assert len(warnings) == 1, warnings
-        text = warnings[0]
-        assert f"box.bindings.rw[{self._DEST}]" in text
-        assert "workset.channels.mailboxes" in text          # the key a user can set
-        assert str(tmp_path / "workset.yaml") in text        # and the file that set it
-        assert "meta.box.inbox" not in text                  # read-only: never the blame
-
-    def test_a_null_system_mailboxes_names_that_key_instead(self, tmp_path, caplog):
-        """The SYSTEM key is the origin when no workset file nulled the local one."""
-        system = _write_yaml(tmp_path / "system.yaml", {"system": {"channels": {
+  def test_the_workset_local_key_is_named_ahead_of_the_system_one(self, tmp_path, caplog):
+    """Both null: the local repoint SHADOWS the system default, so it is named."""
+    system = _write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "system": {
+          "channels": {
             "mailboxes": None,
-        }}})
-        from kanibako.settings.settings_launch import reset_none_warnings
+          }
+        }
+      },
+    )
+    from kanibako.settings.settings_launch import reset_none_warnings
 
-        reset_none_warnings()
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
-            agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
-            workset_path=None, box_path=None,
-            default_categories=self._FLOOR, meta_identity={"meta.box.name": "b1"},
-            valid_agents=("claude",),
-        )
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        assert len(warnings) == 1, warnings
-        assert "system.channels.mailboxes" in warnings[0]
-        assert str(system) in warnings[0]
-        assert "meta.box.inbox" not in warnings[0]
+    reset_none_warnings()
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=system,
+      agent_path=None,
+      workset_path=_write_yaml(
+        tmp_path / "workset.yaml",
+        {"workset": {"channels": {"mailboxes": None}}},
+      ),
+      box_path=None,
+      default_categories=self._FLOOR,
+      meta_identity={"meta.box.name": "b1"},
+      valid_agents=("claude",),
+    )
+    warnings = [
+      r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+    ]
+    assert len(warnings) == 1, warnings
+    assert "workset.channels.mailboxes" in warnings[0]
+    assert "system.channels.mailboxes" not in warnings[0]
 
-    def test_the_workset_local_key_is_named_ahead_of_the_system_one(self, tmp_path, caplog):
-        """Both null: the local repoint SHADOWS the system default, so it is named."""
-        system = _write_yaml(tmp_path / "system.yaml", {"system": {"channels": {
-            "mailboxes": None,
-        }}})
-        from kanibako.settings.settings_launch import reset_none_warnings
-
-        reset_none_warnings()
-        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
-            agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
-            workset_path=_write_yaml(
-                tmp_path / "workset.yaml",
-                {"workset": {"channels": {"mailboxes": None}}},
-            ),
-            box_path=None, default_categories=self._FLOOR,
-            meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
-        )
-        warnings = [
-            r.getMessage() for r in caplog.records
-            if r.name == "kanibako.settings.settings_launch"
-        ]
-        assert len(warnings) == 1, warnings
-        assert "workset.channels.mailboxes" in warnings[0]
-        assert "system.channels.mailboxes" not in warnings[0]
-
-    def test_a_floor_null_nobody_wrote_is_silent(self, tmp_path, caplog):
-        """A ``<None>`` the floor itself supplies is not SET by anyone: §2a is silent."""
-        assert self._resolve(tmp_path, caplog) == (set(), [])
+  def test_a_floor_null_nobody_wrote_is_silent(self, tmp_path, caplog):
+    """A ``<None>`` the floor itself supplies is not SET by anyone: §2a is silent."""
+    assert self._resolve(tmp_path, caplog) == (set(), [])
 
 
 def test_a_stored_env_bool_is_delivered_as_the_string_it_has_always_been():
-    """A stored YAML bool reaches a harness as ``True``, not ``true``.
+  """A stored YAML bool reaches a harness as ``True``, not ``true``.
 
-    The ``get`` routes print a bool lowercase; the EXPORT does not, and must not: this is
-    the value a container's environment receives, and ``True`` is the spelling it has
-    always had. The two surfaces are separate — ``get`` reads the agent record, the export
-    is built from the raw tiers here and stringified by ``isinstance`` — so a fix to the
-    record's rendering cannot move this line.
-    """
-    snap = KeyStore({"box": {"env": {"ON": True, "OFF": False, "S": "true", "N": 0}}})
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    envs = {e.box_dest: e.options for e in entries if e.category == "env"}
-    assert envs == {"ON": "True", "OFF": "False", "S": "true", "N": "0"}
-    assert all(isinstance(v, str) for v in envs.values())
+  The ``get`` routes print a bool lowercase; the EXPORT does not, and must not: this is
+  the value a container's environment receives, and ``True`` is the spelling it has
+  always had. The two surfaces are separate — ``get`` reads the agent record, the export
+  is built from the raw tiers here and stringified by ``isinstance`` — so a fix to the
+  record's rendering cannot move this line.
+  """
+  snap = KeyStore({"box": {"env": {"ON": True, "OFF": False, "S": "true", "N": 0}}})
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  envs = {e.box_dest: e.options for e in entries if e.category == "env"}
+  assert envs == {"ON": "True", "OFF": "False", "S": "true", "N": "0"}
+  assert all(isinstance(v, str) for v in envs.values())
 
 
 def test_a_behavior_bool_is_stringified_by_the_reader_that_declares_the_dict():
-    """``effective_behavior`` is typed ``dict[str, str]``, so a bool in the snapshot and
-    the same text as a string reach every consumer identically.
+  """``effective_behavior`` is typed ``dict[str, str]``, so a bool in the snapshot and
+  the same text as a string reach every consumer identically.
 
-    ⚑ THIS IS WHY READING THE FILE'S VALUES VERBATIM IS SAFE FOR THE LAUNCH. The
-    ``agent.<active>`` level carries the file's real bool into the snapshot where the old
-    record rung handed ``"True"``; the reader that turns the snapshot into the assembler
-    input stringifies, so the assembler cannot tell them apart and no consumer is reached
-    by the change.
-    """
-    def _snap(model):
-        return KeyStore({"agent": {"claude": {"model": model}}})
+  ⚑ THIS IS WHY READING THE FILE'S VALUES VERBATIM IS SAFE FOR THE LAUNCH. The
+  ``agent.<active>`` level carries the file's real bool into the snapshot where the old
+  record rung handed ``"True"``; the reader that turns the snapshot into the assembler
+  input stringifies, so the assembler cannot tell them apart and no consumer is reached
+  by the change.
+  """
 
-    from_str = effective_behavior(_snap("True"), active_agent="claude")
-    from_bool = effective_behavior(_snap(True), active_agent="claude")
-    assert from_str == from_bool == {"model": "True"}
-    assert effective_behavior(_snap("false"), active_agent="claude") == {"model": "false"}
+  def _snap(model):
+    return KeyStore({"agent": {"claude": {"model": model}}})
+
+  from_str = effective_behavior(_snap("True"), active_agent="claude")
+  from_bool = effective_behavior(_snap(True), active_agent="claude")
+  assert from_str == from_bool == {"model": "True"}
+  assert effective_behavior(_snap("false"), active_agent="claude") == {"model": "false"}

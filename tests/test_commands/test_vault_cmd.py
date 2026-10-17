@@ -6,10 +6,10 @@ import pytest
 
 from kanibako.cli import build_parser
 from kanibako.commands.vault_cmd import (
-    run_list,
-    run_prune,
-    run_restore,
-    run_snapshot,
+  run_list,
+  run_prune,
+  run_restore,
+  run_snapshot,
 )
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
@@ -22,15 +22,15 @@ from kanibako.snapshots import UnsafeSnapshotNameError
 
 
 def _init_project_with_vault(config_file, tmp_home, credentials_dir):
-    """Initialize a default-mode project and populate vault share-rw."""
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    project_dir = str(tmp_home / "project")
-    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+  """Initialize a default-mode project and populate vault share-rw."""
+  config = load_config(config_file)
+  std = load_std_paths(config)
+  project_dir = str(tmp_home / "project")
+  proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-    # Populate share-rw with test data.
-    (proj.vault_rw_path / "data.txt").write_text("hello vault")
-    return proj
+  # Populate share-rw with test data.
+  (proj.vault_rw_path / "data.txt").write_text("hello vault")
+  return proj
 
 
 # ---------------------------------------------------------------------------
@@ -39,47 +39,47 @@ def _init_project_with_vault(config_file, tmp_home, credentials_dir):
 
 
 class TestVaultParser:
-    def test_vault_subcommand_recognized(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list"])
-        assert args.command == "box"
-        assert args.vault_command == "list"
+  def test_vault_subcommand_recognized(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list"])
+    assert args.command == "box"
+    assert args.vault_command == "list"
 
-    def test_vault_snapshot_parser(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "snapshot", "/foo"])
-        assert args.vault_command == "snapshot"
-        assert args.project == "/foo"
+  def test_vault_snapshot_parser(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "snapshot", "/foo"])
+    assert args.vault_command == "snapshot"
+    assert args.project == "/foo"
 
-    def test_vault_restore_parser(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "restore", "my-snap.tar.xz"])
-        assert args.vault_command == "restore"
-        assert args.name == "my-snap.tar.xz"
+  def test_vault_restore_parser(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "restore", "my-snap.tar.xz"])
+    assert args.vault_command == "restore"
+    assert args.name == "my-snap.tar.xz"
 
-    def test_vault_prune_parser(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
-        assert args.vault_command == "prune"
-        assert args.keep == 3
+  def test_vault_prune_parser(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
+    assert args.vault_command == "prune"
+    assert args.keep == 3
 
-    def test_vault_list_quiet_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", "-q"])
-        assert args.vault_command == "list"
-        assert args.quiet is True
+  def test_vault_list_quiet_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", "-q"])
+    assert args.vault_command == "list"
+    assert args.quiet is True
 
-    def test_vault_restore_force_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz", "--force"])
-        assert args.vault_command == "restore"
-        assert args.force is True
+  def test_vault_restore_force_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz", "--force"])
+    assert args.vault_command == "restore"
+    assert args.force is True
 
-    def test_vault_prune_force_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "prune", "--force"])
-        assert args.vault_command == "prune"
-        assert args.force is True
+  def test_vault_prune_force_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "prune", "--force"])
+    assert args.vault_command == "prune"
+    assert args.force is True
 
 
 # ---------------------------------------------------------------------------
@@ -88,33 +88,41 @@ class TestVaultParser:
 
 
 class TestVaultSnapshot:
-    def test_snapshot_creates_archive(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
-        rc = run_snapshot(args)
+  def test_snapshot_creates_archive(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
+    rc = run_snapshot(args)
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Snapshot created" in captured.out
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Snapshot created" in captured.out
 
-    def test_snapshot_empty_vault(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+  def test_snapshot_empty_vault(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
-        rc = run_snapshot(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
+    rc = run_snapshot(args)
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "empty" in captured.err.lower() or "Nothing" in captured.err
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "empty" in captured.err.lower() or "Nothing" in captured.err
 
 
 # ---------------------------------------------------------------------------
@@ -123,57 +131,71 @@ class TestVaultSnapshot:
 
 
 class TestVaultList:
-    def test_list_empty(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+  def test_list_empty(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
-        rc = run_list(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
+    rc = run_list(args)
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "No snapshots" in captured.out
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "No snapshots" in captured.out
 
-    def test_list_after_snapshot(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+  def test_list_after_snapshot(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    from kanibako.snapshots import create_snapshot
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
-        rc = run_list(args)
+    create_snapshot(proj.vault_rw_path, box_name=proj.name)
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        # Directory snapshot name is a bare UTC timestamp.
-        assert "Z" in captured.out
-        assert "UTC" in captured.out
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
+    rc = run_list(args)
 
-    def test_list_quiet(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    assert rc == 0
+    captured = capsys.readouterr()
+    # Directory snapshot name is a bare UTC timestamp.
+    assert "Z" in captured.out
+    assert "UTC" in captured.out
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+  def test_list_quiet(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", "-q", str(proj.project_path)])
-        rc = run_list(args)
+    from kanibako.snapshots import create_snapshot
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        # Quiet mode: just snapshot names, no timestamps or sizes
-        assert snap.name in captured.out
-        assert "UTC" not in captured.out
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", "-q", str(proj.project_path)])
+    rc = run_list(args)
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    # Quiet mode: just snapshot names, no timestamps or sizes
+    assert snap.name in captured.out
+    assert "UTC" not in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -182,86 +204,136 @@ class TestVaultList:
 
 
 class TestVaultRestore:
-    def test_restore_success(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+  def test_restore_success(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    from kanibako.snapshots import create_snapshot
 
-        # Modify data
-        (proj.vault_rw_path / "data.txt").write_text("modified")
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
-        ])
-        rc = run_restore(args)
+    # Modify data
+    (proj.vault_rw_path / "data.txt").write_text("modified")
 
-        assert rc == 0
-        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    rc = run_restore(args)
 
-    def test_restore_missing_snapshot(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    assert rc == 0
+    assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", "nonexistent.tar.xz", str(proj.project_path),
-        ])
-        rc = run_restore(args)
+  def test_restore_missing_snapshot(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "not found" in captured.err.lower()
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        "nonexistent.tar.xz",
+        str(proj.project_path),
+      ]
+    )
+    rc = run_restore(args)
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "not found" in captured.err.lower()
 
 
 class TestVaultRestoreRefusal:
-    """A name that escapes ``.versions/`` is refused before share-rw is touched."""
+  """A name that escapes ``.versions/`` is refused before share-rw is touched."""
 
-    @pytest.mark.parametrize("bad", [
-        "../../../../../../evil", ".", "..", "",
-    ])
-    def test_refused_name_leaves_share_rw(
-        self, config_file, tmp_home, credentials_dir, bad,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
+  @pytest.mark.parametrize(
+    "bad",
+    [
+      "../../../../../../evil",
+      ".",
+      "..",
+      "",
+    ],
+  )
+  def test_refused_name_leaves_share_rw(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    bad,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    from kanibako.snapshots import create_snapshot
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", bad, str(proj.project_path), "--force",
-        ])
-        with pytest.raises(UnsafeSnapshotNameError):
-            run_restore(args)
+    create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
 
-        assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
-        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        bad,
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    with pytest.raises(UnsafeSnapshotNameError):
+      run_restore(args)
 
-    def test_refused_absolute_path_leaves_share_rw(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
-        outside = tmp_home / "evil_abs"
-        outside.mkdir()
-        (outside / "attacker.txt").write_text("owned")
+    assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
+    assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", str(outside), str(proj.project_path),
-            "--force",
-        ])
-        with pytest.raises(UnsafeSnapshotNameError):
-            run_restore(args)
+  def test_refused_absolute_path_leaves_share_rw(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    from kanibako.snapshots import create_snapshot
 
-        assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
+    create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
+    outside = tmp_home / "evil_abs"
+    outside.mkdir()
+    (outside / "attacker.txt").write_text("owned")
+
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        str(outside),
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    with pytest.raises(UnsafeSnapshotNameError):
+      run_restore(args)
+
+    assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
 
 
 # ---------------------------------------------------------------------------
@@ -270,45 +342,63 @@ class TestVaultRestoreRefusal:
 
 
 class TestVaultPrune:
-    def test_prune_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+  def test_prune_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "prune", str(proj.project_path)])
-        rc = run_prune(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "prune", str(proj.project_path)])
+    rc = run_prune(args)
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Nothing to prune" in captured.out
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Nothing to prune" in captured.out
 
-    def test_prune_removes_old(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+  def test_prune_removes_old(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        # Create multiple directory snapshots
-        import shutil
-        versions = proj.vault_rw_path.parent / ".versions" / proj.name
-        versions.mkdir(parents=True, exist_ok=True)
-        for i in range(5):
-            name = f"2026010{i + 1}T000000Z"
-            snap_dir = versions / name
-            snap_dir.mkdir()
-            shutil.copy2(
-                proj.vault_rw_path / "data.txt", snap_dir / "data.txt",
-            )
+    # Create multiple directory snapshots
+    import shutil
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path), "--force",
-        ])
-        rc = run_prune(args)
+    versions = proj.vault_rw_path.parent / ".versions" / proj.name
+    versions.mkdir(parents=True, exist_ok=True)
+    for i in range(5):
+      name = f"2026010{i + 1}T000000Z"
+      snap_dir = versions / name
+      snap_dir.mkdir()
+      shutil.copy2(
+        proj.vault_rw_path / "data.txt",
+        snap_dir / "data.txt",
+      )
 
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Pruned 3" in captured.out
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        "--keep",
+        "2",
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    rc = run_prune(args)
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Pruned 3" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -317,230 +407,349 @@ class TestVaultPrune:
 
 
 def _no_stdin(*_args, **_kwargs):
-    raise AssertionError("stdin was read; this command must not prompt")
+  raise AssertionError("stdin was read; this command must not prompt")
 
 
 def _make_snapshots(proj, count: int = 5) -> None:
-    import shutil
-    versions = proj.vault_rw_path.parent / ".versions" / proj.name
-    versions.mkdir(parents=True, exist_ok=True)
-    for i in range(count):
-        snap_dir = versions / f"2026010{i + 1}T000000Z"
-        snap_dir.mkdir()
-        shutil.copy2(proj.vault_rw_path / "data.txt", snap_dir / "data.txt")
+  import shutil
+
+  versions = proj.vault_rw_path.parent / ".versions" / proj.name
+  versions.mkdir(parents=True, exist_ok=True)
+  for i in range(count):
+    snap_dir = versions / f"2026010{i + 1}T000000Z"
+    snap_dir.mkdir()
+    shutil.copy2(proj.vault_rw_path / "data.txt", snap_dir / "data.txt")
 
 
 class TestVaultRestoreConfirms:
-    """``--force`` is the only thing that skips the prompt; a declined or closed
-    stdin leaves share-rw exactly as it was."""
+  """``--force`` is the only thing that skips the prompt; a declined or closed
+  stdin leaves share-rw exactly as it was."""
 
-    def test_declined_prompt_restores_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+  def test_declined_prompt_restores_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "data.txt").write_text("modified")
+    from kanibako.snapshots import create_snapshot
 
-        monkeypatch.setattr("builtins.input", lambda *_a: "no")
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path),
-        ])
-        rc = run_restore(args)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "data.txt").write_text("modified")
 
-        assert rc == 2
-        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
-        assert "Aborted." in capsys.readouterr().out
+    monkeypatch.setattr("builtins.input", lambda *_a: "no")
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+      ]
+    )
+    rc = run_restore(args)
 
-    def test_closed_stdin_restores_nothing(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    assert rc == 2
+    assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
+    assert "Aborted." in capsys.readouterr().out
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "data.txt").write_text("modified")
+  def test_closed_stdin_restores_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        def _eof(*_a):
-            raise EOFError
+    from kanibako.snapshots import create_snapshot
 
-        monkeypatch.setattr("builtins.input", _eof)
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path),
-        ])
-        rc = run_restore(args)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "data.txt").write_text("modified")
 
-        assert rc == 2
-        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
+    def _eof(*_a):
+      raise EOFError
 
-    def test_confirmed_prompt_restores(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    monkeypatch.setattr("builtins.input", _eof)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+      ]
+    )
+    rc = run_restore(args)
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "data.txt").write_text("modified")
+    assert rc == 2
+    assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
 
-        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path),
-        ])
-        rc = run_restore(args)
+  def test_confirmed_prompt_restores(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        assert rc == 0
-        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+    from kanibako.snapshots import create_snapshot
 
-    def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir,
-                                monkeypatch):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "data.txt").write_text("modified")
 
-        from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "data.txt").write_text("modified")
+    monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+      ]
+    )
+    rc = run_restore(args)
 
-        monkeypatch.setattr("builtins.input", _no_stdin)
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
-        ])
-        rc = run_restore(args)
+    assert rc == 0
+    assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
 
-        assert rc == 0
-        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+  def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir, monkeypatch):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-    def test_unknown_name_does_not_prompt(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    from kanibako.snapshots import create_snapshot
 
-        monkeypatch.setattr("builtins.input", _no_stdin)
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", "nonexistent", str(proj.project_path),
-        ])
-        rc = run_restore(args)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "data.txt").write_text("modified")
 
-        assert rc == 1
-        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+    monkeypatch.setattr("builtins.input", _no_stdin)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    rc = run_restore(args)
+
+    assert rc == 0
+    assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+
+  def test_unknown_name_does_not_prompt(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+    monkeypatch.setattr("builtins.input", _no_stdin)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        "nonexistent",
+        str(proj.project_path),
+      ]
+    )
+    rc = run_restore(args)
+
+    assert rc == 1
+    assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
 
 
 class TestVaultPruneConfirms:
-    """A declined prune keeps every snapshot it would otherwise have deleted."""
+  """A declined prune keeps every snapshot it would otherwise have deleted."""
 
-    def test_declined_prompt_prunes_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions" / proj.name
+  def test_declined_prompt_prunes_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    _make_snapshots(proj)
+    versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
-        monkeypatch.setattr("builtins.input", lambda *_a: "no")
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
-        ])
-        rc = run_prune(args)
+    monkeypatch.setattr("builtins.input", lambda *_a: "no")
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        "--keep",
+        "2",
+        str(proj.project_path),
+      ]
+    )
+    rc = run_prune(args)
 
-        assert rc == 2
-        assert len(list(versions.iterdir())) == 5
-        assert "Aborted." in capsys.readouterr().out
+    assert rc == 2
+    assert len(list(versions.iterdir())) == 5
+    assert "Aborted." in capsys.readouterr().out
 
-    def test_confirmed_prompt_prunes(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions" / proj.name
+  def test_confirmed_prompt_prunes(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    _make_snapshots(proj)
+    versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
-        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
-        ])
-        rc = run_prune(args)
+    monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        "--keep",
+        "2",
+        str(proj.project_path),
+      ]
+    )
+    rc = run_prune(args)
 
-        assert rc == 0
-        assert len(list(versions.iterdir())) == 2
+    assert rc == 0
+    assert len(list(versions.iterdir())) == 2
 
-    def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir,
-                                monkeypatch):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions" / proj.name
+  def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir, monkeypatch):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    _make_snapshots(proj)
+    versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
-        monkeypatch.setattr("builtins.input", _no_stdin)
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path), "--force",
-        ])
-        rc = run_prune(args)
+    monkeypatch.setattr("builtins.input", _no_stdin)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        "--keep",
+        "2",
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    rc = run_prune(args)
 
-        assert rc == 0
-        assert len(list(versions.iterdir())) == 2
+    assert rc == 0
+    assert len(list(versions.iterdir())) == 2
 
-    def test_nothing_to_prune_does_not_prompt(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        _make_snapshots(proj, count=1)
+  def test_nothing_to_prune_does_not_prompt(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    _make_snapshots(proj, count=1)
 
-        monkeypatch.setattr("builtins.input", _no_stdin)
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
-        ])
-        rc = run_prune(args)
+    monkeypatch.setattr("builtins.input", _no_stdin)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        "--keep",
+        "2",
+        str(proj.project_path),
+      ]
+    )
+    rc = run_prune(args)
 
-        assert rc == 0
-        assert "Nothing to prune" in capsys.readouterr().out
+    assert rc == 0
+    assert "Nothing to prune" in capsys.readouterr().out
 
 
 class TestVaultForceDoesNotOverrideRefusals:
-    """``--force`` skips the prompt only; every pre-existing refusal still holds."""
+  """``--force`` skips the prompt only; every pre-existing refusal still holds."""
 
-    def _disabled_project(self, config_file, tmp_home):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        resolve_project(
-            std, config, project_dir=str(tmp_home / "project"),
-            initialize=True, enable_vault=False,
-        )
+  def _disabled_project(self, config_file, tmp_home):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    resolve_project(
+      std,
+      config,
+      project_dir=str(tmp_home / "project"),
+      initialize=True,
+      enable_vault=False,
+    )
 
-    def test_restore_refuses_disabled_vault(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        self._disabled_project(config_file, tmp_home)
-        monkeypatch.setattr("builtins.input", _no_stdin)
+  def test_restore_refuses_disabled_vault(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    self._disabled_project(config_file, tmp_home)
+    monkeypatch.setattr("builtins.input", _no_stdin)
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "restore", "20260101T000000Z",
-            str(tmp_home / "project"), "--force",
-        ])
-        rc = run_restore(args)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        "20260101T000000Z",
+        str(tmp_home / "project"),
+        "--force",
+      ]
+    )
+    rc = run_restore(args)
 
-        assert rc == 1
-        assert "disabled" in capsys.readouterr().err.lower()
+    assert rc == 1
+    assert "disabled" in capsys.readouterr().err.lower()
 
-    def test_prune_refuses_disabled_vault(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        self._disabled_project(config_file, tmp_home)
-        monkeypatch.setattr("builtins.input", _no_stdin)
+  def test_prune_refuses_disabled_vault(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    self._disabled_project(config_file, tmp_home)
+    monkeypatch.setattr("builtins.input", _no_stdin)
 
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "vault", "prune", str(tmp_home / "project"), "--force",
-        ])
-        rc = run_prune(args)
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "vault",
+        "prune",
+        str(tmp_home / "project"),
+        "--force",
+      ]
+    )
+    rc = run_prune(args)
 
-        assert rc == 1
-        assert "disabled" in capsys.readouterr().err.lower()
+    assert rc == 1
+    assert "disabled" in capsys.readouterr().err.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -549,51 +758,62 @@ class TestVaultForceDoesNotOverrideRefusals:
 
 
 class TestVaultDisabled:
-    def test_vault_disabled_returns_error(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, enable_vault=False,
-        )
+  def test_vault_disabled_returns_error(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(
+      std,
+      config,
+      project_dir=project_dir,
+      initialize=True,
+      enable_vault=False,
+    )
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
-        rc = run_list(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
+    rc = run_list(args)
 
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "disabled" in captured.err.lower()
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "disabled" in captured.err.lower()
 
 
 class TestUnsortedHeading:
-    """The heading is literal text, not an f-string over the bucket name."""
+  """The heading is literal text, not an f-string over the bucket name."""
 
-    def test_the_unsorted_heading_reads_as_english(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        import shutil
+  def test_the_unsorted_heading_reads_as_english(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    import shutil
 
-        from kanibako.snapshots import _versions_dir
-        from kanibako.snapshots import create_snapshot
+    from kanibako.snapshots import _versions_dir
+    from kanibako.snapshots import create_snapshot
 
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        versions = _versions_dir(proj.vault_rw_path)
-        shutil.move(str(snap), str(versions / snap.name))
-        (versions / ".layout").unlink()
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    versions = _versions_dir(proj.vault_rw_path)
+    shutil.move(str(snap), str(versions / snap.name))
+    (versions / ".layout").unlink()
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
-        rc = run_list(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
+    rc = run_list(args)
 
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "kept, never pruned, not restorable by name" in out
-        assert "pruned by '" not in out
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "kept, never pruned, not restorable by name" in out
+    assert "pruned by '" not in out
 
 
 # ---------------------------------------------------------------------------
@@ -602,68 +822,88 @@ class TestUnsortedHeading:
 
 
 class TestVaultNoBoxHere:
-    """From a directory that is no box, every verb says so and names the cure."""
+  """From a directory that is no box, every verb says so and names the cure."""
 
-    @pytest.mark.parametrize(("argv", "func", "usage"), [
-        (["list"], run_list, "list"),
-        (["snapshot"], run_snapshot, "snapshot"),
-        (["prune", "--force"], run_prune, "prune"),
-        (["restore", "20260101T000000Z", "--force"], run_restore,
-         "restore 20260101T000000Z"),
-    ])
-    def test_no_box_names_the_cure(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, argv, func, usage,
-    ):
-        from kanibako.errors import ProjectError
+  @pytest.mark.parametrize(
+    ("argv", "func", "usage"),
+    [
+      (["list"], run_list, "list"),
+      (["snapshot"], run_snapshot, "snapshot"),
+      (["prune", "--force"], run_prune, "prune"),
+      (["restore", "20260101T000000Z", "--force"], run_restore, "restore 20260101T000000Z"),
+    ],
+  )
+  def test_no_box_names_the_cure(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    argv,
+    func,
+    usage,
+  ):
+    from kanibako.errors import ProjectError
 
-        nobox = tmp_home / "nobox"
-        nobox.mkdir()
-        monkeypatch.chdir(nobox)
+    nobox = tmp_home / "nobox"
+    nobox.mkdir()
+    monkeypatch.chdir(nobox)
 
-        args = build_parser().parse_args(["box", "vault", *argv])
-        with pytest.raises(ProjectError) as exc:
-            func(args)
+    args = build_parser().parse_args(["box", "vault", *argv])
+    with pytest.raises(ProjectError) as exc:
+      func(args)
 
-        msg = str(exc.value)
-        assert f"no box at {nobox}" in msg
-        assert f"kanibako box vault {usage} <box>" in msg
-        assert "run it inside a box" in msg
-        assert "Refused box name" not in msg
-        # ⚑ The whole text, pinned: the head comes from ``box_resolve.unregistered_box_refusal``.
-        assert msg == (
-            f"no box at {nobox} — kanibako has no box registered for this directory, "
-            "and a vault belongs to a box.\n"
-            f"  Name the box:   kanibako box vault {usage} <box>\n"
-            "  Or run it inside a box's directory."
-        )
+    msg = str(exc.value)
+    assert f"no box at {nobox}" in msg
+    assert f"kanibako box vault {usage} <box>" in msg
+    assert "run it inside a box" in msg
+    assert "Refused box name" not in msg
+    # ⚑ The whole text, pinned: the head comes from ``box_resolve.unregistered_box_refusal``.
+    assert msg == (
+      f"no box at {nobox} — kanibako has no box registered for this directory, "
+      "and a vault belongs to a box.\n"
+      f"  Name the box:   kanibako box vault {usage} <box>\n"
+      "  Or run it inside a box's directory."
+    )
 
 
 class TestVaultRestoreFailure:
-    def test_a_failed_swap_is_an_error_line_not_a_traceback(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        import errno
-        from unittest.mock import patch
+  def test_a_failed_swap_is_an_error_line_not_a_traceback(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    import errno
+    from unittest.mock import patch
 
-        from kanibako import snapshots
-        from kanibako.snapshots import create_snapshot
+    from kanibako import snapshots
+    from kanibako.snapshots import create_snapshot
 
-        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
-        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
-        (proj.vault_rw_path / "data.txt").write_text("modified")
-        real_rename = snapshots.boxfs.rename
+    proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+    snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+    (proj.vault_rw_path / "data.txt").write_text("modified")
+    real_rename = snapshots.boxfs.rename
 
-        def full_disk(src, dst, root):
-            if ".restore.tmp" in str(src):
-                raise OSError(errno.ENOSPC, "No space left on device")
-            real_rename(src, dst, root)
+    def full_disk(src, dst, root):
+      if ".restore.tmp" in str(src):
+        raise OSError(errno.ENOSPC, "No space left on device")
+      real_rename(src, dst, root)
 
-        args = build_parser().parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
-        ])
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=full_disk):
-            rc = run_restore(args)
+    args = build_parser().parse_args(
+      [
+        "box",
+        "vault",
+        "restore",
+        snap.name,
+        str(proj.project_path),
+        "--force",
+      ]
+    )
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=full_disk):
+      rc = run_restore(args)
 
-        assert rc == 1
-        assert "No space left on device" in capsys.readouterr().err
-        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
+    assert rc == 1
+    assert "No space left on device" in capsys.readouterr().err
+    assert (proj.vault_rw_path / "data.txt").read_text() == "modified"

@@ -30,8 +30,8 @@ exit 0
 
 
 def local_sh_runtime(tmp_path: Path) -> SimpleNamespace:
-    """Return a runtime whose ``cmd`` runs the probe script in the host shell."""
-    shim = tmp_path / "fake-runtime"
-    shim.write_text(_SHIM)
-    shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
-    return SimpleNamespace(cmd=str(shim))
+  """Return a runtime whose ``cmd`` runs the probe script in the host shell."""
+  shim = tmp_path / "fake-runtime"
+  shim.write_text(_SHIM)
+  shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+  return SimpleNamespace(cmd=str(shim))

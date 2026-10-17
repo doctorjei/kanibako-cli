@@ -10,182 +10,184 @@ import pytest
 
 
 from kanibako.targets.base import (
-    AgentInstall,
-    BindKind,
-    BindScope,
-    Cadence,
-    Channel,
-    CredFileSpec,
-    HostSrcOrigin,
-    PluginDescriptor,
-    TargetSetting,
+  AgentInstall,
+  BindKind,
+  BindScope,
+  Cadence,
+  Channel,
+  CredFileSpec,
+  HostSrcOrigin,
+  PluginDescriptor,
+  TargetSetting,
 )
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.settings.settings_resolve import UNSET
 
 
 class TestClaudeTargetProperties:
-    def test_name(self):
-        t = ClaudeTarget()
-        assert t.name == "claude"
+  def test_name(self):
+    t = ClaudeTarget()
+    assert t.name == "claude"
 
-    def test_display_name(self):
-        t = ClaudeTarget()
-        assert t.display_name == "Claude Code"
+  def test_display_name(self):
+    t = ClaudeTarget()
+    assert t.display_name == "Claude Code"
 
 
 class TestCredentialCheckPath:
-    def test_returns_credentials_json_path(self, tmp_path):
-        t = ClaudeTarget()
-        result = t.credential_check_path(tmp_path)
-        assert result == tmp_path / ".claude" / ".credentials.json"
+  def test_returns_credentials_json_path(self, tmp_path):
+    t = ClaudeTarget()
+    result = t.credential_check_path(tmp_path)
+    assert result == tmp_path / ".claude" / ".credentials.json"
 
-    def test_config_dir_name(self):
-        t = ClaudeTarget()
-        assert t.config_dir_name == ".claude"
+  def test_config_dir_name(self):
+    t = ClaudeTarget()
+    assert t.config_dir_name == ".claude"
 
 
 class TestHasResumableSession:
-    """claude decides continue-vs-fresh UP FRONT off its per-project transcript
-    dir ``<home>/.claude/projects/<cwd-encoded>/`` (the retry net was removed).
+  """claude decides continue-vs-fresh UP FRONT off its per-project transcript
+  dir ``<home>/.claude/projects/<cwd-encoded>/`` (the retry net was removed).
 
-    The in-box cwd is the FIXED container WORKDIR ``GUEST_HOME/workspace`` =
-    ``/home/agent/workspace``, encoded (``/``->``-``) as ``-home-agent-workspace``.
-    """
+  The in-box cwd is the FIXED container WORKDIR ``GUEST_HOME/workspace`` =
+  ``/home/agent/workspace``, encoded (``/``->``-``) as ``-home-agent-workspace``.
+  """
 
-    ENCODED = "-home-agent-workspace"
+  ENCODED = "-home-agent-workspace"
 
-    def _projects(self, home: Path) -> Path:
-        d = home / ".claude" / "projects" / self.ENCODED
-        d.mkdir(parents=True)
-        return d
+  def _projects(self, home: Path) -> Path:
+    d = home / ".claude" / "projects" / self.ENCODED
+    d.mkdir(parents=True)
+    return d
 
-    def test_encoded_dir_name_is_the_constant(self):
-        # Pin the constant so a workdir/encoding change is caught here.
-        from kanibako.settings.settings_resolve import GUEST_HOME
-        assert f"{GUEST_HOME}/workspace".replace("/", "-") == self.ENCODED
+  def test_encoded_dir_name_is_the_constant(self):
+    # Pin the constant so a workdir/encoding change is caught here.
+    from kanibako.settings.settings_resolve import GUEST_HOME
 
-    def test_false_when_projects_dir_missing(self, tmp_path: Path):
-        # Fresh box, no transcript dir at all -> nothing to resume -> launch fresh.
-        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+    assert f"{GUEST_HOME}/workspace".replace("/", "-") == self.ENCODED
 
-    def test_false_when_encoded_dir_empty(self, tmp_path: Path):
-        # Dir exists but holds no transcript -> positively nothing to resume.
-        self._projects(tmp_path)
-        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+  def test_false_when_projects_dir_missing(self, tmp_path: Path):
+    # Fresh box, no transcript dir at all -> nothing to resume -> launch fresh.
+    assert ClaudeTarget().has_resumable_session(tmp_path) is False
 
-    def test_true_when_flat_jsonl_present(self, tmp_path: Path):
-        # claude's real layout: sessions written directly as <uuid>.jsonl.
-        d = self._projects(tmp_path)
-        (d / "0198abcd-session.jsonl").write_text("{}\n")
-        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+  def test_false_when_encoded_dir_empty(self, tmp_path: Path):
+    # Dir exists but holds no transcript -> positively nothing to resume.
+    self._projects(tmp_path)
+    assert ClaudeTarget().has_resumable_session(tmp_path) is False
 
-    def test_true_when_archived_gz_present(self, tmp_path: Path):
-        # An archived-only session (*.jsonl.gz) still counts as resumable.
-        d = self._projects(tmp_path)
-        (d / "old-session.jsonl.gz").write_bytes(b"\x1f\x8b")
-        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+  def test_true_when_flat_jsonl_present(self, tmp_path: Path):
+    # claude's real layout: sessions written directly as <uuid>.jsonl.
+    d = self._projects(tmp_path)
+    (d / "0198abcd-session.jsonl").write_text("{}\n")
+    assert ClaudeTarget().has_resumable_session(tmp_path) is True
 
-    def test_true_when_nested_layout(self, tmp_path: Path):
-        # Layout-robust: a nested conversation_logs/ transcript still reads True.
-        d = self._projects(tmp_path)
-        nested = d / "conversation_logs"
-        nested.mkdir()
-        (nested / "x.jsonl").write_text("{}\n")
-        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+  def test_true_when_archived_gz_present(self, tmp_path: Path):
+    # An archived-only session (*.jsonl.gz) still counts as resumable.
+    d = self._projects(tmp_path)
+    (d / "old-session.jsonl.gz").write_bytes(b"\x1f\x8b")
+    assert ClaudeTarget().has_resumable_session(tmp_path) is True
 
-    def test_false_when_only_unrelated_files(self, tmp_path: Path):
-        # Non-transcript files (no *.jsonl / *.jsonl.gz) -> nothing to resume.
-        d = self._projects(tmp_path)
-        (d / "notes.txt").write_text("hi")
-        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+  def test_true_when_nested_layout(self, tmp_path: Path):
+    # Layout-robust: a nested conversation_logs/ transcript still reads True.
+    d = self._projects(tmp_path)
+    nested = d / "conversation_logs"
+    nested.mkdir()
+    (nested / "x.jsonl").write_text("{}\n")
+    assert ClaudeTarget().has_resumable_session(tmp_path) is True
 
-    def test_false_on_oserror_launches_fresh(self, tmp_path: Path, monkeypatch):
-        # Tolerant: a stat/glob error -> False (a fresh start is always safe;
-        # the retry net was removed by design).
-        self._projects(tmp_path)
+  def test_false_when_only_unrelated_files(self, tmp_path: Path):
+    # Non-transcript files (no *.jsonl / *.jsonl.gz) -> nothing to resume.
+    d = self._projects(tmp_path)
+    (d / "notes.txt").write_text("hi")
+    assert ClaudeTarget().has_resumable_session(tmp_path) is False
 
-        def _raise(self, *a, **k):
-            raise PermissionError(13, "Permission denied")
+  def test_false_on_oserror_launches_fresh(self, tmp_path: Path, monkeypatch):
+    # Tolerant: a stat/glob error -> False (a fresh start is always safe;
+    # the retry net was removed by design).
+    self._projects(tmp_path)
 
-        monkeypatch.setattr(Path, "rglob", _raise)
-        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+    def _raise(self, *a, **k):
+      raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "rglob", _raise)
+    assert ClaudeTarget().has_resumable_session(tmp_path) is False
 
 
 def _anchor_contract(monkeypatch, launcher, install_dir):
-    """Point the claude plugin's contract constants at a tmp install.
+  """Point the claude plugin's contract constants at a tmp install.
 
-    detect / check_auth / prepare_host all anchor to ``_LAUNCHER`` /
-    ``_INSTALL_DIR`` instead of ``shutil.which`` — tests override those module
-    constants rather than mocking PATH.
-    """
-    import kanibako.plugins.claude.target as claude_mod
-    monkeypatch.setattr(claude_mod, "_LAUNCHER", Path(launcher))
-    monkeypatch.setattr(claude_mod, "_INSTALL_DIR", Path(install_dir))
+  detect / check_auth / prepare_host all anchor to ``_LAUNCHER`` /
+  ``_INSTALL_DIR`` instead of ``shutil.which`` — tests override those module
+  constants rather than mocking PATH.
+  """
+  import kanibako.plugins.claude.target as claude_mod
+
+  monkeypatch.setattr(claude_mod, "_LAUNCHER", Path(launcher))
+  monkeypatch.setattr(claude_mod, "_INSTALL_DIR", Path(install_dir))
 
 
 class TestDetect:
-    def test_found(self, tmp_path, monkeypatch):
-        """Detect anchors to the contract paths (no shutil.which)."""
-        # Real install rooted at the contract install_dir.
-        install_dir = tmp_path / "share" / "claude"
-        versions = install_dir / "versions" / "1.0"
-        versions.mkdir(parents=True)
-        binary = versions / "claude-bin"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+  def test_found(self, tmp_path, monkeypatch):
+    """Detect anchors to the contract paths (no shutil.which)."""
+    # Real install rooted at the contract install_dir.
+    install_dir = tmp_path / "share" / "claude"
+    versions = install_dir / "versions" / "1.0"
+    versions.mkdir(parents=True)
+    binary = versions / "claude-bin"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
 
-        launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True)
-        launcher.symlink_to(binary)
+    launcher = tmp_path / "bin" / "claude"
+    launcher.parent.mkdir(parents=True)
+    launcher.symlink_to(binary)
 
-        _anchor_contract(monkeypatch, launcher, install_dir)
+    _anchor_contract(monkeypatch, launcher, install_dir)
 
-        t = ClaudeTarget()
-        # No shutil.which involved: assert it is never consulted.
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            result = t.detect()
-        m_which.assert_not_called()
+    t = ClaudeTarget()
+    # No shutil.which involved: assert it is never consulted.
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      result = t.detect()
+    m_which.assert_not_called()
 
-        assert result is not None
-        assert isinstance(result, AgentInstall)
-        assert result.name == "claude"
-        # binary is the resolved (symlink-free) launcher target.
-        assert result.binary == binary.resolve()
-        # install_dir + launcher anchor to the contract paths.
-        assert result.install_dir == install_dir
-        assert result.launcher == launcher
+    assert result is not None
+    assert isinstance(result, AgentInstall)
+    assert result.name == "claude"
+    # binary is the resolved (symlink-free) launcher target.
+    assert result.binary == binary.resolve()
+    # install_dir + launcher anchor to the contract paths.
+    assert result.install_dir == install_dir
+    assert result.launcher == launcher
 
-    def test_not_found(self, tmp_path, monkeypatch):
-        """Detect returns None when the contract launcher is absent."""
-        launcher = tmp_path / "bin" / "claude"  # never created
-        install_dir = tmp_path / "share" / "claude"
-        _anchor_contract(monkeypatch, launcher, install_dir)
+  def test_not_found(self, tmp_path, monkeypatch):
+    """Detect returns None when the contract launcher is absent."""
+    launcher = tmp_path / "bin" / "claude"  # never created
+    install_dir = tmp_path / "share" / "claude"
+    _anchor_contract(monkeypatch, launcher, install_dir)
 
-        t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            result = t.detect()
-        m_which.assert_not_called()
-        assert result is None
+    t = ClaudeTarget()
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      result = t.detect()
+    m_which.assert_not_called()
+    assert result is None
 
-    def test_dangling_launcher_still_installed(self, tmp_path, monkeypatch):
-        """A present-but-dangling launcher symlink still counts as installed.
+  def test_dangling_launcher_still_installed(self, tmp_path, monkeypatch):
+    """A present-but-dangling launcher symlink still counts as installed.
 
-        The update gate / binary validation handles a broken install
-        downstream; detect must not silently drop the agent.
-        """
-        target_path = tmp_path / "versions" / "gone"  # does not exist
-        launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True)
-        launcher.symlink_to(target_path)  # dangling
-        install_dir = tmp_path / "share" / "claude"
-        _anchor_contract(monkeypatch, launcher, install_dir)
+    The update gate / binary validation handles a broken install
+    downstream; detect must not silently drop the agent.
+    """
+    target_path = tmp_path / "versions" / "gone"  # does not exist
+    launcher = tmp_path / "bin" / "claude"
+    launcher.parent.mkdir(parents=True)
+    launcher.symlink_to(target_path)  # dangling
+    install_dir = tmp_path / "share" / "claude"
+    _anchor_contract(monkeypatch, launcher, install_dir)
 
-        t = ClaudeTarget()
-        result = t.detect()
-        assert result is not None
-        assert result.launcher == launcher
-        assert result.install_dir == install_dir
+    t = ClaudeTarget()
+    result = t.detect()
+    assert result is not None
+    assert result.launcher == launcher
+    assert result.install_dir == install_dir
 
 
 # Claude's delivery binds + launch argv come from its descriptor (the legacy
@@ -196,500 +198,512 @@ class TestDetect:
 
 
 class TestDescriptorDeliveryMounts:
-    def test_mounts(self, tmp_path):
-        """The descriptor delivers the two AS-IS host binds (share dir + launcher)
-        PLUS the kickoff-loader SEED (best-effort, shipped source exists)."""
-        from kanibako.targets.assembly import descriptor_mounts
+  def test_mounts(self, tmp_path):
+    """The descriptor delivers the two AS-IS host binds (share dir + launcher)
+    PLUS the kickoff-loader SEED (best-effort, shipped source exists)."""
+    from kanibako.targets.assembly import descriptor_mounts
 
-        t = ClaudeTarget()
-        install_dir = tmp_path / "share" / "claude"
-        install_dir.mkdir(parents=True)
-        # The launcher (~/.local/bin/claude) is the bin bind source, bound
-        # as-is from the recorded contract path on the install.
-        launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True)
-        launcher.write_bytes(b"fake-binary")
-        install = AgentInstall(
-            name="claude",
-            binary=tmp_path / "versions" / "1.0" / "claude-bin",
-            install_dir=install_dir,
-            launcher=launcher,
-        )
-        mounts = descriptor_mounts(t.descriptor, install)
+    t = ClaudeTarget()
+    install_dir = tmp_path / "share" / "claude"
+    install_dir.mkdir(parents=True)
+    # The launcher (~/.local/bin/claude) is the bin bind source, bound
+    # as-is from the recorded contract path on the install.
+    launcher = tmp_path / "bin" / "claude"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_bytes(b"fake-binary")
+    install = AgentInstall(
+      name="claude",
+      binary=tmp_path / "versions" / "1.0" / "claude-bin",
+      install_dir=install_dir,
+      launcher=launcher,
+    )
+    mounts = descriptor_mounts(t.descriptor, install)
 
-        assert len(mounts) == 3
-        assert mounts[0].source == install_dir
-        assert mounts[0].destination == "/home/agent/.local/share/claude"
-        assert mounts[0].options == "ro"
-        assert mounts[1].source == launcher
-        assert mounts[1].destination == "/home/agent/.local/bin/claude"
-        assert mounts[1].options == "ro"
-        # The kickoff-loader SEED, delivered read-only to ~/.config/kanibako/kickoff.md.
-        assert mounts[2].destination == "/home/agent/.config/kanibako/kickoff.md"
-        assert mounts[2].options == "ro"
-        loader_text = mounts[2].source.read_text()
-        # The canon ENTRY POINT (C-CANON P-4) …
-        assert "@~/canon/COLLECTION.md" in loader_text
-        # … and NOTHING else.  The pre-canon import that rode alongside it for one
-        # transition release is gone (migration M-12), together with the tree it
-        # addressed; pinned absent here so it cannot drift back in.
-        assert "@~/playbook/kanibako/directives/KANIBAKO.md" not in loader_text
+    assert len(mounts) == 3
+    assert mounts[0].source == install_dir
+    assert mounts[0].destination == "/home/agent/.local/share/claude"
+    assert mounts[0].options == "ro"
+    assert mounts[1].source == launcher
+    assert mounts[1].destination == "/home/agent/.local/bin/claude"
+    assert mounts[1].options == "ro"
+    # The kickoff-loader SEED, delivered read-only to ~/.config/kanibako/kickoff.md.
+    assert mounts[2].destination == "/home/agent/.config/kanibako/kickoff.md"
+    assert mounts[2].options == "ro"
+    loader_text = mounts[2].source.read_text()
+    # The canon ENTRY POINT (C-CANON P-4) …
+    assert "@~/canon/COLLECTION.md" in loader_text
+    # … and NOTHING else.  The pre-canon import that rode alongside it for one
+    # transition release is gone (migration M-12), together with the tree it
+    # addressed; pinned absent here so it cannot drift back in.
+    assert "@~/playbook/kanibako/directives/KANIBAKO.md" not in loader_text
 
-    def test_missing_source_safe_fails(self, tmp_path):
-        """A missing AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
-        from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+  def test_missing_source_safe_fails(self, tmp_path):
+    """A missing AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
+    from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 
-        t = ClaudeTarget()
-        install = AgentInstall(
-            name="claude",
-            binary=tmp_path / "nonexistent" / "claude",
-            install_dir=tmp_path / "nonexistent" / "share",
-            launcher=tmp_path / "nonexistent" / "bin" / "claude",
-        )
-        with pytest.raises(BindingSourceError):
-            descriptor_mounts(t.descriptor, install)
+    t = ClaudeTarget()
+    install = AgentInstall(
+      name="claude",
+      binary=tmp_path / "nonexistent" / "claude",
+      install_dir=tmp_path / "nonexistent" / "share",
+      launcher=tmp_path / "nonexistent" / "bin" / "claude",
+    )
+    with pytest.raises(BindingSourceError):
+      descriptor_mounts(t.descriptor, install)
 
 
 def _real_launcher(tmp_path):
-    """Create a real (existing) contract launcher file under tmp_path."""
+  """Create a real (existing) contract launcher file under tmp_path."""
+  launcher = tmp_path / "bin" / "claude"
+  launcher.parent.mkdir(parents=True, exist_ok=True)
+  launcher.write_bytes(b"#!/bin/sh\n")
+  launcher.chmod(0o755)
+  return launcher
+
+
+class TestCheckAuth:
+  def test_logged_in_returns_true(self, tmp_path, monkeypatch):
+    """check_auth returns True when status shows loggedIn."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_result = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": True}),
+    )
+    with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
+      assert t.check_auth() is True
+
+  def test_not_logged_in_triggers_login(self, tmp_path, monkeypatch):
+    """check_auth runs login when status shows not loggedIn."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_not_logged = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": False}),
+    )
+    login_result = MagicMock(returncode=0)
+    status_after_login = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": True}),
+    )
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run",
+      side_effect=[status_not_logged, login_result, status_after_login],
+    ):
+      assert t.check_auth() is True
+
+  def test_login_fails_returns_false(self, tmp_path, monkeypatch):
+    """check_auth returns False when login fails."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_not_logged = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": False}),
+    )
+    login_result = MagicMock(returncode=1)
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run",
+      side_effect=[status_not_logged, login_result],
+    ):
+      assert t.check_auth() is False
+
+  def test_box_keywords_are_ignored(self, tmp_path, monkeypatch):
+    """A box store and a delivered token do not pass a failing host check."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    box = tmp_path / "box"
+    (box / ".claude").mkdir(parents=True)
+    (box / ".claude" / ".credentials.json").write_text('{"claudeAiOauth": {}}')
+    status_not_logged = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": False}))
+    login_result = MagicMock(returncode=1)
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run",
+      side_effect=[status_not_logged, login_result],
+    ):
+      assert (
+        ClaudeTarget().check_auth(
+          box_home=box,
+          delivered=frozenset({"CLAUDE_CODE_OAUTH_TOKEN"}),
+        )
+        is False
+      )
+
+  def test_binary_not_found_returns_true(self, tmp_path, monkeypatch):
+    """check_auth returns True when the contract launcher is absent."""
+    _anchor_contract(monkeypatch, tmp_path / "bin" / "claude", tmp_path / "share")
+    t = ClaudeTarget()
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      assert t.check_auth() is True
+    m_which.assert_not_called()
+
+  def test_status_command_fails_returns_true(self, tmp_path, monkeypatch):
+    """check_auth returns True when auth status command fails."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_result = MagicMock(returncode=1, stdout="")
+    with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
+      assert t.check_auth() is True
+
+  def test_exec_format_error_returns_true(self, tmp_path, monkeypatch):
+    """A corrupt/0-byte binary raising OSError must not crash check_auth.
+
+    Defense-in-depth: even if the launch-path guard ever fails to run
+    first, the auth probe must never bubble an OSError (Exec format error)
+    as an uncaught traceback -- treat it as auth-unknown and return True.
+    """
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run",
+      side_effect=OSError(8, "Exec format error"),
+    ):
+      assert t.check_auth() is True
+
+  @pytest.mark.parametrize(
+    "exc",
+    [
+      OSError(8, "Exec format error"),
+      PermissionError(13, "Permission denied"),
+    ],
+  )
+  def test_login_exec_error_returns_false(self, tmp_path, monkeypatch, exc):
+    """An OSError from the login exec is a failed login, not a traceback."""
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_not_logged = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": False}),
+    )
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run", side_effect=[status_not_logged, exc]
+    ) as m_run:
+      assert t.check_auth() is False
+    assert m_run.call_args_list[1].args[0][1:] == ["auth", "login"]
+
+  def test_anchors_to_contract_launcher(self, tmp_path, monkeypatch):
+    """check_auth execs the contract launcher path, never shutil.which."""
+    launcher = _real_launcher(tmp_path)
+    _anchor_contract(monkeypatch, launcher, tmp_path / "share")
+    t = ClaudeTarget()
+    status_result = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": True}))
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      with patch(
+        "kanibako.plugins.claude.target.subprocess.run", return_value=status_result
+      ) as m_run:
+        t.check_auth()
+    m_which.assert_not_called()
+    assert m_run.call_args.args[0][0] == str(launcher)
+
+  def test_host_execs_disable_autoupdater(self, tmp_path, monkeypatch):
+    """check_auth's host execs run with DISABLE_AUTOUPDATER=1 in env.
+
+    Probing host auth must not wake Claude's async background updater
+    mid-launch, which would prune/repoint the version we are about to bind.
+    """
+    _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+    t = ClaudeTarget()
+    status_result = MagicMock(
+      returncode=0,
+      stdout=json.dumps({"loggedIn": True}),
+    )
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run", return_value=status_result
+    ) as m_run:
+      t.check_auth()
+    env = m_run.call_args.kwargs.get("env")
+    assert env is not None
+    assert env.get("DISABLE_AUTOUPDATER") == "1"
+
+
+class TestPrepareHost:
+  """prepare_host runs the synchronous update gate + host auth, safely."""
+
+  def _install(self, tmp_path, *, anchor=True, monkeypatch=None):
+    """Build an AgentInstall and (by default) anchor the contract launcher
+    to a real file so prepare_host runs (it gates on _LAUNCHER, not which)."""
     launcher = tmp_path / "bin" / "claude"
     launcher.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_bytes(b"#!/bin/sh\n")
     launcher.chmod(0o755)
-    return launcher
+    install_dir = tmp_path / "share" / "claude"
+    if anchor and monkeypatch is not None:
+      _anchor_contract(monkeypatch, launcher, install_dir)
+    return AgentInstall(
+      name="claude",
+      binary=launcher,
+      install_dir=install_dir,
+      launcher=launcher,
+    )
 
+  def test_runs_synchronous_update_gate(self, tmp_path, monkeypatch):
+    """prepare_host runs `claude update` synchronously, env-disabled updater."""
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    update_result = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      with patch(
+        "kanibako.plugins.claude.target.subprocess.run", return_value=update_result
+      ) as m_run:
+        t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+    # No PATH resolution: which is never consulted.
+    m_which.assert_not_called()
+    # The update gate must have been invoked synchronously.
+    update_calls = [c for c in m_run.call_args_list if c.args and c.args[0][1:] == ["update"]]
+    assert len(update_calls) == 1
+    # Execs the contract launcher path.
+    assert update_calls[0].args[0][0] == str(install.launcher)
+    # And with the auto-updater disabled in the exec environment.
+    env = update_calls[0].kwargs.get("env")
+    assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
 
-class TestCheckAuth:
-    def test_logged_in_returns_true(self, tmp_path, monkeypatch):
-        """check_auth returns True when status shows loggedIn."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_result = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": True}),
-        )
-        with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
-            assert t.check_auth() is True
+  def test_no_binary_is_noop(self, tmp_path, monkeypatch):
+    """No contract launcher -> prepare_host is a no-op (never crashes)."""
+    t = ClaudeTarget()
+    install = self._install(tmp_path, anchor=False)
+    # Anchor to a path that does NOT exist.
+    _anchor_contract(monkeypatch, tmp_path / "absent" / "claude", tmp_path / "share")
+    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+      with patch("kanibako.plugins.claude.target.subprocess.run") as m_run:
+        t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+    m_which.assert_not_called()
+    m_run.assert_not_called()
 
-    def test_not_logged_in_triggers_login(self, tmp_path, monkeypatch):
-        """check_auth runs login when status shows not loggedIn."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_not_logged = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": False}),
-        )
-        login_result = MagicMock(returncode=0)
-        status_after_login = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": True}),
-        )
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=[status_not_logged, login_result, status_after_login]):
-            assert t.check_auth() is True
+  def test_update_failure_does_not_raise(self, tmp_path, monkeypatch):
+    """A failing/erroring `claude update` must not crash the launch."""
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run", side_effect=OSError(8, "Exec format error")
+    ):
+      # Must return cleanly, not raise.
+      t.prepare_host(install, auto_auth=False, data_path=tmp_path)
 
-    def test_login_fails_returns_false(self, tmp_path, monkeypatch):
-        """check_auth returns False when login fails."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_not_logged = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": False}),
-        )
-        login_result = MagicMock(returncode=1)
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=[status_not_logged, login_result]):
-            assert t.check_auth() is False
+  def test_update_timeout_does_not_raise(self, tmp_path, monkeypatch):
+    """A `claude update` that times out must not crash the launch."""
+    import subprocess as _sp
 
-    def test_box_keywords_are_ignored(self, tmp_path, monkeypatch):
-        """A box store and a delivered token do not pass a failing host check."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        box = tmp_path / "box"
-        (box / ".claude").mkdir(parents=True)
-        (box / ".claude" / ".credentials.json").write_text('{"claudeAiOauth": {}}')
-        status_not_logged = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": False}))
-        login_result = MagicMock(returncode=1)
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=[status_not_logged, login_result]):
-            assert ClaudeTarget().check_auth(
-                box_home=box, delivered=frozenset({"CLAUDE_CODE_OAUTH_TOKEN"}),
-            ) is False
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with patch(
+      "kanibako.plugins.claude.target.subprocess.run",
+      side_effect=_sp.TimeoutExpired("claude", 300),
+    ):
+      t.prepare_host(install, auto_auth=False, data_path=tmp_path)
 
-    def test_binary_not_found_returns_true(self, tmp_path, monkeypatch):
-        """check_auth returns True when the contract launcher is absent."""
-        _anchor_contract(monkeypatch, tmp_path / "bin" / "claude", tmp_path / "share")
-        t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            assert t.check_auth() is True
-        m_which.assert_not_called()
+  def test_auto_auth_invokes_refresh_with_disabled_updater(self, tmp_path, monkeypatch):
+    """When auto_auth is set, auto_refresh_auth is called with disabled env."""
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    update_result = MagicMock(returncode=0, stdout="", stderr="")
+    fake_auth = MagicMock(success=True, error=None)
+    with patch("kanibako.plugins.claude.target.subprocess.run", return_value=update_result):
+      with patch("kanibako.auth_browser.auto_refresh_auth", return_value=fake_auth) as m_auth:
+        t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+    m_auth.assert_called_once()
+    env = m_auth.call_args.kwargs.get("env")
+    assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
+    # keyspec §2g system.state: the OAuth session jar is STATE and ``browser_state``
+    # locates it from ``system.state`` itself, so the binary is the ONLY thing this
+    # hand-off carries.
+    # A data directory threaded back through here is the retired shape.
+    assert m_auth.call_args.args == (str(install.binary),)
+    assert "data_path" not in m_auth.call_args.kwargs
 
-    def test_status_command_fails_returns_true(self, tmp_path, monkeypatch):
-        """check_auth returns True when auth status command fails."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_result = MagicMock(returncode=1, stdout="")
-        with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
-            assert t.check_auth() is True
-
-    def test_exec_format_error_returns_true(self, tmp_path, monkeypatch):
-        """A corrupt/0-byte binary raising OSError must not crash check_auth.
-
-        Defense-in-depth: even if the launch-path guard ever fails to run
-        first, the auth probe must never bubble an OSError (Exec format error)
-        as an uncaught traceback -- treat it as auth-unknown and return True.
-        """
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        with patch(
-            "kanibako.plugins.claude.target.subprocess.run",
-            side_effect=OSError(8, "Exec format error"),
-        ):
-            assert t.check_auth() is True
-
-    @pytest.mark.parametrize("exc", [
-        OSError(8, "Exec format error"),
-        PermissionError(13, "Permission denied"),
-    ])
-    def test_login_exec_error_returns_false(self, tmp_path, monkeypatch, exc):
-        """An OSError from the login exec is a failed login, not a traceback."""
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_not_logged = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": False}),
-        )
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=[status_not_logged, exc]) as m_run:
-            assert t.check_auth() is False
-        assert m_run.call_args_list[1].args[0][1:] == ["auth", "login"]
-
-    def test_anchors_to_contract_launcher(self, tmp_path, monkeypatch):
-        """check_auth execs the contract launcher path, never shutil.which."""
-        launcher = _real_launcher(tmp_path)
-        _anchor_contract(monkeypatch, launcher, tmp_path / "share")
-        t = ClaudeTarget()
-        status_result = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": True}))
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       return_value=status_result) as m_run:
-                t.check_auth()
-        m_which.assert_not_called()
-        assert m_run.call_args.args[0][0] == str(launcher)
-
-    def test_host_execs_disable_autoupdater(self, tmp_path, monkeypatch):
-        """check_auth's host execs run with DISABLE_AUTOUPDATER=1 in env.
-
-        Probing host auth must not wake Claude's async background updater
-        mid-launch, which would prune/repoint the version we are about to bind.
-        """
-        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
-        t = ClaudeTarget()
-        status_result = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"loggedIn": True}),
-        )
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   return_value=status_result) as m_run:
-            t.check_auth()
-        env = m_run.call_args.kwargs.get("env")
-        assert env is not None
-        assert env.get("DISABLE_AUTOUPDATER") == "1"
-
-
-class TestPrepareHost:
-    """prepare_host runs the synchronous update gate + host auth, safely."""
-
-    def _install(self, tmp_path, *, anchor=True, monkeypatch=None):
-        """Build an AgentInstall and (by default) anchor the contract launcher
-        to a real file so prepare_host runs (it gates on _LAUNCHER, not which)."""
-        launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True, exist_ok=True)
-        launcher.write_bytes(b"#!/bin/sh\n")
-        launcher.chmod(0o755)
-        install_dir = tmp_path / "share" / "claude"
-        if anchor and monkeypatch is not None:
-            _anchor_contract(monkeypatch, launcher, install_dir)
-        return AgentInstall(
-            name="claude", binary=launcher, install_dir=install_dir, launcher=launcher,
-        )
-
-    def test_runs_synchronous_update_gate(self, tmp_path, monkeypatch):
-        """prepare_host runs `claude update` synchronously, env-disabled updater."""
-        t = ClaudeTarget()
-        install = self._install(tmp_path, monkeypatch=monkeypatch)
-        update_result = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       return_value=update_result) as m_run:
-                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
-        # No PATH resolution: which is never consulted.
-        m_which.assert_not_called()
-        # The update gate must have been invoked synchronously.
-        update_calls = [
-            c for c in m_run.call_args_list if c.args and c.args[0][1:] == ["update"]
-        ]
-        assert len(update_calls) == 1
-        # Execs the contract launcher path.
-        assert update_calls[0].args[0][0] == str(install.launcher)
-        # And with the auto-updater disabled in the exec environment.
-        env = update_calls[0].kwargs.get("env")
-        assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
-
-    def test_no_binary_is_noop(self, tmp_path, monkeypatch):
-        """No contract launcher -> prepare_host is a no-op (never crashes)."""
-        t = ClaudeTarget()
-        install = self._install(tmp_path, anchor=False)
-        # Anchor to a path that does NOT exist.
-        _anchor_contract(monkeypatch, tmp_path / "absent" / "claude", tmp_path / "share")
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            with patch("kanibako.plugins.claude.target.subprocess.run") as m_run:
-                t.prepare_host(install, auto_auth=True, data_path=tmp_path)
-        m_which.assert_not_called()
-        m_run.assert_not_called()
-
-    def test_update_failure_does_not_raise(self, tmp_path, monkeypatch):
-        """A failing/erroring `claude update` must not crash the launch."""
-        t = ClaudeTarget()
-        install = self._install(tmp_path, monkeypatch=monkeypatch)
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=OSError(8, "Exec format error")):
-            # Must return cleanly, not raise.
-            t.prepare_host(install, auto_auth=False, data_path=tmp_path)
-
-    def test_update_timeout_does_not_raise(self, tmp_path, monkeypatch):
-        """A `claude update` that times out must not crash the launch."""
-        import subprocess as _sp
-        t = ClaudeTarget()
-        install = self._install(tmp_path, monkeypatch=monkeypatch)
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   side_effect=_sp.TimeoutExpired("claude", 300)):
-            t.prepare_host(install, auto_auth=False, data_path=tmp_path)
-
-    def test_auto_auth_invokes_refresh_with_disabled_updater(self, tmp_path, monkeypatch):
-        """When auto_auth is set, auto_refresh_auth is called with disabled env."""
-        t = ClaudeTarget()
-        install = self._install(tmp_path, monkeypatch=monkeypatch)
-        update_result = MagicMock(returncode=0, stdout="", stderr="")
-        fake_auth = MagicMock(success=True, error=None)
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   return_value=update_result):
-            with patch("kanibako.auth_browser.auto_refresh_auth",
-                       return_value=fake_auth) as m_auth:
-                t.prepare_host(install, auto_auth=True, data_path=tmp_path)
-        m_auth.assert_called_once()
-        env = m_auth.call_args.kwargs.get("env")
-        assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
-        # keyspec §2g system.state: the OAuth session jar is STATE and ``browser_state``
-        # locates it from ``system.state`` itself, so the binary is the ONLY thing this
-        # hand-off carries.
-        # A data directory threaded back through here is the retired shape.
-        assert m_auth.call_args.args == (str(install.binary),)
-        assert "data_path" not in m_auth.call_args.kwargs
-
-    def test_auto_auth_skipped_when_disabled(self, tmp_path, monkeypatch):
-        """When auto_auth is False, auto_refresh_auth is not called."""
-        t = ClaudeTarget()
-        install = self._install(tmp_path, monkeypatch=monkeypatch)
-        update_result = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("kanibako.plugins.claude.target.subprocess.run",
-                   return_value=update_result):
-            with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
-                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
-        m_auth.assert_not_called()
+  def test_auto_auth_skipped_when_disabled(self, tmp_path, monkeypatch):
+    """When auto_auth is False, auto_refresh_auth is not called."""
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    update_result = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("kanibako.plugins.claude.target.subprocess.run", return_value=update_result):
+      with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
+        t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+    m_auth.assert_not_called()
 
 
 class TestDefaultShares:
-    """Part 3a: claude declares plugins + cache as AGENT-scope ``common`` entries.
+  """Part 3a: claude declares plugins + cache as AGENT-scope ``common`` entries.
 
-    The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
-    in the box home bind, fresh per box); plugins + cache are now entries in the
-    ONE TERMINAL category key ``agent.claude.common``, ROOTED AT DECLARATION under
-    the agent store root ``{meta.agent.claude.path}`` (spec §2a).
+  The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
+  in the box home bind, fresh per box); plugins + cache are now entries in the
+  ONE TERMINAL category key ``agent.claude.common``, ROOTED AT DECLARATION under
+  the agent store root ``{meta.agent.claude.path}`` (spec §2a).
 
-    ⚑ ``common`` went DEST-KEYED 2026-08-08c: the box DESTINATION is the map key
-    and the entry NAME is gone, so a value is ``(host_src,)`` — the dest left the
-    tuple when it became the key.
+  ⚑ ``common`` went DEST-KEYED 2026-08-08c: the box DESTINATION is the map key
+  and the entry NAME is gone, so a value is ``(host_src,)`` — the dest left the
+  tuple when it became the key.
+  """
+
+  def test_declares_plugins_and_cache(self):
+    t = ClaudeTarget()
+    common_binds = t.default_common()
+    # STRUCTURED form (spec §2a): ONE terminal key whose value is the whole
+    # dest-keyed map {box_dest: (host_src,)}, NOT a colon-joined string and
+    # NOT a key per entry.  The host_src is the STORED, fully self-resolving
+    # braced ref — no layer prepends a root later (§2a).
+    assert common_binds == {
+      "agent.claude.common": {
+        "/home/agent/.claude/plugins": ("{meta.agent.claude.path}/common/plugins",),
+        "/home/agent/.claude/cache": ("{meta.agent.claude.path}/common/cache",),
+      },
+    }
+
+  def test_share_values_are_self_resolving_host_src(self):
+    """host_src RESOLVES ON ITS OWN (spec §2a).
+
+    ⚑ The pre-P3 form of this test asserted ``not host_src.startswith("/")``,
+    which a key ref also satisfies — it would have passed VACUOUSLY over the
+    new shape while guarding nothing.  Inverted: assert the anchored form
+    positively, so a regression to a bare leaf is RED.
+
+    ⚑ The DESTINATION is now the map KEY, so the same walk asserts it there —
+    a key ref that leaked into the key position would be RED on the dest
+    check rather than passing unexamined.
     """
+    from kanibako.settings.agent_config import is_self_resolving
 
-    def test_declares_plugins_and_cache(self):
-        t = ClaudeTarget()
-        common_binds = t.default_common()
-        # STRUCTURED form (spec §2a): ONE terminal key whose value is the whole
-        # dest-keyed map {box_dest: (host_src,)}, NOT a colon-joined string and
-        # NOT a key per entry.  The host_src is the STORED, fully self-resolving
-        # braced ref — no layer prepends a root later (§2a).
-        assert common_binds == {
-            "agent.claude.common": {
-                "/home/agent/.claude/plugins": (
-                    "{meta.agent.claude.path}/common/plugins",
-                ),
-                "/home/agent/.claude/cache": (
-                    "{meta.agent.claude.path}/common/cache",
-                ),
-            },
-        }
-
-    def test_share_values_are_self_resolving_host_src(self):
-        """host_src RESOLVES ON ITS OWN (spec §2a).
-
-        ⚑ The pre-P3 form of this test asserted ``not host_src.startswith("/")``,
-        which a key ref also satisfies — it would have passed VACUOUSLY over the
-        new shape while guarding nothing.  Inverted: assert the anchored form
-        positively, so a regression to a bare leaf is RED.
-
-        ⚑ The DESTINATION is now the map KEY, so the same walk asserts it there —
-        a key ref that leaked into the key position would be RED on the dest
-        check rather than passing unexamined.
-        """
-        from kanibako.settings.agent_config import is_self_resolving
-
-        arm = ClaudeTarget().default_common()["agent.claude.common"]
-        assert arm  # not vacuous — claude ships two rows
-        for box_dest, value in arm.items():
-            host_src = value[0]
-            assert is_self_resolving(host_src), box_dest
-            assert host_src.startswith("{meta.agent.claude.path}/common/"), box_dest
-            assert box_dest.startswith("/home/agent/.claude/")
+    arm = ClaudeTarget().default_common()["agent.claude.common"]
+    assert arm  # not vacuous — claude ships two rows
+    for box_dest, value in arm.items():
+      host_src = value[0]
+      assert is_self_resolving(host_src), box_dest
+      assert host_src.startswith("{meta.agent.claude.path}/common/"), box_dest
+      assert box_dest.startswith("/home/agent/.claude/")
 
 
 class TestDefaultCategoryBinds:
-    """claude declares the tweakcc cache as an AGENT-scope ``caches`` entry.
+  """claude declares the tweakcc cache as an AGENT-scope ``caches`` entry.
 
-    The spec's ``agent.claude.caches[~/.kanibako/cache/tweakcc]`` instantiation:
-    ONE terminal key whose value is the dest-keyed map
-    ``{box_dest: (host_src,)}``.  The SOURCE is the agent DECLARATION ROOT
-    and the DEST the standard IN-BOX cache dir (``~`` canonicalized to the guest
-    home; never ``{system.cache}``, the HOST cache root) — INDEPENDENT, never an identity mount
-    (spec §2d).  No ``ro`` option: ``caches`` folds into the ``rw`` arm and the
-    collapse refuses a mode-contradicting option.
+  The spec's ``agent.claude.caches[~/.kanibako/cache/tweakcc]`` instantiation:
+  ONE terminal key whose value is the dest-keyed map
+  ``{box_dest: (host_src,)}``.  The SOURCE is the agent DECLARATION ROOT
+  and the DEST the standard IN-BOX cache dir (``~`` canonicalized to the guest
+  home; never ``{system.cache}``, the HOST cache root) — INDEPENDENT, never an identity mount
+  (spec §2d).  No ``ro`` option: ``caches`` folds into the ``rw`` arm and the
+  collapse refuses a mode-contradicting option.
+  """
+
+  def test_declares_the_tweakcc_cache(self):
+    assert ClaudeTarget().default_category_binds() == {
+      "agent.claude.caches": {
+        "/home/agent/.kanibako/cache/tweakcc": ("{meta.agent.claude.path}/caches/tweakcc",),
+      },
+    }
+
+  def test_source_is_not_the_dest(self):
+    """The entry is NOT an identity mount (spec §2d forbids it here).
+
+    A regression to ``destination=str(source)`` — the retired hand-built
+    helper mount — resolves both sides to one string and is RED here.
     """
-
-    def test_declares_the_tweakcc_cache(self):
-        assert ClaudeTarget().default_category_binds() == {
-            "agent.claude.caches": {
-                "/home/agent/.kanibako/cache/tweakcc": (
-                    "{meta.agent.claude.path}/caches/tweakcc",
-                ),
-            },
-        }
-
-    def test_source_is_not_the_dest(self):
-        """The entry is NOT an identity mount (spec §2d forbids it here).
-
-        A regression to ``destination=str(source)`` — the retired hand-built
-        helper mount — resolves both sides to one string and is RED here.
-        """
-        arm = ClaudeTarget().default_category_binds()["agent.claude.caches"]
-        assert arm  # not vacuous — claude ships one row
-        for box_dest, value in arm.items():
-            assert value[0] != box_dest, box_dest
+    arm = ClaudeTarget().default_category_binds()["agent.claude.caches"]
+    assert arm  # not vacuous — claude ships one row
+    for box_dest, value in arm.items():
+      assert value[0] != box_dest, box_dest
 
 
 class TestDefaultEnvs:
-    """claude's declared AGENT-scope env keys (spec §2d ``agent.claude.env.*``)."""
+  """claude's declared AGENT-scope env keys (spec §2d ``agent.claude.env.*``)."""
 
-    def test_declares_the_two_spec_rows_plus_the_final_slot(self):
-        # The two spec-declared vars, plus KANIBAKO_DIRECTIVE_FINAL naming claude's
-        # native user-memory slot (the file the box-start flattener writes).  These
-        # are DECLARED KEYS reaching the box through the settings channel, so a user
-        # can override one BY NAME; {$GUEST_HOME} is expanded by the loader.
-        assert ClaudeTarget().default_envs() == {
-            "agent.claude.env.DISABLE_AUTOUPDATER": "1",
-            "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
-        }
+  def test_declares_the_two_spec_rows_plus_the_final_slot(self):
+    # The two spec-declared vars, plus KANIBAKO_DIRECTIVE_FINAL naming claude's
+    # native user-memory slot (the file the box-start flattener writes).  These
+    # are DECLARED KEYS reaching the box through the settings channel, so a user
+    # can override one BY NAME; {$GUEST_HOME} is expanded by the loader.
+    assert ClaudeTarget().default_envs() == {
+      "agent.claude.env.DISABLE_AUTOUPDATER": "1",
+      "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
+    }
 
-    def test_the_descriptor_carries_no_environment_of_its_own(self):
-        # There is ONE declaration site and ONE route: a descriptor field would be a
-        # second way into the box env, and one no settings key could override.
-        assert not hasattr(ClaudeTarget().descriptor, "container_env")
+  def test_the_descriptor_carries_no_environment_of_its_own(self):
+    # There is ONE declaration site and ONE route: a descriptor field would be a
+    # second way into the box env, and one no settings key could override.
+    assert not hasattr(ClaudeTarget().descriptor, "container_env")
 
 
 class TestSettingDescriptors:
-    def test_returns_list_of_target_settings(self):
-        t = ClaudeTarget()
-        descriptors = t.setting_descriptors()
-        assert isinstance(descriptors, list)
-        assert all(isinstance(d, TargetSetting) for d in descriptors)
+  def test_returns_list_of_target_settings(self):
+    t = ClaudeTarget()
+    descriptors = t.setting_descriptors()
+    assert isinstance(descriptors, list)
+    assert all(isinstance(d, TargetSetting) for d in descriptors)
 
-    def test_model_setting(self):
-        # DECLARED with NO default of its own: spec §2d ``agent.claude.model`` has
-        # no plugin default and inherits ``agent.default.model`` (<None> = claude's
-        # built-in default), so the row loads as ``UNSET``.  The ALL-AGENTS form of
-        # this rule is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
-        t = ClaudeTarget()
-        descriptors = {d.key: d for d in t.setting_descriptors()}
-        assert "model" in descriptors
-        assert descriptors["model"].default is UNSET
-        assert descriptors["model"].choices == ()  # freeform
+  def test_model_setting(self):
+    # DECLARED with NO default of its own: spec §2d ``agent.claude.model`` has
+    # no plugin default and inherits ``agent.default.model`` (<None> = claude's
+    # built-in default), so the row loads as ``UNSET``.  The ALL-AGENTS form of
+    # this rule is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
+    t = ClaudeTarget()
+    descriptors = {d.key: d for d in t.setting_descriptors()}
+    assert "model" in descriptors
+    assert descriptors["model"].default is UNSET
+    assert descriptors["model"].choices == ()  # freeform
 
-    def test_access_is_not_a_declared_setting(self):
-        # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting: it
-        # is the agent-scope enum key routed verbatim (access_realization.setting_key),
-        # redeemed + validated at launch.  ``auto_approve`` is RETIRED and must
-        # not reappear on this surface either.
-        t = ClaudeTarget()
-        descriptors = {d.key: d for d in t.setting_descriptors()}
-        assert "access" not in descriptors
-        assert "auto_approve" not in descriptors
+  def test_access_is_not_a_declared_setting(self):
+    # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting: it
+    # is the agent-scope enum key routed verbatim (access_realization.setting_key),
+    # redeemed + validated at launch.  ``auto_approve`` is RETIRED and must
+    # not reappear on this surface either.
+    t = ClaudeTarget()
+    descriptors = {d.key: d for d in t.setting_descriptors()}
+    assert "access" not in descriptors
+    assert "auto_approve" not in descriptors
 
-    def test_endpoint_setting(self):
-        # Block B: endpoint declared with no default of its own → inherits
-        # ``agent.default.endpoint`` (<None> = bare/harness-default), freeform URL.
-        t = ClaudeTarget()
-        descriptors = {d.key: d for d in t.setting_descriptors()}
-        assert "endpoint" in descriptors
-        assert descriptors["endpoint"].default is UNSET
-        assert descriptors["endpoint"].choices == ()
+  def test_endpoint_setting(self):
+    # Block B: endpoint declared with no default of its own → inherits
+    # ``agent.default.endpoint`` (<None> = bare/harness-default), freeform URL.
+    t = ClaudeTarget()
+    descriptors = {d.key: d for d in t.setting_descriptors()}
+    assert "endpoint" in descriptors
+    assert descriptors["endpoint"].default is UNSET
+    assert descriptors["endpoint"].choices == ()
 
 
 class TestGenerateAgentConfig:
-    def test_returns_claude_defaults(self):
-        t = ClaudeTarget()
-        cfg = t.generate_agent_config()
-        # FILE PURITY: the generated agent settings file carries USER INTENT
-        # only, so state is EMPTY.  ``model`` comes from the descriptor floor
-        # (setting_descriptors -> EMPTY, i.e. claude's own built-in default) and
-        # ``access`` is UNSET (the launch reader defaults it to the ``full``
-        # tier); seeding either would pin the install above the floor and freeze
-        # the default forever.
-        assert cfg.state == {}
-        # ⚑ ``None``, the ABSENT state: a generated file says nothing about the argv, so
-        # the any-agent ``agent.default.run_args`` still reaches this agent's launch. An
-        # explicit ``[]`` here would seed an OPT-OUT into every new claude store
-        # (keyspec §2d agent.default.run_args).
-        assert cfg.run_args is None
-        assert cfg.env == {}
+  def test_returns_claude_defaults(self):
+    t = ClaudeTarget()
+    cfg = t.generate_agent_config()
+    # FILE PURITY: the generated agent settings file carries USER INTENT
+    # only, so state is EMPTY.  ``model`` comes from the descriptor floor
+    # (setting_descriptors -> EMPTY, i.e. claude's own built-in default) and
+    # ``access`` is UNSET (the launch reader defaults it to the ``full``
+    # tier); seeding either would pin the install above the floor and freeze
+    # the default forever.
+    assert cfg.state == {}
+    # ⚑ ``None``, the ABSENT state: a generated file says nothing about the argv, so
+    # the any-agent ``agent.default.run_args`` still reaches this agent's launch. An
+    # explicit ``[]`` here would seed an OPT-OUT into every new claude store
+    # (keyspec §2d agent.default.run_args).
+    assert cfg.run_args is None
+    assert cfg.env == {}
 
-    def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):
-        """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.claude.label``.
+  def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):
+    """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.claude.label``.
 
-        ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
-        declaring it would read the all-agents backstop, the agent's own name —
-        the display regression shipping this row exists to prevent.
-        """
-        import dataclasses
+    ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
+    declaring it would read the all-agents backstop, the agent's own name —
+    the display regression shipping this row exists to prevent.
+    """
+    import dataclasses
 
-        from kanibako.settings.agent_config import AgentConfig
+    from kanibako.settings.agent_config import AgentConfig
 
-        assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
-        label = next(
-            d for d in ClaudeTarget().setting_descriptors() if d.key == "label"
-        )
-        assert label.default == "Claude Code"
+    assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
+    label = next(d for d in ClaudeTarget().setting_descriptors() if d.key == "label")
+    assert label.default == "Claude Code"
 
-    def test_model_default_comes_from_the_descriptor_floor(self):
-        # ... and the plugin floor sets none: ``model`` inherits ``agent.default``.
-        t = ClaudeTarget()
-        assert "model" not in t.generate_agent_config().state
-        model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default is UNSET
+  def test_model_default_comes_from_the_descriptor_floor(self):
+    # ... and the plugin floor sets none: ``model`` inherits ``agent.default``.
+    t = ClaudeTarget()
+    assert "model" not in t.generate_agent_config().state
+    model = next(d for d in t.setting_descriptors() if d.key == "model")
+    assert model.default is UNSET
 
-    def test_is_crab_config_instance(self):
-        from kanibako.settings.agent_config import AgentConfig
-        t = ClaudeTarget()
-        cfg = t.generate_agent_config()
-        assert isinstance(cfg, AgentConfig)
+  def test_is_crab_config_instance(self):
+    from kanibako.settings.agent_config import AgentConfig
+
+    t = ClaudeTarget()
+    cfg = t.generate_agent_config()
+    assert isinstance(cfg, AgentConfig)
 
 
 # The retired ``apply_state`` hook translated ``model`` into ``--model <value>``.  That
@@ -700,241 +714,277 @@ class TestGenerateAgentConfig:
 
 
 class TestDescriptor:
-    """The declarative PluginDescriptor (DORMANT this phase — not yet consumed)."""
+  """The declarative PluginDescriptor (DORMANT this phase — not yet consumed)."""
 
-    def test_is_plugin_descriptor(self):
-        d = ClaudeTarget().descriptor
-        assert isinstance(d, PluginDescriptor)
+  def test_is_plugin_descriptor(self):
+    d = ClaudeTarget().descriptor
+    assert isinstance(d, PluginDescriptor)
 
-    def test_command(self):
-        assert ClaudeTarget().descriptor.command == ("claude",)
+  def test_command(self):
+    assert ClaudeTarget().descriptor.command == ("claude",)
 
-    def test_bindings(self):
-        d = ClaudeTarget().descriptor
-        bindings = {b.key: b for b in d.bindings}
-        # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
-        # cache) are now AGENT-scope ``common`` category entries (default_common;
-        # the category was RENAMED from ``shared`` in 1bb5bc6),
-        # so only the two AGENT_CRITICAL delivery binds remain — plus the best-effort
-        # kickoff-loader SEED (managed_pointer).
-        assert set(bindings) == {"share", "launcher", "managed_pointer"}
+  def test_bindings(self):
+    d = ClaudeTarget().descriptor
+    bindings = {b.key: b for b in d.bindings}
+    # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
+    # cache) are now AGENT-scope ``common`` category entries (default_common;
+    # the category was RENAMED from ``shared`` in 1bb5bc6),
+    # so only the two AGENT_CRITICAL delivery binds remain — plus the best-effort
+    # kickoff-loader SEED (managed_pointer).
+    assert set(bindings) == {"share", "launcher", "managed_pointer"}
 
-        share = bindings["share"]
-        assert share.origin == HostSrcOrigin.INSTALL_DIR
-        assert share.box_dest == "/home/agent/.local/share/claude"
-        assert share.kind == BindKind.DIR
-        assert share.scope == BindScope.AGENT_CRITICAL
-        assert share.ro is True
+    share = bindings["share"]
+    assert share.origin == HostSrcOrigin.INSTALL_DIR
+    assert share.box_dest == "/home/agent/.local/share/claude"
+    assert share.kind == BindKind.DIR
+    assert share.scope == BindScope.AGENT_CRITICAL
+    assert share.ro is True
 
-        launcher = bindings["launcher"]
-        assert launcher.origin == HostSrcOrigin.LAUNCHER
-        assert launcher.box_dest == "/home/agent/.local/bin/claude"
-        assert launcher.kind == BindKind.FILE
-        assert launcher.scope == BindScope.AGENT_CRITICAL
-        assert launcher.ro is True
+    launcher = bindings["launcher"]
+    assert launcher.origin == HostSrcOrigin.LAUNCHER
+    assert launcher.box_dest == "/home/agent/.local/bin/claude"
+    assert launcher.kind == BindKind.FILE
+    assert launcher.scope == BindScope.AGENT_CRITICAL
+    assert launcher.ro is True
 
-        # The kickoff-loader SEED: LITERAL-origin (shipped package data), delivered
-        # RO to ~/.config/kanibako/kickoff.md, BEST-EFFORT (scope AGENT, not
-        # AGENT_CRITICAL) so a missing source can't crash a launch.
-        pointer = bindings["managed_pointer"]
-        assert pointer.origin == HostSrcOrigin.LITERAL
-        assert pointer.box_dest == "/home/agent/.config/kanibako/kickoff.md"
-        assert pointer.kind == BindKind.FILE
-        assert pointer.scope == BindScope.AGENT
-        assert pointer.ro is True
-        # The package-relative source resolved to a real shipped file.
-        assert pointer.literal_src is not None and pointer.literal_src.exists()
+    # The kickoff-loader SEED: LITERAL-origin (shipped package data), delivered
+    # RO to ~/.config/kanibako/kickoff.md, BEST-EFFORT (scope AGENT, not
+    # AGENT_CRITICAL) so a missing source can't crash a launch.
+    pointer = bindings["managed_pointer"]
+    assert pointer.origin == HostSrcOrigin.LITERAL
+    assert pointer.box_dest == "/home/agent/.config/kanibako/kickoff.md"
+    assert pointer.kind == BindKind.FILE
+    assert pointer.scope == BindScope.AGENT
+    assert pointer.ro is True
+    # The package-relative source resolved to a real shipped file.
+    assert pointer.literal_src is not None and pointer.literal_src.exists()
 
-    def test_mode(self):
-        d = ClaudeTarget().descriptor
-        assert d.mode["start"] == ()
-        assert d.mode["continue"] == ("--continue",)
-        # resume intentionally cut (user 2026-06-17): {start, continue} only.
-        assert "resume" not in d.mode
+  def test_mode(self):
+    d = ClaudeTarget().descriptor
+    assert d.mode["start"] == ()
+    assert d.mode["continue"] == ("--continue",)
+    # resume intentionally cut (user 2026-06-17): {start, continue} only.
+    assert "resume" not in d.mode
 
-    def test_operations_exec(self):
-        d = ClaudeTarget().descriptor
-        assert "exec" in d.operations
-        assert d.operations["exec"].fragment == ("-p",)
+  def test_operations_exec(self):
+    d = ClaudeTarget().descriptor
+    assert "exec" in d.operations
+    assert d.operations["exec"].fragment == ("-p",)
 
-    def test_access_realization_access_rows(self):
-        # Every tier is a FLAG: the box's settings.json may hold any
-        # ``defaultMode``, and the flag overrides it.
-        ar = ClaudeTarget().descriptor.access_realization
-        assert ar is not None
-        assert ar.channel == Channel.FLAG
-        assert ar.setting_key == "access"
-        assert ar.full.flag == ("--dangerously-skip-permissions",)
-        assert ar.editing.flag == ("--permission-mode", "acceptEdits")
-        assert ar.restricted.flag == ("--permission-mode", "default")
-        assert ar.rendered_tiers() == ("restricted", "editing", "full")
+  def test_access_realization_access_rows(self):
+    # Every tier is a FLAG: the box's settings.json may hold any
+    # ``defaultMode``, and the flag overrides it.
+    ar = ClaudeTarget().descriptor.access_realization
+    assert ar is not None
+    assert ar.channel == Channel.FLAG
+    assert ar.setting_key == "access"
+    assert ar.full.flag == ("--dangerously-skip-permissions",)
+    assert ar.editing.flag == ("--permission-mode", "acceptEdits")
+    assert ar.restricted.flag == ("--permission-mode", "default")
+    assert ar.rendered_tiers() == ("restricted", "editing", "full")
 
-    @pytest.mark.parametrize(("tier", "flags"), [
-        ("restricted", ["--permission-mode", "default"]),
-        ("editing", ["--permission-mode", "acceptEdits"]),
-        ("full", ["--dangerously-skip-permissions"]),
-    ])
-    @pytest.mark.parametrize("op", [None, ("-p",)])
-    def test_each_tier_reaches_the_argv(self, tier, flags, op):
-        from kanibako.targets import assembly
+  @pytest.mark.parametrize(
+    ("tier", "flags"),
+    [
+      ("restricted", ["--permission-mode", "default"]),
+      ("editing", ["--permission-mode", "acceptEdits"]),
+      ("full", ["--dangerously-skip-permissions"]),
+    ],
+  )
+  @pytest.mark.parametrize("op", [None, ("-p",)])
+  def test_each_tier_reaches_the_argv(self, tier, flags, op):
+    from kanibako.targets import assembly
 
-        argv = assembly.assemble_argv(
-            ClaudeTarget().descriptor, mode_fragment=[], access=tier,
-            setting_values={}, op_fragment=op, extra_args=[], agent="claude",
-        )
-        assert argv == [*(op or ()), *flags]
+    argv = assembly.assemble_argv(
+      ClaudeTarget().descriptor,
+      mode_fragment=[],
+      access=tier,
+      setting_values={},
+      op_fragment=op,
+      extra_args=[],
+      agent="claude",
+    )
+    assert argv == [*(op or ()), *flags]
 
-    def test_settings_model(self):
-        d = ClaudeTarget().descriptor
-        # model (FLAG) + endpoint (ENV) — the persona endpoint is a sibling of model.
-        assert len(d.settings) == 2
-        by_key = {s.setting_key: s for s in d.settings}
-        model = by_key["model"]
-        assert model.channel == Channel.FLAG
-        assert model.flag == ("--model",)
+  def test_settings_model(self):
+    d = ClaudeTarget().descriptor
+    # model (FLAG) + endpoint (ENV) — the persona endpoint is a sibling of model.
+    assert len(d.settings) == 2
+    by_key = {s.setting_key: s for s in d.settings}
+    model = by_key["model"]
+    assert model.channel == Channel.FLAG
+    assert model.flag == ("--model",)
 
-    def test_settings_endpoint(self):
-        # Block B: endpoint is delivered via the ENV channel to the harness-specific
-        # ANTHROPIC_BASE_URL base-url env var.
-        d = ClaudeTarget().descriptor
-        by_key = {s.setting_key: s for s in d.settings}
-        endpoint = by_key["endpoint"]
-        assert endpoint.channel == Channel.ENV
-        assert endpoint.env_var == "ANTHROPIC_BASE_URL"
-        assert endpoint.flag == ()
+  def test_settings_endpoint(self):
+    # Block B: endpoint is delivered via the ENV channel to the harness-specific
+    # ANTHROPIC_BASE_URL base-url env var.
+    d = ClaudeTarget().descriptor
+    by_key = {s.setting_key: s for s in d.settings}
+    endpoint = by_key["endpoint"]
+    assert endpoint.channel == Channel.ENV
+    assert endpoint.env_var == "ANTHROPIC_BASE_URL"
+    assert endpoint.flag == ()
 
-    def test_cred_files(self):
-        # The host .claude.json config IMPORT (SEED_ONCE) was removed in 1.6.0;
-        # only the synced .credentials.json remains.
-        d = ClaudeTarget().descriptor
-        specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {".claude/.credentials.json"}
+  def test_cred_files(self):
+    # The host .claude.json config IMPORT (SEED_ONCE) was removed in 1.6.0;
+    # only the synced .credentials.json remains.
+    d = ClaudeTarget().descriptor
+    specs = {s.home_rel: s for s in d.cred_files}
+    assert set(specs) == {".claude/.credentials.json"}
 
-        creds = specs[".claude/.credentials.json"]
-        assert creds.host_rel == ".claude/.credentials.json"
-        assert creds.cadence == Cadence.SYNC
-        assert creds.mtime_gate is True
-        assert creds.filtered is True
+    creds = specs[".claude/.credentials.json"]
+    assert creds.host_rel == ".claude/.credentials.json"
+    assert creds.cadence == Cadence.SYNC
+    assert creds.mtime_gate is True
+    assert creds.filtered is True
 
-    def test_host_prep_and_init_dirs(self):
-        d = ClaudeTarget().descriptor
-        assert d.host_prep is True
-        assert d.init_dirs == (".claude",)
+  def test_host_prep_and_init_dirs(self):
+    d = ClaudeTarget().descriptor
+    assert d.host_prep is True
+    assert d.init_dirs == (".claude",)
 
 
 class TestTransformCred:
-    """transform_cred — PURE content op (engine owns gating)."""
+  """transform_cred — PURE content op (engine owns gating)."""
 
-    _CREDS_SPEC = CredFileSpec(
-        ".claude/.credentials.json", ".claude/.credentials.json",
-        cadence=Cadence.SYNC, mtime_gate=True, filtered=True,
+  _CREDS_SPEC = CredFileSpec(
+    ".claude/.credentials.json",
+    ".claude/.credentials.json",
+    cadence=Cadence.SYNC,
+    mtime_gate=True,
+    filtered=True,
+  )
+
+  def test_credentials_in_dst_absent_wholesale_copy(self, tmp_path):
+    """.credentials.json "in" with project absent -> wholesale copy."""
+    src = tmp_path / "host" / ".credentials.json"
+    src.parent.mkdir(parents=True)
+    src.write_text(json.dumps({"claudeAiOauth": {"token": "x"}, "extra": True}))
+    dst = tmp_path / "home" / ".claude" / ".credentials.json"
+
+    ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
+
+    data = json.loads(dst.read_text())
+    assert data["claudeAiOauth"]["token"] == "x"
+    assert data["extra"] is True
+
+  def test_credentials_in_dst_present_merges_oauth(self, tmp_path):
+    """.credentials.json "in" with project present -> oauth merged, other keys kept."""
+    src = tmp_path / "host" / ".credentials.json"
+    src.parent.mkdir(parents=True)
+    src.write_text(json.dumps({"claudeAiOauth": {"token": "new"}}))
+    dst = tmp_path / "home" / ".claude" / ".credentials.json"
+    dst.parent.mkdir(parents=True)
+    dst.write_text(
+      json.dumps(
+        {
+          "claudeAiOauth": {"token": "old"},
+          "projectOnlyKey": "keep-me",
+        }
+      )
     )
 
-    def test_credentials_in_dst_absent_wholesale_copy(self, tmp_path):
-        """.credentials.json "in" with project absent -> wholesale copy."""
-        src = tmp_path / "host" / ".credentials.json"
-        src.parent.mkdir(parents=True)
-        src.write_text(json.dumps({"claudeAiOauth": {"token": "x"}, "extra": True}))
-        dst = tmp_path / "home" / ".claude" / ".credentials.json"
+    ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
 
-        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
+    data = json.loads(dst.read_text())
+    assert data["claudeAiOauth"]["token"] == "new"
+    assert data["projectOnlyKey"] == "keep-me"
 
-        data = json.loads(dst.read_text())
-        assert data["claudeAiOauth"]["token"] == "x"
-        assert data["extra"] is True
+  def test_credentials_out_wholesale_copy(self, tmp_path):
+    """.credentials.json "out" -> wholesale project->host copy."""
+    src = tmp_path / "home" / ".claude" / ".credentials.json"
+    src.parent.mkdir(parents=True)
+    src.write_text(json.dumps({"claudeAiOauth": {"token": "wb"}}))
+    dst = tmp_path / "host" / ".claude" / ".credentials.json"
 
-    def test_credentials_in_dst_present_merges_oauth(self, tmp_path):
-        """.credentials.json "in" with project present -> oauth merged, other keys kept."""
-        src = tmp_path / "host" / ".credentials.json"
-        src.parent.mkdir(parents=True)
-        src.write_text(json.dumps({"claudeAiOauth": {"token": "new"}}))
-        dst = tmp_path / "home" / ".claude" / ".credentials.json"
-        dst.parent.mkdir(parents=True)
-        dst.write_text(json.dumps({
-            "claudeAiOauth": {"token": "old"},
-            "projectOnlyKey": "keep-me",
-        }))
+    ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "out")
 
-        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
-
-        data = json.loads(dst.read_text())
-        assert data["claudeAiOauth"]["token"] == "new"
-        assert data["projectOnlyKey"] == "keep-me"
-
-    def test_credentials_out_wholesale_copy(self, tmp_path):
-        """.credentials.json "out" -> wholesale project->host copy."""
-        src = tmp_path / "home" / ".claude" / ".credentials.json"
-        src.parent.mkdir(parents=True)
-        src.write_text(json.dumps({"claudeAiOauth": {"token": "wb"}}))
-        dst = tmp_path / "host" / ".claude" / ".credentials.json"
-
-        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "out")
-
-        data = json.loads(dst.read_text())
-        assert data["claudeAiOauth"]["token"] == "wb"
+    data = json.loads(dst.read_text())
+    assert data["claudeAiOauth"]["token"] == "wb"
 
 
 class TestDeliverySeams:
-    """T1 seams: ClaudeTarget writes no panel permissions (the tier is a launch
-    flag) and seeds the directive hook (thin dispatch over
-    :mod:`kanibako.vscode.vscode_config`)."""
+  """T1 seams: ClaudeTarget writes no panel permissions (the tier is a launch
+  flag) and seeds the directive hook (thin dispatch over
+  :mod:`kanibako.vscode.vscode_config`)."""
 
-    def _settings(self, config_root: Path) -> Path:
-        return config_root / ".claude" / "settings.json"
+  def _settings(self, config_root: Path) -> Path:
+    return config_root / ".claude" / "settings.json"
 
-    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
-    @pytest.mark.parametrize("mode", ["plan", "bypassPermissions", "acceptEdits"])
-    def test_panel_permissions_leave_the_users_mode_alone(
-        self, tmp_path, tier, mode,
-    ):
-        """No tier writes ``permissions.defaultMode``: the launch flag carries the
-        tier, so a user's own value survives a start byte-identical."""
-        path = self._settings(tmp_path)
-        path.parent.mkdir(parents=True)
-        path.write_text(json.dumps(
-            {"permissions": {"defaultMode": mode, "allow": ["x"]}}, indent=2,
-        ) + "\n")
-        before = path.read_bytes()
-        assert ClaudeTarget().deliver_panel_permissions(
-            config_root=tmp_path, access=tier,
-        ) is False
-        assert path.read_bytes() == before
+  @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+  @pytest.mark.parametrize("mode", ["plan", "bypassPermissions", "acceptEdits"])
+  def test_panel_permissions_leave_the_users_mode_alone(
+    self,
+    tmp_path,
+    tier,
+    mode,
+  ):
+    """No tier writes ``permissions.defaultMode``: the launch flag carries the
+    tier, so a user's own value survives a start byte-identical."""
+    path = self._settings(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(
+      json.dumps(
+        {"permissions": {"defaultMode": mode, "allow": ["x"]}},
+        indent=2,
+      )
+      + "\n"
+    )
+    before = path.read_bytes()
+    assert (
+      ClaudeTarget().deliver_panel_permissions(
+        config_root=tmp_path,
+        access=tier,
+      )
+      is False
+    )
+    assert path.read_bytes() == before
 
-    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
-    def test_panel_permissions_create_no_file(self, tmp_path, tier):
-        assert ClaudeTarget().deliver_panel_permissions(
-            config_root=tmp_path, access=tier,
-        ) is False
-        assert not (tmp_path / ".claude").exists()
+  @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+  def test_panel_permissions_create_no_file(self, tmp_path, tier):
+    assert (
+      ClaudeTarget().deliver_panel_permissions(
+        config_root=tmp_path,
+        access=tier,
+      )
+      is False
+    )
+    assert not (tmp_path / ".claude").exists()
 
-    def test_directive_hook_seeds_managed_hook_set(self, tmp_path):
-        assert ClaudeTarget().deliver_directive_hook(
-            config_root=tmp_path, access="restricted",
-        ) is True
-        doc = json.loads(self._settings(tmp_path).read_text())
-        commands = [
-            h["command"]
-            for group in doc["hooks"]["SessionStart"]
-            for h in group["hooks"]
-        ]
-        assert any("import-directives.py" in c for c in commands)
-        assert "SessionEnd" in doc["hooks"]  # marker-remove hook
-        # orthogonal to ``access``: NO permission key was written here
-        assert "permissions" not in doc
+  def test_directive_hook_seeds_managed_hook_set(self, tmp_path):
+    assert (
+      ClaudeTarget().deliver_directive_hook(
+        config_root=tmp_path,
+        access="restricted",
+      )
+      is True
+    )
+    doc = json.loads(self._settings(tmp_path).read_text())
+    commands = [h["command"] for group in doc["hooks"]["SessionStart"] for h in group["hooks"]]
+    assert any("import-directives.py" in c for c in commands)
+    assert "SessionEnd" in doc["hooks"]  # marker-remove hook
+    # orthogonal to ``access``: NO permission key was written here
+    assert "permissions" not in doc
 
-    def test_directive_hook_ignores_model_provider(self, tmp_path):
-        """claude carries its persona via env, not config — the write is
-        byte-identical with or without a provider."""
-        from kanibako.vscode.vscode_config import CodexModelProvider
-        t = ClaudeTarget()
-        r1 = tmp_path / "with"
-        r2 = tmp_path / "without"
-        t.deliver_directive_hook(
-            config_root=r1, access="full",
-            model_provider=CodexModelProvider(
-                provider_id="p", name="p", base_url="https://x/v1",
-                wire_api="chat", env_key="K", model="m",
-            ),
-        )
-        t.deliver_directive_hook(config_root=r2, access="full")
-        assert self._settings(r1).read_bytes() == self._settings(r2).read_bytes()
+  def test_directive_hook_ignores_model_provider(self, tmp_path):
+    """claude carries its persona via env, not config — the write is
+    byte-identical with or without a provider."""
+    from kanibako.vscode.vscode_config import CodexModelProvider
+
+    t = ClaudeTarget()
+    r1 = tmp_path / "with"
+    r2 = tmp_path / "without"
+    t.deliver_directive_hook(
+      config_root=r1,
+      access="full",
+      model_provider=CodexModelProvider(
+        provider_id="p",
+        name="p",
+        base_url="https://x/v1",
+        wire_api="chat",
+        env_key="K",
+        model="m",
+      ),
+    )
+    t.deliver_directive_hook(config_root=r2, access="full")
+    assert self._settings(r1).read_bytes() == self._settings(r2).read_bytes()

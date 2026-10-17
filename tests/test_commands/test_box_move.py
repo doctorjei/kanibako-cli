@@ -16,913 +16,1031 @@ from kanibako.utils import project_hash
 from tests.conftest import self_loop
 
 
-def _move_args(old, new, *, force=True, to_default=False, to_standalone=False,
-               to_workset=None, name=None):
-    return argparse.Namespace(
-        old=str(old) if old is not None else None,
-        new=str(new) if new is not None else None,
-        force=force,
-        to_default=to_default,
-        to_standalone=to_standalone,
-        to_workset=to_workset,
-        name=name,
-    )
+def _move_args(
+  old, new, *, force=True, to_default=False, to_standalone=False, to_workset=None, name=None
+):
+  return argparse.Namespace(
+    old=str(old) if old is not None else None,
+    new=str(new) if new is not None else None,
+    force=force,
+    to_default=to_default,
+    to_standalone=to_standalone,
+    to_workset=to_workset,
+    name=name,
+  )
 
 
 class TestBoxMove:
-    def test_move_project(self, config_file, tmp_home, credentials_dir):
-        """Move a project workspace to a new location (records rewritten)."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "myproject"
-        project_dir.mkdir()
-        (project_dir / "f.txt").write_text("data")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+  def test_move_project(self, config_file, tmp_home, credentials_dir):
+    """Move a project workspace to a new location (records rewritten)."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "myproject"
+    project_dir.mkdir()
+    (project_dir / "f.txt").write_text("data")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        dest = tmp_home / "newlocation"
-        rc = run_move(_move_args(project_dir, dest))
-        assert rc == 0
-        assert dest.is_dir()
-        assert (dest / "f.txt").read_text() == "data"
-        assert not project_dir.exists()
+    dest = tmp_home / "newlocation"
+    rc = run_move(_move_args(project_dir, dest))
+    assert rc == 0
+    assert dest.is_dir()
+    assert (dest / "f.txt").read_text() == "data"
+    assert not project_dir.exists()
 
-        # PRIMARY membership updated to the new path.
-        from kanibako.settings.paths import load_primary_boxes
-        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert str(dest) in boxes.values()
-        assert str(project_dir) not in boxes.values()
+    # PRIMARY membership updated to the new path.
+    from kanibako.settings.paths import load_primary_boxes
 
-        # P8b/Option A: the moved box resolves at the new workspace from the
-        # membership (above), not an on-disk ``resolved.workspace``.
-        proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
-        # The primary move re-derives the box name from the new workspace basename.
-        assert boxes.get(proj.name) == str(dest)
-        assert proj.project_path == dest.resolve()
-        assert proj.project_hash == project_hash(str(dest.resolve()))
-        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert str(dest) in boxes.values()
+    assert str(project_dir) not in boxes.values()
 
-    def test_bare_move_of_a_primary_keeps_its_name(self, config_file, tmp_home,
-                                                   credentials_dir, capsys):
-        """moveprimaryname: bare ``box move`` of a PRIMARY keeps the stored name."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "proj" / "beta"
-        project_dir.mkdir(parents=True)
-        (project_dir / "f.txt").write_text("data")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    # P8b/Option A: the moved box resolves at the new workspace from the
+    # membership (above), not an on-disk ``resolved.workspace``.
+    proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
+    # The primary move re-derives the box name from the new workspace basename.
+    assert boxes.get(proj.name) == str(dest)
+    assert proj.project_path == dest.resolve()
+    assert proj.project_hash == project_hash(str(dest.resolve()))
+    assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
-        dest = tmp_home / "elsewhere" / "beta"
-        rc = run_move(_move_args(project_dir, dest))
-        assert rc == 0, capsys.readouterr().err
+  def test_bare_move_of_a_primary_keeps_its_name(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """moveprimaryname: bare ``box move`` of a PRIMARY keeps the stored name."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "proj" / "beta"
+    project_dir.mkdir(parents=True)
+    (project_dir / "f.txt").write_text("data")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        out = capsys.readouterr().out
-        assert f"Moved 'beta' to {dest}" in out
-        assert "beta2" not in out
-        from kanibako.settings.paths import load_primary_boxes
-        boxes = load_primary_boxes(std.primary_workset,
-                                   early=_early_scope(std, BoxMode.primary))
-        assert boxes.get("beta") == str(dest)
-        assert "beta2" not in boxes
+    dest = tmp_home / "elsewhere" / "beta"
+    rc = run_move(_move_args(project_dir, dest))
+    assert rc == 0, capsys.readouterr().err
 
-        proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
-        assert proj.name == "beta"
-        assert proj.project_path == dest.resolve()
+    out = capsys.readouterr().out
+    assert f"Moved 'beta' to {dest}" in out
+    assert "beta2" not in out
+    from kanibako.settings.paths import load_primary_boxes
 
-    def test_a_failed_bare_move_leaves_the_name_at_the_old_path(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        """A failure after the bare move re-registers the name rolls it back to the old path."""
-        from kanibako.commands.box import _lifecycle
-        from kanibako.settings.paths import load_primary_boxes
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert boxes.get("beta") == str(dest)
+    assert "beta2" not in boxes
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "proj" / "beta"
-        project_dir.mkdir(parents=True)
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-        dest = tmp_home / "elsewhere" / "beta"
-        early = _early_scope(std, BoxMode.primary)
+    proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
+    assert proj.name == "beta"
+    assert proj.project_path == dest.resolve()
 
-        seen = []
+  def test_a_failed_bare_move_leaves_the_name_at_the_old_path(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    """A failure after the bare move re-registers the name rolls it back to the old path."""
+    from kanibako.commands.box import _lifecycle
+    from kanibako.settings.paths import load_primary_boxes
 
-        def boom(*_a, **_kw):
-            seen.append(load_primary_boxes(std.primary_workset, early=early).get("beta"))
-            raise OSError("injected")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "proj" / "beta"
+    project_dir.mkdir(parents=True)
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    dest = tmp_home / "elsewhere" / "beta"
+    early = _early_scope(std, BoxMode.primary)
 
-        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
-        assert run_move(_move_args(project_dir, dest)) == 1
+    seen = []
 
-        assert seen == [str(dest)]
-        boxes = load_primary_boxes(std.primary_workset, early=early)
-        assert boxes.get("beta") == str(project_dir)
-        assert str(dest) not in boxes.values()
-        assert project_dir.is_dir()
+    def boom(*_a, **_kw):
+      seen.append(load_primary_boxes(std.primary_workset, early=early).get("beta"))
+      raise OSError("injected")
 
-    def test_a_move_onto_another_boxs_registered_path_is_refused(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Landing on a path another primary box is registered at refuses and names it."""
-        import hashlib
+    monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
+    assert run_move(_move_args(project_dir, dest)) == 1
 
-        from kanibako.project import workset_registry
-        from kanibako.settings.config import WORKSET_META_FILE
-        from kanibako.settings.paths import load_primary_boxes
+    assert seen == [str(dest)]
+    boxes = load_primary_boxes(std.primary_workset, early=early)
+    assert boxes.get("beta") == str(project_dir)
+    assert str(dest) not in boxes.values()
+    assert project_dir.is_dir()
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        early = _early_scope(std, BoxMode.primary)
-        for name in ("alpha", "beta"):
-            (tmp_home / "proj" / name).mkdir(parents=True)
-            resolve_project(std, config, project_dir=str(tmp_home / "proj" / name),
-                            initialize=True)
-        (tmp_home / "proj" / "alpha").rmdir()
-        registry = workset_registry.resolve_workset_registry_path(
-            std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE), early=early)
-        before = hashlib.sha256(registry.read_bytes()).hexdigest()
-        capsys.readouterr()
+  def test_a_move_onto_another_boxs_registered_path_is_refused(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Landing on a path another primary box is registered at refuses and names it."""
+    import hashlib
 
-        rc = run_move(_move_args(tmp_home / "proj" / "beta", tmp_home / "proj" / "alpha"))
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert f"primary box 'alpha' is registered at {tmp_home / 'proj' / 'alpha'}" in err
-        assert "'beta' would land" in err
-        assert "`box rm alpha`" in err
-        assert hashlib.sha256(registry.read_bytes()).hexdigest() == before
-        assert load_primary_boxes(std.primary_workset, early=early) == {
-            "alpha": str(tmp_home / "proj" / "alpha"),
-            "beta": str(tmp_home / "proj" / "beta"),
-        }
+    from kanibako.project import workset_registry
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.paths import load_primary_boxes
 
-    def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
-        """move with a missing path returns an error (no cwd fallback)."""
-        rc = run_move(_move_args(str(tmp_home / "dest"), None))
-        assert rc == 1
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    early = _early_scope(std, BoxMode.primary)
+    for name in ("alpha", "beta"):
+      (tmp_home / "proj" / name).mkdir(parents=True)
+      resolve_project(std, config, project_dir=str(tmp_home / "proj" / name), initialize=True)
+    (tmp_home / "proj" / "alpha").rmdir()
+    registry = workset_registry.resolve_workset_registry_path(
+      std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE), early=early
+    )
+    before = hashlib.sha256(registry.read_bytes()).hexdigest()
+    capsys.readouterr()
 
-    def test_move_same_path_errors(self, config_file, tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "proj"
-        project_dir.mkdir()
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    rc = run_move(_move_args(tmp_home / "proj" / "beta", tmp_home / "proj" / "alpha"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert f"primary box 'alpha' is registered at {tmp_home / 'proj' / 'alpha'}" in err
+    assert "'beta' would land" in err
+    assert "`box rm alpha`" in err
+    assert hashlib.sha256(registry.read_bytes()).hexdigest() == before
+    assert load_primary_boxes(std.primary_workset, early=early) == {
+      "alpha": str(tmp_home / "proj" / "alpha"),
+      "beta": str(tmp_home / "proj" / "beta"),
+    }
 
-        rc = run_move(_move_args(project_dir, project_dir))
-        assert rc == 1
+  def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
+    """move with a missing path returns an error (no cwd fallback)."""
+    rc = run_move(_move_args(str(tmp_home / "dest"), None))
+    assert rc == 1
 
-    def test_move_dest_exists_errors(self, config_file, tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "proj"
-        project_dir.mkdir()
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+  def test_move_same_path_errors(self, config_file, tmp_home, credentials_dir):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "proj"
+    project_dir.mkdir()
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        dest = tmp_home / "existing"
-        dest.mkdir()
-        rc = run_move(_move_args(project_dir, dest))
-        assert rc == 1
+    rc = run_move(_move_args(project_dir, project_dir))
+    assert rc == 1
 
-    def test_move_no_metadata_errors(self, config_file, tmp_home, credentials_dir):
-        project_dir = tmp_home / "plain"
-        project_dir.mkdir()
-        dest = tmp_home / "newplace"
-        rc = run_move(_move_args(project_dir, dest))
-        assert rc == 1
+  def test_move_dest_exists_errors(self, config_file, tmp_home, credentials_dir):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "proj"
+    project_dir.mkdir()
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-    def test_move_with_workset_target(self, config_file, tmp_home, credentials_dir):
-        """move + --workset relocates AND changes ownership."""
-        from kanibako.project.workset import create_workset, load_workset
+    dest = tmp_home / "existing"
+    dest.mkdir()
+    rc = run_move(_move_args(project_dir, dest))
+    assert rc == 1
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        project_dir = tmp_home / "movable"
-        project_dir.mkdir()
-        (project_dir / "f.txt").write_text("x")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+  def test_move_no_metadata_errors(self, config_file, tmp_home, credentials_dir):
+    project_dir = tmp_home / "plain"
+    project_dir.mkdir()
+    dest = tmp_home / "newplace"
+    rc = run_move(_move_args(project_dir, dest))
+    assert rc == 1
 
-        # Land outside the workset (external member of ws).
-        dest = tmp_home / "moved_ext"
-        rc = run_move(_move_args(project_dir, dest, to_workset="ws"))
-        assert rc == 0
-        assert dest.is_dir()
-        ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
-        assert any(p.name == "movable" for p in ws2.projects)
+  def test_move_with_workset_target(self, config_file, tmp_home, credentials_dir):
+    """move + --workset relocates AND changes ownership."""
+    from kanibako.project.workset import create_workset, load_workset
 
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws", tmp_home / "ws_root", std)
+    project_dir = tmp_home / "movable"
+    project_dir.mkdir()
+    (project_dir / "f.txt").write_text("x")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-    def test_move_keeps_a_named_box_logs(self, config_file, tmp_home, credentials_dir):
-        """🛑 A move RELEASES the box from its old place through ``remove_project``, and
-        must not take its logs with it: both files survive a same-workset move."""
-        from kanibako.project.workset import add_project, create_workset
-        from kanibako.settings.paths import (
-            WorksetSpec, box_log_files, resolve_workset_project,
-        )
+    # Land outside the workset (external member of ws).
+    dest = tmp_home / "moved_ext"
+    rc = run_move(_move_args(project_dir, dest, to_workset="ws"))
+    assert rc == 0
+    assert dest.is_dir()
+    ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
+    assert any(p.name == "movable" for p in ws2.projects)
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        source = tmp_home / "boxa_src"
-        source.mkdir()
-        add_project(ws, "boxa", source)
-        resolve_workset_project(
-            WorksetSpec.from_workset(ws), "boxa", std, config, initialize=True,
-        )
-        logs = box_log_files(ws.logs_dir, "boxa")
-        ws.logs_dir.mkdir(parents=True, exist_ok=True)
-        for log in logs:
-            log.write_text("x")
+  def test_move_keeps_a_named_box_logs(self, config_file, tmp_home, credentials_dir):
+    """🛑 A move RELEASES the box from its old place through ``remove_project``, and
+    must not take its logs with it: both files survive a same-workset move."""
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import (
+      WorksetSpec,
+      box_log_files,
+      resolve_workset_project,
+    )
 
-        rc = run_move(_move_args(ws.workspaces_dir / "boxa", tmp_home / "boxa_moved"))
-        assert rc == 0
-        assert [log for log in logs if not log.exists()] == []
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws", tmp_home / "ws_root", std)
+    source = tmp_home / "boxa_src"
+    source.mkdir()
+    add_project(ws, "boxa", source)
+    resolve_workset_project(
+      WorksetSpec.from_workset(ws),
+      "boxa",
+      std,
+      config,
+      initialize=True,
+    )
+    logs = box_log_files(ws.logs_dir, "boxa")
+    ws.logs_dir.mkdir(parents=True, exist_ok=True)
+    for log in logs:
+      log.write_text("x")
 
+    rc = run_move(_move_args(ws.workspaces_dir / "boxa", tmp_home / "boxa_moved"))
+    assert rc == 0
+    assert [log for log in logs if not log.exists()] == []
 
-    def test_a_failed_retire_is_a_note_and_the_move_succeeds(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        """The rmtree AND its ``remove_box_tree`` escalation failing leaves the old
-        workspace, names it, and keeps rc 0.
+  def test_a_failed_retire_is_a_note_and_the_move_succeeds(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    """The rmtree AND its ``remove_box_tree`` escalation failing leaves the old
+    workspace, names it, and keeps rc 0.
 
-        ⚑ The escalation is pinned to fail: unpatched, it reaches a real ``podman
-        unshare rm`` on a host that has podman and deletes the tree (CI red).
-        """
-        from kanibako.commands.box import _lifecycle
+    ⚑ The escalation is pinned to fail: unpatched, it reaches a real ``podman
+    unshare rm`` on a host that has podman and deletes the tree (CI red).
+    """
+    from kanibako.commands.box import _lifecycle
 
-        project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
-        escalated = []
-        monkeypatch.setattr(
-            _lifecycle, "remove_box_tree", lambda path: escalated.append(path) or False,
-        )
-        assert run_move(_move_args(project_dir, dest)) == 0
-        assert escalated == [project_dir]
-        assert (dest / "f.txt").read_text() == "data"
-        assert (project_dir / "f.txt").read_text() == "data"
-        err = capsys.readouterr().err
-        assert f"Note: could not fully remove the old workspace {project_dir}" in err
-        assert f"{project_dir} still holds f.txt, a partial leftover" in err
+    project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
+    escalated = []
+    monkeypatch.setattr(
+      _lifecycle,
+      "remove_box_tree",
+      lambda path: escalated.append(path) or False,
+    )
+    assert run_move(_move_args(project_dir, dest)) == 0
+    assert escalated == [project_dir]
+    assert (dest / "f.txt").read_text() == "data"
+    assert (project_dir / "f.txt").read_text() == "data"
+    err = capsys.readouterr().err
+    assert f"Note: could not fully remove the old workspace {project_dir}" in err
+    assert f"{project_dir} still holds f.txt, a partial leftover" in err
 
+  def test_a_failed_rmtree_escalates_and_the_retire_is_silent(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    """The rmtree failing hands the old workspace to ``remove_box_tree``; when that
+    removes it, the move succeeds with no Note."""
+    import shutil
 
-    def test_a_failed_rmtree_escalates_and_the_retire_is_silent(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        """The rmtree failing hands the old workspace to ``remove_box_tree``; when that
-        removes it, the move succeeds with no Note."""
-        import shutil
+    from kanibako.commands.box import _lifecycle
 
-        from kanibako.commands.box import _lifecycle
+    real_rmtree = shutil.rmtree  # before ``_stuck_move`` patches it
+    project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
+    escalated = []
 
-        real_rmtree = shutil.rmtree  # before ``_stuck_move`` patches it
-        project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
-        escalated = []
+    def remove_box_tree(path):
+      escalated.append(path)
+      real_rmtree(path)
+      return True
 
-        def remove_box_tree(path):
-            escalated.append(path)
-            real_rmtree(path)
-            return True
+    monkeypatch.setattr(_lifecycle, "remove_box_tree", remove_box_tree)
+    assert run_move(_move_args(project_dir, dest)) == 0
+    assert escalated == [project_dir]
+    assert (dest / "f.txt").read_text() == "data"
+    assert not project_dir.exists()
+    assert "could not fully remove the old workspace" not in capsys.readouterr().err
 
-        monkeypatch.setattr(_lifecycle, "remove_box_tree", remove_box_tree)
-        assert run_move(_move_args(project_dir, dest)) == 0
-        assert escalated == [project_dir]
-        assert (dest / "f.txt").read_text() == "data"
-        assert not project_dir.exists()
-        assert "could not fully remove the old workspace" not in capsys.readouterr().err
+  @staticmethod
+  def _stuck_move(config_file, tmp_home, monkeypatch):
+    """Make a box at ``stuck`` whose ``shutil.rmtree`` raises; return it and a dest."""
+    import shutil
 
-    @staticmethod
-    def _stuck_move(config_file, tmp_home, monkeypatch):
-        """Make a box at ``stuck`` whose ``shutil.rmtree`` raises; return it and a dest."""
-        import shutil
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "stuck"
+    project_dir.mkdir()
+    (project_dir / "f.txt").write_text("data")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    real_rmtree = shutil.rmtree
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "stuck"
-        project_dir.mkdir()
-        (project_dir / "f.txt").write_text("data")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-        real_rmtree = shutil.rmtree
+    def rmtree(path, *a, **kw):
+      if os.fspath(path) == os.fspath(project_dir):
+        raise PermissionError(13, "Permission denied", os.fspath(path))
+      return real_rmtree(path, *a, **kw)
 
-        def rmtree(path, *a, **kw):
-            if os.fspath(path) == os.fspath(project_dir):
-                raise PermissionError(13, "Permission denied", os.fspath(path))
-            return real_rmtree(path, *a, **kw)
-
-        monkeypatch.setattr(shutil, "rmtree", rmtree)
-        return project_dir, tmp_home / "unstuck"
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    return project_dir, tmp_home / "unstuck"
 
 
 def _seed_links(tree, outside):
-    """Put inside, escaping, directory, absolute and dangling links in *tree*."""
-    (outside / "deep").mkdir(parents=True)
-    (outside / "big.txt").write_text("outside data")
-    (outside / "deep" / "nested.txt").write_text("nested")
-    (tree / "f.txt").write_text("data")
-    texts = {
-        "q70_in": "f.txt",
-        "q70_out": os.path.relpath(outside / "big.txt", os.path.realpath(tree)),
-        "q70_dir": os.path.relpath(outside, os.path.realpath(tree)),
-        "q70_abs": str(outside / "big.txt"),
-        "q70_gone": str(outside / "no-such"),
-    }
-    for name, text in texts.items():
-        (tree / name).symlink_to(text)
-    assert (tree / "q70_out").read_text() == "outside data"
-    return texts
+  """Put inside, escaping, directory, absolute and dangling links in *tree*."""
+  (outside / "deep").mkdir(parents=True)
+  (outside / "big.txt").write_text("outside data")
+  (outside / "deep" / "nested.txt").write_text("nested")
+  (tree / "f.txt").write_text("data")
+  texts = {
+    "q70_in": "f.txt",
+    "q70_out": os.path.relpath(outside / "big.txt", os.path.realpath(tree)),
+    "q70_dir": os.path.relpath(outside, os.path.realpath(tree)),
+    "q70_abs": str(outside / "big.txt"),
+    "q70_gone": str(outside / "no-such"),
+  }
+  for name, text in texts.items():
+    (tree / name).symlink_to(text)
+  assert (tree / "q70_out").read_text() == "outside data"
+  return texts
 
 
 def _assert_links_verbatim(tree, texts):
-    """Each seeded link is a link with its exact text; the outside tree never materialized."""
-    for name, text in texts.items():
-        assert (tree / name).is_symlink(), name
-        assert os.readlink(tree / name) == text, name
-    assert not [p for p in tree.rglob("*") if p.name == "nested.txt" and not p.is_symlink()]
+  """Each seeded link is a link with its exact text; the outside tree never materialized."""
+  for name, text in texts.items():
+    assert (tree / name).is_symlink(), name
+    assert os.readlink(tree / name) == text, name
+  assert not [p for p in tree.rglob("*") if p.name == "nested.txt" and not p.is_symlink()]
 
 
 class TestBoxMoveKeepsLinks:
-    """Q70/Q74: every tree a move copies carries its symlinks verbatim."""
+  """Q70/Q74: every tree a move copies carries its symlinks verbatim."""
 
-    def test_workspace_links_are_copied_verbatim(self, config_file, tmp_home, credentials_dir):
-        """A dangling link no longer aborts the move; an escaping one is not rewritten."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "linked"
-        project_dir.mkdir()
-        texts = _seed_links(project_dir, tmp_home / "outside")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+  def test_workspace_links_are_copied_verbatim(self, config_file, tmp_home, credentials_dir):
+    """A dangling link no longer aborts the move; an escaping one is not rewritten."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "linked"
+    project_dir.mkdir()
+    texts = _seed_links(project_dir, tmp_home / "outside")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        dest = tmp_home / "deeper" / "linked_moved"
-        dest.parent.mkdir()
-        rc = run_move(_move_args(project_dir, dest))
-        assert rc == 0
-        assert not project_dir.exists()
-        assert (dest / "f.txt").read_text() == "data"
-        _assert_links_verbatim(dest, texts)
+    dest = tmp_home / "deeper" / "linked_moved"
+    dest.parent.mkdir()
+    rc = run_move(_move_args(project_dir, dest))
+    assert rc == 0
+    assert not project_dir.exists()
+    assert (dest / "f.txt").read_text() == "data"
+    _assert_links_verbatim(dest, texts)
 
-    def test_workset_to_workset_move_keeps_links_through_the_stash(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The home rides the stash (two copies) and the workspace one copy: all verbatim."""
-        from kanibako.project.workset import add_project, create_workset
+  def test_workset_to_workset_move_keeps_links_through_the_stash(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The home rides the stash (two copies) and the workspace one copy: all verbatim."""
+    from kanibako.project.workset import add_project, create_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
-        ws_b = create_workset("wsb", tmp_home / "elsewhere" / "wsb_root", std)
-        internal = ws_a.workspaces_dir / "b1"
-        internal.mkdir(parents=True)
-        add_project(ws_a, "b1", internal, std)
-        ws_texts = _seed_links(internal, tmp_home / "outside_ws")
-        home = ws_a.projects_dir / "b1" / "home"
-        home.mkdir(parents=True, exist_ok=True)
-        home_texts = _seed_links(home, tmp_home / "outside_home")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+    ws_b = create_workset("wsb", tmp_home / "elsewhere" / "wsb_root", std)
+    internal = ws_a.workspaces_dir / "b1"
+    internal.mkdir(parents=True)
+    add_project(ws_a, "b1", internal, std)
+    ws_texts = _seed_links(internal, tmp_home / "outside_ws")
+    home = ws_a.projects_dir / "b1" / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    home_texts = _seed_links(home, tmp_home / "outside_home")
 
-        dest = ws_b.workspaces_dir / "b1"
-        rc = run_move(_move_args(internal, dest, to_workset="wsb"))
-        assert rc == 0
-        assert not internal.exists()
-        _assert_links_verbatim(dest, ws_texts)
-        _assert_links_verbatim(ws_b.projects_dir / "b1" / "home", home_texts)
+    dest = ws_b.workspaces_dir / "b1"
+    rc = run_move(_move_args(internal, dest, to_workset="wsb"))
+    assert rc == 0
+    assert not internal.exists()
+    _assert_links_verbatim(dest, ws_texts)
+    _assert_links_verbatim(ws_b.projects_dir / "b1" / "home", home_texts)
 
 
 class TestTargetWorksetResolutionIsCaseBlind:
-    """``_resolve_target_workset`` backs ``box move --to-workset`` and convert-to-workset.
+  """``_resolve_target_workset`` backs ``box move --to-workset`` and convert-to-workset.
 
-    Spec §0, ``⚑ NAMING RULES``: workset names compare without regard to case, and
-    nothing folds them on entry — so an exact-match lookup here refused a workset that
-    plainly exists.  ⚑ Fails on the pre-image.
-    """
+  Spec §0, ``⚑ NAMING RULES``: workset names compare without regard to case, and
+  nothing folds them on entry — so an exact-match lookup here refused a workset that
+  plainly exists.  ⚑ Fails on the pre-image.
+  """
 
-    def test_a_case_variant_resolves_to_the_REGISTERED_workset(
-        self, config_file, tmp_home,
-    ):
-        from kanibako.commands.box._lifecycle import _resolve_target_workset
-        from kanibako.project.workset import create_workset
+  def test_a_case_variant_resolves_to_the_REGISTERED_workset(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    from kanibako.commands.box._lifecycle import _resolve_target_workset
+    from kanibako.project.workset import create_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("target", tmp_home / "ws_target", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("target", tmp_home / "ws_target", std)
 
-        ws = _resolve_target_workset("TarGet", std)
-        # The Workset carries the name as REGISTERED, never as typed.
-        assert ws.name == "target"
+    ws = _resolve_target_workset("TarGet", std)
+    # The Workset carries the name as REGISTERED, never as typed.
+    assert ws.name == "target"
 
-    def test_a_genuine_miss_still_raises(self, config_file, tmp_home):
-        """The complement: case-blind is not match-anything."""
-        import pytest
+  def test_a_genuine_miss_still_raises(self, config_file, tmp_home):
+    """The complement: case-blind is not match-anything."""
+    import pytest
 
-        from kanibako.commands.box._lifecycle import _resolve_target_workset
-        from kanibako.errors import WorksetError
+    from kanibako.commands.box._lifecycle import _resolve_target_workset
+    from kanibako.errors import WorksetError
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        with pytest.raises(WorksetError, match="not found"):
-            _resolve_target_workset("nosuchworkset", std)
+    with pytest.raises(WorksetError, match="not found"):
+      _resolve_target_workset("nosuchworkset", std)
 
 
 class TestBoxMoveOfTheWorksetsOwnWorkspace:
-    """``run_move`` on a member whose leaf the workset names, wherever that leaf is.
+  """``run_move`` on a member whose leaf the workset names, wherever that leaf is.
 
-    A leaf under a repointed ``workset.workspaces`` dir, or behind a symlink, is the
-    workset's OWN workspace.  Read as external it was refused with a false
-    "external-connected" message, because the caller's copy-nothing arm is keyed on
-    that same test.
+  A leaf under a repointed ``workset.workspaces`` dir, or behind a symlink, is the
+  workset's OWN workspace.  Read as external it was refused with a false
+  "external-connected" message, because the caller's copy-nothing arm is keyed on
+  that same test.
+  """
+
+  def _repointed_member(self, std, tmp_home, name="ws1", member="alpha"):
+    from kanibako.project.workset import (
+      add_project,
+      create_workset,
+      load_workset,
+    )
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    ws = create_workset(name, tmp_home / f"{name}_root", std)
+    data = load_doc(ws.root / "workset.yaml")
+    data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
+    dump_doc(ws.root / "workset.yaml", data)
+    ws = load_workset(ws.root, ws.name, early_system=std.early_system)
+    leaf = ws.workspaces_dir / member
+    leaf.mkdir(parents=True)
+    (leaf / "f.txt").write_text("mine")
+    add_project(ws, member, leaf, std)
+    return ws, leaf
+
+  def test_a_non_canonical_path_under_a_repointed_workspaces_dir_is_refused(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A repointed ``workset.workspaces`` dir is in-tree for the landing check too.
+
+    The dir is a user key, so it can sit outside the workset root entirely; the
+    landing refusal has to read it as the workset's own space, not as the user's.
     """
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, leaf = self._repointed_member(std, tmp_home)
+    other = ws.workspaces_dir / "other"
 
-    def _repointed_member(self, std, tmp_home, name="ws1", member="alpha"):
-        from kanibako.project.workset import (
-            add_project,
-            create_workset,
-            load_workset,
-        )
-        from kanibako.settings.config_io import dump_doc, load_doc
+    rc = run_move(_move_args(leaf, other))
 
-        ws = create_workset(name, tmp_home / f"{name}_root", std)
-        data = load_doc(ws.root / "workset.yaml")
-        data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
-        dump_doc(ws.root / "workset.yaml", data)
-        ws = load_workset(ws.root, ws.name, early_system=std.early_system)
-        leaf = ws.workspaces_dir / member
-        leaf.mkdir(parents=True)
-        (leaf / "f.txt").write_text("mine")
-        add_project(ws, member, leaf, std)
-        return ws, leaf
+    assert rc == 1
+    assert "Refusing to record" in capsys.readouterr().err
+    assert (leaf / "f.txt").read_text() == "mine"
+    assert not other.exists()
 
-    def test_a_non_canonical_path_under_a_repointed_workspaces_dir_is_refused(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """A repointed ``workset.workspaces`` dir is in-tree for the landing check too.
+  def test_a_repointed_member_moves_to_an_external_path(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, leaf = self._repointed_member(std, tmp_home)
+    dest = tmp_home / "ext" / "alpha"
 
-        The dir is a user key, so it can sit outside the workset root entirely; the
-        landing refusal has to read it as the workset's own space, not as the user's.
-        """
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, leaf = self._repointed_member(std, tmp_home)
-        other = ws.workspaces_dir / "other"
+    rc = run_move(_move_args(leaf, dest))
 
-        rc = run_move(_move_args(leaf, other))
+    assert rc == 0
+    assert (dest / "f.txt").read_text() == "mine"
+    # the success-path retire removed the member's LEAF and the external
+    # member's discoverability link took the spot — not the repointed parent
+    assert leaf.is_symlink() and leaf.resolve() == dest.resolve()
+    assert leaf.parent.is_dir()
 
-        assert rc == 1
-        assert "Refusing to record" in capsys.readouterr().err
-        assert (leaf / "f.txt").read_text() == "mine"
-        assert not other.exists()
+  def test_a_symlinked_member_moves_to_an_external_path(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    import shutil
 
-    def test_a_repointed_member_moves_to_an_external_path(self, config_file,
-                                                         tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, leaf = self._repointed_member(std, tmp_home)
-        dest = tmp_home / "ext" / "alpha"
+    from kanibako.project.workset import add_project, create_workset
 
-        rc = run_move(_move_args(leaf, dest))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws1", tmp_home / "ws1_root", std)
+    leaf = ws.workspaces_dir / "alpha"
+    leaf.mkdir(parents=True)
+    (leaf / "f.txt").write_text("mine")
+    add_project(ws, "alpha", leaf, std)
+    real = tmp_home / "real"
+    shutil.move(str(leaf), str(real))
+    leaf.symlink_to(real)
+    dest = tmp_home / "ext" / "alpha"
 
-        assert rc == 0
-        assert (dest / "f.txt").read_text() == "mine"
-        # the success-path retire removed the member's LEAF and the external
-        # member's discoverability link took the spot — not the repointed parent
-        assert leaf.is_symlink() and leaf.resolve() == dest.resolve()
-        assert leaf.parent.is_dir()
+    rc = run_move(_move_args(leaf, dest))
 
-    def test_a_symlinked_member_moves_to_an_external_path(self, config_file,
-                                                         tmp_home, credentials_dir):
-        import shutil
+    assert rc == 0
+    assert (dest / "f.txt").read_text() == "mine"
+    # the user's own directory is never moved and never deleted through the link
+    assert (real / "f.txt").read_text() == "mine"
 
-        from kanibako.project.workset import add_project, create_workset
+  def test_a_failed_move_of_a_symlinked_member_keeps_the_link(
+    self, config_file, tmp_home, credentials_dir, monkeypatch
+  ):
+    """Rollback deletes only what the op created: the user's ``workspaces/<name>`` link.
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws1", tmp_home / "ws1_root", std)
-        leaf = ws.workspaces_dir / "alpha"
-        leaf.mkdir(parents=True)
-        (leaf / "f.txt").write_text("mine")
-        add_project(ws, "alpha", leaf, std)
-        real = tmp_home / "real"
-        shutil.move(str(leaf), str(real))
-        leaf.symlink_to(real)
-        dest = tmp_home / "ext" / "alpha"
+    The target unwind released the record as an external member's discoverability
+    link and unlinked it; the restore then made an EMPTY in-tree dir in its place.
+    """
+    import shutil
 
-        rc = run_move(_move_args(leaf, dest))
+    import kanibako.commands.box._lifecycle as lc
+    from kanibako.project.workset import add_project, create_workset, load_workset
 
-        assert rc == 0
-        assert (dest / "f.txt").read_text() == "mine"
-        # the user's own directory is never moved and never deleted through the link
-        assert (real / "f.txt").read_text() == "mine"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws1", tmp_home / "ws1_root", std)
+    leaf = ws.workspaces_dir / "alpha"
+    leaf.mkdir(parents=True)
+    (leaf / "f.txt").write_text("mine")
+    add_project(ws, "alpha", leaf, std)
+    real = tmp_home / "real"
+    shutil.move(str(leaf), str(real))
+    leaf.symlink_to(real)
+    dest = tmp_home / "ext" / "alpha"
 
-    def test_a_failed_move_of_a_symlinked_member_keeps_the_link(
-            self, config_file, tmp_home, credentials_dir, monkeypatch):
-        """Rollback deletes only what the op created: the user's ``workspaces/<name>`` link.
+    def boom(*a, **kw):
+      raise RuntimeError("injected late failure")
 
-        The target unwind released the record as an external member's discoverability
-        link and unlinked it; the restore then made an EMPTY in-tree dir in its place.
-        """
-        import shutil
+    monkeypatch.setattr(lc, "write_box_enable_vault", boom)
 
-        import kanibako.commands.box._lifecycle as lc
-        from kanibako.project.workset import add_project, create_workset, load_workset
+    with pytest.raises(RuntimeError, match="injected late failure"):
+      run_move(_move_args(leaf, dest))
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws1", tmp_home / "ws1_root", std)
-        leaf = ws.workspaces_dir / "alpha"
-        leaf.mkdir(parents=True)
-        (leaf / "f.txt").write_text("mine")
-        add_project(ws, "alpha", leaf, std)
-        real = tmp_home / "real"
-        shutil.move(str(leaf), str(real))
-        leaf.symlink_to(real)
-        dest = tmp_home / "ext" / "alpha"
+    assert leaf.is_symlink() and os.readlink(leaf) == str(real)
+    assert (real / "f.txt").read_text() == "mine"
+    assert not dest.exists()
+    member = next(
+      p
+      for p in load_workset(ws.root, "ws1", early_system=std.early_system).projects
+      if p.name == "alpha"
+    )
+    assert member.source_path.resolve() == real.resolve()
 
-        def boom(*a, **kw):
-            raise RuntimeError("injected late failure")
-        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+  def test_rollback_restores_the_registry_text_byte_for_byte(
+    self, config_file, tmp_home, credentials_dir, monkeypatch
+  ):
+    """rollbackexternal: failed-move rollback restores the registry text byte-for-byte."""
+    import shutil
 
-        with pytest.raises(RuntimeError, match="injected late failure"):
-            run_move(_move_args(leaf, dest))
+    import kanibako.commands.box._lifecycle as lc
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.project.workset_registry import resolve_workset_registry_path
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import _early_scope
 
-        assert leaf.is_symlink() and os.readlink(leaf) == str(real)
-        assert (real / "f.txt").read_text() == "mine"
-        assert not dest.exists()
-        member = next(p for p in load_workset(
-            ws.root, "ws1", early_system=std.early_system).projects if p.name == "alpha")
-        assert member.source_path.resolve() == real.resolve()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws1", tmp_home / "ws1_root", std)
+    leaf = ws.workspaces_dir / "alpha"
+    leaf.mkdir(parents=True)
+    (leaf / "f.txt").write_text("mine")
+    add_project(ws, "alpha", leaf, std)
+    real = tmp_home / "real"
+    shutil.move(str(leaf), str(real))
+    leaf.symlink_to(real)
+    dest = tmp_home / "ext" / "alpha"
 
-    def test_rollback_restores_the_registry_text_byte_for_byte(
-            self, config_file, tmp_home, credentials_dir, monkeypatch):
-        """rollbackexternal: failed-move rollback restores the registry text byte-for-byte."""
-        import shutil
+    registry_path = resolve_workset_registry_path(
+      ws.root,
+      load_doc(ws.root / "workset.yaml"),
+      early=_early_scope(std, BoxMode.named, "ws1"),
+    )
+    before = registry_path.read_text()
 
-        import kanibako.commands.box._lifecycle as lc
-        from kanibako.project.workset import add_project, create_workset
-        from kanibako.project.workset_registry import resolve_workset_registry_path
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import _early_scope
+    def boom(*a, **kw):
+      raise RuntimeError("injected late failure")
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws1", tmp_home / "ws1_root", std)
-        leaf = ws.workspaces_dir / "alpha"
-        leaf.mkdir(parents=True)
-        (leaf / "f.txt").write_text("mine")
-        add_project(ws, "alpha", leaf, std)
-        real = tmp_home / "real"
-        shutil.move(str(leaf), str(real))
-        leaf.symlink_to(real)
-        dest = tmp_home / "ext" / "alpha"
+    monkeypatch.setattr(lc, "write_box_enable_vault", boom)
 
-        registry_path = resolve_workset_registry_path(
-            ws.root, load_doc(ws.root / "workset.yaml"),
-            early=_early_scope(std, BoxMode.named, "ws1"),
-        )
-        before = registry_path.read_text()
+    with pytest.raises(RuntimeError, match="injected late failure"):
+      run_move(_move_args(leaf, dest))
 
-        def boom(*a, **kw):
-            raise RuntimeError("injected late failure")
-        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
-
-        with pytest.raises(RuntimeError, match="injected late failure"):
-            run_move(_move_args(leaf, dest))
-
-        after = registry_path.read_text()
-        assert after == before
-        assert f"alpha: {leaf}" in after
-        assert f"alpha: {real}" not in after
+    after = registry_path.read_text()
+    assert after == before
+    assert f"alpha: {leaf}" in after
+    assert f"alpha: {real}" not in after
 
 
 class TestUnregisteredStandaloneMove:
-    def test_move_keeps_the_box_unregistered(self, config_file, tmp_home, credentials_dir):
-        """A standalone box keeps its registration state across a move: none stays none."""
-        from kanibako.project import registry_store
-        from kanibako.settings.paths import detect_project_mode, resolve_standalone_project
+  def test_move_keeps_the_box_unregistered(self, config_file, tmp_home, credentials_dir):
+    """A standalone box keeps its registration state across a move: none stays none."""
+    from kanibako.project import registry_store
+    from kanibako.settings.paths import detect_project_mode, resolve_standalone_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa"
-        root.mkdir()
-        resolve_standalone_project(std, config, str(root), initialize=True, register=False)
-        assert registry_store.load_standalone(std.registry) == {}
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa"
+    root.mkdir()
+    resolve_standalone_project(std, config, str(root), initialize=True, register=False)
+    assert registry_store.load_standalone(std.registry) == {}
 
-        dest = tmp_home / "moved"
-        assert run_move(_move_args(root, dest)) == 0
+    dest = tmp_home / "moved"
+    assert run_move(_move_args(root, dest)) == 0
 
-        assert registry_store.load_standalone(std.registry) == {}
-        assert detect_project_mode(dest, std, config).mode is BoxMode.standalone
+    assert registry_store.load_standalone(std.registry) == {}
+    assert detect_project_mode(dest, std, config).mode is BoxMode.standalone
 
 
 class TestCaseOnlyRenameKeepsItsOwnLeaf:
-    def test_a_case_only_rename_keeping_an_outside_vault_link_moves(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """``a1`` → ``A1`` keeps its outside-linked ``vault/rw/a1``; that is not a kept store."""
-        from kanibako.project.workset import add_project, create_workset
+  def test_a_case_only_rename_keeping_an_outside_vault_link_moves(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """``a1`` → ``A1`` keeps its outside-linked ``vault/rw/a1``; that is not a kept store."""
+    from kanibako.project.workset import add_project, create_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ws1", tmp_home / "ws1_root", std)
-        leaf = ws.workspaces_dir / "a1"
-        leaf.mkdir(parents=True)
-        add_project(ws, "a1", leaf, std)
-        outside = tmp_home / "outside_a1"
-        outside.mkdir()
-        (outside / "f").write_text("data")
-        rw = ws.root.resolve() / "vault" / "rw" / "a1"
-        rw.rmdir()
-        rw.symlink_to(outside)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ws1", tmp_home / "ws1_root", std)
+    leaf = ws.workspaces_dir / "a1"
+    leaf.mkdir(parents=True)
+    add_project(ws, "a1", leaf, std)
+    outside = tmp_home / "outside_a1"
+    outside.mkdir()
+    (outside / "f").write_text("data")
+    rw = ws.root.resolve() / "vault" / "rw" / "a1"
+    rw.rmdir()
+    rw.symlink_to(outside)
 
-        assert run_move(_move_args(leaf, ws.workspaces_dir / "A1", name="A1")) == 0
+    assert run_move(_move_args(leaf, ws.workspaces_dir / "A1", name="A1")) == 0
 
-        assert (ws.workspaces_dir / "A1").is_dir()
-        assert (ws.root.resolve() / "boxes" / "A1").is_dir()
-        assert (outside / "f").read_text() == "data"
+    assert (ws.workspaces_dir / "A1").is_dir()
+    assert (ws.root.resolve() / "boxes" / "A1").is_dir()
+    assert (outside / "f").read_text() == "data"
 
 
 class TestInterruptedMoveIsNamed:
-    """An interrupt the unwind undoes in full says so; the CLI still exits 130."""
+  """An interrupt the unwind undoes in full says so; the CLI still exits 130."""
 
-    def _box(self, config_file, tmp_home):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "proj" / "beta"
-        project_dir.mkdir(parents=True)
-        (project_dir / "f.txt").write_text("data")
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-        return std, project_dir
+  def _box(self, config_file, tmp_home):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "proj" / "beta"
+    project_dir.mkdir(parents=True)
+    (project_dir / "f.txt").write_text("data")
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    return std, project_dir
 
-    def test_an_undone_interrupt_names_the_source(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        from kanibako.cli import main
-        from kanibako.commands.box import _lifecycle
-        from kanibako.settings.paths import load_primary_boxes
+  def test_an_undone_interrupt_names_the_source(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.cli import main
+    from kanibako.commands.box import _lifecycle
+    from kanibako.settings.paths import load_primary_boxes
 
-        std, project_dir = self._box(config_file, tmp_home)
-        dest = tmp_home / "elsewhere" / "beta"
+    std, project_dir = self._box(config_file, tmp_home)
+    dest = tmp_home / "elsewhere" / "beta"
 
-        def interrupt(*_a, **_kw):
-            assert (dest / "f.txt").is_file()  # mid-move: the copy has landed
-            raise KeyboardInterrupt
+    def interrupt(*_a, **_kw):
+      assert (dest / "f.txt").is_file()  # mid-move: the copy has landed
+      raise KeyboardInterrupt
 
-        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
-        with pytest.raises(SystemExit) as exc_info:
-            main(["box", "move", str(project_dir), str(dest), "--force"])
+    monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+    with pytest.raises(SystemExit) as exc_info:
+      main(["box", "move", str(project_dir), str(dest), "--force"])
 
-        assert exc_info.value.code == 130
-        err = capsys.readouterr().err
-        assert (f"Interrupted: the move was undone; 'beta' is back at {project_dir}"
-                in err), err
-        assert (project_dir / "f.txt").read_text() == "data"
-        assert not dest.exists()
-        boxes = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert boxes.get("beta") == str(project_dir)
+    assert exc_info.value.code == 130
+    err = capsys.readouterr().err
+    assert f"Interrupted: the move was undone; 'beta' is back at {project_dir}" in err, err
+    assert (project_dir / "f.txt").read_text() == "data"
+    assert not dest.exists()
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert boxes.get("beta") == str(project_dir)
 
-    def test_a_failed_unwind_step_is_named_not_claimed_undone(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        """⚑ THE INVERSE: a step that raises voids the claim the box is back, and is named;
-        the CLI still exits 130."""
-        from kanibako.cli import main
-        from kanibako.commands.box import _lifecycle
+  def test_a_failed_unwind_step_is_named_not_claimed_undone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    """⚑ THE INVERSE: a step that raises voids the claim the box is back, and is named;
+    the CLI still exits 130."""
+    from kanibako.cli import main
+    from kanibako.commands.box import _lifecycle
 
-        _std, project_dir = self._box(config_file, tmp_home)
-        dest = tmp_home / "elsewhere" / "beta"
+    _std, project_dir = self._box(config_file, tmp_home)
+    dest = tmp_home / "elsewhere" / "beta"
 
-        def interrupt(*_a, **_kw):
-            raise KeyboardInterrupt
+    def interrupt(*_a, **_kw):
+      raise KeyboardInterrupt
 
-        def fail(*_a, **_kw):
-            raise OSError("injected")
+    def fail(*_a, **_kw):
+      raise OSError("injected")
 
-        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
-        monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
-        with pytest.raises(SystemExit) as exc_info:
-            main(["box", "move", str(project_dir), str(dest), "--force"])
-        assert exc_info.value.code == 130
-        err = capsys.readouterr().err
-        assert "was undone;" not in err
-        assert "Note: could not undo a step of the move: injected" in err, err
-        assert (f"Interrupted: the move was not fully undone; check 'beta' at "
-                f"{project_dir} and at {dest} (the notes above name what the rollback "
-                "could not put back)") in err, err
+    monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+    monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
+    with pytest.raises(SystemExit) as exc_info:
+      main(["box", "move", str(project_dir), str(dest), "--force"])
+    assert exc_info.value.code == 130
+    err = capsys.readouterr().err
+    assert "was undone;" not in err
+    assert "Note: could not undo a step of the move: injected" in err, err
+    assert (
+      f"Interrupted: the move was not fully undone; check 'beta' at "
+      f"{project_dir} and at {dest} (the notes above name what the rollback "
+      "could not put back)"
+    ) in err, err
 
-    def test_an_unrestored_primary_row_is_named(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        """⚑ The primary-row restore swallows its errors; a row left unrestored voids
-        the claim and is named."""
-        from kanibako.commands.box import _lifecycle
+  def test_an_unrestored_primary_row_is_named(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    """⚑ The primary-row restore swallows its errors; a row left unrestored voids
+    the claim and is named."""
+    from kanibako.commands.box import _lifecycle
 
-        _std, project_dir = self._box(config_file, tmp_home)
-        dest = tmp_home / "elsewhere" / "beta"
+    _std, project_dir = self._box(config_file, tmp_home)
+    dest = tmp_home / "elsewhere" / "beta"
 
-        def fail(*_a, **_kw):
-            raise OSError("injected")
+    def fail(*_a, **_kw):
+      raise OSError("injected")
 
-        def interrupt(*_a, **_kw):
-            monkeypatch.setattr(_lifecycle, "_register_workset_box_membership", fail)
-            monkeypatch.setattr(_lifecycle, "unregister_primary_box_name", fail)
-            raise KeyboardInterrupt
+    def interrupt(*_a, **_kw):
+      monkeypatch.setattr(_lifecycle, "_register_workset_box_membership", fail)
+      monkeypatch.setattr(_lifecycle, "unregister_primary_box_name", fail)
+      raise KeyboardInterrupt
 
-        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
-        with pytest.raises(KeyboardInterrupt):
-            run_move(_move_args(project_dir, dest))
-        err = capsys.readouterr().err
-        assert "was undone;" not in err
-        assert "Note: could not restore the primary registry row 'beta'" in err, err
-        assert "Interrupted: the move was not fully undone; check 'beta' at" in err, err
+    monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+      run_move(_move_args(project_dir, dest))
+    err = capsys.readouterr().err
+    assert "was undone;" not in err
+    assert "Note: could not restore the primary registry row 'beta'" in err, err
+    assert "Interrupted: the move was not fully undone; check 'beta' at" in err, err
 
-    def test_a_failed_step_under_an_ordinary_error_is_named_too(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        from kanibako.commands.box import _lifecycle
-        from kanibako.errors import ProjectError
+  def test_a_failed_step_under_an_ordinary_error_is_named_too(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.commands.box import _lifecycle
+    from kanibako.errors import ProjectError
 
-        _std, project_dir = self._box(config_file, tmp_home)
-        dest = tmp_home / "elsewhere" / "beta"
+    _std, project_dir = self._box(config_file, tmp_home)
+    dest = tmp_home / "elsewhere" / "beta"
 
-        def boom(*_a, **_kw):
-            raise ProjectError("mid-move")
+    def boom(*_a, **_kw):
+      raise ProjectError("mid-move")
 
-        def fail(*_a, **_kw):
-            raise OSError("injected")
+    def fail(*_a, **_kw):
+      raise OSError("injected")
 
-        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
-        monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
-        assert run_move(_move_args(project_dir, dest)) == 1
-        err = capsys.readouterr().err
-        assert "Interrupted" not in err
-        assert "Error: mid-move" in err, err
-        assert "Note: could not undo a step of the move: injected" in err, err
-        assert "Note: the move failed and was not fully undone; check 'beta' at" in err, err
+    monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
+    monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
+    assert run_move(_move_args(project_dir, dest)) == 1
+    err = capsys.readouterr().err
+    assert "Interrupted" not in err
+    assert "Error: mid-move" in err, err
+    assert "Note: could not undo a step of the move: injected" in err, err
+    assert "Note: the move failed and was not fully undone; check 'beta' at" in err, err
 
-    @pytest.mark.parametrize(("verb", "said"), [
-        ("move", "Interrupted: the move was not fully undone; check 'beta' at {p} and at {d}"),
-        ("convert", "Interrupted: the conversion was not fully undone; check 'beta' at {p}"
-                    " and at {d}"),
-        (None, "Interrupted: the remap was not fully undone; 'beta' may still be "
-               "registered at {d}"),
-    ])
-    def test_each_verb_names_an_incomplete_rollback(self, tmp_path, capsys, verb, said):
-        from types import SimpleNamespace
+  @pytest.mark.parametrize(
+    ("verb", "said"),
+    [
+      ("move", "Interrupted: the move was not fully undone; check 'beta' at {p} and at {d}"),
+      (
+        "convert",
+        "Interrupted: the conversion was not fully undone; check 'beta' at {p} and at {d}",
+      ),
+      (None, "Interrupted: the remap was not fully undone; 'beta' may still be registered at {d}"),
+    ],
+  )
+  def test_each_verb_names_an_incomplete_rollback(self, tmp_path, capsys, verb, said):
+    from types import SimpleNamespace
 
-        from kanibako.commands.box import _lifecycle
+    from kanibako.commands.box import _lifecycle
 
-        dest = tmp_path / "dest"
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
-                                moved_from=None)
-        _lifecycle._note_unwind_incomplete(
-            state, SimpleNamespace(verb=verb), dest, [OSError("x")],  # type: ignore[arg-type]
-            interrupted=True)
-        noun = {"move": "move", "convert": "conversion"}.get(verb or "", "remap")
-        assert capsys.readouterr().err == (
-            f"Note: could not undo a step of the {noun}: x\n"
-            + said.format(p=tmp_path, d=dest)
-            + " (the notes above name what the rollback could not put back)\n")
+    dest = tmp_path / "dest"
+    state = SimpleNamespace(
+      name="beta", workspace_path=tmp_path, mode=BoxMode.primary, moved_from=None
+    )
+    _lifecycle._note_unwind_incomplete(
+      state,
+      SimpleNamespace(verb=verb),
+      dest,
+      [OSError("x")],  # type: ignore[arg-type]
+      interrupted=True,
+    )
+    noun = {"move": "move", "convert": "conversion"}.get(verb or "", "remap")
+    assert capsys.readouterr().err == (
+      f"Note: could not undo a step of the {noun}: x\n"
+      + said.format(p=tmp_path, d=dest)
+      + " (the notes above name what the rollback could not put back)\n"
+    )
 
-    def test_an_in_place_rollback_names_one_place(self, tmp_path, capsys):
-        from types import SimpleNamespace
+  def test_an_in_place_rollback_names_one_place(self, tmp_path, capsys):
+    from types import SimpleNamespace
 
-        from kanibako.commands.box import _lifecycle
+    from kanibako.commands.box import _lifecycle
 
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
-                                moved_from=None)
-        _lifecycle._note_unwind_incomplete(
-            state, SimpleNamespace(verb="convert"), None, [],  # type: ignore[arg-type]
-            interrupted=True)
-        assert capsys.readouterr().err == (
-            f"Interrupted: the conversion was not fully undone; check 'beta' at {tmp_path}"
-            " (the notes above name what the rollback could not put back)\n")
+    state = SimpleNamespace(
+      name="beta", workspace_path=tmp_path, mode=BoxMode.primary, moved_from=None
+    )
+    _lifecycle._note_unwind_incomplete(
+      state,
+      SimpleNamespace(verb="convert"),
+      None,
+      [],  # type: ignore[arg-type]
+      interrupted=True,
+    )
+    assert capsys.readouterr().err == (
+      f"Interrupted: the conversion was not fully undone; check 'beta' at {tmp_path}"
+      " (the notes above name what the rollback could not put back)\n"
+    )
 
-    @pytest.mark.parametrize(("verb", "said"), [
-        ("move", "Interrupted: the move was undone; 'beta' is back at {p}"),
-        ("convert", "Interrupted: the conversion was undone; 'beta' is back at {p}"),
-        (None, "Interrupted: the remap was undone; 'beta' is registered at {p} again"),
-    ])
-    def test_each_verb_names_what_was_undone(self, tmp_path, capsys, verb, said):
-        from types import SimpleNamespace
+  @pytest.mark.parametrize(
+    ("verb", "said"),
+    [
+      ("move", "Interrupted: the move was undone; 'beta' is back at {p}"),
+      ("convert", "Interrupted: the conversion was undone; 'beta' is back at {p}"),
+      (None, "Interrupted: the remap was undone; 'beta' is registered at {p} again"),
+    ],
+  )
+  def test_each_verb_names_what_was_undone(self, tmp_path, capsys, verb, said):
+    from types import SimpleNamespace
 
-        from kanibako.commands.box import _lifecycle
+    from kanibako.commands.box import _lifecycle
 
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
-                                moved_from=None)
-        _lifecycle._note_interrupt_undone(state, SimpleNamespace(verb=verb))  # type: ignore[arg-type]
-        assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
+    state = SimpleNamespace(
+      name="beta", workspace_path=tmp_path, mode=BoxMode.primary, moved_from=None
+    )
+    _lifecycle._note_interrupt_undone(state, SimpleNamespace(verb=verb))  # type: ignore[arg-type]
+    assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
 
+  @pytest.mark.parametrize("moved", [False, True])
+  @pytest.mark.parametrize("incomplete", [False, True])
+  def test_a_standalone_note_names_its_root_not_its_workspace(
+    self, tmp_path, capsys, moved, incomplete
+  ):
+    """A standalone is registered at its ROOT, and a moved one's row at the root it
+    left: an undo Note names that, never ``<root>/workspace``."""
+    from types import SimpleNamespace
 
-    @pytest.mark.parametrize("moved", [False, True])
-    @pytest.mark.parametrize("incomplete", [False, True])
-    def test_a_standalone_note_names_its_root_not_its_workspace(
-            self, tmp_path, capsys, moved, incomplete):
-        """A standalone is registered at its ROOT, and a moved one's row at the root it
-        left: an undo Note names that, never ``<root>/workspace``."""
-        from types import SimpleNamespace
+    from kanibako.commands.box import _lifecycle
 
-        from kanibako.commands.box import _lifecycle
-
-        root, left = tmp_path / "solo", tmp_path / "gone"
-        state = SimpleNamespace(name="beta", workspace_path=root / "workspace",
-                                mode=BoxMode.standalone, metadata_path=root,
-                                moved_from=left if moved else None)
-        spec = SimpleNamespace(verb=None)
-        if incomplete:
-            _lifecycle._note_unwind_incomplete(state, spec, None, [],  # type: ignore[arg-type]
-                                               interrupted=True)
-        else:
-            _lifecycle._note_interrupt_undone(state, spec)  # type: ignore[arg-type]
-        err = capsys.readouterr().err
-        assert f"registered at {left if moved else root}" in err, err
-        assert str(root / "workspace") not in err, err
+    root, left = tmp_path / "solo", tmp_path / "gone"
+    state = SimpleNamespace(
+      name="beta",
+      workspace_path=root / "workspace",
+      mode=BoxMode.standalone,
+      metadata_path=root,
+      moved_from=left if moved else None,
+    )
+    spec = SimpleNamespace(verb=None)
+    if incomplete:
+      _lifecycle._note_unwind_incomplete(
+        state,
+        spec,
+        None,
+        [],  # type: ignore[arg-type]
+        interrupted=True,
+      )
+    else:
+      _lifecycle._note_interrupt_undone(state, spec)  # type: ignore[arg-type]
+    err = capsys.readouterr().err
+    assert f"registered at {left if moved else root}" in err, err
+    assert str(root / "workspace") not in err, err
 
 
 def _cli(*argv: str) -> int:
-    from kanibako.cli import main
+  from kanibako.cli import main
 
-    with pytest.raises(SystemExit) as info:
-        main(list(argv))
-    return int(info.value.code or 0)
+  with pytest.raises(SystemExit) as info:
+    main(list(argv))
+  return int(info.value.code or 0)
 
 
 class TestAVaultSymlinkLoopIsKeptAndNamed:
-    """A vault that is a symlink loop is kept and named, never crashed on (3.11)."""
+  """A vault that is a symlink loop is kept and named, never crashed on (3.11)."""
 
-    _WHY = ("it is a symlink loop that kanibako cannot resolve, so it is left in place "
-            "for you to look at.")
+  _WHY = (
+    "it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at."
+  )
 
-    def test_a_standalone_move(self, config_file, tmp_home, credentials_dir,
-                               resolve_as_on_311, capsys):
-        root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
-        root.mkdir(parents=True)
-        assert _cli("create", "--standalone", "--register", str(root)) == 0
-        loop = root / "vault" / "rw"
-        self_loop(loop)
-        capsys.readouterr()
+  def test_a_standalone_move(
+    self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys
+  ):
+    root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+    root.mkdir(parents=True)
+    assert _cli("create", "--standalone", "--register", str(root)) == 0
+    loop = root / "vault" / "rw"
+    self_loop(loop)
+    capsys.readouterr()
 
-        assert _cli("box", "move", "--force", str(root), str(dest)) == 0
-        err = capsys.readouterr().err
-        assert "Traceback" not in err
-        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
-        assert loop.is_symlink() and os.readlink(loop) == "rw"
-        assert (dest / "workset.yaml").is_file()
+    assert _cli("box", "move", "--force", str(root), str(dest)) == 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+    assert loop.is_symlink() and os.readlink(loop) == "rw"
+    assert (dest / "workset.yaml").is_file()
 
-    def test_a_named_member_converted_to_standalone(
-        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
-    ):
-        member = tmp_home / "p" / "m"
-        member.mkdir(parents=True)
-        assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
-        assert _cli("workset", "connect", "ws", str(member)) == 0
-        loop = tmp_home / "ws" / "vault" / "rw" / "m"
-        self_loop(loop)
-        capsys.readouterr()
+  def test_a_named_member_converted_to_standalone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    resolve_as_on_311,
+    capsys,
+  ):
+    member = tmp_home / "p" / "m"
+    member.mkdir(parents=True)
+    assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
+    assert _cli("workset", "connect", "ws", str(member)) == 0
+    loop = tmp_home / "ws" / "vault" / "rw" / "m"
+    self_loop(loop)
+    capsys.readouterr()
 
-        assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
-        err = capsys.readouterr().err
-        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
-        assert loop.is_symlink()
+    assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
+    err = capsys.readouterr().err
+    assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+    assert loop.is_symlink()
 
-    def test_a_primary_move_under_a_new_name(
-        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
-    ):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
-        project_dir.mkdir(parents=True)
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-        loop = std.primary_vault_rw / "k"
-        self_loop(loop)
-        capsys.readouterr()
+  def test_a_primary_move_under_a_new_name(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    resolve_as_on_311,
+    capsys,
+  ):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+    project_dir.mkdir(parents=True)
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    loop = std.primary_vault_rw / "k"
+    self_loop(loop)
+    capsys.readouterr()
 
-        assert _cli("box", "move", "--force", "--name", "k3",
-                    str(project_dir), str(dest)) == 0
-        err = capsys.readouterr().err
-        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
-        assert loop.is_symlink()
+    assert _cli("box", "move", "--force", "--name", "k3", str(project_dir), str(dest)) == 0
+    err = capsys.readouterr().err
+    assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+    assert loop.is_symlink()
 
-    def test_a_standalone_move_with_the_vault_folder_looped(
-        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
-    ):
-        """The loop sits ABOVE both arms: it is named once, and kept."""
-        root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
-        root.mkdir(parents=True)
-        assert _cli("create", "--standalone", "--register", str(root)) == 0
-        loop = root / "vault"
-        self_loop(loop)
-        capsys.readouterr()
+  def test_a_standalone_move_with_the_vault_folder_looped(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    resolve_as_on_311,
+    capsys,
+  ):
+    """The loop sits ABOVE both arms: it is named once, and kept."""
+    root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+    root.mkdir(parents=True)
+    assert _cli("create", "--standalone", "--register", str(root)) == 0
+    loop = root / "vault"
+    self_loop(loop)
+    capsys.readouterr()
 
-        assert _cli("box", "move", "--force", str(root), str(dest)) == 0
-        err = capsys.readouterr().err
-        assert err.count("Note: left the vault at") == 1, err
-        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
-        assert loop.is_symlink() and os.readlink(loop) == "vault"
+    assert _cli("box", "move", "--force", str(root), str(dest)) == 0
+    err = capsys.readouterr().err
+    assert err.count("Note: left the vault at") == 1, err
+    assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+    assert loop.is_symlink() and os.readlink(loop) == "vault"
 
-    def test_a_named_member_converted_with_its_shared_arm_looped(
-        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
-    ):
-        member = tmp_home / "p" / "m"
-        member.mkdir(parents=True)
-        assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
-        assert _cli("workset", "connect", "ws", str(member)) == 0
-        arm = tmp_home / "ws" / "vault" / "rw"
-        self_loop(arm)
-        capsys.readouterr()
+  def test_a_named_member_converted_with_its_shared_arm_looped(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    resolve_as_on_311,
+    capsys,
+  ):
+    member = tmp_home / "p" / "m"
+    member.mkdir(parents=True)
+    assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
+    assert _cli("workset", "connect", "ws", str(member)) == 0
+    arm = tmp_home / "ws" / "vault" / "rw"
+    self_loop(arm)
+    capsys.readouterr()
 
-        assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
-        err = capsys.readouterr().err
-        assert f"Note: left the vault at {arm / 'm'} in place — {self._WHY}" in err, err
-        assert arm.is_symlink() and os.readlink(arm) == "rw"
+    assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
+    err = capsys.readouterr().err
+    assert f"Note: left the vault at {arm / 'm'} in place — {self._WHY}" in err, err
+    assert arm.is_symlink() and os.readlink(arm) == "rw"

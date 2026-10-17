@@ -26,137 +26,159 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from kanibako.launch.box_identity import (
-    box_name_cure,
-    is_canonical_standalone_name,
-    refuse_nonleaf_standalone_name,
-    standalone_kuid,
-    validate_box_name,
+  box_name_cure,
+  is_canonical_standalone_name,
+  refuse_nonleaf_standalone_name,
+  standalone_kuid,
+  validate_box_name,
 )
 from kanibako.runtime.container import ContainerRuntime, remove_box_tree, remove_path
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.workset_dirkeys import (
-    EarlyScope, early_repoint, refuse_inherited_per_owner,
+  EarlyScope,
+  early_repoint,
+  refuse_inherited_per_owner,
 )
 from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.config import (
-    BOX_META_FILE,
-    WORKSET_META_FILE,
-    BootstrapConfig,
-    read_box_enable_vault,
-    write_box_enable_vault,
+  BOX_META_FILE,
+  WORKSET_META_FILE,
+  BootstrapConfig,
+  read_box_enable_vault,
+  write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
 from kanibako.errors import (
-    BoxNameError, ConfigError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError,
-    UnmarkedStandaloneError, WorksetError,
+  BoxNameError,
+  ConfigError,
+  ContainerError,
+  DerivedBoxNameError,
+  KanibakoError,
+  ProjectError,
+  UnmarkedStandaloneError,
+  WorksetError,
 )
 from kanibako.settings.messages import (
-    CURE_MOVED_LEAF_NOT_ASCII, ERR_LOOP_LANDING, ERR_LOOP_SOURCE, CURE_LOOP_SOURCE_REMAP,
+  CURE_MOVED_LEAF_NOT_ASCII,
+  ERR_LOOP_LANDING,
+  ERR_LOOP_SOURCE,
+  CURE_LOOP_SOURCE_REMAP,
 )
 from kanibako.settings.paths import (
-    STANDALONE_META_DIR,
-    BoxMode,
-    ProjectPaths,
-    box_cure_ref,
-    project_cure_ref,
-    StandardPaths,
-    WorksetSpec,
-    _WorksetLike,
-    _find_workset_for_path,
-    _primary_box_paths,
-    _register_workset_box_membership,
-    _workset_box_name_for_workspace,
-    _workset_box_paths,
-    _box_settings_files,
-    _default_project_group,
-    _early_scope,
-    assign_primary_box_name,
-    box_metadata_dir,
-    box_log_files,
-    box_logs_dir_for,
-    box_workset_settings_paths,
-    check_primary_box_name_free,
-    load_primary_boxes,
-    primary_box_name_for_workspace,
-    refuse_derived_box_name,
-    register_primary_box_name,
-    report_retained_store,
-    resolve_box_enable_vault,
-    resolve_designation,
-    resolve_project,
-    resolve_standalone_project,
-    resolve_workset_project,
-    standalone_box_store,
-    standalone_logs_dir,
-    standalone_store_teardown_plan,
-    unregister_primary_box_name,
-    write_vault_gitignore,
+  STANDALONE_META_DIR,
+  BoxMode,
+  ProjectPaths,
+  box_cure_ref,
+  project_cure_ref,
+  StandardPaths,
+  WorksetSpec,
+  _WorksetLike,
+  _find_workset_for_path,
+  _primary_box_paths,
+  _register_workset_box_membership,
+  _workset_box_name_for_workspace,
+  _workset_box_paths,
+  _box_settings_files,
+  _default_project_group,
+  _early_scope,
+  assign_primary_box_name,
+  box_metadata_dir,
+  box_log_files,
+  box_logs_dir_for,
+  box_workset_settings_paths,
+  check_primary_box_name_free,
+  load_primary_boxes,
+  primary_box_name_for_workspace,
+  refuse_derived_box_name,
+  register_primary_box_name,
+  report_retained_store,
+  resolve_box_enable_vault,
+  resolve_designation,
+  resolve_project,
+  resolve_standalone_project,
+  resolve_workset_project,
+  standalone_box_store,
+  standalone_logs_dir,
+  standalone_store_teardown_plan,
+  unregister_primary_box_name,
+  write_vault_gitignore,
 )
 from kanibako.tree_copy import (
-    MountedLink, copy_tree_keeping_links, failed_entries, lay_root_link,
-    plan_mounted_links, removed_root_of, repoint_mounted_links,
+  MountedLink,
+  copy_tree_keeping_links,
+  failed_entries,
+  lay_root_link,
+  plan_mounted_links,
+  removed_root_of,
+  repoint_mounted_links,
 )
 from kanibako.utils import (
-    container_name_for_box_name, gitignore_holds_only_kanibako, is_dir_unless_gone,
-    literal_path, logical_cwd,
-    project_gitignore_to_strip, strip_project_gitignore, unreadable_path_error,
-    write_project_gitignore,
+  container_name_for_box_name,
+  gitignore_holds_only_kanibako,
+  is_dir_unless_gone,
+  literal_path,
+  logical_cwd,
+  project_gitignore_to_strip,
+  strip_project_gitignore,
+  unreadable_path_error,
+  write_project_gitignore,
 )
 from kanibako.project.workset import (
-    Workset,
-    add_project,
-    ensure_discoverability_link,
-    is_in_tree_workspace,
-    list_worksets,
-    load_workset,
-    load_workset_settings_doc,
-    refuse_case_variant_store,
-    refuse_null_workspaces,
-    release_project,
-    remove_member_store,
-    _member_store_bases,
-    report_retained_canon,
-    report_retained_vault,
-    canon_keep_reason,
-    vault_keep_reason,
-    resolve_workset_boxes,
-    resolve_workset_canon,
-    resolve_workset_vault_pair,
-    resolve_workset_vault_ro,
-    resolve_workset_vault_rw,
-    resolve_workset_workspaces,
-    standalone_canon_teardown,
-    standalone_vault_teardown,
-    _path_in_tree,
-    _symlink_loop,
-    _resolved_unless_loop,
-    SYMLINK_LOOP_WHY,
-    CANON_SYMLINK_LOOP_WHY,
-    _Unwind,
-    _note_unwind_errors,
-    _note_unwind_incomplete as _note_rollback_incomplete,
-    _unwind_created_root,
+  Workset,
+  add_project,
+  ensure_discoverability_link,
+  is_in_tree_workspace,
+  list_worksets,
+  load_workset,
+  load_workset_settings_doc,
+  refuse_case_variant_store,
+  refuse_null_workspaces,
+  release_project,
+  remove_member_store,
+  _member_store_bases,
+  report_retained_canon,
+  report_retained_vault,
+  canon_keep_reason,
+  vault_keep_reason,
+  resolve_workset_boxes,
+  resolve_workset_canon,
+  resolve_workset_vault_pair,
+  resolve_workset_vault_ro,
+  resolve_workset_vault_rw,
+  resolve_workset_workspaces,
+  standalone_canon_teardown,
+  standalone_vault_teardown,
+  _path_in_tree,
+  _symlink_loop,
+  _resolved_unless_loop,
+  SYMLINK_LOOP_WHY,
+  CANON_SYMLINK_LOOP_WHY,
+  _Unwind,
+  _note_unwind_errors,
+  _note_unwind_incomplete as _note_rollback_incomplete,
+  _unwind_created_root,
 )
 
 if TYPE_CHECKING:
-    from kanibako.channels.channels import OwnPartition
+  from kanibako.channels.channels import OwnPartition
 
 
 # ---------------------------------------------------------------------------
 # Sentinels for TargetSpec
 # ---------------------------------------------------------------------------
 
+
 class _Sentinel:
-    """A named sentinel that reprs cleanly (for spec/error messages)."""
+  """A named sentinel that reprs cleanly (for spec/error messages)."""
 
-    __slots__ = ("_name",)
+  __slots__ = ("_name",)
 
-    def __init__(self, name: str) -> None:
-        self._name = name
+  def __init__(self, name: str) -> None:
+    self._name = name
 
-    def __repr__(self) -> str:  # pragma: no cover - cosmetic
-        return self._name
+  def __repr__(self) -> str:  # pragma: no cover - cosmetic
+    return self._name
 
 
 #: ``location`` sentinel — keep the workspace where it is (no file move).
@@ -171,649 +193,746 @@ UNCHANGED = _Sentinel("UNCHANGED")
 # Descriptors
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProjectState:
-    """Uniform descriptor of an existing, resolved project."""
+  """Uniform descriptor of an existing, resolved project."""
 
-    owner: str
-    mode: BoxMode
-    name: str
-    workspace_path: Path
-    metadata_path: Path
-    shell_path: Path
-    # ⚡ ``None`` when the workset nulls that arm — there is no such vault dir.
-    vault_ro: Path | None
-    vault_rw: Path | None
-    is_external: bool = False
-    ws: Workset | None = None
-    #: The RESOLVED ``box.enable_vault`` — box tier over the containing workset's default.
-    enable_vault: bool = True
-    #: ⚑ What the BOX ITSELF authored, ignoring the workset tier — the ONLY value a
-    #: lifecycle op may persist at the destination's box tier.  A ``box.*`` key at the
-    #: source's workset tier is that workset's OVERRIDABLE DEFAULT
-    #: (:func:`kanibako.settings.config.carried_box_settings`), so writing the RESOLVED
-    #: value would pin an inherited default as a box-scope override the destination
-    #: workset can no longer reach.  Mirrors ``box_authored_vault`` in the resolvers.
-    box_authored_vault: bool = True
-    #: The host source of every bind mount the box receives; ``None`` when unknown, which
-    #: is never read as "no binds".  Read by :func:`plan_box_mounted_links`.
-    bind_sources: frozenset[str] | None = None
-    #: A standalone ``remap`` whose root the user moved: the registered root it left
-    #: (:func:`_moved_standalone_state`).  The state is the box as found at its new root.
-    moved_from: Path | None = None
-    #: The resolved paths this state came from, for :func:`box_running_reason`'s
-    #: container check; ``None`` when built from records alone.
-    paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
+  owner: str
+  mode: BoxMode
+  name: str
+  workspace_path: Path
+  metadata_path: Path
+  shell_path: Path
+  # ⚡ ``None`` when the workset nulls that arm — there is no such vault dir.
+  vault_ro: Path | None
+  vault_rw: Path | None
+  is_external: bool = False
+  ws: Workset | None = None
+  #: The RESOLVED ``box.enable_vault`` — box tier over the containing workset's default.
+  enable_vault: bool = True
+  #: ⚑ What the BOX ITSELF authored, ignoring the workset tier — the ONLY value a
+  #: lifecycle op may persist at the destination's box tier.  A ``box.*`` key at the
+  #: source's workset tier is that workset's OVERRIDABLE DEFAULT
+  #: (:func:`kanibako.settings.config.carried_box_settings`), so writing the RESOLVED
+  #: value would pin an inherited default as a box-scope override the destination
+  #: workset can no longer reach.  Mirrors ``box_authored_vault`` in the resolvers.
+  box_authored_vault: bool = True
+  #: The host source of every bind mount the box receives; ``None`` when unknown, which
+  #: is never read as "no binds".  Read by :func:`plan_box_mounted_links`.
+  bind_sources: frozenset[str] | None = None
+  #: A standalone ``remap`` whose root the user moved: the registered root it left
+  #: (:func:`_moved_standalone_state`).  The state is the box as found at its new root.
+  moved_from: Path | None = None
+  #: The resolved paths this state came from, for :func:`box_running_reason`'s
+  #: container check; ``None`` when built from records alone.
+  paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
 class TargetSpec:
-    """What a lifecycle operation should change (location axis + ownership axis)."""
+  """What a lifecycle operation should change (location axis + ownership axis)."""
 
-    location: Path | _Sentinel = INPLACE
-    ownership: str | _Sentinel = UNCHANGED
-    name: str | None = None
-    #: ⚑ ``remap`` semantics — record the new location, copy/delete NOTHING.
-    records_only: bool = False
-    #: The verb that asked (``"move"`` / ``"convert"``), so a refusal can give advice
-    #: in that command's own syntax.  Advice only — no check reads it.
-    verb: str | None = None
+  location: Path | _Sentinel = INPLACE
+  ownership: str | _Sentinel = UNCHANGED
+  name: str | None = None
+  #: ⚑ ``remap`` semantics — record the new location, copy/delete NOTHING.
+  records_only: bool = False
+  #: The verb that asked (``"move"`` / ``"convert"``), so a refusal can give advice
+  #: in that command's own syntax.  Advice only — no check reads it.
+  verb: str | None = None
 
 
 def owner_token(mode: BoxMode, ws_name: str | None = None) -> str:
-    """Build a canonical owner token from a mode (+ workset name)."""
-    if mode == BoxMode.named:
-        if not ws_name:
-            raise ValueError("workset owner requires a workset name")
-        return f"workset:{ws_name}"
-    return mode.value
+  """Build a canonical owner token from a mode (+ workset name)."""
+  if mode == BoxMode.named:
+    if not ws_name:
+      raise ValueError("workset owner requires a workset name")
+    return f"workset:{ws_name}"
+  return mode.value
 
 
 def _same_box_name(left: str | None, right: str | None) -> bool:
-    """True when two box names are the SAME identifier — compared case-blind (spec §0).
+  """True when two box names are the SAME identifier — compared case-blind (spec §0).
 
-    A one-candidate call into the single comparison carrier, so this file states the
-    rule nowhere itself.  An absent name (``None``/``""``) is not an identifier and
-    compares exactly, which is what the ``or state.name`` defaults below rely on.
-    """
-    if not left or not right:
-        return left == right
-    return find_identifier(left, (right,)) is not None
+  A one-candidate call into the single comparison carrier, so this file states the
+  rule nowhere itself.  An absent name (``None``/``""``) is not an identifier and
+  compares exactly, which is what the ``or state.name`` defaults below rely on.
+  """
+  if not left or not right:
+    return left == right
+  return find_identifier(left, (right,)) is not None
 
 
 def _default_rename_name(
-    state: ProjectState,
-    std: StandardPaths,
-    landing_ws: Path,
-    requested_name: str,
+  state: ProjectState,
+  std: StandardPaths,
+  landing_ws: Path,
+  requested_name: str,
 ) -> str | None:
-    """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``."""
-    if not requested_name:
-        return None
-    existing = _primary_name_at(state, std, landing_ws)
-    if existing is not None:
-        # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
-        # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
-        # SAME box, so it is the moot reuse below and not a refused in-place rename.
-        if not _same_box_name(requested_name, existing):
-            raise ProjectError(
-                f"In-place rename of a primary (default-mode) box is not "
-                f"supported: '{existing}' -> '{requested_name}'. Move the box "
-                f"to rename it (e.g. `box move {shlex.quote(existing)} <new-path> --name "
-                f"{shlex.quote(requested_name)}`), or drop --name to keep the current name."
-            )
-        # --name equals the current name: a moot reuse, not a rename edge.
-        return None
-    # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the SAME
-    # box, so the mint is its STORED spelling. Minting the typed case makes the source's
-    # OWN registration read as a same-kind collision at ``_to_default``, refusing a move
-    # ``_validate`` has already allowed -- after the tree is copied.
-    own = _primary_source_own_name(state, std)
-    if own is not None and _same_box_name(requested_name, own):
-        return own
-    return requested_name
+  """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``."""
+  if not requested_name:
+    return None
+  existing = _primary_name_at(state, std, landing_ws)
+  if existing is not None:
+    # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
+    # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
+    # SAME box, so it is the moot reuse below and not a refused in-place rename.
+    if not _same_box_name(requested_name, existing):
+      raise ProjectError(
+        f"In-place rename of a primary (default-mode) box is not "
+        f"supported: '{existing}' -> '{requested_name}'. Move the box "
+        f"to rename it (e.g. `box move {shlex.quote(existing)} <new-path> --name "
+        f"{shlex.quote(requested_name)}`), or drop --name to keep the current name."
+      )
+    # --name equals the current name: a moot reuse, not a rename edge.
+    return None
+  # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the SAME
+  # box, so the mint is its STORED spelling. Minting the typed case makes the source's
+  # OWN registration read as a same-kind collision at ``_to_default``, refusing a move
+  # ``_validate`` has already allowed -- after the tree is copied.
+  own = _primary_source_own_name(state, std)
+  if own is not None and _same_box_name(requested_name, own):
+    return own
+  return requested_name
 
 
 def _primary_name_at(
-    state: ProjectState, std: StandardPaths, landing_ws: Path,
+  state: ProjectState,
+  std: StandardPaths,
+  landing_ws: Path,
 ) -> str | None:
-    """The primary name registered at *landing_ws* for a PRIMARY source, else ``None``.
+  """The primary name registered at *landing_ws* for a PRIMARY source, else ``None``.
 
-    ⚑ Not ``None`` is the SAME-PATH edge: the box lands where it is registered.
-    """
-    if state.mode != BoxMode.primary or not state.name:
-        return None
-    return primary_box_name_for_workspace(std.primary_workset, str(landing_ws), early=_early_scope(std, BoxMode.primary))
+  ⚑ Not ``None`` is the SAME-PATH edge: the box lands where it is registered.
+  """
+  if state.mode != BoxMode.primary or not state.name:
+    return None
+  return primary_box_name_for_workspace(
+    std.primary_workset, str(landing_ws), early=_early_scope(std, BoxMode.primary)
+  )
 
 
 def _primary_source_own_name(
-    state: ProjectState, std: StandardPaths,
+  state: ProjectState,
+  std: StandardPaths,
 ) -> str | None:
-    """The name the SOURCE primary box is CURRENTLY registered under, else ``None``."""
-    if state.mode != BoxMode.primary or not state.name:
-        return None
-    return primary_box_name_for_workspace(
-        std.primary_workset, str(state.workspace_path), early=_early_scope(std, BoxMode.primary),
-    )
+  """The name the SOURCE primary box is CURRENTLY registered under, else ``None``."""
+  if state.mode != BoxMode.primary or not state.name:
+    return None
+  return primary_box_name_for_workspace(
+    std.primary_workset,
+    str(state.workspace_path),
+    early=_early_scope(std, BoxMode.primary),
+  )
 
 
 def _relocated_own_name(
-    state: ProjectState, std: StandardPaths, landing_ws: Path, mint: str | None,
+  state: ProjectState,
+  std: StandardPaths,
+  landing_ws: Path,
+  mint: str | None,
 ) -> str | None:
-    """The source's own name a RELOCATING primary move keeps at *landing_ws*, else ``None``.
+  """The source's own name a RELOCATING primary move keeps at *landing_ws*, else ``None``.
 
-    A bare move keeps it, as does a ``--name`` that names it; either reuses the vault.
-    """
-    if _primary_name_at(state, std, landing_ws) is not None:
-        return None
-    own = _primary_source_own_name(state, std)
-    if own is None or (mint is not None and not _same_box_name(mint, own)):
-        return None
-    return own
+  A bare move keeps it, as does a ``--name`` that names it; either reuses the vault.
+  """
+  if _primary_name_at(state, std, landing_ws) is not None:
+    return None
+  own = _primary_source_own_name(state, std)
+  if own is None or (mint is not None and not _same_box_name(mint, own)):
+    return None
+  return own
 
 
 def _workspace_landing(
-    state: ProjectState, dest: Path | None, target_mode: BoxMode, *, records_only: bool,
+  state: ProjectState,
+  dest: Path | None,
+  target_mode: BoxMode,
+  *,
+  records_only: bool,
 ) -> Path:
-    """The directory the target owner receives as the box's workspace: ``dest`` when given.
+  """The directory the target owner receives as the box's workspace: ``dest`` when given.
 
-    ⚑⚑ THE STANDALONE ROOT IS ``metadata_path`` (drift I) — NEVER the workspace's PARENT:
-    ``workspace_path`` is the RESOLVED ``workset.workspaces``, so under ``workspaces:
-    nested/deep`` its parent is ``<root>/nested`` and under an ABSOLUTE repoint it is not
-    below the root at all.  An in-place edge OUT of standalone lands at the root unless
-    that repoint put the workspace outside it (system-design § "Box lifecycle": the box
-    keeps the user's directory); an in-place standalone rename lands at the root, which
-    ``_to_standalone`` reads as such.
-    """
-    if dest is not None:
-        return dest
-    if records_only or state.mode is not BoxMode.standalone:
-        return state.workspace_path
-    root = state.metadata_path
-    workspace = state.workspace_path
-    if (target_mode is BoxMode.standalone or workspace.resolve() == root.resolve()
-            or root.resolve() in workspace.resolve().parents):
-        return root
-    return workspace
+  ⚑⚑ THE STANDALONE ROOT IS ``metadata_path`` (drift I) — NEVER the workspace's PARENT:
+  ``workspace_path`` is the RESOLVED ``workset.workspaces``, so under ``workspaces:
+  nested/deep`` its parent is ``<root>/nested`` and under an ABSOLUTE repoint it is not
+  below the root at all.  An in-place edge OUT of standalone lands at the root unless
+  that repoint put the workspace outside it (system-design § "Box lifecycle": the box
+  keeps the user's directory); an in-place standalone rename lands at the root, which
+  ``_to_standalone`` reads as such.
+  """
+  if dest is not None:
+    return dest
+  if records_only or state.mode is not BoxMode.standalone:
+    return state.workspace_path
+  root = state.metadata_path
+  workspace = state.workspace_path
+  if (
+    target_mode is BoxMode.standalone
+    or workspace.resolve() == root.resolve()
+    or root.resolve() in workspace.resolve().parents
+  ):
+    return root
+  return workspace
 
 
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
-    """Map a TargetSpec ownership value to ``(mode, workset_name | None)``."""
-    if ownership == "default":
-        return BoxMode.primary, None
-    if ownership == "standalone":
-        return BoxMode.standalone, None
-    return BoxMode.named, ownership
+  """Map a TargetSpec ownership value to ``(mode, workset_name | None)``."""
+  if ownership == "default":
+    return BoxMode.primary, None
+  if ownership == "standalone":
+    return BoxMode.standalone, None
+  return BoxMode.named, ownership
 
 
 # ---------------------------------------------------------------------------
 # resolve_lifecycle_target
 # ---------------------------------------------------------------------------
 
+
 def resolve_lifecycle_target(
-    old: str | None,
-    std: StandardPaths,
-    config: BootstrapConfig | None = None,
+  old: str | None,
+  std: StandardPaths,
+  config: BootstrapConfig | None = None,
 ) -> ProjectState:
-    """Resolve an existing project (by path or name) to a :class:`ProjectState`."""
-    if config is None:
-        from kanibako.settings.config import user_config_file, load_config
-        config = load_config(user_config_file())
+  """Resolve an existing project (by path or name) to a :class:`ProjectState`."""
+  if config is None:
+    from kanibako.settings.config import user_config_file, load_config
 
-    raw = resolve_designation(std, old, unknown_name_is_path=True, name_first=True)
-    raw_path = Path(literal_path(raw))
+    config = load_config(user_config_file())
 
-    from kanibako.launch import box_resolve
-    detection = box_resolve.detect_box_or_default(raw_path, std, config)
+  raw = resolve_designation(std, old, unknown_name_is_path=True, name_first=True)
+  raw_path = Path(literal_path(raw))
 
-    if detection.mode == BoxMode.named:
-        # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
-        # record makes one (spec § Detection & import).  Unrecorded, the primary decides.
-        if (primary_box_name_for_workspace(std.primary_workset, str(raw_path),
-                                           early=_early_scope(std, BoxMode.primary)) is not None
-                and not _workset_records_member_at(raw_path, std)):
-            return _resolve_primary_state(raw_path, std, config)
-        return _resolve_workset_state(raw_path, std, config)
-    if detection.mode == BoxMode.standalone:
-        # ⚑ D4 state 3: a registered root whose marker is gone is refused, not acted on.
-        unmarked = box_resolve.registered_standalone_marker_error(detection.project_root, std)
-        if unmarked is not None:
-            raise UnmarkedStandaloneError(unmarked)
-        proj = resolve_standalone_project(
-            std, config, str(detection.project_root), initialize=False,
-        )
-        return _state_from_paths("standalone", proj, std=std, ws=None, early=_early_scope(std, BoxMode.standalone))
+  from kanibako.launch import box_resolve
 
-    return _resolve_primary_state(detection.project_root, std, config)
+  detection = box_resolve.detect_box_or_default(raw_path, std, config)
+
+  if detection.mode == BoxMode.named:
+    # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
+    # record makes one (spec § Detection & import).  Unrecorded, the primary decides.
+    if primary_box_name_for_workspace(
+      std.primary_workset, str(raw_path), early=_early_scope(std, BoxMode.primary)
+    ) is not None and not _workset_records_member_at(raw_path, std):
+      return _resolve_primary_state(raw_path, std, config)
+    return _resolve_workset_state(raw_path, std, config)
+  if detection.mode == BoxMode.standalone:
+    # ⚑ D4 state 3: a registered root whose marker is gone is refused, not acted on.
+    unmarked = box_resolve.registered_standalone_marker_error(detection.project_root, std)
+    if unmarked is not None:
+      raise UnmarkedStandaloneError(unmarked)
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(detection.project_root),
+      initialize=False,
+    )
+    return _state_from_paths(
+      "standalone", proj, std=std, ws=None, early=_early_scope(std, BoxMode.standalone)
+    )
+
+  return _resolve_primary_state(detection.project_root, std, config)
 
 
 def _moved_standalone_state(
-    old: str | None, dest: Path, std: StandardPaths, config: BootstrapConfig,
+  old: str | None,
+  dest: Path,
+  std: StandardPaths,
+  config: BootstrapConfig,
 ) -> ProjectState | None:
-    """Registered standalone *old* as found at *dest*, where the user moved its root, else ``None``.
+  """Registered standalone *old* as found at *dest*, where the user moved its root, else ``None``.
 
-    After ``mv`` the box's row names a root that no longer carries it, and *dest* holds a
-    store under the row's ``workset.kuid`` (keyspace ``workset.kuid``), so ``remap`` takes
-    it as the box: :func:`_to_standalone` reuses it in place and moves nothing.  *dest*
-    must be no registered root, in any spelling, and not the old root itself.
-    ⚑ Only while the registered root no longer carries the box (:func:`_root_carries_box`):
-    a kuid is 5 characters, so with the box still at its root *dest* is a copy or a
-    stranger, and taking it is a takeover — refused.  An empty dir or a dangling link left
-    at the old root is not the box.
-    ⚑ With the box gone from its root, a *dest* that is ANOTHER box's registered root is
-    refused naming that box: the usual resolution would only say the old root is gone.
-    """
-    from kanibako.launch import box_resolve
-    from kanibako.project import registry_store
-    from kanibako.settings.config import read_workset_kuid
+  After ``mv`` the box's row names a root that no longer carries it, and *dest* holds a
+  store under the row's ``workset.kuid`` (keyspace ``workset.kuid``), so ``remap`` takes
+  it as the box: :func:`_to_standalone` reuses it in place and moves nothing.  *dest*
+  must be no registered root, in any spelling, and not the old root itself.
+  ⚑ Only while the registered root no longer carries the box (:func:`_root_carries_box`):
+  a kuid is 5 characters, so with the box still at its root *dest* is a copy or a
+  stranger, and taking it is a takeover — refused.  An empty dir or a dangling link left
+  at the old root is not the box.
+  ⚑ With the box gone from its root, a *dest* that is ANOTHER box's registered root is
+  refused naming that box: the usual resolution would only say the old root is gone.
+  """
+  from kanibako.launch import box_resolve
+  from kanibako.project import registry_store
+  from kanibako.settings.config import read_workset_kuid
 
-    holder = None
-    try:
-        old_root = Path(literal_path(resolve_designation(
-            std, old, unknown_name_is_path=True, name_first=True)))
-        name = registry_store.standalone_name_for_root(std.registry, old_root)
-        if (name is None or not is_canonical_standalone_name(name)
-                or _resolved_unless_loop(dest) == _resolved_unless_loop(old_root)):
-            return None
-        box_kuid = standalone_kuid(name)
-        still_there = _root_carries_box(old_root, box_kuid, std)
-        holder = registry_store.standalone_name_for_same_dir(std.registry, dest)
-        if holder is not None:
-            if still_there:
-                return None  # the usual resolution refuses it, naming the holder
-        elif (not box_resolve.stores_standalone_registry_null(dest)
-                or not standalone_box_store(
-                    dest, early=_early_scope(std, BoxMode.standalone)).is_dir()
-                or registry_store.standalone_identity_holder(std.registry, dest) is not None
-                or find_identifier(read_workset_kuid(dest / WORKSET_META_FILE),
-                                   (box_kuid,)) is None):
-            return None
-        proj = (None if still_there or holder is not None
-                else resolve_standalone_project(std, config, str(dest), initialize=False))
-    except (KanibakoError, OSError):
-        return None  # not this box's moved root: the usual resolution answers
+  holder = None
+  try:
+    old_root = Path(
+      literal_path(resolve_designation(std, old, unknown_name_is_path=True, name_first=True))
+    )
+    name = registry_store.standalone_name_for_root(std.registry, old_root)
+    if (
+      name is None
+      or not is_canonical_standalone_name(name)
+      or _resolved_unless_loop(dest) == _resolved_unless_loop(old_root)
+    ):
+      return None
+    box_kuid = standalone_kuid(name)
+    still_there = _root_carries_box(old_root, box_kuid, std)
+    holder = registry_store.standalone_name_for_same_dir(std.registry, dest)
     if holder is not None:
-        raise ProjectError(
-            f"Cannot remap '{name}' onto '{dest}': it is the root of standalone box "
-            f"'{holder}'. " + _REMAP_TAKEOVER_CURE.format(shlex.quote(str(dest)), verb="remap"))
-    if proj is None:
-        raise ProjectError(
-            f"Cannot remap '{name}' onto '{dest}': it is a standalone root carrying this "
-            f"box's id, and the box is still at {old_root}. A remap is not a takeover, and "
-            "no flag overrides this: it re-points a box you moved. To keep the copy as this "
-            f"box, move the original away (then run the remap again), or delete it "
-            f"(`kanibako box rm {shlex.quote(name)} --purge`, which deletes its own data, "
-            "its vault included, but not its workspace) and register the copy "
-            f"(`kanibako box register {shlex.quote(str(dest))}`).")
-    state = _state_from_paths("standalone", proj, std=std, ws=None,
-                              early=_early_scope(std, BoxMode.standalone))
-    return replace(state, name=name, moved_from=old_root)
+      if still_there:
+        return None  # the usual resolution refuses it, naming the holder
+    elif (
+      not box_resolve.stores_standalone_registry_null(dest)
+      or not standalone_box_store(dest, early=_early_scope(std, BoxMode.standalone)).is_dir()
+      or registry_store.standalone_identity_holder(std.registry, dest) is not None
+      or find_identifier(read_workset_kuid(dest / WORKSET_META_FILE), (box_kuid,)) is None
+    ):
+      return None
+    proj = (
+      None
+      if still_there or holder is not None
+      else resolve_standalone_project(std, config, str(dest), initialize=False)
+    )
+  except (KanibakoError, OSError):
+    return None  # not this box's moved root: the usual resolution answers
+  if holder is not None:
+    raise ProjectError(
+      f"Cannot remap '{name}' onto '{dest}': it is the root of standalone box "
+      f"'{holder}'. " + _REMAP_TAKEOVER_CURE.format(shlex.quote(str(dest)), verb="remap")
+    )
+  if proj is None:
+    raise ProjectError(
+      f"Cannot remap '{name}' onto '{dest}': it is a standalone root carrying this "
+      f"box's id, and the box is still at {old_root}. A remap is not a takeover, and "
+      "no flag overrides this: it re-points a box you moved. To keep the copy as this "
+      f"box, move the original away (then run the remap again), or delete it "
+      f"(`kanibako box rm {shlex.quote(name)} --purge`, which deletes its own data, "
+      "its vault included, but not its workspace) and register the copy "
+      f"(`kanibako box register {shlex.quote(str(dest))}`)."
+    )
+  state = _state_from_paths(
+    "standalone", proj, std=std, ws=None, early=_early_scope(std, BoxMode.standalone)
+  )
+  return replace(state, name=name, moved_from=old_root)
 
 
 def _root_carries_box(root: Path, box_kuid: str, std: StandardPaths) -> bool:
-    """Whether standalone *root* still holds the box with *box_kuid*: its id, or its store.
+  """Whether standalone *root* still holds the box with *box_kuid*: its id, or its store.
 
-    Gone, a dangling link, or a dir with neither is not the box.  A ``workset.yaml``
-    naming another kuid is another box.  With no kuid stored, the box's store there is
-    still the box.  ⚑ A root that cannot be read counts as carrying it: the remap refuses.
-    ``Path.is_dir()`` would read a link loop (or a chain past the hop limit to the intact
-    box) as gone, so both tests are :func:`is_dir_unless_gone`, which raises then.
-    """
-    from kanibako import kuid
-    from kanibako.settings.config import read_workset_kuid
+  Gone, a dangling link, or a dir with neither is not the box.  A ``workset.yaml``
+  naming another kuid is another box.  With no kuid stored, the box's store there is
+  still the box.  ⚑ A root that cannot be read counts as carrying it: the remap refuses.
+  ``Path.is_dir()`` would read a link loop (or a chain past the hop limit to the intact
+  box) as gone, so both tests are :func:`is_dir_unless_gone`, which raises then.
+  """
+  from kanibako import kuid
+  from kanibako.settings.config import read_workset_kuid
 
-    try:
-        if not is_dir_unless_gone(root):
-            return False
-        stored = read_workset_kuid(root / WORKSET_META_FILE)
-        if stored != kuid.SENTINEL:
-            return find_identifier(stored, (box_kuid,)) is not None
-        return is_dir_unless_gone(
-            standalone_box_store(root, early=_early_scope(std, BoxMode.standalone)))
-    except (KanibakoError, OSError):
-        return True
+  try:
+    if not is_dir_unless_gone(root):
+      return False
+    stored = read_workset_kuid(root / WORKSET_META_FILE)
+    if stored != kuid.SENTINEL:
+      return find_identifier(stored, (box_kuid,)) is not None
+    return is_dir_unless_gone(
+      standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
+    )
+  except (KanibakoError, OSError):
+    return True
 
 
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
-    """Whether a workset records a member at *resolved*: in-tree or an external connect."""
-    from kanibako.launch import box_resolve
+  """Whether a workset records a member at *resolved*: in-tree or an external connect."""
+  from kanibako.launch import box_resolve
 
-    if box_resolve.find_connected_external_box(resolved, std) is not None:
-        return True
-    try:
-        ws, _ = _find_workset_for_path(resolved, std)  # type: ignore[assignment]
-    except WorksetError:
-        return False
-    return _workset_box_name_for_workspace(
-        ws.root, str(resolved), early=_early_scope(std, BoxMode.named, ws.name)) is not None
+  if box_resolve.find_connected_external_box(resolved, std) is not None:
+    return True
+  try:
+    ws, _ = _find_workset_for_path(resolved, std)  # type: ignore[assignment]
+  except WorksetError:
+    return False
+  return (
+    _workset_box_name_for_workspace(
+      ws.root, str(resolved), early=_early_scope(std, BoxMode.named, ws.name)
+    )
+    is not None
+  )
 
 
 def _resolve_primary_state(
-    root: Path, std: StandardPaths, config: BootstrapConfig,
+  root: Path,
+  std: StandardPaths,
+  config: BootstrapConfig,
 ) -> ProjectState:
-    """Resolve a PRIMARY (default-mode) workspace to a :class:`ProjectState`."""
-    if not root.is_dir():
-        # ⚑ Workspace dir gone (moved before `remap`): resolve_project requires it, so
-        # fall back to the registered metadata alone.
-        fallback = _default_state_from_meta(root, std)
-        if fallback is not None:
-            return fallback
-    proj = resolve_project(
-        std, config, project_dir=str(root), initialize=False,
-    )
-    if not proj.metadata_path.is_dir():
-        if _symlink_loop(proj.metadata_path):  # ⚑ a ProjectError, as the refusal below
-            raise ProjectError(str(looped_path_error(proj.metadata_path)))
-        raise ProjectError(f"No project data found for {root}")
-    return _state_from_paths("primary", proj, std=std, ws=None, early=_early_scope(std, BoxMode.primary))
+  """Resolve a PRIMARY (default-mode) workspace to a :class:`ProjectState`."""
+  if not root.is_dir():
+    # ⚑ Workspace dir gone (moved before `remap`): resolve_project requires it, so
+    # fall back to the registered metadata alone.
+    fallback = _default_state_from_meta(root, std)
+    if fallback is not None:
+      return fallback
+  proj = resolve_project(
+    std,
+    config,
+    project_dir=str(root),
+    initialize=False,
+  )
+  if not proj.metadata_path.is_dir():
+    if _symlink_loop(proj.metadata_path):  # ⚑ a ProjectError, as the refusal below
+      raise ProjectError(str(looped_path_error(proj.metadata_path)))
+    raise ProjectError(f"No project data found for {root}")
+  return _state_from_paths(
+    "primary", proj, std=std, ws=None, early=_early_scope(std, BoxMode.primary)
+  )
 
 
 def _default_state_from_meta(
-    workspace: Path, std: StandardPaths,
+  workspace: Path,
+  std: StandardPaths,
 ) -> ProjectState | None:
-    """Build a default-mode :class:`ProjectState` from registered metadata (``remap``)."""
-    name = primary_box_name_for_workspace(std.primary_workset, str(workspace), early=_early_scope(std, BoxMode.primary))
-    if name is None:
-        return None
-    # ⚑ P8b: the PRIMARY-membership hit above IS the existence signal — identity no
-    # longer self-describes on disk, so there is NO ``project.mode`` presence gate.
-    metadata_path = std.boxes / name
-    # ⚑ B2b: home/vault are the DEFAULT location only — never a stored per-box override,
-    # which would target a different home than the launch binds do (JC-B2b-4).
-    shell_path, vault_ro, vault_rw = _primary_box_paths(std, metadata_path, name)
-    # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
-    # this fallback resolves ``box.enable_vault`` through the SAME CASCADE the launch path
-    # uses, so a ``remap`` answers as ``resolve_project`` does whether or not the
-    # workspace dir is still on disk.
-    box_tier, workset_tier = _box_settings_files(
-        BoxMode.primary, metadata_path, _default_project_group(std),
-    )
-    return ProjectState(
-        owner="primary", mode=BoxMode.primary, name=name,
-        workspace_path=_resolved_unless_loop(workspace), metadata_path=metadata_path,
-        shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None,
-        enable_vault=resolve_box_enable_vault(
-            std.config_file, box_path=box_tier, workset_path=workset_tier,
-        ),
-        # ⚑ The AUTHORED half stays a BOX-TIER-ONLY read, no ``default_from`` and NOT the
-        # cascade: a merge cannot say which tier carried the leaf, and persisting an
-        # inherited default as a box-scope override is what ``carried_box_settings``
-        # exists to prevent.
-        box_authored_vault=read_box_enable_vault(box_tier),
-    )
+  """Build a default-mode :class:`ProjectState` from registered metadata (``remap``)."""
+  name = primary_box_name_for_workspace(
+    std.primary_workset, str(workspace), early=_early_scope(std, BoxMode.primary)
+  )
+  if name is None:
+    return None
+  # ⚑ P8b: the PRIMARY-membership hit above IS the existence signal — identity no
+  # longer self-describes on disk, so there is NO ``project.mode`` presence gate.
+  metadata_path = std.boxes / name
+  # ⚑ B2b: home/vault are the DEFAULT location only — never a stored per-box override,
+  # which would target a different home than the launch binds do (JC-B2b-4).
+  shell_path, vault_ro, vault_rw = _primary_box_paths(std, metadata_path, name)
+  # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
+  # this fallback resolves ``box.enable_vault`` through the SAME CASCADE the launch path
+  # uses, so a ``remap`` answers as ``resolve_project`` does whether or not the
+  # workspace dir is still on disk.
+  box_tier, workset_tier = _box_settings_files(
+    BoxMode.primary,
+    metadata_path,
+    _default_project_group(std),
+  )
+  return ProjectState(
+    owner="primary",
+    mode=BoxMode.primary,
+    name=name,
+    workspace_path=_resolved_unless_loop(workspace),
+    metadata_path=metadata_path,
+    shell_path=shell_path,
+    vault_ro=vault_ro,
+    vault_rw=vault_rw,
+    is_external=False,
+    ws=None,
+    enable_vault=resolve_box_enable_vault(
+      std.config_file,
+      box_path=box_tier,
+      workset_path=workset_tier,
+    ),
+    # ⚑ The AUTHORED half stays a BOX-TIER-ONLY read, no ``default_from`` and NOT the
+    # cascade: a merge cannot say which tier carried the leaf, and persisting an
+    # inherited default as a box-scope override is what ``carried_box_settings``
+    # exists to prevent.
+    box_authored_vault=read_box_enable_vault(box_tier),
+  )
 
 
 def _resolve_workset_state(
-    raw_path: Path, std: StandardPaths, config: BootstrapConfig,
+  raw_path: Path,
+  std: StandardPaths,
+  config: BootstrapConfig,
 ) -> ProjectState:
-    """Resolve a workset project (internal or external-connected) to a state."""
-    ws: Workset | None = None
-    proj_name: str | None = None
-    try:
-        ws, proj_name = _find_workset_for_path(raw_path, std)  # type: ignore[assignment]
-    except WorksetError:
-        ws, proj_name = None, None
-    if ws is None or proj_name is None:
-        from kanibako.launch import box_resolve
-        owned = box_resolve.find_connected_external_box(raw_path, std)
-        if owned is not None:
-            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name,
-                                          early_system=std.early_system),
-                             owned.box_name)
-    if ws is None or proj_name is None:
-        raise WorksetError(f"No workset project found for path: {raw_path}")
+  """Resolve a workset project (internal or external-connected) to a state."""
+  ws: Workset | None = None
+  proj_name: str | None = None
+  try:
+    ws, proj_name = _find_workset_for_path(raw_path, std)  # type: ignore[assignment]
+  except WorksetError:
+    ws, proj_name = None, None
+  if ws is None or proj_name is None:
+    from kanibako.launch import box_resolve
 
-    proj = resolve_workset_project(
-        WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
+    owned = box_resolve.find_connected_external_box(raw_path, std)
+    if owned is not None:
+      ws, proj_name = (
+        load_workset(owned.workset_root, owned.workset_name, early_system=std.early_system),
+        owned.box_name,
+      )
+  if ws is None or proj_name is None:
+    raise WorksetError(f"No workset project found for path: {raw_path}")
+
+  proj = resolve_workset_project(
+    WorksetSpec.from_workset(ws),
+    proj_name,
+    std,
+    config,
+    initialize=False,
+  )
+  recorded = recorded_workspace_for(ws, proj_name, proj.project_path)
+  if recorded is None:
+    refuse_null_workspaces(
+      ws.root, f"a workspace for '{proj_name}'", early=_early_scope(std, BoxMode.named, ws.name)
     )
-    recorded = recorded_workspace_for(ws, proj_name, proj.project_path)
-    if recorded is None:
-        refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'",
-                               early=_early_scope(std, BoxMode.named, ws.name))
-    assert recorded is not None  # refused on the line above
-    is_external = not is_in_tree_workspace(ws, recorded)
-    return _state_from_paths(
-        owner_token(BoxMode.named, ws.name), proj, std=std, ws=ws,
-        early=_early_scope(std, BoxMode.named, ws.name), is_external=is_external,
-        workspace=recorded,
-    )
+  assert recorded is not None  # refused on the line above
+  is_external = not is_in_tree_workspace(ws, recorded)
+  return _state_from_paths(
+    owner_token(BoxMode.named, ws.name),
+    proj,
+    std=std,
+    ws=ws,
+    early=_early_scope(std, BoxMode.named, ws.name),
+    is_external=is_external,
+    workspace=recorded,
+  )
 
 
 def recorded_workspace_for(
-    ws: "_WorksetLike", box_name: str, resolved: Path | None,
+  ws: "_WorksetLike",
+  box_name: str,
+  resolved: Path | None,
 ) -> Path | None:
-    """The member's recorded ``source_path`` — its files — else *resolved*.
+  """The member's recorded ``source_path`` — its files — else *resolved*.
 
-    Shared by lifecycle, ``box duplicate``, and ``box archive``: a null
-    ``workset.workspaces`` nulls the resolved path, never the ``boxes:`` row.
-    """
-    for member in ws.projects:
-        if member.name == box_name:
-            return member.source_path
-    return resolved
+  Shared by lifecycle, ``box duplicate``, and ``box archive``: a null
+  ``workset.workspaces`` nulls the resolved path, never the ``boxes:`` row.
+  """
+  for member in ws.projects:
+    if member.name == box_name:
+      return member.source_path
+  return resolved
 
 
 def _state_from_paths(
-    owner: str,
-    proj: ProjectPaths,
-    *,
-    std: StandardPaths,
-    ws: Workset | None,
-    early: EarlyScope,
-    is_external: bool = False,
-    workspace: Path | None = None,
+  owner: str,
+  proj: ProjectPaths,
+  *,
+  std: StandardPaths,
+  ws: Workset | None,
+  early: EarlyScope,
+  is_external: bool = False,
+  workspace: Path | None = None,
 ) -> ProjectState:
-    # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
-    # the box authored, so a lifecycle op never persists the workset's default as a
-    # box-scope override (see ``ProjectState.box_authored_vault``).
-    box_tier, _ = box_workset_settings_paths(proj)
-    # ⚑ A named caller passes its recorded *workspace*.
-    recorded = workspace if workspace is not None else proj.project_path
-    if recorded is None:
-        # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
-        refuse_null_workspaces(proj.metadata_path, f"a workspace for '{proj.name}'",
-                               standalone=True, early=early)
-    assert recorded is not None  # only a standalone box can lack a workspace
-    return ProjectState(
-        owner=owner,
-        mode=proj.mode,
-        name=proj.name or recorded.name,
-        workspace_path=recorded,
-        metadata_path=proj.metadata_path,
-        shell_path=proj.shell_path,
-        vault_ro=proj.vault_ro_path,
-        vault_rw=proj.vault_rw_path,
-        is_external=is_external,
-        ws=ws,
-        enable_vault=proj.vault_enabled(),
-        box_authored_vault=read_box_enable_vault(box_tier),
-        bind_sources=box_bind_sources_or_none(std, proj),
-        paths=proj,
+  # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
+  # the box authored, so a lifecycle op never persists the workset's default as a
+  # box-scope override (see ``ProjectState.box_authored_vault``).
+  box_tier, _ = box_workset_settings_paths(proj)
+  # ⚑ A named caller passes its recorded *workspace*.
+  recorded = workspace if workspace is not None else proj.project_path
+  if recorded is None:
+    # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
+    refuse_null_workspaces(
+      proj.metadata_path, f"a workspace for '{proj.name}'", standalone=True, early=early
     )
+  assert recorded is not None  # only a standalone box can lack a workspace
+  return ProjectState(
+    owner=owner,
+    mode=proj.mode,
+    name=proj.name or recorded.name,
+    workspace_path=recorded,
+    metadata_path=proj.metadata_path,
+    shell_path=proj.shell_path,
+    vault_ro=proj.vault_ro_path,
+    vault_rw=proj.vault_rw_path,
+    is_external=is_external,
+    ws=ws,
+    enable_vault=proj.vault_enabled(),
+    box_authored_vault=read_box_enable_vault(box_tier),
+    bind_sources=box_bind_sources_or_none(std, proj),
+    paths=proj,
+  )
 
 
 def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozenset[str] | None:
-    """:func:`kanibako.commands.start.box_bind_sources`, or ``None`` when it raises.
+  """:func:`kanibako.commands.start.box_bind_sources`, or ``None`` when it raises.
 
-    A relocation must not fail on a box whose settings do not resolve; it carries every
-    link verbatim instead and says so (:func:`plan_box_mounted_links`).
-    """
-    from kanibako.commands.start import box_bind_sources
+  A relocation must not fail on a box whose settings do not resolve; it carries every
+  link verbatim instead and says so (:func:`plan_box_mounted_links`).
+  """
+  from kanibako.commands.start import box_bind_sources
 
-    try:
-        return box_bind_sources(std, proj)
-    except Exception:  # noqa: BLE001 - degraded to verbatim links, and reported
-        return None
+  try:
+    return box_bind_sources(std, proj)
+  except Exception:  # noqa: BLE001 - degraded to verbatim links, and reported
+    return None
 
 
 def _landed_bind_sources(
-    landed: ProjectState, std: StandardPaths, config: BootstrapConfig,
+  landed: ProjectState,
+  std: StandardPaths,
+  config: BootstrapConfig,
 ) -> frozenset[str] | None:
-    """The bind sources of the box *landed* describes, resolved by its identity.
+  """The bind sources of the box *landed* describes, resolved by its identity.
 
-    ⚑ By identity, never by path: the source row is still registered while the links are
-    repointed, and path detection would answer the source.
-    """
-    try:
-        if landed.mode is BoxMode.standalone:
-            proj = resolve_standalone_project(
-                std, config, str(landed.metadata_path), initialize=False)
-        elif landed.mode is BoxMode.named and landed.ws is not None:
-            proj = resolve_workset_project(
-                WorksetSpec.from_workset(landed.ws), landed.name, std, config,
-                initialize=False)
-        else:
-            proj = resolve_project(
-                std, config, project_dir=str(landed.workspace_path), initialize=False)
-    except (KanibakoError, OSError):
-        return None
-    return box_bind_sources_or_none(std, proj)
+  ⚑ By identity, never by path: the source row is still registered while the links are
+  repointed, and path detection would answer the source.
+  """
+  try:
+    if landed.mode is BoxMode.standalone:
+      proj = resolve_standalone_project(std, config, str(landed.metadata_path), initialize=False)
+    elif landed.mode is BoxMode.named and landed.ws is not None:
+      proj = resolve_workset_project(
+        WorksetSpec.from_workset(landed.ws), landed.name, std, config, initialize=False
+      )
+    else:
+      proj = resolve_project(std, config, project_dir=str(landed.workspace_path), initialize=False)
+  except (KanibakoError, OSError):
+    return None
+  return box_bind_sources_or_none(std, proj)
 
 
 def _box_trees(state: ProjectState) -> tuple[Path | None, ...]:
-    """The trees a relocation carries, in a fixed order so two states pair by position."""
-    return (state.workspace_path, state.metadata_path, state.shell_path,
-            state.vault_ro, state.vault_rw)
+  """The trees a relocation carries, in a fixed order so two states pair by position."""
+  return (
+    state.workspace_path,
+    state.metadata_path,
+    state.shell_path,
+    state.vault_ro,
+    state.vault_rw,
+  )
 
 
 def plan_box_mounted_links(
-    state: ProjectState, trees: Collection[Path | None],
+  state: ProjectState,
+  trees: Collection[Path | None],
 ) -> list[MountedLink]:
-    """The box's directly mounted links under *trees*, planned before anything is copied.
+  """The box's directly mounted links under *trees*, planned before anything is copied.
 
-    With *state*'s bind sources ``None`` nothing is planned, and a Note says every link
-    is carried as it is.
-    """
-    import sys
+  With *state*'s bind sources ``None`` nothing is planned, and a Note says every link
+  is carried as it is.
+  """
+  import sys
 
-    bind_sources = state.bind_sources
-    if bind_sources is None:
-        print(
-            f"Note: could not resolve the bindings of '{state.name}', so every link is "
-            "carried as it is; a relative link that is a bind source may stop reaching its "
-            f"target. `kanibako box show --effective {_cure_ref(state)}` names the error.",
-            file=sys.stderr,
-        )
-        return []
-    return plan_mounted_links(bind_sources, [tree for tree in trees if tree is not None])
+  bind_sources = state.bind_sources
+  if bind_sources is None:
+    print(
+      f"Note: could not resolve the bindings of '{state.name}', so every link is "
+      "carried as it is; a relative link that is a bind source may stop reaching its "
+      f"target. `kanibako box show --effective {_cure_ref(state)}` names the error.",
+      file=sys.stderr,
+    )
+    return []
+  return plan_mounted_links(bind_sources, [tree for tree in trees if tree is not None])
 
 
 def repoint_box_mounted_links(
-    links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState,
+  links: list[MountedLink],
+  relocated: Mapping[Path, Path],
+  landed: ProjectState,
 ) -> None:
-    """Apply :func:`plan_box_mounted_links`'s plan to the links *landed* mounts.
+  """Apply :func:`plan_box_mounted_links`'s plan to the links *landed* mounts.
 
-    Warns for each link left unchanged; with *landed*'s bind sources unknown, a Note says
-    the links kept their text.
-    """
-    import sys
+  Warns for each link left unchanged; with *landed*'s bind sources unknown, a Note says
+  the links kept their text.
+  """
+  import sys
 
-    if not links:
-        return
-    if landed.bind_sources is None:
-        print(
-            f"Note: could not resolve the bindings of '{landed.name}' where it landed, so "
-            "every link kept its text; a relative link that is a bind source may stop "
-            f"reaching its target. `kanibako box show --effective {_cure_ref(landed)}` names "
-            "the error.",
-            file=sys.stderr,
-        )
-        return
-    for link, reason in repoint_mounted_links(links, relocated, landed.bind_sources):
-        print(f"Warning: could not repoint the mounted link {link} ({reason}); it keeps "
-              "its old text and may not reach its target.", file=sys.stderr)
+  if not links:
+    return
+  if landed.bind_sources is None:
+    print(
+      f"Note: could not resolve the bindings of '{landed.name}' where it landed, so "
+      "every link kept its text; a relative link that is a bind source may stop "
+      f"reaching its target. `kanibako box show --effective {_cure_ref(landed)}` names "
+      "the error.",
+      file=sys.stderr,
+    )
+    return
+  for link, reason in repoint_mounted_links(links, relocated, landed.bind_sources):
+    print(
+      f"Warning: could not repoint the mounted link {link} ({reason}); it keeps "
+      "its old text and may not reach its target.",
+      file=sys.stderr,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Std-aware workset copy helper for ``box duplicate``
 # ---------------------------------------------------------------------------
 
+
 def _workspace_copy_ignore(
-    metadata_root: Path, copied_root: Path, *, mode: BoxMode, early: EarlyScope,
+  metadata_root: Path,
+  copied_root: Path,
+  *,
+  mode: BoxMode,
+  early: EarlyScope,
 ) -> Callable[[str, list[str]], set[str]]:
-    """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
+  """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
 
-    ⚑⚑ BY PATH, NEVER BY NAME.  ``ignore_patterns("box_data")`` matched that name at ANY
-    depth and silently dropped the user's own ``src/box_data/``.  The ONE path excluded is
-    the store **as resolved for ITS mode** (:func:`box_metadata_dir`), and only when it
-    lies inside *copied_root* (``_path_in_tree``).  A primary's store sits OUTSIDE its
-    workspace, so it excludes nothing.  A ``box_data/`` left behind after the store was
-    repointed is ordinary content and travels: excluding it, then retiring the source,
-    deleted whatever the user kept there.  ⚑ A LOOPED store still never travels: it is
-    excluded by its LITERAL path, since it has no resolved one.
-    """
-    raw_store = box_metadata_dir(mode, metadata_root, early=early)
-    if _symlink_loop(raw_store):
-        loop_parent, loop_name = raw_store.parent, raw_store.name
+  ⚑⚑ BY PATH, NEVER BY NAME.  ``ignore_patterns("box_data")`` matched that name at ANY
+  depth and silently dropped the user's own ``src/box_data/``.  The ONE path excluded is
+  the store **as resolved for ITS mode** (:func:`box_metadata_dir`), and only when it
+  lies inside *copied_root* (``_path_in_tree``).  A primary's store sits OUTSIDE its
+  workspace, so it excludes nothing.  A ``box_data/`` left behind after the store was
+  repointed is ordinary content and travels: excluding it, then retiring the source,
+  deleted whatever the user kept there.  ⚑ A LOOPED store still never travels: it is
+  excluded by its LITERAL path, since it has no resolved one.
+  """
+  raw_store = box_metadata_dir(mode, metadata_root, early=early)
+  if _symlink_loop(raw_store):
+    loop_parent, loop_name = raw_store.parent, raw_store.name
 
-        def ignore_loop(directory: str, names: list[str]) -> set[str]:
-            return ({loop_name} if Path(directory) == loop_parent and loop_name in names
-                    else set())
+    def ignore_loop(directory: str, names: list[str]) -> set[str]:
+      return {loop_name} if Path(directory) == loop_parent and loop_name in names else set()
 
-        return ignore_loop
+    return ignore_loop
 
-    store = raw_store.resolve()
-    copied = copied_root.resolve()
-    inside = (store,) if store != copied and _path_in_tree(store, copied) else ()
+  store = raw_store.resolve()
+  copied = copied_root.resolve()
+  inside = (store,) if store != copied and _path_in_tree(store, copied) else ()
 
-    def ignore(directory: str, names: list[str]) -> set[str]:
-        here = Path(directory).resolve()
-        return {n for path in inside if path.parent == here for n in names
-                if here / n == path}
+  def ignore(directory: str, names: list[str]) -> set[str]:
+    here = Path(directory).resolve()
+    return {n for path in inside if path.parent == here for n in names if here / n == path}
 
-    return ignore
+  return ignore
 
 
 def copy_into_workset(
-    ws: Workset,
-    proj_name: str,
-    metadata_path: Path,
-    shell_path: Path,
-    source_path: Path,
-    source_mode: BoxMode,
-    *,
-    copy_workspace: bool,
-    std: StandardPaths,
+  ws: Workset,
+  proj_name: str,
+  metadata_path: Path,
+  shell_path: Path,
+  source_path: Path,
+  source_mode: BoxMode,
+  *,
+  copy_workspace: bool,
+  std: StandardPaths,
 ) -> None:
-    """Re-root a project into *ws* — the std-aware copy path for ``duplicate``."""
-    workspace = ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name
-    # ⚑ Taken BEFORE add_project, which adopts an existing leaf: the rollback deletes only
-    # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
-    existed = _existing_member_leaves(ws, proj_name)
-    # ⚑ The IN-TREE dir: a duplicate is INTERNAL, so add_project makes it, never a link.
-    add_project(ws, proj_name, workspace, std, noun="duplicate")
+  """Re-root a project into *ws* — the std-aware copy path for ``duplicate``."""
+  workspace = ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name
+  # ⚑ Taken BEFORE add_project, which adopts an existing leaf: the rollback deletes only
+  # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
+  existed = _existing_member_leaves(ws, proj_name)
+  # ⚑ The IN-TREE dir: a duplicate is INTERNAL, so add_project makes it, never a link.
+  add_project(ws, proj_name, workspace, std, noun="duplicate")
 
-    # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
-    # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
-    try:
-        dst_project = ws.projects_dir / proj_name
-        copy_tree_keeping_links(
-            metadata_path, dst_project,
-            ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
-            dirs_exist_ok=True,
+  # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
+  # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
+  try:
+    dst_project = ws.projects_dir / proj_name
+    copy_tree_keeping_links(
+      metadata_path,
+      dst_project,
+      ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
+      dirs_exist_ok=True,
+    )
+
+    if shell_path.is_dir():
+      dst_shell = dst_project / "home"
+      if not lay_root_link(shell_path, dst_shell):
+        copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
+      # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
+      materialize_canon_skeleton(dst_shell)
+
+    if copy_workspace:
+      dst_workspace = workspace
+      ignore = None
+      if source_mode == BoxMode.standalone:
+        ignore = _workspace_copy_ignore(
+          metadata_path,
+          source_path,
+          mode=BoxMode.standalone,
+          early=_early_scope(std, BoxMode.standalone),
         )
-
-        if shell_path.is_dir():
-            dst_shell = dst_project / "home"
-            if not lay_root_link(shell_path, dst_shell):
-                copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
-            # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
-            materialize_canon_skeleton(dst_shell)
-
-        if copy_workspace:
-            dst_workspace = workspace
-            ignore = None
-            if source_mode == BoxMode.standalone:
-                ignore = _workspace_copy_ignore(
-                    metadata_path, source_path, mode=BoxMode.standalone,
-                    early=_early_scope(std, BoxMode.standalone))
-            if not lay_root_link(source_path, dst_workspace):
-                copy_tree_keeping_links(
-                    source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
-    except BaseException:
-        _unwind_target_member(ws, proj_name, existed)
-        raise
+      if not lay_root_link(source_path, dst_workspace):
+        copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+  except BaseException:
+    _unwind_target_member(ws, proj_name, existed)
+    raise
 
 
 # ---------------------------------------------------------------------------
@@ -821,48 +940,50 @@ def copy_into_workset(
 # ---------------------------------------------------------------------------
 
 STUBBORN_INPLACE_MSG = (
-    "Stubbornly refusing to convert in-place from within a workset; add "
-    "`--move` or `--move <path>` to relocate."
+  "Stubbornly refusing to convert in-place from within a workset; add "
+  "`--move` or `--move <path>` to relocate."
 )
 
 
 def _resolve_target_workset(
-    name: str, std: StandardPaths,
+  name: str,
+  std: StandardPaths,
 ) -> Workset:
-    registry = list_worksets(std)
-    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES), loaded under the REGISTERED spelling.
-    stored = find_identifier(name, registry)
-    if stored is None:
-        raise WorksetError(f"Workset '{name}' not found.")
-    return load_workset(registry[stored], stored, early_system=std.early_system)
+  registry = list_worksets(std)
+  # ⚑ Case-blind (spec §0, ⚑ NAMING RULES), loaded under the REGISTERED spelling.
+  stored = find_identifier(name, registry)
+  if stored is None:
+    raise WorksetError(f"Workset '{name}' not found.")
+  return load_workset(registry[stored], stored, early_system=std.early_system)
 
 
 def _cure_ref(state: ProjectState) -> str:
-    """:func:`~kanibako.settings.paths.box_cure_ref` for *state*."""
-    return box_cure_ref(state.mode, state.name, state.ws.name if state.ws else None,
-                        state.metadata_path)
+  """:func:`~kanibako.settings.paths.box_cure_ref` for *state*."""
+  return box_cure_ref(
+    state.mode, state.name, state.ws.name if state.ws else None, state.metadata_path
+  )
 
 
 def _name_held_in_target_workset(
-    target_mode: BoxMode | None,
-    target_ws: Workset | None,
-    state: ProjectState,
-    new_name: str,
+  target_mode: BoxMode | None,
+  target_ws: Workset | None,
+  state: ProjectState,
+  new_name: str,
 ) -> str | None:
-    """Held name in *target_ws* matching *new_name*, or ``None``.
+  """Held name in *target_ws* matching *new_name*, or ``None``.
 
-    Applies the SELF exemption (same workset, same name) the collision guard
-    below uses; the two callers (advice sites + guard) share the same check.
-    """
-    if target_mode != BoxMode.named or target_ws is None:
-        return None
-    if (
-        state.ws is not None
-        and target_ws.name == state.ws.name
-        and _same_box_name(new_name, state.name)
-    ):
-        return None
-    return find_identifier(new_name, (p.name for p in target_ws.projects))
+  Applies the SELF exemption (same workset, same name) the collision guard
+  below uses; the two callers (advice sites + guard) share the same check.
+  """
+  if target_mode != BoxMode.named or target_ws is None:
+    return None
+  if (
+    state.ws is not None
+    and target_ws.name == state.ws.name
+    and _same_box_name(new_name, state.name)
+  ):
+    return None
+  return find_identifier(new_name, (p.name for p in target_ws.projects))
 
 
 #: The refusal a remap (or create) onto another box's path prints, before its cure;
@@ -870,1755 +991,2023 @@ def _name_held_in_target_workset(
 _NO_FLAG_TAKEOVER = "A {verb} is not a takeover, and no flag overrides this. "
 #: The cure for that refusal; ``{0}`` is that box, shell-quoted.
 _REMAP_TAKEOVER_CURE = _NO_FLAG_TAKEOVER + (
-    "First delete that box "
-    "(`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, "
-    "but not its workspace), then run the {verb} again.")
+  "First delete that box "
+  "(`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, "
+  "but not its workspace), then run the {verb} again."
+)
 
 
 def _remap_dest_holder(
-    state: ProjectState, dest: Path, std: StandardPaths, *, verb: str = "remap",
-    vacated_root: Path | None = None, in_place: bool = False,
+  state: ProjectState,
+  dest: Path,
+  std: StandardPaths,
+  *,
+  verb: str = "remap",
+  vacated_root: Path | None = None,
+  in_place: bool = False,
 ) -> tuple[str, bool] | None:
-    """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
+  """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
 
-    Returns ``(why, forceable)``: *why* completes "Cannot remap … onto …: it is …".
-    Keyspace § 0 "Per-owner resources": another box's workspace (identical workspaces) and a
-    standalone root (or a link to one), as *dest* or as the workspace a standalone records
-    there, are refused whatever the flag.  A workspace inside
-    another box's workspace, root, or store, or holding another box's workspace or root,
-    shares that tree, so *forceable*: refused unless --force.  The box's own primary store
-    is forceable too.  A standalone's own root and store are not: they move with the root,
-    so a root inside them would be copied into itself.  Every unforceable check runs first,
-    so --force never passes one.
-    ⚑ A standalone records *dest* as its root and the root's ``workset.workspaces`` as its
-    workspace; the identical-workspace checks compare both.
-    ⚑ [R188]: *dest* is the path as given, and a workspace's identity is its path, so a link
-    to one is a twin, not a collision.  A standalone root holds its box's metadata, so it is
-    found by content and a link to it is refused; the store test resolves (a safety test).
-    *vacated_root* is the standalone root a relocating source leaves: after the op it is
-    no box's, so it is not another box's tree.
-    *in_place* judges the box where it stands (an in-place convert): it places nothing, so
-    the workspace it already records is held only to the forceable arms.
-    """
-    from kanibako.launch import box_resolve
-    from kanibako.project import registry_store
+  Returns ``(why, forceable)``: *why* completes "Cannot remap … onto …: it is …".
+  Keyspace § 0 "Per-owner resources": another box's workspace (identical workspaces) and a
+  standalone root (or a link to one), as *dest* or as the workspace a standalone records
+  there, are refused whatever the flag.  A workspace inside
+  another box's workspace, root, or store, or holding another box's workspace or root,
+  shares that tree, so *forceable*: refused unless --force.  The box's own primary store
+  is forceable too.  A standalone's own root and store are not: they move with the root,
+  so a root inside them would be copied into itself.  Every unforceable check runs first,
+  so --force never passes one.
+  ⚑ A standalone records *dest* as its root and the root's ``workset.workspaces`` as its
+  workspace; the identical-workspace checks compare both.
+  ⚑ [R188]: *dest* is the path as given, and a workspace's identity is its path, so a link
+  to one is a twin, not a collision.  A standalone root holds its box's metadata, so it is
+  found by content and a link to it is refused; the store test resolves (a safety test).
+  *vacated_root* is the standalone root a relocating source leaves: after the op it is
+  no box's, so it is not another box's tree.
+  *in_place* judges the box where it stands (an in-place convert): it places nothing, so
+  the workspace it already records is held only to the forceable arms.
+  """
+  from kanibako.launch import box_resolve
+  from kanibako.project import registry_store
 
-    standalone = state.mode is BoxMode.standalone
-    own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
-    vacated = None if vacated_root is None else _resolved_unless_loop(vacated_root)
-    no_flag = _NO_FLAG_TAKEOVER.format(verb=verb)
-    share = "Both boxes would claim it: pass --force to share it, or choose another path."
+  standalone = state.mode is BoxMode.standalone
+  own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
+  vacated = None if vacated_root is None else _resolved_unless_loop(vacated_root)
+  no_flag = _NO_FLAG_TAKEOVER.format(verb=verb)
+  share = "Both boxes would claim it: pass --force to share it, or choose another path."
 
-    def takeover(box: str) -> str:
-        return _REMAP_TAKEOVER_CURE.format(shlex.quote(box), verb=verb)
+  def takeover(box: str) -> str:
+    return _REMAP_TAKEOVER_CURE.format(shlex.quote(box), verb=verb)
 
-    identical = ("Identical workspaces are refused, and no flag overrides this. Choose "
-                 "another path.")
+  identical = "Identical workspaces are refused, and no flag overrides this. Choose another path."
 
-    def standalone_at(root: Path) -> str | None:
-        """The standalone box rooted at *root*: its name, ``""`` if unregistered."""
-        if (_resolved_unless_loop(root) in (own_root, vacated)
-                or not box_resolve.stores_standalone_registry_null(root)):
-            return None
-        return registry_store.standalone_name_for_same_dir(std.registry, root) or ""
+  def standalone_at(root: Path) -> str | None:
+    """The standalone box rooted at *root*: its name, ``""`` if unregistered."""
+    if _resolved_unless_loop(root) in (
+      own_root,
+      vacated,
+    ) or not box_resolve.stores_standalone_registry_null(root):
+      return None
+    return registry_store.standalone_name_for_same_dir(std.registry, root) or ""
 
-    def standalone_who(name: str) -> str:
-        return f"standalone box '{name}'" if name else "an unregistered standalone box"
+  def standalone_who(name: str) -> str:
+    return f"standalone box '{name}'" if name else "an unregistered standalone box"
 
-    def standalone_workspace(root: Path) -> Path | None:
-        """The workspace the standalone box rooted at *root* records, as given."""
-        try:
-            workspace = resolve_workset_workspaces(
-                root, load_workset_settings_doc(root), standalone=True,
-                early=_early_scope(std, BoxMode.standalone))
-        except (KanibakoError, OSError):
-            return None  # an unreadable root is refused where that box is used
-        return None if workspace is None else Path(literal_path(workspace))
+  def standalone_workspace(root: Path) -> Path | None:
+    """The workspace the standalone box rooted at *root* records, as given."""
+    try:
+      workspace = resolve_workset_workspaces(
+        root,
+        load_workset_settings_doc(root),
+        standalone=True,
+        early=_early_scope(std, BoxMode.standalone),
+      )
+    except (KanibakoError, OSError):
+      return None  # an unreadable root is refused where that box is used
+    return None if workspace is None else Path(literal_path(workspace))
 
-    # The workspace this remap records, and every tree it claims (a standalone's root too).
-    recorded = (standalone_workspace(dest) or dest) if standalone else dest
-    trees = list(dict.fromkeys((recorded, dest)))
-    # Only the source's OWN registry row is exempt: a primary, a named member, and a
-    # standalone may share a name.
-    own_ref = (None if standalone else f"{state.ws.name}/{state.name}"
-               if state.mode is BoxMode.named and state.ws else state.name)
-    standalones = {
-        name: Path(literal_path(root_str))
-        for name, root_str in registry_store.load_standalone(std.registry).items()
-        if not (standalone and _same_box_name(name, state.name)
-                and _resolved_unless_loop(Path(literal_path(root_str))) == own_root)
-        and (vacated is None or _resolved_unless_loop(Path(literal_path(root_str))) != vacated)}
-    early = _early_scope(std, BoxMode.primary)
+  # The workspace this remap records, and every tree it claims (a standalone's root too).
+  recorded = (standalone_workspace(dest) or dest) if standalone else dest
+  trees = list(dict.fromkeys((recorded, dest)))
+  # Only the source's OWN registry row is exempt: a primary, a named member, and a
+  # standalone may share a name.
+  own_ref = (
+    None
+    if standalone
+    else f"{state.ws.name}/{state.name}"
+    if state.mode is BoxMode.named and state.ws
+    else state.name
+  )
+  standalones = {
+    name: Path(literal_path(root_str))
+    for name, root_str in registry_store.load_standalone(std.registry).items()
+    if not (
+      standalone
+      and _same_box_name(name, state.name)
+      and _resolved_unless_loop(Path(literal_path(root_str))) == own_root
+    )
+    and (vacated is None or _resolved_unless_loop(Path(literal_path(root_str))) != vacated)
+  }
+  early = _early_scope(std, BoxMode.primary)
 
-    # A standalone records no primary row: when the primary registry is refused (an
-    # inherited ``workset.registry`` reaching no owner), there is no primary box to find.
-    # ``early_repoint``'s one ConfigError is that refusal.  A primary or named state still
-    # refuses.
-    primary_refused = False
-    if standalone:
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.workset_dirkeys import early_repoint
-        primary_doc = load_doc(std.primary_workset / WORKSET_META_FILE)
-        try:
-            early_repoint(std.primary_workset, primary_doc, "registry", early=early)
-        except ConfigError:
-            primary_refused = True
+  # A standalone records no primary row: when the primary registry is refused (an
+  # inherited ``workset.registry`` reaching no owner), there is no primary box to find.
+  # ``early_repoint``'s one ConfigError is that refusal.  A primary or named state still
+  # refuses.
+  primary_refused = False
+  if standalone:
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.workset_dirkeys import early_repoint
 
-    def primary_at(path: Path) -> str | None:
-        if primary_refused:
-            return None
-        return primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
+    primary_doc = load_doc(std.primary_workset / WORKSET_META_FILE)
+    try:
+      early_repoint(std.primary_workset, primary_doc, "registry", early=early)
+    except ConfigError:
+      primary_refused = True
 
-    def recorded_under(tree: Path) -> list[tuple[str, Path]]:
-        return box_resolve.recorded_workspaces_under(
-            std, tree, standalone=False, primary=not primary_refused)
+  def primary_at(path: Path) -> str | None:
+    if primary_refused:
+      return None
+    return primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
 
-    def own_member(owned: Any) -> bool:
-        return (state.ws is not None and owned.workset_name == state.ws.name
-                and _same_box_name(owned.box_name, state.name))
+  def recorded_under(tree: Path) -> list[tuple[str, Path]]:
+    return box_resolve.recorded_workspaces_under(
+      std, tree, standalone=False, primary=not primary_refused
+    )
 
-    # --- Refused whatever the flag. ---
-    def root_of(tree: Path) -> str | None:
-        """Why *tree* is another standalone's root, else ``None``."""
-        other = standalone_at(tree)
-        if other is not None:
-            return f"the root of {standalone_who(other)}. " + takeover(other or str(tree))
-        at = _resolved_unless_loop(tree)
-        for name, held_root in standalones.items():
-            if _resolved_unless_loop(held_root) == at:  # a root whose marker is gone
-                # The cure names the path: a primary box may share the standalone's name.
-                return f"the root of {standalone_who(name)}. " + takeover(str(held_root))
-        return None
+  def own_member(owned: Any) -> bool:
+    return (
+      state.ws is not None
+      and owned.workset_name == state.ws.name
+      and _same_box_name(owned.box_name, state.name)
+    )
 
-    # A standalone's recorded workspace is held to this too, whatever the box's mode.
-    for tree in [dest] if in_place else trees:
-        why = root_of(tree)
-        if why is not None:
-            return (why if tree == dest
-                    else f"a standalone root whose workspace ({tree}) is {why}"), False
-    landing = _resolved_unless_loop(dest)
-
-    def workspace_of(path: Path) -> str | None:
-        """Why *path* is another box's recorded workspace, as given, else ``None``."""
-        box = primary_at(path)
-        if box is not None and not (state.mode is BoxMode.primary
-                                    and _same_box_name(box, state.name)):
-            return f"the workspace of primary box '{box}'. " + takeover(box)
-        owned = box_resolve.find_connected_external_box(path, std)
-        if (owned is not None and not own_member(owned)
-                and Path(literal_path(owned.box_path)) == path):
-            return (f"the workspace of member '{owned.box_name}' of workset "
-                    f"'{owned.workset_name}'. " + no_flag + "First disconnect it (`kanibako "
-                    f"workset disconnect {shlex.quote(owned.workset_name)} "
-                    f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then "
-                    f"run the {verb} again.")
-        held = next((owner for owner, recorded_at
-                     in recorded_under(path)
-                     if Path(literal_path(recorded_at)) == path
-                     and not _same_box_name(owner, own_ref)), None)
-        if held is not None:
-            return f"the workspace of box '{held}'. " + identical
-        for name, held_root in standalones.items():
-            if standalone_workspace(held_root) == path:
-                return f"the workspace of {standalone_who(name)}. " + identical
-        # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
-        marked = next((p for p in path.parents if (p / WORKSET_META_FILE).is_file()), None)
-        other = standalone_at(marked) if marked is not None else None
-        if marked is not None and other is not None and standalone_workspace(marked) == path:
-            return f"the workspace of {standalone_who(other)}. " + identical
-        return None
-
-    # A standalone's root is held to this too: it would lay the box's store and markers
-    # in the other box's workspace.
-    for tree in trees:
-        why = workspace_of(tree)
-        if why is not None:
-            return (why if tree == dest
-                    else f"a standalone root whose workspace ({tree}) is {why}"), False
-
-    # The store tests follow links: a link to a box's store is still that store.
-    if own_root is not None:
-        own_store = _resolved_unless_loop(box_metadata_dir(
-            BoxMode.standalone, state.metadata_path, early=_early_scope(std, BoxMode.standalone)))
-        if landing == own_store or own_store in landing.parents:
-            # Not the § 0 refusal: a standalone's store moves with its root, into itself.
-            return (f"inside its own store ({own_store}). A standalone box's store moves with "
-                    "its root, so it would be copied into itself, and no flag overrides this. "
-                    "Choose another path.", False)
-        if own_root in landing.parents:
-            return (f"inside its own root ({own_root}). A standalone box's root moves with "
-                    "it, so it would be copied into itself, and no flag overrides this. "
-                    "Choose another path.", False)
-        moved = _remap_sweeps_other_box(state, dest, std, own_store, standalones)
-        if moved is not None:
-            return moved, False
-
-    # --- Refused unless --force: one tree inside or holding another. ---
-    for tree in trees:
-        # As given, and resolved for what holds it: a tree reached through a link sits in
-        # the box its target is inside.  The resolved tree itself is not asked: a link to a
-        # workspace is a twin ([R188]).
-        resolved = _resolved_unless_loop(tree)
-        held_by = [tree, *tree.parents, *(() if resolved == tree else resolved.parents)]
-        primary = next(((p, holder) for p in dict.fromkeys(held_by)
-                        if (holder := primary_at(p)) is not None
-                        and not (state.mode is BoxMode.primary
-                                 and _same_box_name(holder, state.name))), None)
-        if primary is not None:
-            return (f"inside the workspace of primary box '{primary[1]}' ({primary[0]}). "
-                    + share, True)
-        # Its own member is passed over, not stopped at: another may hold that one.
-        owned = next((found for probe in ((tree,) if resolved == tree
-                                          else (tree, resolved.parent))
-                      if (found := box_resolve.find_connected_external_box(
-                          probe, std, skip=own_member)) is not None), None)
-        if owned is not None:
-            return (f"inside the workspace of member '{owned.box_name}' of workset "
-                    f"'{owned.workset_name}' ({owned.box_path}). " + share, True)
-
-    def store_note(own: bool, whose: str, store: Path) -> tuple[str, bool]:
-        if own:
-            return (f"inside its own store ({store}). A box's store is not its workspace: "
-                    "pass --force to use it anyway, or choose another path.", True)
-        return f"inside the store of {whose} ({store}). " + share, True
-
-    def store_holder(tree: Path) -> tuple[str, bool] | None:
-        """Why *tree*, resolved, lies in a box's store, else ``None``."""
-        at = _resolved_unless_loop(tree)
-        for name in () if primary_refused else load_primary_boxes(std.primary_workset,
-                                                                  early=early):
-            store = _resolved_unless_loop(std.boxes / name)
-            if at == store or store in at.parents:
-                return store_note(state.mode is BoxMode.primary
-                                  and _same_box_name(name, state.name),
-                                  f"primary box '{name}'", store)
-        for top in (at, *at.parents):
-            if top == own_root:
-                break
-            owner = standalone_at(top)
-            if owner is None:
-                continue
-            store = _resolved_unless_loop(box_metadata_dir(
-                BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone)))
-            if at == store or store in at.parents:
-                return store_note(False, standalone_who(owner), store)
-            break
-        # A registered standalone's store, found by its owner: a repointed one sits outside
-        # its root, where the walk above finds no root.
-        for name, held_root in standalones.items():
-            try:
-                store = _resolved_unless_loop(box_metadata_dir(
-                    BoxMode.standalone, held_root, early=_early_scope(std, BoxMode.standalone)))
-            except (KanibakoError, OSError):
-                continue  # an unreadable root is refused where that box is used
-            if at == store or store in at.parents:
-                return store_note(False, standalone_who(name), store)
-        return None
-
-    # A standalone's recorded workspace is held to this too; *dest* is asked first, so
-    # a root in a store is named as itself.
-    for tree in dict.fromkeys((dest, *trees)):
-        held = store_holder(tree)
-        if held is not None:
-            return (held if tree == dest
-                    else (f"a standalone root whose workspace ({tree}) is {held[0]}", True))
-
-    def below(path: Path, tree: Path) -> bool:
-        """*path* strictly under *tree*, literal or resolved: a twin (link) is not below."""
-        if path == tree or _resolved_unless_loop(path) == _resolved_unless_loop(tree):
-            return False
-        return (path.is_relative_to(tree)
-                or _resolved_unless_loop(path).is_relative_to(_resolved_unless_loop(tree)))
-
-    for tree in trees:
-        nested = next(((owner, path) for owner, path
-                       in recorded_under(tree)
-                       if not _same_box_name(owner, own_ref)
-                       and below(Path(literal_path(path)), tree)), None)
-        if nested is not None:
-            return (f"a directory holding the workspace of box '{nested[0]}' ({nested[1]}). "
-                    + share, True)
-        nested_root = next(((name, root) for name, root in standalones.items()
-                            if below(root, tree)), None)
-        if nested_root is not None:
-            return (f"a directory holding the root of {standalone_who(nested_root[0])} "
-                    f"({nested_root[1]}). " + share, True)
-        root = next((p for p in tree.parents if (p / WORKSET_META_FILE).is_file()), None)
-        other = standalone_at(root) if root is not None else None
-        if other is not None:
-            return f"inside the root of {standalone_who(other)} ({root}). " + share, True
+  # --- Refused whatever the flag. ---
+  def root_of(tree: Path) -> str | None:
+    """Why *tree* is another standalone's root, else ``None``."""
+    other = standalone_at(tree)
+    if other is not None:
+      return f"the root of {standalone_who(other)}. " + takeover(other or str(tree))
+    at = _resolved_unless_loop(tree)
+    for name, held_root in standalones.items():
+      if _resolved_unless_loop(held_root) == at:  # a root whose marker is gone
+        # The cure names the path: a primary box may share the standalone's name.
+        return f"the root of {standalone_who(name)}. " + takeover(str(held_root))
     return None
+
+  # A standalone's recorded workspace is held to this too, whatever the box's mode.
+  for tree in [dest] if in_place else trees:
+    why = root_of(tree)
+    if why is not None:
+      return (
+        why if tree == dest else f"a standalone root whose workspace ({tree}) is {why}"
+      ), False
+  landing = _resolved_unless_loop(dest)
+
+  def workspace_of(path: Path) -> str | None:
+    """Why *path* is another box's recorded workspace, as given, else ``None``."""
+    box = primary_at(path)
+    if box is not None and not (state.mode is BoxMode.primary and _same_box_name(box, state.name)):
+      return f"the workspace of primary box '{box}'. " + takeover(box)
+    owned = box_resolve.find_connected_external_box(path, std)
+    if owned is not None and not own_member(owned) and Path(literal_path(owned.box_path)) == path:
+      return (
+        f"the workspace of member '{owned.box_name}' of workset "
+        f"'{owned.workset_name}'. " + no_flag + "First disconnect it (`kanibako "
+        f"workset disconnect {shlex.quote(owned.workset_name)} "
+        f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then "
+        f"run the {verb} again."
+      )
+    held = next(
+      (
+        owner
+        for owner, recorded_at in recorded_under(path)
+        if Path(literal_path(recorded_at)) == path and not _same_box_name(owner, own_ref)
+      ),
+      None,
+    )
+    if held is not None:
+      return f"the workspace of box '{held}'. " + identical
+    for name, held_root in standalones.items():
+      if standalone_workspace(held_root) == path:
+        return f"the workspace of {standalone_who(name)}. " + identical
+    # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
+    marked = next((p for p in path.parents if (p / WORKSET_META_FILE).is_file()), None)
+    other = standalone_at(marked) if marked is not None else None
+    if marked is not None and other is not None and standalone_workspace(marked) == path:
+      return f"the workspace of {standalone_who(other)}. " + identical
+    return None
+
+  # A standalone's root is held to this too: it would lay the box's store and markers
+  # in the other box's workspace.
+  for tree in trees:
+    why = workspace_of(tree)
+    if why is not None:
+      return (
+        why if tree == dest else f"a standalone root whose workspace ({tree}) is {why}"
+      ), False
+
+  # The store tests follow links: a link to a box's store is still that store.
+  if own_root is not None:
+    own_store = _resolved_unless_loop(
+      box_metadata_dir(
+        BoxMode.standalone, state.metadata_path, early=_early_scope(std, BoxMode.standalone)
+      )
+    )
+    if landing == own_store or own_store in landing.parents:
+      # Not the § 0 refusal: a standalone's store moves with its root, into itself.
+      return (
+        f"inside its own store ({own_store}). A standalone box's store moves with "
+        "its root, so it would be copied into itself, and no flag overrides this. "
+        "Choose another path.",
+        False,
+      )
+    if own_root in landing.parents:
+      return (
+        f"inside its own root ({own_root}). A standalone box's root moves with "
+        "it, so it would be copied into itself, and no flag overrides this. "
+        "Choose another path.",
+        False,
+      )
+    moved = _remap_sweeps_other_box(state, dest, std, own_store, standalones)
+    if moved is not None:
+      return moved, False
+
+  # --- Refused unless --force: one tree inside or holding another. ---
+  for tree in trees:
+    # As given, and resolved for what holds it: a tree reached through a link sits in
+    # the box its target is inside.  The resolved tree itself is not asked: a link to a
+    # workspace is a twin ([R188]).
+    resolved = _resolved_unless_loop(tree)
+    held_by = [tree, *tree.parents, *(() if resolved == tree else resolved.parents)]
+    primary = next(
+      (
+        (p, holder)
+        for p in dict.fromkeys(held_by)
+        if (holder := primary_at(p)) is not None
+        and not (state.mode is BoxMode.primary and _same_box_name(holder, state.name))
+      ),
+      None,
+    )
+    if primary is not None:
+      return (f"inside the workspace of primary box '{primary[1]}' ({primary[0]}). " + share, True)
+    # Its own member is passed over, not stopped at: another may hold that one.
+    owned = next(
+      (
+        found
+        for probe in ((tree,) if resolved == tree else (tree, resolved.parent))
+        if (found := box_resolve.find_connected_external_box(probe, std, skip=own_member))
+        is not None
+      ),
+      None,
+    )
+    if owned is not None:
+      return (
+        f"inside the workspace of member '{owned.box_name}' of workset "
+        f"'{owned.workset_name}' ({owned.box_path}). " + share,
+        True,
+      )
+
+  def store_note(own: bool, whose: str, store: Path) -> tuple[str, bool]:
+    if own:
+      return (
+        f"inside its own store ({store}). A box's store is not its workspace: "
+        "pass --force to use it anyway, or choose another path.",
+        True,
+      )
+    return f"inside the store of {whose} ({store}). " + share, True
+
+  def store_holder(tree: Path) -> tuple[str, bool] | None:
+    """Why *tree*, resolved, lies in a box's store, else ``None``."""
+    at = _resolved_unless_loop(tree)
+    for name in () if primary_refused else load_primary_boxes(std.primary_workset, early=early):
+      store = _resolved_unless_loop(std.boxes / name)
+      if at == store or store in at.parents:
+        return store_note(
+          state.mode is BoxMode.primary and _same_box_name(name, state.name),
+          f"primary box '{name}'",
+          store,
+        )
+    for top in (at, *at.parents):
+      if top == own_root:
+        break
+      owner = standalone_at(top)
+      if owner is None:
+        continue
+      store = _resolved_unless_loop(
+        box_metadata_dir(BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone))
+      )
+      if at == store or store in at.parents:
+        return store_note(False, standalone_who(owner), store)
+      break
+    # A registered standalone's store, found by its owner: a repointed one sits outside
+    # its root, where the walk above finds no root.
+    for name, held_root in standalones.items():
+      try:
+        store = _resolved_unless_loop(
+          box_metadata_dir(
+            BoxMode.standalone, held_root, early=_early_scope(std, BoxMode.standalone)
+          )
+        )
+      except (KanibakoError, OSError):
+        continue  # an unreadable root is refused where that box is used
+      if at == store or store in at.parents:
+        return store_note(False, standalone_who(name), store)
+    return None
+
+  # A standalone's recorded workspace is held to this too; *dest* is asked first, so
+  # a root in a store is named as itself.
+  for tree in dict.fromkeys((dest, *trees)):
+    held = store_holder(tree)
+    if held is not None:
+      return (
+        held
+        if tree == dest
+        else (f"a standalone root whose workspace ({tree}) is {held[0]}", True)
+      )
+
+  def below(path: Path, tree: Path) -> bool:
+    """*path* strictly under *tree*, literal or resolved: a twin (link) is not below."""
+    if path == tree or _resolved_unless_loop(path) == _resolved_unless_loop(tree):
+      return False
+    return path.is_relative_to(tree) or _resolved_unless_loop(path).is_relative_to(
+      _resolved_unless_loop(tree)
+    )
+
+  for tree in trees:
+    nested = next(
+      (
+        (owner, path)
+        for owner, path in recorded_under(tree)
+        if not _same_box_name(owner, own_ref) and below(Path(literal_path(path)), tree)
+      ),
+      None,
+    )
+    if nested is not None:
+      return (
+        f"a directory holding the workspace of box '{nested[0]}' ({nested[1]}). " + share,
+        True,
+      )
+    nested_root = next(
+      ((name, root) for name, root in standalones.items() if below(root, tree)), None
+    )
+    if nested_root is not None:
+      return (
+        f"a directory holding the root of {standalone_who(nested_root[0])} "
+        f"({nested_root[1]}). " + share,
+        True,
+      )
+    root = next((p for p in tree.parents if (p / WORKSET_META_FILE).is_file()), None)
+    other = standalone_at(root) if root is not None else None
+    if other is not None:
+      return f"inside the root of {standalone_who(other)} ({root}). " + share, True
+  return None
 
 
 def _dest_nesting_refusal(
-    std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path,
-    metadata_path: Path, verb: str, force: bool, vacated_root: Path | None = None,
-    subject: str = "a box", absent: bool = False,
+  std: StandardPaths,
+  *,
+  mode: BoxMode,
+  name: str,
+  ws: Workset | None,
+  dest: Path,
+  metadata_path: Path,
+  verb: str,
+  force: bool,
+  vacated_root: Path | None = None,
+  subject: str = "a box",
+  absent: bool = False,
 ) -> str | None:
-    """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
+  """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
 
-    The verb-neutral door to :func:`_remap_dest_holder`: the box (*mode*, *name*, *ws*,
-    *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
-    forceable refusal passes under *force*.  *vacated_root* is the standalone root a
-    relocating source leaves.  *subject* names what is placed (a working set's root is
-    judged as a box with no name, so no other box's row is its own).  *absent* says
-    nothing exists at *dest*, so no outcome overwrites a file: every refusal is
-    forceable (176-4B (A) [Jei:2026-10-12]), and an unforceable one keeps what it names
-    and takes the --force cure.
-    """
-    # The judge reads only the mode, name, workset, and metadata path; the other
-    # fields are the box's own paths, which no arm asks.
-    state = ProjectState(
-        owner=mode.value, mode=mode, name=name, workspace_path=dest,
-        metadata_path=metadata_path, shell_path=metadata_path, vault_ro=None,
-        vault_rw=None, ws=ws)
-    holder = _remap_dest_holder(state, dest, std, verb=verb, vacated_root=vacated_root)
-    if holder is None:
-        return None
-    why, forceable = holder
-    if absent and not forceable:
-        # An unforceable *why* is "<what the path is>. <cure>", and a box name holds no
-        # ``.``: keep what it is, and swap the no-flag cure for --force.
-        why = (why.split(". ", 1)[0] + ". Nothing is there yet, so nothing would be "
-               "overwritten: pass --force to share it, or choose another path.")
-        forceable = True
-    if forceable and force:
-        return None
-    return f"Error: Cannot {verb} {subject} at '{dest}': it is {why}"
+  The verb-neutral door to :func:`_remap_dest_holder`: the box (*mode*, *name*, *ws*,
+  *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
+  forceable refusal passes under *force*.  *vacated_root* is the standalone root a
+  relocating source leaves.  *subject* names what is placed (a working set's root is
+  judged as a box with no name, so no other box's row is its own).  *absent* says
+  nothing exists at *dest*, so no outcome overwrites a file: every refusal is
+  forceable (176-4B (A) [Jei:2026-10-12]), and an unforceable one keeps what it names
+  and takes the --force cure.
+  """
+  # The judge reads only the mode, name, workset, and metadata path; the other
+  # fields are the box's own paths, which no arm asks.
+  state = ProjectState(
+    owner=mode.value,
+    mode=mode,
+    name=name,
+    workspace_path=dest,
+    metadata_path=metadata_path,
+    shell_path=metadata_path,
+    vault_ro=None,
+    vault_rw=None,
+    ws=ws,
+  )
+  holder = _remap_dest_holder(state, dest, std, verb=verb, vacated_root=vacated_root)
+  if holder is None:
+    return None
+  why, forceable = holder
+  if absent and not forceable:
+    # An unforceable *why* is "<what the path is>. <cure>", and a box name holds no
+    # ``.``: keep what it is, and swap the no-flag cure for --force.
+    why = (
+      why.split(". ", 1)[0] + ". Nothing is there yet, so nothing would be "
+      "overwritten: pass --force to share it, or choose another path."
+    )
+    forceable = True
+  if forceable and force:
+    return None
+  return f"Error: Cannot {verb} {subject} at '{dest}': it is {why}"
 
 
 def _refuse_foreign_workset_landing(
-    std: StandardPaths, landing: Path, owning_ws_root: Path | None,
+  std: StandardPaths,
+  landing: Path,
+  owning_ws_root: Path | None,
 ) -> None:
-    """Raise ``ProjectError`` when *landing* sits in a workset other than *owning_ws_root*.
+  """Raise ``ProjectError`` when *landing* sits in a workset other than *owning_ws_root*.
 
-    The box-ID path-space rule: a box lands in a workset's tree only as its member.
-    """
-    for ws_name, ws_root in list_worksets(std).items():
-        ws_root = _resolved_unless_loop(Path(ws_root))
-        if owning_ws_root is not None and ws_root == owning_ws_root:
-            continue
-        # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
-        if not is_in_tree_workspace(
-                Workset(name=ws_name, root=ws_root, early_system=std.early_system), landing):
-            continue
-        raise ProjectError(
-            f"Refusing to land the project inside workset '{ws_name}' "
-            f"({ws_root}) — it is not (being made) a member of that workset. "
-            f"Use `--workset {shlex.quote(ws_name)}` to make it a member, or choose a "
-            "destination outside that workset."
-        )
+  The box-ID path-space rule: a box lands in a workset's tree only as its member.
+  """
+  for ws_name, ws_root in list_worksets(std).items():
+    ws_root = _resolved_unless_loop(Path(ws_root))
+    if owning_ws_root is not None and ws_root == owning_ws_root:
+      continue
+    # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
+    if not is_in_tree_workspace(
+      Workset(name=ws_name, root=ws_root, early_system=std.early_system), landing
+    ):
+      continue
+    raise ProjectError(
+      f"Refusing to land the project inside workset '{ws_name}' "
+      f"({ws_root}) — it is not (being made) a member of that workset. "
+      f"Use `--workset {shlex.quote(ws_name)}` to make it a member, or choose a "
+      "destination outside that workset."
+    )
 
 
 def _other_box_within(
-    entries: Collection[Path], std: StandardPaths, standalones: Mapping[str, Path], *,
-    own_ref: str | None = None,
+  entries: Collection[Path],
+  std: StandardPaths,
+  standalones: Mapping[str, Path],
+  *,
+  own_ref: str | None = None,
 ) -> tuple[str, Path, Path] | None:
-    """ANOTHER box's workspace, root, store, or workset root at or under one of *entries*.
+  """ANOTHER box's workspace, root, store, or workset root at or under one of *entries*.
 
-    Returns ``(what, path, entry)``, else ``None``.  *entries* are what an op moves away or
-    removes; a box among them would break (keyspace § 0, "each instance's destructive verb
-    removes only its own part").  *standalones* and *own_ref* (a registry owner) exclude the
-    source's own rows.
-    ⚑ An entry that is a symlink moves as a link (``_move_entry``) or is unlinked, so it is
-    compared by where it sits, never by its target (§ 0); a box recorded THROUGH the link
-    still counts.
-    """
-    from kanibako.launch import box_resolve
+  Returns ``(what, path, entry)``, else ``None``.  *entries* are what an op moves away or
+  removes; a box among them would break (keyspace § 0, "each instance's destructive verb
+  removes only its own part").  *standalones* and *own_ref* (a registry owner) exclude the
+  source's own rows.
+  ⚑ An entry that is a symlink moves as a link (``_move_entry``) or is unlinked, so it is
+  compared by where it sits, never by its target (§ 0); a box recorded THROUGH the link
+  still counts.
+  """
+  from kanibako.launch import box_resolve
 
-    # Every recorded box (all sit under ``/``), read once; ``within`` picks those at risk.
-    others = [(f"the workspace of box '{owner}'", Path(literal_path(str(path))))
-              for owner, path in box_resolve.recorded_workspaces_under(
-                  std, Path("/"), standalone=False)
-              if own_ref is None or not _same_box_name(owner, own_ref)]
-    others += [(f"the root of standalone box '{name}'", root_at)
-               for name, root_at in standalones.items()]
-    others += [(f"the store of primary box '{name}'", std.boxes / name)
-               for name in load_primary_boxes(
-                   std.primary_workset, early=_early_scope(std, BoxMode.primary))
-               if own_ref is None or not _same_box_name(name, own_ref)]
-    others += [(f"the root of workset '{name}'", root_at)
-               for name, root_at, _mode in box_resolve._enumerate_worksets(std)]
+  # Every recorded box (all sit under ``/``), read once; ``within`` picks those at risk.
+  others = [
+    (f"the workspace of box '{owner}'", Path(literal_path(str(path))))
+    for owner, path in box_resolve.recorded_workspaces_under(std, Path("/"), standalone=False)
+    if own_ref is None or not _same_box_name(owner, own_ref)
+  ]
+  others += [
+    (f"the root of standalone box '{name}'", root_at) for name, root_at in standalones.items()
+  ]
+  others += [
+    (f"the store of primary box '{name}'", std.boxes / name)
+    for name in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    if own_ref is None or not _same_box_name(name, own_ref)
+  ]
+  others += [
+    (f"the root of workset '{name}'", root_at)
+    for name, root_at, _mode in box_resolve._enumerate_worksets(std)
+  ]
 
-    def within(path: Path, entry: Path) -> bool:
-        sits = _resolved_unless_loop(entry.parent) / entry.name
-        return path.is_relative_to(entry) or _resolved_unless_loop(path).is_relative_to(sits)
+  def within(path: Path, entry: Path) -> bool:
+    sits = _resolved_unless_loop(entry.parent) / entry.name
+    return path.is_relative_to(entry) or _resolved_unless_loop(path).is_relative_to(sits)
 
-    return next(((what, path, entry) for what, path in others
-                 for entry in entries if within(path, entry)), None)
+  return next(
+    ((what, path, entry) for what, path in others for entry in entries if within(path, entry)),
+    None,
+  )
 
 
 def _sweep_moves_other_box(
-    root: Path, std: StandardPaths, standalones: Mapping[str, Path], *,
-    own_ref: str | None = None,
+  root: Path,
+  std: StandardPaths,
+  standalones: Mapping[str, Path],
+  *,
+  own_ref: str | None = None,
 ) -> tuple[str, Path, Path] | None:
-    """What of ANOTHER box laying the standalone layout at *root* would move, else ``None``.
+  """What of ANOTHER box laying the standalone layout at *root* would move, else ``None``.
 
-    Returns ``(what, path, workspace)``.  ``_to_standalone`` moves every entry at a root
-    that is not its own store into *workspace*; :func:`_other_box_within` judges those
-    entries, so --force does not pass a hit.
-    """
-    early = _early_scope(std, BoxMode.standalone)
-    try:
-        workspace = _resolve_standalone_workspaces(
-            root, load_workset_settings_doc(root), early=early)
-        swept, _kept = _consolidation_sweep(root, workspace, early=early)
-    except (KanibakoError, OSError):
-        return None  # ``_to_standalone`` refuses that root before it moves anything
-    if not swept:
-        return None
-    hit = _other_box_within(swept, std, standalones, own_ref=own_ref)
-    return None if hit is None else (hit[0], hit[1], workspace)
+  Returns ``(what, path, workspace)``.  ``_to_standalone`` moves every entry at a root
+  that is not its own store into *workspace*; :func:`_other_box_within` judges those
+  entries, so --force does not pass a hit.
+  """
+  early = _early_scope(std, BoxMode.standalone)
+  try:
+    workspace = _resolve_standalone_workspaces(root, load_workset_settings_doc(root), early=early)
+    swept, _kept = _consolidation_sweep(root, workspace, early=early)
+  except (KanibakoError, OSError):
+    return None  # ``_to_standalone`` refuses that root before it moves anything
+  if not swept:
+    return None
+  hit = _other_box_within(swept, std, standalones, own_ref=own_ref)
+  return None if hit is None else (hit[0], hit[1], workspace)
 
 
 def _refuse_relocation_nesting(
-    state: ProjectState, spec: TargetSpec, std: StandardPaths, *, dest: Path,
-    target_mode: BoxMode, target_ws: Workset | None, new_name: str, store_kept: bool,
-    force: bool,
+  state: ProjectState,
+  spec: TargetSpec,
+  std: StandardPaths,
+  *,
+  dest: Path,
+  target_mode: BoxMode,
+  target_ws: Workset | None,
+  new_name: str,
+  store_kept: bool,
+  force: bool,
 ) -> None:
-    """Raise ``ProjectError`` when relocating *state* to *dest* crosses another box's tree.
+  """Raise ``ProjectError`` when relocating *state* to *dest* crosses another box's tree.
 
-    Keyspace § 0 "Per-owner resources".  Whatever the flag, so first: *dest* inside the
-    source's own store while the op moves or retires it (*store_kept* false), where the
-    workspace would be copied into the store or deleted with it; and another box's tree
-    inside what the op removes (the workspace, and the store if it is deleted), which the op
-    would carry away.  Then *dest* is judged as the box it becomes (the TARGET mode, name,
-    and workset) by :func:`_dest_nesting_refusal`: inside another box's tree is refused
-    unless --force.
-    """
-    from kanibako.project import registry_store
+  Keyspace § 0 "Per-owner resources".  Whatever the flag, so first: *dest* inside the
+  source's own store while the op moves or retires it (*store_kept* false), where the
+  workspace would be copied into the store or deleted with it; and another box's tree
+  inside what the op removes (the workspace, and the store if it is deleted), which the op
+  would carry away.  Then *dest* is judged as the box it becomes (the TARGET mode, name,
+  and workset) by :func:`_dest_nesting_refusal`: inside another box's tree is refused
+  unless --force.
+  """
+  from kanibako.project import registry_store
 
-    verb = spec.verb or "move"
-    store = _resolved_unless_loop(box_metadata_dir(
-        state.mode, state.metadata_path,
-        early=EarlyScope(std.early_system, _state_ws_token(state))))
-    landing = _resolved_unless_loop(dest)
-    if not store_kept and (landing == store or store in landing.parents):
-        raise ProjectError(
-            f"Cannot {verb} '{state.name}' to '{dest}': it is inside its own store ({store}). "
-            f"The {verb} moves or retires that store, so the workspace would be copied into "
-            "it or deleted with it, and no flag overrides this. Choose another path.")
-    own_root = (_resolved_unless_loop(state.metadata_path)
-                if state.mode is BoxMode.standalone else None)
-    standalones = {
-        name: Path(literal_path(root_str))
-        for name, root_str in registry_store.load_standalone(std.registry).items()
-        if _resolved_unless_loop(Path(literal_path(root_str))) != own_root}
-    own_ref = (None if own_root is not None
-               else f"{state.ws.name}/{state.name}" if state.mode is BoxMode.named and state.ws
-               else state.name)
-    # The store is carried only when the op removes it: a standalone's store its own
-    # ``workset.yaml`` repoints is the user's directory, which the teardown keeps.
-    retired = not store_kept and (
-        state.mode is not BoxMode.standalone
-        or standalone_store_teardown_plan(
-            state.metadata_path, early=_early_scope(std, BoxMode.standalone))[0] is not None)
-    carried = [state.workspace_path] + ([store] if retired else [])
-    hit = _other_box_within(carried, std, standalones, own_ref=own_ref)
-    if hit is not None:
-        what, path, entry = hit
-        raise ProjectError(
-            f"Cannot {verb} '{state.name}' to '{dest}': {entry} holds {what} ({path}). The "
-            f"{verb} would carry it away and break that box, so no flag overrides this. Move "
-            "that box out first, or choose another box to relocate.")
-    refusal = _dest_nesting_refusal(
-        std, mode=target_mode, name=new_name, ws=target_ws, dest=dest,
-        metadata_path=dest if target_mode is BoxMode.standalone else state.metadata_path,
-        verb=verb, force=force, vacated_root=own_root)
-    if refusal is not None:
-        raise ProjectError(refusal.removeprefix("Error: "))
+  verb = spec.verb or "move"
+  store = _resolved_unless_loop(
+    box_metadata_dir(
+      state.mode, state.metadata_path, early=EarlyScope(std.early_system, _state_ws_token(state))
+    )
+  )
+  landing = _resolved_unless_loop(dest)
+  if not store_kept and (landing == store or store in landing.parents):
+    raise ProjectError(
+      f"Cannot {verb} '{state.name}' to '{dest}': it is inside its own store ({store}). "
+      f"The {verb} moves or retires that store, so the workspace would be copied into "
+      "it or deleted with it, and no flag overrides this. Choose another path."
+    )
+  own_root = (
+    _resolved_unless_loop(state.metadata_path) if state.mode is BoxMode.standalone else None
+  )
+  standalones = {
+    name: Path(literal_path(root_str))
+    for name, root_str in registry_store.load_standalone(std.registry).items()
+    if _resolved_unless_loop(Path(literal_path(root_str))) != own_root
+  }
+  own_ref = (
+    None
+    if own_root is not None
+    else f"{state.ws.name}/{state.name}"
+    if state.mode is BoxMode.named and state.ws
+    else state.name
+  )
+  # The store is carried only when the op removes it: a standalone's store its own
+  # ``workset.yaml`` repoints is the user's directory, which the teardown keeps.
+  retired = not store_kept and (
+    state.mode is not BoxMode.standalone
+    or standalone_store_teardown_plan(
+      state.metadata_path, early=_early_scope(std, BoxMode.standalone)
+    )[0]
+    is not None
+  )
+  carried = [state.workspace_path] + ([store] if retired else [])
+  hit = _other_box_within(carried, std, standalones, own_ref=own_ref)
+  if hit is not None:
+    what, path, entry = hit
+    raise ProjectError(
+      f"Cannot {verb} '{state.name}' to '{dest}': {entry} holds {what} ({path}). The "
+      f"{verb} would carry it away and break that box, so no flag overrides this. Move "
+      "that box out first, or choose another box to relocate."
+    )
+  refusal = _dest_nesting_refusal(
+    std,
+    mode=target_mode,
+    name=new_name,
+    ws=target_ws,
+    dest=dest,
+    metadata_path=dest if target_mode is BoxMode.standalone else state.metadata_path,
+    verb=verb,
+    force=force,
+    vacated_root=own_root,
+  )
+  if refusal is not None:
+    raise ProjectError(refusal.removeprefix("Error: "))
 
 
 def _remap_sweeps_other_box(
-    state: ProjectState, dest: Path, std: StandardPaths, own_store: Path,
-    standalones: Mapping[str, Path],
+  state: ProjectState,
+  dest: Path,
+  std: StandardPaths,
+  own_store: Path,
+  standalones: Mapping[str, Path],
 ) -> str | None:
-    """Why remapping standalone *state* onto *dest* would move ANOTHER box's tree, else ``None``.
+  """Why remapping standalone *state* onto *dest* would move ANOTHER box's tree, else ``None``.
 
-    :func:`_sweep_moves_other_box` judges it; *standalones* excludes the source's own row.
-    """
-    early = _early_scope(std, BoxMode.standalone)
-    if _resolved_unless_loop(standalone_box_store(dest, early=early)) == own_store:
-        return None  # ``_to_standalone`` reuses its own root in place: nothing moves
-    hit = _sweep_moves_other_box(dest, std, standalones)
-    if hit is None:
-        return None
-    return (f"a directory holding {hit[0]} ({hit[1]}). Remapping standalone box "
-            f"'{state.name}' here would move it into {hit[2]}/ and break that box, "
-            "so no flag overrides this. Choose another path.")
+  :func:`_sweep_moves_other_box` judges it; *standalones* excludes the source's own row.
+  """
+  early = _early_scope(std, BoxMode.standalone)
+  if _resolved_unless_loop(standalone_box_store(dest, early=early)) == own_store:
+    return None  # ``_to_standalone`` reuses its own root in place: nothing moves
+  hit = _sweep_moves_other_box(dest, std, standalones)
+  if hit is None:
+    return None
+  return (
+    f"a directory holding {hit[0]} ({hit[1]}). Remapping standalone box "
+    f"'{state.name}' here would move it into {hit[2]}/ and break that box, "
+    "so no flag overrides this. Choose another path."
+  )
 
 
 def _validate(
-    state: ProjectState,
-    spec: TargetSpec,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    *,
-    force: bool,
-    cwd: Path,
+  state: ProjectState,
+  spec: TargetSpec,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  *,
+  force: bool,
+  cwd: Path,
 ) -> dict:
-    """Validate up front; return plan facts. ⚑ EVERY refusal belongs HERE, never in a step."""
-    # --- resolve ownership target ---
-    if spec.ownership is UNCHANGED:
-        target_mode = state.mode
-        target_ws_name = (
-            state.ws.name if state.ws is not None else None
-        )
+  """Validate up front; return plan facts. ⚑ EVERY refusal belongs HERE, never in a step."""
+  # --- resolve ownership target ---
+  if spec.ownership is UNCHANGED:
+    target_mode = state.mode
+    target_ws_name = state.ws.name if state.ws is not None else None
+  else:
+    target_mode, target_ws_name = _ownership_to_mode(spec.ownership)  # type: ignore[arg-type]
+
+  target_ws: Workset | None = None
+  if target_mode == BoxMode.named:
+    if target_ws_name is None:
+      raise WorksetError("Workset target requires a workset name.")
+    if spec.ownership is UNCHANGED and state.ws is not None:
+      target_ws = state.ws
     else:
-        target_mode, target_ws_name = _ownership_to_mode(spec.ownership)  # type: ignore[arg-type]
+      target_ws = _resolve_target_workset(target_ws_name, std)
 
-    target_ws: Workset | None = None
-    if target_mode == BoxMode.named:
-        if target_ws_name is None:
-            raise WorksetError("Workset target requires a workset name.")
-        if spec.ownership is UNCHANGED and state.ws is not None:
-            target_ws = state.ws
-        else:
-            target_ws = _resolve_target_workset(target_ws_name, std)
+  # --- bare-into-ws only valid with a workset target ---
+  if spec.location is BARE_INTO_WS and target_mode != BoxMode.named:
+    raise ProjectError("bare --move (into the workset) requires a workset target.")
 
-    # --- bare-into-ws only valid with a workset target ---
-    if spec.location is BARE_INTO_WS and target_mode != BoxMode.named:
-        raise ProjectError(
-            "bare --move (into the workset) requires a workset target."
-        )
+  new_name = spec.name or state.name
 
-    new_name = spec.name or state.name
-
-    # --- compute destination path (location axis) ---
-    dest: Path | None = None
-    if spec.location is BARE_INTO_WS:
-        assert target_ws is not None
-        dest = _resolved_unless_loop(
-            target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name)
-    elif isinstance(spec.location, Path):
-        # ⚑ A remap RECORDS the path as given ([R188]); its safety checks resolve it.
-        dest = (Path(literal_path(spec.location)) if spec.records_only
-                else _resolved_unless_loop(spec.location))
-
-    relocating = dest is not None
-
-    # --- ⚑ a LOOPED landing refuses here: the in-tree guards below refuse on True, and
-    #     ``is_in_tree_workspace`` answers a loop False.
-    landing = dest if dest is not None else state.workspace_path
-    if _symlink_loop(landing):
-        raise ProjectError(ERR_LOOP_LANDING % (state.name, landing))
-    if not spec.records_only:
-        carried = [box_metadata_dir(state.mode, state.metadata_path, early=EarlyScope(
-            std.early_system, _state_ws_token(state)))]
-        carried += [state.workspace_path] if relocating else []
-        looped = next((p for p in carried if _symlink_loop(p)), None)
-        if looped is not None:
-            raise ProjectError(ERR_LOOP_SOURCE % (state.name, looped) + (
-                CURE_LOOP_SOURCE_REMAP if looped == state.workspace_path else ""))
-
-    if not spec.records_only:
-        refuse_inherited_per_owner(
-            _state_ws_root(state, std), EarlyScope(std.early_system, _state_ws_token(state)))
-        if target_ws is not None:
-            refuse_inherited_per_owner(target_ws.root, target_ws.early_scope)
-        elif target_mode == BoxMode.primary:
-            refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
-        else:
-            refuse_inherited_per_owner(
-                dest or state.workspace_path, _early_scope(std, BoxMode.standalone))
-
-    # --- no-op guard ---
-    no_owner_change = (
-        spec.ownership is UNCHANGED
-        or (target_mode == state.mode
-            and (target_mode != BoxMode.named
-                 or (state.ws is not None and target_ws is not None
-                     and state.ws.name == target_ws.name)))
+  # --- compute destination path (location axis) ---
+  dest: Path | None = None
+  if spec.location is BARE_INTO_WS:
+    assert target_ws is not None
+    dest = _resolved_unless_loop(
+      target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name
     )
-    no_rename = _same_box_name(new_name, state.name)
-    if not relocating and no_owner_change and no_rename:
-        # ⚑ A retry after an interrupted tail: the store step 4c did not carry is moved now.
-        vacated = None if spec.records_only else _vacated_root_store(state, std)
-        if vacated is None:
-            cure = None if spec.records_only else _stranded_store_cure(state, std)
-            raise ProjectError(
-                "Nothing to do: target equals the current location, owner, and name."
-                + (f"\n{cure}" if cure else "")
-            )
-        return {"stranded_snapshots": vacated}
-
-    # --- workset -> workset with INTERNAL workspace requires relocation ---
-    is_ws_to_ws = (
-        state.mode == BoxMode.named
-        and target_mode == BoxMode.named
-        and not no_owner_change
+  elif isinstance(spec.location, Path):
+    # ⚑ A remap RECORDS the path as given ([R188]); its safety checks resolve it.
+    dest = (
+      Path(literal_path(spec.location))
+      if spec.records_only
+      else _resolved_unless_loop(spec.location)
     )
-    if is_ws_to_ws and not state.is_external and not relocating:
-        raise ProjectError(STUBBORN_INPLACE_MSG)
 
-    # --- an EXTERNAL source cannot be relocated: its "workspace" is the user's own
-    #     directory, so a copy would record a path that holds nothing.
-    if relocating and state.is_external and not spec.records_only:
-        raise ProjectError(
-            f"'{state.name}' is an external-connected project; its workspace is "
-            "your own directory, not managed by kanibako. Use `box remap <old> "
-            "<new>` to update records if you moved it, or `box convert` without "
-            "`--move` to change ownership."
-        )
+  relocating = dest is not None
 
-    # --- destination not already occupied ---
-    # ⚑ ``records_only`` exempt: ``remap``'s files are ALREADY at *dest*, so it must not
-    # be required empty (and a no-op same-path remap is fine).
-    if relocating and dest is not None and not spec.records_only:
-        if dest.resolve() == state.workspace_path.resolve():
-            raise ProjectError(
-                f"Destination is the project's current location: {dest}"
-            )
-        if state.workspace_path.resolve() in dest.resolve().parents:
-            raise ProjectError(
-                f"Destination is inside the project being moved: {dest}"
-            )
-        if dest.exists():
-            raise ProjectError(f"Destination already exists: {dest}")
-
-    # --- remap onto ANOTHER box's path, refused before any write ---
-    if spec.records_only and dest is not None:
-        # The checks below read *dest*'s ``workset.yaml``, and a standalone's layout lists
-        # *dest*; a path they cannot read is refused by name here, before anything moves.
-        import errno
-        import os
-        reads: list[Callable[[], object]] = [lambda: os.stat(dest / WORKSET_META_FILE)]
-        if state.mode is BoxMode.standalone:
-            reads.append(lambda: os.listdir(dest))
-        for read in reads:
-            try:
-                read()
-            except OSError as err:
-                if err.errno in (errno.EACCES, errno.ELOOP):
-                    raise ProjectError(
-                        f"Cannot remap '{state.name}' onto '{dest}': {err.filename} cannot "
-                        f"be read ({err.strerror}), and nothing has moved. Choose a path "
-                        "kanibako can read.") from None
-        holder = _remap_dest_holder(state, dest, std)
-        if holder is not None and not (holder[1] and force):
-            raise ProjectError(f"Cannot remap '{state.name}' onto '{dest}': it is {holder[0]}")
-
-    # The name a printed cure lands under: the one asked for, else the box's own, else
-    # none — a name the collision guard below refuses is no cure.
-    asked = [new_name] + ([] if _same_box_name(new_name, state.name) else [state.name])
-    cure_name = next((n for n in asked if _name_held_in_target_workset(
-        target_mode, target_ws, state, n) is None), None)
-    rename = ("" if cure_name is None or _same_box_name(cure_name, state.name)
-              else f" --name {shlex.quote(cure_name)}")
-    held_names = asked if cure_name is None else asked[:asked.index(cure_name)]
-    held_note = (" (" + " and ".join(f"'{n}'" for n in held_names)
-                 + f" already held in workset '{target_ws.name}')"
-                 if held_names and target_ws is not None else "")
-
-    # --- an in-tree landing for a NAMED target must be the one leaf the target
-    #     records.  Any other in-tree path is copied to by step 2 and copied again to
-    #     ``workspaces/<name>`` by step 2b, so the box would record ``workspaces/<name>``
-    #     while the user asked for the other path.  ``records_only`` is NOT exempt: it
-    #     records that path as the workspace too.
-    if target_mode == BoxMode.named and target_ws is not None and dest is not None:
-        ws_dir = target_ws.workspaces_dir
-        if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
-                and _resolved_unless_loop(dest) != _resolved_unless_loop(ws_dir / new_name)):
-            leaf = ws_dir / (cure_name or new_name)
-            ref = _cure_ref(state)
-            ws_q = shlex.quote(target_ws.name)
-            bare = f"kanibako box convert {ref} --workset {ws_q} --move{rename}"
-            fresh = f"kanibako box convert {ref} --workset {ws_q} --move --name <name>"
-            if spec.records_only:
-                advice = f"Move the files to `{leaf}` and run `kanibako box remap` again."
-            elif cure_name is None:
-                advice = f"Run, with a name no member holds:\n  {fresh}"
-            elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
-                # A cure to the leaf the box stands at is refused as its current location;
-                # only a new name gives it another leaf.
-                cure = fresh if spec.verb == "convert" else (
-                    f"kanibako box move {ref} {shlex.quote(str(ws_dir))}/<name> "
-                    f"--workset {ws_q} --name <name>")
-                advice = ("The box already lives there; to give it another leaf, run, with a "
-                          f"name no member holds:\n  {cure}")
-            elif spec.verb == "convert":
-                advice = f"Run:\n  {bare}"
-            else:
-                advice = (f"Run either:\n  kanibako box move {ref} {shlex.quote(str(leaf))} "
-                          f"--workset {ws_q}{rename}\n  {bare}")
-            raise ProjectError(
-                f"Refusing to record {dest} for a workset member: inside workset "
-                f"'{target_ws.name}' a member would live at `{leaf}`{held_note}, and no other "
-                "in-tree path is the workspace the box records.\n"
-                f"{advice}\n"
-                "Or choose a destination outside the workset."
-            )
-
-    # --- ⚑ an IN-PLACE convert records the box only where it stands: any other leaf
-    #     copies the tree in and orphans the source's tree.  A relocation moves it.
-    if (target_mode == BoxMode.named and target_ws is not None
-            and not relocating and not spec.records_only
-            and state.mode is not BoxMode.named):
-        landing_leaf = target_ws.workspaces_dir
-        if (landing_leaf is not None
-                and is_in_tree_workspace(target_ws, state.workspace_path)
-                and _resolved_unless_loop(landing_leaf / new_name)
-                != state.workspace_path.resolve()):
-            ref = _cure_ref(state)
-            ws_q = shlex.quote(target_ws.name)
-            leaf = landing_leaf / (cure_name or new_name)
-            if cure_name is None:
-                cure = (f"Run `kanibako box convert {ref} --workset {ws_q} --move --name "
-                        "<name>` with a name no member holds")
-            elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
-                cure = (f"Run `kanibako box convert {ref} --workset {ws_q}` to convert it "
-                        f"where it stands as '{state.name}'")
-                leaf = landing_leaf / new_name
-            else:
-                cure = (f"Run `kanibako box convert {ref} --workset {ws_q}{rename} --move` "
-                        "to move it there")
-            raise ProjectError(
-                f"Refusing to convert '{state.name}' in place: a member of workset "
-                f"'{target_ws.name}' would live at {leaf}{held_note}, and "
-                f"'{state.name}' already has its workspace at "
-                f"{state.workspace_path} — an in-place convert would leave that tree "
-                f"behind with no box owning it. {cure}, or `kanibako box move {ref} "
-                "<path>` to move it out of the workset."
-            )
-
-    # --- membership guard: refuse landing inside a workset the project is
-    #     not (becoming) a member of ---
-    owning_ws_root: Path | None = None
-    if target_mode == BoxMode.named and target_ws is not None:
-        owning_ws_root = target_ws.root.resolve()
-    _refuse_foreign_workset_landing(std, landing, owning_ws_root)
-
-    # --- keyspace § 0: an in-place convert into a workset whose workspace is ANOTHER
-    #     standalone box's root (or a link to one) absorbs that box, as `workset connect
-    #     --force` does; refused unless --force. ---
-    if (target_mode == BoxMode.named and not relocating and not spec.records_only
-            and not force):
-        from kanibako.launch import box_resolve
-        marked = _resolved_unless_loop(landing)
-        own_root = (_resolved_unless_loop(state.metadata_path)
-                    if state.mode is BoxMode.standalone else None)
-        if marked != own_root and box_resolve.stores_standalone_registry_null(marked):
-            raise ProjectError(
-                f"Refusing to convert '{state.name}': its workspace {landing} is the root "
-                f"of another standalone box ({marked}), and the convert would absorb that "
-                "box into the workset. Re-run with --force to absorb it anyway, or choose "
-                "another workspace."
-            )
-        # --- keyspace § 0: the workspace it keeps inside another box's tree (a member's,
-        #     a primary's, a store) is shared: refused unless --force.  Judged as the box
-        #     stands, so its own rows are not another box's; a standalone by its root.
-        #     ⚑ ``_to_workset`` forces ``add_project`` past the marker guard (B2a), so
-        #     ``refuse_existing_box``'s member arm never sees the user's flag: this does.
-        #     An unforceable hit is left to the guards above and to ``add_project``. ---
-        stands_at = (state.metadata_path if state.mode is BoxMode.standalone
-                     else state.workspace_path)
-        holder = _remap_dest_holder(state, stands_at, std, verb="convert", in_place=True)
-        if holder is not None and holder[1]:
-            raise ProjectError(
-                f"Cannot convert '{state.name}' in place at '{stands_at}': it is {holder[0]}")
-
-    # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
-    #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---
-    if target_mode == BoxMode.named and target_ws is not None:
-        in_tree = spec.location is BARE_INTO_WS
-        if not in_tree:
-            try:
-                landing.resolve().relative_to(target_ws.root.resolve())
-                in_tree = True
-            except ValueError:
-                pass
-        if in_tree:
-            refuse_null_workspaces(target_ws.root, f"a workspace for '{new_name}'",
-                                   early=target_ws.early_scope)
-    # An in-place convert TO standalone sweeps the project's files into the root's
-    # ``workset.workspaces`` (``_consolidate_workspace_subdir``); a relocation's *dest* is
-    # new, so it carries no null.
-    if (target_mode == BoxMode.standalone and dest is None
-            and state.mode != BoxMode.standalone):
-        refuse_null_workspaces(state.workspace_path, f"a workspace for '{new_name}'",
-                               standalone=True, early=_early_scope(std, BoxMode.standalone))
-        from kanibako.project import registry_store
-
-        own_ref = (f"{state.ws.name}/{state.name}"
-                   if state.mode is BoxMode.named and state.ws else state.name)
-        swept = _sweep_moves_other_box(
-            state.workspace_path, std,
-            {name: Path(literal_path(root_str))
-             for name, root_str in registry_store.load_standalone(std.registry).items()},
-            own_ref=own_ref)
-        if swept is not None:
-            raise ProjectError(
-                f"Cannot convert '{state.name}' to standalone in place: its workspace "
-                f"holds {swept[0]} ({swept[1]}). Converting would move it into "
-                f"{swept[2]}/ and break that box, so no flag overrides this. Move it out "
-                "of this workspace first, or convert to another path.")
-
-    # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
-    # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.
-    if relocating and not state.is_external and not spec.records_only:
-        old = state.workspace_path.resolve()
-        cwd_r = cwd.resolve()
-        inside = cwd_r == old
-        if not inside:
-            try:
-                cwd_r.relative_to(old)
-                inside = True
-            except ValueError:
-                inside = False
-        if inside and not force:
-            raise ProjectError(
-                f"Refusing to move: your shell's current directory is inside "
-                f"the project being moved ({old}). Moving would strand your "
-                f"shell on a removed directory. cd out first, or pass --force "
-                f"(then run: cd {shlex.quote(str(dest))})."
-            )
-
-    # --- name not taken in target workset ---
-    # ⚑ Both compares are case-blind (spec §0): the SELF exemption, so ``--name FOO``
-    # on the box already registered as ``foo`` is not read as a collision with itself,
-    # and the member scan, so it is not read as free either.  ⚑ The member scan is an
-    # ``==`` over already-loaded members rather than a registry lookup, so nothing in
-    # ``tests/test_identifier_case_enforcement.py`` sees it — found by reading.
-    held = _name_held_in_target_workset(target_mode, target_ws, state, new_name)
-    if held is not None:
-        assert target_ws is not None  # narrowed: helper returns non-None only when target_ws is set
-        raise WorksetError(
-            f"Project '{held}' already exists in workset "
-            f"'{target_ws.name}'."
-        )
-    # ⚑ Entering another workset mints a member; a same-workset move keeps its own leaf.
-    if (target_mode == BoxMode.named and target_ws is not None
-            and (state.ws is None or state.ws.name != target_ws.name)):
-        refuse_case_variant_store(target_ws, new_name, std)
-
-    # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
-    #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
-    #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
-    #     own — the same-workset, same-name case releases and re-records it — and so is
-    #     the source's own workspace as the landing leaf, kept or vacated alike.
-    if (
-        not spec.records_only
-        and target_mode == BoxMode.named
-        and target_ws is not None
-    ):
-        own: frozenset[Path] = frozenset()
-        if (state.ws is not None and target_ws.name == state.ws.name
-                and _same_box_name(new_name, state.name)):
-            own = frozenset(
-                leaf for leaf in _member_leaves(state.ws, state.name)
-                if leaf is not None
-            )
-        landing_leaf = target_ws.workspaces_dir
-        if (landing_leaf is not None
-                and _resolved_unless_loop(landing_leaf / new_name)
-                == state.workspace_path.resolve()):
-            own = own | {state.workspace_path}
-        taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
-                 if p not in own]
-        if taken and _symlink_loop(taken[0]):
-            raise ProjectError(
-                f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
-                f"{looped_path_error(taken[0])}")
-        if taken:
-            raise ProjectError(
-                f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
-                f"{taken[0]} already exists and this operation did not create it. "
-                "Move it aside, or choose another name."
-            )
-
-    # --- the same leftover refusal, on the STANDALONE landing's vault arm ---
-    # ⚑ A PRIMARY box's vault is ``{workset.vault_*}/<name>`` under the WORKSET root,
-    # never the project dir's own ``vault/rw`` (keyspace §2c).  An in-place convert
-    # resolved the new standalone's arm onto whatever already sat there, merged the
-    # box's store into it, and the later ``box rm --purge`` deleted the lot.  Refused
-    # before any write, as the named arm above is.  ⚑ Two arms are no collision: one
-    # the keyspace DECLARES — ask :func:`early_repoint`, which honors BOTH tiers and
-    # reads ``vault_rw: ""`` as UNSET where a raw ``key in doc["workset"]`` does not
-    # — and one holding NOTHING, an empty default arm being indistinguishable from
-    # kanibako's own skeleton, with nothing for the purge to take.
-    if (
-        not spec.records_only
-        and target_mode == BoxMode.standalone
-        and dest is None
-        and state.mode != BoxMode.standalone
-    ):
-        doc = load_workset_settings_doc(state.workspace_path)
-        early = _early_scope(std, BoxMode.standalone)
-        taken_vault = []
-        for key, arm, mine in zip(
-            ("vault_ro", "vault_rw"),
-            resolve_workset_vault_pair(state.workspace_path, early=early),
-            (state.vault_ro, state.vault_rw),
-        ):
-            if arm is None:
-                continue
-            # ⚑ A loop is never the same path as anything: ``resolve`` raises on it (3.11).
-            if (mine is not None and not _symlink_loop(arm) and not _symlink_loop(mine)
-                    and arm.resolve() == mine.resolve()):
-                continue
-            declared, _carrier = early_repoint(state.workspace_path, doc, key, early=early)
-            if declared is not UNSET:
-                continue
-            if not (arm.exists() or arm.is_symlink()):
-                continue
-            if arm.is_dir() and not any(arm.iterdir()):
-                continue
-            taken_vault.append(arm)
-        if taken_vault:
-            raise ProjectError(
-                f"Refusing to convert '{state.name}' to standalone: {taken_vault[0]} "
-                "already exists and this operation did not create it. A standalone "
-                "box's vault IS the root's own arm, so this directory would become "
-                "the box's and a later `box rm --purge` would delete it. Move it "
-                "aside first: declaring this directory as the vault in the root's "
-                "workset.yaml would not protect it — that only makes it the box's."
-            )
-
-    # A STANDALONE target has no user-settable name: refuse --name before any write.
-    if target_mode == BoxMode.standalone and spec.name:
-        # Root the box is named from: *dest*, else its own root (``metadata_path`` alone).
-        landed_root = (
-            dest if dest is not None
-            else (state.metadata_path if state.mode == BoxMode.standalone
-                  else state.workspace_path)
-        )
-        refuse_nonleaf_standalone_name(
-            spec.name, landed_root,
-            box_kuid=standalone_kuid(state.name)
-            if state.mode == BoxMode.standalone else None,
-        )
-
-    # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
-    # ⚑ Checked UP FRONT so a name refusal costs no file copy.
-    requested_name = spec.name or ""
-    # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
-    vault_reused = (
-        state.mode == BoxMode.standalone and target_mode == BoxMode.standalone
-        and (dest is None or _resolved_unless_loop(dest) == state.metadata_path.resolve())
-    )
-    # --- a standalone source's canon tier must resolve before the first write ---
-    # ⚑ The teardown plan reads it again after the destination is written; a repoint
-    # that refuses there is a rollback, here it is a refusal.
-    if state.mode == BoxMode.standalone and not vault_reused:
-        standalone_canon_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
-    if target_mode == BoxMode.primary:
-        landing_ws = dest if dest is not None else state.workspace_path
-        landed = _primary_name_at(state, std, landing_ws)
-        if landed is not None and not _same_box_name(landed, state.name):
-            raise ProjectError(
-                f"Refusing: primary box '{landed}' is registered at {landing_ws}, where "
-                f"'{state.name}' would land. Remove it first (`box rm "
-                f"{shlex.quote(landed)}`), or choose another path."
-            )
-        mint = _default_rename_name(state, std, landing_ws, requested_name)
-        # ⚑ FIX1: a move that keeps the source's OWN name is exempt from the same-kind guard.
-        own_name = _primary_source_own_name(state, std)
-        # The same-path edge and an own-name move both reuse the box's vault (``_to_default``).
-        vault_reused = (
-            landed is not None
-            or _relocated_own_name(state, std, landing_ws, mint) is not None
-        )
-        if mint is not None and not _same_box_name(mint, own_name):
-            check_primary_box_name_free(
-                std.primary_workset, mint, str(landing_ws),
-                early=_early_scope(std, BoxMode.primary),
-            )
-        # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
-        # lands in, so the box-name rule is checked here, before any file moves.
-        if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
-            refuse_derived_box_name(_workspace_landing(
-                state, dest, target_mode, records_only=spec.records_only).name or "project")
-
-    # --- keyspace § 0 on a relocation: its own store and a carried box whatever the flag,
-    #     then a destination inside another box's tree unless --force. ---
-    if relocating and dest is not None and not spec.records_only:
-        _refuse_relocation_nesting(
-            state, spec, std, dest=dest, target_mode=target_mode, target_ws=target_ws,
-            new_name=new_name, force=force,
-            store_kept=(no_owner_change and no_rename and state.mode is not BoxMode.standalone))
-
-    # --- a user entry under a name the standalone root reserves, either direction ---
-    if not relocating and not spec.records_only:
-        _refuse_root_name_collisions(state, std, target_mode)
-
-    # --- a disabled vault that still holds data would be left behind (Q64) ---
-    stranded = [] if vault_reused or state.enable_vault else [
-        leaf for leaf, _why in _unreceived_vault_leaves(
-            (state.vault_ro, state.vault_rw), (None, None), vault_enabled=False,
-        )
+  # --- ⚑ a LOOPED landing refuses here: the in-tree guards below refuse on True, and
+  #     ``is_in_tree_workspace`` answers a loop False.
+  landing = dest if dest is not None else state.workspace_path
+  if _symlink_loop(landing):
+    raise ProjectError(ERR_LOOP_LANDING % (state.name, landing))
+  if not spec.records_only:
+    carried = [
+      box_metadata_dir(
+        state.mode, state.metadata_path, early=EarlyScope(std.early_system, _state_ws_token(state))
+      )
     ]
-    if stranded and not force:
-        raise ProjectError(
-            f"Refusing: box.enable_vault is false for '{state.name}', but its vault "
-            f"still holds data at {', '.join(map(str, stranded))}. The box carries no "
-            "vault, so this would leave that data behind. Move it out first, or pass "
-            "--force to proceed and leave it in place."
-        )
+    carried += [state.workspace_path] if relocating else []
+    looped = next((p for p in carried if _symlink_loop(p)), None)
+    if looped is not None:
+      raise ProjectError(
+        ERR_LOOP_SOURCE % (state.name, looped)
+        + (CURE_LOOP_SOURCE_REMAP if looped == state.workspace_path else "")
+      )
 
-    return {
-        "target_mode": target_mode,
-        "target_ws": target_ws,
-        "target_ws_name": target_ws_name,
-        "dest": dest,
-        "relocating": relocating,
-        "no_owner_change": no_owner_change,
-        "new_name": new_name,
-        # ⚑ The EXPLICIT --name (empty when absent) — distinct from ``new_name``, which
-        # defaults to the source name. Standalone needs the distinction (R1/R3).
-        "requested_name": requested_name,
-    }
+  if not spec.records_only:
+    refuse_inherited_per_owner(
+      _state_ws_root(state, std), EarlyScope(std.early_system, _state_ws_token(state))
+    )
+    if target_ws is not None:
+      refuse_inherited_per_owner(target_ws.root, target_ws.early_scope)
+    elif target_mode == BoxMode.primary:
+      refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
+    else:
+      refuse_inherited_per_owner(
+        dest or state.workspace_path, _early_scope(std, BoxMode.standalone)
+      )
+
+  # --- no-op guard ---
+  no_owner_change = spec.ownership is UNCHANGED or (
+    target_mode == state.mode
+    and (
+      target_mode != BoxMode.named
+      or (state.ws is not None and target_ws is not None and state.ws.name == target_ws.name)
+    )
+  )
+  no_rename = _same_box_name(new_name, state.name)
+  if not relocating and no_owner_change and no_rename:
+    # ⚑ A retry after an interrupted tail: the store step 4c did not carry is moved now.
+    vacated = None if spec.records_only else _vacated_root_store(state, std)
+    if vacated is None:
+      cure = None if spec.records_only else _stranded_store_cure(state, std)
+      raise ProjectError(
+        "Nothing to do: target equals the current location, owner, and name."
+        + (f"\n{cure}" if cure else "")
+      )
+    return {"stranded_snapshots": vacated}
+
+  # --- workset -> workset with INTERNAL workspace requires relocation ---
+  is_ws_to_ws = (
+    state.mode == BoxMode.named and target_mode == BoxMode.named and not no_owner_change
+  )
+  if is_ws_to_ws and not state.is_external and not relocating:
+    raise ProjectError(STUBBORN_INPLACE_MSG)
+
+  # --- an EXTERNAL source cannot be relocated: its "workspace" is the user's own
+  #     directory, so a copy would record a path that holds nothing.
+  if relocating and state.is_external and not spec.records_only:
+    raise ProjectError(
+      f"'{state.name}' is an external-connected project; its workspace is "
+      "your own directory, not managed by kanibako. Use `box remap <old> "
+      "<new>` to update records if you moved it, or `box convert` without "
+      "`--move` to change ownership."
+    )
+
+  # --- destination not already occupied ---
+  # ⚑ ``records_only`` exempt: ``remap``'s files are ALREADY at *dest*, so it must not
+  # be required empty (and a no-op same-path remap is fine).
+  if relocating and dest is not None and not spec.records_only:
+    if dest.resolve() == state.workspace_path.resolve():
+      raise ProjectError(f"Destination is the project's current location: {dest}")
+    if state.workspace_path.resolve() in dest.resolve().parents:
+      raise ProjectError(f"Destination is inside the project being moved: {dest}")
+    if dest.exists():
+      raise ProjectError(f"Destination already exists: {dest}")
+
+  # --- remap onto ANOTHER box's path, refused before any write ---
+  if spec.records_only and dest is not None:
+    # The checks below read *dest*'s ``workset.yaml``, and a standalone's layout lists
+    # *dest*; a path they cannot read is refused by name here, before anything moves.
+    import errno
+    import os
+
+    reads: list[Callable[[], object]] = [lambda: os.stat(dest / WORKSET_META_FILE)]
+    if state.mode is BoxMode.standalone:
+      reads.append(lambda: os.listdir(dest))
+    for read in reads:
+      try:
+        read()
+      except OSError as err:
+        if err.errno in (errno.EACCES, errno.ELOOP):
+          raise ProjectError(
+            f"Cannot remap '{state.name}' onto '{dest}': {err.filename} cannot "
+            f"be read ({err.strerror}), and nothing has moved. Choose a path "
+            "kanibako can read."
+          ) from None
+    holder = _remap_dest_holder(state, dest, std)
+    if holder is not None and not (holder[1] and force):
+      raise ProjectError(f"Cannot remap '{state.name}' onto '{dest}': it is {holder[0]}")
+
+  # The name a printed cure lands under: the one asked for, else the box's own, else
+  # none — a name the collision guard below refuses is no cure.
+  asked = [new_name] + ([] if _same_box_name(new_name, state.name) else [state.name])
+  cure_name = next(
+    (n for n in asked if _name_held_in_target_workset(target_mode, target_ws, state, n) is None),
+    None,
+  )
+  rename = (
+    ""
+    if cure_name is None or _same_box_name(cure_name, state.name)
+    else f" --name {shlex.quote(cure_name)}"
+  )
+  held_names = asked if cure_name is None else asked[: asked.index(cure_name)]
+  held_note = (
+    " ("
+    + " and ".join(f"'{n}'" for n in held_names)
+    + f" already held in workset '{target_ws.name}')"
+    if held_names and target_ws is not None
+    else ""
+  )
+
+  # --- an in-tree landing for a NAMED target must be the one leaf the target
+  #     records.  Any other in-tree path is copied to by step 2 and copied again to
+  #     ``workspaces/<name>`` by step 2b, so the box would record ``workspaces/<name>``
+  #     while the user asked for the other path.  ``records_only`` is NOT exempt: it
+  #     records that path as the workspace too.
+  if target_mode == BoxMode.named and target_ws is not None and dest is not None:
+    ws_dir = target_ws.workspaces_dir
+    if (
+      ws_dir is not None
+      and is_in_tree_workspace(target_ws, dest)
+      and _resolved_unless_loop(dest) != _resolved_unless_loop(ws_dir / new_name)
+    ):
+      leaf = ws_dir / (cure_name or new_name)
+      ref = _cure_ref(state)
+      ws_q = shlex.quote(target_ws.name)
+      bare = f"kanibako box convert {ref} --workset {ws_q} --move{rename}"
+      fresh = f"kanibako box convert {ref} --workset {ws_q} --move --name <name>"
+      if spec.records_only:
+        advice = f"Move the files to `{leaf}` and run `kanibako box remap` again."
+      elif cure_name is None:
+        advice = f"Run, with a name no member holds:\n  {fresh}"
+      elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
+        # A cure to the leaf the box stands at is refused as its current location;
+        # only a new name gives it another leaf.
+        cure = (
+          fresh
+          if spec.verb == "convert"
+          else (
+            f"kanibako box move {ref} {shlex.quote(str(ws_dir))}/<name> "
+            f"--workset {ws_q} --name <name>"
+          )
+        )
+        advice = (
+          "The box already lives there; to give it another leaf, run, with a "
+          f"name no member holds:\n  {cure}"
+        )
+      elif spec.verb == "convert":
+        advice = f"Run:\n  {bare}"
+      else:
+        advice = (
+          f"Run either:\n  kanibako box move {ref} {shlex.quote(str(leaf))} "
+          f"--workset {ws_q}{rename}\n  {bare}"
+        )
+      raise ProjectError(
+        f"Refusing to record {dest} for a workset member: inside workset "
+        f"'{target_ws.name}' a member would live at `{leaf}`{held_note}, and no other "
+        "in-tree path is the workspace the box records.\n"
+        f"{advice}\n"
+        "Or choose a destination outside the workset."
+      )
+
+  # --- ⚑ an IN-PLACE convert records the box only where it stands: any other leaf
+  #     copies the tree in and orphans the source's tree.  A relocation moves it.
+  if (
+    target_mode == BoxMode.named
+    and target_ws is not None
+    and not relocating
+    and not spec.records_only
+    and state.mode is not BoxMode.named
+  ):
+    landing_leaf = target_ws.workspaces_dir
+    if (
+      landing_leaf is not None
+      and is_in_tree_workspace(target_ws, state.workspace_path)
+      and _resolved_unless_loop(landing_leaf / new_name) != state.workspace_path.resolve()
+    ):
+      ref = _cure_ref(state)
+      ws_q = shlex.quote(target_ws.name)
+      leaf = landing_leaf / (cure_name or new_name)
+      if cure_name is None:
+        cure = (
+          f"Run `kanibako box convert {ref} --workset {ws_q} --move --name "
+          "<name>` with a name no member holds"
+        )
+      elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
+        cure = (
+          f"Run `kanibako box convert {ref} --workset {ws_q}` to convert it "
+          f"where it stands as '{state.name}'"
+        )
+        leaf = landing_leaf / new_name
+      else:
+        cure = f"Run `kanibako box convert {ref} --workset {ws_q}{rename} --move` to move it there"
+      raise ProjectError(
+        f"Refusing to convert '{state.name}' in place: a member of workset "
+        f"'{target_ws.name}' would live at {leaf}{held_note}, and "
+        f"'{state.name}' already has its workspace at "
+        f"{state.workspace_path} — an in-place convert would leave that tree "
+        f"behind with no box owning it. {cure}, or `kanibako box move {ref} "
+        "<path>` to move it out of the workset."
+      )
+
+  # --- membership guard: refuse landing inside a workset the project is
+  #     not (becoming) a member of ---
+  owning_ws_root: Path | None = None
+  if target_mode == BoxMode.named and target_ws is not None:
+    owning_ws_root = target_ws.root.resolve()
+  _refuse_foreign_workset_landing(std, landing, owning_ws_root)
+
+  # --- keyspace § 0: an in-place convert into a workset whose workspace is ANOTHER
+  #     standalone box's root (or a link to one) absorbs that box, as `workset connect
+  #     --force` does; refused unless --force. ---
+  if target_mode == BoxMode.named and not relocating and not spec.records_only and not force:
+    from kanibako.launch import box_resolve
+
+    marked = _resolved_unless_loop(landing)
+    own_root = (
+      _resolved_unless_loop(state.metadata_path) if state.mode is BoxMode.standalone else None
+    )
+    if marked != own_root and box_resolve.stores_standalone_registry_null(marked):
+      raise ProjectError(
+        f"Refusing to convert '{state.name}': its workspace {landing} is the root "
+        f"of another standalone box ({marked}), and the convert would absorb that "
+        "box into the workset. Re-run with --force to absorb it anyway, or choose "
+        "another workspace."
+      )
+    # --- keyspace § 0: the workspace it keeps inside another box's tree (a member's,
+    #     a primary's, a store) is shared: refused unless --force.  Judged as the box
+    #     stands, so its own rows are not another box's; a standalone by its root.
+    #     ⚑ ``_to_workset`` forces ``add_project`` past the marker guard (B2a), so
+    #     ``refuse_existing_box``'s member arm never sees the user's flag: this does.
+    #     An unforceable hit is left to the guards above and to ``add_project``. ---
+    stands_at = state.metadata_path if state.mode is BoxMode.standalone else state.workspace_path
+    holder = _remap_dest_holder(state, stands_at, std, verb="convert", in_place=True)
+    if holder is not None and holder[1]:
+      raise ProjectError(
+        f"Cannot convert '{state.name}' in place at '{stands_at}': it is {holder[0]}"
+      )
+
+  # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
+  #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---
+  if target_mode == BoxMode.named and target_ws is not None:
+    in_tree = spec.location is BARE_INTO_WS
+    if not in_tree:
+      try:
+        landing.resolve().relative_to(target_ws.root.resolve())
+        in_tree = True
+      except ValueError:
+        pass
+    if in_tree:
+      refuse_null_workspaces(
+        target_ws.root, f"a workspace for '{new_name}'", early=target_ws.early_scope
+      )
+  # An in-place convert TO standalone sweeps the project's files into the root's
+  # ``workset.workspaces`` (``_consolidate_workspace_subdir``); a relocation's *dest* is
+  # new, so it carries no null.
+  if target_mode == BoxMode.standalone and dest is None and state.mode != BoxMode.standalone:
+    refuse_null_workspaces(
+      state.workspace_path,
+      f"a workspace for '{new_name}'",
+      standalone=True,
+      early=_early_scope(std, BoxMode.standalone),
+    )
+    from kanibako.project import registry_store
+
+    own_ref = (
+      f"{state.ws.name}/{state.name}" if state.mode is BoxMode.named and state.ws else state.name
+    )
+    swept = _sweep_moves_other_box(
+      state.workspace_path,
+      std,
+      {
+        name: Path(literal_path(root_str))
+        for name, root_str in registry_store.load_standalone(std.registry).items()
+      },
+      own_ref=own_ref,
+    )
+    if swept is not None:
+      raise ProjectError(
+        f"Cannot convert '{state.name}' to standalone in place: its workspace "
+        f"holds {swept[0]} ({swept[1]}). Converting would move it into "
+        f"{swept[2]}/ and break that box, so no flag overrides this. Move it out "
+        "of this workspace first, or convert to another path."
+      )
+
+  # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
+  # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.
+  if relocating and not state.is_external and not spec.records_only:
+    old = state.workspace_path.resolve()
+    cwd_r = cwd.resolve()
+    inside = cwd_r == old
+    if not inside:
+      try:
+        cwd_r.relative_to(old)
+        inside = True
+      except ValueError:
+        inside = False
+    if inside and not force:
+      raise ProjectError(
+        f"Refusing to move: your shell's current directory is inside "
+        f"the project being moved ({old}). Moving would strand your "
+        f"shell on a removed directory. cd out first, or pass --force "
+        f"(then run: cd {shlex.quote(str(dest))})."
+      )
+
+  # --- name not taken in target workset ---
+  # ⚑ Both compares are case-blind (spec §0): the SELF exemption, so ``--name FOO``
+  # on the box already registered as ``foo`` is not read as a collision with itself,
+  # and the member scan, so it is not read as free either.  ⚑ The member scan is an
+  # ``==`` over already-loaded members rather than a registry lookup, so nothing in
+  # ``tests/test_identifier_case_enforcement.py`` sees it — found by reading.
+  held = _name_held_in_target_workset(target_mode, target_ws, state, new_name)
+  if held is not None:
+    assert target_ws is not None  # narrowed: helper returns non-None only when target_ws is set
+    raise WorksetError(f"Project '{held}' already exists in workset '{target_ws.name}'.")
+  # ⚑ Entering another workset mints a member; a same-workset move keeps its own leaf.
+  if (
+    target_mode == BoxMode.named
+    and target_ws is not None
+    and (state.ws is None or state.ws.name != target_ws.name)
+  ):
+    refuse_case_variant_store(target_ws, new_name, std)
+
+  # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
+  #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
+  #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
+  #     own — the same-workset, same-name case releases and re-records it — and so is
+  #     the source's own workspace as the landing leaf, kept or vacated alike.
+  if not spec.records_only and target_mode == BoxMode.named and target_ws is not None:
+    own: frozenset[Path] = frozenset()
+    if (
+      state.ws is not None
+      and target_ws.name == state.ws.name
+      and _same_box_name(new_name, state.name)
+    ):
+      own = frozenset(leaf for leaf in _member_leaves(state.ws, state.name) if leaf is not None)
+    landing_leaf = target_ws.workspaces_dir
+    if (
+      landing_leaf is not None
+      and _resolved_unless_loop(landing_leaf / new_name) == state.workspace_path.resolve()
+    ):
+      own = own | {state.workspace_path}
+    taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name)) if p not in own]
+    if taken and _symlink_loop(taken[0]):
+      raise ProjectError(
+        f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
+        f"{looped_path_error(taken[0])}"
+      )
+    if taken:
+      raise ProjectError(
+        f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
+        f"{taken[0]} already exists and this operation did not create it. "
+        "Move it aside, or choose another name."
+      )
+
+  # --- the same leftover refusal, on the STANDALONE landing's vault arm ---
+  # ⚑ A PRIMARY box's vault is ``{workset.vault_*}/<name>`` under the WORKSET root,
+  # never the project dir's own ``vault/rw`` (keyspace §2c).  An in-place convert
+  # resolved the new standalone's arm onto whatever already sat there, merged the
+  # box's store into it, and the later ``box rm --purge`` deleted the lot.  Refused
+  # before any write, as the named arm above is.  ⚑ Two arms are no collision: one
+  # the keyspace DECLARES — ask :func:`early_repoint`, which honors BOTH tiers and
+  # reads ``vault_rw: ""`` as UNSET where a raw ``key in doc["workset"]`` does not
+  # — and one holding NOTHING, an empty default arm being indistinguishable from
+  # kanibako's own skeleton, with nothing for the purge to take.
+  if (
+    not spec.records_only
+    and target_mode == BoxMode.standalone
+    and dest is None
+    and state.mode != BoxMode.standalone
+  ):
+    doc = load_workset_settings_doc(state.workspace_path)
+    early = _early_scope(std, BoxMode.standalone)
+    taken_vault = []
+    for key, arm, mine in zip(
+      ("vault_ro", "vault_rw"),
+      resolve_workset_vault_pair(state.workspace_path, early=early),
+      (state.vault_ro, state.vault_rw),
+    ):
+      if arm is None:
+        continue
+      # ⚑ A loop is never the same path as anything: ``resolve`` raises on it (3.11).
+      if (
+        mine is not None
+        and not _symlink_loop(arm)
+        and not _symlink_loop(mine)
+        and arm.resolve() == mine.resolve()
+      ):
+        continue
+      declared, _carrier = early_repoint(state.workspace_path, doc, key, early=early)
+      if declared is not UNSET:
+        continue
+      if not (arm.exists() or arm.is_symlink()):
+        continue
+      if arm.is_dir() and not any(arm.iterdir()):
+        continue
+      taken_vault.append(arm)
+    if taken_vault:
+      raise ProjectError(
+        f"Refusing to convert '{state.name}' to standalone: {taken_vault[0]} "
+        "already exists and this operation did not create it. A standalone "
+        "box's vault IS the root's own arm, so this directory would become "
+        "the box's and a later `box rm --purge` would delete it. Move it "
+        "aside first: declaring this directory as the vault in the root's "
+        "workset.yaml would not protect it — that only makes it the box's."
+      )
+
+  # A STANDALONE target has no user-settable name: refuse --name before any write.
+  if target_mode == BoxMode.standalone and spec.name:
+    # Root the box is named from: *dest*, else its own root (``metadata_path`` alone).
+    landed_root = (
+      dest
+      if dest is not None
+      else (state.metadata_path if state.mode == BoxMode.standalone else state.workspace_path)
+    )
+    refuse_nonleaf_standalone_name(
+      spec.name,
+      landed_root,
+      box_kuid=standalone_kuid(state.name) if state.mode == BoxMode.standalone else None,
+    )
+
+  # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
+  # ⚑ Checked UP FRONT so a name refusal costs no file copy.
+  requested_name = spec.name or ""
+  # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
+  vault_reused = (
+    state.mode == BoxMode.standalone
+    and target_mode == BoxMode.standalone
+    and (dest is None or _resolved_unless_loop(dest) == state.metadata_path.resolve())
+  )
+  # --- a standalone source's canon tier must resolve before the first write ---
+  # ⚑ The teardown plan reads it again after the destination is written; a repoint
+  # that refuses there is a rollback, here it is a refusal.
+  if state.mode == BoxMode.standalone and not vault_reused:
+    standalone_canon_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
+  if target_mode == BoxMode.primary:
+    landing_ws = dest if dest is not None else state.workspace_path
+    landed = _primary_name_at(state, std, landing_ws)
+    if landed is not None and not _same_box_name(landed, state.name):
+      raise ProjectError(
+        f"Refusing: primary box '{landed}' is registered at {landing_ws}, where "
+        f"'{state.name}' would land. Remove it first (`box rm "
+        f"{shlex.quote(landed)}`), or choose another path."
+      )
+    mint = _default_rename_name(state, std, landing_ws, requested_name)
+    # ⚑ FIX1: a move that keeps the source's OWN name is exempt from the same-kind guard.
+    own_name = _primary_source_own_name(state, std)
+    # The same-path edge and an own-name move both reuse the box's vault (``_to_default``).
+    vault_reused = (
+      landed is not None or _relocated_own_name(state, std, landing_ws, mint) is not None
+    )
+    if mint is not None and not _same_box_name(mint, own_name):
+      check_primary_box_name_free(
+        std.primary_workset,
+        mint,
+        str(landing_ws),
+        early=_early_scope(std, BoxMode.primary),
+      )
+    # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
+    # lands in, so the box-name rule is checked here, before any file moves.
+    if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
+      refuse_derived_box_name(
+        _workspace_landing(state, dest, target_mode, records_only=spec.records_only).name
+        or "project"
+      )
+
+  # --- keyspace § 0 on a relocation: its own store and a carried box whatever the flag,
+  #     then a destination inside another box's tree unless --force. ---
+  if relocating and dest is not None and not spec.records_only:
+    _refuse_relocation_nesting(
+      state,
+      spec,
+      std,
+      dest=dest,
+      target_mode=target_mode,
+      target_ws=target_ws,
+      new_name=new_name,
+      force=force,
+      store_kept=(no_owner_change and no_rename and state.mode is not BoxMode.standalone),
+    )
+
+  # --- a user entry under a name the standalone root reserves, either direction ---
+  if not relocating and not spec.records_only:
+    _refuse_root_name_collisions(state, std, target_mode)
+
+  # --- a disabled vault that still holds data would be left behind (Q64) ---
+  stranded = (
+    []
+    if vault_reused or state.enable_vault
+    else [
+      leaf
+      for leaf, _why in _unreceived_vault_leaves(
+        (state.vault_ro, state.vault_rw),
+        (None, None),
+        vault_enabled=False,
+      )
+    ]
+  )
+  if stranded and not force:
+    raise ProjectError(
+      f"Refusing: box.enable_vault is false for '{state.name}', but its vault "
+      f"still holds data at {', '.join(map(str, stranded))}. The box carries no "
+      "vault, so this would leave that data behind. Move it out first, or pass "
+      "--force to proceed and leave it in place."
+    )
+
+  return {
+    "target_mode": target_mode,
+    "target_ws": target_ws,
+    "target_ws_name": target_ws_name,
+    "dest": dest,
+    "relocating": relocating,
+    "no_owner_change": no_owner_change,
+    "new_name": new_name,
+    # ⚑ The EXPLICIT --name (empty when absent) — distinct from ``new_name``, which
+    # defaults to the source name. Standalone needs the distinction (R1/R3).
+    "requested_name": requested_name,
+  }
 
 
 # ---------------------------------------------------------------------------
 # execute_lifecycle — the shared transactional routine
 # ---------------------------------------------------------------------------
 
+
 def execute_lifecycle(
-    state: ProjectState,
-    spec: TargetSpec,
-    std: StandardPaths,
-    config: BootstrapConfig | None = None,
-    *,
-    force: bool = False,
-    confirm: Callable[[], bool] | None = None,
+  state: ProjectState,
+  spec: TargetSpec,
+  std: StandardPaths,
+  config: BootstrapConfig | None = None,
+  *,
+  force: bool = False,
+  confirm: Callable[[], bool] | None = None,
 ) -> ProjectState:
-    """Apply *spec* to *state* transactionally, in the canonical 5-step order."""
-    if config is None:
-        from kanibako.settings.config import user_config_file, load_config
-        config = load_config(user_config_file())
+  """Apply *spec* to *state* transactionally, in the canonical 5-step order."""
+  if config is None:
+    from kanibako.settings.config import user_config_file, load_config
 
-    cwd = Path(logical_cwd())
-    plan = _validate(state, spec, std, config, force=force, cwd=cwd)
+    config = load_config(user_config_file())
 
-    if confirm is not None and not confirm():
-        raise ProjectError("Aborted by user.")
-    if "stranded_snapshots" in plan:
-        _carry_vacated_root_store(state, *plan["stranded_snapshots"])
-        return state
+  cwd = Path(logical_cwd())
+  plan = _validate(state, spec, std, config, force=force, cwd=cwd)
 
-    mounted = (
-        [] if spec.records_only
-        else plan_box_mounted_links(state, _box_trees(state))
+  if confirm is not None and not confirm():
+    raise ProjectError("Aborted by user.")
+  if "stranded_snapshots" in plan:
+    _carry_vacated_root_store(state, *plan["stranded_snapshots"])
+    return state
+
+  mounted = [] if spec.records_only else plan_box_mounted_links(state, _box_trees(state))
+  unwind = _Unwind()
+  sealed = False
+  try:
+    new_state, teardown = _run_steps(state, spec, std, config, plan, unwind)
+    if mounted:
+      landed = _landed_bind_sources(new_state, std, config)
+      new_state = replace(new_state, bind_sources=landed)
+    repoint_box_mounted_links(
+      mounted,
+      {
+        old: new
+        for old, new in zip(_box_trees(state), _box_trees(new_state))
+        if old is not None and new is not None
+      },
+      new_state,
     )
-    unwind = _Unwind()
-    sealed = False
-    try:
-        new_state, teardown = _run_steps(state, spec, std, config, plan, unwind)
-        if mounted:
-            landed = _landed_bind_sources(new_state, std, config)
-            new_state = replace(new_state, bind_sources=landed)
-        repoint_box_mounted_links(mounted, {
-            old: new for old, new in zip(_box_trees(state), _box_trees(new_state))
-            if old is not None and new is not None}, new_state)
-        # ⚑⚑ THE POINT OF NO RETURN: before it an interrupt unwinds to the source alone,
-        # after it only the destination row exists and nothing is unwound.  The source's
-        # files go in the success tail, inside this try so an interrupt at its call is
-        # named too.
-        _drop_source_row(teardown, unwind)
-        sealed = True
-        unwind.finish()
-        _note_unwind_errors(f"finish a step of the {_verb_noun(spec)}", unwind.errors)
-    except BaseException as exc:
-        # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
-        # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
-        if sealed:
-            unwind.note_interrupted()
-        else:
-            unwind.run()
-            if unwind.failed:
-                _note_unwind_incomplete(state, spec, plan["dest"], unwind.errors,
-                                        interrupted=isinstance(exc, KeyboardInterrupt))
-            elif isinstance(exc, KeyboardInterrupt):
-                _note_interrupt_undone(state, spec)
-        raise
-    return new_state
+    # ⚑⚑ THE POINT OF NO RETURN: before it an interrupt unwinds to the source alone,
+    # after it only the destination row exists and nothing is unwound.  The source's
+    # files go in the success tail, inside this try so an interrupt at its call is
+    # named too.
+    _drop_source_row(teardown, unwind)
+    sealed = True
+    unwind.finish()
+    _note_unwind_errors(f"finish a step of the {_verb_noun(spec)}", unwind.errors)
+  except BaseException as exc:
+    # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
+    # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
+    if sealed:
+      unwind.note_interrupted()
+    else:
+      unwind.run()
+      if unwind.failed:
+        _note_unwind_incomplete(
+          state, spec, plan["dest"], unwind.errors, interrupted=isinstance(exc, KeyboardInterrupt)
+        )
+      elif isinstance(exc, KeyboardInterrupt):
+        _note_interrupt_undone(state, spec)
+    raise
+  return new_state
 
 
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None:
-    """Tell the user an interrupt was undone in full: the CLI's rc 130 prints nothing."""
-    import sys
+  """Tell the user an interrupt was undone in full: the CLI's rc 130 prints nothing."""
+  import sys
 
-    where = _registered_place(state)
-    if spec.verb == "move":
-        done = f"the move was undone; '{state.name}' is back at {where}"
-    elif spec.verb == "convert":
-        done = f"the conversion was undone; '{state.name}' is back at {where}"
-    else:  # remap
-        done = f"the remap was undone; '{state.name}' is registered at {where} again"
-    print(f"Interrupted: {done}", file=sys.stderr)
+  where = _registered_place(state)
+  if spec.verb == "move":
+    done = f"the move was undone; '{state.name}' is back at {where}"
+  elif spec.verb == "convert":
+    done = f"the conversion was undone; '{state.name}' is back at {where}"
+  else:  # remap
+    done = f"the remap was undone; '{state.name}' is registered at {where} again"
+  print(f"Interrupted: {done}", file=sys.stderr)
 
 
 def _note_unwind_incomplete(
-    state: ProjectState, spec: TargetSpec, dest: Path | None,
-    errors: Sequence[Exception], *, interrupted: bool,
+  state: ProjectState,
+  spec: TargetSpec,
+  dest: Path | None,
+  errors: Sequence[Exception],
+  *,
+  interrupted: bool,
 ) -> None:
-    """Tell the user the rollback left work undone, and where to look.
+  """Tell the user the rollback left work undone, and where to look.
 
-    The Note is :func:`kanibako.project.workset._note_unwind_incomplete`'s.  The CLI then
-    exits 130 on an interrupt, or prints the error.
-    """
-    noun = _verb_noun(spec)
-    src = _registered_place(state)
-    if noun == "remap":
-        where = f"'{state.name}' may still be registered at {dest or src}"
-    elif dest is None or dest == src:
-        where = f"check '{state.name}' at {src}"
-    else:
-        where = f"check '{state.name}' at {src} and at {dest}"
-    _note_rollback_incomplete(noun, where, errors, interrupted=interrupted)
+  The Note is :func:`kanibako.project.workset._note_unwind_incomplete`'s.  The CLI then
+  exits 130 on an interrupt, or prints the error.
+  """
+  noun = _verb_noun(spec)
+  src = _registered_place(state)
+  if noun == "remap":
+    where = f"'{state.name}' may still be registered at {dest or src}"
+  elif dest is None or dest == src:
+    where = f"check '{state.name}' at {src}"
+  else:
+    where = f"check '{state.name}' at {src} and at {dest}"
+  _note_rollback_incomplete(noun, where, errors, interrupted=interrupted)
 
 
 def _registered_place(state: ProjectState) -> Path:
-    """Where *state*'s box was registered before the op: the path an undo Note names.
+  """Where *state*'s box was registered before the op: the path an undo Note names.
 
-    A standalone is registered at its ROOT (``metadata_path``), and a moved one's row names
-    the root it left (``moved_from``); any other box at its workspace.
-    """
-    if state.moved_from is not None:
-        return state.moved_from
-    if state.mode is BoxMode.standalone:
-        return state.metadata_path
-    return state.workspace_path
+  A standalone is registered at its ROOT (``metadata_path``), and a moved one's row names
+  the root it left (``moved_from``); any other box at its workspace.
+  """
+  if state.moved_from is not None:
+    return state.moved_from
+  if state.mode is BoxMode.standalone:
+    return state.metadata_path
+  return state.workspace_path
 
 
 def _verb_noun(spec: TargetSpec) -> str:
-    """The noun a Note uses for *spec*'s verb: move, conversion, or remap."""
-    return {"move": "move", "convert": "conversion"}.get(spec.verb or "", "remap")
+  """The noun a Note uses for *spec*'s verb: move, conversion, or remap."""
+  return {"move": "move", "convert": "conversion"}.get(spec.verb or "", "remap")
 
 
 def _run_steps(
-    state: ProjectState,
-    spec: TargetSpec,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    plan: dict,
-    unwind: _Unwind,
+  state: ProjectState,
+  spec: TargetSpec,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  plan: dict,
+  unwind: _Unwind,
 ) -> tuple[ProjectState, _SourceTeardown | None]:
-    import sys
+  import sys
 
-    target_mode: BoxMode = plan["target_mode"]
-    target_ws: Workset | None = plan["target_ws"]
-    dest: Path | None = plan["dest"]
-    relocating: bool = plan["relocating"]
-    new_name: str = plan["new_name"]
-    requested_name: str = plan["requested_name"]
+  target_mode: BoxMode = plan["target_mode"]
+  target_ws: Workset | None = plan["target_ws"]
+  dest: Path | None = plan["dest"]
+  relocating: bool = plan["relocating"]
+  new_name: str = plan["new_name"]
+  requested_name: str = plan["requested_name"]
 
-    # The success tail's own steps, after the source teardown.
-    later: list[Callable[[], None]] = []
+  # The success tail's own steps, after the source teardown.
+  later: list[Callable[[], None]] = []
 
-    # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
-    records_only: bool = spec.records_only
-    new_workspace = _workspace_landing(state, dest, target_mode, records_only=records_only)
-    if records_only and dest is not None:
-        # ``remap``: files presumed already at *dest*; copy and remove nothing.
-        old = state.workspace_path
-        if (state.mode is BoxMode.named and not state.is_external and old.is_dir()
-                and old.resolve() != dest.resolve()):
-            later.append(lambda: print(
-                f"Note: left {old}; remap deletes nothing", file=sys.stderr))
-    elif relocating and dest is not None and not state.is_external:
-        src = state.workspace_path
-        # ⚑⚑ AIM THE COPY AT THE WORKSPACE, NOT THE ROOT: onto the root, a user's
-        # ``<workspace>/box_data/`` lands ON the store path and the store copy merges
-        # over it by name, which ``--purge`` then deletes.  Workspace-at-root is exempt.
-        landing = dest
-        if (target_mode is BoxMode.standalone
-                and src.resolve() != state.metadata_path.resolve()):
-            landing = _resolve_standalone_workspaces(
-                dest, None, early=_early_scope(std, BoxMode.standalone),
-            )
-        # ⚑⚑ THE PATH-ANCHORED IGNORE, rooted on ``state.metadata_path``, NOT *src*: at
-        # the DEFAULT layout a standalone's workspace sits one level below the root that
-        # carries ``workset.boxes``, so *src* answered the store as the USER'S
-        # ``<workspace>/box_data`` and this move deleted it (R1).
-        # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATES, and is armed BEFORE the copy: a
-        # copy that fails or is interrupted part-way must not strand a half-copied dest.
-        created = next((p for p in (dest, landing)
-                        if not (p.exists() or p.is_symlink())), None)
-        if created is not None:
-            unwind.push(partial(_unwind_created_root, created))
-        if not lay_root_link(src, landing):
-            copy_tree_keeping_links(
-                src, landing,
-                ignore=_workspace_copy_ignore(
-                    state.metadata_path, src, mode=state.mode,
-                    early=EarlyScope(std.early_system, _state_ws_token(state))),
-            )
-    # An EXTERNAL source relocating: the "workspace" is the USER'S OWN dir — never moved,
-    # only re-recorded at *dest* (the landing above).
-    elif (
-        not records_only
-        and not relocating
-        and state.mode is BoxMode.standalone
+  # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
+  records_only: bool = spec.records_only
+  new_workspace = _workspace_landing(state, dest, target_mode, records_only=records_only)
+  if records_only and dest is not None:
+    # ``remap``: files presumed already at *dest*; copy and remove nothing.
+    old = state.workspace_path
+    if (
+      state.mode is BoxMode.named
+      and not state.is_external
+      and old.is_dir()
+      and old.resolve() != dest.resolve()
     ):
-        root = state.metadata_path
-        workspace = state.workspace_path
-        if new_workspace == root and target_mode is not BoxMode.standalone and (
-                root.resolve() in workspace.resolve().parents):
-            # ⚑ Reverse of drift H: standalone roots the live workspace UNDER the root,
-            # every other mode at the project dir — so an in-place convert OUT must lift.
-            merge_gitignore = _hold_root_gitignore(root, workspace, unwind)
-            _unconsolidate_workspace_subdir(workspace, root, unwind)
-            if merge_gitignore is not None:
-                merge_gitignore()
-        elif new_workspace == workspace and workspace.resolve() != root.resolve():
-            # ⚑ system-design § "Box lifecycle": an ABSOLUTE ``workset.workspaces`` is a
-            # directory the USER named, and emptying it is the irreversible loss, so the
-            # box simply keeps it.
-            print(f"Note: left the workspace at {workspace} — workset.workspaces "
-                  f"pointed it outside {root}, so it is yours and the box keeps "
-                  f"it as its project directory.", file=sys.stderr)
+      later.append(lambda: print(f"Note: left {old}; remap deletes nothing", file=sys.stderr))
+  elif relocating and dest is not None and not state.is_external:
+    src = state.workspace_path
+    # ⚑⚑ AIM THE COPY AT THE WORKSPACE, NOT THE ROOT: onto the root, a user's
+    # ``<workspace>/box_data/`` lands ON the store path and the store copy merges
+    # over it by name, which ``--purge`` then deletes.  Workspace-at-root is exempt.
+    landing = dest
+    if target_mode is BoxMode.standalone and src.resolve() != state.metadata_path.resolve():
+      landing = _resolve_standalone_workspaces(
+        dest,
+        None,
+        early=_early_scope(std, BoxMode.standalone),
+      )
+    # ⚑⚑ THE PATH-ANCHORED IGNORE, rooted on ``state.metadata_path``, NOT *src*: at
+    # the DEFAULT layout a standalone's workspace sits one level below the root that
+    # carries ``workset.boxes``, so *src* answered the store as the USER'S
+    # ``<workspace>/box_data`` and this move deleted it (R1).
+    # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATES, and is armed BEFORE the copy: a
+    # copy that fails or is interrupted part-way must not strand a half-copied dest.
+    created = next((p for p in (dest, landing) if not (p.exists() or p.is_symlink())), None)
+    if created is not None:
+      unwind.push(partial(_unwind_created_root, created))
+    if not lay_root_link(src, landing):
+      copy_tree_keeping_links(
+        src,
+        landing,
+        ignore=_workspace_copy_ignore(
+          state.metadata_path,
+          src,
+          mode=state.mode,
+          early=EarlyScope(std.early_system, _state_ws_token(state)),
+        ),
+      )
+  # An EXTERNAL source relocating: the "workspace" is the USER'S OWN dir — never moved,
+  # only re-recorded at *dest* (the landing above).
+  elif not records_only and not relocating and state.mode is BoxMode.standalone:
+    root = state.metadata_path
+    workspace = state.workspace_path
+    if (
+      new_workspace == root
+      and target_mode is not BoxMode.standalone
+      and (root.resolve() in workspace.resolve().parents)
+    ):
+      # ⚑ Reverse of drift H: standalone roots the live workspace UNDER the root,
+      # every other mode at the project dir — so an in-place convert OUT must lift.
+      merge_gitignore = _hold_root_gitignore(root, workspace, unwind)
+      _unconsolidate_workspace_subdir(workspace, root, unwind)
+      if merge_gitignore is not None:
+        merge_gitignore()
+    elif new_workspace == workspace and workspace.resolve() != root.resolve():
+      # ⚑ system-design § "Box lifecycle": an ABSOLUTE ``workset.workspaces`` is a
+      # directory the USER named, and emptying it is the irreversible loss, so the
+      # box simply keeps it.
+      print(
+        f"Note: left the workspace at {workspace} — workset.workspaces "
+        f"pointed it outside {root}, so it is yours and the box keeps "
+        f"it as its project directory.",
+        file=sys.stderr,
+      )
 
-    # --- STEPS 3+4 — markers INTERLEAVED with ownership: the destination metadata
-    #     roots depend on the target owner, so they cannot be separated. ---
-    new_state, teardown = _apply_ownership_and_markers(
-        state, std, config, unwind,
-        target_mode=target_mode,
-        target_ws=target_ws,
-        new_name=new_name,
-        new_workspace=new_workspace,
-        relocating=relocating,
-        dest=dest,
-        requested_name=requested_name,
-    )
+  # --- STEPS 3+4 — markers INTERLEAVED with ownership: the destination metadata
+  #     roots depend on the target owner, so they cannot be separated. ---
+  new_state, teardown = _apply_ownership_and_markers(
+    state,
+    std,
+    config,
+    unwind,
+    target_mode=target_mode,
+    target_ws=target_ws,
+    new_name=new_name,
+    new_workspace=new_workspace,
+    relocating=relocating,
+    dest=dest,
+    requested_name=requested_name,
+  )
 
-    # --- STEP 5 — Retire the old workspace step 2 or ``_to_workset`` copied, ON SUCCESS
-    # ONLY.  ⚑ Never a user's EXTERNAL source. ---
-    retired: list[tuple[Path, Path]] = []
-    if not records_only and relocating and dest is not None and not state.is_external:
-        retired.append((state.workspace_path, dest))
-    if teardown is not None and teardown.old_leaf is not None:
-        retired.append(teardown.old_leaf)
-    for old_ws, landed in retired:
-        later.append(partial(_retire_old_workspace, old_ws, landed))
-    # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
-    #   gets its discoverability link now, after the retire.
-    if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
-        link_ws = target_ws
+  # --- STEP 5 — Retire the old workspace step 2 or ``_to_workset`` copied, ON SUCCESS
+  # ONLY.  ⚑ Never a user's EXTERNAL source. ---
+  retired: list[tuple[Path, Path]] = []
+  if not records_only and relocating and dest is not None and not state.is_external:
+    retired.append((state.workspace_path, dest))
+  if teardown is not None and teardown.old_leaf is not None:
+    retired.append(teardown.old_leaf)
+  for old_ws, landed in retired:
+    later.append(partial(_retire_old_workspace, old_ws, landed))
+  # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
+  #   gets its discoverability link now, after the retire.
+  if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
+    link_ws = target_ws
 
-        def _link() -> None:
-            ensure_discoverability_link(link_ws, new_name, new_state.workspace_path)
+    def _link() -> None:
+      ensure_discoverability_link(link_ws, new_name, new_state.workspace_path)
 
-        later.append(_link)
+    later.append(_link)
 
-    # ⚑ ONE tail, run once the source row is dropped: steps 4b and 4c (AFTER identity is
-    # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
-    progress = _TailProgress()
-    unwind.on_success(
-        partial(_finish_relocation, state, new_state, std, teardown, later, progress,
-                unwind.errors),
-        interrupted=partial(_note_interrupted_tail, state, new_state, std, teardown,
-                            [old for old, _ in retired], progress),
-    )
-    return new_state, teardown
+  # ⚑ ONE tail, run once the source row is dropped: steps 4b and 4c (AFTER identity is
+  # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
+  progress = _TailProgress()
+  unwind.on_success(
+    partial(_finish_relocation, state, new_state, std, teardown, later, progress, unwind.errors),
+    interrupted=partial(
+      _note_interrupted_tail,
+      state,
+      new_state,
+      std,
+      teardown,
+      [old for old, _ in retired],
+      progress,
+    ),
+  )
+  return new_state, teardown
 
 
 def _retire_old_workspace(old: Path, landed: Path) -> None:
-    """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
+  """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
 
-    ⚑⚑ A success-tail step ONLY — a failed op never reaches it.  Skips an
-    absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
-    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A
-    non-directory (a file, FIFO, or socket) is unlinked; if that fails, a Note names the
-    path (never ``entries``) and stops: rc unchanged.  A real dir the rmtree cannot clear
-    (in-box root owns entries) goes to ``remove_box_tree``; if that fails too, a Note
-    names the rmtree's error and stops: rc unchanged.
+  ⚑⚑ A success-tail step ONLY — a failed op never reaches it.  Skips an
+  absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
+  ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A
+  non-directory (a file, FIFO, or socket) is unlinked; if that fails, a Note names the
+  path (never ``entries``) and stops: rc unchanged.  A real dir the rmtree cannot clear
+  (in-box root owns entries) goes to ``remove_box_tree``; if that fails too, a Note
+  names the rmtree's error and stops: rc unchanged.
 
-    ⚑ A LINKED *old* is judged by its own path: after a link-preserving copy it names the
-    same target as *landed* but is not it, and an unlink cannot reach *landed*.
-    """
-    import os
-    import sys
+  ⚑ A LINKED *old* is judged by its own path: after a link-preserving copy it names the
+  same target as *landed* but is not it, and an unlink cannot reach *landed*.
+  """
+  import os
+  import sys
 
-    if not old.exists() and not old.is_symlink():
-        return
-    if old.is_symlink():
-        target = old.resolve()
-        if os.path.abspath(str(old)) == os.path.abspath(str(landed)):
-            return
-        try:
-            old.unlink()
-            print(f"Note: left {target}; it is yours", file=sys.stderr)
-        except OSError as err:
-            print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
-        return
-    if not old.is_dir():
-        try:
-            old.unlink()
-        except OSError as err:
-            print(f"Note: could not remove the old workspace {old}: {err}. The move is "
-                  f"complete at {landed}; it is yours to remove.", file=sys.stderr)
-        return
-    old_r = old.resolve()
-    landed_r = landed.resolve()
-    if old_r == landed_r or old_r in landed_r.parents:
-        return
+  if not old.exists() and not old.is_symlink():
+    return
+  if old.is_symlink():
+    target = old.resolve()
+    if os.path.abspath(str(old)) == os.path.abspath(str(landed)):
+      return
     try:
-        shutil.rmtree(old)
+      old.unlink()
+      print(f"Note: left {target}; it is yours", file=sys.stderr)
     except OSError as err:
-        if old.is_dir() and remove_box_tree(old):
-            return
-        print(f"Note: could not fully remove the old workspace {old}: {err}. The move is "
-              f"complete at {landed}; {old} still holds {_leftover_entries(old)}, a partial "
-              f"leftover that is yours to remove.", file=sys.stderr)
+      print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
+    return
+  if not old.is_dir():
+    try:
+      old.unlink()
+    except OSError as err:
+      print(
+        f"Note: could not remove the old workspace {old}: {err}. The move is "
+        f"complete at {landed}; it is yours to remove.",
+        file=sys.stderr,
+      )
+    return
+  old_r = old.resolve()
+  landed_r = landed.resolve()
+  if old_r == landed_r or old_r in landed_r.parents:
+    return
+  try:
+    shutil.rmtree(old)
+  except OSError as err:
+    if old.is_dir() and remove_box_tree(old):
+      return
+    print(
+      f"Note: could not fully remove the old workspace {old}: {err}. The move is "
+      f"complete at {landed}; {old} still holds {_leftover_entries(old)}, a partial "
+      f"leftover that is yours to remove.",
+      file=sys.stderr,
+    )
 
 
 def _leftover_entries(path: Path, before: Collection[str] = ()) -> str:
-    """Name what is in the directory *path* and not in *before*, for a leftover Note."""
-    try:
-        names = sorted(entry.name for entry in path.iterdir() if entry.name not in before)
-    except OSError:
-        return "entries it could not list"
-    if not names:
-        return "nothing but the empty directory"
-    shown = ", ".join(names[:5])
-    more = len(names) - 5
-    return shown if more <= 0 else f"{shown} and {more} more"
+  """Name what is in the directory *path* and not in *before*, for a leftover Note."""
+  try:
+    names = sorted(entry.name for entry in path.iterdir() if entry.name not in before)
+  except OSError:
+    return "entries it could not list"
+  if not names:
+    return "nothing but the empty directory"
+  shown = ", ".join(names[:5])
+  more = len(names) - 5
+  return shown if more <= 0 else f"{shown} and {more} more"
 
 
 def _entry_names(path: Path) -> frozenset[str] | None:
-    """The entry names in the directory *path*, or ``None`` when it cannot be listed."""
-    try:
-        return frozenset(entry.name for entry in path.iterdir())
-    except OSError:
-        return None
+  """The entry names in the directory *path*, or ``None`` when it cannot be listed."""
+  try:
+    return frozenset(entry.name for entry in path.iterdir())
+  except OSError:
+    return None
 
 
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None:
-    """After a failure, name what the op added to *path*, a directory it did NOT create.
+  """After a failure, name what the op added to *path*, a directory it did NOT create.
 
-    ⚑ Names, never removes: an entry name says this op added it, not that nothing of the
-    user's is inside.  An entry the op merged into is not named.
-    """
-    import sys
+  ⚑ Names, never removes: an entry name says this op added it, not that nothing of the
+  user's is inside.  An entry the op merged into is not named.
+  """
+  import sys
 
-    after = _entry_names(path)
-    if before is None or after is None or not after - before:
-        return
-    print(f"Note: {path} existed before this operation; it still holds "
-          f"{_leftover_entries(path, before)}, a partial leftover that is yours to remove.",
-          file=sys.stderr)
+  after = _entry_names(path)
+  if before is None or after is None or not after - before:
+    return
+  print(
+    f"Note: {path} existed before this operation; it still holds "
+    f"{_leftover_entries(path, before)}, a partial leftover that is yours to remove.",
+    file=sys.stderr,
+  )
 
 
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None:
-    """Push a :func:`note_added_leftovers` for the existing directory *path*."""
-    unwind.push(partial(note_added_leftovers, path, _entry_names(path)))
+  """Push a :func:`note_added_leftovers` for the existing directory *path*."""
+  unwind.push(partial(note_added_leftovers, path, _entry_names(path)))
 
 
 def _apply_ownership_and_markers(
-    state: ProjectState,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    unwind: _Unwind,
-    *,
-    target_mode: BoxMode,
-    target_ws: Workset | None,
-    new_name: str,
-    new_workspace: Path,
-    relocating: bool,
-    dest: Path | None,
-    requested_name: str = "",
+  state: ProjectState,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  unwind: _Unwind,
+  *,
+  target_mode: BoxMode,
+  target_ws: Workset | None,
+  new_name: str,
+  new_workspace: Path,
+  relocating: bool,
+  dest: Path | None,
+  requested_name: str = "",
 ) -> tuple[ProjectState, _SourceTeardown | None]:
-    """Re-root metadata/shell/vault into the target owner + rewrite markers; return the
-    new state and the source teardown the success tail runs."""
-    if target_mode == BoxMode.named:
-        return _to_workset(
-            state, std, config, unwind,
-            target_ws=target_ws,  # type: ignore[arg-type]
-            new_name=new_name,
-            new_workspace=new_workspace,
-            relocating=relocating,
-            dest=dest,
-        )
-    if target_mode == BoxMode.standalone:
-        # ⚑ Standalone is the one mode whose live workspace is NOT the project dir (drift
-        # H), so ``new_workspace`` is its ROOT — named as such at the callee, since the two
-        # differ by a resolved key and reading one as the other nests a box inside a box.
-        return _to_standalone(
-            state, std, config, unwind,
-            new_name=new_name, root=new_workspace,
-        )
-    return _to_default(
-        state, std, config, unwind,
-        new_name=new_name, new_workspace=new_workspace,
-        requested_name=requested_name,
+  """Re-root metadata/shell/vault into the target owner + rewrite markers; return the
+  new state and the source teardown the success tail runs."""
+  if target_mode == BoxMode.named:
+    return _to_workset(
+      state,
+      std,
+      config,
+      unwind,
+      target_ws=target_ws,  # type: ignore[arg-type]
+      new_name=new_name,
+      new_workspace=new_workspace,
+      relocating=relocating,
+      dest=dest,
     )
+  if target_mode == BoxMode.standalone:
+    # ⚑ Standalone is the one mode whose live workspace is NOT the project dir (drift
+    # H), so ``new_workspace`` is its ROOT — named as such at the callee, since the two
+    # differ by a resolved key and reading one as the other nests a box inside a box.
+    return _to_standalone(
+      state,
+      std,
+      config,
+      unwind,
+      new_name=new_name,
+      root=new_workspace,
+    )
+  return _to_default(
+    state,
+    std,
+    config,
+    unwind,
+    new_name=new_name,
+    new_workspace=new_workspace,
+    requested_name=requested_name,
+  )
 
 
 # -- per-target-mode ownership steps ---------------------------------------
 
-def _copy_metadata(
-    src_metadata: Path,
-    src_shell: Path,
-    dst_metadata: Path,
-    *,
-    shell_into_metadata: bool,
-    home_leaf: str = "home",
-    unwind: _Unwind,
-) -> Path:
-    """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
-    # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
-    # so a plain rmtree would silently fail to clean up its own destination.  Armed
-    # before the copy, which can fail part-way, and ONLY for a dir this copy creates:
-    # a pre-existing dir may be a REPOINTED store holding the user's files.
-    if not (dst_metadata.exists() or dst_metadata.is_symlink()):
-        unwind.push(partial(_unwind_created_root, dst_metadata, remove_box_tree))
-    else:
-        _arm_leftover_note(unwind, dst_metadata)
-    copy_tree_keeping_links(
-        src_metadata, dst_metadata,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
-        dirs_exist_ok=True,
-    )
 
-    dst_shell = dst_metadata / home_leaf
-    if src_shell.is_dir():
-        if not lay_root_link(src_shell, dst_shell):
-            copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
-        # ⚑ The copy carries the canon skeleton's 555 MODES but never its OWNERSHIP —
-        # re-assert (idempotent; J-7).
-        materialize_canon_skeleton(dst_shell)
-    return dst_shell
+def _copy_metadata(
+  src_metadata: Path,
+  src_shell: Path,
+  dst_metadata: Path,
+  *,
+  shell_into_metadata: bool,
+  home_leaf: str = "home",
+  unwind: _Unwind,
+) -> Path:
+  """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
+  # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
+  # so a plain rmtree would silently fail to clean up its own destination.  Armed
+  # before the copy, which can fail part-way, and ONLY for a dir this copy creates:
+  # a pre-existing dir may be a REPOINTED store holding the user's files.
+  if not (dst_metadata.exists() or dst_metadata.is_symlink()):
+    unwind.push(partial(_unwind_created_root, dst_metadata, remove_box_tree))
+  else:
+    _arm_leftover_note(unwind, dst_metadata)
+  copy_tree_keeping_links(
+    src_metadata,
+    dst_metadata,
+    ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
+    dirs_exist_ok=True,
+  )
+
+  dst_shell = dst_metadata / home_leaf
+  if src_shell.is_dir():
+    if not lay_root_link(src_shell, dst_shell):
+      copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
+    # ⚑ The copy carries the canon skeleton's 555 MODES but never its OWNERSHIP —
+    # re-assert (idempotent; J-7).
+    materialize_canon_skeleton(dst_shell)
+  return dst_shell
 
 
 def _deliver_carried_box_settings(
-    state: ProjectState, dst_box_tier: Path, *, early: EarlyScope,
+  state: ProjectState,
+  dst_box_tier: Path,
+  *,
+  early: EarlyScope,
 ) -> None:
-    """Write the source box's carried box-scope settings to *dst_box_tier* (M-8)."""
-    from kanibako.settings.config import carried_box_settings
-    from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.paths import _box_settings_files
+  """Write the source box's carried box-scope settings to *dst_box_tier* (M-8)."""
+  from kanibako.settings.config import carried_box_settings
+  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.paths import _box_settings_files
 
-    # ⚑ ``group=None`` is harmless: only the WORKSET tier is derived from the group, and
-    # the carry reads the BOX tier alone — ProjectState carries no ProjectGroup anyway.
-    src_box, _ = _box_settings_files(state.mode, state.metadata_path, None, early=early)
-    carried = carried_box_settings(src_box)
-    if carried:
-        dump_doc(dst_box_tier, carried)
+  # ⚑ ``group=None`` is harmless: only the WORKSET tier is derived from the group, and
+  # the carry reads the BOX tier alone — ProjectState carries no ProjectGroup anyway.
+  src_box, _ = _box_settings_files(state.mode, state.metadata_path, None, early=early)
+  carried = carried_box_settings(src_box)
+  if carried:
+    dump_doc(dst_box_tier, carried)
 
 
 def _vault_leaf_has_contents(leaf: Path) -> bool:
-    """True when *leaf* holds anything — an unreadable leaf counts as non-empty.
+  """True when *leaf* holds anything — an unreadable leaf counts as non-empty.
 
-    ⚑ An error here must never read as "empty": the carry skips its warnings for
-    empty leaves, and silence about an unreadable store would be the wrong default.
-    A MISSING leaf holds nothing, so only that error reads as empty.
-    """
-    try:
-        return any(leaf.iterdir())
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return True
+  ⚑ An error here must never read as "empty": the carry skips its warnings for
+  empty leaves, and silence about an unreadable store would be the wrong default.
+  A MISSING leaf holds nothing, so only that error reads as empty.
+  """
+  try:
+    return any(leaf.iterdir())
+  except FileNotFoundError:
+    return False
+  except OSError:
+    return True
 
 
-def _copy_vault_leaf_contents(src: Path, dst: Path | None,
-                             removed: Collection[Path] = (),
-                             relocated: Mapping[Path, Path] | None = None) -> None:
-    """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
+def _copy_vault_leaf_contents(
+  src: Path,
+  dst: Path | None,
+  removed: Collection[Path] = (),
+  relocated: Mapping[Path, Path] | None = None,
+) -> None:
+  """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
-    ⚑ ``snapshots.py`` copies vault content under the same symlink rule; this is that
-    operation aimed at the relocation destination.  No-ops when *src* holds nothing or
-    when *src* and *dst* are the same dir (a reuse-in-place edge: nothing to carry).
-    RAISES on a copy failure -- callers run this BEFORE the source teardown (except
-    leg 2 of the workset stash, whose source IS the stash), so a failure aborts with
-    the source still whole and the unwind drops the destination.
+  ⚑ ``snapshots.py`` copies vault content under the same symlink rule; this is that
+  operation aimed at the relocation destination.  No-ops when *src* holds nothing or
+  when *src* and *dst* are the same dir (a reuse-in-place edge: nothing to carry).
+  RAISES on a copy failure -- callers run this BEFORE the source teardown (except
+  leg 2 of the workset stash, whose source IS the stash), so a failure aborts with
+  the source still whole and the unwind drops the destination.
 
-    ⚑ Every symlink is copied VERBATIM and never followed
-    (:func:`kanibako.tree_copy.copy_tree_keeping_links`), so a dangling link carries
-    like any other -- ``vault/rw -> <gone>`` is still the user's pointer, and dropping
-    it leaves a real empty leaf where their pointer was.  The copy takes every entry it
-    can before raising one ``shutil.Error`` listing the rest, re-raised as a
-    ``ProjectError`` naming the leaf and the entries; skipping one would drop it from
-    the store without a word.
-    """
-    if dst is None:
-        return
-    if not _holds_a_leaf(src):
-        return
-    if src.resolve() == dst.resolve():
-        return
-    if src.resolve() in dst.resolve().parents:
-        # ⚑ Pathological (a destination repointed inside the source leaf): copying
-        # would nest the tree into itself, and the teardown below would then delete
-        # the just-written destination with the source.  Refuse loudly instead.
-        raise ProjectError(
-            f"Refusing to carry the vault from {src} into {dst}: the destination "
-            f"is inside the source."
-        )
-    dst.mkdir(parents=True, exist_ok=True)
-    if lay_root_link(src, dst, removed=removed, relocated=relocated):
-        # A POINTER source into an empty destination: share the target, don't materialize.
-        return
-    import os
-    gone = removed_root_of(os.path.realpath(src), removed) if src.is_symlink() else None
-    if gone is not None:
-        # ⚑ The pointer could not be kept: the target sits inside a tree this move tears
-        # down and outside every tree it LANDS.  Bytes arrive as a SECOND copy -- say so.
-        import sys
-        print(
-            f"Warning: {src} is a link into {gone}, which this move removes and does "
-            f"not re-aim; its BYTES were copied to {dst} and the POINTER is gone. Writes "
-            "after this do not reach the original target.",
-            file=sys.stderr,
-        )
-    try:
-        copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
-    except shutil.Error as e:
-        raise ProjectError(_vault_copy_failure_message(src, dst, e)) from e
-    except OSError as e:
-        raise ProjectError(
-            f"Could not carry the vault contents of {src} to {dst}: {e}\n"
-            f"The relocation was aborted."
-        ) from e
+  ⚑ Every symlink is copied VERBATIM and never followed
+  (:func:`kanibako.tree_copy.copy_tree_keeping_links`), so a dangling link carries
+  like any other -- ``vault/rw -> <gone>`` is still the user's pointer, and dropping
+  it leaves a real empty leaf where their pointer was.  The copy takes every entry it
+  can before raising one ``shutil.Error`` listing the rest, re-raised as a
+  ``ProjectError`` naming the leaf and the entries; skipping one would drop it from
+  the store without a word.
+  """
+  if dst is None:
+    return
+  if not _holds_a_leaf(src):
+    return
+  if src.resolve() == dst.resolve():
+    return
+  if src.resolve() in dst.resolve().parents:
+    # ⚑ Pathological (a destination repointed inside the source leaf): copying
+    # would nest the tree into itself, and the teardown below would then delete
+    # the just-written destination with the source.  Refuse loudly instead.
+    raise ProjectError(
+      f"Refusing to carry the vault from {src} into {dst}: the destination is inside the source."
+    )
+  dst.mkdir(parents=True, exist_ok=True)
+  if lay_root_link(src, dst, removed=removed, relocated=relocated):
+    # A POINTER source into an empty destination: share the target, don't materialize.
+    return
+  import os
+
+  gone = removed_root_of(os.path.realpath(src), removed) if src.is_symlink() else None
+  if gone is not None:
+    # ⚑ The pointer could not be kept: the target sits inside a tree this move tears
+    # down and outside every tree it LANDS.  Bytes arrive as a SECOND copy -- say so.
+    import sys
+
+    print(
+      f"Warning: {src} is a link into {gone}, which this move removes and does "
+      f"not re-aim; its BYTES were copied to {dst} and the POINTER is gone. Writes "
+      "after this do not reach the original target.",
+      file=sys.stderr,
+    )
+  try:
+    copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
+  except shutil.Error as e:
+    raise ProjectError(_vault_copy_failure_message(src, dst, e)) from e
+  except OSError as e:
+    raise ProjectError(
+      f"Could not carry the vault contents of {src} to {dst}: {e}\nThe relocation was aborted."
+    ) from e
 
 
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
-    """Name the vault leaf and each entry ``copytree`` could not copy."""
-    listing = failed_entries(err)
-    if listing is None:
-        return f"Could not carry the vault contents of {src} to {dst}: {err}"
-    return (
-        f"Could not carry the vault contents of {src} to {dst}; {listing}\n"
-        f"The relocation was aborted."
-    )
+  """Name the vault leaf and each entry ``copytree`` could not copy."""
+  listing = failed_entries(err)
+  if listing is None:
+    return f"Could not carry the vault contents of {src} to {dst}: {err}"
+  return (
+    f"Could not carry the vault contents of {src} to {dst}; {listing}\nThe relocation was aborted."
+  )
 
 
 def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
-    """True when *leaf* RESOLVES strictly under *arm*: the only leaf a carry may take.
+  """True when *leaf* RESOLVES strictly under *arm*: the only leaf a carry may take.
 
-    ⚑ STRICT: ``relative_to`` accepts an equal path, so a leafless arm would take the
-    whole shared dir.  A leaf that fails it is not carried, so nothing may delete it.
-    A symlink loop resolves nowhere, so it fails.
-    """
-    if _symlink_loop(leaf):
-        return False
-    return arm.resolve() in leaf.resolve().parents
+  ⚑ STRICT: ``relative_to`` accepts an equal path, so a leafless arm would take the
+  whole shared dir.  A leaf that fails it is not carried, so nothing may delete it.
+  A symlink loop resolves nowhere, so it fails.
+  """
+  if _symlink_loop(leaf):
+    return False
+  return arm.resolve() in leaf.resolve().parents
 
 
 def _eloop(path: Path) -> OSError:
-    """The ``ELOOP`` error for *path*, for :func:`~kanibako.utils.unreadable_path_error`."""
-    import errno
-    import os
-    return OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(path))
+  """The ``ELOOP`` error for *path*, for :func:`~kanibako.utils.unreadable_path_error`."""
+  import errno
+  import os
+
+  return OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(path))
 
 
 def looped_path_error(path: Path) -> ConfigError:
-    """The refusal naming *path*, which runs through a symlink loop."""
-    return unreadable_path_error(path, _eloop(path))
+  """The refusal naming *path*, which runs through a symlink loop."""
+  return unreadable_path_error(path, _eloop(path))
 
 
 def looped_lock_reason(lock_file: Path) -> str:
-    """Why a looped *lock_file* answers "may be running": the probe fails closed on it."""
-    return (f"kanibako cannot tell whether a session holds its lock file {lock_file}: "
-            f"{CANON_SYMLINK_LOOP_WHY}")
+  """Why a looped *lock_file* answers "may be running": the probe fails closed on it."""
+  return (
+    f"kanibako cannot tell whether a session holds its lock file {lock_file}: "
+    f"{CANON_SYMLINK_LOOP_WHY}"
+  )
 
 
 def _loop_named(err: BaseException) -> BaseException:
-    """*err*, or the refusal naming its path when it is an ``ELOOP`` on a real loop.
+  """*err*, or the refusal naming its path when it is an ``ELOOP`` on a real loop.
 
-    ⚑ boxfs refusing a link is ``ELOOP`` too, so the path itself must loop.
-    """
-    import errno
-    if (isinstance(err, OSError) and err.errno == errno.ELOOP and err.filename
-            and _symlink_loop(Path(err.filename))):
-        return unreadable_path_error(err.filename, err)
-    return err
+  ⚑ boxfs refusing a link is ``ELOOP`` too, so the path itself must loop.
+  """
+  import errno
+
+  if (
+    isinstance(err, OSError)
+    and err.errno == errno.ELOOP
+    and err.filename
+    and _symlink_loop(Path(err.filename))
+  ):
+    return unreadable_path_error(err.filename, err)
+  return err
 
 
 def _holds_a_leaf(src: Path) -> bool:
-    """Whether vault leaf *src* is there to carry: a dir, or a dangling link (the user's pointer)."""
-    return src.is_dir() or (src.is_symlink() and not src.exists())
+  """Whether vault leaf *src* is there to carry: a dir, or a dangling link (the user's pointer)."""
+  return src.is_dir() or (src.is_symlink() and not src.exists())
 
 
 def _refuse_looped_carry_dst(src: Path, dst: Path) -> None:
-    """Raise ``ELOOP`` when *src* would be carried into a looped *dst*; an absent *src*
-    carries nothing, so its looped *dst* is no reason to refuse."""
-    if _holds_a_leaf(src) and _symlink_loop(dst):
-        raise _eloop(dst)
+  """Raise ``ELOOP`` when *src* would be carried into a looped *dst*; an absent *src*
+  carries nothing, so its looped *dst* is no reason to refuse."""
+  if _holds_a_leaf(src) and _symlink_loop(dst):
+    raise _eloop(dst)
 
 
 def _vault_carry_pairs(
-    state: ProjectState,
-    std: StandardPaths,
-    dst_ro: Path | None,
-    dst_rw: Path | None,
+  state: ProjectState,
+  std: StandardPaths,
+  dst_ro: Path | None,
+  dst_rw: Path | None,
 ) -> list[tuple[Path, Path]]:
-    """The ``(source, destination)`` vault pairs whose contents must be carried.
+  """The ``(source, destination)`` vault pairs whose contents must be carried.
 
-    ⚑ EVERY DESTINATION LEAF IS CREATED EMPTY and the source leaves are then deleted, so
-    the contents must move FIRST or the box's store survives nowhere.  A warning is not a
-    substitute for the copy, and neither is a refusal: the vault is a STORE that follows
-    the project.
+  ⚑ EVERY DESTINATION LEAF IS CREATED EMPTY and the source leaves are then deleted, so
+  the contents must move FIRST or the box's store survives nowhere.  A warning is not a
+  substitute for the copy, and neither is a refusal: the vault is a STORE that follows
+  the project.
 
-    ⚑ MIRRORS the teardown guards in :func:`_plan_source_teardown`: extends their
-    risk model to the copy.
-    * primary/named: the box's vault is a per-box LEAF strictly under the source
-      arm.  A source NOT strictly under its arm is shared or foreign ground the
-      teardown refuses to delete (warn-on-skip); the carry refuses it too, with
-      its own warning naming where the contents remain.
-    * standalone: the box's vault IS the resolved arm, so the
-      :func:`standalone_vault_teardown` removable/retained split governs instead —
-      removable arms are carried (teardown deletes them); retained arms stay put
-      under the teardown's own note and are NOT duplicated into the new box.
-    Same-path pairs (reuse-in-place edges, whose teardown is skipped entirely)
-    are dropped silently — there is nothing to carry.
-    """
-    import sys
+  ⚑ MIRRORS the teardown guards in :func:`_plan_source_teardown`: extends their
+  risk model to the copy.
+  * primary/named: the box's vault is a per-box LEAF strictly under the source
+    arm.  A source NOT strictly under its arm is shared or foreign ground the
+    teardown refuses to delete (warn-on-skip); the carry refuses it too, with
+    its own warning naming where the contents remain.
+  * standalone: the box's vault IS the resolved arm, so the
+    :func:`standalone_vault_teardown` removable/retained split governs instead —
+    removable arms are carried (teardown deletes them); retained arms stay put
+    under the teardown's own note and are NOT duplicated into the new box.
+  Same-path pairs (reuse-in-place edges, whose teardown is skipped entirely)
+  are dropped silently — there is nothing to carry.
+  """
+  import sys
 
-    if not state.enable_vault:
-        # ⚑ No destination vault exists to carry into: every creator gates the
-        # leaves on ``enable_vault``.
-        return []
-    # ⚑ A NULL SOURCE ARM OR A NULL DESTINATION LEAF IS NOTHING TO CARRY: that slot is
-    # left ``None`` rather than removed, so the index still lines up with ``arms`` below.
-    sides: list[tuple[Path, Path] | None] = [
-        None if src is None or dst is None else (src, dst)
-        for src, dst in ((state.vault_ro, dst_ro), (state.vault_rw, dst_rw))
-    ]
-    if state.mode == BoxMode.standalone:
-        # ⚑ STANDALONE ANSWERS FROM ITS OWN TEARDOWN SPLIT, so it needs no arm here —
-        # skipping on a missing arm would drop every pair and silently carry nothing.
-        removable, _retained = standalone_vault_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
-        removable_roots = {p.resolve() for p in removable}
-        out: list[tuple[Path, Path]] = []
-        # ⚑ Each arm is NAMED in its own Note: two arms left behind printed two
-        # character-identical lines, which read as one line twice.
-        for arm_label, side in zip(("vault ro", "vault rw"), sides):
-            if side is None:
-                continue
-            src, dst = side
-            # ⚑ A LOOP is retained by the teardown, which names it; it holds nothing to
-            # carry, and ``resolve`` raises on it under Python 3.11.
-            if _symlink_loop(src):
-                continue
-            if src.resolve() == _resolved_unless_loop(dst):
-                continue
-            if src.resolve() not in removable_roots:
-                # ⚑ Retained: the teardown leaves it in place AND prints where, so
-                # the new box starts empty there — say so once, and only when
-                # something is actually stored.
-                if src.is_dir() and _vault_leaf_has_contents(src):
-                    print(
-                        f"Note: the new {arm_label} starts empty — the store that was "
-                        "here is left where it is, named with the rest below.",
-                        file=sys.stderr,
-                    )
-                continue
-            _refuse_looped_carry_dst(src, dst)
-            out.append((src, dst))
-        return out
-    if state.mode == BoxMode.primary:
-        arms: tuple[Path | None, Path | None] = (std.primary_vault_ro, std.primary_vault_rw)
-    elif state.mode == BoxMode.named and state.ws is not None:
-        arms = resolve_workset_vault_pair(state.ws.root, early=state.ws.early_scope)
-    else:  # pragma: no cover - defensive: an unknown mode stays hands-off
-        return []
-    out = []
-    for side, arm in zip(sides, arms):
-        # ⚑ A NULL ARM HAS NO PER-BOX LEAF TO CARRY INTO.
-        if side is None or arm is None:
-            continue
-        src, dst = side
-        if _symlink_loop(src):
-            continue
-        if src.resolve() == _resolved_unless_loop(dst):
-            continue
-        if not _is_per_box_leaf(src, arm):
-            # ⚑ The teardown prints its own leaving-in-place warning for the same
-            # path; this one says the contents were not carried.
-            if src.is_dir() and _vault_leaf_has_contents(src):
-                print(
-                    f"Warning: not carrying vault contents from {src} — it is not "
-                    f"a per-box directory under {arm}; they remain at {src}.",
-                    file=sys.stderr,
-                )
-            continue
-        _refuse_looped_carry_dst(src, dst)
-        out.append((src, dst))
+  if not state.enable_vault:
+    # ⚑ No destination vault exists to carry into: every creator gates the
+    # leaves on ``enable_vault``.
+    return []
+  # ⚑ A NULL SOURCE ARM OR A NULL DESTINATION LEAF IS NOTHING TO CARRY: that slot is
+  # left ``None`` rather than removed, so the index still lines up with ``arms`` below.
+  sides: list[tuple[Path, Path] | None] = [
+    None if src is None or dst is None else (src, dst)
+    for src, dst in ((state.vault_ro, dst_ro), (state.vault_rw, dst_rw))
+  ]
+  if state.mode == BoxMode.standalone:
+    # ⚑ STANDALONE ANSWERS FROM ITS OWN TEARDOWN SPLIT, so it needs no arm here —
+    # skipping on a missing arm would drop every pair and silently carry nothing.
+    removable, _retained = standalone_vault_teardown(
+      state.metadata_path, early=_early_scope(std, BoxMode.standalone)
+    )
+    removable_roots = {p.resolve() for p in removable}
+    out: list[tuple[Path, Path]] = []
+    # ⚑ Each arm is NAMED in its own Note: two arms left behind printed two
+    # character-identical lines, which read as one line twice.
+    for arm_label, side in zip(("vault ro", "vault rw"), sides):
+      if side is None:
+        continue
+      src, dst = side
+      # ⚑ A LOOP is retained by the teardown, which names it; it holds nothing to
+      # carry, and ``resolve`` raises on it under Python 3.11.
+      if _symlink_loop(src):
+        continue
+      if src.resolve() == _resolved_unless_loop(dst):
+        continue
+      if src.resolve() not in removable_roots:
+        # ⚑ Retained: the teardown leaves it in place AND prints where, so
+        # the new box starts empty there — say so once, and only when
+        # something is actually stored.
+        if src.is_dir() and _vault_leaf_has_contents(src):
+          print(
+            f"Note: the new {arm_label} starts empty — the store that was "
+            "here is left where it is, named with the rest below.",
+            file=sys.stderr,
+          )
+        continue
+      _refuse_looped_carry_dst(src, dst)
+      out.append((src, dst))
     return out
+  if state.mode == BoxMode.primary:
+    arms: tuple[Path | None, Path | None] = (std.primary_vault_ro, std.primary_vault_rw)
+  elif state.mode == BoxMode.named and state.ws is not None:
+    arms = resolve_workset_vault_pair(state.ws.root, early=state.ws.early_scope)
+  else:  # pragma: no cover - defensive: an unknown mode stays hands-off
+    return []
+  out = []
+  for side, arm in zip(sides, arms):
+    # ⚑ A NULL ARM HAS NO PER-BOX LEAF TO CARRY INTO.
+    if side is None or arm is None:
+      continue
+    src, dst = side
+    if _symlink_loop(src):
+      continue
+    if src.resolve() == _resolved_unless_loop(dst):
+      continue
+    if not _is_per_box_leaf(src, arm):
+      # ⚑ The teardown prints its own leaving-in-place warning for the same
+      # path; this one says the contents were not carried.
+      if src.is_dir() and _vault_leaf_has_contents(src):
+        print(
+          f"Warning: not carrying vault contents from {src} — it is not "
+          f"a per-box directory under {arm}; they remain at {src}.",
+          file=sys.stderr,
+        )
+      continue
+    _refuse_looped_carry_dst(src, dst)
+    out.append((src, dst))
+  return out
 
 
 def _carry_vault_contents(
-    state: ProjectState,
-    std: StandardPaths,
-    dst_ro: Path | None,
-    dst_rw: Path | None,
-    teardown: _SourceTeardown,
-    relocated: Mapping[Path, Path] | None = None,
+  state: ProjectState,
+  std: StandardPaths,
+  dst_ro: Path | None,
+  dst_rw: Path | None,
+  teardown: _SourceTeardown,
+  relocated: Mapping[Path, Path] | None = None,
 ) -> None:
-    """Carry the source vault's contents into the freshly created destination leaves.
+  """Carry the source vault's contents into the freshly created destination leaves.
 
-    Runs BEFORE the source teardown on every path that relocates the vault; the
-    reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
-    inside.  A copy failure RAISES, aborting before anything is deleted.
+  Runs BEFORE the source teardown on every path that relocates the vault; the
+  reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
+  inside.  A copy failure RAISES, aborting before anything is deleted.
 
-    ``relocated`` (``{old_root: new_root}``) says where the carried trees LAND, so a
-    vault link into one is re-pointed under its landing instead of becoming a second
-    copy that diverges.  A link into a tree *teardown* removes and nothing lands
-    copies the bytes and warns; a link to anything that SURVIVES keeps its pointer.
-    """
-    for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
-        _copy_vault_leaf_contents(src, dst, removed=teardown.removed, relocated=relocated)
+  ``relocated`` (``{old_root: new_root}``) says where the carried trees LAND, so a
+  vault link into one is re-pointed under its landing instead of becoming a second
+  copy that diverges.  A link into a tree *teardown* removes and nothing lands
+  copies the bytes and warns; a link to anything that SURVIVES keeps its pointer.
+  """
+  for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
+    _copy_vault_leaf_contents(src, dst, removed=teardown.removed, relocated=relocated)
 
 
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
-    """``{old: new}`` for each carried tree that actually moves; None when none does."""
-    moved = {old: new for old, new in pairs
-             if _resolved_unless_loop(old) != _resolved_unless_loop(new)}
-    return moved or None
+  """``{old: new}`` for each carried tree that actually moves; None when none does."""
+  moved = {
+    old: new for old, new in pairs if _resolved_unless_loop(old) != _resolved_unless_loop(new)
+  }
+  return moved or None
 
 
 def _move_log_back(dst: Path, src: Path) -> None:
-    """Undo one carried log file, if it was carried."""
-    if dst.is_file() and not src.exists():
-        shutil.move(dst, src)
+  """Undo one carried log file, if it was carried."""
+  if dst.is_file() and not src.exists():
+    shutil.move(dst, src)
 
 
 def _carry_box_logs(
-    state: ProjectState,
-    std: StandardPaths,
-    unwind: _Unwind,
-    *,
-    dst_logs: Path | None,
-    dst_name: str,
+  state: ProjectState,
+  std: StandardPaths,
+  unwind: _Unwind,
+  *,
+  dst_logs: Path | None,
+  dst_name: str,
 ) -> None:
-    """Carry the source box's log files to *dst_name* in *dst_logs*, each move undoable.
+  """Carry the source box's log files to *dst_name* in *dst_logs*, each move undoable.
 
-    ⚑ Same bracket as the vault carry: a rolled-back move leaves the logs where they
-    were.  Nothing is derived here — :func:`box_log_files` names both sides.
-    Hands off when either side has no dir (a present ``<None>`` ``workset.logs``), when
-    the two sides name ONE file — every relocation between two worksets sharing a logs
-    dir — and when the destination already holds a log, which stays in place beside the
-    source.
-    """
-    import sys
+  ⚑ Same bracket as the vault carry: a rolled-back move leaves the logs where they
+  were.  Nothing is derived here — :func:`box_log_files` names both sides.
+  Hands off when either side has no dir (a present ``<None>`` ``workset.logs``), when
+  the two sides name ONE file — every relocation between two worksets sharing a logs
+  dir — and when the destination already holds a log, which stays in place beside the
+  source.
+  """
+  import sys
 
-    src_logs = box_logs_dir_for(
-        std, state.mode, state.metadata_path,
-        state.ws.root if state.ws is not None else None,
-        workset_name=state.ws.name if state.ws is not None else None,
-    )
-    if src_logs is None or dst_logs is None:
-        return
-    for src, dst in zip(
-        box_log_files(src_logs, state.name), box_log_files(dst_logs, dst_name),
-    ):
-        if not src.is_file() or src.resolve() == dst.resolve():
-            continue
-        if dst.exists():
-            # ⚑ NEVER clobber an existing dest — a live sibling's log, or the residue
-            # of a ``box rm`` without purge, is not this box's to replace.
-            print(
-                f"Warning: not carrying log {src} — the destination {dst} already "
-                f"exists; both are left in place.",
-                file=sys.stderr,
-            )
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        # Armed before the move: an interrupt between the two must still bring it back.
-        unwind.push(partial(_move_log_back, dst, src))
-        shutil.move(src, dst)
+  src_logs = box_logs_dir_for(
+    std,
+    state.mode,
+    state.metadata_path,
+    state.ws.root if state.ws is not None else None,
+    workset_name=state.ws.name if state.ws is not None else None,
+  )
+  if src_logs is None or dst_logs is None:
+    return
+  for src, dst in zip(
+    box_log_files(src_logs, state.name),
+    box_log_files(dst_logs, dst_name),
+  ):
+    if not src.is_file() or src.resolve() == dst.resolve():
+      continue
+    if dst.exists():
+      # ⚑ NEVER clobber an existing dest — a live sibling's log, or the residue
+      # of a ``box rm`` without purge, is not this box's to replace.
+      print(
+        f"Warning: not carrying log {src} — the destination {dst} already "
+        f"exists; both are left in place.",
+        file=sys.stderr,
+      )
+      continue
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    # Armed before the move: an interrupt between the two must still bring it back.
+    unwind.push(partial(_move_log_back, dst, src))
+    shutil.move(src, dst)
 
 
 #: The ``workset.`` keys the two vault arms resolve from, in the ``(ro, rw)`` order
@@ -2631,1027 +3020,1202 @@ _DISABLED_VAULT_WHY = "box.enable_vault is false, so nothing received its conten
 
 
 def _unreceived_vault_leaves(
-    src_arms: tuple[Path | None, Path | None],
-    dst_vault: tuple[Path | None, Path | None],
-    leaf_name: str = "",
-    *,
-    vault_enabled: bool = True,
+  src_arms: tuple[Path | None, Path | None],
+  dst_vault: tuple[Path | None, Path | None],
+  leaf_name: str = "",
+  *,
+  vault_enabled: bool = True,
 ) -> list[tuple[Path, str]]:
-    """The source vault leaves the destination receives nothing into, each with why.
+  """The source vault leaves the destination receives nothing into, each with why.
 
-    ⚑⚑ A DESTINATION ARM SET TO ``<None>`` GETS NO LEAF (spec §2a, ALL PROJECTS), and a
-    box whose ``box.enable_vault`` is false carries nothing at all
-    (:func:`_vault_carry_pairs`), so in both cases the source's contents survive nowhere
-    if the teardown deletes its leaf.  Those leaves are RETAINED, and this is the one
-    place that decides which: a teardown that deleted a side the destination never
-    received destroys the box's store, silently, at rc 0.  A disabled vault's EMPTY leaf
-    holds nothing to lose and is not retained.
+  ⚑⚑ A DESTINATION ARM SET TO ``<None>`` GETS NO LEAF (spec §2a, ALL PROJECTS), and a
+  box whose ``box.enable_vault`` is false carries nothing at all
+  (:func:`_vault_carry_pairs`), so in both cases the source's contents survive nowhere
+  if the teardown deletes its leaf.  Those leaves are RETAINED, and this is the one
+  place that decides which: a teardown that deleted a side the destination never
+  received destroys the box's store, silently, at rc 0.  A disabled vault's EMPTY leaf
+  holds nothing to lose and is not retained.
 
-    *src_arms* is the SOURCE's resolved ``(ro, rw)``; *leaf_name* is the per-box leaf
-    a named or primary mode nests under each arm (STANDALONE's vault IS its arm).  With
-    a *leaf_name*, a leaf the carry refuses is retained too.
-    """
-    if not vault_enabled:
-        kept = [
-            (arm / leaf_name, _DISABLED_VAULT_WHY)
-            for arm in src_arms
-            if arm is not None and _vault_leaf_has_contents(arm / leaf_name)
-        ]
-    else:
-        kept = [
-            (arm / leaf_name, f"{key} is null at the destination, so nothing received its contents.")
-            for arm, key, leaf in zip(src_arms, _VAULT_ARM_KEYS, dst_vault)
-            if arm is not None and leaf is None
-        ]
-    if not leaf_name:
-        return kept
-    # ⚑⚑ A leaf the carry refused (a link aimed outside the arm) reached no destination;
-    # deleting it drops the user's pointer.
-    named = {leaf for leaf, _why in kept}
-    return kept + [
-        (arm / leaf_name, SYMLINK_LOOP_WHY if _symlink_loop(arm / leaf_name)
-         else f"it links outside {arm}, so the move did not carry it."
-         if arm / leaf_name != dst else f"it links outside {arm} and stays the box's vault.")
-        for arm, dst in zip(src_arms, dst_vault)
-        if arm is not None and arm / leaf_name not in named
-        and (_on_disk([arm / leaf_name]) or _symlink_loop(arm / leaf_name))
-        and not _is_per_box_leaf(arm / leaf_name, arm)
+  *src_arms* is the SOURCE's resolved ``(ro, rw)``; *leaf_name* is the per-box leaf
+  a named or primary mode nests under each arm (STANDALONE's vault IS its arm).  With
+  a *leaf_name*, a leaf the carry refuses is retained too.
+  """
+  if not vault_enabled:
+    kept = [
+      (arm / leaf_name, _DISABLED_VAULT_WHY)
+      for arm in src_arms
+      if arm is not None and _vault_leaf_has_contents(arm / leaf_name)
     ]
+  else:
+    kept = [
+      (arm / leaf_name, f"{key} is null at the destination, so nothing received its contents.")
+      for arm, key, leaf in zip(src_arms, _VAULT_ARM_KEYS, dst_vault)
+      if arm is not None and leaf is None
+    ]
+  if not leaf_name:
+    return kept
+  # ⚑⚑ A leaf the carry refused (a link aimed outside the arm) reached no destination;
+  # deleting it drops the user's pointer.
+  named = {leaf for leaf, _why in kept}
+  return kept + [
+    (
+      arm / leaf_name,
+      SYMLINK_LOOP_WHY
+      if _symlink_loop(arm / leaf_name)
+      else f"it links outside {arm}, so the move did not carry it."
+      if arm / leaf_name != dst
+      else f"it links outside {arm} and stays the box's vault.",
+    )
+    for arm, dst in zip(src_arms, dst_vault)
+    if arm is not None
+    and arm / leaf_name not in named
+    and (_on_disk([arm / leaf_name]) or _symlink_loop(arm / leaf_name))
+    and not _is_per_box_leaf(arm / leaf_name, arm)
+  ]
 
 
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None:
-    """The retained-leaf Note for each :func:`_unreceived_vault_leaves` entry."""
-    for leaf, why in kept:
-        report_retained_vault(leaf, why)
+  """The retained-leaf Note for each :func:`_unreceived_vault_leaves` entry."""
+  for leaf, why in kept:
+    report_retained_vault(leaf, why)
 
 
 def _carried_member_store(
-    ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None],
-    *, vault_enabled: bool = True,
+  ws: Workset,
+  name: str,
+  dst_vault: tuple[Path | None, Path | None],
+  *,
+  vault_enabled: bool = True,
 ) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]:
-    """(*ws*'s store bases the destination received into, its retained vault leaves).
+  """(*ws*'s store bases the destination received into, its retained vault leaves).
 
-    ⚑ A base whose arm the destination dropped contributes no leaf to carry into,
-    so the source's per-box leaf under it is not this retirement's to delete.  The
-    retained leaves include :func:`_nulled_arm_stores`.
-    """
-    boxes_dir, *arms = _member_store_bases(ws)
-    src_arms = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
-    unreceived = _unreceived_vault_leaves(
-        src_arms, dst_vault, name, vault_enabled=vault_enabled,
-    )
-    held = {leaf.parent for leaf, _why in unreceived}
-    bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
-    kept = [entry for entry in unreceived
-            if _on_disk([entry[0]]) or _symlink_loop(entry[0])]
-    return bases, kept + _nulled_arm_stores(ws, name)
+  ⚑ A base whose arm the destination dropped contributes no leaf to carry into,
+  so the source's per-box leaf under it is not this retirement's to delete.  The
+  retained leaves include :func:`_nulled_arm_stores`.
+  """
+  boxes_dir, *arms = _member_store_bases(ws)
+  src_arms = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
+  unreceived = _unreceived_vault_leaves(
+    src_arms,
+    dst_vault,
+    name,
+    vault_enabled=vault_enabled,
+  )
+  held = {leaf.parent for leaf, _why in unreceived}
+  bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
+  kept = [entry for entry in unreceived if _on_disk([entry[0]]) or _symlink_loop(entry[0])]
+  return bases, kept + _nulled_arm_stores(ws, name)
 
 
 def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]:
-    """(*ws*'s NULL ``workset.vault_*`` arms' per-box leaves still on disk, with why.
+  """(*ws*'s NULL ``workset.vault_*`` arms' per-box leaves still on disk, with why.
 
-    ⚑⚑ A NULL ARM NAMES NO DIR, so both :func:`_member_store_bases` (no base to delete
-    under) and :func:`_unreceived_vault_leaves` (no arm to name as kept) skip it.  An arm
-    nulled AFTER data was stored under it leaves that data on disk, deleted by nothing
-    and named by nothing.  Its leaf sits at the key's DEFAULT location, which is where
-    the data was while the arm still resolved.
-    """
-    out: list[tuple[Path, str]] = []
-    for key, resolver, arm in zip(
-        _VAULT_ARM_KEYS, (resolve_workset_vault_ro, resolve_workset_vault_rw),
-        resolve_workset_vault_pair(ws.root, early=ws.early_scope),
-    ):
-        if arm is not None:
-            continue
-        default = resolver(ws.root, None, early=ws.early_scope)
-        if default is None:
-            continue
-        leaf = default / name
-        if leaf.exists() or leaf.is_symlink():
-            out.append(
-                (leaf, f"{key} is null, so it no longer names this store and it is "
-                       "yours to remove.")
-            )
-    return out
+  ⚑⚑ A NULL ARM NAMES NO DIR, so both :func:`_member_store_bases` (no base to delete
+  under) and :func:`_unreceived_vault_leaves` (no arm to name as kept) skip it.  An arm
+  nulled AFTER data was stored under it leaves that data on disk, deleted by nothing
+  and named by nothing.  Its leaf sits at the key's DEFAULT location, which is where
+  the data was while the arm still resolved.
+  """
+  out: list[tuple[Path, str]] = []
+  for key, resolver, arm in zip(
+    _VAULT_ARM_KEYS,
+    (resolve_workset_vault_ro, resolve_workset_vault_rw),
+    resolve_workset_vault_pair(ws.root, early=ws.early_scope),
+  ):
+    if arm is not None:
+      continue
+    default = resolver(ws.root, None, early=ws.early_scope)
+    if default is None:
+      continue
+    leaf = default / name
+    if leaf.exists() or leaf.is_symlink():
+      out.append(
+        (leaf, f"{key} is null, so it no longer names this store and it is yours to remove.")
+      )
+  return out
 
 
 @dataclass(frozen=True)
 class _SourceTeardown:
-    """What a relocation's source leaves to remove, planned while the source is whole.
+  """What a relocation's source leaves to remove, planned while the source is whole.
 
-    ⚑ The try drops the source row LAST (:func:`_drop_source_row`); the success tail
-    removes the rest (:func:`_finish_relocation`).  Nothing planned here is ever unwound.
-    """
+  ⚑ The try drops the source row LAST (:func:`_drop_source_row`); the success tail
+  removes the rest (:func:`_finish_relocation`).  Nothing planned here is ever unwound.
+  """
 
-    name: str
-    #: The trees the vault carry treats as torn down (``removed_root_of``).
-    removed: tuple[Path, ...] = ()
-    #: Box trees, through the escalating deleter.
-    trees: tuple[Path, ...] = ()
-    vaults: tuple[Path, ...] = ()
-    #: A standalone root's ``workset.yaml``, which alone reads as a box.
-    marker: Path | None = None
-    stash: Path | None = None
-    #: A standalone root's in-tree ``workset.canon`` tier, until
-    #: :func:`_carry_standalone_canon` takes it; the tail names one still here.
-    canon: Path | None = None
-    #: A standalone root's ``.gitignore`` holding kanibako's line; the tail strips it.
-    gitignore: Path | None = None
-    #: A relocated standalone source's ROOT, which the tail removes once it is empty.
-    old_root: Path | None = None
-    #: A standalone source's own channel partition, or the error resolving it raised.
-    partition: OwnPartition | Exception | None = None
-    #: A workset source, whose store :func:`_retire_old_store` removes.
-    member: Workset | None = None
-    dst_vault: tuple[Path | None, Path | None] = (None, None)
-    vault_enabled: bool = True
-    #: ``(old, landed)``: an in-tree workset leaf ``_to_workset`` copied; STEP 5 retires it.
-    old_leaf: tuple[Path, Path] | None = None
-    #: The Notes for what the teardown keeps on purpose.
-    keeps: tuple[Callable[[], None], ...] = ()
-    drop: Callable[[], object] | None = None
-    restore: Callable[[], object] | None = None
+  name: str
+  #: The trees the vault carry treats as torn down (``removed_root_of``).
+  removed: tuple[Path, ...] = ()
+  #: Box trees, through the escalating deleter.
+  trees: tuple[Path, ...] = ()
+  vaults: tuple[Path, ...] = ()
+  #: A standalone root's ``workset.yaml``, which alone reads as a box.
+  marker: Path | None = None
+  stash: Path | None = None
+  #: A standalone root's in-tree ``workset.canon`` tier, until
+  #: :func:`_carry_standalone_canon` takes it; the tail names one still here.
+  canon: Path | None = None
+  #: A standalone root's ``.gitignore`` holding kanibako's line; the tail strips it.
+  gitignore: Path | None = None
+  #: A relocated standalone source's ROOT, which the tail removes once it is empty.
+  old_root: Path | None = None
+  #: A standalone source's own channel partition, or the error resolving it raised.
+  partition: OwnPartition | Exception | None = None
+  #: A workset source, whose store :func:`_retire_old_store` removes.
+  member: Workset | None = None
+  dst_vault: tuple[Path | None, Path | None] = (None, None)
+  vault_enabled: bool = True
+  #: ``(old, landed)``: an in-tree workset leaf ``_to_workset`` copied; STEP 5 retires it.
+  old_leaf: tuple[Path, Path] | None = None
+  #: The Notes for what the teardown keeps on purpose.
+  keeps: tuple[Callable[[], None], ...] = ()
+  drop: Callable[[], object] | None = None
+  restore: Callable[[], object] | None = None
 
 
 def _plan_source_teardown(
-    state: ProjectState,
-    std: StandardPaths,
-    dst_vault: tuple[Path | None, Path | None],
-    *,
-    preserve_name: str | None = None,
-    new_name: str | None = None,
-    preserve_root: Path | None = None,
+  state: ProjectState,
+  std: StandardPaths,
+  dst_vault: tuple[Path | None, Path | None],
+  *,
+  preserve_name: str | None = None,
+  new_name: str | None = None,
+  preserve_root: Path | None = None,
 ) -> _SourceTeardown:
-    """Plan the removal of the source's metadata/shell (+ vault) and the drop of its row.
+  """Plan the removal of the source's metadata/shell (+ vault) and the drop of its row.
 
-    ⚑ Runs once, before the vault carry: every resolution that can raise happens here,
-    while the unwind still restores a whole source.
+  ⚑ Runs once, before the vault carry: every resolution that can raise happens here,
+  while the unwind still restores a whole source.
 
-    ⚑ Each mode's reuse signal is its own IDENTITY on disk: *preserve_name* for a primary
-    source (whose metadata dir is named after the box), *preserve_root* for a standalone one
-    (whose metadata IS a root, and whose NAME is exactly what an in-place rename changes).
-    A destination that reused the source must not then have the source torn out from under
-    it — for standalone that is the box's home, settings and vault.
+  ⚑ Each mode's reuse signal is its own IDENTITY on disk: *preserve_name* for a primary
+  source (whose metadata dir is named after the box), *preserve_root* for a standalone one
+  (whose metadata IS a root, and whose NAME is exactly what an in-place rename changes).
+  A destination that reused the source must not then have the source torn out from under
+  it — for standalone that is the box's home, settings and vault.
 
-    ⚑ *new_name* is what the DESTINATION just registered.  The source's name is dropped
-    only while they differ — a carried-kuid move (``:811``) can compose the SAME name, and
-    dropping it then deletes the live entry.  Case-blind.
-    *dst_vault* is the destination's ``(ro, rw)`` leaves: a side it has NO leaf for
-    (:func:`_unreceived_vault_leaves`) is retained, never deleted.
-    """
-    import sys
+  ⚑ *new_name* is what the DESTINATION just registered.  The source's name is dropped
+  only while they differ — a carried-kuid move (``:811``) can compose the SAME name, and
+  dropping it then deletes the live entry.  Case-blind.
+  *dst_vault* is the destination's ``(ro, rw)`` leaves: a side it has NO leaf for
+  (:func:`_unreceived_vault_leaves`) is retained, never deleted.
+  """
+  import sys
 
-    from kanibako.project import registry_store
+  from kanibako.project import registry_store
 
-    if state.mode == BoxMode.standalone:
-        # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
-        # artifacts inside it — deleting the root would wipe the user's whole project dir
-        # AND the already-converted destination.
-        root = state.metadata_path
-        drop = restore = None
-        row = _standalone_source_row(std, state.name, root, new_name,
-                                     moved_from=state.moved_from)
-        if row is not None and not _same_box_name(row[0], new_name):
-            drop = partial(_drop_registry_row, row[0], partial(
-                registry_store.unregister_standalone, std.registry, row[0]))
-            restore = partial(registry_store.register_standalone, std.registry, row[0],
-                              Path(row[1]))
-        # ⚑⚑ Read through the root ``workset.yaml``, which the stash takes before step 4b.
-        partition: OwnPartition | Exception
-        try:
-            partition = _own_partition(state, std)
-        except Exception as err:  # noqa: BLE001 - step 4b warns with it and skips
-            partition = err
-        if preserve_root is not None and preserve_root.resolve() == root.resolve():
-            # ⚑⚑ The destination IS this root (an in-place standalone rename): only the
-            # OLD NAME's registry entry is stale.
-            return _SourceTeardown(name=state.name, drop=drop, restore=restore,
-                                   partition=partition)
-        # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED.  The root ``workset.yaml`` IS
-        # the standalone workset tier and the only carrier of a ``workset.vault_*``
-        # repoint, and an UNRESOLVABLE repoint raises here, while the source is whole.
-        scope = _early_scope(std, BoxMode.standalone)
-        removable_vault, retained_vault = standalone_vault_teardown(root, early=scope)
-        # ⚑⚑ A SIDE THE DESTINATION NEVER RECEIVED IS NOT THIS TEARDOWN'S TO DELETE.  A
-        # parent of a retained arm leaves *removable* with it: the ``vault/`` skeleton
-        # parent is on that list, and removing it would take the store down with the dir.
-        kept = _unreceived_vault_leaves(
-            (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
+  if state.mode == BoxMode.standalone:
+    # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
+    # artifacts inside it — deleting the root would wipe the user's whole project dir
+    # AND the already-converted destination.
+    root = state.metadata_path
+    drop = restore = None
+    row = _standalone_source_row(std, state.name, root, new_name, moved_from=state.moved_from)
+    if row is not None and not _same_box_name(row[0], new_name):
+      drop = partial(
+        _drop_registry_row,
+        row[0],
+        partial(registry_store.unregister_standalone, std.registry, row[0]),
+      )
+      restore = partial(registry_store.register_standalone, std.registry, row[0], Path(row[1]))
+    # ⚑⚑ Read through the root ``workset.yaml``, which the stash takes before step 4b.
+    partition: OwnPartition | Exception
+    try:
+      partition = _own_partition(state, std)
+    except Exception as err:  # noqa: BLE001 - step 4b warns with it and skips
+      partition = err
+    if preserve_root is not None and preserve_root.resolve() == root.resolve():
+      # ⚑⚑ The destination IS this root (an in-place standalone rename): only the
+      # OLD NAME's registry entry is stale.
+      return _SourceTeardown(name=state.name, drop=drop, restore=restore, partition=partition)
+    # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED.  The root ``workset.yaml`` IS
+    # the standalone workset tier and the only carrier of a ``workset.vault_*``
+    # repoint, and an UNRESOLVABLE repoint raises here, while the source is whole.
+    scope = _early_scope(std, BoxMode.standalone)
+    removable_vault, retained_vault = standalone_vault_teardown(root, early=scope)
+    # ⚑⚑ A SIDE THE DESTINATION NEVER RECEIVED IS NOT THIS TEARDOWN'S TO DELETE.  A
+    # parent of a retained arm leaves *removable* with it: the ``vault/`` skeleton
+    # parent is on that list, and removing it would take the store down with the dir.
+    kept = _unreceived_vault_leaves(
+      (state.vault_ro, state.vault_rw),
+      dst_vault,
+      vault_enabled=state.enable_vault,
+    )
+    if kept:
+      held = {arm if _symlink_loop(arm) else arm.resolve() for arm, _key in kept}
+      removable_vault = [
+        vault
+        for vault in removable_vault
+        if not any(vault.resolve() == arm or vault.resolve() in arm.parents for arm in held)
+      ]
+    # ⚑ The strictly-below split and its reason are
+    # :func:`standalone_store_teardown_plan`'s.
+    removable_store, retained_store = standalone_store_teardown_plan(root, early=scope)
+    keeps: list[Callable[[], None]] = []
+    if retained_store is not None:
+      keeps.append(partial(report_retained_store, retained_store, root))
+    keeps += [
+      partial(report_retained_vault, v, vault_keep_reason(root, v, early=scope))
+      for v in retained_vault
+    ] + [partial(_report_unreceived_vaults, kept)]
+    canon, retained_canon = standalone_canon_teardown(root, early=scope)
+    if retained_canon is not None:
+      keeps.append(
+        partial(
+          report_retained_canon,
+          retained_canon,
+          root,
+          canon_keep_reason(root, retained_canon, early=scope),
         )
-        if kept:
-            held = {arm if _symlink_loop(arm) else arm.resolve() for arm, _key in kept}
-            removable_vault = [
-                vault for vault in removable_vault
-                if not any(vault.resolve() == arm or vault.resolve() in arm.parents
-                           for arm in held)
-            ]
-        # ⚑ The strictly-below split and its reason are
-        # :func:`standalone_store_teardown_plan`'s.
-        removable_store, retained_store = standalone_store_teardown_plan(root, early=scope)
-        keeps: list[Callable[[], None]] = []
-        if retained_store is not None:
-            keeps.append(partial(report_retained_store, retained_store, root))
-        keeps += [partial(report_retained_vault, v, vault_keep_reason(root, v, early=scope))
-                 for v in retained_vault] + [
-                  partial(_report_unreceived_vaults, kept)]
-        canon, retained_canon = standalone_canon_teardown(root, early=scope)
-        if retained_canon is not None:
-            keeps.append(partial(report_retained_canon, retained_canon, root,
-                                canon_keep_reason(root, retained_canon, early=scope)))
-        trees = (removable_store,) if removable_store is not None else ()
-        marker = root / WORKSET_META_FILE
-        return _SourceTeardown(
-            name=state.name, removed=(*trees, *removable_vault), trees=trees,
-            vaults=tuple(removable_vault), marker=marker if marker.is_file() else None,
-            canon=canon, gitignore=project_gitignore_to_strip(root), partition=partition,
-            keeps=tuple(keeps), drop=drop, restore=restore, old_root=root,
-        )
+      )
+    trees = (removable_store,) if removable_store is not None else ()
+    marker = root / WORKSET_META_FILE
+    return _SourceTeardown(
+      name=state.name,
+      removed=(*trees, *removable_vault),
+      trees=trees,
+      vaults=tuple(removable_vault),
+      marker=marker if marker.is_file() else None,
+      canon=canon,
+      gitignore=project_gitignore_to_strip(root),
+      partition=partition,
+      keeps=tuple(keeps),
+      drop=drop,
+      restore=restore,
+      old_root=root,
+    )
 
-    if state.mode == BoxMode.primary:
-        # ⚑⚑ L2: on a same-name in-place convert the destination metadata/vault IS the
-        # source — dropping them would delete the box just written.
-        reused_in_place = preserve_name is not None and state.name == preserve_name
-        if reused_in_place:
-            return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
-        trees_p = [state.metadata_path]
-        if (state.shell_path != state.metadata_path / "home"
-                and not state.shell_path.is_relative_to(state.metadata_path)):
-            trees_p.append(state.shell_path)
-        # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
-        # under the primary workset's RESOLVED ``{workset.vault_ro}``/``{workset.vault_rw}``.
-        # Remove the leaf only — the arm is shared and holds EVERY box's vault.
-        # ⚑ The guard's subject is the ARM: naming it admits exactly the leaves that may be
-        # deleted, and a root-subject guard would skip an out-of-root repoint and
-        # silently leave the box's real vault behind.
-        # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
-        # leafless ``vault_dir`` would take every box's vault with it.
-        # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
-        # would otherwise miss here and send an unreceived leaf to removal.
-        # ⚑ By ARM and leaf name, so a leaf the carry refused is retained too.
-        # ⚑ A loop is keyed as it sits: ``resolve`` raises on it (3.11).
-        unreceived = {leaf if _symlink_loop(leaf) else leaf.resolve(): why
-                      for leaf, why in _unreceived_vault_leaves(
-            (std.primary_vault_ro if state.vault_ro is not None else None,
-             std.primary_vault_rw if state.vault_rw is not None else None),
-            dst_vault, state.name, vault_enabled=state.enable_vault,
-        )}
-        vaults: list[Path] = []
-        primary_keeps: list[Callable[[], None]] = []
-        for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
-                               (state.vault_rw, std.primary_vault_rw)):
-            if vault_dir is None or arm is None:
-                continue
-            if _symlink_loop(vault_dir):
-                if vault_dir in unreceived:
-                    primary_keeps.append(partial(
-                        report_retained_vault, vault_dir, unreceived[vault_dir]))
-                continue
-            if not vault_dir.is_dir():
-                continue
-            if arm not in vault_dir.parents:
-                # ⚑ Reported, never silent: a skipped vault is data the user still owns
-                # and would otherwise never learn was orphaned.
-                primary_keeps.append(partial(
-                    print, f"Warning: leaving {vault_dir} in place — it is not a per-box "
-                    f"directory under {arm}", file=sys.stderr))
-                continue
-            why = unreceived.get(vault_dir.resolve())
-            if why is not None:
-                primary_keeps.append(partial(report_retained_vault, vault_dir, why))
-                continue
-            vaults.append(vault_dir)
-        name, workspace = state.name, state.workspace_path
-        return _SourceTeardown(
-            name=name, removed=(state.metadata_path,), trees=tuple(trees_p),
-            vaults=tuple(vaults), keeps=tuple(primary_keeps),
-            drop=partial(_drop_registry_row, name, partial(
-                unregister_primary_box_name, std.primary_workset, name,
-                early=_early_scope(std, BoxMode.primary))) if name else None,
-            restore=partial(_safe_register_membership, std, name, workspace) if name else None,
+  if state.mode == BoxMode.primary:
+    # ⚑⚑ L2: on a same-name in-place convert the destination metadata/vault IS the
+    # source — dropping them would delete the box just written.
+    reused_in_place = preserve_name is not None and state.name == preserve_name
+    if reused_in_place:
+      return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
+    trees_p = [state.metadata_path]
+    if state.shell_path != state.metadata_path / "home" and not state.shell_path.is_relative_to(
+      state.metadata_path
+    ):
+      trees_p.append(state.shell_path)
+    # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
+    # under the primary workset's RESOLVED ``{workset.vault_ro}``/``{workset.vault_rw}``.
+    # Remove the leaf only — the arm is shared and holds EVERY box's vault.
+    # ⚑ The guard's subject is the ARM: naming it admits exactly the leaves that may be
+    # deleted, and a root-subject guard would skip an out-of-root repoint and
+    # silently leave the box's real vault behind.
+    # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
+    # leafless ``vault_dir`` would take every box's vault with it.
+    # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
+    # would otherwise miss here and send an unreceived leaf to removal.
+    # ⚑ By ARM and leaf name, so a leaf the carry refused is retained too.
+    # ⚑ A loop is keyed as it sits: ``resolve`` raises on it (3.11).
+    unreceived = {
+      leaf if _symlink_loop(leaf) else leaf.resolve(): why
+      for leaf, why in _unreceived_vault_leaves(
+        (
+          std.primary_vault_ro if state.vault_ro is not None else None,
+          std.primary_vault_rw if state.vault_rw is not None else None,
+        ),
+        dst_vault,
+        state.name,
+        vault_enabled=state.enable_vault,
+      )
+    }
+    vaults: list[Path] = []
+    primary_keeps: list[Callable[[], None]] = []
+    for vault_dir, arm in (
+      (state.vault_ro, std.primary_vault_ro),
+      (state.vault_rw, std.primary_vault_rw),
+    ):
+      if vault_dir is None or arm is None:
+        continue
+      if _symlink_loop(vault_dir):
+        if vault_dir in unreceived:
+          primary_keeps.append(partial(report_retained_vault, vault_dir, unreceived[vault_dir]))
+        continue
+      if not vault_dir.is_dir():
+        continue
+      if arm not in vault_dir.parents:
+        # ⚑ Reported, never silent: a skipped vault is data the user still owns
+        # and would otherwise never learn was orphaned.
+        primary_keeps.append(
+          partial(
+            print,
+            f"Warning: leaving {vault_dir} in place — it is not a per-box directory under {arm}",
+            file=sys.stderr,
+          )
         )
+        continue
+      why = unreceived.get(vault_dir.resolve())
+      if why is not None:
+        primary_keeps.append(partial(report_retained_vault, vault_dir, why))
+        continue
+      vaults.append(vault_dir)
+    name, workspace = state.name, state.workspace_path
+    return _SourceTeardown(
+      name=name,
+      removed=(state.metadata_path,),
+      trees=tuple(trees_p),
+      vaults=tuple(vaults),
+      keeps=tuple(primary_keeps),
+      drop=partial(
+        _drop_registry_row,
+        name,
+        partial(
+          unregister_primary_box_name,
+          std.primary_workset,
+          name,
+          early=_early_scope(std, BoxMode.primary),
+        ),
+      )
+      if name
+      else None,
+      restore=partial(_safe_register_membership, std, name, workspace) if name else None,
+    )
 
-    # Workset source: the release is the source row; the store goes in the success tail.
-    # ⚑ The workspace leaf is NOT deleted here — a relocation retires it on success
-    # (``_retire_old_workspace``).
-    if state.ws is not None:
-        return _SourceTeardown(
-            name=state.name, removed=(state.metadata_path,), member=state.ws,
-            dst_vault=dst_vault, vault_enabled=state.enable_vault,
-            drop=partial(release_project, state.ws, state.name),
-            restore=partial(add_project, state.ws, state.name, state.workspace_path, std,
-                            restoring=True),
-        )
-    return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
+  # Workset source: the release is the source row; the store goes in the success tail.
+  # ⚑ The workspace leaf is NOT deleted here — a relocation retires it on success
+  # (``_retire_old_workspace``).
+  if state.ws is not None:
+    return _SourceTeardown(
+      name=state.name,
+      removed=(state.metadata_path,),
+      member=state.ws,
+      dst_vault=dst_vault,
+      vault_enabled=state.enable_vault,
+      drop=partial(release_project, state.ws, state.name),
+      restore=partial(
+        add_project, state.ws, state.name, state.workspace_path, std, restoring=True
+      ),
+    )
+  return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
 
 
 def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> bool:
-    """Undo what a register did to the ``standalone`` section: drop each row *before*
-    lacked, and put back each row it changed.  A row it removed is not its to restore.
+  """Undo what a register did to the ``standalone`` section: drop each row *before*
+  lacked, and put back each row it changed.  A row it removed is not its to restore.
 
-    Returns ``False`` when a row it reported could not be restored.
-    """
-    import sys
+  Returns ``False`` when a row it reported could not be restored.
+  """
+  import sys
 
-    from kanibako.project import registry_store
+  from kanibako.project import registry_store
 
-    held: KeyboardInterrupt | None = None
-    restored = True
-    for name, root in registry_store.load_standalone(std.registry).items():
-        try:
-            stored = find_identifier(name, before)
-            if stored is None:
-                registry_store.unregister_standalone(std.registry, name)
-            elif before[stored] != root:
-                registry_store.register_standalone(std.registry, stored, Path(before[stored]))
-        except KeyboardInterrupt as exc:
-            held = held or exc
-            print(f"Note: may not have restored the standalone registry row '{name}': "
-                  f"interrupted", file=sys.stderr)
-        except Exception as err:  # noqa: BLE001 - reported, and the other rows still go
-            restored = False
-            print(f"Note: could not restore the standalone registry row '{name}': {err}",
-                  file=sys.stderr)
-    if held is not None:
-        raise held
-    return restored
+  held: KeyboardInterrupt | None = None
+  restored = True
+  for name, root in registry_store.load_standalone(std.registry).items():
+    try:
+      stored = find_identifier(name, before)
+      if stored is None:
+        registry_store.unregister_standalone(std.registry, name)
+      elif before[stored] != root:
+        registry_store.register_standalone(std.registry, stored, Path(before[stored]))
+    except KeyboardInterrupt as exc:
+      held = held or exc
+      print(
+        f"Note: may not have restored the standalone registry row '{name}': interrupted",
+        file=sys.stderr,
+      )
+    except Exception as err:  # noqa: BLE001 - reported, and the other rows still go
+      restored = False
+      print(
+        f"Note: could not restore the standalone registry row '{name}': {err}", file=sys.stderr
+      )
+  if held is not None:
+    raise held
+  return restored
 
 
 def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool:
-    """Put the PRIMARY membership back to *before*: drop each row it lacked, restore each
-    row it held.  Returns ``False`` when a row could not be put back."""
-    import sys
+  """Put the PRIMARY membership back to *before*: drop each row it lacked, restore each
+  row it held.  Returns ``False`` when a row could not be put back."""
+  import sys
 
-    now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    undo: list[tuple[str, Callable[[], bool]]] = [
-        (name, partial(_safe_unregister, std, name))
-        for name in now if find_identifier(name, before) is None]
-    undo += [
-        (name, partial(_safe_register_membership, std, name, Path(workspace)))
-        for name, workspace in before.items()
-        if now.get(find_identifier(name, now) or "") != workspace]
-    held: KeyboardInterrupt | None = None
-    restored = True
-    for name, step in undo:
-        try:
-            if not step():
-                restored = False
-                print(f"Note: could not restore the primary registry row '{name}'",
-                      file=sys.stderr)
-        except KeyboardInterrupt as exc:
-            held = held or exc
-            print(f"Note: may not have restored the primary registry row '{name}': "
-                  f"interrupted", file=sys.stderr)
-    if held is not None:
-        raise held
-    return restored
+  now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  undo: list[tuple[str, Callable[[], bool]]] = [
+    (name, partial(_safe_unregister, std, name))
+    for name in now
+    if find_identifier(name, before) is None
+  ]
+  undo += [
+    (name, partial(_safe_register_membership, std, name, Path(workspace)))
+    for name, workspace in before.items()
+    if now.get(find_identifier(name, now) or "") != workspace
+  ]
+  held: KeyboardInterrupt | None = None
+  restored = True
+  for name, step in undo:
+    try:
+      if not step():
+        restored = False
+        print(f"Note: could not restore the primary registry row '{name}'", file=sys.stderr)
+    except KeyboardInterrupt as exc:
+      held = held or exc
+      print(
+        f"Note: may not have restored the primary registry row '{name}': interrupted",
+        file=sys.stderr,
+      )
+  if held is not None:
+    raise held
+  return restored
 
 
 def _drop_registry_row(name: str, unregister: Callable[[], object]) -> None:
-    """Drop the source's registry row *name*; a failure is a Note naming the stale row.
+  """Drop the source's registry row *name*; a failure is a Note naming the stale row.
 
-    ⚑ The drop is the point of no return: the destination row is written, so a row this
-    cannot drop is left for the user, never unwound.
-    """
-    import sys
+  ⚑ The drop is the point of no return: the destination row is written, so a row this
+  cannot drop is left for the user, never unwound.
+  """
+  import sys
 
-    try:
-        unregister()
-    except Exception as err:  # noqa: BLE001 - named; the destination is the box
-        print(f"Note: could not drop the old registry row '{name}': {err}; remove it "
-              f"with `kanibako box rm {shlex.quote(name)}`", file=sys.stderr)
+  try:
+    unregister()
+  except Exception as err:  # noqa: BLE001 - named; the destination is the box
+    print(
+      f"Note: could not drop the old registry row '{name}': {err}; remove it "
+      f"with `kanibako box rm {shlex.quote(name)}`",
+      file=sys.stderr,
+    )
 
 
 def _standalone_source_row(
-    std: StandardPaths, name: str, root: Path, new_name: str | None,
-    *, moved_from: Path | None = None,
+  std: StandardPaths,
+  name: str,
+  root: Path,
+  new_name: str | None,
+  *,
+  moved_from: Path | None = None,
 ) -> tuple[str, str] | None:
-    """The source's ``standalone:`` row as ``(key, root)``: its name, else the row at *root*.
+  """The source's ``standalone:`` row as ``(key, root)``: its name, else the row at *root*.
 
-    ⚑ A legacy key is not the name the root's kuid composes, so only *root* finds it; the
-    row the destination just registered (*new_name*) is never the source's.
-    ⚑ A row found by NAME is the source's only when its root is *root* (or *moved_from*,
-    the root a moved box left): a copy under another folder composes the original's name,
-    and dropping that row would deregister the original.
-    """
-    from kanibako.project import registry_store
+  ⚑ A legacy key is not the name the root's kuid composes, so only *root* finds it; the
+  row the destination just registered (*new_name*) is never the source's.
+  ⚑ A row found by NAME is the source's only when its root is *root* (or *moved_from*,
+  the root a moved box left): a copy under another folder composes the original's name,
+  and dropping that row would deregister the original.
+  """
+  from kanibako.project import registry_store
 
-    rows = registry_store.load_standalone(std.registry)
-    own = [p for p in (root, moved_from) if p is not None]
-    key = find_identifier(name, rows) if name else None
-    if key is not None and not any(
-            rows[key] == str(p) or _resolved_unless_loop(Path(literal_path(rows[key])))
-            == _resolved_unless_loop(p) for p in own):
-        key = None
-    if key is None:
-        key = next((k for k, r in rows.items()
-                    if r == str(root) and not _same_box_name(k, new_name)), None)
-    return None if key is None else (key, rows[key])
+  rows = registry_store.load_standalone(std.registry)
+  own = [p for p in (root, moved_from) if p is not None]
+  key = find_identifier(name, rows) if name else None
+  if key is not None and not any(
+    rows[key] == str(p)
+    or _resolved_unless_loop(Path(literal_path(rows[key]))) == _resolved_unless_loop(p)
+    for p in own
+  ):
+    key = None
+  if key is None:
+    key = next(
+      (k for k, r in rows.items() if r == str(root) and not _same_box_name(k, new_name)), None
+    )
+  return None if key is None else (key, rows[key])
 
 
 def _carry_standalone_canon(
-    teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path,
+  teardown: _SourceTeardown,
+  std: StandardPaths,
+  src_root: Path,
+  dst_root: Path,
 ) -> _SourceTeardown:
-    """Copy the source's ``workset.canon`` tier to the standalone *dst_root*'s; the tail
-    then removes the old one.
+  """Copy the source's ``workset.canon`` tier to the standalone *dst_root*'s; the tail
+  then removes the old one.
 
-    ⚑ Carried like the vault, never re-stamped: it holds the user's directives.  The root
-    undo (:func:`_arm_standalone_root_undo`) owns the tier this creates.  A destination
-    tier already on disk, or nulled, is not written: the old one stays, named.
-    """
-    src = teardown.canon
-    if src is None:
-        return teardown
-    dst = resolve_workset_canon(dst_root, load_workset_settings_doc(dst_root),
-                                early=_early_scope(std, BoxMode.standalone))
-    if dst is None or dst.exists() or dst.is_symlink():
-        why = ("workset.canon is null at the new root" if dst is None
-               else f"{dst} already exists")
-        return replace(teardown, canon=None, keeps=(
-            *teardown.keeps, partial(report_retained_canon, src, src_root, why)))
-    copy_tree_keeping_links(src, dst, keep_root_link=True)
-    return replace(teardown, canon=None, trees=(*teardown.trees, src),
-                   removed=(*teardown.removed, src))
+  ⚑ Carried like the vault, never re-stamped: it holds the user's directives.  The root
+  undo (:func:`_arm_standalone_root_undo`) owns the tier this creates.  A destination
+  tier already on disk, or nulled, is not written: the old one stays, named.
+  """
+  src = teardown.canon
+  if src is None:
+    return teardown
+  dst = resolve_workset_canon(
+    dst_root, load_workset_settings_doc(dst_root), early=_early_scope(std, BoxMode.standalone)
+  )
+  if dst is None or dst.exists() or dst.is_symlink():
+    why = "workset.canon is null at the new root" if dst is None else f"{dst} already exists"
+    return replace(
+      teardown,
+      canon=None,
+      keeps=(*teardown.keeps, partial(report_retained_canon, src, src_root, why)),
+    )
+  copy_tree_keeping_links(src, dst, keep_root_link=True)
+  return replace(
+    teardown, canon=None, trees=(*teardown.trees, src), removed=(*teardown.removed, src)
+  )
 
 
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown:
-    """Move the standalone source's root marker into a relocation stash; the undo puts it back.
+  """Move the standalone source's root marker into a relocation stash; the undo puts it back.
 
-    ⚑ The marker alone reads as a box, so the old root must not keep it once the box has
-    landed; the stash goes in the success tail.
-    """
-    import tempfile
+  ⚑ The marker alone reads as a box, so the old root must not keep it once the box has
+  landed; the stash goes in the success tail.
+  """
+  import tempfile
 
-    marker = teardown.marker
-    if marker is None or not marker.is_file():
-        return teardown
-    stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
-    held = stash / marker.name
+  marker = teardown.marker
+  if marker is None or not marker.is_file():
+    return teardown
+  stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
+  held = stash / marker.name
 
-    def _put_back() -> None:
-        if held.is_file():
-            shutil.move(str(held), str(marker))
-        _dispose_stash(stash)
+  def _put_back() -> None:
+    if held.is_file():
+      shutil.move(str(held), str(marker))
+    _dispose_stash(stash)
 
-    unwind.push(_put_back)
-    shutil.move(str(marker), str(held))
-    return replace(teardown, stash=stash)
+  unwind.push(_put_back)
+  shutil.move(str(marker), str(held))
+  return replace(teardown, stash=stash)
 
 
 def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None:
-    """Drop the source's registry row, its restore pushed first (it runs last)."""
-    if teardown is None or teardown.drop is None:
-        return
-    if teardown.restore is not None:
-        unwind.push_first(teardown.restore)
-    teardown.drop()
+  """Drop the source's registry row, its restore pushed first (it runs last)."""
+  if teardown is None or teardown.drop is None:
+    return
+  if teardown.restore is not None:
+    unwind.push_first(teardown.restore)
+  teardown.drop()
 
 
 @dataclass
 class _TailProgress:
-    """How far the success tail got: the step it is in, and the snapshot stores 4c kept."""
+  """How far the success tail got: the step it is in, and the snapshot stores 4c kept."""
 
-    step: str = ""
-    snapshots: list[Path] = field(default_factory=list)
+  step: str = ""
+  snapshots: list[Path] = field(default_factory=list)
 
 
 def _finish_relocation(
-    state: ProjectState,
-    new_state: ProjectState,
-    std: StandardPaths,
-    teardown: _SourceTeardown | None,
-    later: list[Callable[[], None]],
-    progress: _TailProgress | None = None,
-    errors: list[Exception] | None = None,
+  state: ProjectState,
+  new_state: ProjectState,
+  std: StandardPaths,
+  teardown: _SourceTeardown | None,
+  later: list[Callable[[], None]],
+  progress: _TailProgress | None = None,
+  errors: list[Exception] | None = None,
 ) -> None:
-    """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
+  """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
 
-    ⚑ The destination is the box by now, so a failed step is passed over: the Note below
-    names the store it left, and the step's error goes to *errors* for its own Note.  An
-    interrupt is named by :func:`_note_interrupted_tail`, which reads *progress*.  Steps
-    4b and 4c have no finishing command.
-    """
-    import os
-    import sys
+  ⚑ The destination is the box by now, so a failed step is passed over: the Note below
+  names the store it left, and the step's error goes to *errors* for its own Note.  An
+  interrupt is named by :func:`_note_interrupted_tail`, which reads *progress*.  Steps
+  4b and 4c have no finishing command.
+  """
+  import os
+  import sys
 
-    progress = progress or _TailProgress()
-    snapshots = progress.snapshots
-    plan = teardown or _SourceTeardown(name=state.name)
+  progress = progress or _TailProgress()
+  snapshots = progress.snapshots
+  plan = teardown or _SourceTeardown(name=state.name)
 
-    def remove(paths: tuple[Path, ...]) -> None:
-        links = {path: os.readlink(path) for path in paths if path.is_symlink()}
-        for path in paths:
-            if _holds_any(path, snapshots):
-                # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
-                report_retained_vault(path, "it holds the vault snapshots still under "
-                                            f"the old name '{state.name}'.")
-            elif path.is_dir() or path.is_symlink():
-                try:
-                    remove_path(path)
-                except OSError:  # the leftover Note below names it
-                    pass
-        for link, target in links.items():
-            if not link.is_symlink():
-                print(f"Note: removed the link {link}; left its target {target} untouched.",
-                      file=sys.stderr)
-
-    def snapshots_step() -> None:
-        kept = _relocate_snapshot_store(state, new_state)
-        if kept is not None:
-            snapshots.append(kept)
-
-    def vaults_step() -> None:
-        remove(plan.vaults)
-        for keep in plan.keeps:
-            keep()
-
-    def root_files_step() -> None:
-        if plan.canon is not None:
-            report_retained_canon(plan.canon, state.metadata_path,
-                                  "this box is no longer standalone")
-        if plan.gitignore is not None:
-            strip_project_gitignore(plan.gitignore)
-
-    def member_step() -> None:
-        if plan.member is not None:
-            _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
-
-    steps: list[tuple[str, Callable[[], None]]] = [
-        ("4b", partial(_relocate_channel_partition, state, new_state, std, plan)),
-        ("4c", snapshots_step),
-        ("store", partial(remove, plan.trees)),
-        ("vaults", vaults_step),
-        ("root", root_files_step),
-        ("member", member_step),
-        *(("later", step) for step in later),
-        ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
-    ]
-    for progress.step, step in steps:
+  def remove(paths: tuple[Path, ...]) -> None:
+    links = {path: os.readlink(path) for path in paths if path.is_symlink()}
+    for path in paths:
+      if _holds_any(path, snapshots):
+        # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
+        report_retained_vault(
+          path, f"it holds the vault snapshots still under the old name '{state.name}'."
+        )
+      elif path.is_dir() or path.is_symlink():
         try:
-            step()
-        except Exception as err:  # noqa: BLE001 - kept for the caller's Note
-            if errors is not None:
-                errors.append(err)
-    landed = [_resolved_unless_loop(p)
-              for p in (new_state.workspace_path, new_state.metadata_path,
-                        new_state.shell_path, new_state.vault_ro, new_state.vault_rw)
-              if p is not None]
-    # A finished session's lock is stale once the root is no longer the box's metadata dir.
-    stale = plan.old_root / ".kanibako.lock" if plan.old_root is not None else None
-    if (stale is not None and stale.parent.resolve() != new_state.metadata_path.resolve()
-            and not session_lock_held(stale)):
-        try:
-            stale.unlink(missing_ok=True)
-        except OSError:
-            pass
-    # ⚑ An in-place convert out lands the box AT or under the old root.
-    if plan.old_root is not None and not _holds_any(plan.old_root.resolve(), landed):
-        try:  # a started box's stale watcher lock alone would keep the root
-            (plan.old_root / bootstrap.CREDS_WATCHER_LOCK_FILE).unlink(missing_ok=True)
-        except OSError:
-            pass
-        _prune_empty_dirs(plan.old_root, plan.old_root.parent)
-    _report_store_leftovers(
-        plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)))
+          remove_path(path)
+        except OSError:  # the leftover Note below names it
+          pass
+    for link, target in links.items():
+      if not link.is_symlink():
+        print(
+          f"Note: removed the link {link}; left its target {target} untouched.", file=sys.stderr
+        )
+
+  def snapshots_step() -> None:
+    kept = _relocate_snapshot_store(state, new_state)
+    if kept is not None:
+      snapshots.append(kept)
+
+  def vaults_step() -> None:
+    remove(plan.vaults)
+    for keep in plan.keeps:
+      keep()
+
+  def root_files_step() -> None:
+    if plan.canon is not None:
+      report_retained_canon(plan.canon, state.metadata_path, "this box is no longer standalone")
+    if plan.gitignore is not None:
+      strip_project_gitignore(plan.gitignore)
+
+  def member_step() -> None:
+    if plan.member is not None:
+      _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
+
+  steps: list[tuple[str, Callable[[], None]]] = [
+    ("4b", partial(_relocate_channel_partition, state, new_state, std, plan)),
+    ("4c", snapshots_step),
+    ("store", partial(remove, plan.trees)),
+    ("vaults", vaults_step),
+    ("root", root_files_step),
+    ("member", member_step),
+    *(("later", step) for step in later),
+    ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
+  ]
+  for progress.step, step in steps:
+    try:
+      step()
+    except Exception as err:  # noqa: BLE001 - kept for the caller's Note
+      if errors is not None:
+        errors.append(err)
+  landed = [
+    _resolved_unless_loop(p)
+    for p in (
+      new_state.workspace_path,
+      new_state.metadata_path,
+      new_state.shell_path,
+      new_state.vault_ro,
+      new_state.vault_rw,
+    )
+    if p is not None
+  ]
+  # A finished session's lock is stale once the root is no longer the box's metadata dir.
+  stale = plan.old_root / ".kanibako.lock" if plan.old_root is not None else None
+  if (
+    stale is not None
+    and stale.parent.resolve() != new_state.metadata_path.resolve()
+    and not session_lock_held(stale)
+  ):
+    try:
+      stale.unlink(missing_ok=True)
+    except OSError:
+      pass
+  # ⚑ An in-place convert out lands the box AT or under the old root.
+  if plan.old_root is not None and not _holds_any(plan.old_root.resolve(), landed):
+    try:  # a started box's stale watcher lock alone would keep the root
+      (plan.old_root / bootstrap.CREDS_WATCHER_LOCK_FILE).unlink(missing_ok=True)
+    except OSError:
+      pass
+    _prune_empty_dirs(plan.old_root, plan.old_root.parent)
+  _report_store_leftovers(
+    plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots))
+  )
 
 
 def _note_interrupted_tail(
-    state: ProjectState,
-    new_state: ProjectState,
-    std: StandardPaths,
-    teardown: _SourceTeardown | None,
-    old_workspaces: list[Path],
-    progress: _TailProgress,
+  state: ProjectState,
+  new_state: ProjectState,
+  std: StandardPaths,
+  teardown: _SourceTeardown | None,
+  old_workspaces: list[Path],
+  progress: _TailProgress,
 ) -> None:
-    """THE Note for a success tail an interrupt stopped at *progress*, or before it began.
+  """THE Note for a success tail an interrupt stopped at *progress*, or before it began.
 
-    *old_workspaces* are what STEP 5 (in the tail's ``later``) retires.
-    """
-    plan = teardown or _SourceTeardown(name=state.name)
-    left = [p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, progress.snapshots)]
-    if plan.member is not None and progress.step not in ("later", "stash"):
-        left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
-    if progress.step != "stash":
-        left += old_workspaces
-    if plan.stash is not None:
-        left.append(plan.stash)
-    unmoved = [*_unmoved_partitions(state, new_state, std, plan),
-               *_unmoved_snapshots(state, new_state)]
-    # ⚑ Decided by the file's content now, not by the step: the strip may or may not have run.
-    if plan.gitignore is not None and project_gitignore_to_strip(plan.gitignore.parent):
-        if gitignore_holds_only_kanibako(plan.gitignore):
-            left.append(plan.gitignore)
-        else:
-            unmoved.append(f"kanibako's line is still in {plan.gitignore}")
-    _report_store_leftovers(plan.name, _on_disk(left), ": interrupted", unmoved=unmoved)
-    cure = _snapshot_cure(state, new_state)
-    if cure is not None:
-        import sys
-        print(cure, file=sys.stderr)
+  *old_workspaces* are what STEP 5 (in the tail's ``later``) retires.
+  """
+  plan = teardown or _SourceTeardown(name=state.name)
+  left = [p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, progress.snapshots)]
+  if plan.member is not None and progress.step not in ("later", "stash"):
+    left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
+  if progress.step != "stash":
+    left += old_workspaces
+  if plan.stash is not None:
+    left.append(plan.stash)
+  unmoved = [
+    *_unmoved_partitions(state, new_state, std, plan),
+    *_unmoved_snapshots(state, new_state),
+  ]
+  # ⚑ Decided by the file's content now, not by the step: the strip may or may not have run.
+  if plan.gitignore is not None and project_gitignore_to_strip(plan.gitignore.parent):
+    if gitignore_holds_only_kanibako(plan.gitignore):
+      left.append(plan.gitignore)
+    else:
+      unmoved.append(f"kanibako's line is still in {plan.gitignore}")
+  _report_store_leftovers(plan.name, _on_disk(left), ": interrupted", unmoved=unmoved)
+  cure = _snapshot_cure(state, new_state)
+  if cure is not None:
+    import sys
+
+    print(cure, file=sys.stderr)
 
 
 def _holds_any(path: Path, stores: Collection[Path]) -> bool:
-    """*path* is, or holds, one of *stores*."""
-    return any(path == store or path in store.parents for store in stores)
+  """*path* is, or holds, one of *stores*."""
+  return any(path == store or path in store.parents for store in stores)
 
 
 def _on_disk(paths: Iterable[Path]) -> list[Path]:
-    """Those of *paths* still on disk, a dangling link included."""
-    return [p for p in paths if p.exists() or p.is_symlink()]
+  """Those of *paths* still on disk, a dangling link included."""
+  return [p for p in paths if p.exists() or p.is_symlink()]
 
 
 def _unmoved_partitions(
-    old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown,
+  old: ProjectState,
+  new: ProjectState,
+  std: StandardPaths,
+  plan: _SourceTeardown,
 ) -> list[str]:
-    """The channel dirs step 4b leaves at *old*'s address, as Note text."""
-    try:
-        if _state_ws_token(old) == _state_ws_token(new) and old.name == new.name:
-            return []
-        src = _old_partition(old, std, plan)
-    except Exception:  # noqa: BLE001 - nothing it can name
-        return []
-    return [f"its channel {label} is still at {path}"
-            for path, label in ((src.mailbox, "mailbox"), (src.share_global, "share"))
-            if path is not None and path.is_dir()]
+  """The channel dirs step 4b leaves at *old*'s address, as Note text."""
+  try:
+    if _state_ws_token(old) == _state_ws_token(new) and old.name == new.name:
+      return []
+    src = _old_partition(old, std, plan)
+  except Exception:  # noqa: BLE001 - nothing it can name
+    return []
+  return [
+    f"its channel {label} is still at {path}"
+    for path, label in ((src.mailbox, "mailbox"), (src.share_global, "share"))
+    if path is not None and path.is_dir()
+  ]
 
 
 def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]:
-    """The snapshot store step 4c leaves under *old*'s name, as Note text."""
-    store = _old_snapshot_store(old, new)
-    if store is None or not store.is_dir():
-        return []
-    return [f"its vault snapshots are still at {store} under the old name, and "
-            "'kanibako box vault list' will not show them"]
+  """The snapshot store step 4c leaves under *old*'s name, as Note text."""
+  store = _old_snapshot_store(old, new)
+  if store is None or not store.is_dir():
+    return []
+  return [
+    f"its vault snapshots are still at {store} under the old name, and "
+    "'kanibako box vault list' will not show them"
+  ]
 
 
 def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> tuple[Path, Path] | None:
-    """The store step 4c would carry, still under *old*'s name, with the root its links
-    are checked below; or ``None``.
+  """The store step 4c would carry, still under *old*'s name, with the root its links
+  are checked below; or ``None``.
 
-    The pick is ``relocate_snapshot_store``'s: in a standalone landing the copy the
-    tree copy brought into the new base, else *old*'s own store; a store that is
-    itself a symlink is never picked.  Each base is ``snapshot_base``'s, so a link
-    that cannot be resolved raises ``SymlinkRefusedError``.
-    """
-    from kanibako.snapshots import box_snapshot_store, snapshot_base
+  The pick is ``relocate_snapshot_store``'s: in a standalone landing the copy the
+  tree copy brought into the new base, else *old*'s own store; a store that is
+  itself a symlink is never picked.  Each base is ``snapshot_base``'s, so a link
+  that cannot be resolved raises ``SymlinkRefusedError``.
+  """
+  from kanibako.snapshots import box_snapshot_store, snapshot_base
 
-    store = _old_snapshot_store(old, new)
-    if store is None:
-        return None
-    assert old.vault_rw is not None and new.vault_rw is not None  # a store came back
-    if new.mode is BoxMode.standalone and old.name != new.name:
-        copied = box_snapshot_store(new.vault_rw, old.name)
-        if copied.is_dir() and not copied.is_symlink():
-            base, root = snapshot_base(new.vault_rw, exclusive=True)
-            return base / old.name, root
-    if store.is_dir() and not store.is_symlink():
-        base, root = snapshot_base(old.vault_rw, exclusive=old.mode is BoxMode.standalone)
-        return base / old.name, root
+  store = _old_snapshot_store(old, new)
+  if store is None:
     return None
+  assert old.vault_rw is not None and new.vault_rw is not None  # a store came back
+  if new.mode is BoxMode.standalone and old.name != new.name:
+    copied = box_snapshot_store(new.vault_rw, old.name)
+    if copied.is_dir() and not copied.is_symlink():
+      base, root = snapshot_base(new.vault_rw, exclusive=True)
+      return base / old.name, root
+  if store.is_dir() and not store.is_symlink():
+    base, root = snapshot_base(old.vault_rw, exclusive=old.mode is BoxMode.standalone)
+    return base / old.name, root
+  return None
 
 
 def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
-    """The Note naming the one command that carries a stranded store by hand.
+  """The Note naming the one command that carries a stranded store by hand.
 
-    ⚑ An existing store is never merged over: only entries it lacks move in, and the
-    Note names the ones left behind.  A symlink a box could have planted (below a
-    shared store, or at or below an exclusive base) gets no command, which would follow
-    it; the Note names the link instead.  So does a broken repoint of a shared base or
-    store.
-    """
-    import os
+  ⚑ An existing store is never merged over: only entries it lacks move in, and the
+  Note names the ones left behind.  A symlink a box could have planted (below a
+  shared store, or at or below an exclusive base) gets no command, which would follow
+  it; the Note names the link instead.  So does a broken repoint of a shared base or
+  store.
+  """
+  import os
 
-    from kanibako import boxfs
-    from kanibako.snapshots import (
-        box_snapshot_store, link_refusal, refusal_text, stores_overlap, store_path,
+  from kanibako import boxfs
+  from kanibako.snapshots import (
+    box_snapshot_store,
+    link_refusal,
+    refusal_text,
+    stores_overlap,
+    store_path,
+  )
+
+  if new.vault_rw is None:
+    return None
+  lexical_dst = box_snapshot_store(new.vault_rw, new.name)
+
+  def no_command(at: Path | None, why: str) -> str:
+    return (
+      f"Note: '{new.name}'s snapshots are still at {at}. No command is "
+      f"printed to move them into {lexical_dst}: {why}, then move them by hand."
     )
 
-    if new.vault_rw is None:
-        return None
-    lexical_dst = box_snapshot_store(new.vault_rw, new.name)
-
-    def no_command(at: Path | None, why: str) -> str:
-        return (f"Note: '{new.name}'s snapshots are still at {at}. No command is "
-                f"printed to move them into {lexical_dst}: {why}, then move them by hand.")
-
-    try:
-        picked = _stranded_snapshot_store(old, new)
-        if picked is None:
-            return None
-        src, src_root = picked
-        dst, dst_root = store_path(new.vault_rw, box_name=new.name,
-                                   exclusive=new.mode is BoxMode.standalone)
-    except boxfs.SymlinkRefusedError as exc:
-        return no_command(_old_snapshot_store(old, new), refusal_text(exc))
-    if stores_overlap(src, dst):  # a repoint at or into the old store: no command
-        return None
-    link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
-    if link is not None:
-        return no_command(src, link_refusal(link))
-    if not os.path.lexists(dst):
-        cmd = (f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
-               f"{shlex.join(['mv', '--', str(src), str(dst)])}")
-        return f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
-    cmd = f"mv -n -- {shlex.quote(str(src))}/* {shlex.quote(str(dst))}/"
-    note = f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
-    try:
-        taken = sorted(set(boxfs.listdir(src, src_root)) & set(boxfs.listdir(dst, dst_root)))
-    except OSError:
-        taken = []
-    if taken:
-        note += (f"\n  It leaves {', '.join(taken)} in {src}: {dst} already has "
-                 f"snapshots of those names. Rename them there and run it again.")
-    return note
+  try:
+    picked = _stranded_snapshot_store(old, new)
+    if picked is None:
+      return None
+    src, src_root = picked
+    dst, dst_root = store_path(
+      new.vault_rw, box_name=new.name, exclusive=new.mode is BoxMode.standalone
+    )
+  except boxfs.SymlinkRefusedError as exc:
+    return no_command(_old_snapshot_store(old, new), refusal_text(exc))
+  if stores_overlap(src, dst):  # a repoint at or into the old store: no command
+    return None
+  link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
+  if link is not None:
+    return no_command(src, link_refusal(link))
+  if not os.path.lexists(dst):
+    cmd = (
+      f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
+      f"{shlex.join(['mv', '--', str(src), str(dst)])}"
+    )
+    return f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
+  cmd = f"mv -n -- {shlex.quote(str(src))}/* {shlex.quote(str(dst))}/"
+  note = f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
+  try:
+    taken = sorted(set(boxfs.listdir(src, src_root)) & set(boxfs.listdir(dst, dst_root)))
+  except OSError:
+    taken = []
+  if taken:
+    note += (
+      f"\n  It leaves {', '.join(taken)} in {src}: {dst} already has "
+      f"snapshots of those names. Rename them there and run it again."
+    )
+  return note
 
 
 def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, str] | None:
-    """``(old vault_rw, old name)`` of the snapshot store an interrupted in-place convert OUT
-    of standalone left in the root it vacated, which is now the box's workspace; or ``None``.
+  """``(old vault_rw, old name)`` of the snapshot store an interrupted in-place convert OUT
+  of standalone left in the root it vacated, which is now the box's workspace; or ``None``.
 
-    Step 4c carries it into the box's own base, so an interrupt before 4c leaves it there and
-    a retry finds the box already converted.  The base must carry kanibako's layout marker
-    (every snapshot write leaves it), and the store is the one named for this box or else
-    its only store (a convert to the default workset renames the box): that base was this
-    box's alone.  ⚑ Raises ``ProjectError`` before any write
-    when a symlink stands between the root and the store, or the box's own store already
-    holds snapshots: two stores are never merged.
-    """
-    import os
-    import stat
+  Step 4c carries it into the box's own base, so an interrupt before 4c leaves it there and
+  a retry finds the box already converted.  The base must carry kanibako's layout marker
+  (every snapshot write leaves it), and the store is the one named for this box or else
+  its only store (a convert to the default workset renames the box): that base was this
+  box's alone.  ⚑ Raises ``ProjectError`` before any write
+  when a symlink stands between the root and the store, or the box's own store already
+  holds snapshots: two stores are never merged.
+  """
+  import os
+  import stat
 
-    from kanibako import boxfs
-    from kanibako.project.workset import resolve_workset_vault_pair
-    from kanibako.snapshots import (
-        LAYOUT_MARKER_NAME, RESERVED_STORE_KEYS, box_snapshot_store, checked_store,
-        link_refusal, refusal_text, stores_overlap,
+  from kanibako import boxfs
+  from kanibako.project.workset import resolve_workset_vault_pair
+  from kanibako.snapshots import (
+    LAYOUT_MARKER_NAME,
+    RESERVED_STORE_KEYS,
+    box_snapshot_store,
+    checked_store,
+    link_refusal,
+    refusal_text,
+    stores_overlap,
+  )
+
+  if state.mode is BoxMode.standalone or state.vault_rw is None:
+    return None
+  root = state.workspace_path
+  try:
+    old_rw = resolve_workset_vault_pair(root, early=_early_scope(std, BoxMode.standalone))[1]
+  except (KanibakoError, OSError):
+    return None
+  if old_rw is None:
+    return None
+  old_rw = Path(os.path.normpath(old_rw))
+  if root not in old_rw.parents:
+    return None  # ⚑ only a store inside the box's own tree is ever picked
+  base = box_snapshot_store(old_rw, state.name).parent
+  link = boxfs.first_symlink(base, root)
+  if link is not None:
+    try:
+      os.stat(base)
+    except FileNotFoundError:
+      return None  # nothing behind it to carry
+    except OSError:
+      pass  # a loop, or unreadable: fail closed
+    raise ProjectError(
+      f"Refusing: '{state.name}'s vault snapshots may still be under "
+      f"{base}, but {link_refusal(link)}, then run this again."
     )
-
-    if state.mode is BoxMode.standalone or state.vault_rw is None:
-        return None
-    root = state.workspace_path
-    try:
-        old_rw = resolve_workset_vault_pair(root, early=_early_scope(std, BoxMode.standalone))[1]
-    except (KanibakoError, OSError):
-        return None
-    if old_rw is None:
-        return None
-    old_rw = Path(os.path.normpath(old_rw))
-    if root not in old_rw.parents:
-        return None  # ⚑ only a store inside the box's own tree is ever picked
-    base = box_snapshot_store(old_rw, state.name).parent
-    link = boxfs.first_symlink(base, root)
-    if link is not None:
-        try:
-            os.stat(base)
-        except FileNotFoundError:
-            return None  # nothing behind it to carry
-        except OSError:
-            pass  # a loop, or unreadable: fail closed
-        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots may still be under "
-                           f"{base}, but {link_refusal(link)}, then run this again.")
-    if not base.is_dir():
-        return None
-    entries = {n: os.lstat(base / n).st_mode for n in boxfs.listdir(base, root)
-               if n not in RESERVED_STORE_KEYS}
-    if not (base / LAYOUT_MARKER_NAME).exists():
-        return None  # ⚑ an unmarked dir is the user's, whatever its name
-    name = (state.name if state.name in entries
-            else next(iter(entries)) if len(entries) == 1 else None)
-    if name is None or not (stat.S_ISDIR(entries[name]) or stat.S_ISLNK(entries[name])):
-        return None
-    if stat.S_ISLNK(entries[name]):
-        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots may still be at "
-                           f"{base / name}, but {link_refusal(base / name)}, then run "
-                           f"this again.")
-    try:
-        # ⚑ The box's own store is in the shared base: a link at it is the user's repoint,
-        # followed as everywhere else; only a broken one is refused.
-        new_store, new_root = checked_store(state.vault_rw, box_name=state.name, exclusive=False)
-    except boxfs.SymlinkRefusedError as exc:
-        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots are still at "
-                           f"{base / name}, but {refusal_text(exc)}, then run this "
-                           f"again.") from exc
-    if stores_overlap(base / name, new_store):
-        return None  # the box's store is repointed here: it is already the box's
-    if os.path.lexists(new_store) and (
-            not new_store.is_dir() or boxfs.listdir(new_store, new_root)):
-        raise ProjectError(
-            f"Refusing: '{state.name}' has vault snapshots both at {base / name}, left "
-            f"there by an interrupted run, and at {new_store}. kanibako does not merge two "
-            f"snapshot stores: move the snapshots you want into {new_store} by hand, "
-            f"then remove {base / name}.")
-    return old_rw, name
+  if not base.is_dir():
+    return None
+  entries = {
+    n: os.lstat(base / n).st_mode
+    for n in boxfs.listdir(base, root)
+    if n not in RESERVED_STORE_KEYS
+  }
+  if not (base / LAYOUT_MARKER_NAME).exists():
+    return None  # ⚑ an unmarked dir is the user's, whatever its name
+  name = (
+    state.name if state.name in entries else next(iter(entries)) if len(entries) == 1 else None
+  )
+  if name is None or not (stat.S_ISDIR(entries[name]) or stat.S_ISLNK(entries[name])):
+    return None
+  if stat.S_ISLNK(entries[name]):
+    raise ProjectError(
+      f"Refusing: '{state.name}'s vault snapshots may still be at "
+      f"{base / name}, but {link_refusal(base / name)}, then run "
+      f"this again."
+    )
+  try:
+    # ⚑ The box's own store is in the shared base: a link at it is the user's repoint,
+    # followed as everywhere else; only a broken one is refused.
+    new_store, new_root = checked_store(state.vault_rw, box_name=state.name, exclusive=False)
+  except boxfs.SymlinkRefusedError as exc:
+    raise ProjectError(
+      f"Refusing: '{state.name}'s vault snapshots are still at "
+      f"{base / name}, but {refusal_text(exc)}, then run this "
+      f"again."
+    ) from exc
+  if stores_overlap(base / name, new_store):
+    return None  # the box's store is repointed here: it is already the box's
+  if os.path.lexists(new_store) and (not new_store.is_dir() or boxfs.listdir(new_store, new_root)):
+    raise ProjectError(
+      f"Refusing: '{state.name}' has vault snapshots both at {base / name}, left "
+      f"there by an interrupted run, and at {new_store}. kanibako does not merge two "
+      f"snapshot stores: move the snapshots you want into {new_store} by hand, "
+      f"then remove {base / name}."
+    )
+  return old_rw, name
 
 
 def _stranded_store_cure(state: ProjectState, std: StandardPaths) -> str | None:
-    """The manual cure a no-op retry names when the box's own store is absent or empty.
+  """The manual cure a no-op retry names when the box's own store is absent or empty.
 
-    Nothing records the owner or name a box had before an interrupted relocation, so the
-    old store is named by its shape only, and nothing is moved.
-    """
-    import os
+  Nothing records the owner or name a box had before an interrupted relocation, so the
+  old store is named by its shape only, and nothing is moved.
+  """
+  import os
 
-    from kanibako import boxfs
-    from kanibako.snapshots import box_snapshot_store, checked_store
+  from kanibako import boxfs
+  from kanibako.snapshots import box_snapshot_store, checked_store
 
-    if state.vault_rw is None:
-        return None
-    try:
-        store, root = checked_store(state.vault_rw, box_name=state.name,
-                                    exclusive=state.mode is BoxMode.standalone)
-        if os.path.lexists(store) and boxfs.listdir(store, root):
-            return None
-    except (KanibakoError, OSError):
-        return None
-    where = "the old owner's .versions/<old name>"
-    if std.primary_vault_rw is not None:
-        primary = box_snapshot_store(std.primary_vault_rw / state.name, "<old name>")
-        where += f" ({primary} if it was in the default workset)"
-    cmd = (f"mv -n -- <that directory>/* {shlex.quote(str(store))}/"
-           if os.path.lexists(store) else
-           f"mkdir -p -- {shlex.quote(str(store.parent))} && "
-           f"mv -- <that directory> {shlex.quote(str(store))}")
-    return (f"Note: if an interrupted run left '{state.name}'s vault snapshots under its "
-            f"old name, they are in {where}; move them in with: {cmd}")
+  if state.vault_rw is None:
+    return None
+  try:
+    store, root = checked_store(
+      state.vault_rw, box_name=state.name, exclusive=state.mode is BoxMode.standalone
+    )
+    if os.path.lexists(store) and boxfs.listdir(store, root):
+      return None
+  except (KanibakoError, OSError):
+    return None
+  where = "the old owner's .versions/<old name>"
+  if std.primary_vault_rw is not None:
+    primary = box_snapshot_store(std.primary_vault_rw / state.name, "<old name>")
+    where += f" ({primary} if it was in the default workset)"
+  cmd = (
+    f"mv -n -- <that directory>/* {shlex.quote(str(store))}/"
+    if os.path.lexists(store)
+    else f"mkdir -p -- {shlex.quote(str(store.parent))} && "
+    f"mv -- <that directory> {shlex.quote(str(store))}"
+  )
+  return (
+    f"Note: if an interrupted run left '{state.name}'s vault snapshots under its "
+    f"old name, they are in {where}; move them in with: {cmd}"
+  )
 
 
 def _carry_vacated_root_store(state: ProjectState, old_rw: Path, old_name: str) -> None:
-    """Move the store :func:`_vacated_root_store` found into the box's own base."""
-    import sys
+  """Move the store :func:`_vacated_root_store` found into the box's own base."""
+  import sys
 
-    from kanibako.snapshots import box_snapshot_store, relocate_snapshot_store
+  from kanibako.snapshots import box_snapshot_store, relocate_snapshot_store
 
-    assert state.vault_rw is not None  # the finder returned a store
-    carried = relocate_snapshot_store(
-        old_rw, state.vault_rw, old_box=old_name, new_box=state.name,
-        old_base_exclusive=True, old_root=state.workspace_path)
-    if carried is not None:
-        print(f"Moved '{state.name}'s vault snapshots from "
-              f"{box_snapshot_store(old_rw, old_name)} to {carried}, where an interrupted "
-              f"run had left them.", file=sys.stderr)
+  assert state.vault_rw is not None  # the finder returned a store
+  carried = relocate_snapshot_store(
+    old_rw,
+    state.vault_rw,
+    old_box=old_name,
+    new_box=state.name,
+    old_base_exclusive=True,
+    old_root=state.workspace_path,
+  )
+  if carried is not None:
+    print(
+      f"Moved '{state.name}'s vault snapshots from "
+      f"{box_snapshot_store(old_rw, old_name)} to {carried}, where an interrupted "
+      f"run had left them.",
+      file=sys.stderr,
+    )
 
 
 def _retire_old_store(
-    ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None],
-    vault_enabled: bool = True, *, reraise: bool = False,
+  ws: Workset,
+  name: str,
+  dst_vault: tuple[Path | None, Path | None],
+  vault_enabled: bool = True,
+  *,
+  reraise: bool = False,
 ) -> None:
-    """Delete relocated-from member *name*'s store and name each leaf it leaves.
+  """Delete relocated-from member *name*'s store and name each leaf it leaves.
 
-    A failed removal prints a Note naming every leaf left behind; rc is unchanged.  An
-    interrupt is the success tail's to name.  With *reraise* the failure propagates
-    instead, for a caller whose unwind restores the store.
-    """
-    bases, kept = _carried_member_store(ws, name, dst_vault, vault_enabled=vault_enabled)
-    # ⚑ *kept* holds the leaves this operation RETAINED on purpose; the retained-vault
-    # Note accounts for them, and naming them again would call a keep a failure.
-    spared = {leaf for leaf, _key in kept}
+  A failed removal prints a Note naming every leaf left behind; rc is unchanged.  An
+  interrupt is the success tail's to name.  With *reraise* the failure propagates
+  instead, for a caller whose unwind restores the store.
+  """
+  bases, kept = _carried_member_store(ws, name, dst_vault, vault_enabled=vault_enabled)
+  # ⚑ *kept* holds the leaves this operation RETAINED on purpose; the retained-vault
+  # Note accounts for them, and naming them again would call a keep a failure.
+  spared = {leaf for leaf, _key in kept}
 
-    def left() -> list[Path]:
-        # ⚑ ``remove_member_store`` raises ``StoreRemovalError`` (an ``OSError``) at the
-        # first leaf that refuses, so every leaf after it remains too; only the disk says
-        # whether the box tree (which may hold credentials) is gone.
-        return _on_disk(p for p in _member_leaves(ws, name)[1:]
-                        if p is not None and p not in spared)
+  def left() -> list[Path]:
+    # ⚑ ``remove_member_store`` raises ``StoreRemovalError`` (an ``OSError``) at the
+    # first leaf that refuses, so every leaf after it remains too; only the disk says
+    # whether the box tree (which may hold credentials) is gone.
+    return _on_disk(p for p in _member_leaves(ws, name)[1:] if p is not None and p not in spared)
 
-    try:
-        remove_member_store(ws, name, bases=bases)
-    except OSError as err:
-        if reraise:
-            raise
-        _report_store_leftovers(name, left(), f": {err}")
-    else:
-        _report_store_leftovers(name, left())
-    _report_unreceived_vaults(kept)
+  try:
+    remove_member_store(ws, name, bases=bases)
+  except OSError as err:
+    if reraise:
+      raise
+    _report_store_leftovers(name, left(), f": {err}")
+  else:
+    _report_store_leftovers(name, left())
+  _report_unreceived_vaults(kept)
 
 
 def _report_store_leftovers(
-    name: str, left: Collection[Path], why: str = "", *, unmoved: Collection[str] = (),
+  name: str,
+  left: Collection[Path],
+  why: str = "",
+  *,
+  unmoved: Collection[str] = (),
 ) -> None:
-    """THE Note for what a relocation leaves of *name*'s old store: *left*, and *unmoved*.
+  """THE Note for what a relocation leaves of *name*'s old store: *left*, and *unmoved*.
 
-    *why* follows the name (``": <error>"``); *unmoved* names steps 4b and 4c's leftovers.
-    """
-    import sys
+  *why* follows the name (``": <error>"``); *unmoved* names steps 4b and 4c's leftovers.
+  """
+  import sys
 
-    parts = []
-    if left:
-        parts.append(f"could not remove the old store of '{name}'{why}; left "
-                     f"{', '.join(map(str, left))}")
-    parts += unmoved
-    if parts:
-        print(f"Note: {'; '.join(parts)}", file=sys.stderr)
+  parts = []
+  if left:
+    parts.append(
+      f"could not remove the old store of '{name}'{why}; left {', '.join(map(str, left))}"
+    )
+  parts += unmoved
+  if parts:
+    print(f"Note: {'; '.join(parts)}", file=sys.stderr)
 
 
 def _to_default(
-    state: ProjectState,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    unwind: _Unwind,
-    *,
-    new_name: str,
-    new_workspace: Path,
-    requested_name: str = "",
+  state: ProjectState,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  unwind: _Unwind,
+  *,
+  new_name: str,
+  new_workspace: Path,
+  requested_name: str = "",
 ) -> tuple[ProjectState, _SourceTeardown | None]:
-    """Convert/relocate the project so its owner becomes the default workset."""
-    # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
-    # case stops being detectable (it is detected BY the source's live registration).
-    mint = _default_rename_name(state, std, new_workspace, requested_name)
-    # ⚑⚑ L2 / FIX1: a PRIMARY source's own name is STILL registered here, so register/assign
-    # would read the source's OWN entry as a same-kind collision. Free it first.
-    preserved_name: str | None = None
-    kept = _relocated_own_name(state, std, new_workspace, mint)
-    # ⚑⚑ Armed BEFORE the first write below: the rollback puts the PRIMARY membership
-    # back as it was, the name freed here and the one registered or assigned included.
-    unwind.push(partial(_restore_primary_rows, std, load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary))))
-    if state.mode == BoxMode.primary and state.name:
-        existing = _primary_name_at(state, std, new_workspace)
-        if existing is not None:
-            # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
-            preserved_name = existing
-        elif kept is not None:
-            # RELOCATING own-name move.
-            preserved_name = kept
-        # ⚑ A free that fails raises its own cause, not the register's "already registered".
-        if preserved_name is not None:
-            unregister_primary_box_name(std.primary_workset, preserved_name,
-                                        early=_early_scope(std, BoxMode.primary))
-    # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
-    claimed = mint if mint is not None else kept
-    if claimed is not None:
-        register_primary_box_name(
-            std.primary_workset, claimed, new_workspace,
-            early=_early_scope(std, BoxMode.primary),
-        )
-        project_name = claimed
-    else:
-        project_name = assign_primary_box_name(
-            std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
-        )
-    dst_metadata = std.boxes / project_name
+  """Convert/relocate the project so its owner becomes the default workset."""
+  # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
+  # case stops being detectable (it is detected BY the source's live registration).
+  mint = _default_rename_name(state, std, new_workspace, requested_name)
+  # ⚑⚑ L2 / FIX1: a PRIMARY source's own name is STILL registered here, so register/assign
+  # would read the source's OWN entry as a same-kind collision. Free it first.
+  preserved_name: str | None = None
+  kept = _relocated_own_name(state, std, new_workspace, mint)
+  # ⚑⚑ Armed BEFORE the first write below: the rollback puts the PRIMARY membership
+  # back as it was, the name freed here and the one registered or assigned included.
+  unwind.push(
+    partial(
+      _restore_primary_rows,
+      std,
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
+    )
+  )
+  if state.mode == BoxMode.primary and state.name:
+    existing = _primary_name_at(state, std, new_workspace)
+    if existing is not None:
+      # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
+      preserved_name = existing
+    elif kept is not None:
+      # RELOCATING own-name move.
+      preserved_name = kept
+    # ⚑ A free that fails raises its own cause, not the register's "already registered".
+    if preserved_name is not None:
+      unregister_primary_box_name(
+        std.primary_workset, preserved_name, early=_early_scope(std, BoxMode.primary)
+      )
+  # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
+  claimed = mint if mint is not None else kept
+  if claimed is not None:
+    register_primary_box_name(
+      std.primary_workset,
+      claimed,
+      new_workspace,
+      early=_early_scope(std, BoxMode.primary),
+    )
+    project_name = claimed
+  else:
+    project_name = assign_primary_box_name(
+      std.primary_workset,
+      str(new_workspace),
+      early=_early_scope(std, BoxMode.primary),
+    )
+  dst_metadata = std.boxes / project_name
 
-    # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
-    # those differ (root vs ``box_data/``), and the root would drag workspace+vault into
-    # the box dir AND land the source's WORKSET-tier file at the dest's BOX tier (M-8).
-    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
-                                    early=EarlyScope(std.early_system, _state_ws_token(state)))
-    # Name reused in place ⇒ the metadata IS already at the destination; copying it
-    # would be a failing copy-onto-self.
-    if dst_metadata.resolve() == state.metadata_path.resolve():
-        dst_shell = state.shell_path
-    else:
-        dst_shell = _copy_metadata(
-            src_meta_dir, state.shell_path, dst_metadata,
-            shell_into_metadata=True, unwind=unwind,
-        )
-        _deliver_carried_box_settings(
-            state, dst_metadata / BOX_META_FILE,
-            early=EarlyScope(std.early_system, _state_ws_token(state)))
-
-    # Phase 5 fixed PRIMARY table: vault under {config.primary_workset}.
-    _dst_shell, vault_ro, vault_rw = _primary_box_paths(
-        std, dst_metadata, project_name,
+  # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
+  # those differ (root vs ``box_data/``), and the root would drag workspace+vault into
+  # the box dir AND land the source's WORKSET-tier file at the dest's BOX tier (M-8).
+  src_meta_dir = box_metadata_dir(
+    state.mode, state.metadata_path, early=EarlyScope(std.early_system, _state_ws_token(state))
+  )
+  # Name reused in place ⇒ the metadata IS already at the destination; copying it
+  # would be a failing copy-onto-self.
+  if dst_metadata.resolve() == state.metadata_path.resolve():
+    dst_shell = state.shell_path
+  else:
+    dst_shell = _copy_metadata(
+      src_meta_dir,
+      state.shell_path,
+      dst_metadata,
+      shell_into_metadata=True,
+      unwind=unwind,
+    )
+    _deliver_carried_box_settings(
+      state,
+      dst_metadata / BOX_META_FILE,
+      early=EarlyScope(std.early_system, _state_ws_token(state)),
     )
 
-    # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
-    # the PRIMARY ``boxes:`` membership registered above. Only the non-default
-    # ``box.enable_vault`` is persisted, carried so a disabled-vault box stays disabled.
-    # ⚑⚑ The BOX-AUTHORED value, never the resolved one: a workset-tier default belongs to
-    # the workset and must keep resolving from there (``carried_box_settings``).
-    write_box_enable_vault(dst_metadata / BOX_META_FILE, state.box_authored_vault)
+  # Phase 5 fixed PRIMARY table: vault under {config.primary_workset}.
+  _dst_shell, vault_ro, vault_rw = _primary_box_paths(
+    std,
+    dst_metadata,
+    project_name,
+  )
 
-    if state.enable_vault:
-        # ⚡ A NULL ARM GETS NO LEAF AND NO UNWIND — nothing was made under it.
-        for leaf in (vault_ro, vault_rw):
-            if leaf is None:
-                continue
-            # ⚑ A leaf that already exists may be the box's own vault, reused by name.
-            if not (leaf.exists() or leaf.is_symlink()):
-                leaf.mkdir(parents=True)
-                # The carry may trade this empty leaf for a LINK; the unwind takes either.
-                unwind.push(partial(_unwind_created_root, leaf))
-            else:
-                _arm_leftover_note(unwind, leaf)
+  # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
+  # the PRIMARY ``boxes:`` membership registered above. Only the non-default
+  # ``box.enable_vault`` is persisted, carried so a disabled-vault box stays disabled.
+  # ⚑⚑ The BOX-AUTHORED value, never the resolved one: a workset-tier default belongs to
+  # the workset and must keep resolving from there (``carried_box_settings``).
+  write_box_enable_vault(dst_metadata / BOX_META_FILE, state.box_authored_vault)
 
-    teardown = _plan_source_teardown(
-        state, std, (vault_ro, vault_rw), preserve_name=preserved_name)
-    # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
-    # deleted on success -- contents move first, and a vault link follows the landing.
-    _carry_vault_contents(
-        state, std, vault_ro, vault_rw, teardown,
-        relocated=_landings((state.workspace_path, new_workspace),
-                            (src_meta_dir, dst_metadata)),
-    )
-    _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
-    teardown = _stash_source_marker(teardown, unwind)
+  if state.enable_vault:
+    # ⚡ A NULL ARM GETS NO LEAF AND NO UNWIND — nothing was made under it.
+    for leaf in (vault_ro, vault_rw):
+      if leaf is None:
+        continue
+      # ⚑ A leaf that already exists may be the box's own vault, reused by name.
+      if not (leaf.exists() or leaf.is_symlink()):
+        leaf.mkdir(parents=True)
+        # The carry may trade this empty leaf for a LINK; the unwind takes either.
+        unwind.push(partial(_unwind_created_root, leaf))
+      else:
+        _arm_leftover_note(unwind, leaf)
 
-    return ProjectState(
-        owner="primary", mode=BoxMode.primary, name=project_name,
-        workspace_path=new_workspace, metadata_path=dst_metadata,
-        shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None,
-        enable_vault=state.enable_vault,
-        box_authored_vault=state.box_authored_vault,
-    ), teardown
+  teardown = _plan_source_teardown(state, std, (vault_ro, vault_rw), preserve_name=preserved_name)
+  # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
+  # deleted on success -- contents move first, and a vault link follows the landing.
+  _carry_vault_contents(
+    state,
+    std,
+    vault_ro,
+    vault_rw,
+    teardown,
+    relocated=_landings((state.workspace_path, new_workspace), (src_meta_dir, dst_metadata)),
+  )
+  _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
+  teardown = _stash_source_marker(teardown, unwind)
+
+  return ProjectState(
+    owner="primary",
+    mode=BoxMode.primary,
+    name=project_name,
+    workspace_path=new_workspace,
+    metadata_path=dst_metadata,
+    shell_path=dst_shell,
+    vault_ro=vault_ro,
+    vault_rw=vault_rw,
+    is_external=False,
+    ws=None,
+    enable_vault=state.enable_vault,
+    box_authored_vault=state.box_authored_vault,
+  ), teardown
 
 
 #: What a standalone root keeps whatever ``workset.*`` says: the ``workset.boxes`` DEFAULT
@@ -3662,36 +4226,43 @@ def _to_default(
 #: KEY AND IS ANSWERED BY :func:`_standalone_root_artifacts`, NEVER BY A NAME.  A leaf name
 #: cannot express ``workset.vault_ro: store/ro`` — the root child is then ``store``, a name
 #: no list holds — and cannot express an absolute repoint at all.
-_STANDALONE_FIXED_ARTIFACTS = frozenset({
-    STANDALONE_META_DIR,   # box_data/ — the ``workset.boxes`` DEFAULT leaf, not a locator
-    WORKSET_META_FILE,      # the workset meta (drift I — at the root)
-    BOX_META_FILE,          # the box meta (drift I — at the root)
-    ".kanibako.lock",       # lock file
-})
+_STANDALONE_FIXED_ARTIFACTS = frozenset(
+  {
+    STANDALONE_META_DIR,  # box_data/ — the ``workset.boxes`` DEFAULT leaf, not a locator
+    WORKSET_META_FILE,  # the workset meta (drift I — at the root)
+    BOX_META_FILE,  # the box meta (drift I — at the root)
+    ".kanibako.lock",  # lock file
+  }
+)
 
 
 def _resolve_standalone_workspaces(
-    root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope,
+  root: Path,
+  doc: Mapping[str, Any] | None,
+  *,
+  early: EarlyScope,
 ) -> Path:
-    """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default.
+  """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default.
 
-    Only a convert INTO the root reaches here, and it refused a nulling root first; the
-    refusal below keeps a null from ever reading as the default.
-    """
-    workspaces = resolve_workset_workspaces(root, doc, standalone=True, early=early)
-    if workspaces is None:
-        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True,
-                               early=early)
-    assert workspaces is not None  # refused on the line above
-    return workspaces
+  Only a convert INTO the root reaches here, and it refused a nulling root first; the
+  refusal below keeps a null from ever reading as the default.
+  """
+  workspaces = resolve_workset_workspaces(root, doc, standalone=True, early=early)
+  if workspaces is None:
+    refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True, early=early)
+  assert workspaces is not None  # refused on the line above
+  return workspaces
 
 
 def _resolve_standalone_boxes(
-    root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope,
+  root: Path,
+  doc: Mapping[str, Any] | None,
+  *,
+  early: EarlyScope,
 ) -> Path:
-    """``workset.boxes`` for a STANDALONE root — the resolver ``standalone_box_store`` reads
-    the key through, so the sweep and the box agree on where the store is."""
-    return resolve_workset_boxes(root, doc, standalone=True, early=early)
+  """``workset.boxes`` for a STANDALONE root — the resolver ``standalone_box_store`` reads
+  the key through, so the sweep and the box agree on where the store is."""
+  return resolve_workset_boxes(root, doc, standalone=True, early=early)
 
 
 #: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each
@@ -3702,1361 +4273,1499 @@ def _resolve_standalone_boxes(
 #: LEAF NAME no key moves, while the STORE answers to ``workset.boxes`` wherever the user
 #: put it — a leaf-name filter swept a repointed store into the workspace dir.
 _STANDALONE_ROOT_DIR_KEYS = (
-    ("workset.workspaces", _resolve_standalone_workspaces),
-    ("workset.boxes", _resolve_standalone_boxes),
-    ("workset.vault_ro", resolve_workset_vault_ro),
-    ("workset.vault_rw", resolve_workset_vault_rw),
-    ("workset.canon", resolve_workset_canon),
+  ("workset.workspaces", _resolve_standalone_workspaces),
+  ("workset.boxes", _resolve_standalone_boxes),
+  ("workset.vault_ro", resolve_workset_vault_ro),
+  ("workset.vault_rw", resolve_workset_vault_rw),
+  ("workset.canon", resolve_workset_canon),
 )
 
 
 def _standalone_root_artifacts(
-    root: Path, *, early: EarlyScope,
+  root: Path,
+  *,
+  early: EarlyScope,
 ) -> list[tuple[str, Path, bool]]:
-    """The RESOLVED ``(key, path, repointed)`` directories a standalone *root* owns.
+  """The RESOLVED ``(key, path, repointed)`` directories a standalone *root* owns.
 
-    ⚑⚑ RESOLVED, NEVER A LEAF NAME: a basename filter cannot tell a repointed
-    ``workset.vault_ro: store/ro`` from the user's own ``store/``, and would sweep it into
-    the workspace dir.  Every key the root resolves is listed, ``workset.canon`` included.
+  ⚑⚑ RESOLVED, NEVER A LEAF NAME: a basename filter cannot tell a repointed
+  ``workset.vault_ro: store/ro`` from the user's own ``store/``, and would sweep it into
+  the workspace dir.  Every key the root resolves is listed, ``workset.canon`` included.
 
-    *repointed* says the resolved path DIFFERS from that key's default leaf, i.e. the user put
-    it there.  :func:`_consolidate_workspace_subdir` reports those keeps by name
-    (system-design § "Box lifecycle": a keep that cannot name the path as the user's is
-    just a leak); the default layout keeps stay silent, as they always have.
+  *repointed* says the resolved path DIFFERS from that key's default leaf, i.e. the user put
+  it there.  :func:`_consolidate_workspace_subdir` reports those keeps by name
+  (system-design § "Box lifecycle": a keep that cannot name the path as the user's is
+  just a leak); the default layout keeps stay silent, as they always have.
 
-    ⚑ ONE ``workset.yaml`` read feeds every resolution — reading per key opens a window for
-    them to disagree about the same document (``_workset_skeleton_dirs``' own reason).
+  ⚑ ONE ``workset.yaml`` read feeds every resolution — reading per key opens a window for
+  them to disagree about the same document (``_workset_skeleton_dirs``' own reason).
 
-    ⚑ RAISES (``SettingsError``, naming the key and the token) when a repoint will not resolve.
-    A root whose layout keys do not answer is a root whose children cannot be told apart, and
-    the sweep below MOVES USER DATA.  Refusing costs nothing here: this runs before
-    :func:`_to_standalone` has copied or written anything.  Same call order, and for the same
-    reason, as ``project/workset.py::standalone_vault_teardown``.
-    """
-    doc = load_workset_settings_doc(root)
-    out: list[tuple[str, Path, bool]] = []
-    for key, resolver in _STANDALONE_ROOT_DIR_KEYS:
-        resolved = resolver(root, doc, early=early)
-        if resolved is None:  # a null key names no dir, so it owns no artifact
-            continue
-        out.append((key, resolved, resolved != resolver(root, None, early=early)))
-    # ⚑ The literal ``vault/`` skeleton parent, on disk only — exactly the tail
-    # ``standalone_vault_teardown`` appends, and for its reason: no key names it, the default
-    # layout's ``.gitignore`` lives there, and ``_to_standalone`` writes that file itself.
-    skeleton = root / bootstrap.VAULT_PATH
-    if skeleton.is_dir():
-        out.append(("the vault skeleton", skeleton, False))
-    return out
+  ⚑ RAISES (``SettingsError``, naming the key and the token) when a repoint will not resolve.
+  A root whose layout keys do not answer is a root whose children cannot be told apart, and
+  the sweep below MOVES USER DATA.  Refusing costs nothing here: this runs before
+  :func:`_to_standalone` has copied or written anything.  Same call order, and for the same
+  reason, as ``project/workset.py::standalone_vault_teardown``.
+  """
+  doc = load_workset_settings_doc(root)
+  out: list[tuple[str, Path, bool]] = []
+  for key, resolver in _STANDALONE_ROOT_DIR_KEYS:
+    resolved = resolver(root, doc, early=early)
+    if resolved is None:  # a null key names no dir, so it owns no artifact
+      continue
+    out.append((key, resolved, resolved != resolver(root, None, early=early)))
+  # ⚑ The literal ``vault/`` skeleton parent, on disk only — exactly the tail
+  # ``standalone_vault_teardown`` appends, and for its reason: no key names it, the default
+  # layout's ``.gitignore`` lives there, and ``_to_standalone`` writes that file itself.
+  skeleton = root / bootstrap.VAULT_PATH
+  if skeleton.is_dir():
+    out.append(("the vault skeleton", skeleton, False))
+  return out
 
 
 def _refuse_root_name_collisions(
-    state: ProjectState, std: StandardPaths, target_mode: BoxMode,
+  state: ProjectState,
+  std: StandardPaths,
+  target_mode: BoxMode,
 ) -> None:
-    """Refuse an in-place convert that would overwrite, nest, or adopt a user entry.
+  """Refuse an in-place convert that would overwrite, nest, or adopt a user entry.
 
-    OUT of standalone, the lift moves each workspace entry to the root: one named like a
-    root entry, or a name the root reserves, would overwrite kanibako's or nest in it, and
-    the tail then deletes it.  The user's ``.gitignore`` is merged instead.
-    INTO standalone, a root entry the layout reserves would be adopted as kanibako's own
-    and deleted with it by a purge, and one the sweep moves into a workspace dir already
-    holding that name would overwrite or nest in it.
-    """
-    early = _early_scope(std, BoxMode.standalone)
-    if state.mode is BoxMode.standalone and target_mode is not BoxMode.standalone:
-        root, where = state.metadata_path, state.workspace_path
-        if not where.is_dir() or root.resolve() not in where.resolve().parents:
-            return
-        artifacts = _standalone_root_artifacts(root, early=early)
-        hits = [child for child in where.iterdir() if child != where / bootstrap.IGNORE_FILE and (
-            (root / child.name).exists() or (root / child.name).is_symlink()
-            or child.name in _STANDALONE_FIXED_ARTIFACTS
-            or _artifact_claiming(root / child.name, artifacts) is not None)]
-        why = f"each would overwrite or land inside kanibako's entry of that name at {root}"
-    elif target_mode is BoxMode.standalone and state.mode is not BoxMode.standalone:
-        # A ``workset.yaml`` here IS the layout, and a path it repoints is declared.  A
-        # DEFAULT store or canon path already holding something is the user's, and purge
-        # deletes it whole.  An existing vault arm is refused above, on its own terms.
-        where = state.workspace_path
-        if not where.is_dir():
-            return
-        owned = [path for key, path, repointed in _standalone_root_artifacts(where, early=early)
-                 if key in {"workset.boxes", "workset.canon"} and not repointed
-                 and (path.exists() or path.is_symlink()) and _holds_anything(path)]
-        hits = [child for child in where.iterdir()
-                if child.name in _STANDALONE_FIXED_ARTIFACTS - {WORKSET_META_FILE}
-                or any(child == path or child in path.parents for path in owned)]
-        why = "the standalone layout claims those names, so kanibako would adopt them as its own"
-        workspace = _resolve_standalone_workspaces(
-            where, load_workset_settings_doc(where), early=early)
-        if workspace.is_dir() and workspace.resolve() != where.resolve():
-            artifacts = _standalone_root_artifacts(where, early=early)
-            clash = sorted(child.name for child in where.iterdir()
-                           if _swept(child, artifacts) and child not in hits
-                           and ((workspace / child.name).exists()
-                                or (workspace / child.name).is_symlink()))
-            if clash:
-                _refuse_names(clash, where, f"each would overwrite or land inside the entry of "
-                                            f"that name in {workspace}")
-    else:
-        return
-    if hits:
-        _refuse_names(sorted(child.name for child in hits), where, why)
+  OUT of standalone, the lift moves each workspace entry to the root: one named like a
+  root entry, or a name the root reserves, would overwrite kanibako's or nest in it, and
+  the tail then deletes it.  The user's ``.gitignore`` is merged instead.
+  INTO standalone, a root entry the layout reserves would be adopted as kanibako's own
+  and deleted with it by a purge, and one the sweep moves into a workspace dir already
+  holding that name would overwrite or nest in it.
+  """
+  early = _early_scope(std, BoxMode.standalone)
+  if state.mode is BoxMode.standalone and target_mode is not BoxMode.standalone:
+    root, where = state.metadata_path, state.workspace_path
+    if not where.is_dir() or root.resolve() not in where.resolve().parents:
+      return
+    artifacts = _standalone_root_artifacts(root, early=early)
+    hits = [
+      child
+      for child in where.iterdir()
+      if child != where / bootstrap.IGNORE_FILE
+      and (
+        (root / child.name).exists()
+        or (root / child.name).is_symlink()
+        or child.name in _STANDALONE_FIXED_ARTIFACTS
+        or _artifact_claiming(root / child.name, artifacts) is not None
+      )
+    ]
+    why = f"each would overwrite or land inside kanibako's entry of that name at {root}"
+  elif target_mode is BoxMode.standalone and state.mode is not BoxMode.standalone:
+    # A ``workset.yaml`` here IS the layout, and a path it repoints is declared.  A
+    # DEFAULT store or canon path already holding something is the user's, and purge
+    # deletes it whole.  An existing vault arm is refused above, on its own terms.
+    where = state.workspace_path
+    if not where.is_dir():
+      return
+    owned = [
+      path
+      for key, path, repointed in _standalone_root_artifacts(where, early=early)
+      if key in {"workset.boxes", "workset.canon"}
+      and not repointed
+      and (path.exists() or path.is_symlink())
+      and _holds_anything(path)
+    ]
+    hits = [
+      child
+      for child in where.iterdir()
+      if child.name in _STANDALONE_FIXED_ARTIFACTS - {WORKSET_META_FILE}
+      or any(child == path or child in path.parents for path in owned)
+    ]
+    why = "the standalone layout claims those names, so kanibako would adopt them as its own"
+    workspace = _resolve_standalone_workspaces(
+      where, load_workset_settings_doc(where), early=early
+    )
+    if workspace.is_dir() and workspace.resolve() != where.resolve():
+      artifacts = _standalone_root_artifacts(where, early=early)
+      clash = sorted(
+        child.name
+        for child in where.iterdir()
+        if _swept(child, artifacts)
+        and child not in hits
+        and ((workspace / child.name).exists() or (workspace / child.name).is_symlink())
+      )
+      if clash:
+        _refuse_names(
+          clash,
+          where,
+          f"each would overwrite or land inside the entry of that name in {workspace}",
+        )
+  else:
+    return
+  if hits:
+    _refuse_names(sorted(child.name for child in hits), where, why)
 
 
 def _refuse_names(names: list[str], where: Path, why: str) -> None:
-    """Raise the collision refusal naming *names* in *where*."""
-    raise ProjectError(
-        f"Refusing: {', '.join(names)} in {where}: {why}. Rename or move them out of "
-        f"{where}, and run it again."
-    )
+  """Raise the collision refusal naming *names* in *where*."""
+  raise ProjectError(
+    f"Refusing: {', '.join(names)} in {where}: {why}. Rename or move them out of "
+    f"{where}, and run it again."
+  )
 
 
 def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool:
-    """Does the INTO-standalone sweep move root *child* into the workspace dir?"""
-    return (child.name not in _STANDALONE_FIXED_ARTIFACTS
-            and _artifact_claiming(child, artifacts) is None)
+  """Does the INTO-standalone sweep move root *child* into the workspace dir?"""
+  return (
+    child.name not in _STANDALONE_FIXED_ARTIFACTS and _artifact_claiming(child, artifacts) is None
+  )
 
 
 def _holds_anything(path: Path) -> bool:
-    """A file or link, or a directory with one anywhere below it; bare directories are not."""
-    if path.is_symlink() or not path.is_dir():
-        return True
-    return any(p.is_symlink() or not p.is_dir() for p in path.rglob("*"))
+  """A file or link, or a directory with one anywhere below it; bare directories are not."""
+  if path.is_symlink() or not path.is_dir():
+    return True
+  return any(p.is_symlink() or not p.is_dir() for p in path.rglob("*"))
 
 
 def _artifact_claiming(
-    child: Path, artifacts: list[tuple[str, Path, bool]],
+  child: Path,
+  artifacts: list[tuple[str, Path, bool]],
 ) -> tuple[str, Path, bool] | None:
-    """The artifact *child* IS or CONTAINS, else ``None`` — the ANCESTOR test is the point.
+  """The artifact *child* IS or CONTAINS, else ``None`` — the ANCESTOR test is the point.
 
-    ⚑ A repoint one level down (``vault_ro: store/ro``) makes the root child ``store``, which
-    is not the resolved path but holds it.  An equality-only test keeps ``store/ro`` — a path
-    that is not a child of *root* and so was never a candidate — and sweeps ``store``.
-    """
-    for artifact in artifacts:
-        _key, path, _repointed = artifact
-        if path == child or child in path.parents:
-            return artifact
-    return None
+  ⚑ A repoint one level down (``vault_ro: store/ro``) makes the root child ``store``, which
+  is not the resolved path but holds it.  An equality-only test keeps ``store/ro`` — a path
+  that is not a child of *root* and so was never a candidate — and sweeps ``store``.
+  """
+  for artifact in artifacts:
+    _key, path, _repointed = artifact
+    if path == child or child in path.parents:
+      return artifact
+  return None
 
 
 def _consolidation_sweep(
-    root: Path, workspace_subdir: Path, *, early: EarlyScope,
+  root: Path,
+  workspace_subdir: Path,
+  *,
+  early: EarlyScope,
 ) -> tuple[list[Path], list[tuple[Path, str]]]:
-    """The *root* entries the standalone layout moves into *workspace_subdir*, and the
-    repointed ``(entry, key)`` keeps it leaves at the root.  Moves nothing."""
-    if not root.is_dir():
-        return [], []
-    # ⚑ A ``workset.workspaces`` that resolves AT the root means the workspace already IS the
-    # root: there is nothing to consolidate, and moving each child onto itself would fail.
-    if workspace_subdir.resolve() == root.resolve():
-        return [], []
+  """The *root* entries the standalone layout moves into *workspace_subdir*, and the
+  repointed ``(entry, key)`` keeps it leaves at the root.  Moves nothing."""
+  if not root.is_dir():
+    return [], []
+  # ⚑ A ``workset.workspaces`` that resolves AT the root means the workspace already IS the
+  # root: there is nothing to consolidate, and moving each child onto itself would fail.
+  if workspace_subdir.resolve() == root.resolve():
+    return [], []
 
-    artifacts = _standalone_root_artifacts(root, early=early)
-    movable: list[Path] = []
-    kept: list[tuple[Path, str]] = []
-    for child in root.iterdir():
-        if child.name in _STANDALONE_FIXED_ARTIFACTS:
-            continue
-        claim = _artifact_claiming(child, artifacts)
-        if claim is None:
-            movable.append(child)
-        elif claim[2]:
-            kept.append((child, claim[0]))
-    return movable, kept
+  artifacts = _standalone_root_artifacts(root, early=early)
+  movable: list[Path] = []
+  kept: list[tuple[Path, str]] = []
+  for child in root.iterdir():
+    if child.name in _STANDALONE_FIXED_ARTIFACTS:
+      continue
+    claim = _artifact_claiming(child, artifacts)
+    if claim is None:
+      movable.append(child)
+    elif claim[2]:
+      kept.append((child, claim[0]))
+  return movable, kept
 
 
 def _consolidate_workspace_subdir(
-    root: Path,
-    workspace_subdir: Path,
-    unwind: _Unwind,
-    *,
-    early: EarlyScope,
+  root: Path,
+  workspace_subdir: Path,
+  unwind: _Unwind,
+  *,
+  early: EarlyScope,
 ) -> None:
-    """Move the project's top-level files into the standalone workspace dir (drift H)."""
-    import sys
+  """Move the project's top-level files into the standalone workspace dir (drift H)."""
+  import sys
 
-    movable, kept = _consolidation_sweep(root, workspace_subdir, early=early)
-    for child, key in kept:
-        # ⚑ system-design § "Box lifecycle": the user put it there, so the keep is
-        # REPORTED and names the key — otherwise a directory sitting outside the workspace
-        # after a convert that says it consolidated everything is unexplained.
-        # Default-layout keeps stay silent.
-        print(f"Note: left {child} at the standalone root — {key} resolves "
-              f"inside it.", file=sys.stderr)
-    if not movable:
-        return
+  movable, kept = _consolidation_sweep(root, workspace_subdir, early=early)
+  for child, key in kept:
+    # ⚑ system-design § "Box lifecycle": the user put it there, so the keep is
+    # REPORTED and names the key — otherwise a directory sitting outside the workspace
+    # after a convert that says it consolidated everything is unexplained.
+    # Default-layout keeps stay silent.
+    print(
+      f"Note: left {child} at the standalone root — {key} resolves inside it.", file=sys.stderr
+    )
+  if not movable:
+    return
 
-    workspace_subdir.mkdir(parents=True, exist_ok=True)
-    unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable, root=root))
-    for child in movable:
-        _move_entry(child, workspace_subdir / child.name, root=root)
+  workspace_subdir.mkdir(parents=True, exist_ok=True)
+  unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable, root=root))
+  for child in movable:
+    _move_entry(child, workspace_subdir / child.name, root=root)
 
 
 def _undo_consolidate(
-    src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path,
+  src_dir: Path,
+  dest_dir: Path,
+  moved: list[Path],
+  *,
+  root: Path,
 ) -> bool:
-    """Move *moved*'s leaves back from *src_dir* to *dest_dir* — the reversal of either sweep.
+  """Move *moved*'s leaves back from *src_dir* to *dest_dir* — the reversal of either sweep.
 
-    ⚑ *dest_dir* is RE-CREATED first, even with nothing *moved*: the unconsolidate
-    direction REMOVES it once emptied (with any repoint parents), EMPTY or not.
-    Returns ``False`` when a leaf it reported did not go back.
-    """
-    import sys
+  ⚑ *dest_dir* is RE-CREATED first, even with nothing *moved*: the unconsolidate
+  direction REMOVES it once emptied (with any repoint parents), EMPTY or not.
+  Returns ``False`` when a leaf it reported did not go back.
+  """
+  import sys
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    held: KeyboardInterrupt | None = None
-    restored = True
-    for child in moved:
-        src = src_dir / child.name
-        try:
-            if src.exists() or src.is_symlink():
-                _move_entry(src, dest_dir / child.name, root=root)
-        except KeyboardInterrupt as exc:
-            held = held or exc
-        except OSError:
-            pass
-        if src.exists() or src.is_symlink():
-            restored = False
-            print(f"Note: {child.name} did not go back to {dest_dir}; it is at {src}",
-                  file=sys.stderr)
-    if held is not None:
-        raise held
-    return restored
+  dest_dir.mkdir(parents=True, exist_ok=True)
+  held: KeyboardInterrupt | None = None
+  restored = True
+  for child in moved:
+    src = src_dir / child.name
+    try:
+      if src.exists() or src.is_symlink():
+        _move_entry(src, dest_dir / child.name, root=root)
+    except KeyboardInterrupt as exc:
+      held = held or exc
+    except OSError:
+      pass
+    if src.exists() or src.is_symlink():
+      restored = False
+      print(f"Note: {child.name} did not go back to {dest_dir}; it is at {src}", file=sys.stderr)
+  if held is not None:
+    raise held
+  return restored
 
 
 def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
-    """Move *src* to *dst* like ``shutil.move``, a directory without owner write included.
+  """Move *src* to *dst* like ``shutil.move``, a directory without owner write included.
 
-    ⚑ Renaming a directory into another parent rewrites its ``..``, which needs write on
-    the directory ITSELF: one we own gains ``u+w`` for the move and gets its mode back
-    wherever it ends up.  One in-box root owns is renamed inside the user namespace
-    (:func:`_rename_escalated`).  Only a cross-device rename falls back to copying; any
-    other refusal raises with nothing copied, so no tree is ever left in both places.
-    """
-    import errno
-    import os
-    import stat
+  ⚑ Renaming a directory into another parent rewrites its ``..``, which needs write on
+  the directory ITSELF: one we own gains ``u+w`` for the move and gets its mode back
+  wherever it ends up.  One in-box root owns is renamed inside the user namespace
+  (:func:`_rename_escalated`).  Only a cross-device rename falls back to copying; any
+  other refusal raises with nothing copied, so no tree is ever left in both places.
+  """
+  import errno
+  import os
+  import stat
 
-    mode = None
-    if src.is_dir() and not src.is_symlink():
-        st = src.lstat()
-        mode = stat.S_IMODE(st.st_mode)
-        if mode & stat.S_IWUSR or st.st_uid != os.getuid():
-            mode = None
-    landed = dst / src.name if dst.is_dir() else dst
+  mode = None
+  if src.is_dir() and not src.is_symlink():
+    st = src.lstat()
+    mode = stat.S_IMODE(st.st_mode)
+    if mode & stat.S_IWUSR or st.st_uid != os.getuid():
+      mode = None
+  landed = dst / src.name if dst.is_dir() else dst
+  try:
+    if mode is not None:
+      os.chmod(src, mode | stat.S_IWUSR)
+    if landed.exists() or landed.is_symlink():
+      shutil.move(str(src), str(dst))
+      return
     try:
-        if mode is not None:
-            os.chmod(src, mode | stat.S_IWUSR)
-        if landed.exists() or landed.is_symlink():
-            shutil.move(str(src), str(dst))
-            return
-        try:
-            os.rename(src, landed)
-        except OSError as err:
-            if err.errno == errno.EXDEV:
-                shutil.move(str(src), str(dst))
-            elif not (err.errno in (errno.EACCES, errno.EPERM)
-                      and _rename_escalated(src, landed, root)):
-                raise
-    finally:
-        if mode is not None:
-            for path in (src, landed):
-                if path.is_dir() and not path.is_symlink():
-                    try:
-                        os.chmod(path, mode)
-                    except OSError:
-                        pass
+      os.rename(src, landed)
+    except OSError as err:
+      if err.errno == errno.EXDEV:
+        shutil.move(str(src), str(dst))
+      elif not (err.errno in (errno.EACCES, errno.EPERM) and _rename_escalated(src, landed, root)):
+        raise
+  finally:
+    if mode is not None:
+      for path in (src, landed):
+        if path.is_dir() and not path.is_symlink():
+          try:
+            os.chmod(path, mode)
+          except OSError:
+            pass
 
 
 def _rename_escalated(src: Path, dst: Path, root: Path) -> bool:
-    """Rename the real dir *src* to the absent *dst* as namespace root; ``False`` if refused.
+  """Rename the real dir *src* to the absent *dst* as namespace root; ``False`` if refused.
 
-    ⚑ Only inside the box's own tree: both parents must resolve under *root* and share a
-    device, *src* must not be a link, and nothing may sit at *dst* (a rename would replace
-    an empty dir).  Never a copy.
-    """
-    import os
+  ⚑ Only inside the box's own tree: both parents must resolve under *root* and share a
+  device, *src* must not be a link, and nothing may sit at *dst* (a rename would replace
+  an empty dir).  Never a copy.
+  """
+  import os
 
-    if src.is_symlink() or not src.is_dir() or dst.exists() or dst.is_symlink():
-        return False
-    top = root.resolve()
-    src_parent, dst_parent = src.parent.resolve(), dst.parent.resolve()
-    if not all(p == top or top in p.parents for p in (src_parent, dst_parent)):
-        return False
-    if os.stat(src_parent).st_dev != os.stat(dst_parent).st_dev:
-        return False
-    try:
-        return ContainerRuntime().unshare_rename(src_parent / src.name, dst_parent / dst.name)
-    except ContainerError:
-        return False
+  if src.is_symlink() or not src.is_dir() or dst.exists() or dst.is_symlink():
+    return False
+  top = root.resolve()
+  src_parent, dst_parent = src.parent.resolve(), dst.parent.resolve()
+  if not all(p == top or top in p.parents for p in (src_parent, dst_parent)):
+    return False
+  if os.stat(src_parent).st_dev != os.stat(dst_parent).st_dev:
+    return False
+  try:
+    return ContainerRuntime().unshare_rename(src_parent / src.name, dst_parent / dst.name)
+  except ContainerError:
+    return False
 
 
 def _prune_empty_dirs(path: Path, above: Path) -> None:
-    """Remove *path* and each parent strictly below *above* until one holds anything.
+  """Remove *path* and each parent strictly below *above* until one holds anything.
 
-    ⚑ ``rmdir`` IS the emptiness test: no user file can go with it.
-    """
-    while path != above and above in path.parents:
-        try:
-            path.rmdir()
-        except OSError:
-            break
-        path = path.parent
+  ⚑ ``rmdir`` IS the emptiness test: no user file can go with it.
+  """
+  while path != above and above in path.parents:
+    try:
+      path.rmdir()
+    except OSError:
+      break
+    path = path.parent
 
 
 def _hold_root_gitignore(
-    root: Path, workspace: Path, unwind: _Unwind,
+  root: Path,
+  workspace: Path,
+  unwind: _Unwind,
 ) -> Callable[[], object] | None:
-    """Keep the root ``.gitignore`` that lifting *workspace*'s own one will replace.
+  """Keep the root ``.gitignore`` that lifting *workspace*'s own one will replace.
 
-    The user's file wins the root.  The returned step, run after the lift, appends the
-    lines the root file held beyond kanibako's; the tail strips kanibako's as before.
-    The restore is pushed BEFORE the lift's undo, so a rollback puts both files back.
-    """
-    import os
+  The user's file wins the root.  The returned step, run after the lift, appends the
+  lines the root file held beyond kanibako's; the tail strips kanibako's as before.
+  The restore is pushed BEFORE the lift's undo, so a rollback puts both files back.
+  """
+  import os
 
-    ours, theirs = root / bootstrap.IGNORE_FILE, workspace / bootstrap.IGNORE_FILE
-    if not (ours.is_file() and not ours.is_symlink()
-            and (theirs.exists() or theirs.is_symlink())):
-        return None
-    held, mode = ours.read_bytes(), ours.stat().st_mode & 0o7777
-    their_bytes = theirs.read_bytes() if theirs.is_file() and not theirs.is_symlink() else None
+  ours, theirs = root / bootstrap.IGNORE_FILE, workspace / bootstrap.IGNORE_FILE
+  if not (ours.is_file() and not ours.is_symlink() and (theirs.exists() or theirs.is_symlink())):
+    return None
+  held, mode = ours.read_bytes(), ours.stat().st_mode & 0o7777
+  their_bytes = theirs.read_bytes() if theirs.is_file() and not theirs.is_symlink() else None
 
-    def _put_back() -> None:
-        if their_bytes is not None and theirs.is_file() and not theirs.is_symlink():
-            theirs.write_bytes(their_bytes)
-        if not (ours.exists() or ours.is_symlink()):
-            ours.write_bytes(held)
-            os.chmod(ours, mode)
+  def _put_back() -> None:
+    if their_bytes is not None and theirs.is_file() and not theirs.is_symlink():
+      theirs.write_bytes(their_bytes)
+    if not (ours.exists() or ours.is_symlink()):
+      ours.write_bytes(held)
+      os.chmod(ours, mode)
 
-    unwind.push(_put_back)
-    if their_bytes is None or gitignore_holds_only_kanibako(ours):
-        return None
-    their_lines = their_bytes.decode("utf-8", "replace").splitlines()
-    extra = [line for line in held.decode("utf-8", "replace").splitlines()
-             if line.strip() and line not in their_lines]
-    if not extra:
-        return None
-    sep = b"" if not their_bytes or their_bytes.endswith(b"\n") else b"\n"
-    merged = their_bytes + sep + "".join(f"{line}\n" for line in extra).encode()
-    return partial(ours.write_bytes, merged)
+  unwind.push(_put_back)
+  if their_bytes is None or gitignore_holds_only_kanibako(ours):
+    return None
+  their_lines = their_bytes.decode("utf-8", "replace").splitlines()
+  extra = [
+    line
+    for line in held.decode("utf-8", "replace").splitlines()
+    if line.strip() and line not in their_lines
+  ]
+  if not extra:
+    return None
+  sep = b"" if not their_bytes or their_bytes.endswith(b"\n") else b"\n"
+  merged = their_bytes + sep + "".join(f"{line}\n" for line in extra).encode()
+  return partial(ours.write_bytes, merged)
 
 
 def _unconsolidate_workspace_subdir(
-    workspace_subdir: Path,
-    root: Path,
-    unwind: _Unwind,
+  workspace_subdir: Path,
+  root: Path,
+  unwind: _Unwind,
 ) -> None:
-    """Lift the standalone workspace dir's contents back up to *root* (inverse of consolidate).
+  """Lift the standalone workspace dir's contents back up to *root* (inverse of consolidate).
 
-    ⚑ *root* is the standalone ROOT as ``ProjectState`` carries it, never a parent counted
-    off *workspace_subdir*: the workspace is the RESOLVED ``workset.workspaces`` and a
-    repoint moves it any distance from the root, or out of it entirely.
-    """
-    if not workspace_subdir.is_dir():
-        return
-    movable = list(workspace_subdir.iterdir())
-    moved: list[Path] = []
-    unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved, root=root))
-    for child in movable:
-        # Recorded before the move, as the undo skips an entry that never left.
-        moved.append(child)
-        _move_entry(child, root / child.name, root=root)
-    # Drop the emptied workspace dir so the converted project keeps no stray one — and with
-    # it the now-empty directories a repoint interposed (``workspaces: nested/deep`` leaves
-    # ``nested/``, which only ever existed to hold the workspace and is meaningless once the
-    # root ``workset.yaml`` that named it is gone).
-    # A parent the user keeps their own files in refuses to go, ending the walk.
-    _prune_empty_dirs(workspace_subdir, root)
+  ⚑ *root* is the standalone ROOT as ``ProjectState`` carries it, never a parent counted
+  off *workspace_subdir*: the workspace is the RESOLVED ``workset.workspaces`` and a
+  repoint moves it any distance from the root, or out of it entirely.
+  """
+  if not workspace_subdir.is_dir():
+    return
+  movable = list(workspace_subdir.iterdir())
+  moved: list[Path] = []
+  unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved, root=root))
+  for child in movable:
+    # Recorded before the move, as the undo skips an entry that never left.
+    moved.append(child)
+    _move_entry(child, root / child.name, root=root)
+  # Drop the emptied workspace dir so the converted project keeps no stray one — and with
+  # it the now-empty directories a repoint interposed (``workspaces: nested/deep`` leaves
+  # ``nested/``, which only ever existed to hold the workspace and is meaningless once the
+  # root ``workset.yaml`` that named it is gone).
+  # A parent the user keeps their own files in refuses to go, ending the walk.
+  _prune_empty_dirs(workspace_subdir, root)
 
 
 def _arm_standalone_root_undo(
-    std: StandardPaths,
-    config: BootstrapConfig,
-    root: Path,
-    workspace_subdir: Path,
-    unwind: _Unwind,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  root: Path,
+  workspace_subdir: Path,
+  unwind: _Unwind,
 ) -> tuple[Callable[[], None], Callable[[str], None]]:
-    """Snapshot what :func:`_to_standalone` lays at *root*; return create's ``(undo, wrote)``.
+  """Snapshot what :func:`_to_standalone` lays at *root*; return create's ``(undo, wrote)``.
 
-    ⚑⚑ A failed convert must leave the root as it found it: the root ``workset.yaml``
-    alone reads as standalone, and every retry then answers "Nothing to do".  The undo is
-    CREATE's own (``_new_box_undo``), which names these outputs and restores a rewritten
-    root file; the caller pushes it.  Taken before the sweep, which moves root files.
+  ⚑⚑ A failed convert must leave the root as it found it: the root ``workset.yaml``
+  alone reads as standalone, and every retry then answers "Nothing to do".  The undo is
+  CREATE's own (``_new_box_undo``), which names these outputs and restores a rewritten
+  root file; the caller pushes it.  Taken before the sweep, which moves root files.
 
-    ⚑ The workspace is held back from it: create's undo deletes a new dir whole, and the
-    sweep's undo may leave a user file in this one.  It goes only once empty.
-    """
-    from kanibako.commands.box._parser import _new_box_undo
+  ⚑ The workspace is held back from it: create's undo deletes a new dir whole, and the
+  sweep's undo may leave a user file in this one.  It goes only once empty.
+  """
+  from kanibako.commands.box._parser import _new_box_undo
 
-    probe = resolve_standalone_project(std, config, str(root), register=False)
-    undo, wrote = _new_box_undo(std, replace(probe, project_path=None), standalone=True)
-    for leaf in (probe.vault_ro_path, probe.vault_rw_path, root / bootstrap.VAULT_PATH):
-        if leaf is not None and leaf.is_dir():
-            _arm_leftover_note(unwind, leaf)
-    top = workspace_subdir
-    while not (top.parent.exists() or top.parent.is_symlink()):
-        top = top.parent
-    if not (top.exists() or top.is_symlink()):
-        unwind.push(partial(_prune_empty_dirs, workspace_subdir, top.parent))
-    return undo, wrote
+  probe = resolve_standalone_project(std, config, str(root), register=False)
+  undo, wrote = _new_box_undo(std, replace(probe, project_path=None), standalone=True)
+  for leaf in (probe.vault_ro_path, probe.vault_rw_path, root / bootstrap.VAULT_PATH):
+    if leaf is not None and leaf.is_dir():
+      _arm_leftover_note(unwind, leaf)
+  top = workspace_subdir
+  while not (top.parent.exists() or top.parent.is_symlink()):
+    top = top.parent
+  if not (top.exists() or top.is_symlink()):
+    unwind.push(partial(_prune_empty_dirs, workspace_subdir, top.parent))
+  return undo, wrote
 
 
 def _to_standalone(
-    state: ProjectState,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    unwind: _Unwind,
-    *,
-    new_name: str,
-    root: Path,
+  state: ProjectState,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  unwind: _Unwind,
+  *,
+  new_name: str,
+  root: Path,
 ) -> tuple[ProjectState, _SourceTeardown | None]:
-    """Convert/relocate the project so it becomes standalone (in-tree metadata).
+  """Convert/relocate the project so it becomes standalone (in-tree metadata).
 
-    ⚑⚑ *root* is the standalone ROOT, not the live workspace — this is the ONE target mode
-    where the two differ (drift H), and the caller's ``new_workspace`` is therefore the
-    root here.  Passing the workspace instead laid a whole second box inside the first.
-    """
-    from kanibako.project import registry_store
-    from kanibako.settings.paths import establish_standalone
+  ⚑⚑ *root* is the standalone ROOT, not the live workspace — this is the ONE target mode
+  where the two differ (drift H), and the caller's ``new_workspace`` is therefore the
+  root here.  Passing the workspace instead laid a whole second box inside the first.
+  """
+  from kanibako.project import registry_store
+  from kanibako.settings.paths import establish_standalone
 
-    # ⚑ ORDER: consolidate the source's top-level files into the workspace dir FIRST, THEN
-    # lay down the kanibako artifacts — otherwise the artifacts get swept in with them.
-    root.mkdir(parents=True, exist_ok=True)
-    dst_metadata = standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
-    # ⚑ RESOLVED, and it MUST agree with ``resolve_standalone_project``, which reads the same
-    # key to answer ``project_path``.  A literal ``root / "workspace"`` is the right answer
-    # only until the root carries a ``workset.workspaces`` repoint, and then it fills a
-    # directory the box never looks in — two answers for one box.
-    workspace_subdir = _resolve_standalone_workspaces(
-        root, load_workset_settings_doc(root), early=_early_scope(std, BoxMode.standalone),
+  # ⚑ ORDER: consolidate the source's top-level files into the workspace dir FIRST, THEN
+  # lay down the kanibako artifacts — otherwise the artifacts get swept in with them.
+  root.mkdir(parents=True, exist_ok=True)
+  dst_metadata = standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
+  # ⚑ RESOLVED, and it MUST agree with ``resolve_standalone_project``, which reads the same
+  # key to answer ``project_path``.  A literal ``root / "workspace"`` is the right answer
+  # only until the root carries a ``workset.workspaces`` repoint, and then it fills a
+  # directory the box never looks in — two answers for one box.
+  workspace_subdir = _resolve_standalone_workspaces(
+    root,
+    load_workset_settings_doc(root),
+    early=_early_scope(std, BoxMode.standalone),
+  )
+  # ⚑ The canon tier create stamps, through create's own pre-flight and stamp.  A
+  # standalone source carries its tier instead (:func:`_carry_standalone_canon`); a
+  # user ``canon/`` already at the root was refused in :func:`_validate`.
+  from kanibako.channels.channels import WS_TOKEN_STANDALONE
+  from kanibako.launch.templates import check_workset_template, install_workset_template
+
+  stamp_canon = state.mode is not BoxMode.standalone
+  if stamp_canon:
+    check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+  root_undo, root_wrote = _arm_standalone_root_undo(std, config, root, workspace_subdir, unwind)
+  # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
+  # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
+  src_meta_dir = box_metadata_dir(
+    state.mode, state.metadata_path, early=EarlyScope(std.early_system, _state_ws_token(state))
+  )
+  # ⚑⚑ REUSED IN PLACE — a standalone box renamed AT ITS OWN ROOT.  Everything below
+  # that treats *root* as freshly converted is then wrong twice over.
+  reused_in_place = dst_metadata.resolve() == src_meta_dir.resolve()
+  if not reused_in_place:
+    # ⚑⚑ THE LAST DOOR.  A NON-EMPTY store at the DEFAULT leaf this
+    # transaction did not just carry there is somebody else's — on a PRIMARY
+    # source STEP 2 has no ignore for it.  Merging overwrites the user's files
+    # by name and later purges them.  A REPOINTED store is the store by
+    # declaration, so only the default leaf guards.
+    if (
+      dst_metadata == root / STANDALONE_META_DIR
+      and dst_metadata.is_dir()
+      and any(dst_metadata.iterdir())
+    ):
+      raise ProjectError(
+        f"Cannot lay this box's store at {dst_metadata}: a non-empty "
+        f"directory already sits there and it is not this box's store. "
+        f"Merging would overwrite the user's files by name and later delete "
+        f"them with the store. Move {dst_metadata} aside, or repoint "
+        f"workset.boxes, and run it again."
+      )
+    # ⚑ The sweep exists because the source's project files sit AT the root on an
+    # in-place convert.  A root that is ALREADY this box's standalone root does NOT:
+    # its files are in the workspace dir and everything left beside them is
+    # kanibako's own — starting with the root ``.gitignore`` written below, which
+    # the sweep would relocate into the user's workspace.
+    _consolidate_workspace_subdir(
+      root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone)
     )
-    # ⚑ The canon tier create stamps, through create's own pre-flight and stamp.  A
-    # standalone source carries its tier instead (:func:`_carry_standalone_canon`); a
-    # user ``canon/`` already at the root was refused in :func:`_validate`.
-    from kanibako.channels.channels import WS_TOKEN_STANDALONE
-    from kanibako.launch.templates import check_workset_template, install_workset_template
-
-    stamp_canon = state.mode is not BoxMode.standalone
-    if stamp_canon:
-        check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-    root_undo, root_wrote = _arm_standalone_root_undo(std, config, root, workspace_subdir, unwind)
-    # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
-    # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
-    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
-                                    early=EarlyScope(std.early_system, _state_ws_token(state)))
-    # ⚑⚑ REUSED IN PLACE — a standalone box renamed AT ITS OWN ROOT.  Everything below
-    # that treats *root* as freshly converted is then wrong twice over.
-    reused_in_place = dst_metadata.resolve() == src_meta_dir.resolve()
-    if not reused_in_place:
-        # ⚑⚑ THE LAST DOOR.  A NON-EMPTY store at the DEFAULT leaf this
-        # transaction did not just carry there is somebody else's — on a PRIMARY
-        # source STEP 2 has no ignore for it.  Merging overwrites the user's files
-        # by name and later purges them.  A REPOINTED store is the store by
-        # declaration, so only the default leaf guards.
-        if (dst_metadata == root / STANDALONE_META_DIR and dst_metadata.is_dir()
-                and any(dst_metadata.iterdir())):
-            raise ProjectError(
-                f"Cannot lay this box's store at {dst_metadata}: a non-empty "
-                f"directory already sits there and it is not this box's store. "
-                f"Merging would overwrite the user's files by name and later delete "
-                f"them with the store. Move {dst_metadata} aside, or repoint "
-                f"workset.boxes, and run it again."
-            )
-        # ⚑ The sweep exists because the source's project files sit AT the root on an
-        # in-place convert.  A root that is ALREADY this box's standalone root does NOT:
-        # its files are in the workspace dir and everything left beside them is
-        # kanibako's own — starting with the root ``.gitignore`` written below, which
-        # the sweep would relocate into the user's workspace.
-        _consolidate_workspace_subdir(root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone))
-    # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
-    # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
-    unwind.push(root_undo)
-    if stamp_canon:  # after the sweep, under the root undo, which owns a new tier
-        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-    if not reused_in_place:
-        _copy_metadata(
-            src_meta_dir, state.shell_path,
-            dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
-        )
-        # ⚑⚑ DO NOT DELETE this file as an "orphan": the box.yaml landing in ``box_data/``
-        # IS the destination's BOX TIER (spec §2c — {meta.box.path} for standalone IS
-        # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
-        # file (system-design-1.8.0.md § "Detection & import"), which ``establish_standalone``
-        # writes below.
-        _deliver_carried_box_settings(
-            state, dst_metadata / BOX_META_FILE,
-            early=EarlyScope(std.early_system, _state_ws_token(state)))
-
-    # Establish identity + meta + registration through the shared core; it writes
-    # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
-    # tier, then registers the box when *register* says so.  ⚑ NO mode is persisted anywhere — standalone is
-    # detected from the MARKER (that root file beside ``box_data/``), never from a stored key.
-    # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
-    # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
-    # would undo that carry and pin the source workset's default on a box that has LEFT it.
-    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE: stable stored prefix, the leaf tracks the dir.
-    carried_kuid = (
-        standalone_kuid(state.name)
-        if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
-        else None
+  # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
+  # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
+  unwind.push(root_undo)
+  if stamp_canon:  # after the sweep, under the root undo, which owns a new tier
+    install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+  if not reused_in_place:
+    _copy_metadata(
+      src_meta_dir,
+      state.shell_path,
+      dst_metadata,
+      shell_into_metadata=True,
+      home_leaf="home",
+      unwind=unwind,
     )
-    # A standalone source keeps its registration state: an unregistered box stays unregistered.
-    register = (state.mode is not BoxMode.standalone or state.moved_from is not None
-                or registry_store.standalone_name_for_root(std.registry, state.metadata_path)
-                is not None)
-    # ⚑ Armed BEFORE the register, which may OVERWRITE the source's own row (a same-leaf
-    # move keeps the name): the rollback restores the section's rows as they were.
-    if register:
-        unwind.push(partial(_restore_standalone_rows, std,
-                            registry_store.load_standalone(std.registry)))
-    box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
-        std, root,
-        enable_vault=state.box_authored_vault,
-        carry_kuid=carried_kuid,
-        own_name=state.name if carried_kuid else None,
-        register=register,
+    # ⚑⚑ DO NOT DELETE this file as an "orphan": the box.yaml landing in ``box_data/``
+    # IS the destination's BOX TIER (spec §2c — {meta.box.path} for standalone IS
+    # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
+    # file (system-design-1.8.0.md § "Detection & import"), which ``establish_standalone``
+    # writes below.
+    _deliver_carried_box_settings(
+      state,
+      dst_metadata / BOX_META_FILE,
+      early=EarlyScope(std.early_system, _state_ws_token(state)),
     )
-    root_wrote(WORKSET_META_FILE)
 
-    workspace_subdir.mkdir(parents=True, exist_ok=True)
-    write_project_gitignore(root)
-    root_wrote(bootstrap.IGNORE_FILE)
-    # ⚑ The RESOLVED ``workset.vault_rw`` gates this, never the skeleton's existence: the
-    # skeleton is the ``ro`` arm's DEFAULT parent, so ``<root>/vault`` can sit on disk while
-    # ``vault_rw`` points elsewhere — and then the file's ``rw/`` claims nothing that is
-    # there.  ``establish_standalone`` resolved the arm against this root's ``workset.yaml``,
-    # repoint included, which is why its return value is what gets passed.
-    if vault_rw is not None:  # a null arm has no skeleton to describe
-        write_vault_gitignore(root, vault_rw)
-
-    teardown = _plan_source_teardown(
-        state, std, (vault_ro, vault_rw), new_name=box_name,
-        preserve_root=root if reused_in_place else None,
+  # Establish identity + meta + registration through the shared core; it writes
+  # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
+  # tier, then registers the box when *register* says so.  ⚑ NO mode is persisted anywhere — standalone is
+  # detected from the MARKER (that root file beside ``box_data/``), never from a stored key.
+  # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
+  # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
+  # would undo that carry and pin the source workset's default on a box that has LEFT it.
+  # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE: stable stored prefix, the leaf tracks the dir.
+  carried_kuid = (
+    standalone_kuid(state.name)
+    if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
+    else None
+  )
+  # A standalone source keeps its registration state: an unregistered box stays unregistered.
+  register = (
+    state.mode is not BoxMode.standalone
+    or state.moved_from is not None
+    or registry_store.standalone_name_for_root(std.registry, state.metadata_path) is not None
+  )
+  # ⚑ Armed BEFORE the register, which may OVERWRITE the source's own row (a same-leaf
+  # move keeps the name): the rollback restores the section's rows as they were.
+  if register:
+    unwind.push(
+      partial(_restore_standalone_rows, std, registry_store.load_standalone(std.registry))
     )
-    teardown = _carry_standalone_canon(teardown, std, state.metadata_path, root)
-    # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: the destination
-    # vault is fresh and the source is deleted on success, so contents
-    # move first.  A reuse-in-place rename collapses to a same-path no-op.
-    _carry_vault_contents(state, std, vault_ro, vault_rw, teardown)
-    _carry_box_logs(
-        state, std, unwind, dst_logs=standalone_logs_dir(root, early=_early_scope(std, BoxMode.standalone)),
-        dst_name=box_name,
-    )
-    teardown = _stash_source_marker(teardown, unwind)
+  box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
+    std,
+    root,
+    enable_vault=state.box_authored_vault,
+    carry_kuid=carried_kuid,
+    own_name=state.name if carried_kuid else None,
+    register=register,
+  )
+  root_wrote(WORKSET_META_FILE)
 
-    return ProjectState(
-        owner="standalone", mode=BoxMode.standalone, name=box_name,
-        workspace_path=workspace_subdir, metadata_path=root,
-        shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None,
-        # ⚑ The new root ``workset.yaml`` carries ``workset.kuid`` and nothing else, so the
-        # standalone box's RESOLVED value IS what it authored — the source workset's
-        # default did not travel.
-        enable_vault=state.box_authored_vault,
-        box_authored_vault=state.box_authored_vault,
-    ), teardown
+  workspace_subdir.mkdir(parents=True, exist_ok=True)
+  write_project_gitignore(root)
+  root_wrote(bootstrap.IGNORE_FILE)
+  # ⚑ The RESOLVED ``workset.vault_rw`` gates this, never the skeleton's existence: the
+  # skeleton is the ``ro`` arm's DEFAULT parent, so ``<root>/vault`` can sit on disk while
+  # ``vault_rw`` points elsewhere — and then the file's ``rw/`` claims nothing that is
+  # there.  ``establish_standalone`` resolved the arm against this root's ``workset.yaml``,
+  # repoint included, which is why its return value is what gets passed.
+  if vault_rw is not None:  # a null arm has no skeleton to describe
+    write_vault_gitignore(root, vault_rw)
+
+  teardown = _plan_source_teardown(
+    state,
+    std,
+    (vault_ro, vault_rw),
+    new_name=box_name,
+    preserve_root=root if reused_in_place else None,
+  )
+  teardown = _carry_standalone_canon(teardown, std, state.metadata_path, root)
+  # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: the destination
+  # vault is fresh and the source is deleted on success, so contents
+  # move first.  A reuse-in-place rename collapses to a same-path no-op.
+  _carry_vault_contents(state, std, vault_ro, vault_rw, teardown)
+  _carry_box_logs(
+    state,
+    std,
+    unwind,
+    dst_logs=standalone_logs_dir(root, early=_early_scope(std, BoxMode.standalone)),
+    dst_name=box_name,
+  )
+  teardown = _stash_source_marker(teardown, unwind)
+
+  return ProjectState(
+    owner="standalone",
+    mode=BoxMode.standalone,
+    name=box_name,
+    workspace_path=workspace_subdir,
+    metadata_path=root,
+    shell_path=dst_shell,
+    vault_ro=vault_ro,
+    vault_rw=vault_rw,
+    is_external=False,
+    ws=None,
+    # ⚑ The new root ``workset.yaml`` carries ``workset.kuid`` and nothing else, so the
+    # standalone box's RESOLVED value IS what it authored — the source workset's
+    # default did not travel.
+    enable_vault=state.box_authored_vault,
+    box_authored_vault=state.box_authored_vault,
+  ), teardown
 
 
 def _to_workset(
-    state: ProjectState,
-    std: StandardPaths,
-    config: BootstrapConfig,
-    unwind: _Unwind,
-    *,
-    target_ws: Workset,
-    new_name: str,
-    new_workspace: Path,
-    relocating: bool,
-    dest: Path | None,
+  state: ProjectState,
+  std: StandardPaths,
+  config: BootstrapConfig,
+  unwind: _Unwind,
+  *,
+  target_ws: Workset,
+  new_name: str,
+  new_workspace: Path,
+  relocating: bool,
+  dest: Path | None,
 ) -> tuple[ProjectState, _SourceTeardown | None]:
-    """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
-    internal = is_in_tree_workspace(target_ws, new_workspace)
+  """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
+  internal = is_in_tree_workspace(target_ws, new_workspace)
 
-    # The path add_project records and decides external wiring from.
-    source_for_add = new_workspace
+  # The path add_project records and decides external wiring from.
+  source_for_add = new_workspace
 
-    # ⚑ Copy only for an internal landing NOT already in place — STEP 2 may have moved the
-    # tree to ``workspaces/<name>`` already. External never copies.
-    copy_workspace = False
-    in_tree_leaf: Path | None = None
-    if internal:
-        in_tree_leaf = target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name
-        already_in_place = new_workspace.resolve() == in_tree_leaf.resolve()
-        copy_workspace = not already_in_place
+  # ⚑ Copy only for an internal landing NOT already in place — STEP 2 may have moved the
+  # tree to ``workspaces/<name>`` already. External never copies.
+  copy_workspace = False
+  in_tree_leaf: Path | None = None
+  if internal:
+    in_tree_leaf = target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name
+    already_in_place = new_workspace.resolve() == in_tree_leaf.resolve()
+    copy_workspace = not already_in_place
 
-    # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
-    # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
-    metadata_source = box_metadata_dir(state.mode, state.metadata_path,
-                                        early=EarlyScope(std.early_system, _state_ws_token(state)))
-    store_source = metadata_source
-    shell_source = state.shell_path
+  # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
+  # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
+  metadata_source = box_metadata_dir(
+    state.mode, state.metadata_path, early=EarlyScope(std.early_system, _state_ws_token(state))
+  )
+  store_source = metadata_source
+  shell_source = state.shell_path
 
-    source_is_workset = state.mode == BoxMode.named
-    # ⚑ THE DESTINATION'S OWN LEAVES, RESOLVED ONCE: ``add_project`` below creates them
-    # under these arms, the returned state must spell them the same way, and the
-    # source-release leg needs them to know which of the SOURCE's vault leaves it
-    # received.
-    _dst_shell, vault_ro, vault_rw = _workset_box_paths(
-        target_ws.projects_dir / new_name,
-        *resolve_workset_vault_pair(target_ws.root, early=target_ws.early_scope),
-        new_name,
-    )
-    dst_vault = (vault_ro, vault_rw)
-    if source_is_workset and state.ws is not None:
-        src_ws = state.ws
-        src_name = state.name
-        src_source_path = state.workspace_path
-        # ⚑⚑ ws->ws: the SOURCE must release BEFORE the target registers (the connection
-        # record is 1:1). Release DELETES the source STORE (never its workspace leaf), so
-        # stash it first — the forward copy below and the unwind both read the stash.
-        import tempfile
-        stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
-        stash_boxes = stash / "boxes"
-        # ⚑ THE VAULT CARRY, leg 1 of 2: ``remove_member_store`` below deletes the source
-        # vault leaves, while the destination leaves only exist after ``add_project`` — so
-        # the contents wait out the swap in the stash beside the metadata.
-        stash_vault_ro = stash / "vault_ro"
-        stash_vault_rw = stash / "vault_rw"
+  source_is_workset = state.mode == BoxMode.named
+  # ⚑ THE DESTINATION'S OWN LEAVES, RESOLVED ONCE: ``add_project`` below creates them
+  # under these arms, the returned state must spell them the same way, and the
+  # source-release leg needs them to know which of the SOURCE's vault leaves it
+  # received.
+  _dst_shell, vault_ro, vault_rw = _workset_box_paths(
+    target_ws.projects_dir / new_name,
+    *resolve_workset_vault_pair(target_ws.root, early=target_ws.early_scope),
+    new_name,
+  )
+  dst_vault = (vault_ro, vault_rw)
+  if source_is_workset and state.ws is not None:
+    src_ws = state.ws
+    src_name = state.name
+    src_source_path = state.workspace_path
+    # ⚑⚑ ws->ws: the SOURCE must release BEFORE the target registers (the connection
+    # record is 1:1). Release DELETES the source STORE (never its workspace leaf), so
+    # stash it first — the forward copy below and the unwind both read the stash.
+    import tempfile
+
+    stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
+    stash_boxes = stash / "boxes"
+    # ⚑ THE VAULT CARRY, leg 1 of 2: ``remove_member_store`` below deletes the source
+    # vault leaves, while the destination leaves only exist after ``add_project`` — so
+    # the contents wait out the swap in the stash beside the metadata.
+    stash_vault_ro = stash / "vault_ro"
+    stash_vault_rw = stash / "vault_rw"
+    try:
+      if state.metadata_path.is_dir():
+        copy_tree_keeping_links(
+          state.metadata_path,
+          stash_boxes,
+          ignore=shutil.ignore_patterns(".kanibako.lock"),
+          dirs_exist_ok=True,
+        )
+      for _src, _tmp in _vault_carry_pairs(
+        state,
+        std,
+        stash_vault_ro,
+        stash_vault_rw,
+      ):
+        _copy_vault_leaf_contents(_src, _tmp)
+    except BaseException:
+      # Nothing is released yet: the source is whole and the stash a partial copy.
+      _dispose_stash(stash)
+      raise
+    metadata_source = stash_boxes
+    shell_source = stash_boxes / "home"
+
+    def _restore_source() -> bool:
+      # ⚑ Each step runs even when an earlier one failed, and reports its own failure.
+      import sys
+
+      def _copy_back(dst: Path | None, copy: Callable[[], object]) -> None:
+        # A real-dir *dst* the copy cannot write into (a skeleton remnant) is
+        # replaced whole from the stash — only a leaf of the source's own store
+        # (what ``remove_member_store`` deletes); a link or repointed leaf never.
         try:
-            if state.metadata_path.is_dir():
-                copy_tree_keeping_links(
-                    state.metadata_path, stash_boxes,
-                    ignore=shutil.ignore_patterns(".kanibako.lock"),
-                    dirs_exist_ok=True,
-                )
-            for _src, _tmp in _vault_carry_pairs(
-                state, std, stash_vault_ro, stash_vault_rw,
-            ):
-                _copy_vault_leaf_contents(_src, _tmp)
-        except BaseException:
-            # Nothing is released yet: the source is whole and the stash a partial copy.
-            _dispose_stash(stash)
+          copy()
+        except (OSError, ProjectError):
+          if dst is None or dst.is_symlink() or not dst.is_dir():
             raise
-        metadata_source = stash_boxes
-        shell_source = stash_boxes / "home"
+          own = {_resolved_unless_loop(base) / src_name for base in _member_store_bases(src_ws)}
+          if _resolved_unless_loop(dst.parent) / dst.name not in own:
+            raise
+          remove_path(dst)
+          copy()
 
-        def _restore_source() -> bool:
-            # ⚑ Each step runs even when an earlier one failed, and reports its own failure.
-            import sys
+      def _box_tree() -> None:
+        if stash_boxes.is_dir():
+          dst = src_ws.projects_dir / src_name
+          _copy_back(dst, partial(copy_tree_keeping_links, stash_boxes, dst, dirs_exist_ok=True))
+          if shell_source.is_dir():
+            materialize_canon_skeleton(dst / "home")
 
-            def _copy_back(dst: Path | None, copy: Callable[[], object]) -> None:
-                # A real-dir *dst* the copy cannot write into (a skeleton remnant) is
-                # replaced whole from the stash — only a leaf of the source's own store
-                # (what ``remove_member_store`` deletes); a link or repointed leaf never.
-                try:
-                    copy()
-                except (OSError, ProjectError):
-                    if dst is None or dst.is_symlink() or not dst.is_dir():
-                        raise
-                    own = {_resolved_unless_loop(base) / src_name
-                           for base in _member_store_bases(src_ws)}
-                    if _resolved_unless_loop(dst.parent) / dst.name not in own:
-                        raise
-                    remove_path(dst)
-                    copy()
-
-            def _box_tree() -> None:
-                if stash_boxes.is_dir():
-                    dst = src_ws.projects_dir / src_name
-                    _copy_back(dst, partial(
-                        copy_tree_keeping_links, stash_boxes, dst, dirs_exist_ok=True))
-                    if shell_source.is_dir():
-                        materialize_canon_skeleton(dst / "home")
-
-            steps: list[tuple[str, Path | None, Callable[[], object]]] = [
-                (f"the record of '{src_name}' in workset '{src_ws.name}'",
-                 src_source_path,
-                 lambda: add_project(src_ws, src_name, src_source_path, std, restoring=True,
-                                     outer=unwind)),
-                ("the box tree", src_ws.projects_dir / src_name, _box_tree),
-                # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
-                # leaves into the stash; no-ops when leg 1 carried nothing.
-                ("the read-only vault", state.vault_ro,
-                 lambda: _copy_back(state.vault_ro, partial(
-                     _copy_vault_leaf_contents, stash_vault_ro, state.vault_ro))),
-                ("the read-write vault", state.vault_rw,
-                 lambda: _copy_back(state.vault_rw, partial(
-                     _copy_vault_leaf_contents, stash_vault_rw, state.vault_rw))),
-            ]
-            clean = True
-            held: KeyboardInterrupt | None = None
-            for what, where, step in steps:
-                try:
-                    step()
-                except KeyboardInterrupt as exc:
-                    held, clean = held or exc, False
-                    print(f"Note: may not have restored {what} at {where}: interrupted",
-                          file=sys.stderr)
-                except Exception as err:  # noqa: BLE001 - reported, and the rest still run
-                    clean = False
-                    print(f"Note: could not restore {what} at {where}: {_loop_named(err)}",
-                          file=sys.stderr)
-            if clean:
-                _dispose_stash(stash)
-            else:
-                print(f"Note: kept {stash}; it holds the box's store as it was before "
-                      f"the move (it may hold credentials)", file=sys.stderr)
-            if held is not None:
-                raise held
-            return clean
-
-        # ⚑⚑ Pushed BEFORE the release (L1): once it starts, the stash holds the only copy
-        # of the store, so a failure part-way through must restore from it, never drop it.
-        unwind.push(_restore_source)
-        release_project(src_ws, src_name)
-        _retire_old_store(
-            src_ws, src_name, dst_vault, state.enable_vault, reraise=True,
+      steps: list[tuple[str, Path | None, Callable[[], object]]] = [
+        (
+          f"the record of '{src_name}' in workset '{src_ws.name}'",
+          src_source_path,
+          lambda: add_project(
+            src_ws, src_name, src_source_path, std, restoring=True, outer=unwind
+          ),
+        ),
+        ("the box tree", src_ws.projects_dir / src_name, _box_tree),
+        # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
+        # leaves into the stash; no-ops when leg 1 carried nothing.
+        (
+          "the read-only vault",
+          state.vault_ro,
+          lambda: _copy_back(
+            state.vault_ro, partial(_copy_vault_leaf_contents, stash_vault_ro, state.vault_ro)
+          ),
+        ),
+        (
+          "the read-write vault",
+          state.vault_rw,
+          lambda: _copy_back(
+            state.vault_rw, partial(_copy_vault_leaf_contents, stash_vault_rw, state.vault_rw)
+          ),
+        ),
+      ]
+      clean = True
+      held: KeyboardInterrupt | None = None
+      for what, where, step in steps:
+        try:
+          step()
+        except KeyboardInterrupt as exc:
+          held, clean = held or exc, False
+          print(f"Note: may not have restored {what} at {where}: interrupted", file=sys.stderr)
+        except Exception as err:  # noqa: BLE001 - reported, and the rest still run
+          clean = False
+          print(f"Note: could not restore {what} at {where}: {_loop_named(err)}", file=sys.stderr)
+      if clean:
+        _dispose_stash(stash)
+      else:
+        print(
+          f"Note: kept {stash}; it holds the box's store as it was before "
+          f"the move (it may hold credentials)",
+          file=sys.stderr,
         )
+      if held is not None:
+        raise held
+      return clean
 
-    # ⚑ ``force=True``: an absorb INTO a workset overrides the marker connect guard (B2a); a
-    # standalone source's root ``workset.yaml`` marker goes LATER in the convert; else no-op.
-    # ⚑ The unwind deletes a target leaf only when THIS op created it — ``add_project``
-    # adopts an existing one, and on a same-workset, same-name relocation the workspace
-    # leaf is the source's own, intact workspace.
-    existed = _existing_member_leaves(target_ws, new_name)
-    outer_row: tuple[str, str] | None = None
-    if state.mode is BoxMode.standalone:
-        # ⚑ ``force`` MOVES a standalone source's row into the workset; a rollback puts it
-        # back once the target member is gone (pushed under it, so it runs after).
-        from kanibako.project import registry_store
+    # ⚑⚑ Pushed BEFORE the release (L1): once it starts, the stash holds the only copy
+    # of the store, so a failure part-way through must restore from it, never drop it.
+    unwind.push(_restore_source)
+    release_project(src_ws, src_name)
+    _retire_old_store(
+      src_ws,
+      src_name,
+      dst_vault,
+      state.enable_vault,
+      reraise=True,
+    )
 
-        prior = registry_store.standalone_root(std.registry, state.name)
-        if prior is not None:
-            unwind.push(partial(registry_store.register_standalone, std.registry,
-                                state.name, Path(prior)))
-            outer_row = (state.name, prior)
-    # Armed before the register, which creates leaves before it records the member.
-    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
-    add_project(target_ws, new_name, source_for_add, std, force=True, outer=unwind,
-                outer_row=outer_row)
+  # ⚑ ``force=True``: an absorb INTO a workset overrides the marker connect guard (B2a); a
+  # standalone source's root ``workset.yaml`` marker goes LATER in the convert; else no-op.
+  # ⚑ The unwind deletes a target leaf only when THIS op created it — ``add_project``
+  # adopts an existing one, and on a same-workset, same-name relocation the workspace
+  # leaf is the source's own, intact workspace.
+  existed = _existing_member_leaves(target_ws, new_name)
+  outer_row: tuple[str, str] | None = None
+  if state.mode is BoxMode.standalone:
+    # ⚑ ``force`` MOVES a standalone source's row into the workset; a rollback puts it
+    # back once the target member is gone (pushed under it, so it runs after).
+    from kanibako.project import registry_store
 
-    dst_project = target_ws.projects_dir / new_name
-    # Copy metadata (minus lock+home) into the workset boxes dir.
-    copy_tree_keeping_links(
-        metadata_source, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
+    prior = registry_store.standalone_root(std.registry, state.name)
+    if prior is not None:
+      unwind.push(
+        partial(registry_store.register_standalone, std.registry, state.name, Path(prior))
+      )
+      outer_row = (state.name, prior)
+  # Armed before the register, which creates leaves before it records the member.
+  unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
+  add_project(
+    target_ws, new_name, source_for_add, std, force=True, outer=unwind, outer_row=outer_row
+  )
+
+  dst_project = target_ws.projects_dir / new_name
+  # Copy metadata (minus lock+home) into the workset boxes dir.
+  copy_tree_keeping_links(
+    metadata_source,
+    dst_project,
+    ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
+    dirs_exist_ok=True,
+  )
+  # ⚑ The copy above cannot supply a STANDALONE source's box settings — its box tier is
+  # a different file from the root one a pre-P2 box stored them in (M-8).
+  _deliver_carried_box_settings(
+    state, dst_project / BOX_META_FILE, early=EarlyScope(std.early_system, _state_ws_token(state))
+  )
+  dst_shell = dst_project / "home"
+  if shell_source.is_dir():
+    if not lay_root_link(shell_source, dst_shell):
+      copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
+    # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
+    materialize_canon_skeleton(dst_shell)
+
+  old_leaf: tuple[Path, Path] | None = None
+  if copy_workspace and in_tree_leaf is not None:
+    dst_workspace = in_tree_leaf
+    ignore = None
+    if state.mode == BoxMode.standalone:
+      ignore = _workspace_copy_ignore(
+        state.metadata_path,
+        state.workspace_path,
+        mode=BoxMode.standalone,
+        early=EarlyScope(std.early_system, _state_ws_token(state)),
+      )
+    if not lay_root_link(state.workspace_path, dst_workspace):
+      copy_tree_keeping_links(
+        state.workspace_path,
+        dst_workspace,
+        ignore=ignore,
         dirs_exist_ok=True,
+      )
+    # ⚑ An in-tree workset source's leaf is retired in the success tail, like step 2's
+    # copy; other sources keep their tree (an in-place convert deletes nothing).
+    if source_is_workset and not state.is_external:
+      old_leaf = (state.workspace_path, dst_workspace)
+
+  # Determine the recorded workspace.
+  if in_tree_leaf is not None:
+    recorded_workspace = in_tree_leaf
+  else:
+    # ⚑ EXTERNAL: read the workspace back from the per-workset ``boxes:`` registry
+    # add_project just wrote — under sparse create (P8b) the box's box.yaml no
+    # longer self-describes, so the D10 connection record is the authority.
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+      target_ws.root,
+      load_doc(target_ws.root / WORKSET_META_FILE),
+      early=target_ws.early_scope,
     )
-    # ⚑ The copy above cannot supply a STANDALONE source's box settings — its box tier is
-    # a different file from the root one a pre-P2 box stored them in (M-8).
-    _deliver_carried_box_settings(
-        state, dst_project / BOX_META_FILE, early=EarlyScope(std.early_system, _state_ws_token(state)))
-    dst_shell = dst_project / "home"
-    if shell_source.is_dir():
-        if not lay_root_link(shell_source, dst_shell):
-            copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
-        # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
-        materialize_canon_skeleton(dst_shell)
+    # ⚑ THE membership accessor, not a second spelling of it: it already compares
+    # case-blind (spec §0) and returns the path under the stored key.
+    recorded_str = workset_registry.workset_box_path(registry_path, new_name)
+    recorded_workspace = Path(recorded_str) if recorded_str else new_workspace
+  # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
+  # the global name index, workspace in the target workset's ``boxes:`` registry. Only
+  # the non-default ``box.enable_vault`` is carried, so a disabled box stays disabled.
+  # ⚑⚑ The BOX-AUTHORED value, never the resolved one: the SOURCE workset's default must
+  # not follow the box into a DIFFERENT workset as a box-scope override.
+  write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
 
-    old_leaf: tuple[Path, Path] | None = None
-    if (copy_workspace and in_tree_leaf is not None):
-        dst_workspace = in_tree_leaf
-        ignore = None
-        if state.mode == BoxMode.standalone:
-            ignore = _workspace_copy_ignore(
-                state.metadata_path, state.workspace_path, mode=BoxMode.standalone,
-                early=EarlyScope(std.early_system, _state_ws_token(state)))
-        if not lay_root_link(state.workspace_path, dst_workspace):
-            copy_tree_keeping_links(
-                state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
-            )
-        # ⚑ An in-tree workset source's leaf is retired in the success tail, like step 2's
-        # copy; other sources keep their tree (an in-place convert deletes nothing).
-        if source_is_workset and not state.is_external:
-            old_leaf = (state.workspace_path, dst_workspace)
-
-    # Determine the recorded workspace.
-    if in_tree_leaf is not None:
-        recorded_workspace = in_tree_leaf
-    else:
-        # ⚑ EXTERNAL: read the workspace back from the per-workset ``boxes:`` registry
-        # add_project just wrote — under sparse create (P8b) the box's box.yaml no
-        # longer self-describes, so the D10 connection record is the authority.
-        from kanibako.project import workset_registry
-        from kanibako.settings.config_io import load_doc
-
-        registry_path = workset_registry.resolve_workset_registry_path(
-            target_ws.root, load_doc(target_ws.root / WORKSET_META_FILE),
-            early=target_ws.early_scope,
-        )
-        # ⚑ THE membership accessor, not a second spelling of it: it already compares
-        # case-blind (spec §0) and returns the path under the stored key.
-        recorded_str = workset_registry.workset_box_path(registry_path, new_name)
-        recorded_workspace = (
-            Path(recorded_str) if recorded_str else new_workspace
-        )
-    # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
-    # the global name index, workspace in the target workset's ``boxes:`` registry. Only
-    # the non-default ``box.enable_vault`` is carried, so a disabled box stays disabled.
-    # ⚑⚑ The BOX-AUTHORED value, never the resolved one: the SOURCE workset's default must
-    # not follow the box into a DIFFERENT workset as a box-scope override.
-    write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
-
-    # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
-    if source_is_workset and state.ws is not None:
-        # ⚑ THE VAULT CARRY, leg 2 of 2 (P1 data loss): the destination leaves
-        # exist now — land the stashed contents.  No-ops when leg 1 carried nothing.
-        # ⚑ The guard MIRRORS leg 1's guard (the *VAULT CARRY, leg 1 of 2* block
-        # above): the stash vars are bound only under it, so a named box with no
-        # workset (a corrupt state refused elsewhere) must not reach this line.
-        _copy_vault_leaf_contents(stash_vault_ro, vault_ro)
-        _copy_vault_leaf_contents(stash_vault_rw, vault_rw)
-    # ⚑ THE LOG CARRY, beside the vault carry — the destination is registered either way
-    # by now, and a released source keeps its logs (``remove_member_store`` deletes the
-    # box tree and the vault leaves, never the logs).
-    _carry_box_logs(
-        state, std, unwind,
-        dst_logs=box_logs_dir_for(std, BoxMode.named, dst_project, target_ws.root,
-                                  workset_name=target_ws.name),
-        dst_name=new_name,
+  # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
+  if source_is_workset and state.ws is not None:
+    # ⚑ THE VAULT CARRY, leg 2 of 2 (P1 data loss): the destination leaves
+    # exist now — land the stashed contents.  No-ops when leg 1 carried nothing.
+    # ⚑ The guard MIRRORS leg 1's guard (the *VAULT CARRY, leg 1 of 2* block
+    # above): the stash vars are bound only under it, so a named box with no
+    # workset (a corrupt state refused elsewhere) must not reach this line.
+    _copy_vault_leaf_contents(stash_vault_ro, vault_ro)
+    _copy_vault_leaf_contents(stash_vault_rw, vault_rw)
+  # ⚑ THE LOG CARRY, beside the vault carry — the destination is registered either way
+  # by now, and a released source keeps its logs (``remove_member_store`` deletes the
+  # box tree and the vault leaves, never the logs).
+  _carry_box_logs(
+    state,
+    std,
+    unwind,
+    dst_logs=box_logs_dir_for(
+      std, BoxMode.named, dst_project, target_ws.root, workset_name=target_ws.name
+    ),
+    dst_name=new_name,
+  )
+  # ⚑ ws->ws: the source is already released and stash-backed; the success tail
+  # discards the stash, which the unwind may still need until then.
+  teardown = (
+    _SourceTeardown(name=state.name, stash=stash, old_leaf=old_leaf)
+    if source_is_workset and state.ws is not None
+    else None
+  )
+  if not source_is_workset:
+    teardown = _plan_source_teardown(state, std, dst_vault)
+    # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
+    # before the success tail deletes the source.  The workspace LANDS at
+    # ``recorded_workspace``, so a vault link that pointed into the source
+    # workspace is re-aimed at the same relative position under that landing
+    # instead of becoming a second copy of a tree that moved.
+    _carry_vault_contents(
+      state,
+      std,
+      vault_ro,
+      vault_rw,
+      teardown,
+      relocated=_landings((state.workspace_path, recorded_workspace), (store_source, dst_project)),
     )
-    # ⚑ ws->ws: the source is already released and stash-backed; the success tail
-    # discards the stash, which the unwind may still need until then.
-    teardown = (_SourceTeardown(name=state.name, stash=stash, old_leaf=old_leaf)
-                if source_is_workset and state.ws is not None else None)
-    if not source_is_workset:
-        teardown = _plan_source_teardown(state, std, dst_vault)
-        # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
-        # before the success tail deletes the source.  The workspace LANDS at
-        # ``recorded_workspace``, so a vault link that pointed into the source
-        # workspace is re-aimed at the same relative position under that landing
-        # instead of becoming a second copy of a tree that moved.
-        _carry_vault_contents(
-            state, std, vault_ro, vault_rw, teardown,
-            relocated=_landings((state.workspace_path, recorded_workspace),
-                                (store_source, dst_project)),
-        )
-        teardown = _stash_source_marker(teardown, unwind)
+    teardown = _stash_source_marker(teardown, unwind)
 
-    return ProjectState(
-        owner=owner_token(BoxMode.named, target_ws.name),
-        mode=BoxMode.named, name=new_name,
-        workspace_path=recorded_workspace, metadata_path=dst_project,
-        shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=not internal, ws=target_ws,
-        enable_vault=state.enable_vault,
-        box_authored_vault=state.box_authored_vault,
-    ), teardown
+  return ProjectState(
+    owner=owner_token(BoxMode.named, target_ws.name),
+    mode=BoxMode.named,
+    name=new_name,
+    workspace_path=recorded_workspace,
+    metadata_path=dst_project,
+    shell_path=dst_shell,
+    vault_ro=vault_ro,
+    vault_rw=vault_rw,
+    is_external=not internal,
+    ws=target_ws,
+    enable_vault=state.enable_vault,
+    box_authored_vault=state.box_authored_vault,
+  ), teardown
 
 
 # -- small helpers ----------------------------------------------------------
 
-def _state_ws_token(state: ProjectState) -> str:
-    """Return the channel-partition workset-name token for *state*."""
-    from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 
-    if state.mode == BoxMode.standalone:
-        return WS_TOKEN_STANDALONE
-    if state.mode == BoxMode.named:
-        if state.ws is None or not state.ws.name:
-            raise ValueError(
-                "named box is missing its workset; cannot derive the channel "
-                "partition token."
-            )
-        return state.ws.name
-    return WS_TOKEN_PRIMARY
+def _state_ws_token(state: ProjectState) -> str:
+  """Return the channel-partition workset-name token for *state*."""
+  from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
+
+  if state.mode == BoxMode.standalone:
+    return WS_TOKEN_STANDALONE
+  if state.mode == BoxMode.named:
+    if state.ws is None or not state.ws.name:
+      raise ValueError(
+        "named box is missing its workset; cannot derive the channel partition token."
+      )
+    return state.ws.name
+  return WS_TOKEN_PRIMARY
 
 
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path:
-    """Return ``{meta.workset.path}`` for *state* — the root its channel keys live under.
+  """Return ``{meta.workset.path}`` for *state* — the root its channel keys live under.
 
-    ⚑ The ``ProjectState`` twin of :func:`channels.workset_root`, which takes a resolved
-    ``ProjectPaths`` this path does not have.  Same three arms, deliberately in the same
-    order as :func:`_state_ws_token`: the token says WHICH partition, this says which
-    ``workset.yaml`` may repoint it, and a relocation needs both for each side.
-    """
-    if state.mode == BoxMode.standalone:
-        # Standalone roots the workset at the project ROOT; ``metadata_path`` IS that
-        # root (the workspace is a subdir under it), matching ``channels.workset_root``.
-        return state.metadata_path
-    if state.mode == BoxMode.named:
-        if state.ws is None:
-            raise ValueError(
-                "named box is missing its workset; cannot derive the workset root."
-            )
-        return state.ws.root
-    return std.primary_workset
+  ⚑ The ``ProjectState`` twin of :func:`channels.workset_root`, which takes a resolved
+  ``ProjectPaths`` this path does not have.  Same three arms, deliberately in the same
+  order as :func:`_state_ws_token`: the token says WHICH partition, this says which
+  ``workset.yaml`` may repoint it, and a relocation needs both for each side.
+  """
+  if state.mode == BoxMode.standalone:
+    # Standalone roots the workset at the project ROOT; ``metadata_path`` IS that
+    # root (the workspace is a subdir under it), matching ``channels.workset_root``.
+    return state.metadata_path
+  if state.mode == BoxMode.named:
+    if state.ws is None:
+      raise ValueError("named box is missing its workset; cannot derive the workset root.")
+    return state.ws.root
+  return std.primary_workset
 
 
 def _own_partition(state: ProjectState, std: StandardPaths) -> OwnPartition:
-    """*state*'s own channel partition, read through its workset's keys."""
-    from kanibako.channels.channels import own_partition_dirs
+  """*state*'s own channel partition, read through its workset's keys."""
+  from kanibako.channels.channels import own_partition_dirs
 
-    return own_partition_dirs(std, _state_ws_token(state), state.name,
-                              ws_root=_state_ws_root(state, std))
+  return own_partition_dirs(
+    std, _state_ws_token(state), state.name, ws_root=_state_ws_root(state, std)
+  )
 
 
 def _old_partition(old: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> OwnPartition:
-    """*old*'s own partition: the one *plan* resolved before the stash, else resolved now.
+  """*old*'s own partition: the one *plan* resolved before the stash, else resolved now.
 
-    Raises what that resolution raised.
-    """
-    if isinstance(plan.partition, Exception):
-        raise plan.partition
-    return plan.partition if plan.partition is not None else _own_partition(old, std)
+  Raises what that resolution raised.
+  """
+  if isinstance(plan.partition, Exception):
+    raise plan.partition
+  return plan.partition if plan.partition is not None else _own_partition(old, std)
 
 
 def _relocate_channel_partition(
-    old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown,
+  old: ProjectState,
+  new: ProjectState,
+  std: StandardPaths,
+  plan: _SourceTeardown,
 ) -> None:
-    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
+  """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
 
-    ⚑⚑ EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS.  Both addresses
-    used to be built from ``(std, ws_token)`` alone, which can only produce the
-    partition's DEFAULT — while ``box_channel_addresses`` routes through
-    ``workset.channels.{mailboxes,share_global}``, so a workset that repoints
-    ``mailboxes`` has its boxes MOUNTED at the repointed address.  Moving the default
-    directory therefore moved nothing and stranded the box's real mail.
-    """
-    import sys
+  ⚑⚑ EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS.  Both addresses
+  used to be built from ``(std, ws_token)`` alone, which can only produce the
+  partition's DEFAULT — while ``box_channel_addresses`` routes through
+  ``workset.channels.{mailboxes,share_global}``, so a workset that repoints
+  ``mailboxes`` has its boxes MOUNTED at the repointed address.  Moving the default
+  directory therefore moved nothing and stranded the box's real mail.
+  """
+  import sys
 
+  try:
+    old_token = _state_ws_token(old)
+    new_token = _state_ws_token(new)
+  except ValueError as e:  # cannot derive an address → nothing to relocate
+    print(f"Warning: skipping channel relocation: {e}", file=sys.stderr)
+    return
+
+  # No address change → nothing to move (idempotent no-op).
+  # ⚑ Compared on the TOKEN, not the resolved path: two tokens that repoint to one
+  # directory are still two partitions, and the box's own subdir name is what moves.
+  if old_token == new_token and old.name == new.name:
+    return
+
+  # ⚑ A REPOINT CAN REFUSE (``workset.channels.*`` names the key and raises rather
+  # than falling back), and this step runs AFTER the files have already moved. A
+  # settings error in a best-effort cleanup must not abort a lifecycle operation
+  # that is otherwise complete, so it warns with the key's own message and skips —
+  # the same treatment the per-directory move below already gives an OSError.
+  try:
+    src = _old_partition(old, std, plan)
+    dst = _own_partition(new, std)
+  except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
+    print(
+      f"Warning: skipping channel relocation, a channel key did not resolve: {e}",
+      file=sys.stderr,
+    )
+    return
+
+  for src_dir, dst_dir, label in (
+    (src.mailbox, dst.mailbox, "mailbox"),
+    (src.share_global, dst.share_global, "share"),
+  ):
+    if src_dir is None or dst_dir is None:
+      # ⚑ A NULL PARTITION KEY IS AN ADDRESS THAT DOES NOT EXIST — the same fact as
+      # the ``is_dir()`` arm below, so it takes the same way out.  ⛔ NOT IN MY
+      # GRANT; named in the report (a reader my first-round census did not reach).
+      continue
     try:
-        old_token = _state_ws_token(old)
-        new_token = _state_ws_token(new)
-    except ValueError as e:  # cannot derive an address → nothing to relocate
-        print(f"Warning: skipping channel relocation: {e}", file=sys.stderr)
-        return
-
-    # No address change → nothing to move (idempotent no-op).
-    # ⚑ Compared on the TOKEN, not the resolved path: two tokens that repoint to one
-    # directory are still two partitions, and the box's own subdir name is what moves.
-    if old_token == new_token and old.name == new.name:
-        return
-
-    # ⚑ A REPOINT CAN REFUSE (``workset.channels.*`` names the key and raises rather
-    # than falling back), and this step runs AFTER the files have already moved. A
-    # settings error in a best-effort cleanup must not abort a lifecycle operation
-    # that is otherwise complete, so it warns with the key's own message and skips —
-    # the same treatment the per-directory move below already gives an OSError.
-    try:
-        src = _old_partition(old, std, plan)
-        dst = _own_partition(new, std)
-    except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
+      if not src_dir.is_dir():
+        continue  # nothing published yet under the old address
+      if dst_dir.exists():
+        # ⚑ NEVER clobber an existing dest — this whole step is best-effort.
         print(
-            f"Warning: skipping channel relocation, a channel key did not "
-            f"resolve: {e}",
-            file=sys.stderr,
+          f"Warning: channel {label} destination already exists, leaving it in place: {dst_dir}",
+          file=sys.stderr,
         )
-        return
-
-    for src_dir, dst_dir, label in (
-        (src.mailbox, dst.mailbox, "mailbox"),
-        (src.share_global, dst.share_global, "share"),
-    ):
-        if src_dir is None or dst_dir is None:
-            # ⚑ A NULL PARTITION KEY IS AN ADDRESS THAT DOES NOT EXIST — the same fact as
-            # the ``is_dir()`` arm below, so it takes the same way out.  ⛔ NOT IN MY
-            # GRANT; named in the report (a reader my first-round census did not reach).
-            continue
-        try:
-            if not src_dir.is_dir():
-                continue  # nothing published yet under the old address
-            if dst_dir.exists():
-                # ⚑ NEVER clobber an existing dest — this whole step is best-effort.
-                print(
-                    f"Warning: channel {label} destination already exists, "
-                    f"leaving it in place: {dst_dir}",
-                    file=sys.stderr,
-                )
-                continue
-            dst_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src_dir), str(dst_dir))
-        except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
-            print(
-                f"Warning: could not relocate channel {label} "
-                f"({src_dir} -> {dst_dir}): {e}",
-                file=sys.stderr,
-            )
+        continue
+      dst_dir.parent.mkdir(parents=True, exist_ok=True)
+      shutil.move(str(src_dir), str(dst_dir))
+    except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
+      print(
+        f"Warning: could not relocate channel {label} ({src_dir} -> {dst_dir}): {e}",
+        file=sys.stderr,
+      )
 
 
 def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None:
-    """Carry this box's OWN vault snapshot store across a rename or a move.
+  """Carry this box's OWN vault snapshot store across a rename or a move.
 
-    ⚑ MUST run AFTER identity is finalized, as step 4b does: a standalone convert
-    REGENERATES the box name, so the key the store lands under is only readable off
-    *new_state*.  Best-effort: a failure strands the store rather than losing it, and
-    the old store still on disk (or one that cannot be inspected) is returned so the
-    teardown keeps it.
-    """
-    import sys
+  ⚑ MUST run AFTER identity is finalized, as step 4b does: a standalone convert
+  REGENERATES the box name, so the key the store lands under is only readable off
+  *new_state*.  Best-effort: a failure strands the store rather than losing it, and
+  the old store still on disk (or one that cannot be inspected) is returned so the
+  teardown keeps it.
+  """
+  import sys
 
-    from kanibako.snapshots import relocate_snapshot_store
+  from kanibako.snapshots import relocate_snapshot_store
 
-    old_store = _old_snapshot_store(state, new_state)
-    if old_store is None:
-        return None
-    assert state.vault_rw is not None and new_state.vault_rw is not None
-    try:
-        carried = relocate_snapshot_store(
-            state.vault_rw, new_state.vault_rw,
-            old_box=state.name, new_box=new_state.name,
-            new_base_exclusive=new_state.mode is BoxMode.standalone,
-            old_base_exclusive=state.mode is BoxMode.standalone,
-        )
-    except Exception as e:  # noqa: BLE001 - best-effort, mirrors step 4b
-        print(
-            f"Warning: could not move the vault snapshots from '{state.name}' to "
-            f"'{new_state.name}': {e}. They are still on disk under the old name "
-            f"and 'kanibako box vault list' will not show them.",
-            file=sys.stderr,
-        )
-    else:
-        note = _linked_store_note(state, new_state, old_store) if carried is None else None
-        if note is not None:
-            print(note, file=sys.stderr)
-    try:
-        return old_store if is_dir_unless_gone(old_store) else None
-    except ConfigError:
-        return old_store  # it cannot be inspected: keep it, never tear it down
+  old_store = _old_snapshot_store(state, new_state)
+  if old_store is None:
+    return None
+  assert state.vault_rw is not None and new_state.vault_rw is not None
+  try:
+    carried = relocate_snapshot_store(
+      state.vault_rw,
+      new_state.vault_rw,
+      old_box=state.name,
+      new_box=new_state.name,
+      new_base_exclusive=new_state.mode is BoxMode.standalone,
+      old_base_exclusive=state.mode is BoxMode.standalone,
+    )
+  except Exception as e:  # noqa: BLE001 - best-effort, mirrors step 4b
+    print(
+      f"Warning: could not move the vault snapshots from '{state.name}' to "
+      f"'{new_state.name}': {e}. They are still on disk under the old name "
+      f"and 'kanibako box vault list' will not show them.",
+      file=sys.stderr,
+    )
+  else:
+    note = _linked_store_note(state, new_state, old_store) if carried is None else None
+    if note is not None:
+      print(note, file=sys.stderr)
+  try:
+    return old_store if is_dir_unless_gone(old_store) else None
+  except ConfigError:
+    return old_store  # it cannot be inspected: keep it, never tear it down
 
 
 def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str | None:
-    """The Note for an old *store* relocate left uncarried, or ``None``.
+  """The Note for an old *store* relocate left uncarried, or ``None``.
 
-    Not a refusal; the snapshots stay where they are.  Two cases:
+  Not a refusal; the snapshots stay where they are.  Two cases:
 
-    * *store* is a link, which relocate never carries.  No Note when it leads to the
-      new store itself (``.versions/a -> b``, or both linked to one store): the new name
-      lists those snapshots.  The relink cure is given only when it is unambiguous: a
-      SHARED old base (in an exclusive one a box could have planted the link, and
-      adopting it would let every auto-prune delete in a box-chosen target), a shared
-      new base, no store under the new name, and a link that leads to a directory.
-      The command guards the destination at run time, so it fails, leaving the old
-      link, if a store appeared there since.
-    * *store* is a real directory, and the new store is repointed into it or onto one
-      of its parents (``stores_overlap``): nothing could be moved.  No command.
-    """
-    import os
+  * *store* is a link, which relocate never carries.  No Note when it leads to the
+    new store itself (``.versions/a -> b``, or both linked to one store): the new name
+    lists those snapshots.  The relink cure is given only when it is unambiguous: a
+    SHARED old base (in an exclusive one a box could have planted the link, and
+    adopting it would let every auto-prune delete in a box-chosen target), a shared
+    new base, no store under the new name, and a link that leads to a directory.
+    The command guards the destination at run time, so it fails, leaving the old
+    link, if a store appeared there since.
+  * *store* is a real directory, and the new store is repointed into it or onto one
+    of its parents (``stores_overlap``): nothing could be moved.  No command.
+  """
+  import os
 
-    from kanibako import boxfs
-    from kanibako.snapshots import box_snapshot_store, store_path, stores_overlap
+  from kanibako import boxfs
+  from kanibako.snapshots import box_snapshot_store, store_path, stores_overlap
 
-    assert new.vault_rw is not None  # a store came back
-    new_rw = new.vault_rw
-    new_store = box_snapshot_store(new_rw, new.name)
+  assert new.vault_rw is not None  # a store came back
+  new_rw = new.vault_rw
+  new_store = box_snapshot_store(new_rw, new.name)
 
-    def real_new_store() -> Path | None:
-        try:
-            return store_path(new_rw, box_name=new.name,
-                              exclusive=new.mode is BoxMode.standalone)[0]
-        except boxfs.SymlinkRefusedError:
-            return None  # relocate's own warning named it
+  def real_new_store() -> Path | None:
+    try:
+      return store_path(new_rw, box_name=new.name, exclusive=new.mode is BoxMode.standalone)[0]
+    except boxfs.SymlinkRefusedError:
+      return None  # relocate's own warning named it
 
-    def same_store(real_new: Path) -> bool:
-        try:  # an unsearchable base is not the same store (as ``stores_overlap``)
-            return real_new.exists() and os.path.samefile(real_new, store)
-        except OSError:
-            return False
+  def same_store(real_new: Path) -> bool:
+    try:  # an unsearchable base is not the same store (as ``stores_overlap``)
+      return real_new.exists() and os.path.samefile(real_new, store)
+    except OSError:
+      return False
 
-    if not store.is_symlink():
-        if not store.is_dir():
-            return None
-        real_new = real_new_store()
-        if real_new is None or same_store(real_new) or not stores_overlap(store, real_new):
-            return None
-        return (f"Note: '{new.name}' was not given its old vault snapshots: its store "
-                f"{new_store} leads to {real_new}, which overlaps the old store {store}, "
-                f"so nothing was moved. The snapshots stay at {store}.")
-    if store.is_dir() and (real_new := real_new_store()) is not None and same_store(real_new):
-        return None  # the link leads to the new store: nothing is left behind
-    target = os.path.realpath(store) if store.is_dir() else os.readlink(store)
-    note = (f"Note: '{new.name}' lists none of its old vault snapshots: {store} is a link "
-            f"to {target}, and a linked snapshot store is never moved. The snapshots stay "
-            f"at {target}.")
-    if (old.mode is not BoxMode.standalone and new.mode is not BoxMode.standalone
-            and store.is_dir() and not os.path.lexists(new_store)
-            and new_store.parent.is_dir()):
-        dst = shlex.quote(str(new_store))
-        cmd = (f"[ ! -e {dst} ] && [ ! -L {dst} ] && "
-               f"{shlex.join(['ln', '-s', '--', target, str(new_store)])} && "
-               f"{shlex.join(['rm', '--', str(store)])}")
-        note += f" To give them to '{new.name}', run: {cmd}"
-    return note
+  if not store.is_symlink():
+    if not store.is_dir():
+      return None
+    real_new = real_new_store()
+    if real_new is None or same_store(real_new) or not stores_overlap(store, real_new):
+      return None
+    return (
+      f"Note: '{new.name}' was not given its old vault snapshots: its store "
+      f"{new_store} leads to {real_new}, which overlaps the old store {store}, "
+      f"so nothing was moved. The snapshots stay at {store}."
+    )
+  if store.is_dir() and (real_new := real_new_store()) is not None and same_store(real_new):
+    return None  # the link leads to the new store: nothing is left behind
+  target = os.path.realpath(store) if store.is_dir() else os.readlink(store)
+  note = (
+    f"Note: '{new.name}' lists none of its old vault snapshots: {store} is a link "
+    f"to {target}, and a linked snapshot store is never moved. The snapshots stay "
+    f"at {target}."
+  )
+  if (
+    old.mode is not BoxMode.standalone
+    and new.mode is not BoxMode.standalone
+    and store.is_dir()
+    and not os.path.lexists(new_store)
+    and new_store.parent.is_dir()
+  ):
+    dst = shlex.quote(str(new_store))
+    cmd = (
+      f"[ ! -e {dst} ] && [ ! -L {dst} ] && "
+      f"{shlex.join(['ln', '-s', '--', target, str(new_store)])} && "
+      f"{shlex.join(['rm', '--', str(store)])}"
+    )
+    note += f" To give them to '{new.name}', run: {cmd}"
+  return note
 
 
 def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
-    """*old*'s snapshot store when step 4c carries it; ``None`` when it stays the box's."""
-    from kanibako.snapshots import box_snapshot_store
+  """*old*'s snapshot store when step 4c carries it; ``None`` when it stays the box's."""
+  from kanibako.snapshots import box_snapshot_store
 
-    if old.vault_rw is None or new.vault_rw is None:
-        return None
-    if old.name == new.name and old.vault_rw == new.vault_rw:
-        return None
-    try:
-        return box_snapshot_store(old.vault_rw, old.name)
-    except KanibakoError:
-        return None
+  if old.vault_rw is None or new.vault_rw is None:
+    return None
+  if old.name == new.name and old.vault_rw == new.vault_rw:
+    return None
+  try:
+    return box_snapshot_store(old.vault_rw, old.name)
+  except KanibakoError:
+    return None
 
 
 def _safe_unregister(std: StandardPaths, name: str) -> bool:
-    """Best-effort drop of *name* from the PRIMARY membership; ``False`` if it raised."""
-    try:
-        unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
-    except Exception:  # noqa: BLE001
-        return False
-    return True
+  """Best-effort drop of *name* from the PRIMARY membership; ``False`` if it raised."""
+  try:
+    unregister_primary_box_name(
+      std.primary_workset, name, early=_early_scope(std, BoxMode.primary)
+    )
+  except Exception:  # noqa: BLE001
+    return False
+  return True
 
 
 def _safe_register_membership(
-    std: StandardPaths, name: str, workspace: Path,
+  std: StandardPaths,
+  name: str,
+  workspace: Path,
 ) -> bool:
-    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1);
-    ``False`` if it raised."""
-    try:
-        _register_workset_box_membership(std.primary_workset, name, workspace, early=_early_scope(std, BoxMode.primary))
-    except Exception:  # noqa: BLE001
-        return False
-    return True
+  """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1);
+  ``False`` if it raised."""
+  try:
+    _register_workset_box_membership(
+      std.primary_workset, name, workspace, early=_early_scope(std, BoxMode.primary)
+    )
+  except Exception:  # noqa: BLE001
+    return False
+  return True
 
 
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]:
-    """Member *name*'s four leaves: workspace, box tree, read-only and read-write vault.
+  """Member *name*'s four leaves: workspace, box tree, read-only and read-write vault.
 
-    ⚑ The vault arms are RESOLVED and the per-box leaves composed by the one NAMED-mode
-    accessor, as :func:`add_project` creates them.  The workspace leaf is ``None`` under
-    a null ``workset.workspaces`` — there is no ``workspaces/<name>``.
-    """
-    box_tree = ws.projects_dir / name
-    _shell, vault_ro, vault_rw = _workset_box_paths(
-        box_tree, *resolve_workset_vault_pair(ws.root, early=ws.early_scope), name,
-    )
-    workspaces = ws.workspaces_dir
-    return (workspaces / name if workspaces is not None else None, box_tree,
-            vault_ro, vault_rw)
+  ⚑ The vault arms are RESOLVED and the per-box leaves composed by the one NAMED-mode
+  accessor, as :func:`add_project` creates them.  The workspace leaf is ``None`` under
+  a null ``workset.workspaces`` — there is no ``workspaces/<name>``.
+  """
+  box_tree = ws.projects_dir / name
+  _shell, vault_ro, vault_rw = _workset_box_paths(
+    box_tree,
+    *resolve_workset_vault_pair(ws.root, early=ws.early_scope),
+    name,
+  )
+  workspaces = ws.workspaces_dir
+  return (workspaces / name if workspaces is not None else None, box_tree, vault_ro, vault_rw)
 
 
 def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]:
-    """Those of :func:`_member_leaves` already on disk (a dangling link counts), each
-    mapped to its entry names for :func:`note_added_leftovers`."""
-    from kanibako.project import registry_store
+  """Those of :func:`_member_leaves` already on disk (a dangling link counts), each
+  mapped to its entry names for :func:`note_added_leftovers`."""
+  from kanibako.project import registry_store
 
-    return {
-        p: _entry_names(p) for p in _member_leaves(ws, name)
-        # ⚑ A leaf kanibako cannot stat (EACCES) is ON disk: the user's, never removed.
-        if p is not None and (not registry_store._metadata_definitively_gone(str(p))
-                              or p.is_symlink())
-    }
+  return {
+    p: _entry_names(p)
+    for p in _member_leaves(ws, name)
+    # ⚑ A leaf kanibako cannot stat (EACCES) is ON disk: the user's, never removed.
+    if p is not None and (not registry_store._metadata_definitively_gone(str(p)) or p.is_symlink())
+  }
 
 
 def _unwind_target_member(
-    ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None],
+  ws: Workset,
+  name: str,
+  existed: Mapping[Path, frozenset[str] | None],
 ) -> bool:
-    """Undo a target registration: the record, plus each leaf NOT in *existed*.
+  """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
-    ⚑⚑ A leaf that existed before the op is the user's and is never touched; a Note names
-    what the op added to it.  A link is unlinked, never followed; every tree goes through the
-    escalating ``remove_path``.  Whatever cannot be removed is reported here, because
-    ``_Unwind.run`` swallows errors.  Returns ``False`` when the record could not be
-    dropped or a leaf this op created remains.
-    """
-    import sys
+  ⚑⚑ A leaf that existed before the op is the user's and is never touched; a Note names
+  what the op added to it.  A link is unlinked, never followed; every tree goes through the
+  escalating ``remove_path``.  Whatever cannot be removed is reported here, because
+  ``_Unwind.run`` swallows errors.  Returns ``False`` when the record could not be
+  dropped or a leaf this op created remains.
+  """
+  import sys
 
-    held: KeyboardInterrupt | None = None
-    dropped = True
+  held: KeyboardInterrupt | None = None
+  dropped = True
+  try:
+    if find_identifier(name, (p.name for p in ws.projects)) is not None:
+      release_project(ws, name, keep_link=True)
+  except KeyboardInterrupt as exc:
+    held = exc
+    print(
+      f"Note: may not have dropped the record of '{name}' from workset '{ws.name}': interrupted",
+      file=sys.stderr,
+    )
+  except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
+    dropped = False
+    print(
+      f"Note: could not drop the record of '{name}' from workset '{ws.name}': {err}",
+      file=sys.stderr,
+    )
+  workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
+  for leaf in (workspace, box_tree, vault_ro, vault_rw):
+    if leaf is None:
+      continue
+    if leaf in existed:
+      try:
+        note_added_leftovers(leaf, existed[leaf])
+      except KeyboardInterrupt as exc:
+        held = held or exc
+      continue
     try:
-        if find_identifier(name, (p.name for p in ws.projects)) is not None:
-            release_project(ws, name, keep_link=True)
+      if leaf.is_symlink() or leaf.is_dir():
+        remove_path(leaf)
     except KeyboardInterrupt as exc:
-        held = exc
-        print(f"Note: may not have dropped the record of '{name}' from workset "
-              f"'{ws.name}': interrupted", file=sys.stderr)
-    except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
-        dropped = False
-        print(f"Note: could not drop the record of '{name}' from workset "
-              f"'{ws.name}': {err}", file=sys.stderr)
-    workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
-    for leaf in (workspace, box_tree, vault_ro, vault_rw):
-        if leaf is None:
-            continue
-        if leaf in existed:
-            try:
-                note_added_leftovers(leaf, existed[leaf])
-            except KeyboardInterrupt as exc:
-                held = held or exc
-            continue
-        try:
-            if leaf.is_symlink() or leaf.is_dir():
-                remove_path(leaf)
-        except KeyboardInterrupt as exc:
-            held = held or exc
-        except OSError:
-            pass  # reported just below
-        if leaf.exists() or leaf.is_symlink():
-            dropped = False
-            print(f"Note: could not remove {leaf}, which this operation created",
-                  file=sys.stderr)
-    if held is not None:
-        raise held
-    return dropped
+      held = held or exc
+    except OSError:
+      pass  # reported just below
+    if leaf.exists() or leaf.is_symlink():
+      dropped = False
+      print(f"Note: could not remove {leaf}, which this operation created", file=sys.stderr)
+  if held is not None:
+    raise held
+  return dropped
 
 
 def _dispose_stash(stash: Path) -> None:
-    """Delete relocation stash *stash* through the box-tree deleter; report a leftover.
+  """Delete relocation stash *stash* through the box-tree deleter; report a leftover.
 
-    ⚑ The stash holds a copy of the box home, so a leftover may hold credentials.
-    """
-    import sys
+  ⚑ The stash holds a copy of the box home, so a leftover may hold credentials.
+  """
+  import sys
 
-    if (stash.exists() or stash.is_symlink()) and not remove_box_tree(stash):
-        print(f"Note: could not remove {stash}; it may hold credentials", file=sys.stderr)
+  if (stash.exists() or stash.is_symlink()) and not remove_box_tree(stash):
+    print(f"Note: could not remove {stash}; it may hold credentials", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
 # CLI entry points: run_remap / run_move / run_convert
 # ---------------------------------------------------------------------------
 
+
 def _convert_target_flags(args) -> list[str]:
-    """The target flags the user typed, so a printed cure re-runs THEIR command."""
-    if getattr(args, "to_default", False):
-        return ["--default"]
-    ws = getattr(args, "to_workset", None)
-    if ws:
-        return ["--workset", str(ws)]
-    return []
+  """The target flags the user typed, so a printed cure re-runs THEIR command."""
+  if getattr(args, "to_default", False):
+    return ["--default"]
+  ws = getattr(args, "to_workset", None)
+  if ws:
+    return ["--workset", str(ws)]
+  return []
 
 
 def _ownership_from_args(args) -> str | _Sentinel:
-    """Map --default/--standalone/--workset to an ownership value, else :data:`UNCHANGED`."""
-    if getattr(args, "to_default", False):
-        return "default"
-    if getattr(args, "to_standalone", False):
-        return "standalone"
-    ws = getattr(args, "to_workset", None)
-    if ws:
-        return ws
-    return UNCHANGED
+  """Map --default/--standalone/--workset to an ownership value, else :data:`UNCHANGED`."""
+  if getattr(args, "to_default", False):
+    return "default"
+  if getattr(args, "to_standalone", False):
+    return "standalone"
+  ws = getattr(args, "to_workset", None)
+  if ws:
+    return ws
+  return UNCHANGED
 
 
 def _validated_name(args) -> str | None:
-    """Return the user's ``--name`` validated AS TYPED (spec §0), or ``None``."""
-    name = getattr(args, "name", None)
-    if not name:
-        return name
-    validate_box_name(name)
+  """Return the user's ``--name`` validated AS TYPED (spec §0), or ``None``."""
+  name = getattr(args, "name", None)
+  if not name:
     return name
+  validate_box_name(name)
+  return name
 
 
 def _make_confirm(force: bool, summary: str):
-    """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm* (None if forced)."""
-    if force:
-        return None
+  """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm* (None if forced)."""
+  if force:
+    return None
 
-    from kanibako.utils import confirm_or_abort
+  from kanibako.utils import confirm_or_abort
 
-    def _confirm() -> bool:
-        print(summary)
-        print()
-        return confirm_or_abort(False, "Type 'yes' to confirm: ", announce_abort=False)
+  def _confirm() -> bool:
+    print(summary)
+    print()
+    return confirm_or_abort(False, "Type 'yes' to confirm: ", announce_abort=False)
 
-    return _confirm
+  return _confirm
 
 
 def _load_env():
-    from kanibako.settings.config import user_config_file, load_config
-    from kanibako.settings.paths import load_std_paths
+  from kanibako.settings.config import user_config_file, load_config
+  from kanibako.settings.paths import load_std_paths
 
-    config = load_config(user_config_file())
-    std = load_std_paths(config)
-    return config, std
+  config = load_config(user_config_file())
+  std = load_std_paths(config)
+  return config, std
 
 
 def session_lock_held(lock_file: Path) -> bool:
-    """True while a ``box start`` session holds *lock_file*'s ``flock``.
+  """True while a ``box start`` session holds *lock_file*'s ``flock``.
 
-    The file outlives its session (start never deletes it), so only the lock says the box
-    runs.  A file that cannot be probed counts as held; only a definitively absent one
-    (``ENOENT``/``ENOTDIR``) is free.
-    """
-    import fcntl
+  The file outlives its session (start never deletes it), so only the lock says the box
+  runs.  A file that cannot be probed counts as held; only a definitively absent one
+  (``ENOENT``/``ENOTDIR``) is free.
+  """
+  import fcntl
 
-    try:
-        with open(lock_file, "rb") as fd:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return True
-            fcntl.flock(fd, fcntl.LOCK_UN)
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    except OSError:
+  try:
+    with open(lock_file, "rb") as fd:
+      try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+      except BlockingIOError:
         return True
+      fcntl.flock(fd, fcntl.LOCK_UN)
+  except (FileNotFoundError, NotADirectoryError):
     return False
+  except OSError:
+    return True
+  return False
 
 
 def box_running_reason(
-    proj: ProjectPaths | None, lock_file: Path,
-    *, container_name: str | None = None, box_ref: tuple[str, str] | None = None,
+  proj: ProjectPaths | None,
+  lock_file: Path,
+  *,
+  container_name: str | None = None,
+  box_ref: tuple[str, str] | None = None,
 ) -> str | None:
-    """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
+  """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
 
-    A session holding the lock, or the box's container running
-    (``_parser._check_container_running``), says it runs.  When the runtime is absent or
-    cannot answer, or no *proj* names the container, a lock file on disk still counts.
-    *container_name* asks about that container instead of the one *proj* renders.
-    *box_ref*, ``(<box name>, <W> segment)``, names a box with no *proj*: its rendered
-    name is asked, then the container its labels find (system-design § Box and helper
-    identity).  ⚑ A runtime that answers for the name but fails the label query
-    refuses, lock or not: the box may run under another name, so it is never read as
-    "not running".  One that cannot answer at all leaves it to the lock, as before.
-    """
-    from kanibako.errors import LabelQueryError
-    from kanibako.project import registry_store
+  A session holding the lock, or the box's container running
+  (``_parser._check_container_running``), says it runs.  When the runtime is absent or
+  cannot answer, or no *proj* names the container, a lock file on disk still counts.
+  *container_name* asks about that container instead of the one *proj* renders.
+  *box_ref*, ``(<box name>, <W> segment)``, names a box with no *proj*: its rendered
+  name is asked, then the container its labels find (system-design § Box and helper
+  identity).  ⚑ A runtime that answers for the name but fails the label query
+  refuses, lock or not: the box may run under another name, so it is never read as
+  "not running".  One that cannot answer at all leaves it to the lock, as before.
+  """
+  from kanibako.errors import LabelQueryError
+  from kanibako.project import registry_store
 
-    if session_lock_held(lock_file):
-        if _symlink_loop(lock_file):  # ⚑ fails closed, so the reason is the loop
-            return looped_lock_reason(lock_file)
-        return "a kanibako session holds its lock file"
-    if box_ref is not None and (proj is not None or container_name is not None):
-        box_ref = None  # *proj* or *container_name* already names the container
-    if box_ref is not None:
-        container_name = container_name_for_box_name(*box_ref)
-    unanswered = "no container runtime is available to tell whether its container runs"
-    if proj is not None or container_name is not None:
-        from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
+  if session_lock_held(lock_file):
+    if _symlink_loop(lock_file):  # ⚑ fails closed, so the reason is the loop
+      return looped_lock_reason(lock_file)
+    return "a kanibako session holds its lock file"
+  if box_ref is not None and (proj is not None or container_name is not None):
+    box_ref = None  # *proj* or *container_name* already names the container
+  if box_ref is not None:
+    container_name = container_name_for_box_name(*box_ref)
+  unanswered = "no container runtime is available to tell whether its container runs"
+  if proj is not None or container_name is not None:
+    from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
 
-        try:
-            # Pass the name only when there is one: older stubs take (proj, fail_closed).
-            if container_name is None:
-                running, detail = _check_container_running(proj, fail_closed=True)
-            else:
-                running, detail = _check_container_running(
-                    proj, fail_closed=True, container_name=container_name)
-            if not running and detail != NO_RUNTIME and box_ref is not None:
-                # The runtime answered for the rendered name; ask by the labels too.
-                labeled = _box_ref_container(*box_ref)
-                if labeled is not None and labeled != container_name:
-                    running, detail = _check_container_running(
-                        proj, fail_closed=True, container_name=labeled)
-        except LabelQueryError as exc:
-            return (f"the container runtime could not tell which container is the box's "
-                    f"({exc})")
-        except ContainerError as exc:
-            running, detail = False, NO_RUNTIME
-            unanswered = f"the container runtime could not tell whether its container runs ({exc})"
-        if running:
-            return f"its container is {detail}"
-        if detail != NO_RUNTIME:
-            return None
-    if not registry_store._metadata_definitively_gone(str(lock_file)):  # ⚑ EACCES: present
-        return f"{_LOCK_UNANSWERED}{unanswered}"
-    return None
+    try:
+      # Pass the name only when there is one: older stubs take (proj, fail_closed).
+      if container_name is None:
+        running, detail = _check_container_running(proj, fail_closed=True)
+      else:
+        running, detail = _check_container_running(
+          proj, fail_closed=True, container_name=container_name
+        )
+      if not running and detail != NO_RUNTIME and box_ref is not None:
+        # The runtime answered for the rendered name; ask by the labels too.
+        labeled = _box_ref_container(*box_ref)
+        if labeled is not None and labeled != container_name:
+          running, detail = _check_container_running(
+            proj, fail_closed=True, container_name=labeled
+          )
+    except LabelQueryError as exc:
+      return f"the container runtime could not tell which container is the box's ({exc})"
+    except ContainerError as exc:
+      running, detail = False, NO_RUNTIME
+      unanswered = f"the container runtime could not tell whether its container runs ({exc})"
+    if running:
+      return f"its container is {detail}"
+    if detail != NO_RUNTIME:
+      return None
+  if not registry_store._metadata_definitively_gone(str(lock_file)):  # ⚑ EACCES: present
+    return f"{_LOCK_UNANSWERED}{unanswered}"
+  return None
 
 
 def _box_ref_container(box: str, workset: str) -> str | None:
-    """The container of box *box* in the ``<W>`` segment *workset*, found by its labels.
+  """The container of box *box* in the ``<W>`` segment *workset*, found by its labels.
 
-    Raises ``LabelQueryError`` when a present runtime fails the query.  With no runtime
-    at all it answers the rendered name, and the probe it is handed to says so.
-    """
-    from kanibako.utils import box_container_named
+  Raises ``LabelQueryError`` when a present runtime fails the query.  With no runtime
+  at all it answers the rendered name, and the probe it is handed to says so.
+  """
+  from kanibako.utils import box_container_named
 
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError:
-        return container_name_for_box_name(box, workset)
-    return box_container_named(runtime, box, workset, check=True)
+  try:
+    runtime = ContainerRuntime()
+  except ContainerError:
+    return container_name_for_box_name(box, workset)
+  return box_container_named(runtime, box, workset, check=True)
 
 
 # ⚑ The one reason ``kanibako stop`` cannot cure: no runtime answered, so stop finds no
@@ -5065,320 +5774,357 @@ _LOCK_UNANSWERED = "a lock file exists and "
 
 
 def abort_if_box_running(
-    proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
-    *, container_name: str | None = None, box_ref: tuple[str, str] | None = None,
-    cure_ref: str | None = None, announce_abort: bool = True, forceable: bool = True,
+  proj: ProjectPaths | None,
+  lock_file: Path,
+  force: bool,
+  consequence: str,
+  *,
+  container_name: str | None = None,
+  box_ref: tuple[str, str] | None = None,
+  cure_ref: str | None = None,
+  announce_abort: bool = True,
+  forceable: bool = True,
 ) -> bool:
-    """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
+  """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
 
-    A door that would DEREGISTER a running box passes ``forceable=False``: *force* is
-    ignored and the refusal does not offer it (172-RF [Jei:2026-10-11]: forcing breaks things).
+  A door that would DEREGISTER a running box passes ``forceable=False``: *force* is
+  ignored and the refusal does not offer it (172-RF [Jei:2026-10-11]: forcing breaks things).
 
-    The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
-    any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
-    for a box that did not resolve.  With neither, the cure stays a bare ``kanibako stop``.
-    *box_ref* is :func:`box_running_reason`'s.  A caller that probes many boxes passes ``announce_abort=False`` and prints
-    ``Aborted.`` once itself.
-    """
-    import sys
+  The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
+  any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
+  for a box that did not resolve.  With neither, the cure stays a bare ``kanibako stop``.
+  *box_ref* is :func:`box_running_reason`'s.  A caller that probes many boxes passes ``announce_abort=False`` and prints
+  ``Aborted.`` once itself.
+  """
+  import sys
 
-    reason = box_running_reason(proj, lock_file, container_name=container_name,
-                                box_ref=box_ref)
-    if reason is None:
-        return False
-    ref = project_cure_ref(proj) if proj is not None else cure_ref
-    stop = ("Stop the box first (kanibako stop)" if ref is None
-            else f"Stop the box first: kanibako stop {ref}")
-    if not forceable:
-        print(f"Error: this box may be running: {reason}. {consequence} {stop}.",
-              file=sys.stderr)
-    else:
-        # ⚑ A run that already passed --force is not told to pass it.
-        offer = "" if force else ", or pass --force"
-        print(f"Warning: this box may be running: {reason}. {consequence} "
-              f"{stop}{offer}.", file=sys.stderr)
-        if force:
-            return False
-    if reason.startswith(_LOCK_UNANSWERED):
-        from kanibako.commands.stop import stale_lock_cure
-        print(stale_lock_cure(lock_file), file=sys.stderr)
-    if announce_abort:
-        print("Aborted.")
-    return True
+  reason = box_running_reason(proj, lock_file, container_name=container_name, box_ref=box_ref)
+  if reason is None:
+    return False
+  ref = project_cure_ref(proj) if proj is not None else cure_ref
+  stop = (
+    "Stop the box first (kanibako stop)"
+    if ref is None
+    else f"Stop the box first: kanibako stop {ref}"
+  )
+  if not forceable:
+    print(f"Error: this box may be running: {reason}. {consequence} {stop}.", file=sys.stderr)
+  else:
+    # ⚑ A run that already passed --force is not told to pass it.
+    offer = "" if force else ", or pass --force"
+    print(
+      f"Warning: this box may be running: {reason}. {consequence} {stop}{offer}.", file=sys.stderr
+    )
+    if force:
+      return False
+  if reason.startswith(_LOCK_UNANSWERED):
+    from kanibako.commands.stop import stale_lock_cure
+
+    print(stale_lock_cure(lock_file), file=sys.stderr)
+  if announce_abort:
+    print("Aborted.")
+  return True
 
 
 def _abort_if_locked(state: ProjectState, force: bool) -> bool:
-    """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
-    return abort_if_box_running(
-        state.paths, state.metadata_path / ".kanibako.lock", force,
-        "Moving/converting it would copy then DELETE the live workspace.")
+  """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
+  return abort_if_box_running(
+    state.paths,
+    state.metadata_path / ".kanibako.lock",
+    force,
+    "Moving/converting it would copy then DELETE the live workspace.",
+  )
 
 
 def _relocation_failure(err: OSError) -> str:
-    """The ``Error:`` line for an ``OSError`` (``shutil.Error`` included) that escaped a relocation.
+  """The ``Error:`` line for an ``OSError`` (``shutil.Error`` included) that escaped a relocation.
 
-    A ``shutil.Error`` from a tree copy names each entry it could not copy, as ``_duplicate`` does.
-    """
-    if isinstance(err, shutil.Error):
-        listing = failed_entries(err)
-        if listing is not None:
-            return f"Error: the relocation failed; {listing}"
-    return f"Error: the relocation failed: {_loop_named(err)}"
+  A ``shutil.Error`` from a tree copy names each entry it could not copy, as ``_duplicate`` does.
+  """
+  if isinstance(err, shutil.Error):
+    listing = failed_entries(err)
+    if listing is not None:
+      return f"Error: the relocation failed; {listing}"
+  return f"Error: the relocation failed: {_loop_named(err)}"
 
 
 def run_remap(args) -> int:
-    """``box remap <old> [<new>]`` — records-only relocation; moves no files."""
-    import sys
+  """``box remap <old> [<new>]`` — records-only relocation; moves no files."""
+  import sys
 
-    config, std = _load_env()
+  config, std = _load_env()
 
-    from kanibako.commands.flags import resolve_subject_value
-    old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
-    new = getattr(args, "new", None) or "./"
-    new_path = Path(literal_path(new))
+  from kanibako.commands.flags import resolve_subject_value
 
-    try:
-        # A standalone root the user moved is the box itself at <new>.
-        state = _moved_standalone_state(old, new_path, std, config)
-        if state is None:
-            state = resolve_lifecycle_target(old, std, config)
-    except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
+  old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
+  new = getattr(args, "new", None) or "./"
+  new_path = Path(literal_path(new))
 
-    spec = TargetSpec(location=new_path, ownership=UNCHANGED, records_only=True)
-    if state.moved_from is not None:
-        what, was = "the box is already there; no files moved", state.moved_from
-    elif state.mode is BoxMode.standalone:
-        # The help's and MIGRATION's account: <new> becomes the root, its files move in.
-        what = ("the new path becomes its root: the files already there move into its "
-                "workspace directory, and its box data moves from the old root")
-        was = state.workspace_path
-    else:
-        what, was = "no files moved", state.workspace_path
-    summary = (
-        f"Remap project records ({what}):\n"
-        f"  project: {state.name}\n"
-        f"     from: {was}\n"
-        f"       to: {new_path}"
+  try:
+    # A standalone root the user moved is the box itself at <new>.
+    state = _moved_standalone_state(old, new_path, std, config)
+    if state is None:
+      state = resolve_lifecycle_target(old, std, config)
+  except (ProjectError, WorksetError) as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
+
+  spec = TargetSpec(location=new_path, ownership=UNCHANGED, records_only=True)
+  if state.moved_from is not None:
+    what, was = "the box is already there; no files moved", state.moved_from
+  elif state.mode is BoxMode.standalone:
+    # The help's and MIGRATION's account: <new> becomes the root, its files move in.
+    what = (
+      "the new path becomes its root: the files already there move into its "
+      "workspace directory, and its box data moves from the old root"
     )
-    try:
-        new_state = execute_lifecycle(
-            state, spec, std, config,
-            force=getattr(args, "force", False),
-            confirm=_make_confirm(getattr(args, "force", False), summary),
-        )
-    except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
+    was = state.workspace_path
+  else:
+    what, was = "no files moved", state.workspace_path
+  summary = (
+    f"Remap project records ({what}):\n"
+    f"  project: {state.name}\n"
+    f"     from: {was}\n"
+    f"       to: {new_path}"
+  )
+  try:
+    new_state = execute_lifecycle(
+      state,
+      spec,
+      std,
+      config,
+      force=getattr(args, "force", False),
+      confirm=_make_confirm(getattr(args, "force", False), summary),
+    )
+  except (ProjectError, WorksetError) as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
 
-    print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
-    return 0
+  print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
+  return 0
 
 
-def _completed_move(old: str, new_path: Path, std: StandardPaths,
-                    config: BootstrapConfig, args) -> str | None:
-    """Why a retried move has nothing to do, or ``None``: *new_path* already is the box.
+def _completed_move(
+  old: str, new_path: Path, std: StandardPaths, config: BootstrapConfig, args
+) -> str | None:
+  """Why a retried move has nothing to do, or ``None``: *new_path* already is the box.
 
-    *old* resolved to no box.  The box at *new_path* counts only when its name is
-    registered there and it matches any ``--name`` or owner flag.
-    """
-    try:
-        landed = resolve_lifecycle_target(str(new_path), std, config)
-        registered = Path(literal_path(resolve_designation(
-            std, landed.name, unknown_name_is_path=False, name_first=True)))
-    except (ProjectError, WorksetError, OSError):
-        return None
-    at = {landed.workspace_path.resolve(), landed.metadata_path.resolve()}
-    if registered.resolve() not in at or new_path not in at:
-        return None
-    name = getattr(args, "name", None)
-    if name and not _same_box_name(name, landed.name):
-        return None
-    ownership = _ownership_from_args(args)
-    if ownership is not UNCHANGED:
-        mode, ws_name = _ownership_to_mode(ownership)  # type: ignore[arg-type]
-        if mode is not landed.mode or (ws_name is not None and (
-                landed.ws is None or landed.ws.name != ws_name)):
-            return None
-    # ⚑ Nothing records where a box came from, so this cannot tell a retry from a typo.
-    return f"Nothing to do: no box is at {old}, and {new_path} is already box '{landed.name}'."
+  *old* resolved to no box.  The box at *new_path* counts only when its name is
+  registered there and it matches any ``--name`` or owner flag.
+  """
+  try:
+    landed = resolve_lifecycle_target(str(new_path), std, config)
+    registered = Path(
+      literal_path(
+        resolve_designation(std, landed.name, unknown_name_is_path=False, name_first=True)
+      )
+    )
+  except (ProjectError, WorksetError, OSError):
+    return None
+  at = {landed.workspace_path.resolve(), landed.metadata_path.resolve()}
+  if registered.resolve() not in at or new_path not in at:
+    return None
+  name = getattr(args, "name", None)
+  if name and not _same_box_name(name, landed.name):
+    return None
+  ownership = _ownership_from_args(args)
+  if ownership is not UNCHANGED:
+    mode, ws_name = _ownership_to_mode(ownership)  # type: ignore[arg-type]
+    if mode is not landed.mode or (
+      ws_name is not None and (landed.ws is None or landed.ws.name != ws_name)
+    ):
+      return None
+  # ⚑ Nothing records where a box came from, so this cannot tell a retry from a typo.
+  return f"Nothing to do: no box is at {old}, and {new_path} is already box '{landed.name}'."
 
 
 def run_move(args) -> int:
-    """``box move <old> <new>`` (alias ``mv``) — physically relocate files."""
-    import sys
+  """``box move <old> <new>`` (alias ``mv``) — physically relocate files."""
+  import sys
 
-    config, std = _load_env()
+  config, std = _load_env()
 
-    from kanibako.commands.flags import resolve_subject_value
-    old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
-    new = getattr(args, "new", None)
-    if not old or not new:
-        print("Error: move requires both <old> and <new>.", file=sys.stderr)
-        return 1
-    new_path = _resolved_unless_loop(Path(new))
+  from kanibako.commands.flags import resolve_subject_value
 
-    try:
-        state = resolve_lifecycle_target(old, std, config)
-    except UnmarkedStandaloneError as e:
-        # ⚑ *old* IS a box, so this is never the retry ``_completed_move`` reports.
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except (ProjectError, WorksetError) as e:
-        done = _completed_move(old, new_path, std, config, args)
-        print(f"Error: {done or e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
+  old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
+  new = getattr(args, "new", None)
+  if not old or not new:
+    print("Error: move requires both <old> and <new>.", file=sys.stderr)
+    return 1
+  new_path = _resolved_unless_loop(Path(new))
 
-    if _abort_if_locked(state, getattr(args, "force", False)):
-        return 2
+  try:
+    state = resolve_lifecycle_target(old, std, config)
+  except UnmarkedStandaloneError as e:
+    # ⚑ *old* IS a box, so this is never the retry ``_completed_move`` reports.
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except (ProjectError, WorksetError) as e:
+    done = _completed_move(old, new_path, std, config, args)
+    print(f"Error: {done or e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
 
-    ownership = _ownership_from_args(args)
-    summary = (
-        "Move project workspace:\n"
-        f"  project: {state.name}\n"
-        f"     from: {state.workspace_path}\n"
-        f"       to: {new_path}"
+  if _abort_if_locked(state, getattr(args, "force", False)):
+    return 2
+
+  ownership = _ownership_from_args(args)
+  summary = (
+    "Move project workspace:\n"
+    f"  project: {state.name}\n"
+    f"     from: {state.workspace_path}\n"
+    f"       to: {new_path}"
+  )
+  try:
+    spec = TargetSpec(
+      location=new_path,
+      ownership=ownership,
+      name=_validated_name(args),
+      verb="move",
     )
-    try:
-        spec = TargetSpec(
-            location=new_path, ownership=ownership, name=_validated_name(args),
-            verb="move",
-        )
-        new_state = execute_lifecycle(
-            state, spec, std, config,
-            force=getattr(args, "force", False),
-            confirm=_make_confirm(getattr(args, "force", False), summary),
-        )
-    except BoxNameError as e:
-        # ⚑ A STANDALONE TARGET has no `--name` to give: the doors REFUSE a differing one.
-        # Keyed on TARGET mode: `--default` leaves standalone, where `--name` works.
-        if ownership == "standalone" or (
-                ownership is UNCHANGED and state.mode is BoxMode.standalone):
-            derived = isinstance(e, DerivedBoxNameError)
-            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}",
-                  file=sys.stderr)
-            return 1
-        cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
-                           *_convert_target_flags(args)])
-        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
-        return 1
-    except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
+    new_state = execute_lifecycle(
+      state,
+      spec,
+      std,
+      config,
+      force=getattr(args, "force", False),
+      confirm=_make_confirm(getattr(args, "force", False), summary),
+    )
+  except BoxNameError as e:
+    # ⚑ A STANDALONE TARGET has no `--name` to give: the doors REFUSE a differing one.
+    # Keyed on TARGET mode: `--default` leaves standalone, where `--name` works.
+    if ownership == "standalone" or (ownership is UNCHANGED and state.mode is BoxMode.standalone):
+      derived = isinstance(e, DerivedBoxNameError)
+      print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}", file=sys.stderr)
+      return 1
+    cure = shlex.join(
+      ["kanibako", "box", "move", old, str(new_path), *_convert_target_flags(args)]
+    )
+    print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
+    return 1
+  except (ProjectError, WorksetError) as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
 
-    print(f"Moved '{new_state.name}' to {new_state.workspace_path}")
-    return 0
+  print(f"Moved '{new_state.name}' to {new_state.workspace_path}")
+  return 0
 
 
 def run_convert(args) -> int:
-    """``box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]``."""
-    import sys
+  """``box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]``."""
+  import sys
 
-    config, std = _load_env()
+  config, std = _load_env()
 
-    ownership = _ownership_from_args(args)
-    if ownership is UNCHANGED:
-        print(
-            "Error: convert requires a target "
-            "(--default, --standalone, or --workset <ws>).",
-            file=sys.stderr,
-        )
-        return 1
-
-    # argparse stores :data:`_BARE_MOVE` for bare --move, a path string for --move <path>.
-    move_val = getattr(args, "move", None)
-    if move_val is None:
-        location: Path | _Sentinel = INPLACE
-    elif move_val is _BARE_MOVE:
-        # Bare --move is only valid with a workset target.
-        if not getattr(args, "to_workset", None):
-            print(
-                "Error: bare `--move` (into the workset) requires "
-                "`--workset <ws>`. Use `--move <path>` to relocate elsewhere.",
-                file=sys.stderr,
-            )
-            return 1
-        location = BARE_INTO_WS
-    else:
-        location = _resolved_unless_loop(Path(move_val))
-
-    from kanibako.commands.flags import resolve_subject_value
-    subject = resolve_subject_value(
-        getattr(args, "old", None), getattr(args, "box", None),
-    )
-    try:
-        state = resolve_lifecycle_target(subject, std, config)
-    except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
-
-    # Lock pre-flight: convert re-roots by copy-then-rmtree (mirrors move / duplicate).
-    if _abort_if_locked(state, getattr(args, "force", False)):
-        return 2
-
-    if location is INPLACE:
-        loc_desc = "in place"
-    elif location is BARE_INTO_WS:
-        loc_desc = "into the workset"
-    else:
-        loc_desc = f"to {location}"
-    summary = (
-        "Convert project:\n"
-        f"  project: {state.name}\n"
-        f"    owner: {state.owner} -> {ownership}\n"
-        f" location: {loc_desc}"
-    )
-    try:
-        spec = TargetSpec(
-            location=location, ownership=ownership, name=_validated_name(args),
-            verb="convert",
-        )
-        new_state = execute_lifecycle(
-            state, spec, std, config,
-            force=getattr(args, "force", False),
-            confirm=_make_confirm(getattr(args, "force", False), summary),
-        )
-    except BoxNameError as e:
-        # ⚑ Same rule as ``run_move``: a `--name` cure on that door is a loop.
-        if ownership == "standalone":
-            derived = isinstance(e, DerivedBoxNameError)
-            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}",
-                  file=sys.stderr)
-            return 1
-        cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
-                           *_convert_target_flags(args),
-                           *(["--move", str(location)]
-                              if isinstance(location, Path) else [])])
-        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
-        return 1
-    except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(_relocation_failure(e), file=sys.stderr)
-        return 1
-
+  ownership = _ownership_from_args(args)
+  if ownership is UNCHANGED:
     print(
-        f"Converted '{new_state.name}' to {new_state.owner} "
-        f"({new_state.workspace_path})"
+      "Error: convert requires a target (--default, --standalone, or --workset <ws>).",
+      file=sys.stderr,
     )
-    return 0
+    return 1
+
+  # argparse stores :data:`_BARE_MOVE` for bare --move, a path string for --move <path>.
+  move_val = getattr(args, "move", None)
+  if move_val is None:
+    location: Path | _Sentinel = INPLACE
+  elif move_val is _BARE_MOVE:
+    # Bare --move is only valid with a workset target.
+    if not getattr(args, "to_workset", None):
+      print(
+        "Error: bare `--move` (into the workset) requires "
+        "`--workset <ws>`. Use `--move <path>` to relocate elsewhere.",
+        file=sys.stderr,
+      )
+      return 1
+    location = BARE_INTO_WS
+  else:
+    location = _resolved_unless_loop(Path(move_val))
+
+  from kanibako.commands.flags import resolve_subject_value
+
+  subject = resolve_subject_value(
+    getattr(args, "old", None),
+    getattr(args, "box", None),
+  )
+  try:
+    state = resolve_lifecycle_target(subject, std, config)
+  except (ProjectError, WorksetError) as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
+
+  # Lock pre-flight: convert re-roots by copy-then-rmtree (mirrors move / duplicate).
+  if _abort_if_locked(state, getattr(args, "force", False)):
+    return 2
+
+  if location is INPLACE:
+    loc_desc = "in place"
+  elif location is BARE_INTO_WS:
+    loc_desc = "into the workset"
+  else:
+    loc_desc = f"to {location}"
+  summary = (
+    "Convert project:\n"
+    f"  project: {state.name}\n"
+    f"    owner: {state.owner} -> {ownership}\n"
+    f" location: {loc_desc}"
+  )
+  try:
+    spec = TargetSpec(
+      location=location,
+      ownership=ownership,
+      name=_validated_name(args),
+      verb="convert",
+    )
+    new_state = execute_lifecycle(
+      state,
+      spec,
+      std,
+      config,
+      force=getattr(args, "force", False),
+      confirm=_make_confirm(getattr(args, "force", False), summary),
+    )
+  except BoxNameError as e:
+    # ⚑ Same rule as ``run_move``: a `--name` cure on that door is a loop.
+    if ownership == "standalone":
+      derived = isinstance(e, DerivedBoxNameError)
+      print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}", file=sys.stderr)
+      return 1
+    cure = shlex.join(
+      [
+        "kanibako",
+        "box",
+        "convert",
+        subject or str(state.workspace_path),
+        *_convert_target_flags(args),
+        *(["--move", str(location)] if isinstance(location, Path) else []),
+      ]
+    )
+    print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
+    return 1
+  except (ProjectError, WorksetError) as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    print(_relocation_failure(e), file=sys.stderr)
+    return 1
+
+  print(f"Converted '{new_state.name}' to {new_state.owner} ({new_state.workspace_path})")
+  return 0
 
 
 #: argparse ``const`` sentinel for a bare ``--move`` (no path argument).

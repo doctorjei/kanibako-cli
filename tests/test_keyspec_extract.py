@@ -231,7 +231,10 @@ def test_a_truncated_usable_200_fails_the_section_and_is_not_retried(
   assert args.max_retries >= 1, "a single-request pin proves nothing if retries are off"
   calls = _serve(monkeypatch, _usable_200(finish_reason="length"))
   text, failure, attempts = keyspec.run_section(
-    conn=_CONN, bearer="unused", prompt="p", args=args,
+    conn=_CONN,
+    bearer="unused",
+    prompt="p",
+    args=args,
   )
   assert text is None, "a truncated completion must never be written out as a section"
   assert failure is not None and "finish_reason='length'" in failure
@@ -247,7 +250,10 @@ def test_a_stop_finish_returns_the_text(monkeypatch: pytest.MonkeyPatch) -> None
   args = _args()
   _serve(monkeypatch, _usable_200(finish_reason="stop"))
   text, failure, attempts = keyspec.run_section(
-    conn=_CONN, bearer="unused", prompt="p", args=args,
+    conn=_CONN,
+    bearer="unused",
+    prompt="p",
+    args=args,
   )
   assert failure is None
   assert text is not None and "meta.box.mode" in text
@@ -255,7 +261,8 @@ def test_a_stop_finish_returns_the_text(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_an_absent_finish_reason_is_kept_but_warned_about(
-  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
 ) -> None:
   """UNKNOWN is deliberately NOT fatal -- it would refuse every endpoint that omits the field.
 
@@ -265,7 +272,10 @@ def test_an_absent_finish_reason_is_kept_but_warned_about(
   args = _args()
   _serve(monkeypatch, _usable_200())
   text, failure, attempts = keyspec.run_section(
-    conn=_CONN, bearer="unused", prompt="p", args=args,
+    conn=_CONN,
+    bearer="unused",
+    prompt="p",
+    args=args,
   )
   assert failure is None and text is not None
   assert attempts[-1].finish_reason is None
@@ -273,7 +283,8 @@ def test_an_absent_finish_reason_is_kept_but_warned_about(
 
 
 def test_a_blank_finish_reason_is_unknown_and_still_recorded_verbatim(
-  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
 ) -> None:
   """A field present but empty means what ``null`` means; only the VERDICT normalizes it.
 
@@ -284,7 +295,10 @@ def test_a_blank_finish_reason_is_unknown_and_still_recorded_verbatim(
   args = _args()
   _serve(monkeypatch, _usable_200(finish_reason=""))
   text, failure, attempts = keyspec.run_section(
-    conn=_CONN, bearer="unused", prompt="p", args=args,
+    conn=_CONN,
+    bearer="unused",
+    prompt="p",
+    args=args,
   )
   assert failure is None and text is not None, "a blank finish_reason must not fail a section"
   assert attempts[-1].finish_reason == "", "the record keeps the endpoint's own value"
@@ -293,7 +307,8 @@ def test_a_blank_finish_reason_is_unknown_and_still_recorded_verbatim(
 
 @pytest.mark.parametrize("store_model", ["PERSONA_DEFAULT_MODEL", ""])
 def test_a_null_or_empty_store_model_names_no_model_and_the_metadata_serializes(
-  monkeypatch: pytest.MonkeyPatch, store_model: str,
+  monkeypatch: pytest.MonkeyPatch,
+  store_model: str,
 ) -> None:
   """A store ``null`` (the marker) and a store ``""`` both reach the request as NO model.
 
@@ -333,7 +348,11 @@ def test_a_null_or_empty_store_model_names_no_model_and_the_metadata_serializes(
   monkeypatch.setattr(keyspec, "read_persona_bundle", fake_read_persona_bundle)
 
   conn = keyspec.resolve_connection(
-    entry, "p+claude", endpoint=None, model=None, path="/v1/chat/completions",
+    entry,
+    "p+claude",
+    endpoint=None,
+    model=None,
+    path="/v1/chat/completions",
   )
   assert calls == ["resolve_secret_path", "get_target", "read_persona_bundle"]
   assert conn.model is None

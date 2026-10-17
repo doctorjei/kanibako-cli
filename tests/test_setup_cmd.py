@@ -8,39 +8,39 @@ import shutil
 from kanibako import __version__
 from kanibako.commands import setup_cmd
 from kanibako.settings.config import (
-    config_file_path,
-    load_config,
-    read_system_agent,
-    read_setup_completed,
+  config_file_path,
+  load_config,
+  read_system_agent,
+  read_setup_completed,
 )
 from kanibako.settings.paths import load_std_paths, xdg
 
 
 class _FakeTarget:
-    """Minimal stand-in for a kanibako Target plugin."""
+  """Minimal stand-in for a kanibako Target plugin."""
 
-    display_name = "Fake"
-    _detects = True
+  display_name = "Fake"
+  _detects = True
 
-    def detect(self):
-        return object() if self._detects else None
+  def detect(self):
+    return object() if self._detects else None
 
 
 def _make_target(name: str, detects: bool = True):
-    """A plugin class DECLARING *name* — its ``Target.name``, in the plugin's own case.
+  """A plugin class DECLARING *name* — its ``Target.name``, in the plugin's own case.
 
-    ⚑ The declared name is not the registry KEY.  A registry is keyed by NODE — the
-    name in lowercase (keyspec §0 "An agent's canonical case is carried by its _name_") — so
-    a fixture that wants to tell the two apart files a MixedCase declaration under its own
-    lowercase node; see
-    :data:`_MIXED_CASE`.  A fixture declaring a lowercase name cannot discriminate,
-    because for it the two spellings are the same string.
-    """
-    return type(
-        f"Target_{name}",
-        (_FakeTarget,),
-        {"name": name, "display_name": name.title(), "_detects": detects},
-    )
+  ⚑ The declared name is not the registry KEY.  A registry is keyed by NODE — the
+  name in lowercase (keyspec §0 "An agent's canonical case is carried by its _name_") — so
+  a fixture that wants to tell the two apart files a MixedCase declaration under its own
+  lowercase node; see
+  :data:`_MIXED_CASE`.  A fixture declaring a lowercase name cannot discriminate,
+  because for it the two spellings are the same string.
+  """
+  return type(
+    f"Target_{name}",
+    (_FakeTarget,),
+    {"name": name, "display_name": name.title(), "_detects": detects},
+  )
 
 
 #: The discriminating registry: node ``kirobo``, declared name ``Kirobo``.  Every
@@ -50,263 +50,249 @@ _MIXED_CASE = {"kirobo": _make_target("Kirobo")}
 
 
 def _patch_targets(monkeypatch, targets: dict):
-    """Patch discover_targets everywhere setup_cmd reaches for it."""
-    monkeypatch.setattr(
-        "kanibako.targets.discover_targets", lambda *a, **k: dict(targets)
-    )
+  """Patch discover_targets everywhere setup_cmd reaches for it."""
+  monkeypatch.setattr("kanibako.targets.discover_targets", lambda *a, **k: dict(targets))
 
 
 def _ns(**kw) -> argparse.Namespace:
-    base = {"agent": None}
-    base.update(kw)
-    return argparse.Namespace(**base)
+  base = {"agent": None}
+  base.update(kw)
+  return argparse.Namespace(**base)
 
 
 def _config_paths(tmp_home):
-    """``(bootstrap config file, SYSTEM SETTINGS file)``.
+  """``(bootstrap config file, SYSTEM SETTINGS file)``.
 
-    ⚑ The setup MARKER is read from the SECOND of these since 2026-08-26 — spec §2g
-    declares ``system.setup_completed`` a Layer-2 ``system.*`` settings key, and
-    Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
-    """
-    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    ssp = load_std_paths(load_config(cf)).settings
-    return cf, ssp
+  ⚑ The setup MARKER is read from the SECOND of these since 2026-08-26 — spec §2g
+  declares ``system.setup_completed`` a Layer-2 ``system.*`` settings key, and
+  Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
+  """
+  cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+  ssp = load_std_paths(load_config(cf)).settings
+  return cf, ssp
 
 
 # --- _run_agent_selection: --agent flag (non-interactive) -----------------
 
 
 def test_agent_flag_valid_writes_default(tmp_home, config_file, monkeypatch):
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    selected = setup_cmd._run_agent_selection(_ns(agent="claude"))
-    assert selected == "claude"
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "claude"
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  selected = setup_cmd._run_agent_selection(_ns(agent="claude"))
+  assert selected == "claude"
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "claude"
 
 
-def test_agent_flag_is_case_blind_and_writes_the_DECLARED_NAME(
-    tmp_home, config_file, monkeypatch
-):
-    """One identifier, one answer at every door (keyspec §0, ⚑ NAMING RULES).
+def test_agent_flag_is_case_blind_and_writes_the_DECLARED_NAME(tmp_home, config_file, monkeypatch):
+  """One identifier, one answer at every door (keyspec §0, ⚑ NAMING RULES).
 
-    `--agent kirobo` reaches the plugin at a launch, so it has to reach it here
-    too — a setup that refuses what `start` accepts contradicts itself about what
-    is installed.
+  `--agent kirobo` reaches the plugin at a launch, so it has to reach it here
+  too — a setup that refuses what `start` accepts contradicts itself about what
+  is installed.
 
-    🛑 What is WRITTEN is the plugin's DECLARED NAME, not the node it matched.
-    `system.agent` holds a NAME (keyspec §2g,
-    §0 "An agent's canonical case is carried by its _name_"), and for an agent the
-    canonical case is the plugin's own
-    (keyspec §0 "CASE INSENSITIVE for collision purposes") — so the capital survives the
-    round trip and `resolve_agent` folds it to the node at the launch. Writing the
-    node here instead would be fold-to-store: the declared case would exist in no
-    stored carrier at all.
-    """
-    _patch_targets(monkeypatch, _MIXED_CASE)
-    assert setup_cmd._run_agent_selection(_ns(agent="KIROBO")) == "Kirobo"
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "Kirobo"
+  🛑 What is WRITTEN is the plugin's DECLARED NAME, not the node it matched.
+  `system.agent` holds a NAME (keyspec §2g,
+  §0 "An agent's canonical case is carried by its _name_"), and for an agent the
+  canonical case is the plugin's own
+  (keyspec §0 "CASE INSENSITIVE for collision purposes") — so the capital survives the
+  round trip and `resolve_agent` folds it to the node at the launch. Writing the
+  node here instead would be fold-to-store: the declared case would exist in no
+  stored carrier at all.
+  """
+  _patch_targets(monkeypatch, _MIXED_CASE)
+  assert setup_cmd._run_agent_selection(_ns(agent="KIROBO")) == "Kirobo"
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "Kirobo"
 
 
 def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
-    import pytest
+  import pytest
 
-    from kanibako.errors import ConfigError
+  from kanibako.errors import ConfigError
 
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    # An unknown --agent is a HARD error, not a graceful skip: raises so that
-    # run_setup aborts BEFORE writing the default or the completion marker.
-    with pytest.raises(ConfigError) as exc_info:
-        setup_cmd._run_agent_selection(_ns(agent="bogus"))
-    assert "Unknown agent 'bogus'" in str(exc_info.value)
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) is None
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  # An unknown --agent is a HARD error, not a graceful skip: raises so that
+  # run_setup aborts BEFORE writing the default or the completion marker.
+  with pytest.raises(ConfigError) as exc_info:
+    setup_cmd._run_agent_selection(_ns(agent="bogus"))
+  assert "Unknown agent 'bogus'" in str(exc_info.value)
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) is None
 
 
 def test_full_setup_bogus_agent_nonzero_no_marker_no_default(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """`setup --agent bogus` → nonzero rc, NO marker, NO default written."""
-    import pytest
+  """`setup --agent bogus` → nonzero rc, NO marker, NO default written."""
+  import pytest
 
-    from kanibako.errors import ConfigError
+  from kanibako.errors import ConfigError
 
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
-    )
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
-    )
-    # run_setup lets the ConfigError propagate (cli.py turns it into rc=1);
-    # critically, the marker write at the end of run_setup is never reached.
-    with pytest.raises(ConfigError):
-        setup_cmd.run_setup(_ns(agent="bogus"))
-    cf, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) is None
-    assert read_system_agent(ssp) is None
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  monkeypatch.setattr("kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"))
+  monkeypatch.setattr("kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"))
+  # run_setup lets the ConfigError propagate (cli.py turns it into rc=1);
+  # critically, the marker write at the end of run_setup is never reached.
+  with pytest.raises(ConfigError):
+    setup_cmd.run_setup(_ns(agent="bogus"))
+  cf, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) is None
+  assert read_system_agent(ssp) is None
 
 
 # --- _run_agent_selection: interactive menu -------------------------------
 
 
 def test_interactive_pick_writes_default(tmp_home, config_file, monkeypatch):
-    _patch_targets(
-        monkeypatch,
-        {"claude": _make_target("claude"), "goose": _make_target("goose")},
-    )
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # detected sorted: claude, goose → "2" picks goose.
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
-    selected = setup_cmd._run_agent_selection(_ns())
-    assert selected == "goose"
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "goose"
+  _patch_targets(
+    monkeypatch,
+    {"claude": _make_target("claude"), "goose": _make_target("goose")},
+  )
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  # detected sorted: claude, goose → "2" picks goose.
+  monkeypatch.setattr("builtins.input", lambda *a: "2")
+  selected = setup_cmd._run_agent_selection(_ns())
+  assert selected == "goose"
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "goose"
 
 
 def test_interactive_pick_writes_the_DECLARED_NAME(tmp_home, config_file, monkeypatch):
-    """The menu door answers the same spelling the ``--agent`` door does.
+  """The menu door answers the same spelling the ``--agent`` door does.
 
-    Two doors, one identifier: a pick from the list stores the plugin's declared
-    case exactly as `setup --agent` does, because both write `system.agent` and
-    that key holds a NAME (keyspec §0 "An agent's canonical case is carried by its _name_"). The
-    lowercase-``claude`` fixtures above cannot see this — for them the node and the name are
-    one string.
-    """
-    _patch_targets(monkeypatch, _MIXED_CASE)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *a: "1")
-    assert setup_cmd._run_agent_selection(_ns()) == "Kirobo"
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "Kirobo"
+  Two doors, one identifier: a pick from the list stores the plugin's declared
+  case exactly as `setup --agent` does, because both write `system.agent` and
+  that key holds a NAME (keyspec §0 "An agent's canonical case is carried by its _name_"). The
+  lowercase-``claude`` fixtures above cannot see this — for them the node and the name are
+  one string.
+  """
+  _patch_targets(monkeypatch, _MIXED_CASE)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  monkeypatch.setattr("builtins.input", lambda *a: "1")
+  assert setup_cmd._run_agent_selection(_ns()) == "Kirobo"
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "Kirobo"
 
 
 def test_interactive_single_agent_skip_is_confirmed_too(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """A skip is GATED at ONE detected agent as well (spec §2b).
+  """A skip is GATED at ONE detected agent as well (spec §2b).
 
-    🛑 It used to be accepted silently here, on the grounds that skipping was
-    harmless with one agent — the installed-agent count rule would launch that one
-    implicitly. That rule was deleted 2026-09-19, so a skip costs the same thing at
-    every count and the user has to be told before taking it.
+  🛑 It used to be accepted silently here, on the grounds that skipping was
+  harmless with one agent — the installed-agent count rule would launch that one
+  implicitly. That rule was deleted 2026-09-19, so a skip costs the same thing at
+  every count and the user has to be told before taking it.
 
-    MUTATION: restore ``if len(detected) >= 2:`` around the warning and this hangs
-    or returns ``None`` without ever printing ``will FAIL``.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # 1 agent → skip option is index 2; confirm "y" to take it.
-    answers = iter(["2", "y"])
-    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
-    selected = setup_cmd._run_agent_selection(_ns())
-    assert selected is None
-    assert "will FAIL" in capsys.readouterr().out
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) is None
+  MUTATION: restore ``if len(detected) >= 2:`` around the warning and this hangs
+  or returns ``None`` without ever printing ``will FAIL``.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  # 1 agent → skip option is index 2; confirm "y" to take it.
+  answers = iter(["2", "y"])
+  monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+  selected = setup_cmd._run_agent_selection(_ns())
+  assert selected is None
+  assert "will FAIL" in capsys.readouterr().out
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) is None
 
 
 def test_interactive_single_agent_unconfirmed_skip_reprompts_to_pick(
-    tmp_home, config_file, monkeypatch
+  tmp_home, config_file, monkeypatch
 ):
-    """The other half at ONE agent: declining the skip returns to the menu.
+  """The other half at ONE agent: declining the skip returns to the menu.
 
-    ⚑ Drives the ITERATOR to exhaustion deliberately — a constant-answer mock would
-    loop forever here, which is how the waiver's removal is visible at all.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # skip(2) → "n" (unconfirmed) re-prompts → then pick claude(1).
-    answers = iter(["2", "n", "1"])
-    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
-    assert setup_cmd._run_agent_selection(_ns()) == "claude"
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "claude"
+  ⚑ Drives the ITERATOR to exhaustion deliberately — a constant-answer mock would
+  loop forever here, which is how the waiver's removal is visible at all.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  # skip(2) → "n" (unconfirmed) re-prompts → then pick claude(1).
+  answers = iter(["2", "n", "1"])
+  monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+  assert setup_cmd._run_agent_selection(_ns()) == "claude"
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "claude"
 
 
-def test_interactive_skip_two_agents_reprompts_then_confirms(
-    tmp_home, config_file, monkeypatch
-):
-    _patch_targets(
-        monkeypatch,
-        {"claude": _make_target("claude"), "goose": _make_target("goose")},
-    )
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # Sequence: pick skip(3) → confirm "n" (re-prompt) → skip(3) → confirm "y".
-    answers = iter(["3", "n", "3", "y"])
-    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
-    selected = setup_cmd._run_agent_selection(_ns())
-    assert selected is None
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) is None
+def test_interactive_skip_two_agents_reprompts_then_confirms(tmp_home, config_file, monkeypatch):
+  _patch_targets(
+    monkeypatch,
+    {"claude": _make_target("claude"), "goose": _make_target("goose")},
+  )
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  # Sequence: pick skip(3) → confirm "n" (re-prompt) → skip(3) → confirm "y".
+  answers = iter(["3", "n", "3", "y"])
+  monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+  selected = setup_cmd._run_agent_selection(_ns())
+  assert selected is None
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) is None
 
 
 def test_interactive_skip_two_agents_unconfirmed_reprompts_to_pick(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    _patch_targets(
-        monkeypatch,
-        {"claude": _make_target("claude"), "goose": _make_target("goose")},
-    )
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # skip(3) → "n" (unconfirmed) re-prompts → then pick claude(1).
-    answers = iter(["3", "n", "1"])
-    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
-    selected = setup_cmd._run_agent_selection(_ns())
-    assert selected == "claude"
-    out = capsys.readouterr().out
-    assert "will FAIL" in out  # the gating warning was shown
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "claude"
+  _patch_targets(
+    monkeypatch,
+    {"claude": _make_target("claude"), "goose": _make_target("goose")},
+  )
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  # skip(3) → "n" (unconfirmed) re-prompts → then pick claude(1).
+  answers = iter(["3", "n", "1"])
+  monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+  selected = setup_cmd._run_agent_selection(_ns())
+  assert selected == "claude"
+  out = capsys.readouterr().out
+  assert "will FAIL" in out  # the gating warning was shown
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "claude"
 
 
 # --- _run_agent_selection: non-TTY ----------------------------------------
 
 
 def test_non_tty_no_flag_no_input_graceful(tmp_home, config_file, monkeypatch, capsys):
-    _patch_targets(
-        monkeypatch,
-        {"claude": _make_target("claude"), "goose": _make_target("goose")},
-    )
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  _patch_targets(
+    monkeypatch,
+    {"claude": _make_target("claude"), "goose": _make_target("goose")},
+  )
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-    def _boom(*a, **k):
-        raise AssertionError("input() must not be called in non-TTY mode")
+  def _boom(*a, **k):
+    raise AssertionError("input() must not be called in non-TTY mode")
 
-    monkeypatch.setattr("builtins.input", _boom)
-    selected = setup_cmd._run_agent_selection(_ns())
-    assert selected is None
-    out = capsys.readouterr().out
-    assert "non-interactive" in out
-    _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) is None
+  monkeypatch.setattr("builtins.input", _boom)
+  selected = setup_cmd._run_agent_selection(_ns())
+  assert selected is None
+  out = capsys.readouterr().out
+  assert "non-interactive" in out
+  _, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) is None
 
 
 # --- marker write ---------------------------------------------------------
 
 
 def test_marker_written_equals_version(tmp_home, config_file):
-    setup_cmd._write_setup_marker()
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) == __version__
+  setup_cmd._write_setup_marker()
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) == __version__
 
 
 def _stub_probes(monkeypatch):
-    """Make Steps 1 and 3 succeed without touching a real runtime."""
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
-    )
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
-    )
+  """Make Steps 1 and 3 succeed without touching a real runtime."""
+  monkeypatch.setattr("kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"))
+  monkeypatch.setattr("kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"))
 
 
 def _stage_templates():
-    """Install the packaged templates so Step 5 has nothing to do (``CURRENT``)."""
-    from kanibako.launch.templates import install_packaged_templates
+  """Install the packaged templates so Step 5 has nothing to do (``CURRENT``)."""
+  from kanibako.launch.templates import install_packaged_templates
 
-    install_packaged_templates(_resolve_std(), setup_cmd._known_target_names())
+  install_packaged_templates(_resolve_std(), setup_cmd._known_target_names())
 
 
 #: What :func:`_stage_stale_templates` writes over the staged marker file.
@@ -314,555 +300,525 @@ _STALE_TEXT = "an older shipped version\n"
 
 
 def _stage_stale_templates():
-    """Stage the templates, then make ONE shipped staging file differ (an UPDATE).
+  """Stage the templates, then make ONE shipped staging file differ (an UPDATE).
 
-    The 1.7.x-upgrade shape: the staging exists, but a shipped file in it no longer
-    matches this build, so Step 5 would OVERWRITE it — the one change that needs
-    consent.  A store with nothing staged is ADD-ONLY and needs none.
-    """
-    _stage_templates()
-    _staged_marker(_resolve_std()).write_text(_STALE_TEXT)
+  The 1.7.x-upgrade shape: the staging exists, but a shipped file in it no longer
+  matches this build, so Step 5 would OVERWRITE it — the one change that needs
+  consent.  A store with nothing staged is ADD-ONLY and needs none.
+  """
+  _stage_templates()
+  _staged_marker(_resolve_std()).write_text(_STALE_TEXT)
 
 
-def test_full_setup_flag_writes_marker_and_default(
-    tmp_home, config_file, monkeypatch
-):
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    # Templates already current → Step 5 is a no-op, isolating this to the
-    # --agent flag.  A run with NOTHING TO DO still records completion.
-    _stage_templates()
-    rc = setup_cmd.run_setup(_ns(agent="claude"))
-    assert rc == 0
-    cf, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "claude"
-    assert read_setup_completed(ssp) == __version__
+def test_full_setup_flag_writes_marker_and_default(tmp_home, config_file, monkeypatch):
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  # Templates already current → Step 5 is a no-op, isolating this to the
+  # --agent flag.  A run with NOTHING TO DO still records completion.
+  _stage_templates()
+  rc = setup_cmd.run_setup(_ns(agent="claude"))
+  assert rc == 0
+  cf, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) == "claude"
+  assert read_setup_completed(ssp) == __version__
 
 
 def test_full_setup_non_tty_current_templates_writes_marker_no_default(
-    tmp_home, config_file, monkeypatch
+  tmp_home, config_file, monkeypatch
 ):
-    """Non-TTY agent skip is graceful and STILL completes — Step 5 had nothing to do."""
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    _stage_templates()
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    rc = setup_cmd.run_setup(_ns())
-    assert rc == 0
-    cf, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) is None
-    assert read_setup_completed(ssp) == __version__
+  """Non-TTY agent skip is graceful and STILL completes — Step 5 had nothing to do."""
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  _stage_templates()
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  rc = setup_cmd.run_setup(_ns())
+  assert rc == 0
+  cf, ssp = _config_paths(tmp_home)
+  assert read_system_agent(ssp) is None
+  assert read_setup_completed(ssp) == __version__
 
 
 def test_full_setup_non_tty_stale_templates_records_no_marker(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """⚑ REGRESSION (F-1): a non-TTY run that SKIPPED Step 5 records NOTHING.
+  """⚑ REGRESSION (F-1): a non-TTY run that SKIPPED Step 5 records NOTHING.
 
-    The defect this pins: R-38 removed the per-branch template stamp but left the
-    setup-completion marker unconditional, so a headless ``kanibako setup`` on an
-    unmigrated store printed "cannot be updated non-interactively", refreshed
-    nothing, and then recorded ``setup_completed = <this build>`` anyway.  That
-    silenced ``setup_compat_gate``'s "isn't set up yet" advisory against a store
-    setup never touched (or, with a marker present below ``SETUP_BCV``, would have
-    cleared its hard block), and the next ``box create`` seeded an empty home
-    without even that nudge.
+  The defect this pins: R-38 removed the per-branch template stamp but left the
+  setup-completion marker unconditional, so a headless ``kanibako setup`` on an
+  unmigrated store printed "cannot be updated non-interactively", refreshed
+  nothing, and then recorded ``setup_completed = <this build>`` anyway.  That
+  silenced ``setup_compat_gate``'s "isn't set up yet" advisory against a store
+  setup never touched (or, with a marker present below ``SETUP_BCV``, would have
+  cleared its hard block), and the next ``box create`` seeded an empty home
+  without even that nudge.
 
-    The existing step-level test exercises ``_run_template_refresh`` in isolation
-    and never reaches the marker write — which is exactly why the defect shipped.
-    This one runs the WHOLE wizard.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    # A shipped staging file differs, exactly like a 1.7.x upgrade.
-    _stage_stale_templates()
-    rc = setup_cmd.run_setup(_ns())
-    # ⚑ The EXIT STATUS carries the same claim the banner does: a run that
-    # recorded nothing is a failure for anything scripting it (`kanibako setup &&
-    # kanibako start`, `kanibako setup || exit 1`).
-    assert rc == 1
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) is None
-    # The un-consented UPDATE was not made.
-    assert _staged_marker(_resolve_std()).read_text() == _STALE_TEXT
-    out = capsys.readouterr().out
-    # The banner must not claim a completion that was not recorded, and must
-    # name the cure.
-    assert "Setup Complete" not in out
-    assert "Setup Incomplete" in out
-    assert "--refresh-templates" in out
+  The existing step-level test exercises ``_run_template_refresh`` in isolation
+  and never reaches the marker write — which is exactly why the defect shipped.
+  This one runs the WHOLE wizard.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  # A shipped staging file differs, exactly like a 1.7.x upgrade.
+  _stage_stale_templates()
+  rc = setup_cmd.run_setup(_ns())
+  # ⚑ The EXIT STATUS carries the same claim the banner does: a run that
+  # recorded nothing is a failure for anything scripting it (`kanibako setup &&
+  # kanibako start`, `kanibako setup || exit 1`).
+  assert rc == 1
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) is None
+  # The un-consented UPDATE was not made.
+  assert _staged_marker(_resolve_std()).read_text() == _STALE_TEXT
+  out = capsys.readouterr().out
+  # The banner must not claim a completion that was not recorded, and must
+  # name the cure.
+  assert "Setup Complete" not in out
+  assert "Setup Incomplete" in out
+  assert "--refresh-templates" in out
 
 
 def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """⚑ The refusal above has a REACHABLE cure: the documented headless path.
+  """⚑ The refusal above has a REACHABLE cure: the documented headless path.
 
-    ``kanibako setup --refresh-templates`` (with ``--agent`` to skip the menu) is
-    the same stale store, non-interactive, and it both refreshes and completes.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    _stage_stale_templates()
-    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
-    assert rc == 0
-    cf, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) == __version__
-    assert read_system_agent(ssp) == "claude"
-    # The refresh really ran: the stale shipped file was UPDATED.
-    assert _staged_marker(_resolve_std()).read_text() != _STALE_TEXT
-    assert "Setup Complete" in capsys.readouterr().out
+  ``kanibako setup --refresh-templates`` (with ``--agent`` to skip the menu) is
+  the same stale store, non-interactive, and it both refreshes and completes.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  _stage_stale_templates()
+  rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+  assert rc == 0
+  cf, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) == __version__
+  assert read_system_agent(ssp) == "claude"
+  # The refresh really ran: the stale shipped file was UPDATED.
+  assert _staged_marker(_resolve_std()).read_text() != _STALE_TEXT
+  assert "Setup Complete" in capsys.readouterr().out
 
 
 def test_full_setup_non_tty_skip_reports_kept_and_writes_nothing(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """A headless SKIP lists the kept files too, and writes nothing.
+  """A headless SKIP lists the kept files too, and writes nothing.
 
-    The kept list prints on every Step 5 outcome, so a headless user sees the
-    divergence they carry even when the update itself cannot be asked about.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    _stage_stale_templates()
-    std = _resolve_std()
-    edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-    edited.write_text('{"edited": true}\n')
-    before = {
-        p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()
-    }
-    rc = setup_cmd.run_setup(_ns())
-    assert rc == 1
-    out = capsys.readouterr().out
-    assert "cannot be updated non-interactively" in out
-    assert "Kept YOUR copy" in out
-    assert str(edited) in out
-    assert _staged_marker(std).read_text() == _STALE_TEXT
-    assert edited.read_text() == '{"edited": true}\n'
-    after = {
-        p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()
-    }
-    assert after == before
+  The kept list prints on every Step 5 outcome, so a headless user sees the
+  divergence they carry even when the update itself cannot be asked about.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  _stage_stale_templates()
+  std = _resolve_std()
+  edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+  edited.write_text('{"edited": true}\n')
+  before = {p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()}
+  rc = setup_cmd.run_setup(_ns())
+  assert rc == 1
+  out = capsys.readouterr().out
+  assert "cannot be updated non-interactively" in out
+  assert "Kept YOUR copy" in out
+  assert str(edited) in out
+  assert _staged_marker(std).read_text() == _STALE_TEXT
+  assert edited.read_text() == '{"edited": true}\n'
+  after = {p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()}
+  assert after == before
 
 
 def test_full_setup_tty_decline_completes_and_exits_zero(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """An INFORMED decline is a settled state: marker recorded, rc 0.
+  """An INFORMED decline is a settled state: marker recorded, rc 0.
 
-    The rc follows the MARKER, not the refresh.  Declining at the prompt leaves
-    the store out of date by the user's own knowing choice, so the run is
-    complete — the withholding rc is reserved for the run that could not ask.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *a: "n")
-    # A shipped staging file differs, so Step 5 reaches the prompt.
-    _stage_stale_templates()
-    rc = setup_cmd.run_setup(_ns(agent="claude"))
-    assert rc == 0
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) == __version__
-    assert "Setup Complete" in capsys.readouterr().out
+  The rc follows the MARKER, not the refresh.  Declining at the prompt leaves
+  the store out of date by the user's own knowing choice, so the run is
+  complete — the withholding rc is reserved for the run that could not ask.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  monkeypatch.setattr("builtins.input", lambda *a: "n")
+  # A shipped staging file differs, so Step 5 reaches the prompt.
+  _stage_stale_templates()
+  rc = setup_cmd.run_setup(_ns(agent="claude"))
+  assert rc == 0
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) == __version__
+  assert "Setup Complete" in capsys.readouterr().out
 
 
 def test_full_setup_non_tty_fresh_store_adds_and_completes(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """⚑ REGRESSION: headless setup on FRESH data adds the templates and completes.
+  """⚑ REGRESSION: headless setup on FRESH data adds the templates and completes.
 
-    Nothing is staged, so every packaged file is an ADD.  Adding a file cannot
-    replace an edit, and an edit is the only thing the consent protects, so the
-    run applies without asking: rc 0, marker recorded.  It used to call the store
-    "out of date", refuse, and exit rc 1 with nothing installed.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  Nothing is staged, so every packaged file is an ADD.  Adding a file cannot
+  replace an edit, and an edit is the only thing the consent protects, so the
+  run applies without asking: rc 0, marker recorded.  It used to call the store
+  "out of date", refuse, and exit rc 1 with nothing installed.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-    def _boom(*a, **k):
-        raise AssertionError("input() must not be called in non-TTY mode")
+  def _boom(*a, **k):
+    raise AssertionError("input() must not be called in non-TTY mode")
 
-    monkeypatch.setattr("builtins.input", _boom)
-    rc = setup_cmd.run_setup(_ns(agent="claude"))
-    assert rc == 0
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) == __version__
-    assert _staged_marker(_resolve_std()).is_file()  # the adds really ran
-    out = capsys.readouterr().out
-    assert "Setup Complete" in out
-    assert "out of date" not in out
+  monkeypatch.setattr("builtins.input", _boom)
+  rc = setup_cmd.run_setup(_ns(agent="claude"))
+  assert rc == 0
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) == __version__
+  assert _staged_marker(_resolve_std()).is_file()  # the adds really ran
+  out = capsys.readouterr().out
+  assert "Setup Complete" in out
+  assert "out of date" not in out
 
 
 def test_full_setup_marker_write_failure_is_incomplete_and_nonzero(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """⚑ A marker write that RAISES is a failed setup — banner and rc alike.
+  """⚑ A marker write that RAISES is a failed setup — banner and rc alike.
 
-    The realistic shape is a read-only ``~/.config`` on an upgraded 1.7.x host:
-    ``kanibako setup --refresh-templates`` refreshes the store, the marker write
-    then raises, and the ``except`` arm used to leave ``recorded`` TRUE.  stdout
-    printed "Setup Complete" and the command exited 0 while stderr said the
-    completion could not be recorded — and the next ``kanibako start`` hard-
-    blocked on the marker that was never written.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    _stub_probes(monkeypatch)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  The realistic shape is a read-only ``~/.config`` on an upgraded 1.7.x host:
+  ``kanibako setup --refresh-templates`` refreshes the store, the marker write
+  then raises, and the ``except`` arm used to leave ``recorded`` TRUE.  stdout
+  printed "Setup Complete" and the command exited 0 while stderr said the
+  completion could not be recorded — and the next ``kanibako start`` hard-
+  blocked on the marker that was never written.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  _stub_probes(monkeypatch)
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-    def _boom():
-        raise OSError("Read-only file system")
+  def _boom():
+    raise OSError("Read-only file system")
 
-    monkeypatch.setattr(setup_cmd, "_write_setup_marker", _boom)
-    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
-    assert rc == 1
-    cap = capsys.readouterr()
-    assert "Could not record setup completion" in cap.err
-    assert "Setup Complete" not in cap.out
-    assert "Setup Incomplete" in cap.out
-    # The cure must match the CAUSE: Step 5 settled here, so the "needs a
-    # terminal / pass --refresh-templates" advice would be simply wrong.
-    assert "writing the marker failed" in cap.out
-    assert "needs an informed choice" not in cap.out
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) is None
+  monkeypatch.setattr(setup_cmd, "_write_setup_marker", _boom)
+  rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+  assert rc == 1
+  cap = capsys.readouterr()
+  assert "Could not record setup completion" in cap.err
+  assert "Setup Complete" not in cap.out
+  assert "Setup Incomplete" in cap.out
+  # The cure must match the CAUSE: Step 5 settled here, so the "needs a
+  # terminal / pass --refresh-templates" advice would be simply wrong.
+  assert "writing the marker failed" in cap.out
+  assert "needs an informed choice" not in cap.out
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) is None
 
 
 # --- Step 2: binary-less shell agent ---------------------------------------
 
 
 def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatch, capsys):
-    """The binary-less 'Shell' target has no host binary; Step 2 must
-    report it as available (image default), not '... not found on this system'.
-    """
-    from kanibako.targets.shell import ShellTarget
+  """The binary-less 'Shell' target has no host binary; Step 2 must
+  report it as available (image default), not '... not found on this system'.
+  """
+  from kanibako.targets.shell import ShellTarget
 
-    _patch_targets(monkeypatch, {"shell": ShellTarget})
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
-    )
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
-    )
-    # Step 5 is not this test's subject, and its outcome now gates both the marker
-    # and the RC — stage the templates so it reports CURRENT deterministically.
-    _stage_templates()
-    rc = setup_cmd.run_setup(_ns(agent="shell"))
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Shell" in out
-    assert "not found on this system" not in out
-    assert "image default" in out
+  _patch_targets(monkeypatch, {"shell": ShellTarget})
+  monkeypatch.setattr("kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"))
+  monkeypatch.setattr("kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"))
+  # Step 5 is not this test's subject, and its outcome now gates both the marker
+  # and the RC — stage the templates so it reports CURRENT deterministically.
+  _stage_templates()
+  rc = setup_cmd.run_setup(_ns(agent="shell"))
+  assert rc == 0
+  out = capsys.readouterr().out
+  assert "Shell" in out
+  assert "not found on this system" not in out
+  assert "image default" in out
 
 
 def test_no_real_plugin_reaches_the_tailored_install_command(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """Zero agent PLUGINS ⇒ the "install one" arm fires, with a TAILORED command.
+  """Zero agent PLUGINS ⇒ the "install one" arm fires, with a TAILORED command.
 
-    🛑 **The regression this pins.** The launch path used to raise
-    ``NoAgentInstalledError`` carrying ``install_method.install_command(...)``;
-    [Jei:2026-09-19] deleted that class, so the launch now says *run `kanibako
-    setup`* at every installed count and ``setup`` is the only place left that can
-    hand a first-run user a command which works in THEIR install.
+  🛑 **The regression this pins.** The launch path used to raise
+  ``NoAgentInstalledError`` carrying ``install_method.install_command(...)``;
+  [Jei:2026-09-19] deleted that class, so the launch now says *run `kanibako
+  setup`* at every installed count and ``setup`` is the only place left that can
+  hand a first-run user a command which works in THEIR install.
 
-    ⚑ It could not fire before: the gate was ``if not targets:``, and ``targets`` is
-    NEVER empty — the ``shell`` built-in is SEEDED by ``discover_targets`` itself.
-    The binary-less Shell target also set ``found_any``, so the
-    closing banner claimed *"You're ready to go!"* on a host where every launch
-    refuses. Three branches, one cause; the gate counts ``has_binary`` targets now.
+  ⚑ It could not fire before: the gate was ``if not targets:``, and ``targets`` is
+  NEVER empty — the ``shell`` built-in is SEEDED by ``discover_targets`` itself.
+  The binary-less Shell target also set ``found_any``, so the
+  closing banner claimed *"You're ready to go!"* on a host where every launch
+  refuses. Three branches, one cause; the gate counts ``has_binary`` targets now.
 
-    MUTATION: gate on ``if not targets:`` again (or let the binary-less target set
-    ``found_any``) and BOTH assertions below flip — no install command at all, and
-    a "ready to go" banner in front of a host that cannot launch.
-    """
-    from kanibako.install_method import install_command
-    from kanibako.targets.shell import ShellTarget
+  MUTATION: gate on ``if not targets:`` again (or let the binary-less target set
+  ``found_any``) and BOTH assertions below flip — no install command at all, and
+  a "ready to go" banner in front of a host that cannot launch.
+  """
+  from kanibako.install_method import install_command
+  from kanibako.targets.shell import ShellTarget
 
-    _patch_targets(monkeypatch, {"shell": ShellTarget})
-    _stub_probes(monkeypatch)
-    _stage_templates()
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    setup_cmd.run_setup(_ns())
-    out = capsys.readouterr().out
-    assert "No agent plugins installed." in out
-    assert install_command("kanibako-agent-claude") in out
-    # 🛑 And the banner must not contradict it.
-    assert "You're ready to go!" not in out
-    assert "Install an agent plugin and its host binary" in out
+  _patch_targets(monkeypatch, {"shell": ShellTarget})
+  _stub_probes(monkeypatch)
+  _stage_templates()
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  setup_cmd.run_setup(_ns())
+  out = capsys.readouterr().out
+  assert "No agent plugins installed." in out
+  assert install_command("kanibako-agent-claude") in out
+  # 🛑 And the banner must not contradict it.
+  assert "You're ready to go!" not in out
+  assert "Install an agent plugin and its host binary" in out
 
 
 # --- Step 5: template-refresh step (informed-consent flow) -----------------
 
 
 def _system_table(tmp_home):
-    """The raw ``system:`` table of the SYSTEM SETTINGS file (or ``{}``).
+  """The raw ``system:`` table of the SYSTEM SETTINGS file (or ``{}``).
 
-    ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` (2026-08-26): that is where
-    ``setup`` writes now, so this keeps its teeth.  Read against the config file, the
-    R-38 "no ``templates_stamp``" assertion below would pass vacuously — the config
-    file has no ``system:`` table at all any more.
-    """
-    from kanibako.settings.config_io import load_doc
+  ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` (2026-08-26): that is where
+  ``setup`` writes now, so this keeps its teeth.  Read against the config file, the
+  R-38 "no ``templates_stamp``" assertion below would pass vacuously — the config
+  file has no ``system:`` table at all any more.
+  """
+  from kanibako.settings.config_io import load_doc
 
-    _, ssp = _config_paths(tmp_home)
-    if not ssp.exists():
-        return {}
-    return load_doc(ssp).get("system", {}) or {}
+  _, ssp = _config_paths(tmp_home)
+  if not ssp.exists():
+    return {}
+  return load_doc(ssp).get("system", {}) or {}
 
 
 def _resolve_std():
-    from kanibako.settings.config import load_config
-    from kanibako.settings.paths import load_std_paths
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import load_std_paths
 
-    cf, _ = setup_cmd._settings_paths()
-    return load_std_paths(load_config(cf))
+  cf, _ = setup_cmd._settings_paths()
+  return load_std_paths(load_config(cf))
 
 
 def _staged_marker(std):
-    """One packaged file whose STAGED host path proves the install ran.
+  """One packaged file whose STAGED host path proves the install ran.
 
-    ``{system.template}/box/home/canon/notebook/LOCAL_CONTENTS.md`` — the box mold's
-    notebook entry point, chosen because it is in the SYSTEM-OWNED staging (the only
-    tier ``refresh=True`` may rewrite), not in a user-owned store.
-    """
-    return (
-        std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-    )
+  ``{system.template}/box/home/canon/notebook/LOCAL_CONTENTS.md`` — the box mold's
+  notebook entry point, chosen because it is in the SYSTEM-OWNED staging (the only
+  tier ``refresh=True`` may rewrite), not in a user-owned store.
+  """
+  return std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
 
 
 def test_only_skipped_outcome_withholds_completion():
-    """⚑ The marker gate: SKIPPED is the ONLY outcome that withholds completion.
+  """⚑ The marker gate: SKIPPED is the ONLY outcome that withholds completion.
 
-    Pinned as a set equality in BOTH directions over the whole enum, which is what
-    makes "a NEW outcome cannot inherit either answer silently" true rather than
-    merely intended.  A single ``withholding == {SKIPPED}`` assertion does NOT
-    catch a new member: paired with the old negative property
-    (``self is not SKIPPED``) a new member landed in the RECORDING set, which that
-    assertion never looked at, so it passed — an unnoticed member would have
-    cleared the ``setup_compat_gate`` BCV block with a green suite.
+  Pinned as a set equality in BOTH directions over the whole enum, which is what
+  makes "a NEW outcome cannot inherit either answer silently" true rather than
+  merely intended.  A single ``withholding == {SKIPPED}`` assertion does NOT
+  catch a new member: paired with the old negative property
+  (``self is not SKIPPED``) a new member landed in the RECORDING set, which that
+  assertion never looked at, so it passed — an unnoticed member would have
+  cleared the ``setup_compat_gate`` BCV block with a green suite.
 
-    With the property now a POSITIVE membership test, a new member fails here
-    whichever way it is introduced: left alone it falls into ``withholding``;
-    added to the property's recording set it falls into ``recording``.  Either
-    way it must be named below, which is the explicit decision this test forces.
-    """
-    recording = {step for step in setup_cmd.TemplateStep if step.records_completion}
-    withholding = set(setup_cmd.TemplateStep) - recording
+  With the property now a POSITIVE membership test, a new member fails here
+  whichever way it is introduced: left alone it falls into ``withholding``;
+  added to the property's recording set it falls into ``recording``.  Either
+  way it must be named below, which is the explicit decision this test forces.
+  """
+  recording = {step for step in setup_cmd.TemplateStep if step.records_completion}
+  withholding = set(setup_cmd.TemplateStep) - recording
 
-    assert withholding == {setup_cmd.TemplateStep.SKIPPED}
-    assert recording == {
-        setup_cmd.TemplateStep.REFRESHED,
-        setup_cmd.TemplateStep.CURRENT,
-        setup_cmd.TemplateStep.DECLINED,
-    }
+  assert withholding == {setup_cmd.TemplateStep.SKIPPED}
+  assert recording == {
+    setup_cmd.TemplateStep.REFRESHED,
+    setup_cmd.TemplateStep.CURRENT,
+    setup_cmd.TemplateStep.DECLINED,
+  }
 
 
 def test_template_step_forced_flag_applies(tmp_home, config_file):
-    """--refresh-templates: apply the refresh non-interactively (no prompt).
+  """--refresh-templates: apply the refresh non-interactively (no prompt).
 
-    ⚑ R-38: the step no longer writes ``system.templates_stamp`` — pinned here so a
-    reintroduced writer fails rather than silently resurrecting the retired key.
-    """
-    outcome = setup_cmd._run_template_refresh(_ns(refresh_templates=True))
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
-    std = _resolve_std()
-    assert _staged_marker(std).is_file()  # applied
-    assert (
-        std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-    ).is_file()
-    assert "templates_stamp" not in _system_table(tmp_home)
+  ⚑ R-38: the step no longer writes ``system.templates_stamp`` — pinned here so a
+  reintroduced writer fails rather than silently resurrecting the retired key.
+  """
+  outcome = setup_cmd._run_template_refresh(_ns(refresh_templates=True))
+  assert outcome is setup_cmd.TemplateStep.REFRESHED
+  std = _resolve_std()
+  assert _staged_marker(std).is_file()  # applied
+  assert (std.agents / "claude" / "template" / "box" / "home" / ".claude.json").is_file()
+  assert "templates_stamp" not in _system_table(tmp_home)
 
 
 def test_template_step_nothing_to_do_reports_up_to_date(tmp_home, config_file, capsys):
-    """Already current → say so, no prompt, nothing recorded."""
-    from kanibako.launch.templates import install_packaged_templates
+  """Already current → say so, no prompt, nothing recorded."""
+  from kanibako.launch.templates import install_packaged_templates
 
-    std = _resolve_std()
-    install_packaged_templates(std, setup_cmd._known_target_names())
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.CURRENT
-    assert "up to date" in capsys.readouterr().out
-    assert "templates_stamp" not in _system_table(tmp_home)
+  std = _resolve_std()
+  install_packaged_templates(std, setup_cmd._known_target_names())
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.CURRENT
+  assert "up to date" in capsys.readouterr().out
+  assert "templates_stamp" not in _system_table(tmp_home)
 
 
 def test_template_step_tty_accept_applies(tmp_home, config_file, monkeypatch):
-    _stage_stale_templates()
-    asked = []
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *a: asked.append(a) or "y")
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
-    assert asked  # an UPDATE is asked about
-    std = _resolve_std()
-    assert _staged_marker(std).read_text() != _STALE_TEXT  # applied
-    assert "templates_stamp" not in _system_table(tmp_home)
+  _stage_stale_templates()
+  asked = []
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  monkeypatch.setattr("builtins.input", lambda *a: asked.append(a) or "y")
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.REFRESHED
+  assert asked  # an UPDATE is asked about
+  std = _resolve_std()
+  assert _staged_marker(std).read_text() != _STALE_TEXT  # applied
+  assert "templates_stamp" not in _system_table(tmp_home)
 
 
-def test_template_step_tty_decline_does_not_apply(
-    tmp_home, config_file, monkeypatch, capsys
-):
-    """Decline: do NOT apply, and (R-38) record no template stamp either.
+def test_template_step_tty_decline_does_not_apply(tmp_home, config_file, monkeypatch, capsys):
+  """Decline: do NOT apply, and (R-38) record no template stamp either.
 
-    ⚑ The decline is an INFORMED choice, so it still reports ``DECLINED`` — an
-    outcome that DOES record setup completion (pre-R-38 this branch stamped too).
-    Only the un-asked non-TTY skip withholds the marker.
-    """
-    _stage_stale_templates()
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *a: "n")
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.DECLINED
-    assert outcome.records_completion
-    std = _resolve_std()
-    # Not applied — the shipped file was NOT updated.
-    assert _staged_marker(std).read_text() == _STALE_TEXT
-    assert "templates_stamp" not in _system_table(tmp_home)
-    assert "unblessed state" in capsys.readouterr().out
+  ⚑ The decline is an INFORMED choice, so it still reports ``DECLINED`` — an
+  outcome that DOES record setup completion (pre-R-38 this branch stamped too).
+  Only the un-asked non-TTY skip withholds the marker.
+  """
+  _stage_stale_templates()
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  monkeypatch.setattr("builtins.input", lambda *a: "n")
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.DECLINED
+  assert outcome.records_completion
+  std = _resolve_std()
+  # Not applied — the shipped file was NOT updated.
+  assert _staged_marker(std).read_text() == _STALE_TEXT
+  assert "templates_stamp" not in _system_table(tmp_home)
+  assert "unblessed state" in capsys.readouterr().out
 
 
-def test_template_step_non_tty_no_flag_skips(
-    tmp_home, config_file, monkeypatch, capsys
-):
-    """Non-tty, no forced flag, an UPDATE pending → SKIP; the store is left as it was."""
-    _stage_stale_templates()
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+def test_template_step_non_tty_no_flag_skips(tmp_home, config_file, monkeypatch, capsys):
+  """Non-tty, no forced flag, an UPDATE pending → SKIP; the store is left as it was."""
+  _stage_stale_templates()
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-    def _boom(*a, **k):
-        raise AssertionError("input() must not be called in non-TTY mode")
+  def _boom(*a, **k):
+    raise AssertionError("input() must not be called in non-TTY mode")
 
-    monkeypatch.setattr("builtins.input", _boom)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.SKIPPED
-    assert not outcome.records_completion
-    std = _resolve_std()
-    assert _staged_marker(std).read_text() == _STALE_TEXT  # not applied
-    assert "cannot be updated non-interactively" in capsys.readouterr().out
-    assert "templates_stamp" not in _system_table(tmp_home)
+  monkeypatch.setattr("builtins.input", _boom)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.SKIPPED
+  assert not outcome.records_completion
+  std = _resolve_std()
+  assert _staged_marker(std).read_text() == _STALE_TEXT  # not applied
+  assert "cannot be updated non-interactively" in capsys.readouterr().out
+  assert "templates_stamp" not in _system_table(tmp_home)
 
 
 def test_template_step_non_tty_add_and_update_skips_both(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """⚑ An ADD does not carry an UPDATE through: a mixed plan still skips WHOLE.
+  """⚑ An ADD does not carry an UPDATE through: a mixed plan still skips WHOLE.
 
-    One staged file differs and another is missing.  Without consent neither is
-    written — the add-only path must not apply the adds of a plan that also updates.
-    """
-    _stage_stale_templates()
-    std = _resolve_std()
-    missing = next(
-        f for f in sorted((std.template / "workset").rglob("*")) if f.is_file()
-    )
-    missing.unlink()
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.SKIPPED
-    assert _staged_marker(std).read_text() == _STALE_TEXT
-    assert not missing.exists()
+  One staged file differs and another is missing.  Without consent neither is
+  written — the add-only path must not apply the adds of a plan that also updates.
+  """
+  _stage_stale_templates()
+  std = _resolve_std()
+  missing = next(f for f in sorted((std.template / "workset").rglob("*")) if f.is_file())
+  missing.unlink()
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.SKIPPED
+  assert _staged_marker(std).read_text() == _STALE_TEXT
+  assert not missing.exists()
 
 
 def _boom_input(*a, **k):
-    raise AssertionError("an add-only plan must not ask")
+  raise AssertionError("an add-only plan must not ask")
 
 
-def test_template_step_non_tty_add_only_applies(
-    tmp_home, config_file, monkeypatch, capsys
-):
-    """⚑ Fresh data: every file is an ADD, so the step applies without asking."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    monkeypatch.setattr("builtins.input", _boom_input)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
-    assert outcome.records_completion
-    assert _staged_marker(_resolve_std()).is_file()  # applied
-    out = capsys.readouterr().out
-    assert "added" in out
-    assert "out of date" not in out
+def test_template_step_non_tty_add_only_applies(tmp_home, config_file, monkeypatch, capsys):
+  """⚑ Fresh data: every file is an ADD, so the step applies without asking."""
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  monkeypatch.setattr("builtins.input", _boom_input)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.REFRESHED
+  assert outcome.records_completion
+  assert _staged_marker(_resolve_std()).is_file()  # applied
+  out = capsys.readouterr().out
+  assert "added" in out
+  assert "out of date" not in out
 
 
 def test_template_step_tty_add_only_does_not_ask(tmp_home, config_file, monkeypatch):
-    """At a terminal too: an add-only plan has nothing to consent to."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", _boom_input)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
-    assert _staged_marker(_resolve_std()).is_file()
+  """At a terminal too: an add-only plan has nothing to consent to."""
+  monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+  monkeypatch.setattr("builtins.input", _boom_input)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.REFRESHED
+  assert _staged_marker(_resolve_std()).is_file()
 
 
-def test_template_step_restamps_a_deleted_agent_store(
-    tmp_home, config_file, monkeypatch, capsys
-):
-    """A store deleted after install is ADD work, not "up to date": the step stamps
-    core's chapter back (no consent needed — nothing is overwritten)."""
-    _stage_templates()
-    std = _resolve_std()
-    shutil.rmtree(std.agents / "shell")
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    monkeypatch.setattr("builtins.input", _boom_input)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
-    assert "up to date" not in capsys.readouterr().out
-    assert (std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
+def test_template_step_restamps_a_deleted_agent_store(tmp_home, config_file, monkeypatch, capsys):
+  """A store deleted after install is ADD work, not "up to date": the step stamps
+  core's chapter back (no consent needed — nothing is overwritten)."""
+  _stage_templates()
+  std = _resolve_std()
+  shutil.rmtree(std.agents / "shell")
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  monkeypatch.setattr("builtins.input", _boom_input)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.REFRESHED
+  assert "up to date" not in capsys.readouterr().out
+  assert (std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
 
 
 def test_template_step_non_tty_kept_only_completes_and_keeps(
-    tmp_home, config_file, monkeypatch, capsys
+  tmp_home, config_file, monkeypatch, capsys
 ):
-    """A KEPT file is never written on any path, so it needs no consent either.
+  """A KEPT file is never written on any path, so it needs no consent either.
 
-    The user's copy of a user-owned store file differs from the shipped one; the
-    step reports it as up to date (CURRENT, not "installed (0 added)"), leaves it
-    alone, and does not skip.
-    """
-    _stage_templates()
-    std = _resolve_std()
-    edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-    edited.write_text('{"edited": true}\n')
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    monkeypatch.setattr("builtins.input", _boom_input)
-    outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.CURRENT
-    assert edited.read_text() == '{"edited": true}\n'
-    out = capsys.readouterr().out
-    assert "Templates are up to date." in out
-    assert "Kept YOUR copy" in out
-    assert "installed" not in out
+  The user's copy of a user-owned store file differs from the shipped one; the
+  step reports it as up to date (CURRENT, not "installed (0 added)"), leaves it
+  alone, and does not skip.
+  """
+  _stage_templates()
+  std = _resolve_std()
+  edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+  edited.write_text('{"edited": true}\n')
+  monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+  monkeypatch.setattr("builtins.input", _boom_input)
+  outcome = setup_cmd._run_template_refresh(_ns())
+  assert outcome is setup_cmd.TemplateStep.CURRENT
+  assert edited.read_text() == '{"edited": true}\n'
+  out = capsys.readouterr().out
+  assert "Templates are up to date." in out
+  assert "Kept YOUR copy" in out
+  assert "installed" not in out
 
 
 def test_setup_refresh_templates_flag_parsed(monkeypatch):
-    """`setup --refresh-templates` parses to args.refresh_templates = True."""
-    import argparse
+  """`setup --refresh-templates` parses to args.refresh_templates = True."""
+  import argparse
 
-    parser = argparse.ArgumentParser()
-    setup_cmd.add_arguments(parser)
-    args = parser.parse_args(["--refresh-templates"])
-    assert args.refresh_templates is True
-    args = parser.parse_args([])
-    assert args.refresh_templates is False
+  parser = argparse.ArgumentParser()
+  setup_cmd.add_arguments(parser)
+  args = parser.parse_args(["--refresh-templates"])
+  assert args.refresh_templates is True
+  args = parser.parse_args([])
+  assert args.refresh_templates is False
 
 
-def test_full_setup_with_refresh_flag_writes_marker_only(
-    tmp_home, config_file, monkeypatch
-):
-    """`setup --refresh-templates` (full run) writes the setup MARKER and nothing else.
+def test_full_setup_with_refresh_flag_writes_marker_only(tmp_home, config_file, monkeypatch):
+  """`setup --refresh-templates` (full run) writes the setup MARKER and nothing else.
 
-    ⚑ R-38: the run used to write ``system.templates_stamp`` alongside the marker.
-    The marker is now the whole of what setup records.
-    """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
-    )
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
-    )
-    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
-    assert rc == 0
-    _, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(ssp) == __version__
-    assert "templates_stamp" not in _system_table(tmp_home)
+  ⚑ R-38: the run used to write ``system.templates_stamp`` alongside the marker.
+  The marker is now the whole of what setup records.
+  """
+  _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+  monkeypatch.setattr("kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"))
+  monkeypatch.setattr("kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"))
+  rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+  assert rc == 0
+  _, ssp = _config_paths(tmp_home)
+  assert read_setup_completed(ssp) == __version__
+  assert "templates_stamp" not in _system_table(tmp_home)

@@ -16,7 +16,9 @@ def test_the_c_parser_is_used_where_pyyaml_has_it():
   assert config_io._PACKAGED_LOADER is yaml.CSafeLoader
 
 
-@pytest.mark.parametrize("name", ["core-defaults.yaml", "keyspace-manifest.yaml", "image-baseline.yaml"])
+@pytest.mark.parametrize(
+  "name", ["core-defaults.yaml", "keyspace-manifest.yaml", "image-baseline.yaml"]
+)
 def test_the_shipped_files_parse_to_the_same_document_as_safe_load(name):
   text = Path(str(packaged_data_dir(*PACKAGED_SETTINGS_PARTS, name))).read_text()
   assert config_io.parse_packaged(text) == yaml.safe_load(text)

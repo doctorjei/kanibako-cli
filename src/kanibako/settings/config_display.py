@@ -30,546 +30,561 @@ from kanibako.settings.settings_prefs import PREF_ROOT
 
 
 def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
-    """Flatten one stored TABLE into *out* as ``dotted.key → rendered value``, recursing.
+  """Flatten one stored TABLE into *out* as ``dotted.key → rendered value``, recursing.
 
-    ⚑⚑ ONE WALK FOR BOTH FLATTENERS BELOW, AND IT IS A FIX, NOT A TIDY-UP (P4/P15).  They
-    were two copies that their own docstrings called "the SAME walk" — and they were not:
-    the ``null`` arm was written on the ``pref`` side and never carried to its twin, so a
-    present-``None`` stored in a scope table printed Python's ``None`` in ``system show``
-    while the identical value under ``pref:`` printed ``null``.  One copy cannot disagree
-    with itself.
-    ⚑ RENDERING IS NOT DECIDED HERE — it is ``agent_file.stored_leaf_display``: the shape rule
-    for a leaf that module owns, else the ONE scalar convention ``get`` answers with
-    (``config_io.render_stored_scalar``), which is what makes the blocks BELOW agree with
-    ``get`` about a stored value by construction rather than by two walks being kept in step.
-    ⚑ A DEST-KEYED BIND MAP is the one table this walk does not descend as a table — see
-    :func:`_flatten_bind_map`.
-    ⚑ THAT IS A CLAIM ABOUT THIS WALK, NOT ABOUT THE VERB.  ``show --effective`` opens with a
-    merged-config listing that never comes through here: it prints ``KanibakoConfig``'s own
-    FIELD names by ``str()``, so ``box_share_images = False`` sits a few lines above this
-    walk's ``box.share_images = false``.  Those names are not keys and nothing retypes them,
-    which is why the mismatch is cosmetic — but it is real, and a sentence saying ``show``
-    and ``get`` agree FULL STOP would be false.
-    """
-    for k, v in node.items():
-        if isinstance(v, dict):
-            if _is_bind_map_key(f"{prefix}{k}"):
-                _flatten_bind_map(v, f"{prefix}{k}", out)
-            else:
-                _flatten_table(v, f"{prefix}{k}.", out)
-        else:
-            # A ``masks`` entry is a leaf here; its dest is an INDEX, never a segment.
-            row = entry_label(prefix[:-1], k) if prefix.endswith(".") else f"{prefix}{k}"
-            out[row] = stored_leaf_display(k, v)
+  ⚑⚑ ONE WALK FOR BOTH FLATTENERS BELOW, AND IT IS A FIX, NOT A TIDY-UP (P4/P15).  They
+  were two copies that their own docstrings called "the SAME walk" — and they were not:
+  the ``null`` arm was written on the ``pref`` side and never carried to its twin, so a
+  present-``None`` stored in a scope table printed Python's ``None`` in ``system show``
+  while the identical value under ``pref:`` printed ``null``.  One copy cannot disagree
+  with itself.
+  ⚑ RENDERING IS NOT DECIDED HERE — it is ``agent_file.stored_leaf_display``: the shape rule
+  for a leaf that module owns, else the ONE scalar convention ``get`` answers with
+  (``config_io.render_stored_scalar``), which is what makes the blocks BELOW agree with
+  ``get`` about a stored value by construction rather than by two walks being kept in step.
+  ⚑ A DEST-KEYED BIND MAP is the one table this walk does not descend as a table — see
+  :func:`_flatten_bind_map`.
+  ⚑ THAT IS A CLAIM ABOUT THIS WALK, NOT ABOUT THE VERB.  ``show --effective`` opens with a
+  merged-config listing that never comes through here: it prints ``KanibakoConfig``'s own
+  FIELD names by ``str()``, so ``box_share_images = False`` sits a few lines above this
+  walk's ``box.share_images = false``.  Those names are not keys and nothing retypes them,
+  which is why the mismatch is cosmetic — but it is real, and a sentence saying ``show``
+  and ``get`` agree FULL STOP would be false.
+  """
+  for k, v in node.items():
+    if isinstance(v, dict):
+      if _is_bind_map_key(f"{prefix}{k}"):
+        _flatten_bind_map(v, f"{prefix}{k}", out)
+      else:
+        _flatten_table(v, f"{prefix}{k}.", out)
+    else:
+      # A ``masks`` entry is a leaf here; its dest is an INDEX, never a segment.
+      row = entry_label(prefix[:-1], k) if prefix.endswith(".") else f"{prefix}{k}"
+      out[row] = stored_leaf_display(k, v)
 
 
 def flatten_under(prefix: str, table: dict) -> dict[str, str]:
-    """*table*, stored at key *prefix*, as ``dotted.tail → rendered value`` rows — *prefix* stripped.
+  """*table*, stored at key *prefix*, as ``dotted.tail → rendered value`` rows — *prefix* stripped.
 
-    ⚑ :func:`_flatten_table` for a caller that prints rows RELATIVE to a table (the agent tier's
-    ``model = …`` rows): the walk still sees the WHOLE key, so a category map under the table is
-    recognized and rendered as :func:`_flatten_bind_map` renders it, never as a Python repr.
-    """
-    out: dict[str, str] = {}
-    _flatten_table(table, prefix, out)
-    return {dotted[len(prefix):]: value for dotted, value in out.items()}
+  ⚑ :func:`_flatten_table` for a caller that prints rows RELATIVE to a table (the agent tier's
+  ``model = …`` rows): the walk still sees the WHOLE key, so a category map under the table is
+  recognized and rendered as :func:`_flatten_bind_map` renders it, never as a Python repr.
+  """
+  out: dict[str, str] = {}
+  _flatten_table(table, prefix, out)
+  return {dotted[len(prefix) :]: value for dotted, value in out.items()}
 
 
 def _is_bind_map_key(key: str) -> bool:
-    """Is *key* a terminal category whose map ``parse_bind_map`` reads (spec §2a)?
+  """Is *key* a terminal category whose map ``parse_bind_map`` reads (spec §2a)?
 
-    ⚑ BOTH HALVES ARE THE KEYSPACE'S, never listed here: WHERE a category key may end
-    (``is_terminal_category_key``) and WHICH categories hold ``[src[, options]]`` entries
-    (``BIND_CATEGORIES``).  ``masks`` is terminal but holds a bool, and the resolve carries
-    its destination as written, so it stays on the plain walk.
-    """
-    from kanibako.settings.settings_keyspace import (
-        BIND_CATEGORIES,
-        is_terminal_category_key,
-    )
+  ⚑ BOTH HALVES ARE THE KEYSPACE'S, never listed here: WHERE a category key may end
+  (``is_terminal_category_key``) and WHICH categories hold ``[src[, options]]`` entries
+  (``BIND_CATEGORIES``).  ``masks`` is terminal but holds a bool, and the resolve carries
+  its destination as written, so it stays on the plain walk.
+  """
+  from kanibako.settings.settings_keyspace import (
+    BIND_CATEGORIES,
+    is_terminal_category_key,
+  )
 
-    if key.startswith(f"{PREF_ROOT}."):
-        # A pref REQUEST on a category carries the whole map (spec §2h); its target is the key.
-        key = key[len(PREF_ROOT) + 1:]
-    if not is_terminal_category_key(key):
-        return False
-    parts = key.split(".")
-    return parts[-1] in BIND_CATEGORIES or ".".join(parts[-2:]) in BIND_CATEGORIES
+  if key.startswith(f"{PREF_ROOT}."):
+    # A pref REQUEST on a category carries the whole map (spec §2h); its target is the key.
+    key = key[len(PREF_ROOT) + 1 :]
+  if not is_terminal_category_key(key):
+    return False
+  parts = key.split(".")
+  return parts[-1] in BIND_CATEGORIES or ".".join(parts[-2:]) in BIND_CATEGORIES
 
 
 def _flatten_bind_map(table: dict, key: str, out: dict[str, str]) -> None:
-    """Flatten one DEST-KEYED bind map as the resolve reads it: one row per destination.
+  """Flatten one DEST-KEYED bind map as the resolve reads it: one row per destination.
 
-    ⚑ THE DESTINATION IS PRINTED IN THE SPELLING THE RESOLVE KEYS IT BY —
-    ``normalize_bind_dest``, the one canonicalizer ``settings_assemble.parse_bind_map``
-    applies (R-11) — so a ``show`` row and the ``--effective`` block beneath it name one
-    declaration with ONE key.  The file's ``~/shared/docs`` prints as the guest path it is.
-    ⚑ THE ENTRY IS PRINTED AS ``src`` or ``src  [options]``, the spelling the ``--effective``
-    blocks give a ``BindEntry``, off ``unpack_bind_entry`` (the one entry parser).  An entry
-    that parser refuses — a present-``None``, a malformed arity — falls back to the scalar
-    convention; the launch is what refuses it, never a display.  A SUB-TABLE (the retired
-    name-keyed shape) is walked as before, under the key as written.
-    """
-    from kanibako.settings.settings_resolve import (
-        SettingsError,
-        normalize_bind_dest,
-        unpack_bind_entry,
-    )
+  ⚑ THE DESTINATION IS PRINTED IN THE SPELLING THE RESOLVE KEYS IT BY —
+  ``normalize_bind_dest``, the one canonicalizer ``settings_assemble.parse_bind_map``
+  applies (R-11) — so a ``show`` row and the ``--effective`` block beneath it name one
+  declaration with ONE key.  The file's ``~/shared/docs`` prints as the guest path it is.
+  ⚑ THE ENTRY IS PRINTED AS ``src`` or ``src  [options]``, the spelling the ``--effective``
+  blocks give a ``BindEntry``, off ``unpack_bind_entry`` (the one entry parser).  An entry
+  that parser refuses — a present-``None``, a malformed arity — falls back to the scalar
+  convention; the launch is what refuses it, never a display.  A SUB-TABLE (the retired
+  name-keyed shape) is walked as before, under the key as written.
+  """
+  from kanibako.settings.settings_resolve import (
+    SettingsError,
+    normalize_bind_dest,
+    unpack_bind_entry,
+  )
 
-    for dest, entry in table.items():
-        if isinstance(entry, dict):
-            _flatten_table(entry, f"{key}.{dest}.", out)
-            continue
-        row = entry_label(key, normalize_bind_dest(str(dest)))
-        try:
-            src, opts = unpack_bind_entry(entry)
-        except SettingsError:
-            out[row] = render_stored_scalar(entry)
-            continue
-        out[row] = f"{src}  [{opts}]" if opts else src
+  for dest, entry in table.items():
+    if isinstance(entry, dict):
+      _flatten_table(entry, f"{key}.{dest}.", out)
+      continue
+    row = entry_label(key, normalize_bind_dest(str(dest)))
+    try:
+      src, opts = unpack_bind_entry(entry)
+    except SettingsError:
+      out[row] = render_stored_scalar(entry)
+      continue
+    out[row] = f"{src}  [{opts}]" if opts else src
 
 
 def _nested_settings_overrides(data: dict) -> dict[str, str]:
-    """Flatten a settings doc's nested SCOPE tables to ``dotted.key → value``.
+  """Flatten a settings doc's nested SCOPE tables to ``dotted.key → value``.
 
-    The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2).  ⚑ IT SERVES
-    EVERY NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE — the system scope, and
-    the WORKSET noun since 2026-09-19; it is not system-only.  A
-    ``config set`` at such a scope nests scope-token settings (e.g.
-    ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
-    in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
-    view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
-    (rendered by the agent-settings view).  Values render through
-    :func:`_flatten_table`, so one stored value has one spelling at every verb.
+  The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2).  ⚑ IT SERVES
+  EVERY NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE — the system scope, and
+  the WORKSET noun since 2026-09-19; it is not system-only.  A
+  ``config set`` at such a scope nests scope-token settings (e.g.
+  ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
+  in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
+  view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
+  (rendered by the agent-settings view).  Values render through
+  :func:`_flatten_table`, so one stored value has one spelling at every verb.
 
-    ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_display``),
-    at every noun, ``pref:`` requests included: this is their one route.  Skipping ``agent`` does NOT put the argv list
-    out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
-    ``pref.agent.default.run_args`` walks through here and printed the Python repr
-    ``['--p', '--q']`` — at the workset noun, the one this walk serves where a ``pref:``
-    table is legal (spec §2h) and so survives the cascade view.
+  ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_display``),
+  at every noun, ``pref:`` requests included: this is their one route.  Skipping ``agent`` does NOT put the argv list
+  out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
+  ``pref.agent.default.run_args`` walks through here and printed the Python repr
+  ``['--p', '--q']`` — at the workset noun, the one this walk serves where a ``pref:``
+  table is legal (spec §2h) and so survives the cascade view.
 
-    ⚑ A DOC, NOT A PATH: the caller hands in the file as the cascade reads it
-    (``config_interface._noun_stored_view``), so a table directional enforcement drops is
-    never flattened into a row that claims to override something.
-    """
-    out: dict[str, str] = {}
+  ⚑ A DOC, NOT A PATH: the caller hands in the file as the cascade reads it
+  (``config_interface._noun_stored_view``), so a table directional enforcement drops is
+  never flattened into a row that claims to override something.
+  """
+  out: dict[str, str] = {}
 
-    for key, val in data.items():
-        # ``resource_overrides`` is the LEGACY dead table of the dropped
-        # ``resource.*`` surface (spec §3 D-M7): the settable code is gone, so a
-        # pre-1.7.x file may still carry an inert table.  Skip it here so it never
-        # renders in ``system show``/``--effective`` — display-only, not a revived
-        # settable surface.
-        if key in ("agent", "resource_overrides") or not isinstance(val, dict):
-            continue
-        _flatten_table(val, f"{key}.", out)
-    return out
+  for key, val in data.items():
+    # ``resource_overrides`` is the LEGACY dead table of the dropped
+    # ``resource.*`` surface (spec §3 D-M7): the settable code is gone, so a
+    # pre-1.7.x file may still carry an inert table.  Skip it here so it never
+    # renders in ``system show``/``--effective`` — display-only, not a revived
+    # settable surface.
+    if key in ("agent", "resource_overrides") or not isinstance(val, dict):
+      continue
+    _flatten_table(val, f"{key}.", out)
+  return out
 
 
 def _print_pref_block(
-    snapshot: Any, out: Any, box_ctx: Any, dest_keys: "Mapping[tuple[str, ...], str]",
+  snapshot: Any,
+  out: Any,
+  box_ctx: Any,
+  dest_keys: "Mapping[tuple[str, ...], str]",
 ) -> None:
-    """Render each ``pref`` REQUEST beside the RESULT it produced (spec §2h).
+  """Render each ``pref`` REQUEST beside the RESULT it produced (spec §2h).
 
-    *"--effective shows BOTH the request and the resulting value — so 'why did
-    system.agent resolve to zippity' is answerable from the snapshot instead of
-    by reading files. This is what closes the 'I set it and nothing happened'
-    failure family."*
+  *"--effective shows BOTH the request and the resulting value — so 'why did
+  system.agent resolve to zippity' is answerable from the snapshot instead of
+  by reading files. This is what closes the 'I set it and nothing happened'
+  failure family."*
 
-    Both halves come off the SAME snapshot, and that is exactly why ``expand``
-    carries the ``pref`` subtree through UNEXPANDED: the request is readable in
-    the form it was WRITTEN (``{meta.workset.path}/tpl``) while the target holds
-    the resolved terminal. Rendering an expanded request beside its result would
-    print the same string twice and answer nothing.
+  Both halves come off the SAME snapshot, and that is exactly why ``expand``
+  carries the ``pref`` subtree through UNEXPANDED: the request is readable in
+  the form it was WRITTEN (``{meta.workset.path}/tpl``) while the target holds
+  the resolved terminal. Rendering an expanded request beside its result would
+  print the same string twice and answer nothing.
 
-    ⚑ THE REQUEST WALK IS ``settings_prefs``' OWN, not a second one. That module
-    stops the walk at a TERMINAL dest-keyed category (``masks``,
-    ``bindings.{ro,rw}``, ``caches``/``seeded``/``common``/``synced``) because the
-    keys inside one are DESTINATIONS — data, not key segments — and a real
-    destination contains dots. A private walk here descended past that stop and
-    then split the target on ``.``, which SHATTERED every dotted destination and
-    reported a present, working entry as suppressed. Delegating keeps the
-    terminal question in the one module that owns it (no key semantics here); the
-    per-entry expansion below reads the dest as a MAP KEY on both halves and
-    never re-splits it.
+  ⚑ THE REQUEST WALK IS ``settings_prefs``' OWN, not a second one. That module
+  stops the walk at a TERMINAL dest-keyed category (``masks``,
+  ``bindings.{ro,rw}``, ``caches``/``seeded``/``common``/``synced``) because the
+  keys inside one are DESTINATIONS — data, not key segments — and a real
+  destination contains dots. A private walk here descended past that stop and
+  then split the target on ``.``, which SHATTERED every dotted destination and
+  reported a present, working entry as suppressed. Delegating keeps the
+  terminal question in the one module that owns it (no key semantics here); the
+  per-entry expansion below reads the dest as a MAP KEY on both halves and
+  never re-splits it.
 
-    ⚑ A REQUEST'S DESTINATION IS LOOKED UP UNDER THE ARM KEY ``expand`` FILED IT UNDER,
-    read off *dest_keys* (``settings_expand.DestKeys``, the same resolve's record): the
-    request keeps its ``{key}``-refs and the arm does not.  A destination with no record
-    was filed as written.  The result prints the guest path ``resolve_box_dest`` yields
-    off that key with *box_ctx*, the launch's own, as the concrete rows do.
-    """
-    from kanibako.settings.kb_store import Bind, BindEntry
-    from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_launch import resolve_box_dest
-    from kanibako.settings.settings_prefs import prefs_from_partial
+  ⚑ A REQUEST'S DESTINATION IS LOOKED UP UNDER THE ARM KEY ``expand`` FILED IT UNDER,
+  read off *dest_keys* (``settings_expand.DestKeys``, the same resolve's record): the
+  request keeps its ``{key}``-refs and the arm does not.  A destination with no record
+  was filed as written.  The result prints the guest path ``resolve_box_dest`` yields
+  off that key with *box_ctx*, the launch's own, as the concrete rows do.
+  """
+  from kanibako.settings.kb_store import Bind, BindEntry
+  from kanibako.settings.keystore import KeyStore
+  from kanibako.settings.settings_launch import resolve_box_dest
+  from kanibako.settings.settings_prefs import prefs_from_partial
 
-    if not isinstance(snapshot, KeyStore):
-        return
-    # *level* / *path* only name the file in the dotted-key refusal, which cannot
-    # fire here: a ``pref`` table is dropped at assembly outside workset/box, and
-    # both those files were already flattened by ``collect_prefs`` during the
-    # build that produced this snapshot — so a dotted name stopped the LAUNCH.
-    requests = prefs_from_partial(snapshot, level="resolved")
-    if not requests:
-        return
+  if not isinstance(snapshot, KeyStore):
+    return
+  # *level* / *path* only name the file in the dotted-key refusal, which cannot
+  # fire here: a ``pref`` table is dropped at assembly outside workset/box, and
+  # both those files were already flattened by ``collect_prefs`` during the
+  # build that produced this snapshot — so a dotted name stopped the LAUNCH.
+  requests = prefs_from_partial(snapshot, level="resolved")
+  if not requests:
+    return
 
-    # ⚑ NEITHER PARAMETER HAS A DEFAULT, and both lost one deliberately: a row that omitted
-    # *leaf* would silently fall back to ``str()`` and print the repr this function was fixed
-    # to stop printing.  Requiring it makes a new row DECIDE (P3) — there are three callers
-    # and they are all in view below.
-    def _render(value: Any, dest: str | None, leaf: str) -> str:
-        if isinstance(value, BindEntry):
-            # Dest-keyed: the destination is the KEY the caller walked in with.
-            opts = f"  [{value.opts}]" if value.opts else ""
-            return f"{value.src} -> {dest}{opts}"
-        if isinstance(value, Bind):
-            opts = f"  [{value.opts}]" if value.opts else ""
-            return f"{value.host} -> {value.box}{opts}"
-        # ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER, exactly as in the override walk
-        # above — BOTH halves printed the Python repr ``['--a', '--b']`` here, the
-        # request off the ``pref`` subtree and the result off the target it names.
-        # ⚑ AND A SCALAR THROUGH ``config_io.render_stored_scalar``, exactly as there: the
-        # ``null`` arm that used to sit here was a fourth hand-kept copy of the same rule.
-        # ⚑ *leaf* is the TARGET's tail, never the row's, because a dest-keyed row's tail is
-        # a DESTINATION (data, not a key segment) and a destination contains dots.  The two
-        # cannot collide anyway — a dest-keyed arm's target tail is a category name and its
-        # entries arrive as ``BindEntry``/``Bind``, both matched above — but keying on the
-        # target is what makes that true BY CONSTRUCTION rather than by coincidence.
-        return stored_leaf_display(leaf, value)
+  # ⚑ NEITHER PARAMETER HAS A DEFAULT, and both lost one deliberately: a row that omitted
+  # *leaf* would silently fall back to ``str()`` and print the repr this function was fixed
+  # to stop printing.  Requiring it makes a new row DECIDE (P3) — there are three callers
+  # and they are all in view below.
+  def _render(value: Any, dest: str | None, leaf: str) -> str:
+    if isinstance(value, BindEntry):
+      # Dest-keyed: the destination is the KEY the caller walked in with.
+      opts = f"  [{value.opts}]" if value.opts else ""
+      return f"{value.src} -> {dest}{opts}"
+    if isinstance(value, Bind):
+      opts = f"  [{value.opts}]" if value.opts else ""
+      return f"{value.host} -> {value.box}{opts}"
+    # ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER, exactly as in the override walk
+    # above — BOTH halves printed the Python repr ``['--a', '--b']`` here, the
+    # request off the ``pref`` subtree and the result off the target it names.
+    # ⚑ AND A SCALAR THROUGH ``config_io.render_stored_scalar``, exactly as there: the
+    # ``null`` arm that used to sit here was a fourth hand-kept copy of the same rule.
+    # ⚑ *leaf* is the TARGET's tail, never the row's, because a dest-keyed row's tail is
+    # a DESTINATION (data, not a key segment) and a destination contains dots.  The two
+    # cannot collide anyway — a dest-keyed arm's target tail is a category name and its
+    # entries arrive as ``BindEntry``/``Bind``, both matched above — but keying on the
+    # target is what makes that true BY CONSTRUCTION rather than by coincidence.
+    return stored_leaf_display(leaf, value)
 
-    def _at(target: str) -> Any:
-        """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""
-        cur: Any = snapshot
-        for seg in target.split("."):
-            if not isinstance(cur, KeyStore) or dict.get(cur, seg, __MISSING__) is __MISSING__:
-                return __MISSING__
-            cur = dict.get(cur, seg)
-        return cur
+  def _at(target: str) -> Any:
+    """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""
+    cur: Any = snapshot
+    for seg in target.split("."):
+      if not isinstance(cur, KeyStore) or dict.get(cur, seg, __MISSING__) is __MISSING__:
+        return __MISSING__
+      cur = dict.get(cur, seg)
+    return cur
 
-    # One row per printable request: (display target, rendered request, result,
-    # dest). A TERMINAL arm arrives as ONE request carrying the WHOLE map, and
-    # expands to a row per entry — that is what keeps per-entry suppression
-    # visible as such, since the arm itself survives a suppressed entry.
-    rows: list[tuple[str, str, Any, str | None, str]] = []
-    for req in requests:
-        # ⚑ The TARGET's tail, taken ONCE per request and carried on every row it makes: a
-        # dest-keyed arm expands into rows whose own tail is a DESTINATION, so a row cannot
-        # re-derive this from the name it prints.
-        target_leaf = req.target.rsplit(".", 1)[-1]
-        if isinstance(req.value, KeyStore):
-            arm = _at(req.target)
-            # ⚑ NOT named ``dest``: the row tuple unpacked below binds a ``dest``
-            # of its own that is ``str | None`` (a scalar request has no
-            # destination), and one name for two types is how a None-carrying row
-            # gets read as an entry key.
-            for entry_dest in dict.keys(req.value):
-                entry = dict.__getitem__(req.value, entry_dest)
-                found: Any = __MISSING__
-                result_dest = entry_dest
-                if isinstance(arm, KeyStore):
-                    arm_key = dest_keys.get(
-                        (*req.target.split("."), entry_dest), entry_dest,
-                    )
-                    found = dict.get(arm, arm_key, __MISSING__)
-                    if isinstance(found, BindEntry):
-                        result_dest = resolve_box_dest(arm_key, box_ctx)
-                rows.append((
-                    entry_label(req.target, entry_dest),
-                    _render(entry, entry_dest, target_leaf),
-                    found,
-                    result_dest,
-                    target_leaf,
-                ))
-        else:
-            rows.append((
-                req.target, _render(req.value, None, target_leaf),
-                _at(req.target), None, target_leaf,
-            ))
+  # One row per printable request: (display target, rendered request, result,
+  # dest). A TERMINAL arm arrives as ONE request carrying the WHOLE map, and
+  # expands to a row per entry — that is what keeps per-entry suppression
+  # visible as such, since the arm itself survives a suppressed entry.
+  rows: list[tuple[str, str, Any, str | None, str]] = []
+  for req in requests:
+    # ⚑ The TARGET's tail, taken ONCE per request and carried on every row it makes: a
+    # dest-keyed arm expands into rows whose own tail is a DESTINATION, so a row cannot
+    # re-derive this from the name it prints.
+    target_leaf = req.target.rsplit(".", 1)[-1]
+    if isinstance(req.value, KeyStore):
+      arm = _at(req.target)
+      # ⚑ NOT named ``dest``: the row tuple unpacked below binds a ``dest``
+      # of its own that is ``str | None`` (a scalar request has no
+      # destination), and one name for two types is how a None-carrying row
+      # gets read as an entry key.
+      for entry_dest in dict.keys(req.value):
+        entry = dict.__getitem__(req.value, entry_dest)
+        found: Any = __MISSING__
+        result_dest = entry_dest
+        if isinstance(arm, KeyStore):
+          arm_key = dest_keys.get(
+            (*req.target.split("."), entry_dest),
+            entry_dest,
+          )
+          found = dict.get(arm, arm_key, __MISSING__)
+          if isinstance(found, BindEntry):
+            result_dest = resolve_box_dest(arm_key, box_ctx)
+        rows.append(
+          (
+            entry_label(req.target, entry_dest),
+            _render(entry, entry_dest, target_leaf),
+            found,
+            result_dest,
+            target_leaf,
+          )
+        )
+    else:
+      rows.append(
+        (
+          req.target,
+          _render(req.value, None, target_leaf),
+          _at(req.target),
+          None,
+          target_leaf,
+        )
+      )
 
-    print("", file=out)
-    for target, request, value, dest, leaf in sorted(rows, key=lambda r: r[0]):
-        shown = display_agent_ref(target)
-        print(f"  {PREF_ROOT}.{shown} = {request}", file=out)
-        if value is __MISSING__:
-            # The ordinary present-None rule OMITTED it: a bind / category /
-            # masks leaf was suppressed. Saying so is the whole point — this is
-            # the difference between "suppressed" and "unset". Name the CURE
-            # too (B-6): suppression has no verb of its own, so the only place a
-            # user learns what undoes it is a message like this one.
-            #
-            # ⚑⚑ THE CURE NAMES THE FILE, NOT A VERB [Jei:2026-08-08e]. It used to
-            # spell ``reset pref.<target>.<dest>``, a command that does not work and
-            # is not going to: individually reading or writing one facet of a
-            # multi-faceted (dest-keyed) key does not make sense, and the access form
-            # for one is a backlogged promise of unknown shape. Prescribing a verb
-            # that will be refused is the same F6 lie as promising a read that has no
-            # route — so this says what the retired-route refusals already say,
-            # "edit the table in the settings file".
-            #
-            # ⚑ "at the scope that set it" is not vagueness — it is the only
-            # honest form available here. Both halves of this block are read off
-            # the MERGED snapshot, which no longer carries which file wrote the
-            # request, and an edit made at the wrong noun removes nothing. Naming a
-            # specific scope would be a guess dressed as an instruction.
-            result = (
-                f"(omitted — the entry is suppressed; no mount. Undo by removing "
-                f"this entry from the '{PREF_ROOT}:' table of the settings file "
-                f"at the scope that set it)"
-            )
-        elif value is None:
-            result = "(unset — the consumer applies its default)"
-        else:
-            result = _render(value, dest, leaf)
-        print(f"    -> {shown} = {result}", file=out)
+  print("", file=out)
+  for target, request, value, dest, leaf in sorted(rows, key=lambda r: r[0]):
+    shown = display_agent_ref(target)
+    print(f"  {PREF_ROOT}.{shown} = {request}", file=out)
+    if value is __MISSING__:
+      # The ordinary present-None rule OMITTED it: a bind / category /
+      # masks leaf was suppressed. Saying so is the whole point — this is
+      # the difference between "suppressed" and "unset". Name the CURE
+      # too (B-6): suppression has no verb of its own, so the only place a
+      # user learns what undoes it is a message like this one.
+      #
+      # ⚑⚑ THE CURE NAMES THE FILE, NOT A VERB [Jei:2026-08-08e]. It used to
+      # spell ``reset pref.<target>.<dest>``, a command that does not work and
+      # is not going to: individually reading or writing one facet of a
+      # multi-faceted (dest-keyed) key does not make sense, and the access form
+      # for one is a backlogged promise of unknown shape. Prescribing a verb
+      # that will be refused is the same F6 lie as promising a read that has no
+      # route — so this says what the retired-route refusals already say,
+      # "edit the table in the settings file".
+      #
+      # ⚑ "at the scope that set it" is not vagueness — it is the only
+      # honest form available here. Both halves of this block are read off
+      # the MERGED snapshot, which no longer carries which file wrote the
+      # request, and an edit made at the wrong noun removes nothing. Naming a
+      # specific scope would be a guess dressed as an instruction.
+      result = (
+        f"(omitted — the entry is suppressed; no mount. Undo by removing "
+        f"this entry from the '{PREF_ROOT}:' table of the settings file "
+        f"at the scope that set it)"
+      )
+    elif value is None:
+      result = "(unset — the consumer applies its default)"
+    else:
+      result = _render(value, dest, leaf)
+    print(f"    -> {shown} = {result}", file=out)
 
 
 def _print_category_block(
-    snapshot: Any, error: str | None, out: Any, box_ctx: Any,
-    declared_by: "Mapping[str, str] | None" = None,
-    convenience_sources: "Mapping[str, str] | None" = None,
+  snapshot: Any,
+  error: str | None,
+  out: Any,
+  box_ctx: Any,
+  declared_by: "Mapping[str, str] | None" = None,
+  convenience_sources: "Mapping[str, str] | None" = None,
 ) -> None:
-    """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
+  """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
-    The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
-    destination it occupies — all read off the SAME snapshot the launch resolved.
-    Nothing is re-derived here.
+  The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
+  destination it occupies — all read off the SAME snapshot the launch resolved.
+  Nothing is re-derived here.
 
-    *box_ctx* is the launch's own :class:`~kanibako.settings.settings_resolve.ResolveCtx`
-    (``agent_select.launch_resolve_ctx``, the ONE builder), needed because an arm KEY
-    still spells the destination the user WROTE while the arbitrated map is keyed by
-    the resolved guest path — see the pairing below.
+  *box_ctx* is the launch's own :class:`~kanibako.settings.settings_resolve.ResolveCtx`
+  (``agent_select.launch_resolve_ctx``, the ONE builder), needed because an arm KEY
+  still spells the destination the user WROTE while the arbitrated map is keyed by
+  the resolved guest path — see the pairing below.
 
-    *declared_by* is the SAME launch's ``LaunchDeliveries.declared_by`` — the fold's
-    own record of which declaration took each destination — and it is what lets a LOSS
-    name the key that beat it rather than only the path.  ⚑ IT IS HANDED IN, and that
-    is the whole point: this display folds IN PROCESS (``commands.box._parser`` builds
-    the snapshot per command), so the map exists at the moment the block runs; the
-    collapsed leaf it is paired against carries no key and may not be taught to
-    (``store_collapse.CollapsedStore``).  Omitted, every phrase is exactly what it was.
+  *declared_by* is the SAME launch's ``LaunchDeliveries.declared_by`` — the fold's
+  own record of which declaration took each destination — and it is what lets a LOSS
+  name the key that beat it rather than only the path.  ⚑ IT IS HANDED IN, and that
+  is the whole point: this display folds IN PROCESS (``commands.box._parser`` builds
+  the snapshot per command), so the map exists at the moment the block runs; the
+  collapsed leaf it is paired against carries no key and may not be taught to
+  (``store_collapse.CollapsedStore``).  Omitted, every phrase is exactly what it was.
 
-    *convenience_sources* is the same launch's ``LaunchDeliveries.convenience_sources``:
-    a row at a bind of convenience whose source is still the floor's own is omitted
-    (``[R149]``); a user's bind there differs in source and is shown.  Omitted, every
-    row is shown.
+  *convenience_sources* is the same launch's ``LaunchDeliveries.convenience_sources``:
+  a row at a bind of convenience whose source is still the floor's own is omitted
+  (``[R149]``); a user's bind there differs in source and is shown.  Omitted, every
+  row is shown.
 
-    The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
-    declaration with what the box RECEIVES for it indented beneath — keyspec
-    ``:88``, *"``--effective`` shows BOTH the declaration and the derived binding
-    and a user can see WHY a mount exists."*  The pairing is
-    :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
-    the single source; nothing is re-derived here either.
-    """
-    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
-    from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_categories import (
-        MOUNT,
-        effective_bindings_and_template_sources,
+  The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
+  declaration with what the box RECEIVES for it indented beneath — keyspec
+  ``:88``, *"``--effective`` shows BOTH the declaration and the derived binding
+  and a user can see WHY a mount exists."*  The pairing is
+  :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
+  the single source; nothing is re-derived here either.
+  """
+  from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
+  from kanibako.settings.keystore import KeyStore
+  from kanibako.settings.settings_categories import (
+    MOUNT,
+    effective_bindings_and_template_sources,
+  )
+  from kanibako.settings.settings_launch import (
+    BOX_HOME_KEY,
+    resolve_box_dest,
+    snapshot_leaf,
+  )
+  from kanibako.settings.settings_resolve import normalize_bind_dest
+  from kanibako.settings.store_collapse import (
+    DERIVED_MOUNT,
+    HOME_DEST,
+    Declaration,
+    derivation_result,
+    pair_declarations,
+  )
+
+  print("", file=out)
+  if error is not None:
+    for line in error.splitlines():
+      print(f"  {line}" if line else "", file=out)
+    return
+
+  def _leaf(dotted: str) -> Any:
+    node: Any = snapshot
+    for seg in dotted.split("."):
+      if not isinstance(node, KeyStore):
+        return None
+      node = dict.get(node, seg, None)
+    return node
+
+  # The pid-0 FOUNDATION, FIRST — and it is not a scope declaration, which is why
+  # it is labeled rather than spelled as a key.  The box home does NOT route
+  # through ``bindings.rw`` (spec ``:1015``): the assembly seam builds it from the
+  # RO DERIVED ``meta.box.home``, so the per-scope walk below cannot see it, and
+  # without this line the one mount EVERY box has would be missing from the view
+  # that exists to show what a box gets.
+  # ⚑ NO OPTIONS COLUMN.  Home's mount options are SEAM MACHINERY (spec ``:1015``),
+  # not a facet of any key — there is nothing here a user could set, and printing
+  # the string would put a second copy of the seam's literal in the display.
+  home_src = _leaf(BOX_HOME_KEY)
+  if isinstance(home_src, str) and home_src:
+    print(f"  (foundation) {BOX_HOME_KEY} = {home_src} -> {HOME_DEST}", file=out)
+
+  # CONCRETE next — the source of truth a mount is emitted from, PAIRED with what
+  # the collapse decided for its destination.
+  #
+  # ⚑ The arm is DEST-KEYED (R-5/R-6): the map KEY is the box destination and
+  # the leaf is a 2-element ``BindEntry(src, opts)`` carrying no destination at
+  # all, so the pair is assembled from the key and the leaf TOGETHER. The leaf
+  # test is ``isinstance`` and never arity — a legacy 3-tuple ``Bind`` and a
+  # ``BindEntry`` are both legally 2 elements with OPPOSITE meanings
+  # (``kb_store.BindEntry``, the arity trap). A leaf that is neither is a
+  # malformed arm the launch already refused, which is why the display is
+  # showing *error* instead of reaching here. A ``None`` leaf is a SUPPRESSED
+  # entry and is skipped by the same test — it declares no mount to pair.
+  rows: list[tuple[str, str, BindEntry]] = []
+  for scope in SCOPE_CONTAINMENT:
+    scope_node = _leaf(scope)
+    if not isinstance(scope_node, KeyStore):
+      continue
+    for tier, prefix in _iter_agent_tiers(scope, scope_node):
+      for mode in ("ro", "rw"):
+        mode_node = _sub(tier, ("bindings", mode))
+        if not isinstance(mode_node, KeyStore):
+          continue
+        for dest in sorted(dict.keys(mode_node)):
+          entry = dict.__getitem__(mode_node, dest)
+          if isinstance(entry, BindEntry):
+            rows.append(
+              (entry_label(f"{prefix}.bindings.{mode}", dest), dest, entry),
+            )
+
+  # 🛑🛑 A CONCRETE ROW IS NOT SELF-EVIDENTLY A MOUNT, and printing it as one was
+  # the measured defect this pairing closes. Bind-versus-mask at one destination is
+  # SUPERSESSION, not a collision (spec ``:146``): whichever arrives against the
+  # already-collapsed state deletes the other, and a mask arriving second deletes
+  # the bind — at its point, or from ABOVE it, where the sweep leaves the bind's own
+  # destination absent from the map entirely. The arm still holds the declaration
+  # either way, so a walk that renders the arm alone printed a delivery arrow for a
+  # destination the box sees NOTHING at, at rc 0, with the mask that took it printed
+  # nowhere. ⚑ It runs BOTH WAYS — a box binding legitimately supersedes a
+  # lower-scope mask — so the answer may only come from the ARBITRATED map, never
+  # from the presence of a mask among the declarations.
+  #
+  # ⚑ THE SAME PAIRING THE ABSTRACT HALF USES, and the same one
+  # ``commands.workset_cmd._print_effective_shares`` builds for a workset's shares:
+  # ONE decision function, fed a ``Declaration`` per row. Nothing is re-derived —
+  # ``meta.assembly.bindings`` is READ, and ``covering_bind`` inside the pairing owns
+  # the containment and its separator guard.
+  bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
+  collapsed = dict(bindings) if isinstance(bindings, dict) else {}
+  # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN (a ``{key}``-ref shows its referent's
+  # escaped residue instead); THE ARBITRATED MAP IS KEYED BY THE
+  # RESOLVED ONE. The eager build defers ``~`` and ``{$VAR}`` in a destination, so an
+  # arm holds ``{$XDG_DATA_HOME}/z`` while the map holds ``/data/z`` — two spellings of
+  # one destination. Both sides are put in the map's spelling before pairing, or a
+  # row is looked up under a name nothing was ever filed under and every answer about
+  # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule
+  # [Jei:2026-08-27], and this is the comparison half of it.
+  #
+  # ⚑ NEITHER STEP IS A RE-DERIVATION. ``resolve_box_dest`` is the ONE box_dest
+  # expansion — the same call ``snapshot_category_entries`` fed the collapse from —
+  # and ``normalize_bind_dest`` is the ONE canonicalizer the map is keyed by,
+  # idempotent by contract (R-11 applies it at every producer AND again on read).
+  #
+  # ⚑ IT CANNOT RAISE HERE. Every arm key reached the collapse through the same
+  # expansion under the same ctx, so a dest this would refuse (an unknown ``{$VAR}``,
+  # a surviving ``{key}``-ref) stopped the LAUNCH before any display ran — measured.
+  declarations = [
+    Declaration(
+      key=key,
+      dest=normalize_bind_dest(resolve_box_dest(dest, box_ctx)),
+      src=entry.src,
+      delivery=MOUNT,
     )
-    from kanibako.settings.settings_launch import (
-        BOX_HOME_KEY,
-        resolve_box_dest,
-        snapshot_leaf,
+    for key, dest, entry in rows
+  ]
+  derivations = dict(
+    zip(
+      [declaration.key for declaration in declarations],
+      pair_declarations(declarations, collapsed),
+      strict=True,
     )
-    from kanibako.settings.settings_resolve import normalize_bind_dest
-    from kanibako.settings.store_collapse import (
-        DERIVED_MOUNT,
-        HOME_DEST,
-        Declaration,
-        derivation_result,
-        pair_declarations,
+  )
+  # ⚑ A BIND OF CONVENIENCE IS NOT SHOWN (``[R149]``): a row whose source is still
+  # the floor's own at one of those dests. A user's bind there has its own source and
+  # is shown. Skipped after the pairing, so the other rows pair exactly as before.
+  convenience = dict(convenience_sources or {})
+  for (key, _, entry), declaration in zip(rows, declarations, strict=True):
+    if declaration.dest in convenience and convenience[declaration.dest] == entry.src:
+      continue
+    shown = display_agent_ref(key)
+    dest = declaration.dest
+    opts = f"  [{entry.opts}]" if entry.opts else ""
+    derivation = derivations[key]
+    # ⚑ THE ARROW IS THE DELIVERY, and only a delivered binding earns one — the
+    # rule ``workset share list --effective`` already renders by. A row that
+    # receives nothing keeps its KEY (that key is what a user edits) and is
+    # printed in DECLARATION form with the reason beneath it, so a reader skimming
+    # the block for mounts cannot take a loss for one.
+    # ⚑ THE DESTINATION PRINTS RESOLVED — the guest path the mount lands on, the
+    # one the pairing decided on. The key in *shown* keeps the user's spelling,
+    # except a ``{key}``-ref, which shows its referent's escaped residue.
+    if derivation.outcome == DERIVED_MOUNT:
+      print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
+      continue
+    print(f"  {shown} = {dest}{opts}  (declared: {entry.src})", file=out)
+    # ⚑ THE SAME KEYS THE ABSTRACT HALF BELOW GETS. A concrete row loses to a mask
+    # exactly as an abstract one does — it is the case this whole pairing was added
+    # for — so keying one half and not the other would leave the acute case bare.
+    print(f"    {derivation_result(derivation, declared_by)}", file=out)
+
+  # ABSTRACT declarations, each with THE DELIVERY THE BOX ACTUALLY RECEIVES.
+  #
+  # 🛑🛑 THIS IS NOT A READ OF ``binding_derivations``, and it may never become
+  # one. That node is populated BEFORE arbitration, deliberately (R-8), so every
+  # row in it reads as a live mount — including rows for declarations the box
+  # receives NOTHING for. A renderer reading it alone prints ``(mount)`` for a
+  # ``common`` declaration a mask has swallowed, and prints no mask at all: the
+  # silent half, and the measured reason this block was disabled rather than
+  # left to guess. The pairing against ``meta.assembly.*`` is what makes the
+  # answer the BOX'S, and it lives in ONE function — recomputing either half
+  # here is the second opinion ``--effective`` exists to DETECT.
+  #
+  # ⚑ ``seeded`` derives a COPY, not a mount, and that distinction is carried by
+  # the outcome rather than restated here (``settings_categories
+  # .declaration_delivery`` is its one definition).
+  #
+  # ⚑ THE RESULT PHRASES MOVED OUT — ``store_collapse.derivation_result``, beside
+  # the ``DERIVED_*`` outcomes they name. ``workset share list --effective`` is a
+  # second reader of the same pairing, and one sentence about what a mask did to a
+  # declaration is not a thing to keep two copies of.
+  for row in effective_bindings_and_template_sources(snapshot):
+    shown = display_agent_ref(row.declaration.key)
+    print(f"  {shown} = {row.declaration.src}", file=out)
+    print(
+      f"    {BINDING_DERIVATIONS_NODE}.{shown} = {derivation_result(row, declared_by)}",
+      file=out,
     )
-
-    print("", file=out)
-    if error is not None:
-        for line in error.splitlines():
-            print(f"  {line}" if line else "", file=out)
-        return
-
-    def _leaf(dotted: str) -> Any:
-        node: Any = snapshot
-        for seg in dotted.split("."):
-            if not isinstance(node, KeyStore):
-                return None
-            node = dict.get(node, seg, None)
-        return node
-
-    # The pid-0 FOUNDATION, FIRST — and it is not a scope declaration, which is why
-    # it is labeled rather than spelled as a key.  The box home does NOT route
-    # through ``bindings.rw`` (spec ``:1015``): the assembly seam builds it from the
-    # RO DERIVED ``meta.box.home``, so the per-scope walk below cannot see it, and
-    # without this line the one mount EVERY box has would be missing from the view
-    # that exists to show what a box gets.
-    # ⚑ NO OPTIONS COLUMN.  Home's mount options are SEAM MACHINERY (spec ``:1015``),
-    # not a facet of any key — there is nothing here a user could set, and printing
-    # the string would put a second copy of the seam's literal in the display.
-    home_src = _leaf(BOX_HOME_KEY)
-    if isinstance(home_src, str) and home_src:
-        print(f"  (foundation) {BOX_HOME_KEY} = {home_src} -> {HOME_DEST}", file=out)
-
-    # CONCRETE next — the source of truth a mount is emitted from, PAIRED with what
-    # the collapse decided for its destination.
-    #
-    # ⚑ The arm is DEST-KEYED (R-5/R-6): the map KEY is the box destination and
-    # the leaf is a 2-element ``BindEntry(src, opts)`` carrying no destination at
-    # all, so the pair is assembled from the key and the leaf TOGETHER. The leaf
-    # test is ``isinstance`` and never arity — a legacy 3-tuple ``Bind`` and a
-    # ``BindEntry`` are both legally 2 elements with OPPOSITE meanings
-    # (``kb_store.BindEntry``, the arity trap). A leaf that is neither is a
-    # malformed arm the launch already refused, which is why the display is
-    # showing *error* instead of reaching here. A ``None`` leaf is a SUPPRESSED
-    # entry and is skipped by the same test — it declares no mount to pair.
-    rows: list[tuple[str, str, BindEntry]] = []
-    for scope in SCOPE_CONTAINMENT:
-        scope_node = _leaf(scope)
-        if not isinstance(scope_node, KeyStore):
-            continue
-        for tier, prefix in _iter_agent_tiers(scope, scope_node):
-            for mode in ("ro", "rw"):
-                mode_node = _sub(tier, ("bindings", mode))
-                if not isinstance(mode_node, KeyStore):
-                    continue
-                for dest in sorted(dict.keys(mode_node)):
-                    entry = dict.__getitem__(mode_node, dest)
-                    if isinstance(entry, BindEntry):
-                        rows.append(
-                            (entry_label(f"{prefix}.bindings.{mode}", dest), dest, entry),
-                        )
-
-    # 🛑🛑 A CONCRETE ROW IS NOT SELF-EVIDENTLY A MOUNT, and printing it as one was
-    # the measured defect this pairing closes. Bind-versus-mask at one destination is
-    # SUPERSESSION, not a collision (spec ``:146``): whichever arrives against the
-    # already-collapsed state deletes the other, and a mask arriving second deletes
-    # the bind — at its point, or from ABOVE it, where the sweep leaves the bind's own
-    # destination absent from the map entirely. The arm still holds the declaration
-    # either way, so a walk that renders the arm alone printed a delivery arrow for a
-    # destination the box sees NOTHING at, at rc 0, with the mask that took it printed
-    # nowhere. ⚑ It runs BOTH WAYS — a box binding legitimately supersedes a
-    # lower-scope mask — so the answer may only come from the ARBITRATED map, never
-    # from the presence of a mask among the declarations.
-    #
-    # ⚑ THE SAME PAIRING THE ABSTRACT HALF USES, and the same one
-    # ``commands.workset_cmd._print_effective_shares`` builds for a workset's shares:
-    # ONE decision function, fed a ``Declaration`` per row. Nothing is re-derived —
-    # ``meta.assembly.bindings`` is READ, and ``covering_bind`` inside the pairing owns
-    # the containment and its separator guard.
-    bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
-    collapsed = dict(bindings) if isinstance(bindings, dict) else {}
-    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN (a ``{key}``-ref shows its referent's
-    # escaped residue instead); THE ARBITRATED MAP IS KEYED BY THE
-    # RESOLVED ONE. The eager build defers ``~`` and ``{$VAR}`` in a destination, so an
-    # arm holds ``{$XDG_DATA_HOME}/z`` while the map holds ``/data/z`` — two spellings of
-    # one destination. Both sides are put in the map's spelling before pairing, or a
-    # row is looked up under a name nothing was ever filed under and every answer about
-    # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule
-    # [Jei:2026-08-27], and this is the comparison half of it.
-    #
-    # ⚑ NEITHER STEP IS A RE-DERIVATION. ``resolve_box_dest`` is the ONE box_dest
-    # expansion — the same call ``snapshot_category_entries`` fed the collapse from —
-    # and ``normalize_bind_dest`` is the ONE canonicalizer the map is keyed by,
-    # idempotent by contract (R-11 applies it at every producer AND again on read).
-    #
-    # ⚑ IT CANNOT RAISE HERE. Every arm key reached the collapse through the same
-    # expansion under the same ctx, so a dest this would refuse (an unknown ``{$VAR}``,
-    # a surviving ``{key}``-ref) stopped the LAUNCH before any display ran — measured.
-    declarations = [
-        Declaration(
-            key=key,
-            dest=normalize_bind_dest(resolve_box_dest(dest, box_ctx)),
-            src=entry.src,
-            delivery=MOUNT,
-        )
-        for key, dest, entry in rows
-    ]
-    derivations = dict(zip(
-        [declaration.key for declaration in declarations],
-        pair_declarations(declarations, collapsed),
-        strict=True,
-    ))
-    # ⚑ A BIND OF CONVENIENCE IS NOT SHOWN (``[R149]``): a row whose source is still
-    # the floor's own at one of those dests. A user's bind there has its own source and
-    # is shown. Skipped after the pairing, so the other rows pair exactly as before.
-    convenience = dict(convenience_sources or {})
-    for (key, _, entry), declaration in zip(rows, declarations, strict=True):
-        if declaration.dest in convenience and convenience[declaration.dest] == entry.src:
-            continue
-        shown = display_agent_ref(key)
-        dest = declaration.dest
-        opts = f"  [{entry.opts}]" if entry.opts else ""
-        derivation = derivations[key]
-        # ⚑ THE ARROW IS THE DELIVERY, and only a delivered binding earns one — the
-        # rule ``workset share list --effective`` already renders by. A row that
-        # receives nothing keeps its KEY (that key is what a user edits) and is
-        # printed in DECLARATION form with the reason beneath it, so a reader skimming
-        # the block for mounts cannot take a loss for one.
-        # ⚑ THE DESTINATION PRINTS RESOLVED — the guest path the mount lands on, the
-        # one the pairing decided on. The key in *shown* keeps the user's spelling,
-        # except a ``{key}``-ref, which shows its referent's escaped residue.
-        if derivation.outcome == DERIVED_MOUNT:
-            print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
-            continue
-        print(f"  {shown} = {dest}{opts}  (declared: {entry.src})", file=out)
-        # ⚑ THE SAME KEYS THE ABSTRACT HALF BELOW GETS. A concrete row loses to a mask
-        # exactly as an abstract one does — it is the case this whole pairing was added
-        # for — so keying one half and not the other would leave the acute case bare.
-        print(f"    {derivation_result(derivation, declared_by)}", file=out)
-
-    # ABSTRACT declarations, each with THE DELIVERY THE BOX ACTUALLY RECEIVES.
-    #
-    # 🛑🛑 THIS IS NOT A READ OF ``binding_derivations``, and it may never become
-    # one. That node is populated BEFORE arbitration, deliberately (R-8), so every
-    # row in it reads as a live mount — including rows for declarations the box
-    # receives NOTHING for. A renderer reading it alone prints ``(mount)`` for a
-    # ``common`` declaration a mask has swallowed, and prints no mask at all: the
-    # silent half, and the measured reason this block was disabled rather than
-    # left to guess. The pairing against ``meta.assembly.*`` is what makes the
-    # answer the BOX'S, and it lives in ONE function — recomputing either half
-    # here is the second opinion ``--effective`` exists to DETECT.
-    #
-    # ⚑ ``seeded`` derives a COPY, not a mount, and that distinction is carried by
-    # the outcome rather than restated here (``settings_categories
-    # .declaration_delivery`` is its one definition).
-    #
-    # ⚑ THE RESULT PHRASES MOVED OUT — ``store_collapse.derivation_result``, beside
-    # the ``DERIVED_*`` outcomes they name. ``workset share list --effective`` is a
-    # second reader of the same pairing, and one sentence about what a mask did to a
-    # declaration is not a thing to keep two copies of.
-    for row in effective_bindings_and_template_sources(snapshot):
-        shown = display_agent_ref(row.declaration.key)
-        print(f"  {shown} = {row.declaration.src}", file=out)
-        print(
-            f"    {BINDING_DERIVATIONS_NODE}.{shown} = "
-            f"{derivation_result(row, declared_by)}",
-            file=out,
-        )
 
 
 def _iter_agent_tiers(scope: str, scope_node: Any):
-    """``(node, key-prefix)`` per DISCRIMINATED tier of *scope*.
+  """``(node, key-prefix)`` per DISCRIMINATED tier of *scope*.
 
-    Only the agent scope has tiers (``agent.default`` / ``agent.<agent>``); every
-    other scope is itself.  Keeps the display from printing the bare
-    ``agent.bindings.*`` form, which is not a key (spec §0).
-    """
-    from kanibako.settings.keystore import KeyStore
+  Only the agent scope has tiers (``agent.default`` / ``agent.<agent>``); every
+  other scope is itself.  Keeps the display from printing the bare
+  ``agent.bindings.*`` form, which is not a key (spec §0).
+  """
+  from kanibako.settings.keystore import KeyStore
 
-    if scope != "agent":
-        yield scope_node, scope
-        return
-    for tier in sorted(dict.keys(scope_node)):
-        tier_node = dict.__getitem__(scope_node, tier)
-        if isinstance(tier_node, KeyStore):
-            yield tier_node, f"agent.{tier}"
+  if scope != "agent":
+    yield scope_node, scope
+    return
+  for tier in sorted(dict.keys(scope_node)):
+    tier_node = dict.__getitem__(scope_node, tier)
+    if isinstance(tier_node, KeyStore):
+      yield tier_node, f"agent.{tier}"
 
 
 def _sub(node: Any, path: "tuple[str, ...]") -> Any:
-    """Walk *path* under *node* with unbound ``dict`` ops (S3); ``None`` if absent."""
-    from kanibako.settings.keystore import KeyStore
+  """Walk *path* under *node* with unbound ``dict`` ops (S3); ``None`` if absent."""
+  from kanibako.settings.keystore import KeyStore
 
-    cur: Any = node
-    for seg in path:
-        if not isinstance(cur, KeyStore):
-            return None
-        cur = dict.get(cur, seg, None)
-    return cur
+  cur: Any = node
+  for seg in path:
+    if not isinstance(cur, KeyStore):
+      return None
+    cur = dict.get(cur, seg, None)
+  return cur

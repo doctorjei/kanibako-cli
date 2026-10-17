@@ -32,16 +32,16 @@ never relative — §4.4 of that plan.
 """
 
 __all__ = [
-    "baseline",
-    "container",
-    "containerfiles",
-    "freshness",
-    "image_sharing",
-    "registry",
-    "rig_bundle",
-    "rig_meta",
-    "rig_registry",
-    "rig_resolve",
-    "rig_source",
-    "templates_image",
+  "baseline",
+  "container",
+  "containerfiles",
+  "freshness",
+  "image_sharing",
+  "registry",
+  "rig_bundle",
+  "rig_meta",
+  "rig_registry",
+  "rig_resolve",
+  "rig_source",
+  "templates_image",
 ]

@@ -34,36 +34,36 @@ DOOR = ["workset", "share", "list", "ws1", "--effective"]
 
 
 def _cli(argv, tmp_home, capsys):
-    """``kanibako.cli.main`` over an isolated HOME; return ``(rc, what it printed)``."""
-    from kanibako.cli import main
+  """``kanibako.cli.main`` over an isolated HOME; return ``(rc, what it printed)``."""
+  from kanibako.cli import main
 
-    try:
-        rc = main(argv)
-    except SystemExit as exc:
-        rc = exc.code
-    out = capsys.readouterr()
-    return rc, out.out + out.err
+  try:
+    rc = main(argv)
+  except SystemExit as exc:
+    rc = exc.code
+  out = capsys.readouterr()
+  return rc, out.out + out.err
 
 
 def _write(path: Path, body: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(textwrap.dedent(body).lstrip())
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_text(textwrap.dedent(body).lstrip())
 
 
 def _settings(tmp_home, config_file) -> Path:
-    """The settings file the Layer-2 read opens, at the path the reader resolves."""
-    from kanibako.settings.config import load_config
-    from kanibako.settings.paths import load_std_paths
+  """The settings file the Layer-2 read opens, at the path the reader resolves."""
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import load_std_paths
 
-    return load_std_paths(load_config(config_file)).settings
+  return load_std_paths(load_config(config_file)).settings
 
 
 def _registered_ws(tmp_home, capsys) -> Path:
-    """A workset registered by the real ``workset create``, so the door reaches its keys."""
-    root = tmp_home / "userws" / "ws1"
-    rc, _ = _cli(["workset", "create", str(root)], tmp_home, capsys)
-    assert rc == 0, "workset create must succeed for this door to reach a workset key"
-    return root
+  """A workset registered by the real ``workset create``, so the door reaches its keys."""
+  root = tmp_home / "userws" / "ws1"
+  rc, _ = _cli(["workset", "create", str(root)], tmp_home, capsys)
+  assert rc == 0, "workset create must succeed for this door to reach a workset key"
+  return root
 
 
 #: (label, file to write, body, the key and the shape the refusal must name)
@@ -71,253 +71,293 @@ def _registered_ws(tmp_home, capsys) -> Path:
 #: ``a number``, never the class name a Python reader would recognize but a YAML author
 #: never wrote.
 LAYER_TIER_CASES = (
-    ("system.cache", "system", "cache", ["x"], "system.cache", "a list"),
-    ("system.cache", "system", "cache", 8080, "system.cache", "an integer"),
-    ("system.cache", "system", "cache", {"x": None}, "system.cache", "a map"),
-    ("system.canon", "system", "canon", True, "system.canon", "a boolean"),
-    ("system.canon", "system", "canon", 1.5, "system.canon", "a number"),
-    ("config.data", "config", "data", ["x"], "config.data", "a list"),
-    ("config.data", "config", "data", 8080, "config.data", "an integer"),
-    ("config.data", "config", "data", {"x": None}, "config.data", "a map"),
+  ("system.cache", "system", "cache", ["x"], "system.cache", "a list"),
+  ("system.cache", "system", "cache", 8080, "system.cache", "an integer"),
+  ("system.cache", "system", "cache", {"x": None}, "system.cache", "a map"),
+  ("system.canon", "system", "canon", True, "system.canon", "a boolean"),
+  ("system.canon", "system", "canon", 1.5, "system.canon", "a number"),
+  ("config.data", "config", "data", ["x"], "config.data", "a list"),
+  ("config.data", "config", "data", 8080, "config.data", "an integer"),
+  ("config.data", "config", "data", {"x": None}, "config.data", "a map"),
 )
 
 
 @pytest.mark.parametrize(
-    "label,table,leaf,value,key,shape",
-    [c for c in LAYER_TIER_CASES if c[1] == "system"],
-    ids=[c[0] + ":" + c[5] for c in LAYER_TIER_CASES if c[1] == "system"],
+  "label,table,leaf,value,key,shape",
+  [c for c in LAYER_TIER_CASES if c[1] == "system"],
+  ids=[c[0] + ":" + c[5] for c in LAYER_TIER_CASES if c[1] == "system"],
 )
 def test_a_non_string_at_a_layer2_path_key_is_refused_by_name_at_the_cli(
-    tmp_home, config_file, capsys, label, table, leaf, value, key, shape,
+  tmp_home,
+  config_file,
+  capsys,
+  label,
+  table,
+  leaf,
+  value,
+  key,
+  shape,
 ):
-    """A hand-edited non-string at a Layer-2 ``system.*`` PATH key refuses AT THE READ.
+  """A hand-edited non-string at a Layer-2 ``system.*`` PATH key refuses AT THE READ.
 
-    ⭐ The door is the real CLI, not the launch: this read runs first, and pinning it here
-    is what stops the bare-relative arm from answering a type defect again.
+  ⭐ The door is the real CLI, not the launch: this read runs first, and pinning it here
+  is what stops the bare-relative arm from answering a type defect again.
 
-    Mutation: drop the ``_refuse_non_string_path_keys`` call from
-    ``system_table_set_values`` → the read returns, and the CLI answers the bare-relative
-    arm with ``"['x']"`` quoted as a path.
-    """
-    _write(_settings(tmp_home, config_file), _system_body(leaf, value))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert key in printed, printed
-    assert shape in printed, printed
-    # ⭐ NOT the bare-relative answer: quoting a Python repr as a path is the misreading.
-    assert "BARE RELATIVE" not in printed, printed
+  Mutation: drop the ``_refuse_non_string_path_keys`` call from
+  ``system_table_set_values`` → the read returns, and the CLI answers the bare-relative
+  arm with ``"['x']"`` quoted as a path.
+  """
+  _write(_settings(tmp_home, config_file), _system_body(leaf, value))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert key in printed, printed
+  assert shape in printed, printed
+  # ⭐ NOT the bare-relative answer: quoting a Python repr as a path is the misreading.
+  assert "BARE RELATIVE" not in printed, printed
 
 
 @pytest.mark.parametrize(
-    "label,table,leaf,value,key,shape",
-    [c for c in LAYER_TIER_CASES if c[1] == "config"],
-    ids=[c[0] + ":" + c[5] for c in LAYER_TIER_CASES if c[1] == "config"],
+  "label,table,leaf,value,key,shape",
+  [c for c in LAYER_TIER_CASES if c[1] == "config"],
+  ids=[c[0] + ":" + c[5] for c in LAYER_TIER_CASES if c[1] == "config"],
 )
 def test_a_non_string_at_a_layer1_path_key_is_refused_by_name_at_the_cli(
-    tmp_home, config_file, capsys, label, table, leaf, value, key, shape,
+  tmp_home,
+  config_file,
+  capsys,
+  label,
+  table,
+  leaf,
+  value,
+  key,
+  shape,
 ):
-    """The same at Layer 1, in ``kanibako.cfg``'s own ``config:`` table.
+  """The same at Layer 1, in ``kanibako.cfg``'s own ``config:`` table.
 
-    Mutation: drop the ``_refuse_non_string_path_keys`` call from
-    ``bootstrap_config_paths`` → the same misreading returns for ``config.data``.
-    """
-    _write(config_file, _config_body(leaf, value))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert key in printed, printed
-    assert shape in printed, printed
-    assert "BARE RELATIVE" not in printed, printed
+  Mutation: drop the ``_refuse_non_string_path_keys`` call from
+  ``bootstrap_config_paths`` → the same misreading returns for ``config.data``.
+  """
+  _write(config_file, _config_body(leaf, value))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert key in printed, printed
+  assert shape in printed, printed
+  assert "BARE RELATIVE" not in printed, printed
 
 
 #: ``channels.common`` + a LIST has its own test below, which also pins the FILE it names.
 WORKSET_EARLY_CASES = (
-    ("channels.common", 8080, "workset.channels.common", "an integer"),
-    ("channels.common", {"x": None}, "workset.channels.common", "a map"),
-    ("canon", ["a"], "workset.canon", "a list"),
-    ("canon", 8080, "workset.canon", "an integer"),
-    ("canon", {"x": None}, "workset.canon", "a map"),
+  ("channels.common", 8080, "workset.channels.common", "an integer"),
+  ("channels.common", {"x": None}, "workset.channels.common", "a map"),
+  ("canon", ["a"], "workset.canon", "a list"),
+  ("canon", 8080, "workset.canon", "an integer"),
+  ("canon", {"x": None}, "workset.canon", "a map"),
 )
 
 
 @pytest.mark.parametrize(
-    "leaf_path,value,key,shape", WORKSET_EARLY_CASES,
-    ids=[f"{c[2]}:{c[3]}" for c in WORKSET_EARLY_CASES],
+  "leaf_path,value,key,shape",
+  WORKSET_EARLY_CASES,
+  ids=[f"{c[2]}:{c[3]}" for c in WORKSET_EARLY_CASES],
 )
 def test_a_non_string_at_a_workset_early_path_key_is_refused_by_name_at_the_cli(
-    tmp_home, config_file, capsys, leaf_path, value, key, shape,
+  tmp_home,
+  config_file,
+  capsys,
+  leaf_path,
+  value,
+  key,
+  shape,
 ):
-    """A hand-edited non-string at a ``workset.*`` EARLY key refuses AT THE READ.
+  """A hand-edited non-string at a ``workset.*`` EARLY key refuses AT THE READ.
 
-    ⭐ ``_stored_repoint``'s ``str()`` is what made a map arrive already spelled
-    ``"{'x': None}"``; the check asks ``is_path_key_value`` before it.
+  ⭐ ``_stored_repoint``'s ``str()`` is what made a map arrive already spelled
+  ``"{'x': None}"``; the check asks ``is_path_key_value`` before it.
 
-    Mutation: drop the ``is_path_key_value`` check from ``_stored_repoint``.  ⭐ MEASURED,
-    NOT ASSUMED: that turns ``workset.channels.common:{int,map}`` RED — the early read
-    answers first there, so the repr reaches the bare-relative arm instead.  The
-    ``workset.canon`` rows stay GREEN under the same mutation and are therefore GUARDS, not
-    proofs: the launch sweep reaches them first and refuses the value by name anyway.
-    """
-    root = _registered_ws(tmp_home, capsys)
-    _write(root / "workset.yaml", _workset_body(leaf_path, value))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert key in printed, printed
-    assert shape in printed, printed
-    assert "BARE RELATIVE" not in printed, printed
+  Mutation: drop the ``is_path_key_value`` check from ``_stored_repoint``.  ⭐ MEASURED,
+  NOT ASSUMED: that turns ``workset.channels.common:{int,map}`` RED — the early read
+  answers first there, so the repr reaches the bare-relative arm instead.  The
+  ``workset.canon`` rows stay GREEN under the same mutation and are therefore GUARDS, not
+  proofs: the launch sweep reaches them first and refuses the value by name anyway.
+  """
+  root = _registered_ws(tmp_home, capsys)
+  _write(root / "workset.yaml", _workset_body(leaf_path, value))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert key in printed, printed
+  assert shape in printed, printed
+  assert "BARE RELATIVE" not in printed, printed
 
 
 def test_a_list_at_workset_channels_common_gets_the_path_key_refusal(
-    tmp_home, config_file, capsys,
+  tmp_home,
+  config_file,
+  capsys,
 ):
-    """A LIST at ``workset.channels.common`` is a PATH-key type mismatch, not a malformed bind.
+  """A LIST at ``workset.channels.common`` is a PATH-key type mismatch, not a malformed bind.
 
-    Spec §2a: the ``channels.`` segment discriminates the CHANNEL type-root from the
-    ``<scope>.common`` MOUNT category.
+  Spec §2a: the ``channels.`` segment discriminates the CHANNEL type-root from the
+  ``<scope>.common`` MOUNT category.
 
-    Mutation: key ``parse_node``'s bind-leaf branch on the bare ``common`` token again →
-    the bind parser's arity refusal answers instead.
-    """
-    root = _registered_ws(tmp_home, capsys)
-    _write(root / "workset.yaml", _workset_body("channels.common", ["x"]))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert "workset.channels.common" in printed, printed
-    assert "give one quoted path" in printed, printed
-    assert "workset.yaml" in printed, printed
+  Mutation: key ``parse_node``'s bind-leaf branch on the bare ``common`` token again →
+  the bind parser's arity refusal answers instead.
+  """
+  root = _registered_ws(tmp_home, capsys)
+  _write(root / "workset.yaml", _workset_body("channels.common", ["x"]))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert "workset.channels.common" in printed, printed
+  assert "give one quoted path" in printed, printed
+  assert "workset.yaml" in printed, printed
 
 
 def _pref_case(scope: str):
-    return pytest.param(scope, marks=pytest.mark.writes_undeclared(
-        *(("pref.workset",) if scope == "workset" else ()),
-        f"pref.{scope}.channels", f"pref.{scope}.channels.common",
-        reason="drives spec §2h's refusal of a non-allowlisted pref target, so the "
-               "file partial carries the refused pref node before the refusal.",
-    ))
+  return pytest.param(
+    scope,
+    marks=pytest.mark.writes_undeclared(
+      *(("pref.workset",) if scope == "workset" else ()),
+      f"pref.{scope}.channels",
+      f"pref.{scope}.channels.common",
+      reason="drives spec §2h's refusal of a non-allowlisted pref target, so the "
+      "file partial carries the refused pref node before the refusal.",
+    ),
+  )
 
 
 @pytest.mark.parametrize("scope", [_pref_case("workset"), _pref_case("system")])
 def test_a_list_at_a_pref_channels_common_gets_the_pref_refusal(
-    tmp_home, config_file, capsys, scope,
+  tmp_home,
+  config_file,
+  capsys,
+  scope,
 ):
-    """``pref.<scope>.channels.common: [a]`` gets spec §2h's "not requestable" refusal.
+  """``pref.<scope>.channels.common: [a]`` gets spec §2h's "not requestable" refusal.
 
-    Mutation: judge the UNSTRIPPED ``pref.`` key in ``_at_bind_leaf`` → the bind
-    parser's arity refusal answers instead.
-    """
-    root = _registered_ws(tmp_home, capsys)
-    _write(root / "workset.yaml",
-           f"name: ws1\npref:\n  {scope}:\n    channels:\n      common:\n      - a\n")
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert f"{scope}.channels.common" in printed, printed
-    assert "not requestable" in printed, printed
-    assert "elements" not in printed, printed
+  Mutation: judge the UNSTRIPPED ``pref.`` key in ``_at_bind_leaf`` → the bind
+  parser's arity refusal answers instead.
+  """
+  root = _registered_ws(tmp_home, capsys)
+  _write(
+    root / "workset.yaml",
+    f"name: ws1\npref:\n  {scope}:\n    channels:\n      common:\n      - a\n",
+  )
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert f"{scope}.channels.common" in printed, printed
+  assert "not requestable" in printed, printed
+  assert "elements" not in printed, printed
 
 
-@pytest.mark.parametrize("body", [
+@pytest.mark.parametrize(
+  "body",
+  [
     "pref:\n  box:\n    common:\n    - a\n",
     "pref:\n  agent:\n    claude:\n      common:\n      - a\n",
-])
+  ],
+)
 def test_a_list_at_a_pref_bind_category_keeps_the_bind_refusal(
-    tmp_home, config_file, capsys, body,
+  tmp_home,
+  config_file,
+  capsys,
+  body,
 ):
-    """The control: a pref whose target IS a bind category still bind-parses."""
-    root = _registered_ws(tmp_home, capsys)
-    _write(root / "workset.yaml", "name: ws1\n" + body)
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert "2 or 3 elements" in printed, printed
+  """The control: a pref whose target IS a bind category still bind-parses."""
+  root = _registered_ws(tmp_home, capsys)
+  _write(root / "workset.yaml", "name: ws1\n" + body)
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert "2 or 3 elements" in printed, printed
 
 
 def test_a_string_at_a_workset_early_path_key_still_reaches_the_bare_relative_arm(
-    tmp_home, config_file, capsys,
+  tmp_home,
+  config_file,
+  capsys,
 ):
-    """A bare-relative STRING keeps its OWN refusal — the two arms cannot both answer one key.
+  """A bare-relative STRING keeps its OWN refusal — the two arms cannot both answer one key.
 
-    Mutation: judge every stored value as a shape → this loses both its readings.
-    """
-    root = _registered_ws(tmp_home, capsys)
-    _write(root / "workset.yaml", _workset_body("canon", "rel"))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert rc != 0
-    assert "BARE RELATIVE" in printed, printed
-    assert "workset.canon" in printed, printed
+  Mutation: judge every stored value as a shape → this loses both its readings.
+  """
+  root = _registered_ws(tmp_home, capsys)
+  _write(root / "workset.yaml", _workset_body("canon", "rel"))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert rc != 0
+  assert "BARE RELATIVE" in printed, printed
+  assert "workset.canon" in printed, printed
 
 
 def test_a_legal_path_key_value_is_not_refused_at_any_tier(tmp_home, config_file, capsys):
-    """The control at BOTH tiers: an absolute string, a ``{$XDG_*}``/``{key}``-ref and a null all pass.
+  """The control at BOTH tiers: an absolute string, a ``{$XDG_*}``/``{key}``-ref and a null all pass.
 
-    ⭐ This is the regression the check could cause, so it is pinned at the door that
-    stringifies rather than at the launch sweep that already passed.
+  ⭐ This is the regression the check could cause, so it is pinned at the door that
+  stringifies rather than at the launch sweep that already passed.
 
-    Mutation: judge the stringified value → every absolute path under a path key refuses.
-    """
-    _write(_settings(tmp_home, config_file), _system_body("cache", "/srv/cache"))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert "BARE RELATIVE" not in printed, printed
-    assert "holds a" not in printed, printed
+  Mutation: judge the stringified value → every absolute path under a path key refuses.
+  """
+  _write(_settings(tmp_home, config_file), _system_body("cache", "/srv/cache"))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert "BARE RELATIVE" not in printed, printed
+  assert "holds a" not in printed, printed
 
 
 def test_a_null_at_a_path_key_is_still_the_omission_it_was(tmp_home, config_file, capsys):
-    """A present ``null`` is the tri-state OMIT a reset writes — the null refusal, not a type one.
+  """A present ``null`` is the tri-state OMIT a reset writes — the null refusal, not a type one.
 
-    Mutation: drop ``None`` from ``is_path_key_value`` → every reset and pin dies, and
-    this reports a TYPE refusal where the null one belongs.
-    """
-    _write(_settings(tmp_home, config_file), _system_body("cache", None))
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert "holds a" not in printed, printed
-    assert "BARE RELATIVE" not in printed, printed
+  Mutation: drop ``None`` from ``is_path_key_value`` → every reset and pin dies, and
+  this reports a TYPE refusal where the null one belongs.
+  """
+  _write(_settings(tmp_home, config_file), _system_body("cache", None))
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert "holds a" not in printed, printed
+  assert "BARE RELATIVE" not in printed, printed
 
 
 def test_a_non_path_key_in_the_system_table_is_not_judged(tmp_home, config_file, capsys):
-    """``system:`` legitimately holds non-path keys; only the declared PATH tier is judged.
+  """``system:`` legitimately holds non-path keys; only the declared PATH tier is judged.
 
-    Mutation: judge every ``system.*`` leaf → ``system.agent`` and the category families
-    are refused as type mismatches.
-    """
-    _write(_settings(tmp_home, config_file),
-           "system:\n  agent:\n  - a\n  cache: /srv/cache\n")
-    rc, printed = _cli(DOOR, tmp_home, capsys)
-    assert "system.agent" not in printed, printed
-    assert "holds a" not in printed, printed
+  Mutation: judge every ``system.*`` leaf → ``system.agent`` and the category families
+  are refused as type mismatches.
+  """
+  _write(_settings(tmp_home, config_file), "system:\n  agent:\n  - a\n  cache: /srv/cache\n")
+  rc, printed = _cli(DOOR, tmp_home, capsys)
+  assert "system.agent" not in printed, printed
+  assert "holds a" not in printed, printed
 
 
 # ---------------------------------------------------------------- helpers
 
 
 def _nested(leaf_path: str, value: object) -> str:
-    """``channels.common`` + a value, spelled as the file nests it, at NO indent."""
-    import yaml
+  """``channels.common`` + a value, spelled as the file nests it, at NO indent."""
+  import yaml
 
-    node: object = value
-    for segment in reversed(leaf_path.split(".")):
-        node = {segment: node}
-    return yaml.safe_dump(node, default_flow_style=False, sort_keys=False).rstrip()
+  node: object = value
+  for segment in reversed(leaf_path.split(".")):
+    node = {segment: node}
+  return yaml.safe_dump(node, default_flow_style=False, sort_keys=False).rstrip()
 
 
 def _indent(body: str, spaces: int) -> str:
-    pad = " " * spaces
-    return "\n".join(pad + line if line else line for line in body.splitlines())
+  pad = " " * spaces
+  return "\n".join(pad + line if line else line for line in body.splitlines())
 
 
 def _system_body(leaf: str, value: object) -> str:
-    return "system:\n" + _indent(_nested(leaf, value), 2) + "\n"
+  return "system:\n" + _indent(_nested(leaf, value), 2) + "\n"
 
 
 def _config_body(leaf: str, value: object) -> str:
-    return "config:\n" + _indent(_nested(leaf, value), 2) + "\n"
+  return "config:\n" + _indent(_nested(leaf, value), 2) + "\n"
 
 
 def _workset_body(leaf_path: str, value: object) -> str:
-    return "name: ws1\nworkset:\n" + _indent(_nested(leaf_path, value), 2) + "\n"
+  return "name: ws1\nworkset:\n" + _indent(_nested(leaf_path, value), 2) + "\n"
 
 
 def test_the_helpers_spell_the_documented_files(tmp_home, config_file):
-    """The fixtures' own spelling — so a failure above is the read, not a typo in a helper."""
-    assert config_file.name == CONFIG_FILENAME
-    assert _system_body("cache", ["x"]) == "system:\n  cache:\n  - x\n"
-    assert _config_body("data", {"x": None}) == "config:\n  data:\n    x: null\n"
-    assert _nested("channels.common", 8080) == "channels:\n  common: 8080"
-    assert _workset_body("canon", ["a"]) == (
-        "name: ws1\nworkset:\n  canon:\n  - a\n")
+  """The fixtures' own spelling — so a failure above is the read, not a typo in a helper."""
+  assert config_file.name == CONFIG_FILENAME
+  assert _system_body("cache", ["x"]) == "system:\n  cache:\n  - x\n"
+  assert _config_body("data", {"x": None}) == "config:\n  data:\n    x: null\n"
+  assert _nested("channels.common", 8080) == "channels:\n  common: 8080"
+  assert _workset_body("canon", ["a"]) == ("name: ws1\nworkset:\n  canon:\n  - a\n")

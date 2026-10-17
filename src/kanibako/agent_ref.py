@@ -122,8 +122,10 @@ def reserved_pseudo_agent_reason(name: str) -> str | None:
   """
   if find_identifier(name, PSEUDO_AGENT_NAMES) is None:
     return None
-  return (f"'{name}' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may "
-          f"not name an agent, a persona, or a harness")
+  return (
+    f"'{name}' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may "
+    f"not name an agent, a persona, or a harness"
+  )
 
 
 def _first_sep_index(raw: str) -> int:
@@ -138,7 +140,7 @@ def display_agent_ref(node: str) -> str:
 
 def canonicalize_agent_ref(raw: str) -> str:
   """Return the canonical *node*-name for a raw ref (``+`` -> ``℘``)."""
-  return parse_agent_ref(raw)[0] # Just the node
+  return parse_agent_ref(raw)[0]  # Just the node
 
 
 def parse_agent_ref(raw: str) -> tuple[str, str]:
@@ -174,7 +176,7 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
   if (why := reserved_pseudo_agent_reason(persona)) is not None:
     raise ConfigError(f"invalid agent ref '{raw}': persona segment {why}")
 
-  if not _is_segment_safe(harness := ref[idx+1:]):
+  if not _is_segment_safe(harness := ref[idx + 1 :]):
     raise ConfigError(f"invalid agent ref '{raw}': {_segment_refusal('harness', harness)}")
 
   if (why := reserved_pseudo_agent_reason(harness)) is not None:
@@ -268,5 +270,5 @@ def persona_of(node: str) -> str:
 
 def with_harness(node: str, harness: str) -> str:
   """Return *node* with its harness segment REPLACED by *harness*."""
-  persona, sep, _ = node.rpartition(CANONICAL_SEP) # bare node if sep is ""
+  persona, sep, _ = node.rpartition(CANONICAL_SEP)  # bare node if sep is ""
   return f"{persona}{CANONICAL_SEP}{harness}" if sep else harness

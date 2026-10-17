@@ -47,29 +47,32 @@ from kanibako.settings.paths import standalone_box_store
 from kanibako.utils import is_home_dir, literal_path
 
 if TYPE_CHECKING:
-    from kanibako.settings.workset_dirkeys import EarlyScope
+  from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 class ImportConflictError(KanibakoError):
-    """A drop-in import refused: the name collides with a different entity."""
+  """A drop-in import refused: the name collides with a different entity."""
 
 
 def _alert(mode: str, name: str, path: Path) -> None:
-    """Print the import ALERT to stderr (no confirmation; the import proceeds)."""
-    print(f"Imported {mode} '{name}' at {path}", file=sys.stderr)
+  """Print the import ALERT to stderr (no confirmation; the import proceeds)."""
+  print(f"Imported {mode} '{name}' at {path}", file=sys.stderr)
 
 
 def _conflict(
-    mode: str, name: str, new_path: Path, existing_path: str,
+  mode: str,
+  name: str,
+  new_path: Path,
+  existing_path: str,
 ) -> ImportConflictError:
-    """Build the shared REFUSE error explaining the name collision."""
-    return ImportConflictError(
-        f"Cannot import {mode} '{name}' at {new_path}: the name '{name}' is "
-        f"already registered to a different location ({existing_path}). "
-        "Refusing the import to avoid clobbering the existing entry. "
-        "A 'rename' mechanism to resolve such collisions is planned "
-        "(future work); for now, rename or relocate one of them manually."
-    )
+  """Build the shared REFUSE error explaining the name collision."""
+  return ImportConflictError(
+    f"Cannot import {mode} '{name}' at {new_path}: the name '{name}' is "
+    f"already registered to a different location ({existing_path}). "
+    "Refusing the import to avoid clobbering the existing entry. "
+    "A 'rename' mechanism to resolve such collisions is planned "
+    "(future work); for now, rename or relocate one of them manually."
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -89,247 +92,274 @@ def _conflict(
 
 @contextmanager
 def _journal_register(
-    journal: Path | None,
-    box_path: Path,
-    *,
-    op: str,
-    name: str,
-    mode: str,
-    workset: str | None = None,
+  journal: Path | None,
+  box_path: Path,
+  *,
+  op: str,
+  name: str,
+  mode: str,
+  workset: str | None = None,
 ):
-    """Bracket a register-only import/connect with a write-ahead journal entry.
+  """Bracket a register-only import/connect with a write-ahead journal entry.
 
-    Order (DESIGN): write entry -> register body -> clear entry.  ⚑ If the body
-    raises (a genuine collision) the entry is intentionally LEFT and the
-    exception propagates; recovery resumes it on the next resolve.  A None
-    *journal* is a no-op bracket.  *box_path* is the host-side box dir (the one
-    CONTAINING ``home/``), the same key scheme as J1 — known pre-registration.
-    """
-    if journal is None:
-        yield
-        return
-    from kanibako.launch import journal as journal_mod
-
-    journal_mod.write_entry(
-        journal, box_path, op=op, name=name, mode=mode, workset=workset,
-    )
+  Order (DESIGN): write entry -> register body -> clear entry.  ⚑ If the body
+  raises (a genuine collision) the entry is intentionally LEFT and the
+  exception propagates; recovery resumes it on the next resolve.  A None
+  *journal* is a no-op bracket.  *box_path* is the host-side box dir (the one
+  CONTAINING ``home/``), the same key scheme as J1 — known pre-registration.
+  """
+  if journal is None:
     yield
-    # Committing step done — clear now.  A crash here leaves a stale entry
-    # that the next resolve clears via the same replay.
-    journal_mod.clear_entry(journal, box_path)
+    return
+  from kanibako.launch import journal as journal_mod
+
+  journal_mod.write_entry(
+    journal,
+    box_path,
+    op=op,
+    name=name,
+    mode=mode,
+    workset=workset,
+  )
+  yield
+  # Committing step done — clear now.  A crash here leaves a stale entry
+  # that the next resolve clears via the same replay.
+  journal_mod.clear_entry(journal, box_path)
 
 
 def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
-    """Clear a stale register-only entry on an already-registered box.
+  """Clear a stale register-only entry on an already-registered box.
 
-    Closes the register -> clear-entry crash window: a re-resolve takes the
-    import's idempotent NO-OP branch, so the clear has to happen here or the HARD
-    INVARIANT breaks.  ⚑ Only an import/connect entry is cleared — a ``create``
-    entry is left for the create-recovery path.  A None *journal* is a no-op.
-    """
-    if journal is None:
-        return
-    from kanibako.launch import journal as journal_mod
+  Closes the register -> clear-entry crash window: a re-resolve takes the
+  import's idempotent NO-OP branch, so the clear has to happen here or the HARD
+  INVARIANT breaks.  ⚑ Only an import/connect entry is cleared — a ``create``
+  entry is left for the create-recovery path.  A None *journal* is a no-op.
+  """
+  if journal is None:
+    return
+  from kanibako.launch import journal as journal_mod
 
-    if journal_mod.pending_import(journal, box_path) is not None:
-        journal_mod.clear_entry(journal, box_path)
+  if journal_mod.pending_import(journal, box_path) is not None:
+    journal_mod.clear_entry(journal, box_path)
 
 
 # ---------------------------------------------------------------------------
 # STANDALONE
 # ---------------------------------------------------------------------------
 
-def refuse_second_link(registry: Path, root: Path) -> None:
-    """[R188]: another spelling of a registered standalone's identity is refused, not a box.
 
-    A link, a bind mount, or a hard-linked ``workset.yaml`` alike
-    (:func:`~kanibako.project.registry_store.standalone_identity_holder`).
-    """
-    owner = registry_store.standalone_identity_holder(registry, root)
-    if owner is not None:
-        owner_root = registry_store.standalone_root(registry, owner)
-        mine = registry_store.standalone_name_for_root(registry, root)
-        drop = (f", or drop this registration with 'kanibako box rm {mine}'"
-                if mine is not None else "")
-        raise ImportConflictError(
-            f"{root} is another path to standalone box '{owner}', registered at "
-            f"{owner_root}; a standalone box has one path. Work from {owner_root}{drop}."
-        )
+def refuse_second_link(registry: Path, root: Path) -> None:
+  """[R188]: another spelling of a registered standalone's identity is refused, not a box.
+
+  A link, a bind mount, or a hard-linked ``workset.yaml`` alike
+  (:func:`~kanibako.project.registry_store.standalone_identity_holder`).
+  """
+  owner = registry_store.standalone_identity_holder(registry, root)
+  if owner is not None:
+    owner_root = registry_store.standalone_root(registry, owner)
+    mine = registry_store.standalone_name_for_root(registry, root)
+    drop = f", or drop this registration with 'kanibako box rm {mine}'" if mine is not None else ""
+    raise ImportConflictError(
+      f"{root} is another path to standalone box '{owner}', registered at "
+      f"{owner_root}; a standalone box has one path. Work from {owner_root}{drop}."
+    )
 
 
 def check_standalone(
-    registry: Path, root: Path, *, journal: Path | None = None,
-    early: "EarlyScope",
+  registry: Path,
+  root: Path,
+  *,
+  journal: Path | None = None,
+  early: "EarlyScope",
 ) -> None:
-    """The resolver's pass over a standalone root at *root*: it never registers one.
+  """The resolver's pass over a standalone root at *root*: it never registers one.
 
-    Another spelling of a registered root's identity is refused ([R188]), registered
-    or not, before anything is written; a registered root then gets its stale J2 entry
-    cleared.  An unregistered root that is another spelling of a PARKED standalone's
-    directory, or shares its ``workset.yaml`` file, is refused too.  ⚑ Here only, not
-    in :func:`refuse_second_link`: ``box register <root>`` (:func:`import_standalone`)
-    is the route that re-registers a parked box at a new spelling, and it must stay open.
-    """
-    root = Path(literal_path(root))
-    refuse_second_link(registry, root)
-    if registry_store.standalone_name_for_root(registry, root) is not None:
-        _clear_stale_import(journal, standalone_box_store(root, early=early))
-        return
-    parked = registry_store.deregistered_standalone_for_dir(registry, root)
-    if parked is None:
-        # ⚑ A SEPARATE identity pass ([R188], as :func:`refuse_second_link` keys it): a
-        # hard-linked ``workset.yaml`` is one identity in another directory.  Not folded
-        # into ``_parks_standalone_dir``, which routes purges and must stay one directory.
-        parked = next(((name, entry) for name, entry in
-                       registry_store.load_deregistered(registry).items()
-                       if entry.get("kind") == "standalone" and entry.get("metadata")
-                       and registry_store._same_identity(str(entry["metadata"]), str(root))),
-                      None)
-    if parked is not None and str(parked[1]["metadata"]) != str(root):
-        name, stored = parked[0], parked[1]["metadata"]
-        raise ImportConflictError(
-            f"{root} is another path to deregistered standalone box '{name}' (kept at "
-            f"{stored}); a standalone box has one path. Work from {stored}, or register "
-            f"it at this path: kanibako box register {shlex.quote(str(root))}"
-        )
+  Another spelling of a registered root's identity is refused ([R188]), registered
+  or not, before anything is written; a registered root then gets its stale J2 entry
+  cleared.  An unregistered root that is another spelling of a PARKED standalone's
+  directory, or shares its ``workset.yaml`` file, is refused too.  ⚑ Here only, not
+  in :func:`refuse_second_link`: ``box register <root>`` (:func:`import_standalone`)
+  is the route that re-registers a parked box at a new spelling, and it must stay open.
+  """
+  root = Path(literal_path(root))
+  refuse_second_link(registry, root)
+  if registry_store.standalone_name_for_root(registry, root) is not None:
+    _clear_stale_import(journal, standalone_box_store(root, early=early))
+    return
+  parked = registry_store.deregistered_standalone_for_dir(registry, root)
+  if parked is None:
+    # ⚑ A SEPARATE identity pass ([R188], as :func:`refuse_second_link` keys it): a
+    # hard-linked ``workset.yaml`` is one identity in another directory.  Not folded
+    # into ``_parks_standalone_dir``, which routes purges and must stay one directory.
+    parked = next(
+      (
+        (name, entry)
+        for name, entry in registry_store.load_deregistered(registry).items()
+        if entry.get("kind") == "standalone"
+        and entry.get("metadata")
+        and registry_store._same_identity(str(entry["metadata"]), str(root))
+      ),
+      None,
+    )
+  if parked is not None and str(parked[1]["metadata"]) != str(root):
+    name, stored = parked[0], parked[1]["metadata"]
+    raise ImportConflictError(
+      f"{root} is another path to deregistered standalone box '{name}' (kept at "
+      f"{stored}); a standalone box has one path. Work from {stored}, or register "
+      f"it at this path: kanibako box register {shlex.quote(str(root))}"
+    )
 
 
 def import_standalone(
-    registry: Path, root: Path, *, journal: Path | None = None,
-    early: "EarlyScope",
+  registry: Path,
+  root: Path,
+  *,
+  journal: Path | None = None,
+  early: "EarlyScope",
 ) -> str | None:
-    """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
+  """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
-    *root* is the standalone project root (the dir containing ``box_data/`` and,
-    at the root, ``workset.yaml``).  Returns the registered box name, or
-    ``None`` when *root* carries no standalone MARKER or an interrupted ``create``
-    is pending for it — that box is ``create --recover``'s, and an import would
-    overwrite its journal entry.
-    """
-    root = Path(literal_path(root))
-    root_str = str(root)
-    # ⚑ The journal KEY is the store under the literal root, and it MUST agree with
-    # ``commands/start.py::_box_journal_key`` (``shell_path.parent``).
-    store = standalone_box_store(root, early=early)
+  *root* is the standalone project root (the dir containing ``box_data/`` and,
+  at the root, ``workset.yaml``).  Returns the registered box name, or
+  ``None`` when *root* carries no standalone MARKER or an interrupted ``create``
+  is pending for it — that box is ``create --recover``'s, and an import would
+  overwrite its journal entry.
+  """
+  root = Path(literal_path(root))
+  root_str = str(root)
+  # ⚑ The journal KEY is the store under the literal root, and it MUST agree with
+  # ``commands/start.py::_box_journal_key`` (``shell_path.parent``).
+  store = standalone_box_store(root, early=early)
 
-    # Already registered to this exact root → no-op; clear any stale J2 entry.
-    existing_name = registry_store.standalone_name_for_root(registry, root)
-    if existing_name is not None:
-        _clear_stale_import(journal, store)
-        return existing_name
+  # Already registered to this exact root → no-op; clear any stale J2 entry.
+  existing_name = registry_store.standalone_name_for_root(registry, root)
+  if existing_name is not None:
+    _clear_stale_import(journal, store)
+    return existing_name
 
-    # ⚑ Gate on the standalone MARKER (design D4): the box's own settings FILE is
-    # the signal — NOT ``project.mode``.  No marker → nothing to import.
-    from kanibako.launch import box_resolve
+  # ⚑ Gate on the standalone MARKER (design D4): the box's own settings FILE is
+  # the signal — NOT ``project.mode``.  No marker → nothing to import.
+  from kanibako.launch import box_resolve
 
-    if not box_resolve.stores_standalone_registry_null(root):
-        return None
-    if journal is not None:
-        from kanibako.launch import journal as journal_mod
+  if not box_resolve.stores_standalone_registry_null(root):
+    return None
+  if journal is not None:
+    from kanibako.launch import journal as journal_mod
 
-        if journal_mod.pending_create(journal, store) is not None:
-            return None
+    if journal_mod.pending_create(journal, store) is not None:
+      return None
 
-    refuse_second_link(registry, root)
+  refuse_second_link(registry, root)
 
-    # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
-    # registry name, so a pre-kuid box falls back to its leaf.
-    name = box_resolve.standalone_box_name(root, None)
+  # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
+  # registry name, so a pre-kuid box falls back to its leaf.
+  name = box_resolve.standalone_box_name(root, None)
 
-    # Collision check against a DIFFERENT root.
-    other_root = registry_store.standalone_root(registry, name)  # ⚑ case-blind (§0)
-    if other_root is not None and other_root != root_str:
-        raise _conflict("standalone box", name, root, other_root)
+  # Collision check against a DIFFERENT root.
+  other_root = registry_store.standalone_root(registry, name)  # ⚑ case-blind (§0)
+  if other_root is not None and other_root != root_str:
+    raise _conflict("standalone box", name, root, other_root)
 
-    # J2 write-ahead: register-only, NO seed — the box is already seeded on disk.
-    with _journal_register(
-        journal, store,
-        op="import", name=name, mode="standalone",
-    ):
-        registry_store.register_standalone(registry, name, root)
-    _alert("standalone box", name, root)
-    return name
+  # J2 write-ahead: register-only, NO seed — the box is already seeded on disk.
+  with _journal_register(
+    journal,
+    store,
+    op="import",
+    name=name,
+    mode="standalone",
+  ):
+    registry_store.register_standalone(registry, name, root)
+  _alert("standalone box", name, root)
+  return name
 
 
 # ---------------------------------------------------------------------------
 # NAMED (worksets)
 # ---------------------------------------------------------------------------
 
+
 def import_named_workset(
-    registry: Path, root: Path, *,
-    journal: Path | None = None,
+  registry: Path,
+  root: Path,
+  *,
+  journal: Path | None = None,
 ) -> str | None:
-    """Reconcile an on-disk workset at *root* against ``registry.worksets``.
+  """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Names it after *root*'s LEAF DIRECTORY basename
-    (system-design § "Detection & import"), `_` for each `-` and `.` (spec §0) — a
-    workset records no
-    name on disk, and the basename is the answer in the absence of another one.
-    Returns that name (or the directory's registered one), or ``None`` when *root*
-    cannot be imported as a workset — an empty or reserved basename, or ``$HOME``
-    (see the guards below).
-    ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
-    """
-    root = Path(literal_path(root))
-    root_str = str(root)
+  Names it after *root*'s LEAF DIRECTORY basename
+  (system-design § "Detection & import"), `_` for each `-` and `.` (spec §0) — a
+  workset records no
+  name on disk, and the basename is the answer in the absence of another one.
+  Returns that name (or the directory's registered one), or ``None`` when *root*
+  cannot be imported as a workset — an empty or reserved basename, or ``$HOME``
+  (see the guards below).
+  ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
+  """
+  root = Path(literal_path(root))
+  root_str = str(root)
 
-    from kanibako.project.workset import is_reserved_workset_name
+  from kanibako.project.workset import is_reserved_workset_name
 
-    # ⚑ A DERIVED name must clear the SAME bars ``create_workset`` puts in front of a
-    # typed one: no empty name (only the filesystem root has one), no reserved
-    # sentinel.  It RETURNS where create RAISES, and the difference is who is asking —
-    # create answers a user who can retype, this answers a treewalk stepping past an
-    # ordinary directory, and a dir named ``default`` must not fail every command.
-    # Declining to import leaves it what it already was: a plain primary-mode dir.
-    # ⚑ Derived (spec §0): ``_`` for each ``-`` and ``.``; the directory keeps its spelling.
-    from kanibako.identifiers import derived_name, name_flaw
+  # ⚑ A DERIVED name must clear the SAME bars ``create_workset`` puts in front of a
+  # typed one: no empty name (only the filesystem root has one), no reserved
+  # sentinel.  It RETURNS where create RAISES, and the difference is who is asking —
+  # create answers a user who can retype, this answers a treewalk stepping past an
+  # ordinary directory, and a dir named ``default`` must not fail every command.
+  # Declining to import leaves it what it already was: a plain primary-mode dir.
+  # ⚑ Derived (spec §0): ``_`` for each ``-`` and ``.``; the directory keeps its spelling.
+  from kanibako.identifiers import derived_name, name_flaw
 
-    name = derived_name(root.name)
-    if not name:
-        return None
-    if (flaw := name_flaw(name)) is not None:
-        print(
-            f"Warning: not importing the workset at {root}: the workset name '{name}' "
-            f"taken from its directory {flaw}. Rename the directory to import it.",
-            file=sys.stderr,
-        )
-        return None
-    if is_reserved_workset_name(name):
-        print(
-            f"Warning: not importing the workset at {root}: its directory name "
-            f"'{name}' is a reserved workset name. Rename the directory to import it.",
-            file=sys.stderr,
-        )
-        return None
+  name = derived_name(root.name)
+  if not name:
+    return None
+  if (flaw := name_flaw(name)) is not None:
+    print(
+      f"Warning: not importing the workset at {root}: the workset name '{name}' "
+      f"taken from its directory {flaw}. Rename the directory to import it.",
+      file=sys.stderr,
+    )
+    return None
+  if is_reserved_workset_name(name):
+    print(
+      f"Warning: not importing the workset at {root}: its directory name "
+      f"'{name}' is a reserved workset name. Rename the directory to import it.",
+      file=sys.stderr,
+    )
+    return None
 
-    # ⚑ $HOME is DECLINED here for the same reason, one step earlier than
-    # ``register_name``'s refusal of it: the walk arrives at $HOME under its own
-    # steam — it is the walk's own stop condition, not a path anyone chose — so a
-    # home dir that happens to carry the four-dir skeleton would raise out of
-    # EVERY command's mode detection.  Declining leaves it what it already was: a
-    # plain primary-mode dir.  Tested directly, never caught: an ``except
-    # ProjectError`` here would swallow the SAME-KIND collision refusal below.
-    if is_home_dir(root):
-        return None
+  # ⚑ $HOME is DECLINED here for the same reason, one step earlier than
+  # ``register_name``'s refusal of it: the walk arrives at $HOME under its own
+  # steam — it is the walk's own stop condition, not a path anyone chose — so a
+  # home dir that happens to carry the four-dir skeleton would raise out of
+  # EVERY command's mode detection.  Declining leaves it what it already was: a
+  # plain primary-mode dir.  Tested directly, never caught: an ``except
+  # ProjectError`` here would swallow the SAME-KIND collision refusal below.
+  if is_home_dir(root):
+    return None
 
-    # Already registered to this DIRECTORY, under any name → no-op; clear a stale entry.
-    names_section = registry_store.load_section(registry, "worksets")
-    registered = lookup_by_path(registry, root_str)
-    if registered is not None:
-        _clear_stale_import(journal, Path(names_section[registered[0]]))
-        return registered[0]
-    current = names_section.get(name)
-    if current is not None:
-        # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
-        raise _conflict("workset", name, root, str(current))
+  # Already registered to this DIRECTORY, under any name → no-op; clear a stale entry.
+  names_section = registry_store.load_section(registry, "worksets")
+  registered = lookup_by_path(registry, root_str)
+  if registered is not None:
+    _clear_stale_import(journal, Path(names_section[registered[0]]))
+    return registered[0]
+  current = names_section.get(name)
+  if current is not None:
+    # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
+    raise _conflict("workset", name, root, str(current))
 
-    # Register name → root through ``register_name``, the SOLE writer of the global
-    # ``worksets`` section — its own $HOME refusal still stands and is simply never
-    # reached from here.  J2 write-ahead: register-only, never seeds.  A workset has
-    # no single ``home/``, so its journal key is the workset ROOT.
-    with _journal_register(
-        journal, root, op="import", name=name, mode="named", workset=name,
-    ):
-        register_name(registry, name, root_str, section="worksets")
-    _alert("workset", name, root)
-    return name
+  # Register name → root through ``register_name``, the SOLE writer of the global
+  # ``worksets`` section — its own $HOME refusal still stands and is simply never
+  # reached from here.  J2 write-ahead: register-only, never seeds.  A workset has
+  # no single ``home/``, so its journal key is the workset ROOT.
+  with _journal_register(
+    journal,
+    root,
+    op="import",
+    name=name,
+    mode="named",
+    workset=name,
+  ):
+    register_name(registry, name, root_str, section="worksets")
+  _alert("workset", name, root)
+  return name

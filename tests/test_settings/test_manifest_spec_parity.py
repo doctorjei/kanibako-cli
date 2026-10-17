@@ -49,15 +49,15 @@ from tests.test_keyspec_extract import keyspec
 #: file already used; its SCOPE is unchanged -- §2d's DEFAULT tier against the
 #: manifest, and the per-node arm is still somebody else's question.
 from kinemata_views import (  # noqa: F401  (this file's own readers use these names)
-    SPEC_EMPTY as _EMPTY,
-    SPEC_NULL as _NULL,
-    SPEC_SENTINELS as _SENTINELS,
-    expand_braces as _expand_braces,
-    spec_cell_value as _spec_cell_value,
-    spec_fence as _spec_fence,
-    spec_fence_rows as _spec_fence_rows,
-    spec_notation as _canonical,
-    spec_self_notation as _spelled_out,
+  SPEC_EMPTY as _EMPTY,
+  SPEC_NULL as _NULL,
+  SPEC_SENTINELS as _SENTINELS,
+  expand_braces as _expand_braces,
+  spec_cell_value as _spec_cell_value,
+  spec_fence as _spec_fence,
+  spec_fence_rows as _spec_fence_rows,
+  spec_notation as _canonical,
+  spec_self_notation as _spelled_out,
 )
 
 #: The tier this file pins.  Every row on both sides is one of these; the per-node arm
@@ -91,67 +91,66 @@ _ACTIVE_NODE = f"meta.agent.{CANON_ACTIVE_AGENT_TOKEN}."
 _SPEC_NODE = "meta.agent.<agent>."
 
 
-
 # --------------------------------------------------------------------------- #
 # The spec side
 # --------------------------------------------------------------------------- #
 
 
 def _spec_lines() -> list[str]:
-    """The spec as ``readlines()`` hands it over, or a skip saying where it is not."""
-    path = keyspec._DEFAULT_SPEC
-    if not path.is_file():
-        pytest.skip(f"the keyspace spec is not mounted at {path}")
-    return path.open(encoding="utf-8").readlines()
+  """The spec as ``readlines()`` hands it over, or a skip saying where it is not."""
+  path = keyspec._DEFAULT_SPEC
+  if not path.is_file():
+    pytest.skip(f"the keyspace spec is not mounted at {path}")
+  return path.open(encoding="utf-8").readlines()
 
 
 def _default_tier_fence(lines: list[str]) -> list[str]:
-    """The lines INSIDE §2d's Default-tier fenced block.
+  """The lines INSIDE §2d's Default-tier fenced block.
 
-    ⛑ THE WALK IS `kinemata_views.spec_fence`'s, moved there from this file when the
-    per-node views needed the same three steps: §2d's span from the extraction script's
-    own heading parser, the marker located within that span, and the fence that opens on
-    the next non-blank line.  It FAILS CLOSED on each -- a missing section, a marker that moved
-    or was renamed, a fence that never opens or closes -- so the reformat that used to
-    red HERE still reds, from the one implementation.
-    """
-    return _spec_fence(SECTION, MARKER)
+  ⛑ THE WALK IS `kinemata_views.spec_fence`'s, moved there from this file when the
+  per-node views needed the same three steps: §2d's span from the extraction script's
+  own heading parser, the marker located within that span, and the fence that opens on
+  the next non-blank line.  It FAILS CLOSED on each -- a missing section, a marker that moved
+  or was renamed, a fence that never opens or closes -- so the reformat that used to
+  red HERE still reds, from the one implementation.
+  """
+  return _spec_fence(SECTION, MARKER)
 
 
 def _spec_rows(lines: list[str]) -> dict[str, str]:
-    """``{key: value-as-written}`` for every ``agent.default.*`` row in the fence.
+  """``{key: value-as-written}`` for every ``agent.default.*`` row in the fence.
 
-    ⛑ THE ROW NOTATION IS `kinemata_views`'s TOO (``spec_fence_rows`` /
-    ``spec_cell_value``).  A row is ``<key> | <value>[  <description>]``; continuation
-    and comment lines start with ``#`` and are not rows; and §2d's fence also states
-    two ``meta.agent.*`` rows that are not this file's corpus.
+  ⛑ THE ROW NOTATION IS `kinemata_views`'s TOO (``spec_fence_rows`` /
+  ``spec_cell_value``).  A row is ``<key> | <value>[  <description>]``; continuation
+  and comment lines start with ``#`` and are not rows; and §2d's fence also states
+  two ``meta.agent.*`` rows that are not this file's corpus.
 
-    ⛑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value — the fourth
-    notation this file translates, beside ``<None>`` / ``true`` / ``{}``.  ``label`` is
-    the first Default-tier value to use it (its value has spaces, so the spec quotes it
-    where ``bootstrap | tmux`` needs no quoting), and YAML cannot spell a string with its
-    delimiters retained.  No declared value in this fence contains a quote character, so
-    a stripped pair is the same string.
+  ⛑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value — the fourth
+  notation this file translates, beside ``<None>`` / ``true`` / ``{}``.  ``label`` is
+  the first Default-tier value to use it (its value has spaces, so the spec quotes it
+  where ``bootstrap | tmux`` needs no quoting), and YAML cannot spell a string with its
+  delimiters retained.  No declared value in this fence contains a quote character, so
+  a stripped pair is the same string.
 
-    ⛑ THE STRIP IS CONDITIONAL, and the condition is the whole point.  ``"<None>"`` is
-    the literal six-character STRING; ``<None>`` is the fence's spelling for null.  They
-    are different declarations, so a quoted sentinel keeps its quotes and compares
-    unequal to a native one rather than silently passing as it.
+  ⛑ THE STRIP IS CONDITIONAL, and the condition is the whole point.  ``"<None>"`` is
+  the literal six-character STRING; ``<None>`` is the fence's spelling for null.  They
+  are different declarations, so a quoted sentinel keeps its quotes and compares
+  unequal to a native one rather than silently passing as it.
 
-    ⛑ ONE-SIDED, DELIBERATELY.  ``_canonical`` renders the literal string ``<None>`` and
-    null IDENTICALLY, so the registry cannot state the distinction this side now draws:
-    a quoted sentinel reds against EITHER manifest spelling.  No §2d row states one; if
-    one ever does, the fix is on the manifest side.
+  ⛑ ONE-SIDED, DELIBERATELY.  ``_canonical`` renders the literal string ``<None>`` and
+  null IDENTICALLY, so the registry cannot state the distinction this side now draws:
+  a quoted sentinel reds against EITHER manifest spelling.  No §2d row states one; if
+  one ever does, the fix is on the manifest side.
 
-    ⛑ ``self.`` / ``meta.self.`` ARE THE SPEC'S NOTATION for ``agent.<agent>.`` /
-    ``meta.agent.<agent>.`` (its header says so), and the registry spells them out;
-    ``_spelled_out`` translates both key and value before any comparison.
-    """
-    return {
-        _spelled_out(key): _spelled_out(_spec_cell_value(cell))
-        for key, cell in _spec_fence_rows(SECTION, MARKER)
-        if key.startswith(TIER)
-    }
+  ⛑ ``self.`` / ``meta.self.`` ARE THE SPEC'S NOTATION for ``agent.<agent>.`` /
+  ``meta.agent.<agent>.`` (its header says so), and the registry spells them out;
+  ``_spelled_out`` translates both key and value before any comparison.
+  """
+  return {
+    _spelled_out(key): _spelled_out(_spec_cell_value(cell))
+    for key, cell in _spec_fence_rows(SECTION, MARKER)
+    if key.startswith(TIER)
+  }
 
 
 #: A §2d row naming one ENTRY of a dest-keyed category: ``<tier><category>[<dest>]``.
@@ -162,24 +161,24 @@ _PARAMETRIC_ROW = re.compile(r"^(?P<family>.+)\.<[^<>]+>$")
 
 
 def _placeholder(text: str) -> bool:
-    """True where *text* carries a ``<...>`` placeholder: a PATTERN, not a member."""
-    return "<" in text and ">" in text
+  """True where *text* carries a ``<...>`` placeholder: a PATTERN, not a member."""
+  return "<" in text and ">" in text
 
 
 def _family_of(key: str) -> str | None:
-    """The category family a PATTERN row belongs to, or ``None`` for any other row.
+  """The category family a PATTERN row belongs to, or ``None`` for any other row.
 
-    ⚑ A PATTERN ROW IS NOT A DEFAULT ENTRY.  ``caches[~/.kanibako/cache/<dir>]`` and
-    ``secret_path.<VAR>`` say what shape a plugin's or user's entry takes; no entry
-    ships at that dest, so the registry's carrier is the category family itself.  A
-    row naming a CONCRETE dest (``seeded[~/]``) is a real entry and is NOT mapped
-    here: it must be a ``category_default_entries`` row, value and all.
-    """
-    entry = _ENTRY_ROW.match(key)
-    if entry is not None:
-        return entry["family"] if _placeholder(entry["dest"]) else None
-    parametric = _PARAMETRIC_ROW.match(key)
-    return parametric["family"] if parametric is not None else None
+  ⚑ A PATTERN ROW IS NOT A DEFAULT ENTRY.  ``caches[~/.kanibako/cache/<dir>]`` and
+  ``secret_path.<VAR>`` say what shape a plugin's or user's entry takes; no entry
+  ships at that dest, so the registry's carrier is the category family itself.  A
+  row naming a CONCRETE dest (``seeded[~/]``) is a real entry and is NOT mapped
+  here: it must be a ``category_default_entries`` row, value and all.
+  """
+  entry = _ENTRY_ROW.match(key)
+  if entry is not None:
+    return entry["family"] if _placeholder(entry["dest"]) else None
+  parametric = _PARAMETRIC_ROW.match(key)
+  return parametric["family"] if parametric is not None else None
 
 
 # --------------------------------------------------------------------------- #
@@ -188,48 +187,48 @@ def _family_of(key: str) -> str | None:
 
 
 def _manifest_rows() -> dict[str, str]:
-    """``{key: value-in-spec-notation}`` for every ``agent.default.*`` ``keys:`` row."""
-    return {
-        str(key): _canonical(row["default"])
-        for key, row in manifest_doc()["keys"].items()
-        if str(key).startswith(TIER) and isinstance(row, dict) and "default" in row
-    }
+  """``{key: value-in-spec-notation}`` for every ``agent.default.*`` ``keys:`` row."""
+  return {
+    str(key): _canonical(row["default"])
+    for key, row in manifest_doc()["keys"].items()
+    if str(key).startswith(TIER) and isinstance(row, dict) and "default" in row
+  }
 
 
 def _manifest_tier_categories() -> dict[str, str | None]:
-    """The category families the manifest declares AT the ``agent.default`` scope.
+  """The category families the manifest declares AT the ``agent.default`` scope.
 
-    ⚑ NOT AN ALLOWLIST — read out of the manifest's own ``categories:`` table and the
-    ``category_scopes:`` tokens they exist at.  A category is how the
-    registry declares ``agent.default.bindings.ro`` and its siblings; they are real rows
-    of the Default tier and simply live in a different table from the scalars, so a
-    spec-side lookup that consulted only ``keys:`` would report them missing.  The value
-    is the family's ``default:`` where it states one, and ``None`` where it does not.
-    """
-    table = manifest_doc()["categories"]
-    scope = TIER.rstrip(".")
-    if scope not in manifest_doc()["category_scopes"]["tokens"]:
-        return {}
-    return {
-        f"{TIER}{name}": (_canonical(row["default"]) if "default" in row else None)
-        for name, row in table.items()
-        if "value" in row
-    }
+  ⚑ NOT AN ALLOWLIST — read out of the manifest's own ``categories:`` table and the
+  ``category_scopes:`` tokens they exist at.  A category is how the
+  registry declares ``agent.default.bindings.ro`` and its siblings; they are real rows
+  of the Default tier and simply live in a different table from the scalars, so a
+  spec-side lookup that consulted only ``keys:`` would report them missing.  The value
+  is the family's ``default:`` where it states one, and ``None`` where it does not.
+  """
+  table = manifest_doc()["categories"]
+  scope = TIER.rstrip(".")
+  if scope not in manifest_doc()["category_scopes"]["tokens"]:
+    return {}
+  return {
+    f"{TIER}{name}": (_canonical(row["default"]) if "default" in row else None)
+    for name, row in table.items()
+    if "value" in row
+  }
 
 
 def _manifest_tier_entries() -> dict[str, str | None]:
-    """``{<tier><category>[<dest>]: default}`` for the Default tier's declared entries.
+  """``{<tier><category>[<dest>]: default}`` for the Default tier's declared entries.
 
-    Read out of the manifest's ``category_default_entries:`` table, where a CONCRETE
-    entry of a dest-keyed family lives (``agent.default.seeded`` at ``~/``).
-    """
-    scope = TIER.rstrip(".")
-    return {
-        f"{arm}[{dest}]": (_canonical(row["default"]) if "default" in row else None)
-        for arm, entries in manifest_doc()["category_default_entries"].items()
-        if str(arm).startswith(f"{scope}.") and isinstance(entries, dict)
-        for dest, row in entries.items()
-    }
+  Read out of the manifest's ``category_default_entries:`` table, where a CONCRETE
+  entry of a dest-keyed family lives (``agent.default.seeded`` at ``~/``).
+  """
+  scope = TIER.rstrip(".")
+  return {
+    f"{arm}[{dest}]": (_canonical(row["default"]) if "default" in row else None)
+    for arm, entries in manifest_doc()["category_default_entries"].items()
+    if str(arm).startswith(f"{scope}.") and isinstance(entries, dict)
+    for dest, row in entries.items()
+  }
 
 
 # --------------------------------------------------------------------------- #
@@ -239,134 +238,128 @@ def _manifest_tier_entries() -> dict[str, str | None]:
 
 @pytest.fixture
 def spec_rows() -> dict[str, str]:
-    return _spec_rows(_default_tier_fence(_spec_lines()))
+  return _spec_rows(_default_tier_fence(_spec_lines()))
 
 
 class TestTheCorporaAreNotEmpty:
-    """⚑⚑ THE ANTI-VACUITY CASE, and the reason the rest of the file can be believed.
+  """⚑⚑ THE ANTI-VACUITY CASE, and the reason the rest of the file can be believed.
 
-    Every assertion below this class is a set difference, and a set difference between
-    two empty sets is green.  A spec reformat that stopped the row regex matching, or a
-    manifest section rename, would therefore leave a PERMANENTLY GREEN NO-OP wearing the
-    appearance of coverage — the exact failure this file exists to prevent.  So the
-    counts are asserted first, and every message carries the count it measured.
-    """
+  Every assertion below this class is a set difference, and a set difference between
+  two empty sets is green.  A spec reformat that stopped the row regex matching, or a
+  manifest section rename, would therefore leave a PERMANENTLY GREEN NO-OP wearing the
+  appearance of coverage — the exact failure this file exists to prevent.  So the
+  counts are asserted first, and every message carries the count it measured.
+  """
 
-    def test_the_spec_fence_yields_rows(self, spec_rows):
-        assert len(spec_rows) > 0, (
-            f"parsed §{SECTION}'s Default-tier fence and found {len(spec_rows)} "
-            f"{TIER}* rows — the fence's row notation changed and this file is now "
-            f"checking nothing"
-        )
+  def test_the_spec_fence_yields_rows(self, spec_rows):
+    assert len(spec_rows) > 0, (
+      f"parsed §{SECTION}'s Default-tier fence and found {len(spec_rows)} "
+      f"{TIER}* rows — the fence's row notation changed and this file is now "
+      f"checking nothing"
+    )
 
-    def test_the_manifest_yields_rows(self):
-        rows = _manifest_rows()
-        assert len(rows) > 0, (
-            f"the manifest declares {len(rows)} {TIER}* rows with a default — the "
-            f"registry's shape changed and this file is now checking nothing"
-        )
+  def test_the_manifest_yields_rows(self):
+    rows = _manifest_rows()
+    assert len(rows) > 0, (
+      f"the manifest declares {len(rows)} {TIER}* rows with a default — the "
+      f"registry's shape changed and this file is now checking nothing"
+    )
 
-    def test_the_category_families_resolve(self):
-        """The second registry table, asserted non-empty for the same reason."""
-        families = _manifest_tier_categories()
-        assert len(families) > 0, (
-            f"the manifest's categories: table declares {len(families)} families at "
-            f"the {TIER.rstrip('.')} scope — a renamed table or scope would silently "
-            f"turn every category row into a spec-side false positive"
-        )
+  def test_the_category_families_resolve(self):
+    """The second registry table, asserted non-empty for the same reason."""
+    families = _manifest_tier_categories()
+    assert len(families) > 0, (
+      f"the manifest's categories: table declares {len(families)} families at "
+      f"the {TIER.rstrip('.')} scope — a renamed table or scope would silently "
+      f"turn every category row into a spec-side false positive"
+    )
 
-    def test_the_category_entries_resolve(self):
-        """The third registry table, asserted non-empty for the same reason."""
-        entries = _manifest_tier_entries()
-        assert len(entries) > 0, (
-            f"the manifest's category_default_entries: table declares {len(entries)} "
-            f"entries at the {TIER.rstrip('.')} scope — a renamed table would turn "
-            f"every concrete-dest spec row into a false positive"
-        )
+  def test_the_category_entries_resolve(self):
+    """The third registry table, asserted non-empty for the same reason."""
+    entries = _manifest_tier_entries()
+    assert len(entries) > 0, (
+      f"the manifest's category_default_entries: table declares {len(entries)} "
+      f"entries at the {TIER.rstrip('.')} scope — a renamed table would turn "
+      f"every concrete-dest spec row into a false positive"
+    )
 
-    def test_self_notation_is_spelled_out(self):
-        """The spec header's notation, exercised on synthetic text."""
-        assert _spelled_out("({self.template}/box/home)") == (
-            "({agent.<agent>.template}/box/home)")
-        assert _spelled_out("{meta.self.path}/auth") == "{meta.agent.<agent>.path}/auth"
-        assert _spelled_out("{x.self.y}") == "{x.self.y}"
+  def test_self_notation_is_spelled_out(self):
+    """The spec header's notation, exercised on synthetic text."""
+    assert _spelled_out("({self.template}/box/home)") == ("({agent.<agent>.template}/box/home)")
+    assert _spelled_out("{meta.self.path}/auth") == "{meta.agent.<agent>.path}/auth"
+    assert _spelled_out("{x.self.y}") == "{x.self.y}"
 
-    def test_brace_notation_is_expanded(self):
-        """The one notation rule, exercised on a synthetic row rather than a real one."""
-        assert _expand_braces("a.{x,y}.z") == ["a.x.z", "a.y.z"]
-        assert _expand_braces("a.plain") == ["a.plain"]
+  def test_brace_notation_is_expanded(self):
+    """The one notation rule, exercised on a synthetic row rather than a real one."""
+    assert _expand_braces("a.{x,y}.z") == ["a.x.z", "a.y.z"]
+    assert _expand_braces("a.plain") == ["a.plain"]
 
 
 class TestTheTiersAreOneSet:
-    """Both directions, each naming the rows it found on the other side."""
+  """Both directions, each naming the rows it found on the other side."""
 
-    def test_every_manifest_row_is_a_spec_row(self, spec_rows):
-        missing = sorted(set(_manifest_rows()) - set(spec_rows))
-        assert not missing, (
-            f"the registry declares Default-tier keys §{SECTION} does not: {missing} — "
-            f"the manifest is DERIVED from the spec, so either the spec row was dropped "
-            f"or the manifest invented a key (closed keyspace, §0)"
-        )
+  def test_every_manifest_row_is_a_spec_row(self, spec_rows):
+    missing = sorted(set(_manifest_rows()) - set(spec_rows))
+    assert not missing, (
+      f"the registry declares Default-tier keys §{SECTION} does not: {missing} — "
+      f"the manifest is DERIVED from the spec, so either the spec row was dropped "
+      f"or the manifest invented a key (closed keyspace, §0)"
+    )
 
-    def test_every_spec_row_is_a_manifest_row(self, spec_rows):
-        declared = (
-            set(_manifest_rows()) | set(_manifest_tier_categories())
-            | set(_manifest_tier_entries())
-        )
-        stale = sorted(EXPECTED_GAPS - set(spec_rows))
-        assert not stale, (
-            f"EXPECTED_GAPS names keys §{SECTION}'s Default tier no longer declares: "
-            f"{stale} — drop them from EXPECTED_GAPS"
-        )
-        missing = sorted(
-            key for key in spec_rows
-            if key not in declared and _family_of(key) not in declared
-            and key not in EXPECTED_GAPS
-        )
-        assert not missing, (
-            f"§{SECTION}'s Default tier declares keys the registry has no row for: "
-            f"{missing} — this is the agent.default.template failure verbatim; add the "
-            f"row to keyspace-manifest.yaml"
-        )
+  def test_every_spec_row_is_a_manifest_row(self, spec_rows):
+    declared = (
+      set(_manifest_rows()) | set(_manifest_tier_categories()) | set(_manifest_tier_entries())
+    )
+    stale = sorted(EXPECTED_GAPS - set(spec_rows))
+    assert not stale, (
+      f"EXPECTED_GAPS names keys §{SECTION}'s Default tier no longer declares: "
+      f"{stale} — drop them from EXPECTED_GAPS"
+    )
+    missing = sorted(
+      key
+      for key in spec_rows
+      if key not in declared and _family_of(key) not in declared and key not in EXPECTED_GAPS
+    )
+    assert not missing, (
+      f"§{SECTION}'s Default tier declares keys the registry has no row for: "
+      f"{missing} — this is the agent.default.template failure verbatim; add the "
+      f"row to keyspace-manifest.yaml"
+    )
 
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_GAPS))
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="known registry gap; see EXPECTED_GAPS")
+@pytest.mark.xfail(
+  strict=True, raises=AssertionError, reason="known registry gap; see EXPECTED_GAPS"
+)
 def test_an_expected_gap_is_still_open(key):
-    """XFAILS while the gap is open; XPASS (a strict failure) once a row lands."""
-    declared = (
-        set(_manifest_rows()) | set(_manifest_tier_categories())
-        | set(_manifest_tier_entries())
-    )
-    assert key in declared
+  """XFAILS while the gap is open; XPASS (a strict failure) once a row lands."""
+  declared = (
+    set(_manifest_rows()) | set(_manifest_tier_categories()) | set(_manifest_tier_entries())
+  )
+  assert key in declared
 
 
 class TestTheValuesAgree:
-    """Where BOTH carriers state a default, it is the same default."""
+  """Where BOTH carriers state a default, it is the same default."""
 
-    def test_the_stated_defaults_are_identical(self, spec_rows):
-        registry: dict[str, str] = dict(_manifest_rows())
-        for key, value in [*_manifest_tier_categories().items(),
-                           *_manifest_tier_entries().items()]:
-            if value is not None:
-                registry[key] = value
-        # ⚑ THE ONE ACTIVE-NODE NORMALIZATION (registry side, Default tier only).
-        registry = {
-            key: value.replace(_ACTIVE_NODE, _SPEC_NODE)
-            for key, value in registry.items()
-        }
+  def test_the_stated_defaults_are_identical(self, spec_rows):
+    registry: dict[str, str] = dict(_manifest_rows())
+    for key, value in [*_manifest_tier_categories().items(), *_manifest_tier_entries().items()]:
+      if value is not None:
+        registry[key] = value
+    # ⚑ THE ONE ACTIVE-NODE NORMALIZATION (registry side, Default tier only).
+    registry = {key: value.replace(_ACTIVE_NODE, _SPEC_NODE) for key, value in registry.items()}
 
-        shared = sorted(set(spec_rows) & set(registry))
-        assert shared, (
-            f"no Default-tier key is stated by both carriers (spec {len(spec_rows)} "
-            f"rows, registry {len(registry)} rows) — the value comparison below is "
-            f"vacuous"
-        )
-        disagree = {
-            key: (spec_rows[key], registry[key])
-            for key in shared if spec_rows[key] != registry[key]
-        }
-        assert not disagree, (
-            f"spec and registry state different defaults (spec, registry): {disagree} "
-            f"— the spec is authority; move the manifest"
-        )
+    shared = sorted(set(spec_rows) & set(registry))
+    assert shared, (
+      f"no Default-tier key is stated by both carriers (spec {len(spec_rows)} "
+      f"rows, registry {len(registry)} rows) — the value comparison below is "
+      f"vacuous"
+    )
+    disagree = {
+      key: (spec_rows[key], registry[key]) for key in shared if spec_rows[key] != registry[key]
+    }
+    assert not disagree, (
+      f"spec and registry state different defaults (spec, registry): {disagree} "
+      f"— the spec is authority; move the manifest"
+    )

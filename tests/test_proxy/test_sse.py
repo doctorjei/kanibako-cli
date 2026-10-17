@@ -113,7 +113,9 @@ class TestOrder:
 
     middle = events[1:-2]
     assert [event["type"] for event in middle] == [
-      "content_block_start", "content_block_delta", "content_block_stop",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
     ] * 3
     assert [event["index"] for event in middle] == [0, 0, 0, 1, 1, 1, 2, 2, 2]
 
@@ -125,7 +127,9 @@ class TestOrder:
   def test_empty_content_yields_only_the_three_envelope_events(self):
     # The shape of the recorded fault itself: a truthful envelope, no blocks.
     assert [event["type"] for event in _events()] == [
-      "message_start", "message_delta", "message_stop",
+      "message_start",
+      "message_delta",
+      "message_stop",
     ]
 
 
@@ -219,7 +223,8 @@ class TestBlockTypes:
     block = {"type": "redacted_thinking", "data": "opaque-payload"}
     events = _events(block)
     assert [event["type"] for event in events[1:-2]] == [
-      "content_block_start", "content_block_stop",
+      "content_block_start",
+      "content_block_stop",
     ]
     assert events[1]["content_block"] == block
 

@@ -27,289 +27,300 @@ MAX_FRAME_BYTES = 16 * 1024 * 1024
 
 
 class FrameTooLarge(ConnectionError):
-    """A peer sent a frame over :data:`MAX_FRAME_BYTES`; the connection is unusable."""
+  """A peer sent a frame over :data:`MAX_FRAME_BYTES`; the connection is unusable."""
 
 
 def send_frame(sock: socket.socket, data: dict) -> None:
-    """Write *data* as ONE wire frame: its JSON, then a newline.
+  """Write *data* as ONE wire frame: its JSON, then a newline.
 
-    ⚑ THE ONE SPELLING OF THE WIRE FORMAT for both ends of the helper socket —
-    this client and ``helper_listener.HelperHub`` — so the two cannot drift.  It
-    lives HERE, not in a shared module, because this module may import nothing
-    from kanibako (see the import guard in ``tests/test_channels``); the host-side
-    hub imports it from here.
-    """
-    sock.sendall(json.dumps(data).encode() + b"\n")
+  ⚑ THE ONE SPELLING OF THE WIRE FORMAT for both ends of the helper socket —
+  this client and ``helper_listener.HelperHub`` — so the two cannot drift.  It
+  lives HERE, not in a shared module, because this module may import nothing
+  from kanibako (see the import guard in ``tests/test_channels``); the host-side
+  hub imports it from here.
+  """
+  sock.sendall(json.dumps(data).encode() + b"\n")
 
 
-def iter_frames(sock: socket.socket, stop: threading.Event | None = None, *,
-                raise_errors: bool = False) -> Iterator[bytes]:
-    """Yield each non-blank newline-terminated frame read off *sock*, undecoded.
+def iter_frames(
+  sock: socket.socket, stop: threading.Event | None = None, *, raise_errors: bool = False
+) -> Iterator[bytes]:
+  """Yield each non-blank newline-terminated frame read off *sock*, undecoded.
 
-    Ends at EOF, before the next read once *stop* is set, or when the read raises
-    ``OSError`` — for a long-lived reader that is the connection's end.  With
-    *raise_errors* the ``OSError`` propagates instead, which the one-shot
-    ``send_request`` needs so its timeout reaches its caller as a timeout.  Only
-    the READ is guarded: an error the caller raises while handling a frame is its
-    own.  Decoding is the caller's, because each end answers a bad frame
-    differently.
+  Ends at EOF, before the next read once *stop* is set, or when the read raises
+  ``OSError`` — for a long-lived reader that is the connection's end.  With
+  *raise_errors* the ``OSError`` propagates instead, which the one-shot
+  ``send_request`` needs so its timeout reaches its caller as a timeout.  Only
+  the READ is guarded: an error the caller raises while handling a frame is its
+  own.  Decoding is the caller's, because each end answers a bad frame
+  differently.
 
-    A frame over :data:`MAX_FRAME_BYTES`, terminated or not, raises
-    :class:`FrameTooLarge` whatever *raise_errors* says: the stream cannot be
-    resynchronized, so the caller ends the connection.  Each read scans only the new
-    bytes for a newline, so a long frame costs linear time, not quadratic.
-    """
-    buf = bytearray()
-    while stop is None or not stop.is_set():
-        try:
-            data = sock.recv(4096)
-        except OSError:
-            if raise_errors:
-                raise
-            return
-        if not data:
-            return
-        scan = len(buf)
-        buf += data
-        while (end := buf.find(b"\n", scan)) != -1:
-            line = bytes(buf[:end])
-            del buf[:end + 1]
-            scan = 0
-            if len(line) > MAX_FRAME_BYTES:
-                raise FrameTooLarge(_too_large(len(line)))
-            if line.strip():
-                yield line
-        if len(buf) > MAX_FRAME_BYTES:
-            raise FrameTooLarge(_too_large(len(buf)))
+  A frame over :data:`MAX_FRAME_BYTES`, terminated or not, raises
+  :class:`FrameTooLarge` whatever *raise_errors* says: the stream cannot be
+  resynchronized, so the caller ends the connection.  Each read scans only the new
+  bytes for a newline, so a long frame costs linear time, not quadratic.
+  """
+  buf = bytearray()
+  while stop is None or not stop.is_set():
+    try:
+      data = sock.recv(4096)
+    except OSError:
+      if raise_errors:
+        raise
+      return
+    if not data:
+      return
+    scan = len(buf)
+    buf += data
+    while (end := buf.find(b"\n", scan)) != -1:
+      line = bytes(buf[:end])
+      del buf[: end + 1]
+      scan = 0
+      if len(line) > MAX_FRAME_BYTES:
+        raise FrameTooLarge(_too_large(len(line)))
+      if line.strip():
+        yield line
+    if len(buf) > MAX_FRAME_BYTES:
+      raise FrameTooLarge(_too_large(len(buf)))
 
 
 def _too_large(size: int) -> str:
-    return (f"peer sent a frame over the {MAX_FRAME_BYTES}-byte limit "
-            f"({size} bytes read); closing the connection")
+  return (
+    f"peer sent a frame over the {MAX_FRAME_BYTES}-byte limit "
+    f"({size} bytes read); closing the connection"
+  )
 
 
-def _route_frame(line: bytes, responses: queue.Queue[Any],
-                 inbox: queue.Queue[Any]) -> str | None:
-    """Put ONE wire frame on the queue its shape names; error text if it has none.
+def _route_frame(line: bytes, responses: queue.Queue[Any], inbox: queue.Queue[Any]) -> str | None:
+  """Put ONE wire frame on the queue its shape names; error text if it has none.
 
-    The two shapes are the HUB's, not this module's invention: every response
-    ``HelperHub._dispatch`` returns carries a ``status`` member, and every push
-    ``_route_message``/``_broadcast_message`` writes carries an ``event`` member
-    and no ``status``.  A frame with neither is UNDECLARED, and an undeclared
-    variant is refused by name rather than guessed at — guessing is precisely how
-    a peer's message ends up handed to a caller as that caller's response.
-    """
-    try:
-        frame = json.loads(line)
-    except json.JSONDecodeError:
-        return f"hub sent a frame that is not JSON: {line!r}"
-    if not isinstance(frame, dict):
-        return f"hub sent a frame that is not an object: {frame!r}"
-    if "event" in frame:
-        inbox.put(frame)
-    elif "status" in frame:
-        responses.put(frame)
-    else:
-        return ("hub sent a frame that is neither a response ('status') nor a "
-                f"push ('event'): {frame!r}")
-    return None
+  The two shapes are the HUB's, not this module's invention: every response
+  ``HelperHub._dispatch`` returns carries a ``status`` member, and every push
+  ``_route_message``/``_broadcast_message`` writes carries an ``event`` member
+  and no ``status``.  A frame with neither is UNDECLARED, and an undeclared
+  variant is refused by name rather than guessed at — guessing is precisely how
+  a peer's message ends up handed to a caller as that caller's response.
+  """
+  try:
+    frame = json.loads(line)
+  except json.JSONDecodeError:
+    return f"hub sent a frame that is not JSON: {line!r}"
+  if not isinstance(frame, dict):
+    return f"hub sent a frame that is not an object: {frame!r}"
+  if "event" in frame:
+    inbox.put(frame)
+  elif "status" in frame:
+    responses.put(frame)
+  else:
+    return (
+      f"hub sent a frame that is neither a response ('status') nor a push ('event'): {frame!r}"
+    )
+  return None
 
 
 class HelperConnection:
-    """Persistent connection to the HelperHub for messaging.
+  """Persistent connection to the HelperHub for messaging.
 
-    FULL DUPLEX, and that is the whole design constraint.  The hub multiplexes
-    two frame kinds onto the one socket — responses to this client's requests,
-    and pushes routed from a peer (see ``_route_frame``).  A push is written by
-    the SENDING helper's reader thread on the host, so it can land at any
-    instant, including between a request reaching the hub and the hub writing
-    that request's response.  "The next line on the wire is my response" is
-    therefore false, and reading it as true silently answers a caller with
-    someone else's message.
+  FULL DUPLEX, and that is the whole design constraint.  The hub multiplexes
+  two frame kinds onto the one socket — responses to this client's requests,
+  and pushes routed from a peer (see ``_route_frame``).  A push is written by
+  the SENDING helper's reader thread on the host, so it can land at any
+  instant, including between a request reaching the hub and the hub writing
+  that request's response.  "The next line on the wire is my response" is
+  therefore false, and reading it as true silently answers a caller with
+  someone else's message.
 
-    So the socket has exactly ONE owner: a reader thread started by
-    ``connect()``.  It alone reads the socket and holds the frame buffer, and it
-    routes each frame by shape to ``recv()``'s inbox or to a waiting request.
-    Callers wait on a QUEUE, never on the socket, and there is no shared buffer
-    left to guard.  ``_lock`` consequently guards one thing only: at most one
-    request outstanding at a time, which is what makes a single response queue
-    unambiguous.
+  So the socket has exactly ONE owner: a reader thread started by
+  ``connect()``.  It alone reads the socket and holds the frame buffer, and it
+  routes each frame by shape to ``recv()``'s inbox or to a waiting request.
+  Callers wait on a QUEUE, never on the socket, and there is no shared buffer
+  left to guard.  ``_lock`` consequently guards one thing only: at most one
+  request outstanding at a time, which is what makes a single response queue
+  unambiguous.
 
-    ⚑ ``recv()`` takes NO lock and touches no socket state.  That is deliberate
-    and load-bearing: a blocking ``recv()`` that held the lock (or that retimed
-    the shared socket) would stall or break a concurrent request — the very
-    concurrency this class advertises.
+  ⚑ ``recv()`` takes NO lock and touches no socket state.  That is deliberate
+  and load-bearing: a blocking ``recv()`` that held the lock (or that retimed
+  the shared socket) would stall or break a concurrent request — the very
+  concurrency this class advertises.
 
-    For one-shot commands (spawn/stop), use ``send_request()`` instead.
+  For one-shot commands (spawn/stop), use ``send_request()`` instead.
+  """
+
+  def __init__(self) -> None:
+    self._sock: socket.socket | None = None
+    self._reader: threading.Thread | None = None
+    self._closing = threading.Event()
+    self._lock = threading.Lock()
+    self._responses: queue.Queue[Any] = queue.Queue()
+    self._inbox: queue.Queue[Any] = queue.Queue()
+    self._closed_reason = "Connection closed"
+
+  def connect(self, socket_path: Path, helper_num: int | None = None) -> None:
+    """Connect to the hub socket, optionally registering as a helper.
+
+    The reader starts BEFORE registering: the registration response arrives
+    through it like every other frame.  ⚑ The socket is left BLOCKING — a
+    timeout would apply to ``sendall`` as well, and ``close()`` retires the
+    reader with ``shutdown()`` instead of a poll.
     """
+    if self._sock is not None:
+      raise ConnectionError("Already connected; close() first")
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(str(socket_path))
+    self._closing.clear()
+    self._closed_reason = "Connection closed"
+    self._sock = sock
+    self._reader = threading.Thread(
+      target=self._read_loop,
+      args=(sock, self._responses, self._inbox),
+      name="kanibako-helper-client-reader",
+      daemon=True,
+    )
+    self._reader.start()
+    if helper_num is not None:
+      resp = self._request({"action": "register", "helper_num": helper_num})
+      if resp.get("status") != "ok":
+        raise ConnectionError(f"Registration failed: {resp.get('message', 'unknown')}")
 
-    def __init__(self) -> None:
-        self._sock: socket.socket | None = None
-        self._reader: threading.Thread | None = None
-        self._closing = threading.Event()
-        self._lock = threading.Lock()
-        self._responses: queue.Queue[Any] = queue.Queue()
-        self._inbox: queue.Queue[Any] = queue.Queue()
-        self._closed_reason = "Connection closed"
+  def spawn(
+    self, helper_num: int, model: str | None = None, helpers_dir: str | None = None
+  ) -> dict:
+    """Request the hub to spawn a helper container."""
+    req: dict = {"action": "spawn", "helper_num": helper_num}
+    if model:
+      req["model"] = model
+    if helpers_dir:
+      req["helpers_dir"] = helpers_dir
+    return self._request(req)
 
-    def connect(self, socket_path: Path, helper_num: int | None = None) -> None:
-        """Connect to the hub socket, optionally registering as a helper.
+  def stop(self, container_name: str, helper_num: int) -> dict:
+    """Request the hub to stop a helper container."""
+    return self._request(
+      {
+        "action": "stop",
+        "container_name": container_name,
+        "helper_num": helper_num,
+      }
+    )
 
-        The reader starts BEFORE registering: the registration response arrives
-        through it like every other frame.  ⚑ The socket is left BLOCKING — a
-        timeout would apply to ``sendall`` as well, and ``close()`` retires the
-        reader with ``shutdown()`` instead of a poll.
-        """
-        if self._sock is not None:
-            raise ConnectionError("Already connected; close() first")
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.connect(str(socket_path))
-        self._closing.clear()
-        self._closed_reason = "Connection closed"
-        self._sock = sock
-        self._reader = threading.Thread(
-            target=self._read_loop, args=(sock, self._responses, self._inbox),
-            name="kanibako-helper-client-reader", daemon=True,
-        )
-        self._reader.start()
-        if helper_num is not None:
-            resp = self._request({"action": "register", "helper_num": helper_num})
-            if resp.get("status") != "ok":
-                raise ConnectionError(f"Registration failed: {resp.get('message', 'unknown')}")
+  def send(self, to: int, payload: dict) -> dict:
+    """Send a message to a specific peer or parent."""
+    return self._request({"action": "send", "to": to, "payload": payload})
 
-    def spawn(self, helper_num: int, model: str | None = None,
-              helpers_dir: str | None = None) -> dict:
-        """Request the hub to spawn a helper container."""
-        req: dict = {"action": "spawn", "helper_num": helper_num}
-        if model:
-            req["model"] = model
-        if helpers_dir:
-            req["helpers_dir"] = helpers_dir
-        return self._request(req)
+  def broadcast(self, payload: dict) -> dict:
+    """Broadcast a message to all connected helpers."""
+    return self._request({"action": "broadcast", "payload": payload})
 
-    def stop(self, container_name: str, helper_num: int) -> dict:
-        """Request the hub to stop a helper container."""
-        return self._request({
-            "action": "stop", "container_name": container_name, "helper_num": helper_num,
-        })
+  def recv(self, timeout: float | None = None) -> dict | None:
+    """Receive an incoming message (blocking); None on timeout/disconnect.
 
-    def send(self, to: int, payload: dict) -> dict:
-        """Send a message to a specific peer or parent."""
-        return self._request({"action": "send", "to": to, "payload": payload})
+    Waits on the inbox the reader fills — no lock, no socket.  Blocking here
+    for as long as the caller likes cannot delay a concurrent request.
+    """
+    if self._sock is None:
+      return None
+    try:
+      frame = self._inbox.get(timeout=timeout)
+    except queue.Empty:
+      return None
+    if frame is _CLOSED:
+      self._inbox.put(_CLOSED)
+      return None
+    return frame
 
-    def broadcast(self, payload: dict) -> dict:
-        """Broadcast a message to all connected helpers."""
-        return self._request({"action": "broadcast", "payload": payload})
+  def close(self) -> None:
+    """Close the connection; idempotent and never raises.
 
-    def recv(self, timeout: float | None = None) -> dict | None:
-        """Receive an incoming message (blocking); None on timeout/disconnect.
+    ⚑ ``shutdown()`` before ``close()`` is load-bearing: closing a Python
+    socket that another thread is blocked in does NOT wake that thread — the
+    blocked call holds its own reference, so the fd outlives the close —
+    whereas a shutdown delivers EOF to it.
+    """
+    self._closing.set()
+    sock, self._sock = self._sock, None
+    reader, self._reader = self._reader, None
+    if sock is not None:
+      try:
+        sock.shutdown(socket.SHUT_RDWR)
+      except OSError:
+        pass
+      try:
+        sock.close()
+      except Exception:
+        pass
+    if reader is not None and reader is not threading.current_thread():
+      reader.join(timeout=_READER_JOIN)
+    # A later connect() starts from empty queues.  A reader that outlived
+    # the join still holds the OLD ones, so anyone blocked on them is still
+    # woken, and its sentinels cannot leak into the next connection.
+    self._responses = queue.Queue()
+    self._inbox = queue.Queue()
 
-        Waits on the inbox the reader fills — no lock, no socket.  Blocking here
-        for as long as the caller likes cannot delay a concurrent request.
-        """
-        if self._sock is None:
-            return None
-        try:
-            frame = self._inbox.get(timeout=timeout)
-        except queue.Empty:
-            return None
-        if frame is _CLOSED:
-            self._inbox.put(_CLOSED)
-            return None
-        return frame
+  def _read_loop(
+    self, sock: socket.socket, responses: queue.Queue[Any], inbox: queue.Queue[Any]
+  ) -> None:
+    """Own the socket's read side: split frames on newlines, route each.
 
-    def close(self) -> None:
-        """Close the connection; idempotent and never raises.
+    The frame buffer is a LOCAL — there is no shared buffer to guard, which
+    is the point.  The queues are PARAMETERS for the same reason (see
+    ``close()``).  This thread acquires no lock at all, so nothing a caller
+    does can keep it from delivering.
 
-        ⚑ ``shutdown()`` before ``close()`` is load-bearing: closing a Python
-        socket that another thread is blocked in does NOT wake that thread — the
-        blocked call holds its own reference, so the fd outlives the close —
-        whereas a shutdown delivers EOF to it.
-        """
-        self._closing.set()
-        sock, self._sock = self._sock, None
-        reader, self._reader = self._reader, None
-        if sock is not None:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                sock.close()
-            except Exception:
-                pass
-        if reader is not None and reader is not threading.current_thread():
-            reader.join(timeout=_READER_JOIN)
-        # A later connect() starts from empty queues.  A reader that outlived
-        # the join still holds the OLD ones, so anyone blocked on them is still
-        # woken, and its sentinels cannot leak into the next connection.
-        self._responses = queue.Queue()
-        self._inbox = queue.Queue()
+    The socket carries no timeout, so an ``OSError`` here is a real failure
+    or the shutdown from ``close()`` — either way the connection is over.
+    """
+    reason = "Connection closed"
+    try:
+      for line in iter_frames(sock, self._closing):
+        problem = _route_frame(line, responses, inbox)
+        if problem is not None:
+          # The stream is no longer understood; reading on would
+          # risk handing a caller a frame that is not theirs.
+          reason = problem
+          return
+    except FrameTooLarge as exc:
+      reason = str(exc)
+    finally:
+      self._closed_reason = reason
+      responses.put(_CLOSED)
+      inbox.put(_CLOSED)
 
-    def _read_loop(self, sock: socket.socket, responses: queue.Queue[Any],
-                   inbox: queue.Queue[Any]) -> None:
-        """Own the socket's read side: split frames on newlines, route each.
+  def _request(self, data: dict) -> dict:
+    """Send a request and wait for ITS response.
 
-        The frame buffer is a LOCAL — there is no shared buffer to guard, which
-        is the point.  The queues are PARAMETERS for the same reason (see
-        ``close()``).  This thread acquires no lock at all, so nothing a caller
-        does can keep it from delivering.
-
-        The socket carries no timeout, so an ``OSError`` here is a real failure
-        or the shutdown from ``close()`` — either way the connection is over.
-        """
-        reason = "Connection closed"
-        try:
-            for line in iter_frames(sock, self._closing):
-                problem = _route_frame(line, responses, inbox)
-                if problem is not None:
-                    # The stream is no longer understood; reading on would
-                    # risk handing a caller a frame that is not theirs.
-                    reason = problem
-                    return
-        except FrameTooLarge as exc:
-            reason = str(exc)
-        finally:
-            self._closed_reason = reason
-            responses.put(_CLOSED)
-            inbox.put(_CLOSED)
-
-    def _request(self, data: dict) -> dict:
-        """Send a request and wait for ITS response.
-
-        The lock spans send-and-await so at most one request is outstanding —
-        that, not mutual exclusion over a buffer, is what makes one response
-        queue unambiguous.  It cannot deadlock: ``recv()`` never takes this lock,
-        and neither does the reader that fills the queue, so the thread holding
-        it is always waiting on something a lock-free thread will post.
-        """
-        sock = self._sock
-        if sock is None:
-            raise ConnectionError("Not connected")
-        responses = self._responses
-        with self._lock:
-            send_frame(sock, data)
-            frame = responses.get()
-        if frame is _CLOSED:
-            responses.put(_CLOSED)
-            raise ConnectionError(self._closed_reason)
-        return frame
+    The lock spans send-and-await so at most one request is outstanding —
+    that, not mutual exclusion over a buffer, is what makes one response
+    queue unambiguous.  It cannot deadlock: ``recv()`` never takes this lock,
+    and neither does the reader that fills the queue, so the thread holding
+    it is always waiting on something a lock-free thread will post.
+    """
+    sock = self._sock
+    if sock is None:
+      raise ConnectionError("Not connected")
+    responses = self._responses
+    with self._lock:
+      send_frame(sock, data)
+      frame = responses.get()
+    if frame is _CLOSED:
+      responses.put(_CLOSED)
+      raise ConnectionError(self._closed_reason)
+    return frame
 
 
 def send_request(socket_path: Path, request: dict) -> dict:
-    """One-shot convenience for spawn/stop commands that need no persistent connection.
+  """One-shot convenience for spawn/stop commands that need no persistent connection.
 
-    No demultiplexing needed: this connection never registers, and the hub routes
-    pushes only to REGISTERED helpers, so the sole frame it can receive is the
-    response to the single request it sent.
-    """
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        s.connect(str(socket_path))
-        s.settimeout(30.0)
-        send_frame(s, request)
-        for line in iter_frames(s, raise_errors=True):
-            return json.loads(line)
-        raise ConnectionError("Connection closed before response")
-    finally:
-        s.close()
+  No demultiplexing needed: this connection never registers, and the hub routes
+  pushes only to REGISTERED helpers, so the sole frame it can receive is the
+  response to the single request it sent.
+  """
+  s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+  try:
+    s.connect(str(socket_path))
+    s.settimeout(30.0)
+    send_frame(s, request)
+    for line in iter_frames(s, raise_errors=True):
+      return json.loads(line)
+    raise ConnectionError("Connection closed before response")
+  finally:
+    s.close()

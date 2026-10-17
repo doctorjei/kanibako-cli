@@ -22,7 +22,7 @@ def containing_scopes(file_scope: str) -> frozenset[str]:
 def contained_scopes(file_scope: str) -> tuple[str, ...]:
   """The scope tokens *file_scope* CONTAINS: the tail of :data:`SCOPE_CONTAINMENT` after it."""
   idx = SCOPE_CONTAINMENT.index(file_scope)
-  return SCOPE_CONTAINMENT[idx + 1:]
+  return SCOPE_CONTAINMENT[idx + 1 :]
 
 
 def writable_scopes(level: str) -> frozenset[str]:
@@ -37,11 +37,7 @@ def upward_scope_drop_set(file_scope: str) -> frozenset[str]:
   it takes an empty containing set. ⚑ The RULE without the warning: ``settings_assemble``'s
   reader and its assembly both read it.
   """
-  containing = (
-    containing_scopes(file_scope)
-    if file_scope in SCOPE_CONTAINMENT
-    else frozenset()
-  )
+  containing = containing_scopes(file_scope) if file_scope in SCOPE_CONTAINMENT else frozenset()
   return containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
 
 

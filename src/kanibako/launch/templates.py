@@ -14,12 +14,16 @@ from pathlib import Path
 
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.core_defaults import (CANON_GUEST_ROOT, HANDBOOK_REL, ROM_ROOT_PARTS,
-                                              packaged_dir_or_none)
+from kanibako.settings.core_defaults import (
+  CANON_GUEST_ROOT,
+  HANDBOOK_REL,
+  ROM_ROOT_PARTS,
+  packaged_dir_or_none,
+)
 
 if TYPE_CHECKING:
-    from kanibako.settings.paths import ProjectPaths, StandardPaths
-    from kanibako.settings.workset_dirkeys import EarlyScope
+  from kanibako.settings.paths import ProjectPaths, StandardPaths
+  from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 # Layered box seed (spec §2a): three ordered sources — system -> agent -> workset,
@@ -52,114 +56,112 @@ AGENT_TEMPLATE_STORE_REL = "template"
 
 
 def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
-    """Return the AGENT-tier ``template`` SOURCE keys (spec §2d) — both arms.
+  """Return the AGENT-tier ``template`` SOURCE keys (spec §2d) — both arms.
 
-    The direct sibling of :func:`~kanibako.settings.core_defaults
-    .canon_default_categories`' agent scalars, and folded into the SAME two places that
-    one is: the MAIN launch floor and — through :func:`template_seed_defaults` — the
-    create-time seed resolve.
+  The direct sibling of :func:`~kanibako.settings.core_defaults
+  .canon_default_categories`' agent scalars, and folded into the SAME two places that
+  one is: the MAIN launch floor and — through :func:`template_seed_defaults` — the
+  create-time seed resolve.
 
-    ⚑⚑ THE MAIN-LAUNCH FOLD IS THE POINT, not an extra.  These used to be emitted ONLY
-    inside ``template_seed_defaults``, whose one consumer is the CREATE-time seed
-    resolve, so ``{agent.default.template}`` resolved to ``__MISSING__`` for every box
-    that already existed — a declared key with a real default that the keyspace could
-    not answer ([Jei:2026-08-29]: *"for any box thst exists, def."*).  A key that
-    answers only at create is not answerable to a user.
+  ⚑⚑ THE MAIN-LAUNCH FOLD IS THE POINT, not an extra.  These used to be emitted ONLY
+  inside ``template_seed_defaults``, whose one consumer is the CREATE-time seed
+  resolve, so ``{agent.default.template}`` resolved to ``__MISSING__`` for every box
+  that already existed — a declared key with a real default that the keyspace could
+  not answer ([Jei:2026-08-29]: *"for any box thst exists, def."*).  A key that
+  answers only at create is not answerable to a user.
 
-    ⚑ SOURCE KEYS ONLY.  The ``seeded`` LAYERS stay in ``template_seed_defaults`` and
-    must never be folded into a launch: seed-once is the failsafe against re-seed DATA
-    LOSS, and a layer reaching an ordinary relaunch is exactly that bug.
-    """
-    if not agent_id:
-        # A NO-AGENT box has no agent tier at all — the ``canon`` sibling's own gate.
-        return {}
-    defs: dict[str, object] = {}
-    # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
-    # ``agent.default``, the agent's own values go on top, and the user re-overrides
-    # with ``agent.<agent>.template``.  Writing the store path at ``agent.<node>`` put
-    # core in the slot the §2d pick reads FIRST, so a user's ``agent.default.template``
-    # never reached a true agent.
-    # ⚑ PER LAUNCH, NODE-ROOTED: §2d spells the row ``{meta.self.path}/template``,
-    # and ``meta.self`` is the ACTIVE NODE — a persona seeds from its OWN store, and
-    # the shim ``commands.start.ensure_persona_share_symlinks`` links its
-    # ``template`` to the harness's.  ONE HOP UNROLLED: ``meta.agent.<a>.path`` IS
-    # ``{config.agents}/<a>`` (``settings_launch.meta_agent_path_floor`` defines it
-    # as that literal), so the two spellings resolve to one place.
-    # ⚑ KEY vs DIRECTORY: a key segment stays the CANONICAL node, the value is a
-    # store path and takes the ``+`` dirname (``agent_config.store_dirname``).
-    # ⚑ NO NODE-STORE PROBE: the shim guarantees the node's ``template`` entry, and
-    # ``stage_layers`` is skip-if-absent where it does not exist.
-    defs["agent.default.template"] = (
-        f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
-    )
-    if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
-        # The shell's core ``agent.default.template`` is its own store, as for every
-        # node; its fence row below shadows it.
-        # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
-        # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
-        # "Pseudo-agent(s)"; omitting the key would read ``agent.default.template``
-        # instead, and the fence states ``<None>``).  §2b: the tier
-        # installs NO layer-2 template; the layer itself stays declared, and a ``None``
-        # source SKIPS it at resolve.
-        defs[f"agent.{agent_id}.template"] = None
-        return defs
-    # ⚑ THE NODE ROW CARRIES NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref resolves
-    # against the snapshot and never through the pick, so without this row
-    # ``{agent.<node>.template}`` — the layer-2 seed source, the handbook layer root,
-    # and any user ref — would read absent whenever only ``agent.default`` holds it.
-    # A user's or plugin's ``agent.<node>.template`` replaces it.
-    defs[f"agent.{agent_id}.template"] = "{agent.default.template}"
+  ⚑ SOURCE KEYS ONLY.  The ``seeded`` LAYERS stay in ``template_seed_defaults`` and
+  must never be folded into a launch: seed-once is the failsafe against re-seed DATA
+  LOSS, and a layer reaching an ordinary relaunch is exactly that bug.
+  """
+  if not agent_id:
+    # A NO-AGENT box has no agent tier at all — the ``canon`` sibling's own gate.
+    return {}
+  defs: dict[str, object] = {}
+  # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
+  # ``agent.default``, the agent's own values go on top, and the user re-overrides
+  # with ``agent.<agent>.template``.  Writing the store path at ``agent.<node>`` put
+  # core in the slot the §2d pick reads FIRST, so a user's ``agent.default.template``
+  # never reached a true agent.
+  # ⚑ PER LAUNCH, NODE-ROOTED: §2d spells the row ``{meta.self.path}/template``,
+  # and ``meta.self`` is the ACTIVE NODE — a persona seeds from its OWN store, and
+  # the shim ``commands.start.ensure_persona_share_symlinks`` links its
+  # ``template`` to the harness's.  ONE HOP UNROLLED: ``meta.agent.<a>.path`` IS
+  # ``{config.agents}/<a>`` (``settings_launch.meta_agent_path_floor`` defines it
+  # as that literal), so the two spellings resolve to one place.
+  # ⚑ KEY vs DIRECTORY: a key segment stays the CANONICAL node, the value is a
+  # store path and takes the ``+`` dirname (``agent_config.store_dirname``).
+  # ⚑ NO NODE-STORE PROBE: the shim guarantees the node's ``template`` entry, and
+  # ``stage_layers`` is skip-if-absent where it does not exist.
+  defs["agent.default.template"] = (
+    f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
+  )
+  if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
+    # The shell's core ``agent.default.template`` is its own store, as for every
+    # node; its fence row below shadows it.
+    # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
+    # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
+    # "Pseudo-agent(s)"; omitting the key would read ``agent.default.template``
+    # instead, and the fence states ``<None>``).  §2b: the tier
+    # installs NO layer-2 template; the layer itself stays declared, and a ``None``
+    # source SKIPS it at resolve.
+    defs[f"agent.{agent_id}.template"] = None
     return defs
+  # ⚑ THE NODE ROW CARRIES NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref resolves
+  # against the snapshot and never through the pick, so without this row
+  # ``{agent.<node>.template}`` — the layer-2 seed source, the handbook layer root,
+  # and any user ref — would read absent whenever only ``agent.default`` holds it.
+  # A user's or plugin's ``agent.<node>.template`` replaces it.
+  defs[f"agent.{agent_id}.template"] = "{agent.default.template}"
+  return defs
 
 
-def template_seed_defaults(
-    proj: ProjectPaths, agent_id: str | None
-) -> dict[str, object]:
-    """Return the layered box-seed DEFAULT-category table (spec §2a — THREE layers).
+def template_seed_defaults(proj: ProjectPaths, agent_id: str | None) -> dict[str, object]:
+  """Return the layered box-seed DEFAULT-category table (spec §2a — THREE layers).
 
-    ⚑ The AGENT-tier SOURCE scalars come from :func:`agent_template_defaults`, which the
-    MAIN launch folds too; the WORKSET-tier one is not declared here at all — it is
-    ``settings_launch.workset_anchor_floor``'s ``workset.template``, and this table only
-    ``@``-REFERENCES it.  Both moves answer the same defect: a source key spelled only
-    here answered for a box being CREATED and for no box that already existed.
+  ⚑ The AGENT-tier SOURCE scalars come from :func:`agent_template_defaults`, which the
+  MAIN launch folds too; the WORKSET-tier one is not declared here at all — it is
+  ``settings_launch.workset_anchor_floor``'s ``workset.template``, and this table only
+  ``@``-REFERENCES it.  Both moves answer the same defect: a source key spelled only
+  here answered for a box being CREATED and for no box that already existed.
 
-    ⚑ The layer-3 GATE still lives here, and it is the same predicate the floor branches
-    on — ``has_workset_channels(proj)`` IS ``proj.mode is not standalone``, which is the
-    floor's ``standalone`` arm.  One condition, two spellings of the mode, no third
-    opinion about whether a workset tier exists.
+  ⚑ The layer-3 GATE still lives here, and it is the same predicate the floor branches
+  on — ``has_workset_channels(proj)`` IS ``proj.mode is not standalone``, which is the
+  floor's ``standalone`` arm.  One condition, two spellings of the mode, no third
+  opinion about whether a workset tier exists.
 
-    ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
-    (:func:`handbook_layer_source_keys`), which is gated off the LAYERS below.
-    """
-    from kanibako.channels.channels import has_workset_channels
+  ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
+  (:func:`handbook_layer_source_keys`), which is gated off the LAYERS below.
+  """
+  from kanibako.channels.channels import has_workset_channels
 
-    def _layer(source_root: str) -> dict[str, object]:
-        # ⚑ A DEST-KEYED map, not a named entry: the destination IS
-        # the identity and the value is the 1-element ``(src,)`` — ``opts`` is
-        # RESERVED on a COPY and no shipped layer sets it.
-        return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
+  def _layer(source_root: str) -> dict[str, object]:
+    # ⚑ A DEST-KEYED map, not a named entry: the destination IS
+    # the identity and the value is the 1-element ``(src,)`` — ``opts`` is
+    # RESERVED on a COPY and no shipped layer sets it.
+    return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
 
-    defs: dict[str, object] = {"system.seeded": _layer("{system.template}")}
-    defs.update(agent_template_defaults(agent_id))
-    if agent_id:
-        # EVERY agent node declares the layer (spec §2a: ``<scope>.seeded`` is declared
-        # at every scope, ``agent.<active>`` included) — the shell node too.  Whether it
-        # SEEDS is the SOURCE's business, decided at resolve time off the cascade, never
-        # here off the default: the shell fence's ``<None>`` skips it (§2a, "any layer
-        # whose source is ``<None>`` is SKIPPED" — an embedded ``{key}``-ref to a present
-        # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
-        # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
-        # Gating on the default's value here dropped the user's value at create.
-        # ⚑ R1: every agent's layer is core's ``agent.default.seeded`` (§2d *Default
-        # settings*, ``({self.template}/box/home)``), so a user's ``agent.default``
-        # entry replaces it and the agent's own goes on top — the shell's too (§2d
-        # "Pseudo-agent(s)": it inherits ``agent.default``).
-        defs["agent.default.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
-    if has_workset_channels(proj):
-        # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
-        # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
-        defs["workset.seeded"] = _layer("{workset.template}")
-    return defs
+  defs: dict[str, object] = {"system.seeded": _layer("{system.template}")}
+  defs.update(agent_template_defaults(agent_id))
+  if agent_id:
+    # EVERY agent node declares the layer (spec §2a: ``<scope>.seeded`` is declared
+    # at every scope, ``agent.<active>`` included) — the shell node too.  Whether it
+    # SEEDS is the SOURCE's business, decided at resolve time off the cascade, never
+    # here off the default: the shell fence's ``<None>`` skips it (§2a, "any layer
+    # whose source is ``<None>`` is SKIPPED" — an embedded ``{key}``-ref to a present
+    # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
+    # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
+    # Gating on the default's value here dropped the user's value at create.
+    # ⚑ R1: every agent's layer is core's ``agent.default.seeded`` (§2d *Default
+    # settings*, ``({self.template}/box/home)``), so a user's ``agent.default``
+    # entry replaces it and the agent's own goes on top — the shell's too (§2d
+    # "Pseudo-agent(s)": it inherits ``agent.default``).
+    defs["agent.default.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
+  if has_workset_channels(proj):
+    # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
+    # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
+    defs["workset.seeded"] = _layer("{workset.template}")
+  return defs
 
 
 # ⚑ There is no ``seed_keys_of(defs)``.  The dest above is ``~/``, a GUEST path,
@@ -169,51 +171,51 @@ def template_seed_defaults(
 
 
 def stage_layers(dest: Path, layers: list[Path]) -> None:
-    """Seed *dest* once from the ordered *layers* via a TEMP staging dir.
+  """Seed *dest* once from the ordered *layers* via a TEMP staging dir.
 
-    ⚑ SEED-ONCE.  The merge is per-file last-wins WITHIN staging, but the staged
-    tree lands in *dest* CREATE-IF-ABSENT — a pre-existing *dest* file is NEVER
-    overwritten.  That failsafe is the load-bearing guard against re-seed DATA
-    LOSS; the caller invokes this only at box CREATE, never on a relaunch.
-    SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is skipped.
+  ⚑ SEED-ONCE.  The merge is per-file last-wins WITHIN staging, but the staged
+  tree lands in *dest* CREATE-IF-ABSENT — a pre-existing *dest* file is NEVER
+  overwritten.  That failsafe is the load-bearing guard against re-seed DATA
+  LOSS; the caller invokes this only at box CREATE, never on a relaunch.
+  SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is skipped.
 
-    ⚑ Last-wins is built as HIGHEST LAYER FIRST into create-if-absent staging, not
-    ``overwrite=True``: the overwrite arm skips an EQUIVALENT file
-    (:func:`_equivalent`), which would keep a lower layer's bytes.  Every pass is
-    :func:`copy_tree`, so its source-symlink refusal covers every layer entry.
-    ⚑ A FILE/DIRECTORY CLASH resolves to the upper layer too.  A lower FILE under an
-    upper directory is skipped by create-if-absent; a lower DIRECTORY under an upper
-    file is pruned from the lower layer's private copy before it merges.
-    """
-    present = [layer for layer in layers if layer.is_dir()]
-    if not present:
-        return
-    with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
-        merged = Path(staging) / "merged"
-        merged.mkdir()
-        for index, layer in enumerate(reversed(present)):
-            copy = Path(staging) / f"layer-{index}"
-            copy_tree(layer, copy)
-            _prune_dirs_shadowed_by_files(copy, merged)
-            copy_tree(copy, merged)
-        copy_tree(merged, dest)
+  ⚑ Last-wins is built as HIGHEST LAYER FIRST into create-if-absent staging, not
+  ``overwrite=True``: the overwrite arm skips an EQUIVALENT file
+  (:func:`_equivalent`), which would keep a lower layer's bytes.  Every pass is
+  :func:`copy_tree`, so its source-symlink refusal covers every layer entry.
+  ⚑ A FILE/DIRECTORY CLASH resolves to the upper layer too.  A lower FILE under an
+  upper directory is skipped by create-if-absent; a lower DIRECTORY under an upper
+  file is pruned from the lower layer's private copy before it merges.
+  """
+  present = [layer for layer in layers if layer.is_dir()]
+  if not present:
+    return
+  with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
+    merged = Path(staging) / "merged"
+    merged.mkdir()
+    for index, layer in enumerate(reversed(present)):
+      copy = Path(staging) / f"layer-{index}"
+      copy_tree(layer, copy)
+      _prune_dirs_shadowed_by_files(copy, merged)
+      copy_tree(copy, merged)
+    copy_tree(merged, dest)
 
 
 def _prune_dirs_shadowed_by_files(lower: Path, upper: Path) -> None:
-    """Delete each directory in *lower* that *upper* already holds as a FILE.
+  """Delete each directory in *lower* that *upper* already holds as a FILE.
 
-    Both trees are :func:`stage_layers`' own staging copies — plain files and
-    directories written by :func:`copy_tree`, no symlinks — so the delete never
-    reaches outside the staging dir.
-    """
-    if not lower.is_dir():
-        return
-    for entry in sorted(upper.rglob("*")):
-        if not entry.is_file():
-            continue
-        shadowed = lower / entry.relative_to(upper)
-        if shadowed.is_dir() and not shadowed.is_symlink():
-            shutil.rmtree(shadowed)
+  Both trees are :func:`stage_layers`' own staging copies — plain files and
+  directories written by :func:`copy_tree`, no symlinks — so the delete never
+  reaches outside the staging dir.
+  """
+  if not lower.is_dir():
+    return
+  for entry in sorted(upper.rglob("*")):
+    if not entry.is_file():
+      continue
+    shadowed = lower / entry.relative_to(upper)
+    if shadowed.is_dir() and not shadowed.is_symlink():
+      shutil.rmtree(shadowed)
 
 
 # ---------------------------------------------------------------------------
@@ -235,219 +237,221 @@ def _prune_dirs_shadowed_by_files(lower: Path, upper: Path) -> None:
 #: respells them per root through :class:`WorksetStampScope` — which reads its defaults
 #: from HERE.  A repoint MOVES an entry; it never adds one.
 SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {
-    "box": ("home", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
-    "agent": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}", "common"),
-    "workset": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
+  "box": ("home", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
+  "agent": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}", "common"),
+  "workset": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
 }
 
 
 @dataclass(frozen=True)
 class WorksetStampScope:
-    """The ``workset`` scope carrying ONE root's resolved leaves — the ONLY respelling.
+  """The ``workset`` scope carrying ONE root's resolved leaves — the ONLY respelling.
 
-    ⚑⚑ WHAT IT DOES NOT CARRY IS THE POINT.  A caller hands over the three PATHS the
-    respelling is DERIVED FROM and never a finished entry list, so *respells, never
-    widens* stops being a docstring promise: there is no parameter anywhere on this
-    route that accepts allow-list entries, and a widened workset whitelist is therefore
-    UNREPRESENTABLE rather than merely undone.  ``copy_tree`` used to take the tuple,
-    which held the invariant only by there being exactly one well-behaved caller.
+  ⚑⚑ WHAT IT DOES NOT CARRY IS THE POINT.  A caller hands over the three PATHS the
+  respelling is DERIVED FROM and never a finished entry list, so *respells, never
+  widens* stops being a docstring promise: there is no parameter anywhere on this
+  route that accepts allow-list entries, and a widened workset whitelist is therefore
+  UNREPRESENTABLE rather than merely undone.  ``copy_tree`` used to take the tuple,
+  which held the invariant only by there being exactly one well-behaved caller.
 
-    ⚑ Every entry it can produce is :data:`SCOPE_WHITELISTS` ``["workset"]`` with the
-    two repointable ANCHORS re-spelled — same cardinality, ``canon/`` still seedable at
-    ``handbook`` and nowhere else.
-    """
+  ⚑ Every entry it can produce is :data:`SCOPE_WHITELISTS` ``["workset"]`` with the
+  two repointable ANCHORS re-spelled — same cardinality, ``canon/`` still seedable at
+  ``handbook`` and nowhere else.
+  """
 
-    workset_path: Path
-    #: ⚑ ``None`` when the workset nulls the key — that LAYER IS SKIPPED (spec §2a).
-    canon_root: Path | None
-    template_root: Path | None
+  workset_path: Path
+  #: ⚑ ``None`` when the workset nulls the key — that LAYER IS SKIPPED (spec §2a).
+  canon_root: Path | None
+  template_root: Path | None
 
-    #: The declared scope row this is a respelling OF.  A class attribute, not a field:
-    #: choosing the row is not something a caller gets to do.
-    name: ClassVar[str] = "workset"
+  #: The declared scope row this is a respelling OF.  A class attribute, not a field:
+  #: choosing the row is not something a caller gets to do.
+  name: ClassVar[str] = "workset"
 
-    def allowed(self) -> tuple[str, ...]:
-        """The declared workset row, respelled for this root (:func:`_workset_scope_allowed`)."""
-        return _workset_scope_allowed(
-            self.workset_path, self.canon_root, self.template_root,
-        )
-
-
-def _scope_rules(scope: str | WorksetStampScope) -> tuple[str, tuple[str, ...]]:
-    """The ``(scope NAME, allow-list)`` pair — the ONE place a scope becomes entries.
-
-    ⚑ A plain scope name reads the declared table verbatim; a :class:`WorksetStampScope`
-    derives its entries from the roots it holds.  Both arms end at
-    :data:`SCOPE_WHITELISTS`, which is why no caller can introduce an entry that is not
-    in it.
-    """
-    if isinstance(scope, WorksetStampScope):
-        return scope.name, scope.allowed()
-    return scope, SCOPE_WHITELISTS[scope]
-
-
-def _check_whitelist(store_rel: Path, scope: str | WorksetStampScope) -> None:
-    """RAISE unless *store_rel*'s leading components are inside *scope*'s allow-list.
-
-    ⚑ *store_rel* is relative to the SCOPE STORE ROOT (``copy_tree``'s *dest_root*),
-    NOT to the copy's source.  They diverge whenever a copy targets a subdirectory of
-    a store, and checking the wrong one would either refuse a legal copy or wave
-    through an illegal one.
-
-    ⚑ *scope* is a NAME or a :class:`WorksetStampScope`, never an entry list: the
-    respelling the workset stamp needs is computed HERE, from the roots, so this
-    function's allow-list is always the declared row for the scope it names.
-    """
-    from kanibako.errors import TemplateScopeError
-
-    name, allowed = _scope_rules(scope)
-    posix = store_rel.as_posix()
-    if any(posix == a or posix.startswith(f"{a}/") for a in allowed):
-        return
-    raise TemplateScopeError(
-        f"template content for the {name.upper()} scope may not contain "
-        f"{store_rel.parts[0]!r} (offending entry: {posix!r}). The {name} store's "
-        f"allowed top-level entries are: {', '.join(allowed)} — anything else is "
-        f"DENIED by default (spec §2a). Move the file under an allowed entry, or "
-        f"remove it from the template."
+  def allowed(self) -> tuple[str, ...]:
+    """The declared workset row, respelled for this root (:func:`_workset_scope_allowed`)."""
+    return _workset_scope_allowed(
+      self.workset_path,
+      self.canon_root,
+      self.template_root,
     )
 
 
+def _scope_rules(scope: str | WorksetStampScope) -> tuple[str, tuple[str, ...]]:
+  """The ``(scope NAME, allow-list)`` pair — the ONE place a scope becomes entries.
+
+  ⚑ A plain scope name reads the declared table verbatim; a :class:`WorksetStampScope`
+  derives its entries from the roots it holds.  Both arms end at
+  :data:`SCOPE_WHITELISTS`, which is why no caller can introduce an entry that is not
+  in it.
+  """
+  if isinstance(scope, WorksetStampScope):
+    return scope.name, scope.allowed()
+  return scope, SCOPE_WHITELISTS[scope]
+
+
+def _check_whitelist(store_rel: Path, scope: str | WorksetStampScope) -> None:
+  """RAISE unless *store_rel*'s leading components are inside *scope*'s allow-list.
+
+  ⚑ *store_rel* is relative to the SCOPE STORE ROOT (``copy_tree``'s *dest_root*),
+  NOT to the copy's source.  They diverge whenever a copy targets a subdirectory of
+  a store, and checking the wrong one would either refuse a legal copy or wave
+  through an illegal one.
+
+  ⚑ *scope* is a NAME or a :class:`WorksetStampScope`, never an entry list: the
+  respelling the workset stamp needs is computed HERE, from the roots, so this
+  function's allow-list is always the declared row for the scope it names.
+  """
+  from kanibako.errors import TemplateScopeError
+
+  name, allowed = _scope_rules(scope)
+  posix = store_rel.as_posix()
+  if any(posix == a or posix.startswith(f"{a}/") for a in allowed):
+    return
+  raise TemplateScopeError(
+    f"template content for the {name.upper()} scope may not contain "
+    f"{store_rel.parts[0]!r} (offending entry: {posix!r}). The {name} store's "
+    f"allowed top-level entries are: {', '.join(allowed)} — anything else is "
+    f"DENIED by default (spec §2a). Move the file under an allowed entry, or "
+    f"remove it from the template."
+  )
+
+
 def _is_contained(target: Path, root: Path) -> bool:
-    """True when *target*'s REAL path is *root*'s real path or below it.
+  """True when *target*'s REAL path is *root*'s real path or below it.
 
-    ⚑ THE ONE CONTAINMENT PREDICATE.  :func:`_assert_contained` is its refusal for the
-    copier, and :func:`_workset_stamp_dirs` is its refusal for a repointed stamp leaf —
-    two AUDIENCES, two messages, one rule.  A second predicate could disagree with this
-    one about a symlink and the two refusals would then guard different trees.
+  ⚑ THE ONE CONTAINMENT PREDICATE.  :func:`_assert_contained` is its refusal for the
+  copier, and :func:`_workset_stamp_dirs` is its refusal for a repointed stamp leaf —
+  two AUDIENCES, two messages, one rule.  A second predicate could disagree with this
+  one about a symlink and the two refusals would then guard different trees.
 
-    ⚑ ``resolve()`` on both sides is load-bearing: it is what makes a symlinked
-    intermediate DIRECTORY visible, which a plain string comparison would not see — and
-    it is also what normalizes a ``..`` component that ``relative_to`` accepts LEXICALLY.
-    """
-    real_root = root.resolve()
-    real_target = target.resolve()
-    return real_target == real_root or real_root in real_target.parents
+  ⚑ ``resolve()`` on both sides is load-bearing: it is what makes a symlinked
+  intermediate DIRECTORY visible, which a plain string comparison would not see — and
+  it is also what normalizes a ``..`` component that ``relative_to`` accepts LEXICALLY.
+  """
+  real_root = root.resolve()
+  real_target = target.resolve()
+  return real_target == real_root or real_root in real_target.parents
 
 
 def _assert_contained(target: Path, root: Path, *, what: str) -> None:
-    """RAISE unless *target*'s REAL path stays inside *root*'s real path.
+  """RAISE unless *target*'s REAL path stays inside *root*'s real path.
 
-    ⚑ A GENERAL helper with several callers, so its message names a PATH and not a KEY.
-    Where the caller knows which settings key produced *target*, it should refuse before
-    reaching here and say so — see :func:`_workset_stamp_dirs`.
-    """
-    from kanibako.errors import TemplateScopeError
+  ⚑ A GENERAL helper with several callers, so its message names a PATH and not a KEY.
+  Where the caller knows which settings key produced *target*, it should refuse before
+  reaching here and say so — see :func:`_workset_stamp_dirs`.
+  """
+  from kanibako.errors import TemplateScopeError
 
-    if not _is_contained(target, root):
-        raise TemplateScopeError(
-            f"{what} {str(target)!r} resolves to {str(target.resolve())!r}, which is "
-            f"OUTSIDE the destination subtree {str(root.resolve())!r}. Copy refused "
-            f"(spec §2a: the copier must reject '..' components and must not follow "
-            f"symlinks out of the destination subtree)."
-        )
+  if not _is_contained(target, root):
+    raise TemplateScopeError(
+      f"{what} {str(target)!r} resolves to {str(target.resolve())!r}, which is "
+      f"OUTSIDE the destination subtree {str(root.resolve())!r}. Copy refused "
+      f"(spec §2a: the copier must reject '..' components and must not follow "
+      f"symlinks out of the destination subtree)."
+    )
 
 
 def is_copyable_file(entry: Path) -> bool:
-    """THE copier's filter, shared. ``copy_tree`` copies exactly what this accepts.
+  """THE copier's filter, shared. ``copy_tree`` copies exactly what this accepts.
 
-    ⚑⚑ A REGULAR file only — ``is_file()`` is ``S_ISREG``, so a directory, a symlink, a
-    FIFO, a socket and a device all answer False, and none of them is opened.  The canon
-    STAMP is built with this same predicate rather than its own list, because the stamp's
-    whole claim is "what ``create`` put here", and a stamp that counts a different set of
-    files from the copier is false on its face.
-    ⚑ NOT :func:`walk_shipped_files`: that drops ``__pycache__``, ``*.pyc``/``*.pyo`` and
-    ``.DS_Store``.  ``copy_tree`` copies those, so a mold carrying one installs it while
-    the stamp denies it — a pristine ``create`` then reads as the user's own folder.
-    """
-    return entry.is_file()
+  ⚑⚑ A REGULAR file only — ``is_file()`` is ``S_ISREG``, so a directory, a symlink, a
+  FIFO, a socket and a device all answer False, and none of them is opened.  The canon
+  STAMP is built with this same predicate rather than its own list, because the stamp's
+  whole claim is "what ``create`` put here", and a stamp that counts a different set of
+  files from the copier is false on its face.
+  ⚑ NOT :func:`walk_shipped_files`: that drops ``__pycache__``, ``*.pyc``/``*.pyo`` and
+  ``.DS_Store``.  ``copy_tree`` copies those, so a mold carrying one installs it while
+  the stamp denies it — a pristine ``create`` then reads as the user's own folder.
+  """
+  return entry.is_file()
 
 
 def copy_tree(
-    src: Path,
-    dest: Path,
-    *,
-    overwrite: bool = False,
-    scope: str | WorksetStampScope | None = None,
-    dest_root: Path | None = None,
-    check_only: bool = False,
+  src: Path,
+  dest: Path,
+  *,
+  overwrite: bool = False,
+  scope: str | WorksetStampScope | None = None,
+  dest_root: Path | None = None,
+  check_only: bool = False,
 ) -> None:
-    """Copy every file under *src* into *dest*, skipping files that exist.
+  """Copy every file under *src* into *dest*, skipping files that exist.
 
-    **The ONE copier** (P-S4).  Create-if-absent, so user edits to a seeded template
-    survive a later kanibako upgrade.  *dest_root* (default *dest*) is BOTH the
-    containment boundary and the whitelist's frame of reference; *scope* turns on
-    the §2a whitelist; *check_only* is the PRE-FLIGHT form, running all four guards
-    below and writing nothing.
+  **The ONE copier** (P-S4).  Create-if-absent, so user edits to a seeded template
+  survive a later kanibako upgrade.  *dest_root* (default *dest*) is BOTH the
+  containment boundary and the whitelist's frame of reference; *scope* turns on
+  the §2a whitelist; *check_only* is the PRE-FLIGHT form, running all four guards
+  below and writing nothing.
 
-    ⚑⚑ *scope* IS A NAME OR A :class:`WorksetStampScope`, NEVER AN ALLOW-LIST.  This
-    used to take a companion ``allowed`` tuple that the workset stamp filled in, and
-    *respells, never widens* then rested entirely on that one caller behaving.  Passing
-    the RESOLVED ROOTS instead moves the respelling inside, where every entry is
-    :data:`SCOPE_WHITELISTS`' own — there is no longer a parameter through which a
-    wider scope could arrive.
+  ⚑⚑ *scope* IS A NAME OR A :class:`WorksetStampScope`, NEVER AN ALLOW-LIST.  This
+  used to take a companion ``allowed`` tuple that the workset stamp filled in, and
+  *respells, never widens* then rested entirely on that one caller behaving.  Passing
+  the RESOLVED ROOTS instead moves the respelling inside, where every entry is
+  :data:`SCOPE_WHITELISTS`' own — there is no longer a parameter through which a
+  wider scope could arrive.
 
-    ⚑ *overwrite* is confined to the SYSTEM-OWNED packaged STAGING
-    (``{system.template}/**``).  User-owned stores — ``{system.canon}/handbook``,
-    ``{config.agents}/**``, worksets, boxes — are create-if-absent on EVERY path,
-    always (J-3 item 1), and the alias :data:`copy_resource_tree_if_absent` reused by
-    the box-SEED apply must NEVER clobber a per-box home file.
+  ⚑ *overwrite* is confined to the SYSTEM-OWNED packaged STAGING
+  (``{system.template}/**``).  User-owned stores — ``{system.canon}/handbook``,
+  ``{config.agents}/**``, worksets, boxes — are create-if-absent on EVERY path,
+  always (J-3 item 1), and the alias :data:`copy_resource_tree_if_absent` reused by
+  the box-SEED apply must NEVER clobber a per-box home file.
 
-    ⚑ *check_only* is the SAME function deliberately; a separate validator would be a
-    second copy of the rules, free to drift.  Pair it with the real call, never use
-    it as a substitute (nothing here is atomic against a concurrent writer).
+  ⚑ *check_only* is the SAME function deliberately; a separate validator would be a
+  second copy of the rules, free to drift.  Pair it with the real call, never use
+  it as a substitute (nothing here is atomic against a concurrent writer).
 
-    The llm-doc carries the four §2a enforcement points and why each is placed where
-    it is.
-    """
-    from kanibako.errors import TemplateScopeError
+  The llm-doc carries the four §2a enforcement points and why each is placed where
+  it is.
+  """
+  from kanibako.errors import TemplateScopeError
 
-    if not src.is_dir():
-        return
-    root = dest_root if dest_root is not None else dest
-    _assert_contained(dest, root, what="copy destination")
-    for entry in sorted(src.rglob("*")):
-        # (3) SOURCE SYMLINK — checked BEFORE is_file(), which would follow it.
-        if entry.is_symlink():
-            raise TemplateScopeError(
-                f"template source {str(entry)!r} is a SYMLINK. Template content is "
-                f"copied by VALUE, so following it would copy the bytes of "
-                f"{str(entry.resolve())!r} into the destination — the secret-"
-                f"exfiltration escape spec §2a closes. Copy refused; replace the "
-                f"symlink with a real file or remove it."
-            )
-        if not is_copyable_file(entry):
-            continue
-        rel = entry.relative_to(src)
-        target = dest / rel
-        if scope is not None:
-            # (1) WHITELIST — on the STORE-relative path (see _check_whitelist).
-            _check_whitelist(target.relative_to(root), scope)
-        # (2) BEFORE ANY WRITE, INCLUDING THE mkdir: creating the parent first would
-        # litter directories outside the subtree on the very path we are refusing.
-        _assert_contained(target.parent, root, what="copy destination directory")
-        # (4) A SYMLINKED FINAL TARGET, by lstat, BEFORE the two branches below —
-        # both of which follow it.  The parent check cannot see this one; the escape
-        # is the leaf itself.
-        if target.is_symlink():
-            raise TemplateScopeError(
-                f"copy destination {str(target)!r} is a SYMLINK (to "
-                f"{str(target.resolve())!r}). Writing through it would put template "
-                f"content outside the destination subtree {str(root)!r} — the escape "
-                f"spec §2a closes. Copy refused; remove the symlink."
-            )
-        if check_only:
-            continue  # PRE-FLIGHT: every guard above ran; nothing is written.
-        if target.exists() and not overwrite:
-            continue
-        if overwrite and target.exists() and _equivalent(entry, target):
-            # PREVIEW AND ACTION MUST TELL ONE TRUTH: ``plan_template_refresh`` calls
-            # an EQUIVALENT file "current" and does not report it, so rewriting its
-            # bytes here would silently revert a user edit the preview called
-            # unchanged.  Same classifier, same verdict, both sides.
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(entry), str(target))
+  if not src.is_dir():
+    return
+  root = dest_root if dest_root is not None else dest
+  _assert_contained(dest, root, what="copy destination")
+  for entry in sorted(src.rglob("*")):
+    # (3) SOURCE SYMLINK — checked BEFORE is_file(), which would follow it.
+    if entry.is_symlink():
+      raise TemplateScopeError(
+        f"template source {str(entry)!r} is a SYMLINK. Template content is "
+        f"copied by VALUE, so following it would copy the bytes of "
+        f"{str(entry.resolve())!r} into the destination — the secret-"
+        f"exfiltration escape spec §2a closes. Copy refused; replace the "
+        f"symlink with a real file or remove it."
+      )
+    if not is_copyable_file(entry):
+      continue
+    rel = entry.relative_to(src)
+    target = dest / rel
+    if scope is not None:
+      # (1) WHITELIST — on the STORE-relative path (see _check_whitelist).
+      _check_whitelist(target.relative_to(root), scope)
+    # (2) BEFORE ANY WRITE, INCLUDING THE mkdir: creating the parent first would
+    # litter directories outside the subtree on the very path we are refusing.
+    _assert_contained(target.parent, root, what="copy destination directory")
+    # (4) A SYMLINKED FINAL TARGET, by lstat, BEFORE the two branches below —
+    # both of which follow it.  The parent check cannot see this one; the escape
+    # is the leaf itself.
+    if target.is_symlink():
+      raise TemplateScopeError(
+        f"copy destination {str(target)!r} is a SYMLINK (to "
+        f"{str(target.resolve())!r}). Writing through it would put template "
+        f"content outside the destination subtree {str(root)!r} — the escape "
+        f"spec §2a closes. Copy refused; remove the symlink."
+      )
+    if check_only:
+      continue  # PRE-FLIGHT: every guard above ran; nothing is written.
+    if target.exists() and not overwrite:
+      continue
+    if overwrite and target.exists() and _equivalent(entry, target):
+      # PREVIEW AND ACTION MUST TELL ONE TRUTH: ``plan_template_refresh`` calls
+      # an EQUIVALENT file "current" and does not report it, so rewriting its
+      # bytes here would silently revert a user edit the preview called
+      # unchanged.  Same classifier, same verdict, both sides.
+      continue
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(entry), str(target))
 
 
 # The create-if-absent spelling other modules (e.g. the seed-once apply in
@@ -492,9 +496,9 @@ AGENT_MOLD_DIRNAME = "agent"
 #: repointable ``workset.template`` RESOLVES to.  Fold the ``template/`` prefix back in
 #: here and the workset half silently ignores that key again.
 _BOX_TEMPLATE_SKELETON = (
-    f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/notebook",
-    f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/workbook",
-    _SEED_SRC_HANDBOOK,
+  f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/notebook",
+  f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/workbook",
+  _SEED_SRC_HANDBOOK,
 )
 
 #: The CANON HALF of the workset stamp ON THE MOLD SIDE — the subtree of
@@ -523,52 +527,52 @@ _CANON_CHAPTER_LEAF = HANDBOOK_REL
 
 
 def _packaged_base_template() -> Path | None:
-    """Locate the packaged TEMPLATE ROOT (``kanibako.data/templates``).
+  """Locate the packaged TEMPLATE ROOT (``kanibako.data/templates``).
 
-    ⚑ It is NOT itself an install dest, and a root-relative path is NOT a
-    home-relative one — the box-HOME seed source is ``templates/box/home``, two levels
-    down.  Code treating the two as the same is silently wrong (see
-    :func:`kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`).
-    """
-    return packaged_dir_or_none(*PACKAGED_TEMPLATES_PARTS)
+  ⚑ It is NOT itself an install dest, and a root-relative path is NOT a
+  home-relative one — the box-HOME seed source is ``templates/box/home``, two levels
+  down.  Code treating the two as the same is silently wrong (see
+  :func:`kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`).
+  """
+  return packaged_dir_or_none(*PACKAGED_TEMPLATES_PARTS)
 
 
 def packaged_box_home_template() -> Path | None:
-    """The packaged BOX-HOME seed source (``templates/box/home``), or None.
+  """The packaged BOX-HOME seed source (``templates/box/home``), or None.
 
-    ⚑ The HOME-RELATIVE root: every path under it is spelled exactly as it lands in a
-    box home.  Its consumers would be wrong one level up.
-    """
-    base = _packaged_base_template()
-    if base is None:
-        return None
-    path = base / PACKAGED_BOX_TEMPLATE / "home"
-    return path if path.is_dir() else None
+  ⚑ The HOME-RELATIVE root: every path under it is spelled exactly as it lands in a
+  box home.  Its consumers would be wrong one level up.
+  """
+  base = _packaged_base_template()
+  if base is None:
+    return None
+  path = base / PACKAGED_BOX_TEMPLATE / "home"
+  return path if path.is_dir() else None
 
 
 def workset_mold_canon_source(std: StandardPaths) -> Path:
-    """The LIVE workset mold's canon half — the tree ``create`` lays at a root ``canon/``.
+  """The LIVE workset mold's canon half — the tree ``create`` lays at a root ``canon/``.
 
-    ⚑⚑ THE ONE EXPRESSION :func:`_workset_stamp_copy` copies FROM, spelled once so a
-    consumer that has to predict what landed cannot pick a different tree.  ⚑⚑⚑ It is the
-    LIVE mold under ``std.template``, NOT the packaged copy inside the installed
-    distribution: ``install_packaged_templates`` seeds the live mold once, and an operator
-    who edits it afterwards changes what ``create`` installs from then on.  A leftover
-    matched against the packaged tree is then matched against bytes kanibako never
-    installed, and a folder holding nothing but what ``create`` wrote gets called the
-    user's.  Only the tree the copier reads can vouch for a stamp.
-    """
-    return std.template / PACKAGED_WORKSET_TEMPLATE / _MOLD_CANON_ROOT
+  ⚑⚑ THE ONE EXPRESSION :func:`_workset_stamp_copy` copies FROM, spelled once so a
+  consumer that has to predict what landed cannot pick a different tree.  ⚑⚑⚑ It is the
+  LIVE mold under ``std.template``, NOT the packaged copy inside the installed
+  distribution: ``install_packaged_templates`` seeds the live mold once, and an operator
+  who edits it afterwards changes what ``create`` installs from then on.  A leftover
+  matched against the packaged tree is then matched against bytes kanibako never
+  installed, and a folder holding nothing but what ``create`` wrote gets called the
+  user's.  Only the tree the copier reads can vouch for a stamp.
+  """
+  return std.template / PACKAGED_WORKSET_TEMPLATE / _MOLD_CANON_ROOT
 
 
 def _packaged_shared_bundle() -> Path | None:
-    """Locate the packaged read-only built-in CANON tree (the rom root).
+  """Locate the packaged read-only built-in CANON tree (the rom root).
 
-    ⚑ BOUND, never installed — it has no ``install``/``plan_template_refresh``
-    target and is enumerated only for the content DIGEST.  The rom ROOT is the digest
-    root, so a file added anywhere under ``rom/canon/`` is watched.
-    """
-    return packaged_dir_or_none(*ROM_ROOT_PARTS)
+  ⚑ BOUND, never installed — it has no ``install``/``plan_template_refresh``
+  target and is enumerated only for the content DIGEST.  The rom ROOT is the digest
+  root, so a file added anywhere under ``rom/canon/`` is watched.
+  """
+  return packaged_dir_or_none(*ROM_ROOT_PARTS)
 
 
 #: A plugin's packaged AGENT-STORE PAYLOAD dir — the ONE spelling (D4).
@@ -583,363 +587,396 @@ PLUGIN_STORE_PAYLOAD_DIRNAME = "base"
 
 
 def _packaged_agent_store(agent_name: str) -> Path | None:
-    """Locate a plugin's packaged AGENT-STORE payload dir, or ``None``.
+  """Locate a plugin's packaged AGENT-STORE payload dir, or ``None``.
 
-    ``None`` if the plugin is not installed or ships no ``data/base``.
+  ``None`` if the plugin is not installed or ships no ``data/base``.
 
-    ⚑ There is NO pre-D4 ``data/template`` fallback and there must not be one again:
-    the spelling is closed, and a plugin that ships anything else contributes NOTHING
-    rather than landing its payload somewhere unread.
-    """
-    try:
-        ref = importlib.resources.files(
-            f"kanibako.plugins.{agent_name}"
-        ).joinpath("data", PLUGIN_STORE_PAYLOAD_DIRNAME)
-    except (ModuleNotFoundError, FileNotFoundError):
-        return None
-    path = Path(str(ref))
-    return path if path.is_dir() else None
+  ⚑ There is NO pre-D4 ``data/template`` fallback and there must not be one again:
+  the spelling is closed, and a plugin that ships anything else contributes NOTHING
+  rather than landing its payload somewhere unread.
+  """
+  try:
+    ref = importlib.resources.files(f"kanibako.plugins.{agent_name}").joinpath(
+      "data", PLUGIN_STORE_PAYLOAD_DIRNAME
+    )
+  except (ModuleNotFoundError, FileNotFoundError):
+    return None
+  path = Path(str(ref))
+  return path if path.is_dir() else None
 
 
 def ensure_agent_stores(
-    std: StandardPaths, agent_names: "Iterable[str]",
+  std: StandardPaths,
+  agent_names: "Iterable[str]",
 ) -> list[str]:
-    """Materialize each agent's STORE — the J-6 **A-action**, one implementation.
+  """Materialize each agent's STORE — the J-6 **A-action**, one implementation.
 
-    Per name: the MOLD, then the SPECIFIC payload, then the box-template SKELETON.
-    Every stamp is create-if-absent, which makes the whole thing IDEMPOTENT and
-    SELF-HEALING.  Returns the names whose store was touched, for the caller's report.
+  Per name: the MOLD, then the SPECIFIC payload, then the box-template SKELETON.
+  Every stamp is create-if-absent, which makes the whole thing IDEMPOTENT and
+  SELF-HEALING.  Returns the names whose store was touched, for the caller's report.
 
-    ⚑ MOLD FIRST IS SAFE ONLY BECAUSE THE MOLD IS OVERLAP-FREE.  On an overlapping
-    path the EARLIER copy wins, so the mold would beat the specific content; it
-    therefore ships STRUCTURE ONLY (D5).  If it ever gains content, this order must
-    flip to specific-first.
-    """
-    mold = std.template / AGENT_MOLD_DIRNAME
-    base = _packaged_base_template()
-    touched: list[str] = []
-    for name in agent_names:
-        store = std.agents / name
-        store.mkdir(parents=True, exist_ok=True)
-        # (1) the host mold — user-customizable, read at EVERY agent install.
-        copy_tree(mold, store, scope="agent")
-        # (2) the specific payload.
-        if name == "default":
-            if base is not None:
-                copy_tree(base / PACKAGED_AGENT_DEFAULT, store, scope="agent")
-        else:
-            src = _packaged_agent_store(name)
-            if src is not None:
-                copy_tree(src, store, scope="agent")
-            # (2b) CORE's agent chapter, for a store that has NO ``canon/`` at all once
-            # the mold and the plugin have stamped.  ``agent.default.canon`` is the
-            # node's OWN store (§2d ``{meta.self.path}/canon``), so the shared
-            # ``agents/default/canon`` no longer reaches a true agent; this is how the
-            # core-shipped chapter still does.  ⚑ OVERRIDE, NOT ADDITIVE: a plugin's or
-            # user's ``canon/`` is never merged into, and create-if-absent means a
-            # user's files are never re-seeded over.  The ``shell`` pseudo-agent's store
-            # is stamped the same way: it inherits ``agent.default.canon`` (§2d), so its
-            # chapter is its own store's too.
-            if base is not None and _core_chapter_due(store):
-                copy_tree(
-                    base / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
-                    scope="agent", dest_root=store,
-                )
-        # (3) the discoverable box-template skeleton (D7), under the AGENT store's
-        # FIXED ``template/`` leaf — an agent store is not a workset, so nothing here
-        # is repointable and ``workset.template`` has no say over it.
-        for rel in _BOX_TEMPLATE_SKELETON:
-            (store / AGENT_TEMPLATE_STORE_REL / rel).mkdir(parents=True, exist_ok=True)
-        touched.append(name)
-    return touched
+  ⚑ MOLD FIRST IS SAFE ONLY BECAUSE THE MOLD IS OVERLAP-FREE.  On an overlapping
+  path the EARLIER copy wins, so the mold would beat the specific content; it
+  therefore ships STRUCTURE ONLY (D5).  If it ever gains content, this order must
+  flip to specific-first.
+  """
+  mold = std.template / AGENT_MOLD_DIRNAME
+  base = _packaged_base_template()
+  touched: list[str] = []
+  for name in agent_names:
+    store = std.agents / name
+    store.mkdir(parents=True, exist_ok=True)
+    # (1) the host mold — user-customizable, read at EVERY agent install.
+    copy_tree(mold, store, scope="agent")
+    # (2) the specific payload.
+    if name == "default":
+      if base is not None:
+        copy_tree(base / PACKAGED_AGENT_DEFAULT, store, scope="agent")
+    else:
+      src = _packaged_agent_store(name)
+      if src is not None:
+        copy_tree(src, store, scope="agent")
+      # (2b) CORE's agent chapter, for a store that has NO ``canon/`` at all once
+      # the mold and the plugin have stamped.  ``agent.default.canon`` is the
+      # node's OWN store (§2d ``{meta.self.path}/canon``), so the shared
+      # ``agents/default/canon`` no longer reaches a true agent; this is how the
+      # core-shipped chapter still does.  ⚑ OVERRIDE, NOT ADDITIVE: a plugin's or
+      # user's ``canon/`` is never merged into, and create-if-absent means a
+      # user's files are never re-seeded over.  The ``shell`` pseudo-agent's store
+      # is stamped the same way: it inherits ``agent.default.canon`` (§2d), so its
+      # chapter is its own store's too.
+      if base is not None and _core_chapter_due(store):
+        copy_tree(
+          base / PACKAGED_AGENT_DEFAULT / "canon",
+          store / "canon",
+          scope="agent",
+          dest_root=store,
+        )
+    # (3) the discoverable box-template skeleton (D7), under the AGENT store's
+    # FIXED ``template/`` leaf — an agent store is not a workset, so nothing here
+    # is repointable and ``workset.template`` has no say over it.
+    for rel in _BOX_TEMPLATE_SKELETON:
+      (store / AGENT_TEMPLATE_STORE_REL / rel).mkdir(parents=True, exist_ok=True)
+    touched.append(name)
+  return touched
 
 
 def _core_chapter_due(store: Path, *earlier: Path | None) -> bool:
-    """True when :func:`ensure_agent_stores` would stamp core's agent chapter (2b).
+  """True when :func:`ensure_agent_stores` would stamp core's agent chapter (2b).
 
-    ⚑ THE ONE TEST, read by the action and by :func:`plan_template_refresh`, so the
-    preview cannot call a store current that the action would stamp.  The action asks
-    AFTER the mold and the plugin have stamped; the plan asks BEFORE, so it passes those
-    sources as *earlier*: a ``canon/`` file either of them would copy creates the dir
-    first and the chapter is then skipped.
-    ⚑ PRESENT MEANS ``lexists``: a ``canon`` symlink — dangling or not — is never
-    followed and never stamped through, and a present-but-empty dir is never added to.
-    """
-    canon = store / "canon"
-    if canon.is_symlink() or canon.exists():
-        return False
-    return not any(
-        src is not None and any(is_copyable_file(e) for e in (src / "canon").rglob("*"))
-        for src in earlier
-    )
+  ⚑ THE ONE TEST, read by the action and by :func:`plan_template_refresh`, so the
+  preview cannot call a store current that the action would stamp.  The action asks
+  AFTER the mold and the plugin have stamped; the plan asks BEFORE, so it passes those
+  sources as *earlier*: a ``canon/`` file either of them would copy creates the dir
+  first and the chapter is then skipped.
+  ⚑ PRESENT MEANS ``lexists``: a ``canon`` symlink — dangling or not — is never
+  followed and never stamped through, and a present-but-empty dir is never added to.
+  """
+  canon = store / "canon"
+  if canon.is_symlink() or canon.exists():
+    return False
+  return not any(
+    src is not None and any(is_copyable_file(e) for e in (src / "canon").rglob("*"))
+    for src in earlier
+  )
 
 
 def _assert_stamp_leaf_in_root(
-    workset_path: Path, doc: Mapping[str, Any] | None, resolved: Path, leaf: str,
-    *, early: EarlyScope,
+  workset_path: Path,
+  doc: Mapping[str, Any] | None,
+  resolved: Path,
+  leaf: str,
+  *,
+  early: EarlyScope,
 ) -> None:
-    """RAISE — NAMING ``workset.<leaf>`` — unless its resolved dir stays under the root.
+  """RAISE — NAMING ``workset.<leaf>`` — unless its resolved dir stays under the root.
 
-    ⚑⚑ THIS IS THE OUT-OF-ROOT REFUSAL, AND IT IS DELIBERATELY NOT
-    :func:`_assert_contained`'s.  That helper is shared with the copier's symlink and
-    ``..`` defenses, where the offending thing IS a path; here the offending thing is a
-    SETTINGS VALUE, and a refusal that names only the path leaves the user with nothing
-    to edit.  Same rule (:func:`_is_contained`), two audiences, two messages — the bar is
-    ``settings.workset_dirkeys``' unresolvable-repoint refusal, which names the key, the
-    file, the token and the remedy.
+  ⚑⚑ THIS IS THE OUT-OF-ROOT REFUSAL, AND IT IS DELIBERATELY NOT
+  :func:`_assert_contained`'s.  That helper is shared with the copier's symlink and
+  ``..`` defenses, where the offending thing IS a path; here the offending thing is a
+  SETTINGS VALUE, and a refusal that names only the path leaves the user with nothing
+  to edit.  Same rule (:func:`_is_contained`), two audiences, two messages — the bar is
+  ``settings.workset_dirkeys``' unresolvable-repoint refusal, which names the key, the
+  file, the token and the remedy.
 
-    ⚑ Refusing HERE, and not deeper, is what keeps the key in scope: by the time the
-    copier sees the destination the only fact left is a directory name.
+  ⚑ Refusing HERE, and not deeper, is what keeps the key in scope: by the time the
+  copier sees the destination the only fact left is a directory name.
 
-    ⚑ *doc* is the ALREADY-READ ``workset.yaml`` document, passed in rather than
-    re-read — the stamp's one-read property is what stops two answers about one file.
-    """
-    from kanibako.errors import TemplateScopeError
-    from kanibako.settings.workset_dirkeys import early_repoint
+  ⚑ *doc* is the ALREADY-READ ``workset.yaml`` document, passed in rather than
+  re-read — the stamp's one-read property is what stops two answers about one file.
+  """
+  from kanibako.errors import TemplateScopeError
+  from kanibako.settings.workset_dirkeys import early_repoint
 
-    if _is_contained(resolved, workset_path):
-        return
-    # ⚑ A non-string repoint reaches here when the DEFAULT leaf is itself a symlink out
-    # of the root, so the message has to be able to say that instead of printing the
-    # sentinel.  ⚑ A null ``workset.<leaf>`` never names a layer to check — see
-    # :func:`_workset_stamp_dirs`.
-    repoint, where = early_repoint(workset_path, doc, leaf, early=early)
-    origin = (
-        f"is set to {repoint!r} in {where}"
-        if isinstance(repoint, str)
-        else f"takes its default {leaf!r} leaf under this root"
-    )
-    raise TemplateScopeError(
-        f"workset.{leaf} {origin}, which resolves to {str(resolved.resolve())!r} — "
-        f"OUTSIDE the workset root {str(workset_path.resolve())!r}. The workset stamp "
-        f"writes only inside the root it is stamping, so NOTHING was created "
-        f"(spec §2a). Repoint workset.{leaf} to a path under the workset root, or "
-        f"remove it from {where.name} to take the default {leaf!r}."
-    )
+  if _is_contained(resolved, workset_path):
+    return
+  # ⚑ A non-string repoint reaches here when the DEFAULT leaf is itself a symlink out
+  # of the root, so the message has to be able to say that instead of printing the
+  # sentinel.  ⚑ A null ``workset.<leaf>`` never names a layer to check — see
+  # :func:`_workset_stamp_dirs`.
+  repoint, where = early_repoint(workset_path, doc, leaf, early=early)
+  origin = (
+    f"is set to {repoint!r} in {where}"
+    if isinstance(repoint, str)
+    else f"takes its default {leaf!r} leaf under this root"
+  )
+  raise TemplateScopeError(
+    f"workset.{leaf} {origin}, which resolves to {str(resolved.resolve())!r} — "
+    f"OUTSIDE the workset root {str(workset_path.resolve())!r}. The workset stamp "
+    f"writes only inside the root it is stamping, so NOTHING was created "
+    f"(spec §2a). Repoint workset.{leaf} to a path under the workset root, or "
+    f"remove it from {where.name} to take the default {leaf!r}."
+  )
 
 
 def _workset_stamp_dirs(
-    workset_path: Path, *, canon_only: bool, early: EarlyScope,
+  workset_path: Path,
+  *,
+  canon_only: bool,
+  early: EarlyScope,
 ) -> tuple[Path | None, Path | None]:
-    """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
+  """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
 
-    ⚑⚑ THE STAMP FOLLOWS THE KEYS, NOT THE LITERALS.  Both are declared repointable
-    (spec ``:962`` / ``:936``), and a stamp at the literal leaf seeds a tier the box's
-    own key resolution then never reads — the chapter binds ask ``{workset.canon}``.
+  ⚑⚑ THE STAMP FOLLOWS THE KEYS, NOT THE LITERALS.  Both are declared repointable
+  (spec ``:962`` / ``:936``), and a stamp at the literal leaf seeds a tier the box's
+  own key resolution then never reads — the chapter binds ask ``{workset.canon}``.
 
-    ⚑ ONE read of the root's ``workset.yaml`` feeds both, exactly as
-    :func:`kanibako.project.workset._workset_skeleton_dirs` does for the other four:
-    reading it per key opens a window for two answers about one file.  A root with no
-    ``workset.yaml`` — which is EVERY root ``workset create`` makes, since it refuses a
-    root that already exists and writes no settings file — yields the literal defaults,
-    so the unrepointed stamp lands exactly where it always did.
+  ⚑ ONE read of the root's ``workset.yaml`` feeds both, exactly as
+  :func:`kanibako.project.workset._workset_skeleton_dirs` does for the other four:
+  reading it per key opens a window for two answers about one file.  A root with no
+  ``workset.yaml`` — which is EVERY root ``workset create`` makes, since it refuses a
+  root that already exists and writes no settings file — yields the literal defaults,
+  so the unrepointed stamp lands exactly where it always did.
 
-    ⚑ A key the root NULLS answers ``None`` and its LAYER IS SKIPPED (spec §2a): no
-    canon chapter is created, no box-template skeleton is made, and neither root is
-    composed with.  ``template`` is ``<None>`` in STANDALONE by the same rule (§2c).
+  ⚑ A key the root NULLS answers ``None`` and its LAYER IS SKIPPED (spec §2a): no
+  canon chapter is created, no box-template skeleton is made, and neither root is
+  composed with.  ``template`` is ``<None>`` in STANDALONE by the same rule (§2c).
 
-    ⚑⚑ IT IS ALSO THE GATE: a leaf that escapes the root is refused HERE, by
-    :func:`_assert_stamp_leaf_in_root`, before any caller holds a path to write to.  The
-    pre-flight and the stamp therefore refuse identically and for the same reason, and
-    the refusal lands BEFORE THE FIRST BYTE — which is what
-    :func:`check_workset_template` exists to guarantee for a destination kanibako is not
-    entitled to clean up.
+  ⚑⚑ IT IS ALSO THE GATE: a leaf that escapes the root is refused HERE, by
+  :func:`_assert_stamp_leaf_in_root`, before any caller holds a path to write to.  The
+  pre-flight and the stamp therefore refuse identically and for the same reason, and
+  the refusal lands BEFORE THE FIRST BYTE — which is what
+  :func:`check_workset_template` exists to guarantee for a destination kanibako is not
+  entitled to clean up.
 
-    ⚑ *canon_only* gates the TEMPLATE leaf's check, not the canon one: standalone's
-    ``workset.template`` is ``<None>`` (spec ``:936``) and that path consults neither the
-    key nor the skeleton, so refusing on it would reject a root over a key it never uses.
-    """
-    from kanibako.project.workset import (
-        _CANON_LEAF, _TEMPLATE_LEAF,
-        load_workset_settings_doc, resolve_workset_canon, resolve_workset_template,
+  ⚑ *canon_only* gates the TEMPLATE leaf's check, not the canon one: standalone's
+  ``workset.template`` is ``<None>`` (spec ``:936``) and that path consults neither the
+  key nor the skeleton, so refusing on it would reject a root over a key it never uses.
+  """
+  from kanibako.project.workset import (
+    _CANON_LEAF,
+    _TEMPLATE_LEAF,
+    load_workset_settings_doc,
+    resolve_workset_canon,
+    resolve_workset_template,
+  )
+
+  doc = load_workset_settings_doc(workset_path)
+  canon_root = resolve_workset_canon(workset_path, doc, early=early)
+  template_root = resolve_workset_template(workset_path, doc, early=early)
+  if canon_root is not None:
+    _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF, early=early)
+  if not canon_only and template_root is not None:
+    _assert_stamp_leaf_in_root(
+      workset_path,
+      doc,
+      template_root,
+      _TEMPLATE_LEAF,
+      early=early,
     )
-
-    doc = load_workset_settings_doc(workset_path)
-    canon_root = resolve_workset_canon(workset_path, doc, early=early)
-    template_root = resolve_workset_template(workset_path, doc, early=early)
-    if canon_root is not None:
-        _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF, early=early)
-    if not canon_only and template_root is not None:
-        _assert_stamp_leaf_in_root(
-            workset_path, doc, template_root, _TEMPLATE_LEAF, early=early,
-        )
-    return canon_root, template_root
+  return canon_root, template_root
 
 
-def _workset_scope_allowed(workset_path: Path,
-                           canon_root: Path | None,
-                           template_root: Path | None) -> tuple[str, ...]:
-    """The workset whitelist RESPELLED against this root's resolved leaves.
+def _workset_scope_allowed(
+  workset_path: Path, canon_root: Path | None, template_root: Path | None
+) -> tuple[str, ...]:
+  """The workset whitelist RESPELLED against this root's resolved leaves.
 
-    ⚑ REACHED ONLY THROUGH :class:`WorksetStampScope`, which is what makes the property
-    below structural: nothing hands this tuple across a call boundary, so no caller can
-    substitute a wider one.
+  ⚑ REACHED ONLY THROUGH :class:`WorksetStampScope`, which is what makes the property
+  below structural: nothing hands this tuple across a call boundary, so no caller can
+  substitute a wider one.
 
-    ⚑ A repoint MOVES the tier; it does not widen it.  ``SCOPE_WHITELISTS["workset"]``
-    is the set of top-level store entries the mold may write, spelled for the DEFAULT
-    leaves — so once the dest follows ``workset.canon`` the frame it is judged in has
-    to follow too, or the deny-by-default predicate refuses the copy it was written to
-    permit.  Only the two spellings change; ``canon/`` is still seedable at
-    ``handbook`` and nowhere else.
+  ⚑ A repoint MOVES the tier; it does not widen it.  ``SCOPE_WHITELISTS["workset"]``
+  is the set of top-level store entries the mold may write, spelled for the DEFAULT
+  leaves — so once the dest follows ``workset.canon`` the frame it is judged in has
+  to follow too, or the deny-by-default predicate refuses the copy it was written to
+  permit.  Only the two spellings change; ``canon/`` is still seedable at
+  ``handbook`` and nowhere else.
 
-    ⚑ A leaf resolving OUTSIDE *workset_path* keeps its DEFAULT spelling here.  Its
-    refusal is :func:`_assert_stamp_leaf_in_root`'s, which the stamp runs first, so this
-    arm is a FAILSAFE rather than the live answer: an entry that is not under the store
-    root has no store-relative path to whitelist in the first place, and the declared
-    entry is the only spelling that cannot widen the scope.
+  ⚑ A leaf resolving OUTSIDE *workset_path* keeps its DEFAULT spelling here.  Its
+  refusal is :func:`_assert_stamp_leaf_in_root`'s, which the stamp runs first, so this
+  arm is a FAILSAFE rather than the live answer: an entry that is not under the store
+  root has no store-relative path to whitelist in the first place, and the declared
+  entry is the only spelling that cannot widen the scope.
 
-    ⚑⚑ ``relative_to`` ALONE IS NOT THE CONTAINMENT TEST and must not be used as one:
-    it is LEXICAL, so ``<root>/../up`` is "relative to" *workset_path* and used to be
-    respelled into the allow-list ENTRY ``../up/handbook`` — a permission to write
-    outside the store, which is the one thing this function promises never to do.
-    :func:`_is_contained` resolves both sides, so the escape degenerates to the declared
-    entry instead.
+  ⚑⚑ ``relative_to`` ALONE IS NOT THE CONTAINMENT TEST and must not be used as one:
+  it is LEXICAL, so ``<root>/../up`` is "relative to" *workset_path* and used to be
+  respelled into the allow-list ENTRY ``../up/handbook`` — a permission to write
+  outside the store, which is the one thing this function promises never to do.
+  :func:`_is_contained` resolves both sides, so the escape degenerates to the declared
+  entry instead.
 
-    ⚑ The defaults are READ OFF ``SCOPE_WHITELISTS``, never re-spelled: an unrepointed
-    root must produce that tuple EXACTLY, which is what
-    ``test_the_respelling_degenerates_to_the_declared_table`` pins.
-    """
-    default_template, default_chapter = SCOPE_WHITELISTS["workset"]
+  ⚑ The defaults are READ OFF ``SCOPE_WHITELISTS``, never re-spelled: an unrepointed
+  root must produce that tuple EXACTLY, which is what
+  ``test_the_respelling_degenerates_to_the_declared_table`` pins.
+  """
+  default_template, default_chapter = SCOPE_WHITELISTS["workset"]
 
-    def store_rel(root: Path | None) -> str | None:
-        if root is None or not _is_contained(root, workset_path):
-            return None
-        try:
-            return root.relative_to(workset_path).as_posix()
-        except ValueError:
-            return None
+  def store_rel(root: Path | None) -> str | None:
+    if root is None or not _is_contained(root, workset_path):
+      return None
+    try:
+      return root.relative_to(workset_path).as_posix()
+    except ValueError:
+      return None
 
-    template_rel, canon_rel = store_rel(template_root), store_rel(canon_root)
-    return (
-        default_template if template_rel is None else template_rel,
-        default_chapter if canon_rel is None else f"{canon_rel}/{_CANON_CHAPTER_LEAF}",
-    )
-
-
-def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool,
-                        canon_root: Path | None) -> tuple[Path, Path] | None:
-    """The (source, destination) pair of the workset stamp's copy — ONE definition.
-
-    ``None`` when the root NULLS ``workset.canon``: the canon layer is SKIPPED, so
-    nothing is copied and nothing is refused.  ⚑ THE MOLD'S ONLY TIER IS ITS CANON ONE
-    (:data:`_MOLD_CANON_ROOT`) — the ``template/`` skeleton is ``mkdir``\\ ed, never
-    copied — so a skipped canon layer skips the copy whole, on either half.
-
-    ⚑ The PRE-FLIGHT and the STAMP must narrow identically or the check would clear a
-    copy it never looked at; both read this, neither respells it.
-
-    ⚑ The caller always passes ``dest_root=workset_path``, NOT this *dest*.  The
-    whitelist reads the STORE-relative path (see :func:`_check_whitelist`), so
-    narrowing the copy to the canon tier must not narrow the frame it is judged in — do
-    that and every entry looks top-level and the deny-by-default predicate goes blind.
-
-    ⚑ The SOURCE stays the mold's canon tier (:func:`workset_mold_canon_source`) while the
-    DEST is the resolved ``workset.canon``: the mold is one SYSTEM tree shared by every
-    workset, so a per-workset repoint moves where content lands, never where it is read
-    from.
-    """
-    mold = std.template / PACKAGED_WORKSET_TEMPLATE
-    if canon_root is None:
-        return None
-    if canon_only:
-        return workset_mold_canon_source(std), canon_root
-    return mold, workset_path
+  template_rel, canon_rel = store_rel(template_root), store_rel(canon_root)
+  return (
+    default_template if template_rel is None else template_rel,
+    default_chapter if canon_rel is None else f"{canon_rel}/{_CANON_CHAPTER_LEAF}",
+  )
 
 
-def check_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str,
-                           canon_only: bool = False) -> None:
-    """PRE-FLIGHT the workset mold against the workset whitelist; write nothing.
+def _workset_stamp_copy(
+  std: StandardPaths, workset_path: Path, canon_only: bool, canon_root: Path | None
+) -> tuple[Path, Path] | None:
+  """The (source, destination) pair of the workset stamp's copy — ONE definition.
 
-    ⚑ Runs FIRST, before anything is registered or created: a refusal part-way
-    through :func:`install_workset_template` would leave a REGISTERED workset with a
-    PARTIAL copy, recoverable only by ``workset rm``.
+  ``None`` when the root NULLS ``workset.canon``: the canon layer is SKIPPED, so
+  nothing is copied and nothing is refused.  ⚑ THE MOLD'S ONLY TIER IS ITS CANON ONE
+  (:data:`_MOLD_CANON_ROOT`) — the ``template/`` skeleton is ``mkdir``\\ ed, never
+  copied — so a skipped canon layer skips the copy whole, on either half.
 
-    ⚑⚑ *canon_only* pre-flights the STANDALONE stamp, and that reason does NOT
-    transfer — nothing is registered yet on that path.  A DIFFERENT one does, and it
-    is stronger: the destination is a directory THE USER ALREADY HAD, which kanibako
-    never deletes, so a refusal cannot be cleaned up by removing the destination.  The
-    refusal has to land before the first byte, not after.
-    """
-    from kanibako.settings.workset_dirkeys import EarlyScope
+  ⚑ The PRE-FLIGHT and the STAMP must narrow identically or the check would clear a
+  copy it never looked at; both read this, neither respells it.
 
-    canon_root, template_root = _workset_stamp_dirs(
-        workset_path, canon_only=canon_only, early=EarlyScope(std.early_system, workset_name),
-    )
-    stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
-    if stamp is None:
-        return
+  ⚑ The caller always passes ``dest_root=workset_path``, NOT this *dest*.  The
+  whitelist reads the STORE-relative path (see :func:`_check_whitelist`), so
+  narrowing the copy to the canon tier must not narrow the frame it is judged in — do
+  that and every entry looks top-level and the deny-by-default predicate goes blind.
+
+  ⚑ The SOURCE stays the mold's canon tier (:func:`workset_mold_canon_source`) while the
+  DEST is the resolved ``workset.canon``: the mold is one SYSTEM tree shared by every
+  workset, so a per-workset repoint moves where content lands, never where it is read
+  from.
+  """
+  mold = std.template / PACKAGED_WORKSET_TEMPLATE
+  if canon_root is None:
+    return None
+  if canon_only:
+    return workset_mold_canon_source(std), canon_root
+  return mold, workset_path
+
+
+def check_workset_template(
+  std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool = False
+) -> None:
+  """PRE-FLIGHT the workset mold against the workset whitelist; write nothing.
+
+  ⚑ Runs FIRST, before anything is registered or created: a refusal part-way
+  through :func:`install_workset_template` would leave a REGISTERED workset with a
+  PARTIAL copy, recoverable only by ``workset rm``.
+
+  ⚑⚑ *canon_only* pre-flights the STANDALONE stamp, and that reason does NOT
+  transfer — nothing is registered yet on that path.  A DIFFERENT one does, and it
+  is stronger: the destination is a directory THE USER ALREADY HAD, which kanibako
+  never deletes, so a refusal cannot be cleaned up by removing the destination.  The
+  refusal has to land before the first byte, not after.
+  """
+  from kanibako.settings.workset_dirkeys import EarlyScope
+
+  canon_root, template_root = _workset_stamp_dirs(
+    workset_path,
+    canon_only=canon_only,
+    early=EarlyScope(std.early_system, workset_name),
+  )
+  stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+  if stamp is None:
+    return
+  src, dest = stamp
+  copy_tree(
+    src,
+    dest,
+    dest_root=workset_path,
+    check_only=True,
+    scope=WorksetStampScope(workset_path, canon_root, template_root),
+  )
+
+
+def install_workset_template(
+  std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool = False
+) -> None:
+  """Stamp a NEW workset store from the host workset mold — the J-6 A-action.
+
+  This is the LIVE single-source shape for a host template: one mold, one
+  ``copy_tree``, one whitelist.  Create-if-absent, so re-running adds only what is
+  missing.
+
+  ⚑⚑ *canon_only* is the STANDALONE half: the CANON tier only, never the
+  ``template/`` skeleton.  Both halves are spec-backed and the reasons differ — see
+  :data:`_CANON_CHAPTER_LEAF`.  ⚑ The canon chapter is guarantee-created on BOTH
+  paths, which is why that one line sits outside the branch: it is the half the two
+  modes SHARE, not something the standalone path also happens to do.
+
+  ⚑⚑ BOTH LEAVES ARE RESOLVED KEYS, NEVER LITERALS (:func:`_workset_stamp_dirs`).
+  The reachable repoint is the STANDALONE one: that destination is a directory the
+  user ALREADY HAD, so it may already carry a ``workset.yaml`` that repoints
+  ``workset.canon``.  Stamping the literal ``canon/`` there seeds a tier nothing
+  reads, because the chapter bind asks the key.
+
+  ⚑ The whitelist matters MOST here, and not for the reason this comment used to
+  give.  A STANDALONE ``<workset_path>`` is a kanibako-MANAGED wrapper
+  (``workset.yaml`` + ``box_data/`` + ``vault/{ro,rw}/`` + ``workspace/``); the
+  user's own code lives one level down in ``workspace/`` (the workspace is a SUBDIR
+  of the root — ``paths.py``, drift H) and no stamp ever reaches it.  What IS true is
+  that the wrapper is a directory the user already had — ``resolve_standalone_project``
+  requires ``root.is_dir()`` — so the deny-by-default predicate guards a tree nothing
+  here is entitled to clean up afterwards.
+
+  ⚑⚑ THE GUARANTEE-CREATE ``mkdir``\\ s BELOW ARE CONTAINMENT-CHECKED AND DELIBERATELY
+  NOT WHITELIST-CHECKED.  They run after :func:`copy_tree` and so reach neither of its
+  guards, and once both leaves are RESOLVED keys an unguarded ``mkdir`` is a real
+  escape: a ``workset.template`` of ``../elsewhere`` planted seven directories outside
+  the root with nothing refusing, and on the standalone path an out-of-root
+  ``workset.canon`` was refused only INCIDENTALLY — by the copy that happened to share
+  its destination, so emptying the mold's ``canon/`` half (``copy_tree`` returns early
+  on an absent source) let the chapter ``mkdir`` land outside the root unremarked.
+  :func:`_assert_contained` is what closes that, and it also catches the escape the
+  leaf check above cannot see: a SYMLINKED intermediate under an in-root leaf.
+  ⚑ The WHITELIST, by contrast, has nothing to say here and adding it would only look
+  like diligence.  These targets are composed from the SAME two roots
+  :func:`_workset_scope_allowed` respells its entries FROM, so the check reduces to
+  comparing each path with its own prefix — and when a root is out of the store the
+  respelling has no entry for it at all, which is the leaf check's job, not the
+  table's.  ⚑ Adding it would not merely be inert: a leaf repointed to the ROOT ITSELF
+  respells to the entry ``'.'``, which is every relative path's prefix in fact and
+  matches none of them as a STRING, so the check would refuse a stamp that works.
+  """
+  from kanibako.settings.workset_dirkeys import EarlyScope
+
+  canon_root, template_root = _workset_stamp_dirs(
+    workset_path,
+    canon_only=canon_only,
+    early=EarlyScope(std.early_system, workset_name),
+  )
+  stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+  if stamp is not None:
     src, dest = stamp
-    copy_tree(src, dest, dest_root=workset_path, check_only=True,
-              scope=WorksetStampScope(workset_path, canon_root, template_root))
-
-
-def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str,
-                             canon_only: bool = False) -> None:
-    """Stamp a NEW workset store from the host workset mold — the J-6 A-action.
-
-    This is the LIVE single-source shape for a host template: one mold, one
-    ``copy_tree``, one whitelist.  Create-if-absent, so re-running adds only what is
-    missing.
-
-    ⚑⚑ *canon_only* is the STANDALONE half: the CANON tier only, never the
-    ``template/`` skeleton.  Both halves are spec-backed and the reasons differ — see
-    :data:`_CANON_CHAPTER_LEAF`.  ⚑ The canon chapter is guarantee-created on BOTH
-    paths, which is why that one line sits outside the branch: it is the half the two
-    modes SHARE, not something the standalone path also happens to do.
-
-    ⚑⚑ BOTH LEAVES ARE RESOLVED KEYS, NEVER LITERALS (:func:`_workset_stamp_dirs`).
-    The reachable repoint is the STANDALONE one: that destination is a directory the
-    user ALREADY HAD, so it may already carry a ``workset.yaml`` that repoints
-    ``workset.canon``.  Stamping the literal ``canon/`` there seeds a tier nothing
-    reads, because the chapter bind asks the key.
-
-    ⚑ The whitelist matters MOST here, and not for the reason this comment used to
-    give.  A STANDALONE ``<workset_path>`` is a kanibako-MANAGED wrapper
-    (``workset.yaml`` + ``box_data/`` + ``vault/{ro,rw}/`` + ``workspace/``); the
-    user's own code lives one level down in ``workspace/`` (the workspace is a SUBDIR
-    of the root — ``paths.py``, drift H) and no stamp ever reaches it.  What IS true is
-    that the wrapper is a directory the user already had — ``resolve_standalone_project``
-    requires ``root.is_dir()`` — so the deny-by-default predicate guards a tree nothing
-    here is entitled to clean up afterwards.
-
-    ⚑⚑ THE GUARANTEE-CREATE ``mkdir``\\ s BELOW ARE CONTAINMENT-CHECKED AND DELIBERATELY
-    NOT WHITELIST-CHECKED.  They run after :func:`copy_tree` and so reach neither of its
-    guards, and once both leaves are RESOLVED keys an unguarded ``mkdir`` is a real
-    escape: a ``workset.template`` of ``../elsewhere`` planted seven directories outside
-    the root with nothing refusing, and on the standalone path an out-of-root
-    ``workset.canon`` was refused only INCIDENTALLY — by the copy that happened to share
-    its destination, so emptying the mold's ``canon/`` half (``copy_tree`` returns early
-    on an absent source) let the chapter ``mkdir`` land outside the root unremarked.
-    :func:`_assert_contained` is what closes that, and it also catches the escape the
-    leaf check above cannot see: a SYMLINKED intermediate under an in-root leaf.
-    ⚑ The WHITELIST, by contrast, has nothing to say here and adding it would only look
-    like diligence.  These targets are composed from the SAME two roots
-    :func:`_workset_scope_allowed` respells its entries FROM, so the check reduces to
-    comparing each path with its own prefix — and when a root is out of the store the
-    respelling has no entry for it at all, which is the leaf check's job, not the
-    table's.  ⚑ Adding it would not merely be inert: a leaf repointed to the ROOT ITSELF
-    respells to the entry ``'.'``, which is every relative path's prefix in fact and
-    matches none of them as a STRING, so the check would refuse a stamp that works.
-    """
-    from kanibako.settings.workset_dirkeys import EarlyScope
-
-    canon_root, template_root = _workset_stamp_dirs(
-        workset_path, canon_only=canon_only, early=EarlyScope(std.early_system, workset_name),
+    copy_tree(
+      src,
+      dest,
+      dest_root=workset_path,
+      scope=WorksetStampScope(workset_path, canon_root, template_root),
     )
-    stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
-    if stamp is not None:
-        src, dest = stamp
-        copy_tree(src, dest, dest_root=workset_path,
-                  scope=WorksetStampScope(workset_path, canon_root, template_root))
-    if not canon_only and template_root is not None:
-        for rel in _BOX_TEMPLATE_SKELETON:
-            target = template_root / rel
-            _assert_contained(target, workset_path, what="workset template skeleton dir")
-            target.mkdir(parents=True, exist_ok=True)
-    if canon_root is not None:
-        chapter = canon_root / _CANON_CHAPTER_LEAF
-        _assert_contained(chapter, workset_path, what="workset canon chapter dir")
-        chapter.mkdir(parents=True, exist_ok=True)
+  if not canon_only and template_root is not None:
+    for rel in _BOX_TEMPLATE_SKELETON:
+      target = template_root / rel
+      _assert_contained(target, workset_path, what="workset template skeleton dir")
+      target.mkdir(parents=True, exist_ok=True)
+  if canon_root is not None:
+    chapter = canon_root / _CANON_CHAPTER_LEAF
+    _assert_contained(chapter, workset_path, what="workset canon chapter dir")
+    chapter.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -962,190 +999,194 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_
 # ---------------------------------------------------------------------------
 
 
-def handbook_layer_source_keys(
-    proj: ProjectPaths, agent_id: str | None
-) -> tuple[str, ...]:
-    """The ORDERED dotted SOURCE keys whose values root the three handbook layers.
+def handbook_layer_source_keys(proj: ProjectPaths, agent_id: str | None) -> tuple[str, ...]:
+  """The ORDERED dotted SOURCE keys whose values root the three handbook layers.
 
-    ⚑ DERIVED FROM :func:`template_seed_defaults`, not restated beside it — that is
-    the whole point of the function: the gate deciding whether a layer exists is read
-    from the one table rather than re-implemented here where it could drift.
-    ``system.template`` is named directly because it is already floor-materialized.
+  ⚑ DERIVED FROM :func:`template_seed_defaults`, not restated beside it — that is
+  the whole point of the function: the gate deciding whether a layer exists is read
+  from the one table rather than re-implemented here where it could drift.
+  ``system.template`` is named directly because it is already floor-materialized.
 
-    ⚑ THE GATE IS THE ``seeded`` LAYER, NOT THE SOURCE SCALAR.  A layer's source key may
-    now be floored elsewhere (``workset.template`` is
-    ``settings_launch.workset_anchor_floor``'s), so testing for the scalar would ask the
-    seed table about a row it no longer declares.  The LAYER is what this function is
-    enumerating the roots of, and it is the entry the table always carries.
+  ⚑ THE GATE IS THE ``seeded`` LAYER, NOT THE SOURCE SCALAR.  A layer's source key may
+  now be floored elsewhere (``workset.template`` is
+  ``settings_launch.workset_anchor_floor``'s), so testing for the scalar would ask the
+  seed table about a row it no longer declares.  The LAYER is what this function is
+  enumerating the roots of, and it is the entry the table always carries.
 
-    ⚑ THESE STAY KEYS.  They carry the user's repoint route (``config set
-    workset.template`` reroutes this copy, pinned by the repoint tests); nothing here
-    hardcodes a path.
-    """
-    defs = template_seed_defaults(proj, agent_id)
-    keys = ["system.template"]
-    if agent_id and {f"agent.{agent_id}.seeded", "agent.default.seeded"} & defs.keys():
-        keys.append(f"agent.{agent_id}.template")
-    if "workset.seeded" in defs:
-        keys.append("workset.template")
-    return tuple(keys)
+  ⚑ THESE STAY KEYS.  They carry the user's repoint route (``config set
+  workset.template`` reroutes this copy, pinned by the repoint tests); nothing here
+  hardcodes a path.
+  """
+  defs = template_seed_defaults(proj, agent_id)
+  keys = ["system.template"]
+  if agent_id and {f"agent.{agent_id}.seeded", "agent.default.seeded"} & defs.keys():
+    keys.append(f"agent.{agent_id}.template")
+  if "workset.seeded" in defs:
+    keys.append("workset.template")
+  return tuple(keys)
 
 
 def install_box_handbook_template(
-    dest: Path, layer_roots: Iterable[Path],
+  dest: Path,
+  layer_roots: Iterable[Path],
 ) -> None:
-    """Fill a NEW box's OWN handbook chapter from the three host template layers.
+  """Fill a NEW box's OWN handbook chapter from the three host template layers.
 
-    ⚑⚑⚑ **THE SPECIAL CASE.  READ THE QUARANTINE BLOCK ABOVE BEFORE COPYING ANY OF
-    THIS.**  *dest* is the resolved ``{box.canon}/handbook``; *layer_roots* are the
-    RESOLVED ``<scope>.template`` roots in apply order.
+  ⚑⚑⚑ **THE SPECIAL CASE.  READ THE QUARANTINE BLOCK ABOVE BEFORE COPYING ANY OF
+  THIS.**  *dest* is the resolved ``{box.canon}/handbook``; *layer_roots* are the
+  RESOLVED ``<scope>.template`` roots in apply order.
 
-    ⚑ THE ROOTS ARE PARAMETERS, DELIBERATELY — resolved at the seam that holds the
-    launch snapshot, so nothing here can disagree with what the snapshot said.
+  ⚑ THE ROOTS ARE PARAMETERS, DELIBERATELY — resolved at the seam that holds the
+  launch snapshot, so nothing here can disagree with what the snapshot said.
 
-    ⚑ SEED-ONCE / CREATE-IF-ABSENT via :func:`stage_layers`, so a re-create into a
-    leftover box store never overwrites a chapter the user has edited.  That failsafe
-    answers a shipped data-loss bug; it is not refactorable away.
+  ⚑ SEED-ONCE / CREATE-IF-ABSENT via :func:`stage_layers`, so a re-create into a
+  leftover box store never overwrites a chapter the user has edited.  That failsafe
+  answers a shipped data-loss bug; it is not refactorable away.
 
-    ⚑ NO DEST WHITELIST HERE, and that is deliberate — do not "restore" one.  There
-    is ONE dest policy on this path (``_host_copy_dest``'s warn-and-skip at the
-    caller), and a ``scope="box"`` check could only ever fire on that same key-fixed
-    dest: a SECOND SPELLING OF ONE CONDITION (CONVENTIONS §0), disagreeing about
-    severity.  Likewise NO PRE-FLIGHT TWIN (contrast :func:`check_workset_template`):
-    this copy has no refusal to pre-flight.  Both contrasts are worked out in the
-    llm-doc.
-    """
-    # GUARANTEE-CREATE: unconditional, so the RO box-chapter bind ALWAYS mounts —
-    # empty, if all three layers are.
-    dest.mkdir(parents=True, exist_ok=True)
-    stage_layers(dest, [Path(root) / _SEED_SRC_HANDBOOK for root in layer_roots])
+  ⚑ NO DEST WHITELIST HERE, and that is deliberate — do not "restore" one.  There
+  is ONE dest policy on this path (``_host_copy_dest``'s warn-and-skip at the
+  caller), and a ``scope="box"`` check could only ever fire on that same key-fixed
+  dest: a SECOND SPELLING OF ONE CONDITION (CONVENTIONS §0), disagreeing about
+  severity.  Likewise NO PRE-FLIGHT TWIN (contrast :func:`check_workset_template`):
+  this copy has no refusal to pre-flight.  Both contrasts are worked out in the
+  llm-doc.
+  """
+  # GUARANTEE-CREATE: unconditional, so the RO box-chapter bind ALWAYS mounts —
+  # empty, if all three layers are.
+  dest.mkdir(parents=True, exist_ok=True)
+  stage_layers(dest, [Path(root) / _SEED_SRC_HANDBOOK for root in layer_roots])
 
 
 def install_packaged_templates(
-    std: StandardPaths, agent_names: list[str], refresh: bool = False,
+  std: StandardPaths,
+  agent_names: list[str],
+  refresh: bool = False,
 ) -> None:
-    """Install the packaged content into its host stores — an ENUMERATED set (P-S2).
+  """Install the packaged content into its host stores — an ENUMERATED set (P-S2).
 
-    Each (packaged subtree → host dest) pair is named because each has a different
-    OWNER and therefore a different copy rule; the llm-doc tabulates them.
+  Each (packaged subtree → host dest) pair is named because each has a different
+  OWNER and therefore a different copy rule; the llm-doc tabulates them.
 
-    ⚑⚑ ``refresh=True`` (the ``kanibako setup`` TRUE-REFRESH) reaches the STAGING
-    rows ONLY.  The user-owned rows are create-if-absent on EVERY path — J-3 item 1:
-    *"user-owned canon stores are NEVER overwritten by any implicit path"*.  Their
-    differences are REPORTED instead (:func:`plan_template_refresh`'s ``kept`` list).
-    """
-    base_src = _packaged_base_template()
-    if base_src is not None:
-        # STAGING (system-owned): the box + workset molds, refreshable.
-        #
-        # ⚑ SCOPED, and this is where J-2's box whitelist actually BITES: staging is
-        # the earliest — and only — point a planted settings file can be REFUSED.
-        # Nothing downstream re-checks it, because the two downstream copies read
-        # ``box/home`` and ``box/canon/handbook`` directly.
-        copy_tree(
-            base_src / PACKAGED_BOX_TEMPLATE,
-            std.template / PACKAGED_BOX_TEMPLATE,
-            overwrite=refresh, scope="box",
-        )
-        copy_tree(
-            base_src / PACKAGED_WORKSET_TEMPLATE,
-            std.template / PACKAGED_WORKSET_TEMPLATE,
-            overwrite=refresh, scope="workset",
-        )
-        # USER-OWNED: the system handbook — create-if-absent ALWAYS (J-3 item 1).
-        # ⚑ UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope store
-        # root, so there is no store whitelist to apply.
-        # ⚑ A NULL ``system.canon`` HAS NO ROOT, so nothing is created into it (spec §2c
-        # "nothing is created until someone actually writes a chapter").  ⚑ NOT IN MY
-        # GRANT — named in the report; the alternative was a ``TypeError`` at create.
-        if std.canon is not None:
-            copy_tree(
-                base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
-            )
-    # The agent MOLD dir exists even though nothing packaged is copied into it (D5/D7).
-    (std.template / AGENT_MOLD_DIRNAME).mkdir(parents=True, exist_ok=True)
-    # USER-OWNED: the agent stores — the A-action, default included.
-    ensure_agent_stores(std, ["default", *agent_names])
+  ⚑⚑ ``refresh=True`` (the ``kanibako setup`` TRUE-REFRESH) reaches the STAGING
+  rows ONLY.  The user-owned rows are create-if-absent on EVERY path — J-3 item 1:
+  *"user-owned canon stores are NEVER overwritten by any implicit path"*.  Their
+  differences are REPORTED instead (:func:`plan_template_refresh`'s ``kept`` list).
+  """
+  base_src = _packaged_base_template()
+  if base_src is not None:
+    # STAGING (system-owned): the box + workset molds, refreshable.
+    #
+    # ⚑ SCOPED, and this is where J-2's box whitelist actually BITES: staging is
+    # the earliest — and only — point a planted settings file can be REFUSED.
+    # Nothing downstream re-checks it, because the two downstream copies read
+    # ``box/home`` and ``box/canon/handbook`` directly.
+    copy_tree(
+      base_src / PACKAGED_BOX_TEMPLATE,
+      std.template / PACKAGED_BOX_TEMPLATE,
+      overwrite=refresh,
+      scope="box",
+    )
+    copy_tree(
+      base_src / PACKAGED_WORKSET_TEMPLATE,
+      std.template / PACKAGED_WORKSET_TEMPLATE,
+      overwrite=refresh,
+      scope="workset",
+    )
+    # USER-OWNED: the system handbook — create-if-absent ALWAYS (J-3 item 1).
+    # ⚑ UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope store
+    # root, so there is no store whitelist to apply.
+    # ⚑ A NULL ``system.canon`` HAS NO ROOT, so nothing is created into it (spec §2c
+    # "nothing is created until someone actually writes a chapter").  ⚑ NOT IN MY
+    # GRANT — named in the report; the alternative was a ``TypeError`` at create.
+    if std.canon is not None:
+      copy_tree(
+        base_src / PACKAGED_HANDBOOK,
+        std.canon / _CANON_CHAPTER_LEAF,
+      )
+  # The agent MOLD dir exists even though nothing packaged is copied into it (D5/D7).
+  (std.template / AGENT_MOLD_DIRNAME).mkdir(parents=True, exist_ok=True)
+  # USER-OWNED: the agent stores — the A-action, default included.
+  ensure_agent_stores(std, ["default", *agent_names])
 
 
 def _is_shipped_content(entry: Path) -> bool:
-    """True iff *entry* is a real shipped file (not a build/editor artifact).
+  """True iff *entry* is a real shipped file (not a build/editor artifact).
 
-    ⚑ Junk never ships in a wheel, so hashing it would make the content digest
-    non-deterministic across environments and report drift that never shipped.
-    """
-    if not entry.is_file():
-        return False
-    if "__pycache__" in entry.parts:
-        return False
-    if entry.suffix in (".pyc", ".pyo"):
-        return False
-    if entry.name == ".DS_Store":
-        return False
-    return True
+  ⚑ Junk never ships in a wheel, so hashing it would make the content digest
+  non-deterministic across environments and report drift that never shipped.
+  """
+  if not entry.is_file():
+    return False
+  if "__pycache__" in entry.parts:
+    return False
+  if entry.suffix in (".pyc", ".pyo"):
+    return False
+  if entry.name == ".DS_Store":
+    return False
+  return True
 
 
 def walk_shipped_files(root: Path) -> list[tuple[str, Path]]:
-    """Return the SORTED ``(posix-relpath, file-path)`` shipped-file list under *root*.
+  """Return the SORTED ``(posix-relpath, file-path)`` shipped-file list under *root*.
 
-    The ONE traversal shared by both consumers of a packaged content tree.  ⚑ SORTED
-    so the enumeration is deterministic across machines and filesystem walk order.
-    """
-    files: list[tuple[str, Path]] = []
-    for entry in root.rglob("*"):
-        if _is_shipped_content(entry):
-            files.append((entry.relative_to(root).as_posix(), entry))
-    files.sort(key=lambda item: item[0])
-    return files
+  The ONE traversal shared by both consumers of a packaged content tree.  ⚑ SORTED
+  so the enumeration is deterministic across machines and filesystem walk order.
+  """
+  files: list[tuple[str, Path]] = []
+  for entry in root.rglob("*"):
+    if _is_shipped_content(entry):
+      files.append((entry.relative_to(root).as_posix(), entry))
+  files.sort(key=lambda item: item[0])
+  return files
 
 
 def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]:
-    """Return the SORTED ``(namespaced-path, file-bytes)`` content manifest.
+  """Return the SORTED ``(namespaced-path, file-bytes)`` content manifest.
 
-    ⚑ The source-distinct prefix (``base/`` / ``shared/`` / ``agent/<name>/``) is what
-    stops a file being double-counted; SORTED keeps the manifest deterministic.
-    """
-    entries: list[tuple[str, bytes]] = []
+  ⚑ The source-distinct prefix (``base/`` / ``shared/`` / ``agent/<name>/``) is what
+  stops a file being double-counted; SORTED keeps the manifest deterministic.
+  """
+  entries: list[tuple[str, bytes]] = []
 
-    base_src = _packaged_base_template()
-    if base_src is not None:
-        for rel, entry in walk_shipped_files(base_src):
-            entries.append((f"base/{rel}", entry.read_bytes()))
+  base_src = _packaged_base_template()
+  if base_src is not None:
+    for rel, entry in walk_shipped_files(base_src):
+      entries.append((f"base/{rel}", entry.read_bytes()))
 
-    # The RO packaged canon is enumerated here ONLY so the setup gate still trips
-    # when the shipped canon content drifts — it has no install target.
-    bundle_src = _packaged_shared_bundle()
-    if bundle_src is not None:
-        for rel, entry in walk_shipped_files(bundle_src):
-            entries.append((f"shared/{rel}", entry.read_bytes()))
+  # The RO packaged canon is enumerated here ONLY so the setup gate still trips
+  # when the shipped canon content drifts — it has no install target.
+  bundle_src = _packaged_shared_bundle()
+  if bundle_src is not None:
+    for rel, entry in walk_shipped_files(bundle_src):
+      entries.append((f"shared/{rel}", entry.read_bytes()))
 
-    for agent_name in sorted(agent_names):
-        agent_src = _packaged_agent_store(agent_name)
-        if agent_src is None:
-            continue
-        for rel, entry in walk_shipped_files(agent_src):
-            entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
+  for agent_name in sorted(agent_names):
+    agent_src = _packaged_agent_store(agent_name)
+    if agent_src is None:
+      continue
+    for rel, entry in walk_shipped_files(agent_src):
+      entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 
-    entries.sort(key=lambda item: item[0])
-    return entries
+  entries.sort(key=lambda item: item[0])
+  return entries
 
 
 def packaged_templates_digest(agent_names: list[str]) -> str:
-    """Return a content-manifest sha256 over the packaged template src trees.
+  """Return a content-manifest sha256 over the packaged template src trees.
 
-    A CONTENT hash, not a version marker: it is immune to the ``setup_completed``
-    silent forward-bump that would mask template drift.
+  A CONTENT hash, not a version marker: it is immune to the ``setup_completed``
+  silent forward-bump that would mask template drift.
 
-    ⚑ NO RUNTIME CONSUMER since R-38 (verified 2026-08-02) — do not read that as
-    dead.  It is kept for the RELEASE-TIME check, which is planned CI work (plan step
-    C2) and is NOT wired yet.
-    """
-    digest = hashlib.sha256()
-    for key, data in _packaged_manifest_entries(agent_names):
-        digest.update(key.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(hashlib.sha256(data).digest())
-    return digest.hexdigest()
+  ⚑ NO RUNTIME CONSUMER since R-38 (verified 2026-08-02) — do not read that as
+  dead.  It is kept for the RELEASE-TIME check, which is planned CI work (plan step
+  C2) and is NOT wired yet.
+  """
+  digest = hashlib.sha256()
+  for key, data in _packaged_manifest_entries(agent_names):
+    digest.update(key.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(hashlib.sha256(data).digest())
+  return digest.hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -1169,202 +1210,215 @@ _FENCE_RE = re.compile(r"(^|\n)(```|~~~)[^\n]*\n.*?(\n\2[^\n]*(?=\n|$))", re.DOT
 
 
 def _normalize_markdown(text: str) -> str:
-    """Normalize *text* for the MD equivalence tier — CONSERVATIVELY.
+  """Normalize *text* for the MD equivalence tier — CONSERVATIVELY.
 
-    ⚑ TWO THINGS ARE DELIBERATELY LEFT ALONE, because in markdown they are SYNTAX,
-    not whitespace: the interior of a FENCED CODE BLOCK, and a TRAILING TWO-SPACE
-    hard line break.  Under-normalizing costs a spurious "different" report;
-    over-normalizing would HIDE a real change, hence the bias.
-    """
-    fences: list[str] = []
+  ⚑ TWO THINGS ARE DELIBERATELY LEFT ALONE, because in markdown they are SYNTAX,
+  not whitespace: the interior of a FENCED CODE BLOCK, and a TRAILING TWO-SPACE
+  hard line break.  Under-normalizing costs a spurious "different" report;
+  over-normalizing would HIDE a real change, hence the bias.
+  """
+  fences: list[str] = []
 
-    def _stash(match: re.Match[str]) -> str:
-        fences.append(match.group(0))
-        return f"\x00FENCE{len(fences) - 1}\x00"
+  def _stash(match: re.Match[str]) -> str:
+    fences.append(match.group(0))
+    return f"\x00FENCE{len(fences) - 1}\x00"
 
-    text = text.replace("\r\n", "\n")
-    text = _HTML_COMMENT_RE.sub("", text)
-    text = _FENCE_RE.sub(_stash, text)
-    lines = [
-        line if line.endswith("  ") and line.strip() else line.rstrip()
-        for line in text.split("\n")
-    ]
-    out: list[str] = []
-    for line in lines:
-        if not line and out and not out[-1]:
-            continue  # collapse blank-line runs
-        out.append(line)
-    text = "\n".join(out).strip("\n")
-    for i, fence in enumerate(fences):
-        text = text.replace(f"\x00FENCE{i}\x00", fence)
-    return text
+  text = text.replace("\r\n", "\n")
+  text = _HTML_COMMENT_RE.sub("", text)
+  text = _FENCE_RE.sub(_stash, text)
+  lines = [
+    line if line.endswith("  ") and line.strip() else line.rstrip() for line in text.split("\n")
+  ]
+  out: list[str] = []
+  for line in lines:
+    if not line and out and not out[-1]:
+      continue  # collapse blank-line runs
+    out.append(line)
+  text = "\n".join(out).strip("\n")
+  for i, fence in enumerate(fences):
+    text = text.replace(f"\x00FENCE{i}\x00", fence)
+  return text
 
 
 def _equivalent(src_file: Path, target: Path) -> bool:
-    """True when *target* is byte-equal to, or EQUIVALENT to, *src_file*.
+  """True when *target* is byte-equal to, or EQUIVALENT to, *src_file*.
 
-    ONE strategy table keyed by suffix (J-3 item 2).  ⚑ A YAML parse failure on
-    EITHER side ⇒ "different", never equivalent: an unparseable file is exactly the
-    case a report should surface.  ⚑ BOTH SIDES GO THROUGH ``parse_doc_text``, so a
-    repeated key, a self-referential anchor, or unbounded nesting is a parse failure
-    here too — a file that reads as a DIFFERENT ANSWER under last-wins is a difference,
-    and needs no new branch below to say so.  ⚑ The YAML branch compares the two PARSED
-    documents with :func:`_same_doc`.
-    """
-    try:
-        src_bytes = src_file.read_bytes()
-        target_bytes = target.read_bytes()
-    except OSError:
-        return False
-    if src_bytes == target_bytes:
-        return True
-    suffix = src_file.suffix.lower()
-    if suffix in (".yaml", ".yml"):
-        import yaml
-
-        from kanibako.settings.config_io import parse_doc_text
-
-        try:
-            return _same_doc(
-                parse_doc_text(src_bytes.decode()),
-                parse_doc_text(target_bytes.decode()),
-            )
-        except (yaml.YAMLError, UnicodeDecodeError):
-            return False
-    if suffix == ".md":
-        try:
-            return _normalize_markdown(src_bytes.decode()) == _normalize_markdown(
-                target_bytes.decode()
-            )
-        except UnicodeDecodeError:
-            return False
+  ONE strategy table keyed by suffix (J-3 item 2).  ⚑ A YAML parse failure on
+  EITHER side ⇒ "different", never equivalent: an unparseable file is exactly the
+  case a report should surface.  ⚑ BOTH SIDES GO THROUGH ``parse_doc_text``, so a
+  repeated key, a self-referential anchor, or unbounded nesting is a parse failure
+  here too — a file that reads as a DIFFERENT ANSWER under last-wins is a difference,
+  and needs no new branch below to say so.  ⚑ The YAML branch compares the two PARSED
+  documents with :func:`_same_doc`.
+  """
+  try:
+    src_bytes = src_file.read_bytes()
+    target_bytes = target.read_bytes()
+  except OSError:
     return False
+  if src_bytes == target_bytes:
+    return True
+  suffix = src_file.suffix.lower()
+  if suffix in (".yaml", ".yml"):
+    import yaml
+
+    from kanibako.settings.config_io import parse_doc_text
+
+    try:
+      return _same_doc(
+        parse_doc_text(src_bytes.decode()),
+        parse_doc_text(target_bytes.decode()),
+      )
+    except (yaml.YAMLError, UnicodeDecodeError):
+      return False
+  if suffix == ".md":
+    try:
+      return _normalize_markdown(src_bytes.decode()) == _normalize_markdown(target_bytes.decode())
+    except UnicodeDecodeError:
+      return False
+  return False
 
 
 def _same_doc(a: object, b: object) -> bool:
-    """True when two PARSED documents are equal, at a cost that follows CONTAINERS.
+  """True when two PARSED documents are equal, at a cost that follows CONTAINERS.
 
-    ⚑⚑ NOT PATHS.  A document fanned out over shared aliases reaches one table by
-    ``fanout ** levels`` PATHS, and two SEPARATE parses hand this function DISJOINT
-    objects — sharing inside one parse is an identity no comparison sees ACROSS the two
-    sides — so a walk that visits every path is exponential in a number the document's
-    own author picks.  ``proved`` holds the ``(id(x), id(y))`` container pairs ALREADY
-    SHOWN EQUAL, so each is walked once, the work is bounded by the distinct container
-    pairs reached, and the first difference returns at once.
+  ⚑⚑ NOT PATHS.  A document fanned out over shared aliases reaches one table by
+  ``fanout ** levels`` PATHS, and two SEPARATE parses hand this function DISJOINT
+  objects — sharing inside one parse is an identity no comparison sees ACROSS the two
+  sides — so a walk that visits every path is exponential in a number the document's
+  own author picks.  ``proved`` holds the ``(id(x), id(y))`` container pairs ALREADY
+  SHOWN EQUAL, so each is walked once, the work is bounded by the distinct container
+  pairs reached, and the first difference returns at once.
 
-    ⚑ THE ANSWER IS ``==``'S.  Two mappings compare on the same key set and an equal
-    value under each key, two sequences on the same length and equal elements, and
-    EVERY other pair as ``==`` applies it: under a container ``x is y or x == y``, so a
-    shared ``.nan`` leaf is equal, while the TOP-LEVEL call is a plain ``x == y`` and a
-    document that IS a ``.nan`` is not one.  A DIFFERENT kind of container is a plain
-    difference, not a walk.
+  ⚑ THE ANSWER IS ``==``'S.  Two mappings compare on the same key set and an equal
+  value under each key, two sequences on the same length and equal elements, and
+  EVERY other pair as ``==`` applies it: under a container ``x is y or x == y``, so a
+  shared ``.nan`` leaf is equal, while the TOP-LEVEL call is a plain ``x == y`` and a
+  document that IS a ``.nan`` is not one.  A DIFFERENT kind of container is a plain
+  difference, not a walk.
 
-    ⚑ AN ``id`` HERE IS THAT OBJECT'S FOR THE WHOLE CALL: both documents are this
-    call's arguments, so nothing is freed while ``proved`` is live.  ⚑ A pair JOINS it
-    only once it is equal, and a CYCLE cannot arrive — the loader refuses one at parse.
-    Recursion is bounded by ``MAX_DOC_DEPTH``.
-    """
-    proved: set[tuple[int, int]] = set()
+  ⚑ AN ``id`` HERE IS THAT OBJECT'S FOR THE WHOLE CALL: both documents are this
+  call's arguments, so nothing is freed while ``proved`` is live.  ⚑ A pair JOINS it
+  only once it is equal, and a CYCLE cannot arrive — the loader refuses one at parse.
+  Recursion is bounded by ``MAX_DOC_DEPTH``.
+  """
+  proved: set[tuple[int, int]] = set()
 
-    def _walk(x: object, y: object, *, top: bool = False) -> bool:
-        if isinstance(x, dict) and isinstance(y, dict):
-            pair = (id(x), id(y))
-            if pair in proved:
-                return True
-            equal = x.keys() == y.keys() and all(
-                _walk(value, y[key]) for key, value in x.items()
-            )
-        elif isinstance(x, list) and isinstance(y, list):
-            pair = (id(x), id(y))
-            if pair in proved:
-                return True
-            equal = len(x) == len(y) and all(
-                _walk(value, other) for value, other in zip(x, y, strict=True)
-            )
-        else:
-            return x == y if top else x is y or x == y
-        if equal:
-            proved.add(pair)
-        return equal
+  def _walk(x: object, y: object, *, top: bool = False) -> bool:
+    if isinstance(x, dict) and isinstance(y, dict):
+      pair = (id(x), id(y))
+      if pair in proved:
+        return True
+      equal = x.keys() == y.keys() and all(_walk(value, y[key]) for key, value in x.items())
+    elif isinstance(x, list) and isinstance(y, list):
+      pair = (id(x), id(y))
+      if pair in proved:
+        return True
+      equal = len(x) == len(y) and all(
+        _walk(value, other) for value, other in zip(x, y, strict=True)
+      )
+    else:
+      return x == y if top else x is y or x == y
+    if equal:
+      proved.add(pair)
+    return equal
 
-    return _walk(a, b, top=True)
+  return _walk(a, b, top=True)
 
 
 def plan_template_refresh(
-    std: StandardPaths, agent_names: list[str],
+  std: StandardPaths,
+  agent_names: list[str],
 ) -> tuple[list[Path], list[Path], list[Path]]:
-    """Classify every packaged src file by its host target for the setup preview.
+  """Classify every packaged src file by its host target for the setup preview.
 
-    Returns ``(added, overwritten, kept)`` lists of HOST target paths; a file that is
-    byte-equal or :func:`_equivalent` lands in NO list and is deliberately unreported.
-    A pure classification (no writes).  ⚑ A KEPT file is a USER-OWNED one that
-    DIFFERS: reported so the user knows upstream moved on, NEVER overwritten
-    (J-3 item 1).
-    """
-    added: list[Path] = []
-    overwritten: list[Path] = []
-    kept: list[Path] = []
+  Returns ``(added, overwritten, kept)`` lists of HOST target paths; a file that is
+  byte-equal or :func:`_equivalent` lands in NO list and is deliberately unreported.
+  A pure classification (no writes).  ⚑ A KEPT file is a USER-OWNED one that
+  DIFFERS: reported so the user knows upstream moved on, NEVER overwritten
+  (J-3 item 1).
+  """
+  added: list[Path] = []
+  overwritten: list[Path] = []
+  kept: list[Path] = []
 
-    def _classify(
-        src_file: Path, target: Path, *, user_owned: bool, absent_only: bool,
-    ) -> None:
-        if not target.exists():
-            if target not in added:  # the mold may have claimed it first.
-                added.append(target)
-        elif absent_only:
-            pass  # not a SHIPPED file: a difference is the user's, never "kept".
-        elif not _equivalent(src_file, target):
-            (kept if user_owned else overwritten).append(target)
-        # else: current (byte-equal or equivalent) -> unreported.
+  def _classify(
+    src_file: Path,
+    target: Path,
+    *,
+    user_owned: bool,
+    absent_only: bool,
+  ) -> None:
+    if not target.exists():
+      if target not in added:  # the mold may have claimed it first.
+        added.append(target)
+    elif absent_only:
+      pass  # not a SHIPPED file: a difference is the user's, never "kept".
+    elif not _equivalent(src_file, target):
+      (kept if user_owned else overwritten).append(target)
+    # else: current (byte-equal or equivalent) -> unreported.
 
-    def _walk(
-        src: Path | None, dest: Path, *, user_owned: bool, absent_only: bool = False,
-    ) -> None:
-        if src is None or not src.is_dir():
-            return
-        for entry in sorted(src.rglob("*")):
-            if entry.is_file() and not entry.is_symlink():
-                _classify(
-                    entry, dest / entry.relative_to(src),
-                    user_owned=user_owned, absent_only=absent_only,
-                )
-
-    base_src = _packaged_base_template()
-    if base_src is not None:
-        # STAGING (refreshable).
-        _walk(
-            base_src / PACKAGED_BOX_TEMPLATE,
-            std.template / PACKAGED_BOX_TEMPLATE, user_owned=False,
-        )
-        _walk(
-            base_src / PACKAGED_WORKSET_TEMPLATE,
-            std.template / PACKAGED_WORKSET_TEMPLATE, user_owned=False,
-        )
-        # USER-OWNED (create-if-absent; differences reported, never written).
-        if std.canon is not None:  # ⚑ the null-canon terms at the copy_tree site above
-            _walk(
-                base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
-                user_owned=True,
-            )
-        _walk(
-            base_src / PACKAGED_AGENT_DEFAULT, std.agents / "default", user_owned=True,
+  def _walk(
+    src: Path | None,
+    dest: Path,
+    *,
+    user_owned: bool,
+    absent_only: bool = False,
+  ) -> None:
+    if src is None or not src.is_dir():
+      return
+    for entry in sorted(src.rglob("*")):
+      if entry.is_file() and not entry.is_symlink():
+        _classify(
+          entry,
+          dest / entry.relative_to(src),
+          user_owned=user_owned,
+          absent_only=absent_only,
         )
 
-    # The agent STORES, in :func:`ensure_agent_stores`' order.  ⚑ A file the mold or
-    # core's chapter would ADD counts as work (``absent_only``): neither is the store's
-    # shipped copy, so a store that differs from them is the user's, not "kept".
-    mold = std.template / AGENT_MOLD_DIRNAME
-    for name in ["default", *agent_names]:
-        store = std.agents / name
-        _walk(mold, store, user_owned=True, absent_only=True)
-        if name == "default":
-            continue  # its packaged content is walked above, with the handbook.
-        agent_src = _packaged_agent_store(name)
-        _walk(agent_src, store, user_owned=True)
-        if base_src is not None and _core_chapter_due(store, mold, agent_src):
-            _walk(
-                base_src / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
-                user_owned=True, absent_only=True,
-            )
+  base_src = _packaged_base_template()
+  if base_src is not None:
+    # STAGING (refreshable).
+    _walk(
+      base_src / PACKAGED_BOX_TEMPLATE,
+      std.template / PACKAGED_BOX_TEMPLATE,
+      user_owned=False,
+    )
+    _walk(
+      base_src / PACKAGED_WORKSET_TEMPLATE,
+      std.template / PACKAGED_WORKSET_TEMPLATE,
+      user_owned=False,
+    )
+    # USER-OWNED (create-if-absent; differences reported, never written).
+    if std.canon is not None:  # ⚑ the null-canon terms at the copy_tree site above
+      _walk(
+        base_src / PACKAGED_HANDBOOK,
+        std.canon / _CANON_CHAPTER_LEAF,
+        user_owned=True,
+      )
+    _walk(
+      base_src / PACKAGED_AGENT_DEFAULT,
+      std.agents / "default",
+      user_owned=True,
+    )
 
-    return added, overwritten, kept
+  # The agent STORES, in :func:`ensure_agent_stores`' order.  ⚑ A file the mold or
+  # core's chapter would ADD counts as work (``absent_only``): neither is the store's
+  # shipped copy, so a store that differs from them is the user's, not "kept".
+  mold = std.template / AGENT_MOLD_DIRNAME
+  for name in ["default", *agent_names]:
+    store = std.agents / name
+    _walk(mold, store, user_owned=True, absent_only=True)
+    if name == "default":
+      continue  # its packaged content is walked above, with the handbook.
+    agent_src = _packaged_agent_store(name)
+    _walk(agent_src, store, user_owned=True)
+    if base_src is not None and _core_chapter_due(store, mold, agent_src):
+      _walk(
+        base_src / PACKAGED_AGENT_DEFAULT / "canon",
+        store / "canon",
+        user_owned=True,
+        absent_only=True,
+      )
+
+  return added, overwritten, kept

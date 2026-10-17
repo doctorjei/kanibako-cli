@@ -33,130 +33,136 @@ from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
 def _sentinel(tmp_home: Path, key: str) -> str:
-    """A unique, obviously-not-a-default host path for *key*."""
-    # ⚑ Under a SIBLING of the default tree, never inside one: a sentinel sharing a
-    # prefix with a default could be "reached" by accident when a default happens to
-    # nest.  ``tmp_home`` itself is that common parent and holds no default of its own
-    # (``tests/conftest.py::tmp_home``: ``config``/``data``/``state``/``cache``/``home``/
-    # ``project`` are its children), so nothing under ``repointed/`` is reached by nesting.
-    # ⚑ AND IT MUST BE WRITABLE.  ``load_std_paths`` MATERIALIZES the bases it resolves,
-    # and since keyspec §2g system.state the state base is the resolved ``system.state``
-    # rather than a leaf composed under ``$XDG_STATE_HOME`` — so an unwritable sentinel root
-    # now fails the consumer case on that mkdir instead of on the assertion it exists to
-    # make.
-    return str(tmp_home / "repointed" / key.replace(".", "-"))
+  """A unique, obviously-not-a-default host path for *key*."""
+  # ⚑ Under a SIBLING of the default tree, never inside one: a sentinel sharing a
+  # prefix with a default could be "reached" by accident when a default happens to
+  # nest.  ``tmp_home`` itself is that common parent and holds no default of its own
+  # (``tests/conftest.py::tmp_home``: ``config``/``data``/``state``/``cache``/``home``/
+  # ``project`` are its children), so nothing under ``repointed/`` is reached by nesting.
+  # ⚑ AND IT MUST BE WRITABLE.  ``load_std_paths`` MATERIALIZES the bases it resolves,
+  # and since keyspec §2g system.state the state base is the resolved ``system.state``
+  # rather than a leaf composed under ``$XDG_STATE_HOME`` — so an unwritable sentinel root
+  # now fails the consumer case on that mkdir instead of on the assertion it exists to
+  # make.
+  return str(tmp_home / "repointed" / key.replace(".", "-"))
 
 
 @pytest.fixture
 def repointed(config_file, tmp_home):
-    """Every ``SYSTEM_PATH_DEFAULTS`` key repointed IN THE SYSTEM SETTINGS FILE.
+  """Every ``SYSTEM_PATH_DEFAULTS`` key repointed IN THE SYSTEM SETTINGS FILE.
 
-    ⚑ Written to ``{config.settings}`` — the file ``config set system.<key>`` writes
-    (``config_dest``/``_KEY_ROUTES``), NOT the bootstrap config file.  Writing the
-    config file would exercise the layer that already worked and prove nothing.
-    """
-    settings_file = load_std_paths().settings
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
-    for key in SYSTEM_PATH_DEFAULTS:
-        sections = tuple(key.split(".")[:-1])
-        write_nested_key(settings_file, sections, key.split(".")[-1],
-                         _sentinel(tmp_home, key))
-    return config_file
+  ⚑ Written to ``{config.settings}`` — the file ``config set system.<key>`` writes
+  (``config_dest``/``_KEY_ROUTES``), NOT the bootstrap config file.  Writing the
+  config file would exercise the layer that already worked and prove nothing.
+  """
+  settings_file = load_std_paths().settings
+  settings_file.parent.mkdir(parents=True, exist_ok=True)
+  for key in SYSTEM_PATH_DEFAULTS:
+    sections = tuple(key.split(".")[:-1])
+    write_nested_key(settings_file, sections, key.split(".")[-1], _sentinel(tmp_home, key))
+  return config_file
 
 
 class TestTheSettingsFileFeedsThePathTier:
+  def test_the_table_is_not_empty(self):
+    """⚑ RED ON ITS OWN EMPTINESS — every case below iterates this table."""
+    assert SYSTEM_PATH_DEFAULTS
 
-    def test_the_table_is_not_empty(self):
-        """⚑ RED ON ITS OWN EMPTINESS — every case below iterates this table."""
-        assert SYSTEM_PATH_DEFAULTS
+  def test_every_repointed_key_resolves_to_the_repoint(self, repointed, tmp_home):
+    """⚑ MUTATION: drop the settings-file ``raw.update`` from
+    ``load_system_config`` -> every key answers its default and this dies."""
+    resolved = load_system_config(
+      repointed,
+      data_home=tmp_home / "data",
+      home=tmp_home / "home",
+    )
+    wrong = {
+      key: str(resolved[key])
+      for key in SYSTEM_PATH_DEFAULTS
+      if str(resolved[key]) != _sentinel(tmp_home, key)
+    }
+    assert not wrong, (
+      "these system path keys were repointed in the system settings file and "
+      f"resolved to something else: {wrong}"
+    )
 
-    def test_every_repointed_key_resolves_to_the_repoint(self, repointed, tmp_home):
-        """⚑ MUTATION: drop the settings-file ``raw.update`` from
-        ``load_system_config`` -> every key answers its default and this dies."""
-        resolved = load_system_config(
-            repointed, data_home=tmp_home / "data", home=tmp_home / "home",
-        )
-        wrong = {
-            key: str(resolved[key]) for key in SYSTEM_PATH_DEFAULTS
-            if str(resolved[key]) != _sentinel(tmp_home, key)
-        }
-        assert not wrong, (
-            "these system path keys were repointed in the system settings file and "
-            f"resolved to something else: {wrong}"
-        )
+  def test_every_repoint_reaches_standard_paths(self, repointed, tmp_home):
+    """The CONSUMER half: a repoint the resolver honors must also be what the
+    rest of kanibako is handed.
 
-    def test_every_repoint_reaches_standard_paths(self, repointed, tmp_home):
-        """The CONSUMER half: a repoint the resolver honors must also be what the
-        rest of kanibako is handed.
-
-        ⚑ The field MAP is not written down here — the assertion is set membership
-        over ``StandardPaths``' own values, so it needs no per-key row and cannot
-        drift.  A path key that deliberately reaches no ``StandardPaths`` field would
-        red here, and that is the intended conversation: a repointable path nothing
-        consumes is the same broken promise in a quieter form.
-        """
-        std = load_std_paths()
-        surfaced = {str(getattr(std, f.name)) for f in _fields(std)}
-        missing = sorted(
-            key for key in SYSTEM_PATH_DEFAULTS
-            if _sentinel(tmp_home, key) not in surfaced
-        )
-        assert not missing, (
-            f"repointed keys that never reach StandardPaths: {missing}"
-        )
+    ⚑ The field MAP is not written down here — the assertion is set membership
+    over ``StandardPaths``' own values, so it needs no per-key row and cannot
+    drift.  A path key that deliberately reaches no ``StandardPaths`` field would
+    red here, and that is the intended conversation: a repointable path nothing
+    consumes is the same broken promise in a quieter form.
+    """
+    std = load_std_paths()
+    surfaced = {str(getattr(std, f.name)) for f in _fields(std)}
+    missing = sorted(
+      key for key in SYSTEM_PATH_DEFAULTS if _sentinel(tmp_home, key) not in surfaced
+    )
+    assert not missing, f"repointed keys that never reach StandardPaths: {missing}"
 
 
 class TestTheLayeringIsNotReversed:
+  def test_a_leftover_system_value_in_the_config_file_refuses(
+    self,
+    repointed,
+    tmp_home,
+  ):
+    """Spec §2g: ``system.*`` paths are SETTINGS, set at the ``system`` cascade
+    level — so a leftover value in the bootstrap config file must not win.
 
-    def test_a_leftover_system_value_in_the_config_file_refuses(
-        self, repointed, tmp_home,
-    ):
-        """Spec §2g: ``system.*`` paths are SETTINGS, set at the ``system`` cascade
-        level — so a leftover value in the bootstrap config file must not win.
+    ⚑ CHANGED 2026-08-31: it used to LOSE silently, which meant a user with the
+    leftover saw the settings file's value and never learned their config file said
+    something else. It is named now, and the settings file's value is what the
+    surrounding cases still assert.
+    """
+    from kanibako.errors import ConfigError
 
-        ⚑ CHANGED 2026-08-31: it used to LOSE silently, which meant a user with the
-        leftover saw the settings file's value and never learned their config file said
-        something else. It is named now, and the settings file's value is what the
-        surrounding cases still assert.
-        """
-        from kanibako.errors import ConfigError
+    key = sorted(SYSTEM_PATH_DEFAULTS)[0]
+    write_nested_key(
+      repointed,
+      tuple(key.split(".")[:-1]),
+      key.split(".")[-1],
+      "/from-config",
+    )
+    with pytest.raises(ConfigError) as exc:
+      load_system_config(
+        repointed,
+        data_home=tmp_home / "data",
+        home=tmp_home / "home",
+      )
+    assert str(repointed) in str(exc.value)
+    assert key in str(exc.value)
 
-        key = sorted(SYSTEM_PATH_DEFAULTS)[0]
-        write_nested_key(
-            repointed, tuple(key.split(".")[:-1]), key.split(".")[-1], "/from-config",
-        )
-        with pytest.raises(ConfigError) as exc:
-            load_system_config(
-                repointed, data_home=tmp_home / "data", home=tmp_home / "home",
-            )
-        assert str(repointed) in str(exc.value)
-        assert key in str(exc.value)
+  def test_a_config_table_in_the_settings_file_does_NOT_reach_layer_1(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """Spec §1: ``config.*`` keys live in ``kanibako.cfg`` ALONE.
 
-    def test_a_config_table_in_the_settings_file_does_NOT_reach_layer_1(
-        self, config_file, tmp_home,
-    ):
-        """Spec §1: ``config.*`` keys live in ``kanibako.cfg`` ALONE.
-
-        The settings file is read for the path tier now, and the filter that keeps
-        Layer 1 out of it is the thing this pins — without it, a hand-written
-        ``config:`` table in a SETTINGS file would relocate the store that same file
-        was found through.
-        """
-        before = load_std_paths().data
-        settings_file = load_std_paths().settings
-        settings_file.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(settings_file, ("config",), "data", "/hijacked")
-        assert load_std_paths().data == before
+    The settings file is read for the path tier now, and the filter that keeps
+    Layer 1 out of it is the thing this pins — without it, a hand-written
+    ``config:`` table in a SETTINGS file would relocate the store that same file
+    was found through.
+    """
+    before = load_std_paths().data
+    settings_file = load_std_paths().settings
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(settings_file, ("config",), "data", "/hijacked")
+    assert load_std_paths().data == before
 
 
 def _fields(std) -> tuple:
-    from dataclasses import fields
+  from dataclasses import fields
 
-    return fields(std)
+  return fields(std)
 
 
 def test_the_probe_paths_are_all_distinct(tmp_home):
-    """⚑ A sentinel collision would let one honored repoint vouch for another."""
-    sentinels = {_sentinel(tmp_home, key) for key in SYSTEM_PATH_DEFAULTS}
-    assert len(sentinels) == len(SYSTEM_PATH_DEFAULTS)
-    assert all(Path(s).is_absolute() for s in sentinels)
+  """⚑ A sentinel collision would let one honored repoint vouch for another."""
+  sentinels = {_sentinel(tmp_home, key) for key in SYSTEM_PATH_DEFAULTS}
+  assert len(sentinels) == len(SYSTEM_PATH_DEFAULTS)
+  assert all(Path(s).is_absolute() for s in sentinels)

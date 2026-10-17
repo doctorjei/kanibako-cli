@@ -52,242 +52,252 @@ _Sleeper = Callable[[float], None]
 # fallback / hygiene on the existing host writeback sites (Part 3).               #
 # --------------------------------------------------------------------------- #
 
+
 def creds_dirty_flag_path(project_home: Path) -> Path:
-    """The host path of a box's creds-dirty flag (``project_home`` = ``proj.shell_path``)."""
-    return Path(project_home) / CREDS_DIRTY_RELPATH
+  """The host path of a box's creds-dirty flag (``project_home`` = ``proj.shell_path``)."""
+  return Path(project_home) / CREDS_DIRTY_RELPATH
 
 
 def read_creds_dirty(project_home: Path) -> bool:
-    """True iff the box's creds-dirty flag is present.  Tolerant — any error ⇒ False.
+  """True iff the box's creds-dirty flag is present.  Tolerant — any error ⇒ False.
 
-    Probed through :mod:`kanibako.boxfs`, so a symlink at the flag or at
-    ``.kanibako`` is never followed; it reads as an error, so False.
-    """
-    try:
-        boxfs.stat(creds_dirty_flag_path(project_home), Path(project_home))
-        return True
-    except FileNotFoundError:
-        return False
-    except OSError as exc:
-        log.debug("read_creds_dirty: probe failed for %s: %s", project_home, exc)
-        return False
+  Probed through :mod:`kanibako.boxfs`, so a symlink at the flag or at
+  ``.kanibako`` is never followed; it reads as an error, so False.
+  """
+  try:
+    boxfs.stat(creds_dirty_flag_path(project_home), Path(project_home))
+    return True
+  except FileNotFoundError:
+    return False
+  except OSError as exc:
+    log.debug("read_creds_dirty: probe failed for %s: %s", project_home, exc)
+    return False
 
 
 def clear_creds_dirty(project_home: Path) -> None:
-    """Remove the box's creds-dirty flag (edge-trigger reset).  Tolerant — never raises.
+  """Remove the box's creds-dirty flag (edge-trigger reset).  Tolerant — never raises.
 
-    Idempotent: an already-absent flag (``missing_ok``) is fine, and any other
-    ``OSError`` is swallowed (a stale flag merely gets re-processed next time — a
-    harmless duplicate writeback, never a crash).  Removed through
-    :mod:`kanibako.boxfs`: a symlinked ``.kanibako`` is not followed, and the flag
-    is left with a warning naming it.
-    """
-    try:
-        boxfs.unlink(creds_dirty_flag_path(project_home), Path(project_home),
-                     missing_ok=True)
-    except boxfs.SymlinkRefusedError as exc:
-        log.warning("left %s: %s is a symlink, and kanibako does not follow "
-                    "symlinks in a box", exc.path, exc.link)
-    except OSError as exc:
-        log.debug("clear_creds_dirty: unlink failed for %s: %s", project_home, exc)
+  Idempotent: an already-absent flag (``missing_ok``) is fine, and any other
+  ``OSError`` is swallowed (a stale flag merely gets re-processed next time — a
+  harmless duplicate writeback, never a crash).  Removed through
+  :mod:`kanibako.boxfs`: a symlinked ``.kanibako`` is not followed, and the flag
+  is left with a warning naming it.
+  """
+  try:
+    boxfs.unlink(creds_dirty_flag_path(project_home), Path(project_home), missing_ok=True)
+  except boxfs.SymlinkRefusedError as exc:
+    log.warning(
+      "left %s: %s is a symlink, and kanibako does not follow symlinks in a box",
+      exc.path,
+      exc.link,
+    )
+  except OSError as exc:
+    log.debug("clear_creds_dirty: unlink failed for %s: %s", project_home, exc)
 
 
 # --------------------------------------------------------------------------- #
 # The shared STORE-write lock — serialize writeback across host ops + watcher.  #
 # --------------------------------------------------------------------------- #
 
+
 @contextlib.contextmanager
 def creds_store_lock(*store_dirs: Path) -> "Iterator[None]":
-    """Serialize credential-STORE access by flocking the store directories.
+  """Serialize credential-STORE access by flocking the store directories.
 
-    Every store writer and reader takes it: the writeback
-    (:func:`kanibako.commands.start.writeback_session_credentials`, which this module's
-    daemon goes through) and the workset refresh and box seed/refresh reads in
-    :mod:`kanibako.targets.credsync`.  ⚑ A new store writer or reader must take it too;
-    find them by grepping for store READS and WRITES, never for callers of this lock.
-    ⚑ Never enter it while already holding it: ``flock`` conflicts between descriptors in
-    one process, so a nested entry self-deadlocks.
-    🛑 The lock is the destination DIRECTORY, never a file ([R167]) (llm-doc).
+  Every store writer and reader takes it: the writeback
+  (:func:`kanibako.commands.start.writeback_session_credentials`, which this module's
+  daemon goes through) and the workset refresh and box seed/refresh reads in
+  :mod:`kanibako.targets.credsync`.  ⚑ A new store writer or reader must take it too;
+  find them by grepping for store READS and WRITES, never for callers of this lock.
+  ⚑ Never enter it while already holding it: ``flock`` conflicts between descriptors in
+  one process, so a nested entry self-deadlocks.
+  🛑 The lock is the destination DIRECTORY, never a file ([R167]) (llm-doc).
 
-    *store_dirs* is every store directory the guarded operation writes into or reads
-    from; they are taken in sorted real-path order.  TOLERANT: a directory that cannot be
-    opened or locked is SKIPPED, and the operation proceeds without that lock.
-    """
-    held: list[int] = []
-    for dest in sorted({os.path.realpath(d) for d in store_dirs}):
-        fd = None
-        try:
-            fd = os.open(dest, os.O_RDONLY)
-            fcntl.flock(fd, fcntl.LOCK_EX)
-        except Exception as exc:
-            # Broad by design: ANY acquisition failure (a missing dir, a non-lockable
-            # fd) must degrade rather than abort — see the TOLERANT note above.
-            log.debug("creds store lock unavailable for %s (%s); proceeding unlocked",
-                      dest, exc)
-            if fd is not None:
-                with contextlib.suppress(Exception):
-                    os.close(fd)
-            continue
-        held.append(fd)
+  *store_dirs* is every store directory the guarded operation writes into or reads
+  from; they are taken in sorted real-path order.  TOLERANT: a directory that cannot be
+  opened or locked is SKIPPED, and the operation proceeds without that lock.
+  """
+  held: list[int] = []
+  for dest in sorted({os.path.realpath(d) for d in store_dirs}):
+    fd = None
     try:
-        yield
-    finally:
-        for fd in reversed(held):
-            with contextlib.suppress(Exception):
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            with contextlib.suppress(Exception):
-                os.close(fd)
+      fd = os.open(dest, os.O_RDONLY)
+      fcntl.flock(fd, fcntl.LOCK_EX)
+    except Exception as exc:
+      # Broad by design: ANY acquisition failure (a missing dir, a non-lockable
+      # fd) must degrade rather than abort — see the TOLERANT note above.
+      log.debug("creds store lock unavailable for %s (%s); proceeding unlocked", dest, exc)
+      if fd is not None:
+        with contextlib.suppress(Exception):
+          os.close(fd)
+      continue
+    held.append(fd)
+  try:
+    yield
+  finally:
+    for fd in reversed(held):
+      with contextlib.suppress(Exception):
+        fcntl.flock(fd, fcntl.LOCK_UN)
+      with contextlib.suppress(Exception):
+        os.close(fd)
 
 
 # --------------------------------------------------------------------------- #
 # The PURE decision (the heart of the unit tests).                              #
 # --------------------------------------------------------------------------- #
 
-class WatchAction(Enum):
-    """What a single watch tick must DO, from (box-liveness, flag-dirty)."""
 
-    NONE = "none"                        # box up, flag clean → keep watching
-    WRITEBACK = "writeback"              # box up, flag dirty → writeback (self-clears on success)
-    FINAL_WRITEBACK = "final_writeback"  # box gone, flag dirty → one last writeback, then EXIT
-    EXIT = "exit"                        # box gone, flag clean → nothing to do, EXIT
+class WatchAction(Enum):
+  """What a single watch tick must DO, from (box-liveness, flag-dirty)."""
+
+  NONE = "none"  # box up, flag clean → keep watching
+  WRITEBACK = "writeback"  # box up, flag dirty → writeback (self-clears on success)
+  FINAL_WRITEBACK = "final_writeback"  # box gone, flag dirty → one last writeback, then EXIT
+  EXIT = "exit"  # box gone, flag clean → nothing to do, EXIT
 
 
 def decide_watch(box_running: bool, dirty: bool) -> WatchAction:
-    """PURE: decide a tick's action from box liveness + the dirty flag.
+  """PURE: decide a tick's action from box liveness + the dirty flag.
 
-    * box RUNNING → :data:`WatchAction.WRITEBACK` when the flag is dirty (a detach
-      signaled a possible refresh), else :data:`WatchAction.NONE` (keep watching).
-    * box GONE → the box is being torn down / stopped, so the watcher SELF-TERMINATES:
-      :data:`WatchAction.FINAL_WRITEBACK` when the flag is still dirty (catch a
-      last-moment refresh before exiting), else :data:`WatchAction.EXIT`.
+  * box RUNNING → :data:`WatchAction.WRITEBACK` when the flag is dirty (a detach
+    signaled a possible refresh), else :data:`WatchAction.NONE` (keep watching).
+  * box GONE → the box is being torn down / stopped, so the watcher SELF-TERMINATES:
+    :data:`WatchAction.FINAL_WRITEBACK` when the flag is still dirty (catch a
+    last-moment refresh before exiting), else :data:`WatchAction.EXIT`.
 
-    Deterministic and side-effect free, so the loop's whole logic is exhaustively
-    unit-testable without a real box.
-    """
-    if box_running:
-        return WatchAction.WRITEBACK if dirty else WatchAction.NONE
-    return WatchAction.FINAL_WRITEBACK if dirty else WatchAction.EXIT
+  Deterministic and side-effect free, so the loop's whole logic is exhaustively
+  unit-testable without a real box.
+  """
+  if box_running:
+    return WatchAction.WRITEBACK if dirty else WatchAction.NONE
+  return WatchAction.FINAL_WRITEBACK if dirty else WatchAction.EXIT
 
 
 # --------------------------------------------------------------------------- #
 # The watcher.                                                                  #
 # --------------------------------------------------------------------------- #
 
+
 class CredsWatcher:
-    """Polls a box's creds-dirty flag and does the trusted writeback on the signal.
+  """Polls a box's creds-dirty flag and does the trusted writeback on the signal.
 
-    Impure by nature (it probes the box, reads/clears a flag, copies credentials, and
-    sleeps), but every side effect is funneled through an injected callable so tests
-    drive it deterministically and instantly.  The pure :func:`decide_watch` holds the
-    per-tick logic; this class only sequences the injected effects around it.
+  Impure by nature (it probes the box, reads/clears a flag, copies credentials, and
+  sleeps), but every side effect is funneled through an injected callable so tests
+  drive it deterministically and instantly.  The pure :func:`decide_watch` holds the
+  per-tick logic; this class only sequences the injected effects around it.
+  """
+
+  def __init__(
+    self,
+    *,
+    is_running: _IsRunning,
+    read_dirty: _FlagReader,
+    writeback: _Writeback,
+    sleep: _Sleeper = time.sleep,
+    poll_interval: float = 2.0,
+  ) -> None:
+    self._is_running = is_running
+    self._read_dirty = read_dirty
+    self._writeback = writeback
+    self._sleep = sleep
+    self._poll = poll_interval
+
+  def _safe_writeback(self) -> None:
+    """Run the injected writeback, swallowing ANY exception (log-not-crash).
+
+    A store-writeback failure (a transient FS error, a concurrent host op) must
+    NEVER stop the watcher — it would silently stop propagating every later
+    credential refresh.  Logged and dropped, and — critically — the watcher does
+    NOT clear the flag itself: the writeback is the SOLE clearer and clears ONLY on
+    success (:func:`kanibako.commands.start.writeback_session_credentials`, D Part
+    3).  So a FAILED writeback leaves the flag SET, and the next tick RETRIES it —
+    dropping the signal here would defeat D's whole rotation-lockout guarantee.
     """
+    try:
+      self._writeback()
+    except Exception:
+      log.exception("creds writeback failed; flag left set for retry")
 
-    def __init__(
-        self,
-        *,
-        is_running: _IsRunning,
-        read_dirty: _FlagReader,
-        writeback: _Writeback,
-        sleep: _Sleeper = time.sleep,
-        poll_interval: float = 2.0,
-    ) -> None:
-        self._is_running = is_running
-        self._read_dirty = read_dirty
-        self._writeback = writeback
-        self._sleep = sleep
-        self._poll = poll_interval
+  def run(self) -> int:
+    """Watch loop: poll → :func:`decide_watch` → act; self-terminate once the box is gone.
 
-    def _safe_writeback(self) -> None:
-        """Run the injected writeback, swallowing ANY exception (log-not-crash).
+    Each tick reads the flag + probes box liveness (both tolerant), then acts on
+    the pure decision.  The flag is cleared ONLY by the writeback itself, and ONLY
+    on success (Part 3) — the watcher NEVER clears it directly:
 
-        A store-writeback failure (a transient FS error, a concurrent host op) must
-        NEVER stop the watcher — it would silently stop propagating every later
-        credential refresh.  Logged and dropped, and — critically — the watcher does
-        NOT clear the flag itself: the writeback is the SOLE clearer and clears ONLY on
-        success (:func:`kanibako.commands.start.writeback_session_credentials`, D Part
-        3).  So a FAILED writeback leaves the flag SET, and the next tick RETRIES it —
-        dropping the signal here would defeat D's whole rotation-lockout guarantee.
-        """
-        try:
-            self._writeback()
-        except Exception:
-            log.exception("creds writeback failed; flag left set for retry")
+    * dirty + box UP → run the writeback (it self-clears on success); a FAILED
+      writeback leaves the flag set → RETRIED next tick (strictly better than
+      dropping the pending refresh signal).
+    * box GONE + dirty → one FINAL writeback (self-clears on success); on failure
+      the flag remains for the lazy fallback (the next host ``kanibako`` op) —
+      acceptable, the box is gone.  Then return.
+    * box GONE + clean → return.
 
-    def run(self) -> int:
-        """Watch loop: poll → :func:`decide_watch` → act; self-terminate once the box is gone.
-
-        Each tick reads the flag + probes box liveness (both tolerant), then acts on
-        the pure decision.  The flag is cleared ONLY by the writeback itself, and ONLY
-        on success (Part 3) — the watcher NEVER clears it directly:
-
-        * dirty + box UP → run the writeback (it self-clears on success); a FAILED
-          writeback leaves the flag set → RETRIED next tick (strictly better than
-          dropping the pending refresh signal).
-        * box GONE + dirty → one FINAL writeback (self-clears on success); on failure
-          the flag remains for the lazy fallback (the next host ``kanibako`` op) —
-          acceptable, the box is gone.  Then return.
-        * box GONE + clean → return.
-
-        Returns 0.
-        """
-        while True:
-            dirty = self._read_dirty()
-            running = self._is_running()
-            action = decide_watch(running, dirty)
-            if action is WatchAction.WRITEBACK:
-                self._safe_writeback()
-            elif action is WatchAction.FINAL_WRITEBACK:
-                log.info("box gone with a pending creds signal; final writeback then exit")
-                self._safe_writeback()
-                return 0
-            elif action is WatchAction.EXIT:
-                log.info("box gone; nothing pending — creds watcher exiting")
-                return 0
-            self._sleep(self._poll)
+    Returns 0.
+    """
+    while True:
+      dirty = self._read_dirty()
+      running = self._is_running()
+      action = decide_watch(running, dirty)
+      if action is WatchAction.WRITEBACK:
+        self._safe_writeback()
+      elif action is WatchAction.FINAL_WRITEBACK:
+        log.info("box gone with a pending creds signal; final writeback then exit")
+        self._safe_writeback()
+        return 0
+      elif action is WatchAction.EXIT:
+        log.info("box gone; nothing pending — creds watcher exiting")
+        return 0
+      self._sleep(self._poll)
 
 
 # --------------------------------------------------------------------------- #
 # CLI entry point — re-resolves host config like ``kanibako stop`` and runs.     #
 # --------------------------------------------------------------------------- #
 
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python3 -m kanibako.launch.creds_watcher",
-        description="Per-box host-side credential-writeback watcher (increment D).",
-    )
-    parser.add_argument(
-        "--box", default=None,
-        help="box subject (name or path) to watch; default resolves from cwd",
-    )
-    parser.add_argument(
-        "--poll", type=float, default=2.0, help="seconds between watch-loop ticks",
-    )
-    return parser
+  parser = argparse.ArgumentParser(
+    prog="python3 -m kanibako.launch.creds_watcher",
+    description="Per-box host-side credential-writeback watcher (increment D).",
+  )
+  parser.add_argument(
+    "--box",
+    default=None,
+    help="box subject (name or path) to watch; default resolves from cwd",
+  )
+  parser.add_argument(
+    "--poll",
+    type=float,
+    default=2.0,
+    help="seconds between watch-loop ticks",
+  )
+  return parser
 
 
 def _single_instance_lock(lock_path: Path) -> "object | None":
-    """Take a single-instance host lock for this box, or ``None`` when another holds it.
+  """Take a single-instance host lock for this box, or ``None`` when another holds it.
 
-    A relaunch of a box must not stack watchers, so each watcher holds an exclusive,
-    non-blocking flock keyed on the box identity (``proj.metadata_path`` — per box).
-    Returns the OPEN file object (the caller keeps it for the process lifetime — the
-    lock releases when it is closed / the process exits) on success, or ``None`` when
-    the lock is already held (a live prior watcher) so this launch exits quietly.
-    Tolerant: a lock path that cannot even be created returns a fresh (unlocked) handle
-    so the watcher still runs rather than crashing on a filesystem quirk.
-    """
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = open(lock_path, "w")
-    except OSError as exc:
-        log.debug("single-instance lock unavailable (%s); running unlocked", exc)
-        return object()  # a non-None sentinel: run, but hold no real lock
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        fd.close()
-        return None
-    return fd
+  A relaunch of a box must not stack watchers, so each watcher holds an exclusive,
+  non-blocking flock keyed on the box identity (``proj.metadata_path`` — per box).
+  Returns the OPEN file object (the caller keeps it for the process lifetime — the
+  lock releases when it is closed / the process exits) on success, or ``None`` when
+  the lock is already held (a live prior watcher) so this launch exits quietly.
+  Tolerant: a lock path that cannot even be created returns a fresh (unlocked) handle
+  so the watcher still runs rather than crashing on a filesystem quirk.
+  """
+  try:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = open(lock_path, "w")
+  except OSError as exc:
+    log.debug("single-instance lock unavailable (%s); running unlocked", exc)
+    return object()  # a non-None sentinel: run, but hold no real lock
+  try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+  except OSError:
+    fd.close()
+    return None
+  return fd
 
 
 # --------------------------------------------------------------------------- #
@@ -302,192 +312,194 @@ AGENT_STAMP_ENV = "KANIBAKO_AGENT"
 
 
 def running_box_agent(runtime, container_name: str) -> str | None:
-    """The agent NODE a running box was launched with, or ``None`` when it has no stamp.
+  """The agent NODE a running box was launched with, or ``None`` when it has no stamp.
 
-    *runtime* is anything with ``inspect_env(name, key)`` — the local
-    ``ContainerRuntime`` or ``code --remote``'s ``RemoteEngine``.  An absent or empty
-    stamp (a box launched before stamping, or a container that is gone) is ``None``.
+  *runtime* is anything with ``inspect_env(name, key)`` — the local
+  ``ContainerRuntime`` or ``code --remote``'s ``RemoteEngine``.  An absent or empty
+  stamp (a box launched before stamping, or a container that is gone) is ``None``.
 
-    🛑 CANONICALIZE AND FOLD ON READ, through :func:`~kanibako.agent_ref.agent_address_node`:
-    every caller uses the value as a key or a key-derived lookup, and ``harness_of``
-    splits on ``℘`` alone, so the raw ``+`` stamp would name a plugin that does not
-    exist.  Both separators are accepted, so a box stamped ``℘`` by an older version
-    still resolves.  The ADDRESS grammar, because a plain-shell box is stamped
-    ``shell`` (keyspec §2b).  Folded to the node (keyspec §0
-    "An agent's canonical case is carried by its _name_"), so the answer names the
-    store directory the launch wrote.  Raises ``ConfigError`` for a malformed stamp;
-    each caller decides whether that is said.
-    """
-    from kanibako.agent_ref import agent_address_node
+  🛑 CANONICALIZE AND FOLD ON READ, through :func:`~kanibako.agent_ref.agent_address_node`:
+  every caller uses the value as a key or a key-derived lookup, and ``harness_of``
+  splits on ``℘`` alone, so the raw ``+`` stamp would name a plugin that does not
+  exist.  Both separators are accepted, so a box stamped ``℘`` by an older version
+  still resolves.  The ADDRESS grammar, because a plain-shell box is stamped
+  ``shell`` (keyspec §2b).  Folded to the node (keyspec §0
+  "An agent's canonical case is carried by its _name_"), so the answer names the
+  store directory the launch wrote.  Raises ``ConfigError`` for a malformed stamp;
+  each caller decides whether that is said.
+  """
+  from kanibako.agent_ref import agent_address_node
 
-    stamp = runtime.inspect_env(container_name, AGENT_STAMP_ENV)
-    if not stamp:
-        return None
-    return agent_address_node(stamp)
+  stamp = runtime.inspect_env(container_name, AGENT_STAMP_ENV)
+  if not stamp:
+    return None
+  return agent_address_node(stamp)
 
 
 def box_writeback_context(std, proj, agent: str):
-    """The ``(target, auth_src)`` a credential writeback for *proj* runs with.
+  """The ``(target, auth_src)`` a credential writeback for *proj* runs with.
 
-    *agent* is the node from :func:`running_box_agent`.  The target is keyed by its
-    HARNESS; the auth source resolves through the auth chain (the same launch-snapshot
-    pipeline ``start`` uses), so a PRIVATE box gets a box-tier source and the writeback
-    is a no-op.  ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
-    resolves ``{workset.auth.path}/{system.agent}``, so without it the credential dir
-    would name the agent the STORED settings select rather than the ``<auth>/<agent>``
-    the launch delivered from.  The stamp IS the resolved selection for a running box.
+  *agent* is the node from :func:`running_box_agent`.  The target is keyed by its
+  HARNESS; the auth source resolves through the auth chain (the same launch-snapshot
+  pipeline ``start`` uses), so a PRIVATE box gets a box-tier source and the writeback
+  is a no-op.  ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
+  resolves ``{workset.auth.path}/{system.agent}``, so without it the credential dir
+  would name the agent the STORED settings select rather than the ``<auth>/<agent>``
+  the launch delivered from.  The stamp IS the resolved selection for a running box.
 
-    Raises ``SettingsError``/``ConfigError`` when the auth resolve refuses the box's
-    settings (a file that turned invalid after the box started); the refusal's text
-    names the file, and each caller says it in its own channel.  Target resolution
-    raises ``KeyError``/``ValueError`` only (:func:`~kanibako.targets.resolve_target`).
-    """
-    from kanibako.agent_ref import harness_of
-    from kanibako.commands.start import _resolve_box_auth_source
-    from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.targets import resolve_target
+  Raises ``SettingsError``/``ConfigError`` when the auth resolve refuses the box's
+  settings (a file that turned invalid after the box started); the refusal's text
+  names the file, and each caller says it in its own channel.  Target resolution
+  raises ``KeyError``/``ValueError`` only (:func:`~kanibako.targets.resolve_target`).
+  """
+  from kanibako.agent_ref import harness_of
+  from kanibako.commands.start import _resolve_box_auth_source
+  from kanibako.settings.agent_config import agent_settings_path
+  from kanibako.targets import resolve_target
 
-    target = resolve_target(harness_of(agent))
-    auth_src = _resolve_box_auth_source(
-        std=std,
-        proj=proj,
-        agent_name=agent,
-        system_settings_path=std.settings,
-        agent_cfg_path=agent_settings_path(std.agents, agent),
-        selection_level={"system.agent": agent},
-    )
-    return target, auth_src
+  target = resolve_target(harness_of(agent))
+  auth_src = _resolve_box_auth_source(
+    std=std,
+    proj=proj,
+    agent_name=agent,
+    system_settings_path=std.settings,
+    agent_cfg_path=agent_settings_path(std.agents, agent),
+    selection_level={"system.agent": agent},
+  )
+  return target, auth_src
 
 
 def _resolve_watch_context(box: str | None):
-    """Re-resolve the host launch context for *box* (mirrors ``kanibako stop``).
+  """Re-resolve the host launch context for *box* (mirrors ``kanibako stop``).
 
-    Returns ``(runtime, proj, container_name, target, auth_src)`` or ``None`` when the
-    box cannot be resolved / has no shared-credential agent (nothing to watch), or when
-    the auth resolve REFUSES the box's settings (logged at WARNING).
-    """
-    from kanibako.errors import ConfigError
-    from kanibako.settings.config import user_config_file, load_config
-    from kanibako.runtime.container import ContainerRuntime
-    from kanibako.settings.paths import load_std_paths, resolve_box_target
-    from kanibako.settings.settings_resolve import SettingsError
-    from kanibako.utils import box_container
+  Returns ``(runtime, proj, container_name, target, auth_src)`` or ``None`` when the
+  box cannot be resolved / has no shared-credential agent (nothing to watch), or when
+  the auth resolve REFUSES the box's settings (logged at WARNING).
+  """
+  from kanibako.errors import ConfigError
+  from kanibako.settings.config import user_config_file, load_config
+  from kanibako.runtime.container import ContainerRuntime
+  from kanibako.settings.paths import load_std_paths, resolve_box_target
+  from kanibako.settings.settings_resolve import SettingsError
+  from kanibako.utils import box_container
 
-    runtime = ContainerRuntime()
-    config = load_config(user_config_file())
-    std = load_std_paths(config)
-    proj = resolve_box_target(std, config, box, initialize=False)
-    # Found by its labels (system-design § Box and helper identity), else its name.
-    container_name = box_container(runtime, proj)
-    # ⚑ No user to address, so this does what it already does with no agent stamp:
-    # nothing.  A loud refusal here would only spam the log.
-    if container_name is None:
-        log.info("box %s has no container name; nothing to write back", proj.name)
-        return None
+  runtime = ContainerRuntime()
+  config = load_config(user_config_file())
+  std = load_std_paths(config)
+  proj = resolve_box_target(std, config, box, initialize=False)
+  # Found by its labels (system-design § Box and helper identity), else its name.
+  container_name = box_container(runtime, proj)
+  # ⚑ No user to address, so this does what it already does with no agent stamp:
+  # nothing.  A loud refusal here would only spam the log.
+  if container_name is None:
+    log.info("box %s has no container name; nothing to write back", proj.name)
+    return None
 
-    # The box's agent comes from its launch stamp (same as stop.py) — it names which
-    # plugin's cred lifecycle to run + drives the auth-tier resolution.
-    agent = running_box_agent(runtime, container_name)
-    if agent is None:
-        log.info("box %s has no agent stamp; nothing to write back", container_name)
-        return None
-    # 🛑 A settings REFUSAL is the user's to fix, not a crash: a WARNING carrying the
-    # refusal's own text, which names the file — never a stack trace. ⚑ SCOPED TO THIS
-    # CALL: ``running_box_agent`` raises ``ConfigError`` too, for a malformed STAMP,
-    # which is not a settings refusal.
-    try:
-        target, auth_src = box_writeback_context(std, proj, agent)
-    except (SettingsError, ConfigError) as exc:
-        log.warning(
-            "creds watcher for box %s: credential writeback skipped, its settings did "
-            "not resolve; exiting.\n%s", container_name, exc,
-        )
-        return None
-    return runtime, proj, container_name, target, auth_src
+  # The box's agent comes from its launch stamp (same as stop.py) — it names which
+  # plugin's cred lifecycle to run + drives the auth-tier resolution.
+  agent = running_box_agent(runtime, container_name)
+  if agent is None:
+    log.info("box %s has no agent stamp; nothing to write back", container_name)
+    return None
+  # 🛑 A settings REFUSAL is the user's to fix, not a crash: a WARNING carrying the
+  # refusal's own text, which names the file — never a stack trace. ⚑ SCOPED TO THIS
+  # CALL: ``running_box_agent`` raises ``ConfigError`` too, for a malformed STAMP,
+  # which is not a settings refusal.
+  try:
+    target, auth_src = box_writeback_context(std, proj, agent)
+  except (SettingsError, ConfigError) as exc:
+    log.warning(
+      "creds watcher for box %s: credential writeback skipped, its settings did "
+      "not resolve; exiting.\n%s",
+      container_name,
+      exc,
+    )
+    return None
+  return runtime, proj, container_name, target, auth_src
 
 
 class _DropRepeats(logging.Filter):
-    """Pass a record only when it differs from the last record passed.
+  """Pass a record only when it differs from the last record passed.
 
-    The loop retries a failing writeback every tick, and each failure logs the same
-    WARNING (``writeback_session_credentials``), so an unfiltered log file would grow
-    by one line per poll for as long as the box runs.  ⚑ The cost: a failure that
-    stops and later recurs with the same text is not logged a second time.
-    """
+  The loop retries a failing writeback every tick, and each failure logs the same
+  WARNING (``writeback_session_credentials``), so an unfiltered log file would grow
+  by one line per poll for as long as the box runs.  ⚑ The cost: a failure that
+  stops and later recurs with the same text is not logged a second time.
+  """
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._last: tuple[str, int, str] | None = None
+  def __init__(self) -> None:
+    super().__init__()
+    self._last: tuple[str, int, str] | None = None
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        key = (record.name, record.levelno, record.getMessage())
-        if key == self._last:
-            return False
-        self._last = key
-        return True
+  def filter(self, record: logging.LogRecord) -> bool:
+    key = (record.name, record.levelno, record.getMessage())
+    if key == self._last:
+      return False
+    self._last = key
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: resolve the box, take the single-instance lock, run the watch loop.
+  """CLI: resolve the box, take the single-instance lock, run the watch loop.
 
-    ``python3 -m kanibako.launch.creds_watcher --box <subject> [--poll SEC]``
+  ``python3 -m kanibako.launch.creds_watcher --box <subject> [--poll SEC]``
 
-    A PRIVATE box (``auth_src.creds_shared`` False) never propagates credentials, so the
-    watcher no-ops and exits immediately (the host spawner also skips spawning one).
-    Best-effort throughout: a resolution failure logs and exits 0 (a watcher that
-    can't resolve its box is simply not needed — never a crash that surfaces to a
-    user, since it runs detached).  WARNING and above go to stderr, which the spawner
-    points at the box's watcher log (:func:`kanibako.settings.paths.creds_watcher_log_path`).
-    """
-    # A detached process has no terminal: its stderr is a file the user reads later, so
-    # each record carries its time.  (Unconfigured, logging's last-resort handler would
-    # still write WARNING+ there, but with no time and no repeat filter.)
-    setup_logging(timestamps=True)
-    for handler in logging.getLogger("kanibako").handlers:
-        handler.addFilter(_DropRepeats())
-    args = _build_parser().parse_args(sys.argv[1:] if argv is None else argv)
+  A PRIVATE box (``auth_src.creds_shared`` False) never propagates credentials, so the
+  watcher no-ops and exits immediately (the host spawner also skips spawning one).
+  Best-effort throughout: a resolution failure logs and exits 0 (a watcher that
+  can't resolve its box is simply not needed — never a crash that surfaces to a
+  user, since it runs detached).  WARNING and above go to stderr, which the spawner
+  points at the box's watcher log (:func:`kanibako.settings.paths.creds_watcher_log_path`).
+  """
+  # A detached process has no terminal: its stderr is a file the user reads later, so
+  # each record carries its time.  (Unconfigured, logging's last-resort handler would
+  # still write WARNING+ there, but with no time and no repeat filter.)
+  setup_logging(timestamps=True)
+  for handler in logging.getLogger("kanibako").handlers:
+    handler.addFilter(_DropRepeats())
+  args = _build_parser().parse_args(sys.argv[1:] if argv is None else argv)
 
+  try:
+    ctx = _resolve_watch_context(args.box)
+  except Exception:
+    log.exception("creds watcher could not resolve its box; exiting")
+    return 0
+  if ctx is None:
+    return 0
+  runtime, proj, container_name, target, auth_src = ctx
+
+  if not auth_src.creds_shared:
+    # Private/box-tier box: writeback is a no-op, so watching is pointless.
+    log.info("box %s is private (no shared creds); watcher exiting", container_name)
+    return 0
+
+  lock = _single_instance_lock(proj.metadata_path / CREDS_WATCHER_LOCK_FILE)
+  if lock is None:
+    log.info("another creds watcher already holds the lock for %s; exiting", container_name)
+    return 0
+
+  from kanibako.commands.start import writeback_session_credentials
+
+  watcher = CredsWatcher(
+    is_running=lambda: runtime.is_running(container_name),
+    read_dirty=lambda: read_creds_dirty(proj.shell_path),
+    # The writeback IS the sole flag-clearer (self-clears on success), so the
+    # watcher takes no separate clear callable — a failed write keeps the flag set.
+    writeback=lambda: writeback_session_credentials(target, proj, auth_src=auth_src),
+    sleep=time.sleep,
+    poll_interval=args.poll,
+  )
+  log.info("creds watcher started for box %s", container_name)
+  try:
+    return watcher.run()
+  finally:
+    # Release the single-instance lock (also released on process exit).
     try:
-        ctx = _resolve_watch_context(args.box)
-    except Exception:
-        log.exception("creds watcher could not resolve its box; exiting")
-        return 0
-    if ctx is None:
-        return 0
-    runtime, proj, container_name, target, auth_src = ctx
-
-    if not auth_src.creds_shared:
-        # Private/box-tier box: writeback is a no-op, so watching is pointless.
-        log.info("box %s is private (no shared creds); watcher exiting", container_name)
-        return 0
-
-    lock = _single_instance_lock(proj.metadata_path / CREDS_WATCHER_LOCK_FILE)
-    if lock is None:
-        log.info("another creds watcher already holds the lock for %s; exiting", container_name)
-        return 0
-
-    from kanibako.commands.start import writeback_session_credentials
-
-    watcher = CredsWatcher(
-        is_running=lambda: runtime.is_running(container_name),
-        read_dirty=lambda: read_creds_dirty(proj.shell_path),
-        # The writeback IS the sole flag-clearer (self-clears on success), so the
-        # watcher takes no separate clear callable — a failed write keeps the flag set.
-        writeback=lambda: writeback_session_credentials(target, proj, auth_src=auth_src),
-        sleep=time.sleep,
-        poll_interval=args.poll,
-    )
-    log.info("creds watcher started for box %s", container_name)
-    try:
-        return watcher.run()
-    finally:
-        # Release the single-instance lock (also released on process exit).
-        try:
-            if hasattr(lock, "close"):
-                lock.close()  # type: ignore[union-attr]
-        except OSError:
-            pass
+      if hasattr(lock, "close"):
+        lock.close()  # type: ignore[union-attr]
+    except OSError:
+      pass
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+  raise SystemExit(main())

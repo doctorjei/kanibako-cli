@@ -6,24 +6,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.settings.agent_defaults import (
-    load_behavior,
-    load_category_binds,
-    load_descriptor,
-    load_envs,
+  load_behavior,
+  load_category_binds,
+  load_descriptor,
+  load_envs,
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
-    AgentInstall,
-    CategoryBindDefaults,
-    CredFileSpec,
-    PluginDescriptor,
-    Target,
-    TargetSetting,
+  AgentInstall,
+  CategoryBindDefaults,
+  CredFileSpec,
+  PluginDescriptor,
+  Target,
+  TargetSetting,
 )
 
 if TYPE_CHECKING:
-    from kanibako.settings.agent_config import AgentConfig
-    from kanibako.vscode.vscode_config import CodexModelProvider
+  from kanibako.settings.agent_config import AgentConfig
+  from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.goose")
 
@@ -63,247 +63,256 @@ _GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 class GooseTarget(Target):
-    """Target for Goose (https://github.com/block/goose)."""
+  """Target for Goose (https://github.com/block/goose)."""
 
-    @property
-    def descriptor(self) -> PluginDescriptor | None:
-        return _GOOSE_DESCRIPTOR
+  @property
+  def descriptor(self) -> PluginDescriptor | None:
+    return _GOOSE_DESCRIPTOR
 
-    def default_category_binds(self) -> CategoryBindDefaults:
-        """Declare goose's AGENT-scope category binds — from the defaults file, now EMPTY."""
-        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+  def default_category_binds(self) -> CategoryBindDefaults:
+    """Declare goose's AGENT-scope category binds — from the defaults file, now EMPTY."""
+    return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def default_envs(self) -> dict[str, str]:
-        """Declare goose's AGENT-scope env defaults (spec §2d ``agent.goose.env.*``).
+  def default_envs(self) -> dict[str, str]:
+    """Declare goose's AGENT-scope env defaults (spec §2d ``agent.goose.env.*``).
 
-        ⚑ Only the PLUGIN-REQUIRED variables are declared; ``GOOSE_PROVIDER`` /
-        ``GOOSE_MODEL`` are deliberately absent — goose owns those in its own config.
-        """
-        return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+    ⚑ Only the PLUGIN-REQUIRED variables are declared; ``GOOSE_PROVIDER`` /
+    ``GOOSE_MODEL`` are deliberately absent — goose owns those in its own config.
+    """
+    return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def cred_writeback_error(self, spec: "CredFileSpec", data: bytes) -> str | None:
-        """Refuse a box ``secrets.yaml`` that is not a non-empty YAML mapping.
+  def cred_writeback_error(self, spec: "CredFileSpec", data: bytes) -> str | None:
+    """Refuse a box ``secrets.yaml`` that is not a non-empty YAML mapping.
 
-        The mapping is what :func:`~kanibako.plugins.goose.credentials.parse_yaml`
-        returns; an empty one is refused.
-        """
-        from kanibako.plugins.goose.credentials import parse_yaml
+    The mapping is what :func:`~kanibako.plugins.goose.credentials.parse_yaml`
+    returns; an empty one is refused.
+    """
+    from kanibako.plugins.goose.credentials import parse_yaml
 
-        if spec.home_rel.endswith("secrets.yaml") and not parse_yaml(data):
-            return "not a non-empty YAML mapping"
-        return None
+    if spec.home_rel.endswith("secrets.yaml") and not parse_yaml(data):
+      return "not a non-empty YAML mapping"
+    return None
 
-    @property
-    def name(self) -> str:
-        return "goose"
+  @property
+  def name(self) -> str:
+    return "goose"
 
-    @property
-    def display_name(self) -> str:
-        return "Goose"
+  @property
+  def display_name(self) -> str:
+    return "Goose"
 
-    @property
-    def config_dir_name(self) -> str:
-        return ".config/goose"
+  @property
+  def config_dir_name(self) -> str:
+    return ".config/goose"
 
-    @property
-    def default_entrypoint(self) -> str | None:
-        """Goose binary as container entrypoint."""
-        return "goose"
+  @property
+  def default_entrypoint(self) -> str | None:
+    """Goose binary as container entrypoint."""
+    return "goose"
 
-    def deliver_directive_hook(
-        self,
-        *,
-        config_root: Path,
-        access: str,
-        model_provider: "CodexModelProvider | None" = None,
-    ) -> bool:
-        """Write the kanibako goose plugin that wires the canon hooks, at EVERY start.
+  def deliver_directive_hook(
+    self,
+    *,
+    config_root: Path,
+    access: str,
+    model_provider: "CodexModelProvider | None" = None,
+  ) -> bool:
+    """Write the kanibako goose plugin that wires the canon hooks, at EVERY start.
 
-        goose 1.38 loads hooks only from plugins, so the box gets the kanibako-owned
-        ``~/.agents/plugins/kanibako/hooks/hooks.json`` — this plugin's shipped copy —
-        rewritten when it differs, so existing boxes get it too.  Its scripts run in
-        place from canon; the ``mail-stop.sh`` adapter ships in this plugin's charter
-        chapter (``data/rom/``, bound at ``~/canon/charter/agent``).  The write goes
-        through :mod:`kanibako.boxfs`; a symlink on the path skips it with a warning.
-        *access* / *model_provider* are unused.  The event map, and the claude events
-        goose has no equivalent for: llm-doc.
-        """
-        from importlib.resources import files
+    goose 1.38 loads hooks only from plugins, so the box gets the kanibako-owned
+    ``~/.agents/plugins/kanibako/hooks/hooks.json`` — this plugin's shipped copy —
+    rewritten when it differs, so existing boxes get it too.  Its scripts run in
+    place from canon; the ``mail-stop.sh`` adapter ships in this plugin's charter
+    chapter (``data/rom/``, bound at ``~/canon/charter/agent``).  The write goes
+    through :mod:`kanibako.boxfs`; a symlink on the path skips it with a warning.
+    *access* / *model_provider* are unused.  The event map, and the claude events
+    goose has no equivalent for: llm-doc.
+    """
+    from importlib.resources import files
 
-        from kanibako import boxfs
+    from kanibako import boxfs
 
-        data = files(_DEFAULTS_PACKAGE).joinpath(
-            "data", "agents-plugin", "hooks", _HOOKS_FILE,
-        ).read_bytes()
-        path = config_root.joinpath(*_HOOKS_DIR, _HOOKS_FILE)
-        if not boxfs.no_symlink_or_warn(path, config_root):
-            return False
-        try:
-            if boxfs.read_bytes(path, config_root) == data:
-                return False
-        except FileNotFoundError:
-            pass
-        boxfs.write_bytes(path, config_root, data)
-        return True
+    data = (
+      files(_DEFAULTS_PACKAGE)
+      .joinpath(
+        "data",
+        "agents-plugin",
+        "hooks",
+        _HOOKS_FILE,
+      )
+      .read_bytes()
+    )
+    path = config_root.joinpath(*_HOOKS_DIR, _HOOKS_FILE)
+    if not boxfs.no_symlink_or_warn(path, config_root):
+      return False
+    try:
+      if boxfs.read_bytes(path, config_root) == data:
+        return False
+    except FileNotFoundError:
+      pass
+    boxfs.write_bytes(path, config_root, data)
+    return True
 
-    def has_resumable_session(self, home: Path) -> bool:
-        """Report whether goose has a session to resume under the box home.
+  def has_resumable_session(self, home: Path) -> bool:
+    """Report whether goose has a session to resume under the box home.
 
-        On a box's FIRST agent launch the store is empty and ``goose session --resume``
-        is DOOMED (fast container death -> raw attach-race error); ``False`` sends
-        start.py straight to a new session.  *home* is the box home as seen from the
-        HOST (the home bind source), so the store is readable without touching the
-        container.  ⚑ FAIL-SAFE: ``False`` only
-        when the store positively contains no entry; ANY entry — or any read error —
-        returns ``True``, so a real resume is never wrongly denied.  Why the dir-entry
-        check splits exactly right, and the ``GOOSE_PATH_ROOT`` limit: llm-doc.
-        """
-        sessions = home / ".local" / "share" / "goose" / "sessions"
-        try:
-            if not sessions.is_dir():
-                return False
-            return next(iter(sessions.iterdir()), None) is not None
-        except OSError as exc:
-            logger.debug(
-                "cannot inspect goose session store %s (%s); "
-                "assuming a resumable session exists (fail-safe)",
-                sessions, exc,
-            )
-            return True
+    On a box's FIRST agent launch the store is empty and ``goose session --resume``
+    is DOOMED (fast container death -> raw attach-race error); ``False`` sends
+    start.py straight to a new session.  *home* is the box home as seen from the
+    HOST (the home bind source), so the store is readable without touching the
+    container.  ⚑ FAIL-SAFE: ``False`` only
+    when the store positively contains no entry; ANY entry — or any read error —
+    returns ``True``, so a real resume is never wrongly denied.  Why the dir-entry
+    check splits exactly right, and the ``GOOSE_PATH_ROOT`` limit: llm-doc.
+    """
+    sessions = home / ".local" / "share" / "goose" / "sessions"
+    try:
+      if not sessions.is_dir():
+        return False
+      return next(iter(sessions.iterdir()), None) is not None
+    except OSError as exc:
+      logger.debug(
+        "cannot inspect goose session store %s (%s); "
+        "assuming a resumable session exists (fail-safe)",
+        sessions,
+        exc,
+      )
+      return True
 
-    def should_run_setup(self, output: str) -> bool:
-        # Launch-time ground truth that goose configure did NOT produce a bootable
-        # config.  goose's verbatim line is "Goose is not configured. Run 'goose
-        # configure' to set up."  Match either half case-insensitively, so a phrasing
-        # tweak in one half still trips the detector.
-        low = output.lower()
-        return "not configured" in low or "run 'goose configure'" in low
+  def should_run_setup(self, output: str) -> bool:
+    # Launch-time ground truth that goose configure did NOT produce a bootable
+    # config.  goose's verbatim line is "Goose is not configured. Run 'goose
+    # configure' to set up."  Match either half case-insensitively, so a phrasing
+    # tweak in one half still trips the detector.
+    low = output.lower()
+    return "not configured" in low or "run 'goose configure'" in low
 
-    @property
-    def setup_entrypoint(self) -> str | None:
-        """``goose configure`` is goose's one-time interactive provider setup, run in-box."""
-        return "goose"
+  @property
+  def setup_entrypoint(self) -> str | None:
+    """``goose configure`` is goose's one-time interactive provider setup, run in-box."""
+    return "goose"
 
-    @property
-    def setup_args(self) -> list[str]:
-        return ["configure"]
+  @property
+  def setup_args(self) -> list[str]:
+    return ["configure"]
 
-    def detect(self) -> AgentInstall | None:
-        """Detect Goose installation on the host — the contract path, never ``$PATH``.
+  def detect(self) -> AgentInstall | None:
+    """Detect Goose installation on the host — the contract path, never ``$PATH``.
 
-        Installed iff ``_BINARY`` exists *or* is a (possibly dangling) symlink.
-        ``binary`` is the RESOLVED path, so nested-container mount sources are real
-        files; ``launcher`` stays ``None`` (goose has no separate launcher).
-        """
-        if not (_BINARY.exists() or _BINARY.is_symlink()):
-            logger.debug("goose binary not present at %s", _BINARY)
-            return None
+    Installed iff ``_BINARY`` exists *or* is a (possibly dangling) symlink.
+    ``binary`` is the RESOLVED path, so nested-container mount sources are real
+    files; ``launcher`` stays ``None`` (goose has no separate launcher).
+    """
+    if not (_BINARY.exists() or _BINARY.is_symlink()):
+      logger.debug("goose binary not present at %s", _BINARY)
+      return None
 
-        try:
-            resolved = _BINARY.resolve()
-        except OSError:
-            logger.debug("Failed to resolve binary: %s", _BINARY)
-            # Dangling/broken binary: still "installed" per the contract; the binary
-            # validation surfaces the real problem downstream.
-            resolved = _BINARY
+    try:
+      resolved = _BINARY.resolve()
+    except OSError:
+      logger.debug("Failed to resolve binary: %s", _BINARY)
+      # Dangling/broken binary: still "installed" per the contract; the binary
+      # validation surfaces the real problem downstream.
+      resolved = _BINARY
 
-        logger.debug("Resolved binary: %s (from %s)", resolved, _BINARY)
-        return AgentInstall(
-            name="goose",
-            binary=resolved,
-            install_dir=resolved.parent,
-        )
+    logger.debug("Resolved binary: %s (from %s)", resolved, _BINARY)
+    return AgentInstall(
+      name="goose",
+      binary=resolved,
+      install_dir=resolved.parent,
+    )
 
-    # NOTE: goose's cred SYNC is the ``CredFileSpec`` set in ``goose-defaults.yaml``,
-    # realized by the credsync engine.
+  # NOTE: goose's cred SYNC is the ``CredFileSpec`` set in ``goose-defaults.yaml``,
+  # realized by the credsync engine.
 
-    @property
-    def checks_box_login(self) -> bool:
-        """True: :meth:`check_auth` judges the box."""
-        return True
+  @property
+  def checks_box_login(self) -> bool:
+    """True: :meth:`check_auth` judges the box."""
+    return True
 
-    def check_auth(
-        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
-    ) -> bool:
-        """Whether goose has a login and a provider to launch with.
+  def check_auth(
+    self,
+    *,
+    box_home: Path | None = None,
+    delivered: frozenset[str] = frozenset(),
+  ) -> bool:
+    """Whether goose has a login and a provider to launch with.
 
-        With *box_home* (the launch gate): a login is :meth:`box_login_present`, or a
-        non-empty host ``secrets.yaml`` (the refresh copies it in after the gate);
-        a provider is ``GOOSE_PROVIDER`` in *delivered*, or one named by the box's
-        ``config.yaml``, read through :mod:`kanibako.boxfs`.  Without *box_home*:
-        the host ``secrets.yaml`` alone.  True when the binary is absent (later
-        warnings cover it); anchored to ``_BINARY``, never ``$PATH``.
-        """
-        if not (_BINARY.exists() or _BINARY.is_symlink()):
-            return True
-        if box_home is None:
-            return _host_secrets_present()
-        login = self.box_login_present(box_home, delivered) or _host_secrets_present()
-        return login and (
-            "GOOSE_PROVIDER" in delivered or _box_provider_named(box_home)
-        )
+    With *box_home* (the launch gate): a login is :meth:`box_login_present`, or a
+    non-empty host ``secrets.yaml`` (the refresh copies it in after the gate);
+    a provider is ``GOOSE_PROVIDER`` in *delivered*, or one named by the box's
+    ``config.yaml``, read through :mod:`kanibako.boxfs`.  Without *box_home*:
+    the host ``secrets.yaml`` alone.  True when the binary is absent (later
+    warnings cover it); anchored to ``_BINARY``, never ``$PATH``.
+    """
+    if not (_BINARY.exists() or _BINARY.is_symlink()):
+      return True
+    if box_home is None:
+      return _host_secrets_present()
+    login = self.box_login_present(box_home, delivered) or _host_secrets_present()
+    return login and ("GOOSE_PROVIDER" in delivered or _box_provider_named(box_home))
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return default Goose agent configuration.
+  def generate_agent_config(self) -> AgentConfig:
+    """Return default Goose agent configuration.
 
-        ⚑ ``state`` is intentionally EMPTY: kanibako must NOT pin goose's
-        provider/model.  goose's env vars win over its own config.yaml, so a default
-        here would clobber the provider the user picked with ``goose configure``.  An
-        EXPLICIT setting still emits the env var (see :meth:`setting_descriptors`).
+    ⚑ ``state`` is intentionally EMPTY: kanibako must NOT pin goose's
+    provider/model.  goose's env vars win over its own config.yaml, so a default
+    here would clobber the provider the user picked with ``goose configure``.  An
+    EXPLICIT setting still emits the env var (see :meth:`setting_descriptors`).
 
-        ⚑ The ``name="Goose"`` this wrote is gone (2026-09-15).  It was not a settings
-        key, so it had no place in a settings file at all; the description is declared
-        as ``label`` in ``goose-defaults.yaml``'s ``behavior:`` floor —
-        ``agent.goose.label``, spec §2d.
-        """
-        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
+    ⚑ The ``name="Goose"`` this wrote is gone (2026-09-15).  It was not a settings
+    key, so it had no place in a settings file at all; the description is declared
+    as ``label`` in ``goose-defaults.yaml``'s ``behavior:`` floor —
+    ``agent.goose.label``, spec §2d.
+    """
+    from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(state={})
+    return _AgentConfig(state={})
 
-    def setting_descriptors(self) -> list[TargetSetting]:
-        """Declare Goose runtime settings — ``provider``, ``model``, ``endpoint``.
+  def setting_descriptors(self) -> list[TargetSetting]:
+    """Declare Goose runtime settings — ``provider``, ``model``, ``endpoint``.
 
-        ⚑ The keys and their FLOOR values live in ``goose-defaults.yaml``'s
-        ``behavior:`` section, not here: a default written in plugin code is a second
-        declaration site for what the shipped file already owns.  None of the three sets a
-        value (``provider`` is ``<None>``; ``model``/``endpoint`` inherit ``agent.default``),
-        and that file states why.  What each key does, and why no value is load-bearing
-        for provider/model: llm-doc.
-        """
-        return list(_GOOSE_BEHAVIOR)
+    ⚑ The keys and their FLOOR values live in ``goose-defaults.yaml``'s
+    ``behavior:`` section, not here: a default written in plugin code is a second
+    declaration site for what the shipped file already owns.  None of the three sets a
+    value (``provider`` is ``<None>``; ``model``/``endpoint`` inherit ``agent.default``),
+    and that file states why.  What each key does, and why no value is load-bearing
+    for provider/model: llm-doc.
+    """
+    return list(_GOOSE_BEHAVIOR)
 
 
 def _host_secrets_present() -> bool:
-    """Whether the host's goose ``secrets.yaml`` is a non-empty file."""
-    secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
-    try:
-        return secrets.is_file() and secrets.stat().st_size > 0
-    except OSError:
-        return False
+  """Whether the host's goose ``secrets.yaml`` is a non-empty file."""
+  secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
+  try:
+    return secrets.is_file() and secrets.stat().st_size > 0
+  except OSError:
+    return False
 
 
 def _box_provider_named(box_home: Path) -> bool:
-    """Whether the box's goose ``config.yaml`` names a provider.
+  """Whether the box's goose ``config.yaml`` names a provider.
 
-    goose 1.38 writes ``active_provider`` (with a ``providers`` map); an older
-    config names ``GOOSE_PROVIDER``.  Either, non-empty, counts.  Read through
-    :mod:`kanibako.boxfs`: a symlink on the path, a file over
-    ``_BOX_CONFIG_MAX_BYTES``, or any read error names none.
-    """
-    from kanibako import boxfs
-    from kanibako.plugins.goose.credentials import parse_yaml
+  goose 1.38 writes ``active_provider`` (with a ``providers`` map); an older
+  config names ``GOOSE_PROVIDER``.  Either, non-empty, counts.  Read through
+  :mod:`kanibako.boxfs`: a symlink on the path, a file over
+  ``_BOX_CONFIG_MAX_BYTES``, or any read error names none.
+  """
+  from kanibako import boxfs
+  from kanibako.plugins.goose.credentials import parse_yaml
 
-    path = box_home / ".config" / "goose" / GOOSE_CONFIG_FILE
-    try:
-        if boxfs.stat(path, box_home).st_size > _BOX_CONFIG_MAX_BYTES:
-            return False
-        data = boxfs.read_bytes(path, box_home)
-    except (OSError, ValueError):
-        return False
-    if len(data) > _BOX_CONFIG_MAX_BYTES:
-        return False
-    cfg = parse_yaml(data)
-    return any(
-        isinstance(cfg.get(key), str) and cfg[key].strip()
-        for key in ("active_provider", "GOOSE_PROVIDER")
-    )
+  path = box_home / ".config" / "goose" / GOOSE_CONFIG_FILE
+  try:
+    if boxfs.stat(path, box_home).st_size > _BOX_CONFIG_MAX_BYTES:
+      return False
+    data = boxfs.read_bytes(path, box_home)
+  except (OSError, ValueError):
+    return False
+  if len(data) > _BOX_CONFIG_MAX_BYTES:
+    return False
+  cfg = parse_yaml(data)
+  return any(
+    isinstance(cfg.get(key), str) and cfg[key].strip()
+    for key in ("active_provider", "GOOSE_PROVIDER")
+  )

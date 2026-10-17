@@ -34,7 +34,9 @@ class TestThroughTheCli:
     assert "℘" not in out, out
 
   def test_a_pref_set_at_the_wrong_scope_names_both_keys_with_plus(
-    self, config_file, capsys,
+    self,
+    config_file,
+    capsys,
   ):
     out = _run(["system", "set", "pref.agent.navigator+claude.access=editing"], capsys)
     assert "'pref.agent.navigator+claude.access' cannot be set" in out, out
@@ -42,7 +44,9 @@ class TestThroughTheCli:
     assert "℘" not in out, out
 
   def test_an_agent_file_refusal_hands_back_a_pasteable_cure(
-    self, credentials_dir, capsys,
+    self,
+    credentials_dir,
+    capsys,
   ):
     store = credentials_dir / "agents" / "nav+claude"
     store.mkdir(parents=True)
@@ -53,7 +57,9 @@ class TestThroughTheCli:
     assert "℘" not in out, out
 
   def test_an_agent_file_store_path_names_its_node_with_plus(
-    self, credentials_dir, capsys,
+    self,
+    credentials_dir,
+    capsys,
   ):
     store = credentials_dir / "agents" / "nav+claude"
     store.mkdir(parents=True)
@@ -92,8 +98,14 @@ def test_a_category_entry_label_and_its_pref_origin_agree_on_plus():
   from kanibako.settings.settings_prefs import PrefRequest, pref_origin
 
   entry = CategoryEntry(
-    category="caches", scope="agent", box_dest="/d℘x", host_src=None, delivery=MOUNT,
-    options="", name="", key_segments=("agent", "nav℘claude", "caches", "/d℘x"),
+    category="caches",
+    scope="agent",
+    box_dest="/d℘x",
+    host_src=None,
+    delivery=MOUNT,
+    options="",
+    name="",
+    key_segments=("agent", "nav℘claude", "caches", "/d℘x"),
   )
   assert entry.label == "agent.nav+claude.caches[/d℘x]", entry.label
   req = PrefRequest(target="agent.nav℘claude.caches", value={"/d℘x": ["s"]}, level="box")
@@ -116,7 +128,8 @@ class TestUndeclaredStorePaths:
   DOC = {"agent": {"nav+claude": {"zzz": 1, "bindings": {"qq": {}}}}}
 
   @pytest.mark.writes_undeclared(
-    "agent.nav℘claude.zzz", "agent.nav℘claude.bindings.qq",
+    "agent.nav℘claude.zzz",
+    "agent.nav℘claude.bindings.qq",
     reason="drives the undeclared listing: the system file must carry both entries.",
   )
   def test_the_stored_listing(self, config_file, capsys):
@@ -126,7 +139,8 @@ class TestUndeclaredStorePaths:
     assert "℘" not in out, out
 
   @pytest.mark.writes_undeclared(
-    "agent.nav℘claude.zzz", "agent.nav℘claude.bindings.qq",
+    "agent.nav℘claude.zzz",
+    "agent.nav℘claude.bindings.qq",
     reason="drives the undeclared listing: the system file must carry both entries.",
   )
   def test_the_effective_refusal(self, config_file, capsys):

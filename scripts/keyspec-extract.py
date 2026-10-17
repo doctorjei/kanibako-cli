@@ -82,9 +82,16 @@ _EXPECTED = ("1", "1A", "2-pre", "2a", "2b", "2c", "2d", "2e", "2f", "2g", "2h")
 #: ``--list-sections``.  🛑 NEVER used to slice anything.  They are stale by
 #: construction; the spec moves and the headings are the authority.
 _ORACLE_RANGES = {
-  "1": (274, 389), "1A": (390, 561), "2a": (602, 935), "2b": (936, 956),
-  "2c": (957, 1208), "2d": (1209, 1384), "2e": (1385, 1397), "2f": (1398, 1440),
-  "2g": (1441, 1468), "2h": (1469, 1587),
+  "1": (274, 389),
+  "1A": (390, 561),
+  "2a": (602, 935),
+  "2b": (936, 956),
+  "2c": (957, 1208),
+  "2d": (1209, 1384),
+  "2e": (1385, 1397),
+  "2f": (1398, 1440),
+  "2g": (1441, 1468),
+  "2h": (1469, 1587),
 }
 
 _FENCE = re.compile(r"^\s{0,3}(```|~~~)")
@@ -113,7 +120,7 @@ class Section:
   sid: str
   title: str
   start: int  # 1-based, the heading line itself
-  end: int    # 1-based, inclusive
+  end: int  # 1-based, inclusive
 
 
 def parse_sections(lines: list[str]) -> dict[str, Section]:
@@ -153,7 +160,7 @@ def parse_sections(lines: list[str]) -> dict[str, Section]:
     # lines — most of its key surface — silently.
     end = len(lines)
     child: tuple[int, str] | None = None  # first DEEPER heading: (lineno, its sid or "")
-    for nxt_line, nxt_level, nxt_sid, _ in heads[pos + 1:]:
+    for nxt_line, nxt_level, nxt_sid, _ in heads[pos + 1 :]:
       if nxt_level <= level:
         end = nxt_line - 1
         break
@@ -167,12 +174,14 @@ def parse_sections(lines: list[str]) -> dict[str, Section]:
     # `####` blocks) claims nothing, so its parent's range already covers the lot
     # and no preamble is minted: a `2d-pre` would only overlap `2d`.
     if child is not None and child[1]:
-      declare(Section(
-        sid=sid + _PREAMBLE_SUFFIX,
-        title=f"{title}  [preamble — before §{child[1]}]",
-        start=lineno,
-        end=child[0] - 1,
-      ))
+      declare(
+        Section(
+          sid=sid + _PREAMBLE_SUFFIX,
+          title=f"{title}  [preamble — before §{child[1]}]",
+          start=lineno,
+          end=child[0] - 1,
+        )
+      )
   return out
 
 
@@ -208,7 +217,7 @@ def require_expected(found: dict[str, Section], wanted: tuple[str, ...]) -> None
     "the spec no longer carries a heading for section(s): "
     + ", ".join(f"§{sid}" for sid in missing)
     + "\nThe carve-up is derived from headings, so a rename means this run would "
-      "extract the WRONG SLICE. Fix the section ids (or pass --sections) and re-run."
+    "extract the WRONG SLICE. Fix the section ids (or pass --sections) and re-run."
   )
 
 
@@ -243,11 +252,14 @@ def coverage_summary(found: dict[str, Section], wanted: tuple[str, ...]) -> str:
   head = f"requested {len(wanted)} section(s): {covered} of {hi - lo + 1} lines in {lo}-{hi}"
   if not gaps:
     return f"{head} — contiguous, nothing between them is unrequested"
-  return "\n".join([head] + [
-    f"  🛑 GAP {first}-{last} ({last - first + 1} lines) between §{before} and §{after}"
-    " — requested by NO section"
-    for first, last, before, after in gaps
-  ])
+  return "\n".join(
+    [head]
+    + [
+      f"  🛑 GAP {first}-{last} ({last - first + 1} lines) between §{before} and §{after}"
+      " — requested by NO section"
+      for first, last, before, after in gaps
+    ]
+  )
 
 
 def numbered(lines: list[str], sec: Section) -> str:
@@ -371,7 +383,7 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
 class Exchange:
   """One HTTP attempt: the status is recorded even when the body is unusable."""
 
-  status: int | None       # None ONLY when no HTTP response was received at all
+  status: int | None  # None ONLY when no HTTP response was received at all
   body: bytes
   transport_error: str | None
   retry_after: float | None
@@ -438,11 +450,15 @@ def completion_text(body: bytes) -> tuple[str | None, str | None, str | None]:
   message = first.get("message")
   content = message.get("content") if isinstance(message, dict) else None
   if not isinstance(content, str) or not content.strip():
-    return None, (
-      "HTTP 200 but the completion content was EMPTY "
-      f"(finish_reason={finish!r}) -- this is NOT a rate limit; the endpoint "
-      "accepted the request and returned nothing"
-    ), finish
+    return (
+      None,
+      (
+        "HTTP 200 but the completion content was EMPTY "
+        f"(finish_reason={finish!r}) -- this is NOT a rate limit; the endpoint "
+        "accepted the request and returned nothing"
+      ),
+      finish,
+    )
   return content, None, finish
 
 
@@ -628,56 +644,73 @@ def build_parser() -> argparse.ArgumentParser:
     ),
   )
   parser.add_argument(
-    "--persona", metavar="REF",
+    "--persona",
+    metavar="REF",
     help="persona-grata ref '<pid>+<hid>' (a bare '<pid>' is accepted iff unambiguous). "
-         "Supplies the endpoint, the model and the token POINTER. Not needed for "
-         "--list-sections or --dry-run.",
+    "Supplies the endpoint, the model and the token POINTER. Not needed for "
+    "--list-sections or --dry-run.",
   )
   parser.add_argument("--spec", type=Path, default=_DEFAULT_SPEC, help=f"default: {_DEFAULT_SPEC}")
   parser.add_argument(
-    "--brief", type=Path, default=_DEFAULT_BRIEF, help=f"default: {_DEFAULT_BRIEF}",
+    "--brief",
+    type=Path,
+    default=_DEFAULT_BRIEF,
+    help=f"default: {_DEFAULT_BRIEF}",
   )
   parser.add_argument(
-    "--out", type=Path, default=None,
+    "--out",
+    type=Path,
+    default=None,
     help="run directory (default: $TMPDIR/keyspec-extract/<utc stamp>)",
   )
   parser.add_argument(
-    "--sections", default=",".join(_EXPECTED),
+    "--sections",
+    default=",".join(_EXPECTED),
     help=f"comma-separated section ids (default: {','.join(_EXPECTED)})",
   )
   parser.add_argument(
-    "--endpoint", help="override the store's base URL. Must be OpenAI-format (include /v1).",
+    "--endpoint",
+    help="override the store's base URL. Must be OpenAI-format (include /v1).",
   )
   parser.add_argument("--model", help="override the store's model id")
   parser.add_argument(
-    "--api-path", default="/chat/completions",
+    "--api-path",
+    default="/chat/completions",
     help="appended to the base URL unless already present (default: /chat/completions)",
   )
   parser.add_argument(
-    "--system-file", type=Path,
+    "--system-file",
+    type=Path,
     help="optional system message. ⚑ persona-grata carries NO prompt -- the store holds "
-         "endpoint/model/env_key/token only -- so there is no persona prompt to render and "
-         "none is hardcoded. Default: no system message, as the nine extractors ran.",
+    "endpoint/model/env_key/token only -- so there is no persona prompt to render and "
+    "none is hardcoded. Default: no system message, as the nine extractors ran.",
   )
   parser.add_argument("--timeout", type=float, default=300.0, help="per-request seconds")
   parser.add_argument("--max-tokens", type=int, default=8000)
   parser.add_argument(
-    "--temperature", type=float, default=None, help="omitted from the payload unless given",
+    "--temperature",
+    type=float,
+    default=None,
+    help="omitted from the payload unless given",
   )
   parser.add_argument("--max-retries", type=int, default=4, help="retries per section")
   parser.add_argument(
-    "--gap", type=float, default=2.0,
+    "--gap",
+    type=float,
+    default=2.0,
     help="seconds between requests, and the backoff base (default 2.0; NaviGator is "
-         "rpm 120 / max_parallel 10, so this runs serial)",
+    "rpm 120 / max_parallel 10, so this runs serial)",
   )
   parser.add_argument("--force", action="store_true", help="re-run sections already extracted")
   parser.add_argument(
-    "--list-sections", action="store_true",
+    "--list-sections",
+    action="store_true",
     help="print the re-derived ranges beside the 2026-08-20 ones, plus the line "
-         "accounting for the requested set and any gap between two of them, and exit",
+    "accounting for the requested set and any gap between two of them, and exit",
   )
   parser.add_argument(
-    "--dry-run", action="store_true",
+    "--dry-run",
+    action="store_true",
     help="resolve everything and write the prompts to --out, but make no request",
   )
   return parser
@@ -720,7 +753,11 @@ def main(argv: list[str]) -> int:
     entry = resolve_ref(args.persona)
     ref = f"{entry.persona}+{entry.harness}"
     conn = resolve_connection(
-      entry, ref, endpoint=args.endpoint, model=args.model, path=args.api_path,
+      entry,
+      ref,
+      endpoint=args.endpoint,
+      model=args.model,
+      path=args.api_path,
     )
     bearer = read_bearer(conn.token_path)
     print(f"persona {ref} -> {conn.url}  model={conn.model or '(omitted)'}")
@@ -763,15 +800,21 @@ def main(argv: list[str]) -> int:
     print(f"§{sid:<5} lines {sec.start}-{sec.end}  requesting…", flush=True)
     text, failure, attempts = run_section(conn=conn, bearer=bearer, prompt=prompt, args=args)
     meta = {
-      "section": sid, "title": sec.title, "start": sec.start, "end": sec.end,
-      "prompt_chars": len(prompt), "model": conn.model, "url": conn.url,
+      "section": sid,
+      "title": sec.title,
+      "start": sec.start,
+      "end": sec.end,
+      "prompt_chars": len(prompt),
+      "model": conn.model,
+      "url": conn.url,
       "attempts": [a.__dict__ for a in attempts],
       "statuses": [a.status for a in attempts],
       "finish_reasons": [a.finish_reason for a in attempts],
       "ok": text is not None,
     }
     (args.out / f"section-{sid}.meta.json").write_text(
-      json.dumps(meta, indent=2) + "\n", encoding="utf-8",
+      json.dumps(meta, indent=2) + "\n",
+      encoding="utf-8",
     )
     if text is None:
       reason = scrub(failure or "unknown", bearer)
@@ -791,24 +834,29 @@ def main(argv: list[str]) -> int:
     (args.out / "RUN.json").write_text(
       json.dumps(
         {
-          "spec": str(args.spec), "spec_lines": len(lines), "brief": str(args.brief),
-          "persona": args.persona, "url": conn.url if conn else None,
+          "spec": str(args.spec),
+          "spec_lines": len(lines),
+          "brief": str(args.brief),
+          "persona": args.persona,
+          "url": conn.url if conn else None,
           "model": conn.model if conn else None,
           "derived_ranges": {s: [found[s].start, found[s].end] for s in wanted},
           "oracle_ranges_2026_08_20": {
             s: list(_ORACLE_RANGES[s]) for s in wanted if s in _ORACLE_RANGES
           },
-          "sections_ok": sorted(results), "failures": failures,
+          "sections_ok": sorted(results),
+          "failures": failures,
           "merged_keys": merged,
         },
         indent=2,
-      ) + "\n",
+      )
+      + "\n",
       encoding="utf-8",
     )
     print(f"\n{merged} merged key-shaped rows (heuristic) across {len(results)} section(s)")
     print(
       "manifest `keys:` count, NOT measured by this run -- re-derive it with:\n"
-      f"  PYTHONPATH={_REPO / 'src'} python3 -c \"from kanibako.settings.keyspace_manifest "
+      f'  PYTHONPATH={_REPO / "src"} python3 -c "from kanibako.settings.keyspace_manifest '
       "import manifest_doc; print(len(manifest_doc()['keys']))\""
     )
 

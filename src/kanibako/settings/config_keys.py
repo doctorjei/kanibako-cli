@@ -23,33 +23,41 @@ from pathlib import Path  # noqa: F401  (annotations)
 from typing import Collection, Final, Iterator, Mapping
 
 from kanibako.agent_ref import (
-    ENV_VAR_NAME, agent_address_node, agent_segment_case, display_agent_ref,
+  ENV_VAR_NAME,
+  agent_address_node,
+  agent_segment_case,
+  display_agent_ref,
 )
 from kanibako.errors import ConfigError
 from kanibako.identifiers import find_identifier
 from kanibako.settings.agent_config import (
-    DECLARATION_ROOT_LABEL,
-    DEFAULT_ROOT_LABEL,
+  DECLARATION_ROOT_LABEL,
+  DEFAULT_ROOT_LABEL,
 )
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import (
-    DECLARATION_ROOT_REF, ENV_KEY_RE, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
-    agent_declaration_root_ref, agent_tier_node,
+  DECLARATION_ROOT_REF,
+  ENV_KEY_RE,
+  FILE_SCOPES,
+  SECRET_KEY_RE,
+  SECRET_VAR_RE,
+  agent_declaration_root_ref,
+  agent_tier_node,
 )
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
-    ACCESS_TIERS,
-    shown_key,
-    DECLARED_AGENT_LEAVES,
-    PATH_VALUED_AGENT_LEAVES,
-    SCALAR_AGENT_LEAVES,
-    TABLE_VALUED_AGENT_LEAVES,
-    ConcedingLeafMap,
-    access_default,
-    agent_leaf_is_declared,
-    leaf_name_reason,
-    unread_harnesses,
+  ACCESS_TIERS,
+  shown_key,
+  DECLARED_AGENT_LEAVES,
+  PATH_VALUED_AGENT_LEAVES,
+  SCALAR_AGENT_LEAVES,
+  TABLE_VALUED_AGENT_LEAVES,
+  ConcedingLeafMap,
+  access_default,
+  agent_leaf_is_declared,
+  leaf_name_reason,
+  unread_harnesses,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.bootstrap import CONFIG_FILE, CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
@@ -58,12 +66,13 @@ _log = logging.getLogger(__name__)
 
 
 class ConfigLevel(Enum):
-    """Which scope a config operation targets."""
+  """Which scope a config operation targets."""
 
-    box = "box"
-    workset = "workset"
-    agent = "agent"
-    system = "system"
+  box = "box"
+  workset = "workset"
+  agent = "agent"
+  system = "system"
+
 
 # ---------------------------------------------------------------------------
 # ⚑⚑⚑ QUARANTINE — THIS SET IS NOT THE MODEL OF WHAT A KEY IS. It is a
@@ -92,7 +101,8 @@ SETUP_MARKER_KEY = "system.setup_completed"
 
 # The set itself: if a positional arg matches one of these, it is treated as a
 # GET request rather than a project name.
-KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
+KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
+  {
     # Agent flags
     "model",
     # allow_helpers: agent-scope BEHAVIOR key; gates the launch helper hub (spec §2d).
@@ -221,7 +231,8 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # is the SYSTEM SETTINGS file since 2026-08-26 — the sibling of ``system.agent`` above
     # in every respect now; see :data:`SETUP_MARKER_KEY`.
     SETUP_MARKER_KEY,
-})
+  }
+)
 
 # The RETIRED bare env-var prefix (R-39, spec §2a), kept ONLY so the spelling stays
 # RECOGNIZED as key-shaped and the verbs can refuse it with a cure.
@@ -233,77 +244,77 @@ DYNAMIC_PREFIXES: tuple[str, ...] = ("env.",)
 # config location ``(sections_tuple, leaf_name)`` it lands in.
 # ---------------------------------------------------------------------------
 _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
-    # Box section ([box] table).
-    "box.image": (("box",), "image"),
-    "box.shell": (("box",), "shell"),
-    "box.share_images": (("box",), "share_images"),
-    # box.images_store (B3): the ``box:`` table nested slot, as ``box.image``.
-    "box.images_store": (("box",), "images_store"),
-    # ``system.agent`` (the agent SELECTION default, spec §2g) and the settable 3-tier
-    # auth chain: ordinary SETTINGS keys, each in its own nested scope slot.
-    "system.agent": (("system",), "agent"),
-    # The setup VERSION MARKER (spec §2g) — an ORDINARY system settings key since
-    # 2026-08-26, in the same ``system:`` table of the same file as ``system.agent``.
-    SETUP_MARKER_KEY: (("system",), "setup_completed"),
-    "system.auth.share_allowed": (("system", "auth"), "share_allowed"),
-    # The Layer-2 ``system.*`` PATH keys (spec §2g) — the SYSTEM twins of the
-    # ``workset.*`` layout anchors below, wired identically: one nested slot in the
-    # system SETTINGS file, STRING paths, no type coercion, the same set-time E3
-    # resolution probe (``_has_dedicated_route``). ⚑ They are SETTINGS keys, not §1
-    # config keys — the manifest marks every :data:`SYSTEM_PATH_DEFAULTS` row
-    # ``set: cli+file``, and §2a names ``system.template`` in the CLI-settable list
-    # beside ``workset.vault_{ro,rw}``.
-    "system.backup": (("system",), "backup"),
-    "system.channelroot": (("system",), "channelroot"),
-    "system.template": (("system",), "template"),
-    "system.canon": (("system",), "canon"),
-    "system.cache": (("system",), "cache"),
-    "system.state": (("system",), "state"),
-    "system.runtime": (("system",), "runtime"),
-    # The five declared channel type-roots (spec §2g); ``broadcast`` is a FILE.
-    "system.channels.common": (("system", "channels"), "common"),
-    "system.channels.chat": (("system", "channels"), "chat"),
-    "system.channels.share": (("system", "channels"), "share"),
-    "system.channels.broadcast": (("system", "channels"), "broadcast"),
-    "system.channels.mailboxes": (("system", "channels"), "mailboxes"),
-    # The helper-hub SPAWN BUDGET (spec §2g) — its own nested slot in the system
-    # SETTINGS file, so a parent's write and a child's read name one location.
-    "system.helpers.depth": (("system", "helpers"), "depth"),
-    "system.helpers.breadth": (("system", "helpers"), "breadth"),
-    "workset.auth.share_allowed": (("workset", "auth"), "share_allowed"),
-    "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
-    "box.auth.global_enabled": (("box", "auth"), "global_enabled"),
-    "box.auth.workset_enabled": (("box", "auth"), "workset_enabled"),
-    # ⚑ ``box.enable_vault`` is the vault key (P2 clean break); the bare ``vault.*``
-    # keys and ``mode`` are RETIRED, never routed. See llm-docs.
-    "box.enable_vault": (("box",), "enable_vault"),
-    # ``workset.registry`` (P3): the ``workset:`` table nested slot; a STRING path.
-    "workset.registry": (("workset",), "registry"),
-    # Workset-scope LAYOUT anchors (P6a): the ``workset.<...>`` nested slots, STRING paths.
-    "workset.auth.path": (("workset", "auth"), "path"),
-    "workset.boxes": (("workset",), "boxes"),
-    "workset.vault_ro": (("workset",), "vault_ro"),
-    "workset.vault_rw": (("workset",), "vault_rw"),
-    "workset.logs": (("workset",), "logs"),
-    # workset.workspaces / workset.channelroot (§3.3, bifrost A1): the ``workset:`` slot.
-    "workset.workspaces": (("workset",), "workspaces"),
-    "workset.channelroot": (("workset",), "channelroot"),
-    # The whole six-leaf ``channels`` family, one slot rule (see KNOWN_CONFIG_KEYS).
-    "workset.channels.common": (("workset", "channels"), "common"),
-    "workset.channels.chat": (("workset", "channels"), "chat"),
-    "workset.channels.share": (("workset", "channels"), "share"),
-    "workset.channels.broadcast": (("workset", "channels"), "broadcast"),
-    "workset.channels.mailboxes": (("workset", "channels"), "mailboxes"),
-    "workset.channels.share_global": (("workset", "channels"), "share_global"),
-    # Per-workset template SOURCE (template-trio, spec §2c; Q3): the layer-3 seed source.
-    "workset.template": (("workset",), "template"),
-    # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b); STRING paths.
-    "workset.canon": (("workset",), "canon"),
-    "box.canon": (("box",), "canon"),
-    # Workset kuid + advisory-check toggle (P6d): the ``workset:`` table slot.
-    "workset.kuid": (("workset",), "kuid"),
-    "workset.skip_kuid_check": (("workset",), "skip_kuid_check"),
-    # ⚑ ``allow_helpers`` is NOT routed here — it is an agent-keyspace key (spec §2d).
+  # Box section ([box] table).
+  "box.image": (("box",), "image"),
+  "box.shell": (("box",), "shell"),
+  "box.share_images": (("box",), "share_images"),
+  # box.images_store (B3): the ``box:`` table nested slot, as ``box.image``.
+  "box.images_store": (("box",), "images_store"),
+  # ``system.agent`` (the agent SELECTION default, spec §2g) and the settable 3-tier
+  # auth chain: ordinary SETTINGS keys, each in its own nested scope slot.
+  "system.agent": (("system",), "agent"),
+  # The setup VERSION MARKER (spec §2g) — an ORDINARY system settings key since
+  # 2026-08-26, in the same ``system:`` table of the same file as ``system.agent``.
+  SETUP_MARKER_KEY: (("system",), "setup_completed"),
+  "system.auth.share_allowed": (("system", "auth"), "share_allowed"),
+  # The Layer-2 ``system.*`` PATH keys (spec §2g) — the SYSTEM twins of the
+  # ``workset.*`` layout anchors below, wired identically: one nested slot in the
+  # system SETTINGS file, STRING paths, no type coercion, the same set-time E3
+  # resolution probe (``_has_dedicated_route``). ⚑ They are SETTINGS keys, not §1
+  # config keys — the manifest marks every :data:`SYSTEM_PATH_DEFAULTS` row
+  # ``set: cli+file``, and §2a names ``system.template`` in the CLI-settable list
+  # beside ``workset.vault_{ro,rw}``.
+  "system.backup": (("system",), "backup"),
+  "system.channelroot": (("system",), "channelroot"),
+  "system.template": (("system",), "template"),
+  "system.canon": (("system",), "canon"),
+  "system.cache": (("system",), "cache"),
+  "system.state": (("system",), "state"),
+  "system.runtime": (("system",), "runtime"),
+  # The five declared channel type-roots (spec §2g); ``broadcast`` is a FILE.
+  "system.channels.common": (("system", "channels"), "common"),
+  "system.channels.chat": (("system", "channels"), "chat"),
+  "system.channels.share": (("system", "channels"), "share"),
+  "system.channels.broadcast": (("system", "channels"), "broadcast"),
+  "system.channels.mailboxes": (("system", "channels"), "mailboxes"),
+  # The helper-hub SPAWN BUDGET (spec §2g) — its own nested slot in the system
+  # SETTINGS file, so a parent's write and a child's read name one location.
+  "system.helpers.depth": (("system", "helpers"), "depth"),
+  "system.helpers.breadth": (("system", "helpers"), "breadth"),
+  "workset.auth.share_allowed": (("workset", "auth"), "share_allowed"),
+  "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
+  "box.auth.global_enabled": (("box", "auth"), "global_enabled"),
+  "box.auth.workset_enabled": (("box", "auth"), "workset_enabled"),
+  # ⚑ ``box.enable_vault`` is the vault key (P2 clean break); the bare ``vault.*``
+  # keys and ``mode`` are RETIRED, never routed. See llm-docs.
+  "box.enable_vault": (("box",), "enable_vault"),
+  # ``workset.registry`` (P3): the ``workset:`` table nested slot; a STRING path.
+  "workset.registry": (("workset",), "registry"),
+  # Workset-scope LAYOUT anchors (P6a): the ``workset.<...>`` nested slots, STRING paths.
+  "workset.auth.path": (("workset", "auth"), "path"),
+  "workset.boxes": (("workset",), "boxes"),
+  "workset.vault_ro": (("workset",), "vault_ro"),
+  "workset.vault_rw": (("workset",), "vault_rw"),
+  "workset.logs": (("workset",), "logs"),
+  # workset.workspaces / workset.channelroot (§3.3, bifrost A1): the ``workset:`` slot.
+  "workset.workspaces": (("workset",), "workspaces"),
+  "workset.channelroot": (("workset",), "channelroot"),
+  # The whole six-leaf ``channels`` family, one slot rule (see KNOWN_CONFIG_KEYS).
+  "workset.channels.common": (("workset", "channels"), "common"),
+  "workset.channels.chat": (("workset", "channels"), "chat"),
+  "workset.channels.share": (("workset", "channels"), "share"),
+  "workset.channels.broadcast": (("workset", "channels"), "broadcast"),
+  "workset.channels.mailboxes": (("workset", "channels"), "mailboxes"),
+  "workset.channels.share_global": (("workset", "channels"), "share_global"),
+  # Per-workset template SOURCE (template-trio, spec §2c; Q3): the layer-3 seed source.
+  "workset.template": (("workset",), "template"),
+  # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b); STRING paths.
+  "workset.canon": (("workset",), "canon"),
+  "box.canon": (("box",), "canon"),
+  # Workset kuid + advisory-check toggle (P6d): the ``workset:`` table slot.
+  "workset.kuid": (("workset",), "kuid"),
+  "workset.skip_kuid_check": (("workset",), "skip_kuid_check"),
+  # ⚑ ``allow_helpers`` is NOT routed here — it is an agent-keyspace key (spec §2d).
 }
 
 # The DECLARED TYPE of every key whose type the CLI acts on — the code carrier of the
@@ -325,50 +336,50 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # and the ``secret_path.<VAR>`` family have no fixed canonical string, so
 # :func:`is_path_valued_key` is the predicate to ask, never this table directly.
 KEY_TYPES: dict[str, str] = {
-    "box.share_images": "bool",
-    "system.auth.share_allowed": "bool",
-    "workset.auth.share_allowed": "bool",
-    "workset.auth.global_sync": "bool",
-    "box.auth.global_enabled": "bool",
-    "box.auth.workset_enabled": "bool",
-    "box.enable_vault": "bool",
-    "workset.skip_kuid_check": "bool",
-    # The helper-hub SPAWN BUDGET (spec §2g) — the first ``int`` the CLI acts on, and it
-    # must: ``-1``/``0``/``4`` decide whether a box may spawn at all, so a typo reaching
-    # the file would only fail later, inside the spawn the user asked for.
-    "system.helpers.depth": "int",
-    "system.helpers.breadth": "int",
-    # The Layer-1 config tier and the Layer-2 ``system.*`` tier, DERIVED from the two
-    # declared-default tables they are (P13) — a path key added to either arrives here
-    # with no edit.  ⚑ The six ``config.*`` rows are ``set: file`` and have no CLI write
-    # route at all; they are typed anyway because this table answers what a key IS, not
-    # what a verb may do to it, and their read-time guard shares the same predicate.
-    **{key: "path" for key in CONFIG_PATH_DEFAULTS},
-    **{key: "path" for key in SYSTEM_PATH_DEFAULTS},
-    # The workset LAYOUT anchors and the six-leaf ``channels`` family (spec §2c) — the
-    # keys ``workset_dirkeys.resolve_workset_dir_key`` refuses a bare relative for when
-    # it READS them.  ⚑ Spelled out because no live table enumerates them: their
-    # defaults reach the launch through ``settings_launch.workset_anchor_floor`` as
-    # RESOLVED values, which carry no type.
-    "workset.workspaces": "path",
-    "workset.boxes": "path",
-    "workset.logs": "path",
-    "workset.vault_ro": "path",
-    "workset.vault_rw": "path",
-    "workset.canon": "path",
-    "workset.registry": "path",
-    "workset.template": "path",
-    "workset.auth.path": "path",
-    "workset.channelroot": "path",
-    "workset.channels.common": "path",
-    "workset.channels.chat": "path",
-    "workset.channels.broadcast": "path",
-    "workset.channels.share": "path",
-    "workset.channels.mailboxes": "path",
-    "workset.channels.share_global": "path",
-    # The two box-scope paths (spec §2b).
-    "box.canon": "path",
-    "box.images_store": "path",
+  "box.share_images": "bool",
+  "system.auth.share_allowed": "bool",
+  "workset.auth.share_allowed": "bool",
+  "workset.auth.global_sync": "bool",
+  "box.auth.global_enabled": "bool",
+  "box.auth.workset_enabled": "bool",
+  "box.enable_vault": "bool",
+  "workset.skip_kuid_check": "bool",
+  # The helper-hub SPAWN BUDGET (spec §2g) — the first ``int`` the CLI acts on, and it
+  # must: ``-1``/``0``/``4`` decide whether a box may spawn at all, so a typo reaching
+  # the file would only fail later, inside the spawn the user asked for.
+  "system.helpers.depth": "int",
+  "system.helpers.breadth": "int",
+  # The Layer-1 config tier and the Layer-2 ``system.*`` tier, DERIVED from the two
+  # declared-default tables they are (P13) — a path key added to either arrives here
+  # with no edit.  ⚑ The six ``config.*`` rows are ``set: file`` and have no CLI write
+  # route at all; they are typed anyway because this table answers what a key IS, not
+  # what a verb may do to it, and their read-time guard shares the same predicate.
+  **{key: "path" for key in CONFIG_PATH_DEFAULTS},
+  **{key: "path" for key in SYSTEM_PATH_DEFAULTS},
+  # The workset LAYOUT anchors and the six-leaf ``channels`` family (spec §2c) — the
+  # keys ``workset_dirkeys.resolve_workset_dir_key`` refuses a bare relative for when
+  # it READS them.  ⚑ Spelled out because no live table enumerates them: their
+  # defaults reach the launch through ``settings_launch.workset_anchor_floor`` as
+  # RESOLVED values, which carry no type.
+  "workset.workspaces": "path",
+  "workset.boxes": "path",
+  "workset.logs": "path",
+  "workset.vault_ro": "path",
+  "workset.vault_rw": "path",
+  "workset.canon": "path",
+  "workset.registry": "path",
+  "workset.template": "path",
+  "workset.auth.path": "path",
+  "workset.channelroot": "path",
+  "workset.channels.common": "path",
+  "workset.channels.chat": "path",
+  "workset.channels.broadcast": "path",
+  "workset.channels.share": "path",
+  "workset.channels.mailboxes": "path",
+  "workset.channels.share_global": "path",
+  # The two box-scope paths (spec §2b).
+  "box.canon": "path",
+  "box.images_store": "path",
 }
 
 # The OWNER of every key that names a host resource (keyspec §0 "Per-owner
@@ -381,163 +392,164 @@ KEY_TYPES: dict[str, str] = {
 # ⚑ Bind ENTRIES are not keys; their owners ride on the entry rows themselves
 # (``core-defaults.yaml``, the plugin descriptors, the manifest's entry tables).
 KEY_OWNERS: dict[str, str] = {
-    # Layer 1 and the ``system.*`` paths are host-wide by construction (P13).
-    **{key: "shared" for key in CONFIG_PATH_DEFAULTS},
-    **{key: "shared" for key in SYSTEM_PATH_DEFAULTS},
-    "meta.runtime.ws_root": "shared",
-    "meta.runtime.user.config": "shared",
-    "meta.runtime.admin.config": "shared",
-    "meta.runtime.admin.settings": "shared",
-    "box.image": "shared",
-    "box.images_store": "shared",
-    "workset.template": "shared",
-    "agent.default.template": "shared",
-    "agent.default.canon": "shared",
-    "agent.shell.template": "shared",
-    "agent.<agent>.template": "shared",
-    "agent.<agent>.canon": "shared",
-    "workset.workspaces": "workset",
-    "workset.boxes": "workset",
-    "workset.logs": "workset",
-    "workset.registry": "workset",
-    "workset.auth.path": "workset",
-    "workset.vault_ro": "workset",
-    "workset.vault_rw": "workset",
-    "workset.canon": "workset",
-    "workset.channelroot": "workset",
-    "workset.channels.common": "workset",
-    "workset.channels.chat": "workset",
-    "workset.channels.broadcast": "workset",
-    "workset.channels.share": "workset",
-    "meta.workset.settings": "workset",
-    "meta.box.auth.workset_path": "workset",
-    "workset.channels.mailboxes": "partition",
-    "workset.channels.share_global": "partition",
-    "box.canon": "box",
-    "meta.box.path": "box",
-    "meta.box.home": "box",
-    "meta.box.settings": "box",
-    "meta.box.workspace": "box",
-    "meta.box.inbox": "box",
-    "meta.box.share_global": "box",
-    "meta.box.share_workset": "box",
-    "meta.box.container": "box",
-    "meta.agent.shell.path": "agent",
-    "meta.agent.shell.settings": "agent",
-    "meta.agent.<agent>.path": "agent",
-    "meta.agent.<agent>.settings": "agent",
+  # Layer 1 and the ``system.*`` paths are host-wide by construction (P13).
+  **{key: "shared" for key in CONFIG_PATH_DEFAULTS},
+  **{key: "shared" for key in SYSTEM_PATH_DEFAULTS},
+  "meta.runtime.ws_root": "shared",
+  "meta.runtime.user.config": "shared",
+  "meta.runtime.admin.config": "shared",
+  "meta.runtime.admin.settings": "shared",
+  "box.image": "shared",
+  "box.images_store": "shared",
+  "workset.template": "shared",
+  "agent.default.template": "shared",
+  "agent.default.canon": "shared",
+  "agent.shell.template": "shared",
+  "agent.<agent>.template": "shared",
+  "agent.<agent>.canon": "shared",
+  "workset.workspaces": "workset",
+  "workset.boxes": "workset",
+  "workset.logs": "workset",
+  "workset.registry": "workset",
+  "workset.auth.path": "workset",
+  "workset.vault_ro": "workset",
+  "workset.vault_rw": "workset",
+  "workset.canon": "workset",
+  "workset.channelroot": "workset",
+  "workset.channels.common": "workset",
+  "workset.channels.chat": "workset",
+  "workset.channels.broadcast": "workset",
+  "workset.channels.share": "workset",
+  "meta.workset.settings": "workset",
+  "meta.box.auth.workset_path": "workset",
+  "workset.channels.mailboxes": "partition",
+  "workset.channels.share_global": "partition",
+  "box.canon": "box",
+  "meta.box.path": "box",
+  "meta.box.home": "box",
+  "meta.box.settings": "box",
+  "meta.box.workspace": "box",
+  "meta.box.inbox": "box",
+  "meta.box.share_global": "box",
+  "meta.box.share_workset": "box",
+  "meta.box.container": "box",
+  "meta.agent.shell.path": "agent",
+  "meta.agent.shell.settings": "agent",
+  "meta.agent.<agent>.path": "agent",
+  "meta.agent.<agent>.settings": "agent",
 }
 
 
 @dataclass(frozen=True)
 class CoercionError:
-    """A typed key's value could not be read as its declared type — the H2 failure."""
+  """A typed key's value could not be read as its declared type — the H2 failure."""
 
-    #: The whole user-facing line, already prefixed ``Error:``.
-    message: str
+  #: The whole user-facing line, already prefixed ``Error:``.
+  message: str
 
 
 def _coerce_value(canonical: str, value: "str | None") -> object | None:
-    """Coerce *value* to the typed form declared for *canonical* in KEY_TYPES."""
-    # ⚑ A FAILURE COMES BACK AS :class:`CoercionError`, NEVER AS A BARE ``str``. The
-    # callers used to test ``isinstance(result, str) and KEY_TYPES.get(key)`` — which
-    # reads "a typed key returned a string, so it must be the error" and stops being
-    # true the moment a declared type's own values ARE strings. ``path`` is that type.
-    if value is None:
-        return None  # an explicit present-None request (--null): never coerced.
-    kind = KEY_TYPES.get(canonical)
-    if kind == "bool":
-        coerced = coerce_bool(value)
-        if coerced is not None:
-            return coerced
-        return CoercionError(
-            f"Error: {shown_key(canonical)} expects a boolean "
-            f"(true/false/1/0/yes/no), got {value!r}"
-        )
-    if kind == "int":
-        try:
-            return int(value)
-        except ValueError:
-            return CoercionError(
-                f"Error: {shown_key(canonical)} expects a whole number, got {value!r}"
-            )
-    return value
+  """Coerce *value* to the typed form declared for *canonical* in KEY_TYPES."""
+  # ⚑ A FAILURE COMES BACK AS :class:`CoercionError`, NEVER AS A BARE ``str``. The
+  # callers used to test ``isinstance(result, str) and KEY_TYPES.get(key)`` — which
+  # reads "a typed key returned a string, so it must be the error" and stops being
+  # true the moment a declared type's own values ARE strings. ``path`` is that type.
+  if value is None:
+    return None  # an explicit present-None request (--null): never coerced.
+  kind = KEY_TYPES.get(canonical)
+  if kind == "bool":
+    coerced = coerce_bool(value)
+    if coerced is not None:
+      return coerced
+    return CoercionError(
+      f"Error: {shown_key(canonical)} expects a boolean (true/false/1/0/yes/no), got {value!r}"
+    )
+  if kind == "int":
+    try:
+      return int(value)
+    except ValueError:
+      return CoercionError(f"Error: {shown_key(canonical)} expects a whole number, got {value!r}")
+  return value
 
 
 # ---------------------------------------------------------------------------
 # PATH-valued keys — the SET-TIME half of keyspec §2a "A path key's stored value"
 # ---------------------------------------------------------------------------
 
-def is_path_valued_key(canonical: str) -> bool:
-    """True iff *canonical* names a key whose value is a HOST PATH (registry ``type: path``).
 
-    The FIXED spellings come from :data:`KEY_TYPES`; the three PARAMETRIC families —
-    the bare agent leaves the CLI serves for the any-agent tier, the per-node
-    ``agent.<node>.{template,canon}``, and ``secret_path.<VAR>`` at every scope — have
-    no fixed string and are recognized by their own parsers.
-    """
-    if KEY_TYPES.get(canonical) == "path":
-        return True
-    if canonical in PATH_VALUED_AGENT_LEAVES:
-        return True
-    parsed = _parse_persona_agent_key(canonical)
-    if parsed is not None and parsed[1] in PATH_VALUED_AGENT_LEAVES:
-        return True
-    return _is_scope_secret_key(canonical) or _is_agent_node_secret_key(canonical)
+def is_path_valued_key(canonical: str) -> bool:
+  """True iff *canonical* names a key whose value is a HOST PATH (registry ``type: path``).
+
+  The FIXED spellings come from :data:`KEY_TYPES`; the three PARAMETRIC families —
+  the bare agent leaves the CLI serves for the any-agent tier, the per-node
+  ``agent.<node>.{template,canon}``, and ``secret_path.<VAR>`` at every scope — have
+  no fixed string and are recognized by their own parsers.
+  """
+  if KEY_TYPES.get(canonical) == "path":
+    return True
+  if canonical in PATH_VALUED_AGENT_LEAVES:
+    return True
+  parsed = _parse_persona_agent_key(canonical)
+  if parsed is not None and parsed[1] in PATH_VALUED_AGENT_LEAVES:
+    return True
+  return _is_scope_secret_key(canonical) or _is_agent_node_secret_key(canonical)
 
 
 def path_key_anchor(
-    canonical: str, *, active_agent: str | None = None,
+  canonical: str,
+  *,
+  active_agent: str | None = None,
 ) -> "tuple[str, str]":
-    """``(anchor ref, label)`` for the OTHER reading of a bare relative at *canonical*
-    (keyspec §2a "A path key's stored value").
+  """``(anchor ref, label)`` for the OTHER reading of a bare relative at *canonical*
+  (keyspec §2a "A path key's stored value").
 
-    The anchor is the root the user might have meant INSTEAD of the cwd, and it is the
-    one the READ-TIME seams already name, so a key cannot get two answers:
+  The anchor is the root the user might have meant INSTEAD of the cwd, and it is the
+  one the READ-TIME seams already name, so a key cannot get two answers:
 
-    * a Layer-1/Layer-2 path key takes its own declared default's leading token, exactly
-      as ``paths._refuse_bare_relative`` derives it (P13 — a key added to either table
-      carries its own anchor here with no edit);
-    * every ``workset.*`` path key takes ``{meta.workset.path}``, which is what
-      ``workset_dirkeys.resolve_workset_dir_key`` names for all of them — the six
-      ``channels.*`` leaves included, since ``channels.py`` resolves them through that
-      same seam rather than through ``{workset.channelroot}``;
-    * the rest take their spec §2a DECLARATION ROOT
-      (:data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`).
+  * a Layer-1/Layer-2 path key takes its own declared default's leading token, exactly
+    as ``paths._refuse_bare_relative`` derives it (P13 — a key added to either table
+    carries its own anchor here with no edit);
+  * every ``workset.*`` path key takes ``{meta.workset.path}``, which is what
+    ``workset_dirkeys.resolve_workset_dir_key`` names for all of them — the six
+    ``channels.*`` leaves included, since ``channels.py`` resolves them through that
+    same seam rather than through ``{workset.channelroot}``;
+  * the rest take their spec §2a DECLARATION ROOT
+    (:data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`).
 
-    ⚑ THE LABEL IS PART OF THE ANSWER.  ``box.images_store`` is probed from podman at
-    runtime and ``secret_path.<VAR>`` declares nothing at all, so for those two the
-    anchor is a scope root and is introduced as one — see :data:`DECLARATION_ROOT_LABEL`.
+  ⚑ THE LABEL IS PART OF THE ANSWER.  ``box.images_store`` is probed from podman at
+  runtime and ``secret_path.<VAR>`` declares nothing at all, so for those two the
+  anchor is a scope root and is introduced as one — see :data:`DECLARATION_ROOT_LABEL`.
 
-    ⚑ AN ``agent.default`` KEY TAKES *active_agent*'s store (keyspec §2d: the tier's root is
-    the active agent's own path); with no agent the value applies to EVERY agent, so the
-    anchor is the per-agent form :data:`ANY_AGENT_ROOT_REF`, which names no single directory.
-    """
-    # ⚑ THE TWO ``secret_path`` SHAPES ARE TESTED FIRST, and the order is load-bearing:
-    # ``workset.secret_path.TOKEN`` is a ``workset.*`` key that declares NO default, so
-    # the prefix arms below would give it the right root under the wrong label.
-    secret = _parse_agent_node_secret_key(canonical)
-    if secret is not None:
-        return (agent_declaration_root_ref(
-                    agent_tier_node(secret[0], active_agent, "<agent>")),
-                DECLARATION_ROOT_LABEL)
-    if _is_scope_secret_key(canonical):
-        return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
-    declared_default = CONFIG_PATH_DEFAULTS.get(canonical) or SYSTEM_PATH_DEFAULTS.get(canonical)
-    if declared_default is not None:
-        return declared_default.split("/", 1)[0], DEFAULT_ROOT_LABEL
-    if canonical.startswith("workset."):
-        return DECLARATION_ROOT_REF["workset"], DEFAULT_ROOT_LABEL
-    if canonical == "box.images_store":
-        return DECLARATION_ROOT_REF["box"], DECLARATION_ROOT_LABEL
-    if canonical.startswith("box."):
-        return DECLARATION_ROOT_REF["box"], DEFAULT_ROOT_LABEL
-    # The two agent-scope path leaves, anchored at the NODE'S OWN store root. The bare
-    # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
-    parsed = _parse_persona_agent_key(canonical)
-    node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
-    root = agent_declaration_root_ref(agent_tier_node(node, active_agent, "<agent>"))
-    return root, DEFAULT_ROOT_LABEL
+  ⚑ AN ``agent.default`` KEY TAKES *active_agent*'s store (keyspec §2d: the tier's root is
+  the active agent's own path); with no agent the value applies to EVERY agent, so the
+  anchor is the per-agent form :data:`ANY_AGENT_ROOT_REF`, which names no single directory.
+  """
+  # ⚑ THE TWO ``secret_path`` SHAPES ARE TESTED FIRST, and the order is load-bearing:
+  # ``workset.secret_path.TOKEN`` is a ``workset.*`` key that declares NO default, so
+  # the prefix arms below would give it the right root under the wrong label.
+  secret = _parse_agent_node_secret_key(canonical)
+  if secret is not None:
+    return (
+      agent_declaration_root_ref(agent_tier_node(secret[0], active_agent, "<agent>")),
+      DECLARATION_ROOT_LABEL,
+    )
+  if _is_scope_secret_key(canonical):
+    return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
+  declared_default = CONFIG_PATH_DEFAULTS.get(canonical) or SYSTEM_PATH_DEFAULTS.get(canonical)
+  if declared_default is not None:
+    return declared_default.split("/", 1)[0], DEFAULT_ROOT_LABEL
+  if canonical.startswith("workset."):
+    return DECLARATION_ROOT_REF["workset"], DEFAULT_ROOT_LABEL
+  if canonical == "box.images_store":
+    return DECLARATION_ROOT_REF["box"], DECLARATION_ROOT_LABEL
+  if canonical.startswith("box."):
+    return DECLARATION_ROOT_REF["box"], DEFAULT_ROOT_LABEL
+  # The two agent-scope path leaves, anchored at the NODE'S OWN store root. The bare
+  # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
+  parsed = _parse_persona_agent_key(canonical)
+  node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
+  root = agent_declaration_root_ref(agent_tier_node(node, active_agent, "<agent>"))
+  return root, DEFAULT_ROOT_LABEL
 
 
 #: The agent row of the DECLARATION-ROOT table with a literal ``<agent>`` placeholder —
@@ -546,29 +558,27 @@ ANY_AGENT_ROOT_REF: Final[str] = agent_declaration_root_ref("<agent>")
 
 
 def agent_node_of(canonical: str) -> str:
-    """The agent NODE a per-node *canonical* key ADDRESSES, or ``""`` when it names none.
+  """The agent NODE a per-node *canonical* key ADDRESSES, or ``""`` when it names none.
 
-    THE QUESTION A WRITE VERB ASKS to name the agent its command is about when the KEY is
-    the only place that says so.  ``agent set`` is handed the node; ``system set
-    agent.<node>.canon=…`` holds it nowhere but the key, and without it the set-time
-    snapshot floors no ``meta.agent.<node>.path`` — so a value spelled against the very
-    store root the write lands in is refused as a dangling ``{key}``-reference.
+  THE QUESTION A WRITE VERB ASKS to name the agent its command is about when the KEY is
+  the only place that says so.  ``agent set`` is handed the node; ``system set
+  agent.<node>.canon=…`` holds it nowhere but the key, and without it the set-time
+  snapshot floors no ``meta.agent.<node>.path`` — so a value spelled against the very
+  store root the write lands in is refused as a dangling ``{key}``-reference.
 
-    ⚑ DERIVED FROM THE SAME TWO PARSERS :func:`path_key_anchor` CONSULTS, in the same
-    order, so the anchor a refusal NAMES and the anchor the set-time floor PROVIDES cannot
-    disagree about which store root a key hangs off.  No third parser is introduced.
+  ⚑ DERIVED FROM THE SAME TWO PARSERS :func:`path_key_anchor` CONSULTS, in the same
+  order, so the anchor a refusal NAMES and the anchor the set-time floor PROVIDES cannot
+  disagree about which store root a key hangs off.  No third parser is introduced.
 
-    ⚑ THE BIND ARM IS DELIBERATELY ABSENT, and its absence is the lesson the removed
-    ``_agent_scope_node`` left: an ``agent.<node>.bindings.{ro,rw}.<name>`` set is refused
-    BY NAME in the verb preamble (R-9), so an arm for it could never change an outcome —
-    it would be dead the day it was written.  :func:`resolve_key` carries that arm because
-    it canonicalizes a key the READ verbs still serve; this answers a WRITE-time question.
-    """
-    parsed = (
-        _parse_agent_node_secret_key(canonical)
-        or _parse_persona_agent_key(canonical)
-    )
-    return parsed[0] if parsed is not None else ""
+  ⚑ THE BIND ARM IS DELIBERATELY ABSENT, and its absence is the lesson the removed
+  ``_agent_scope_node`` left: an ``agent.<node>.bindings.{ro,rw}.<name>`` set is refused
+  BY NAME in the verb preamble (R-9), so an arm for it could never change an outcome —
+  it would be dead the day it was written.  :func:`resolve_key` carries that arm because
+  it canonicalizes a key the READ verbs still serve; this answers a WRITE-time question.
+  """
+  parsed = _parse_agent_node_secret_key(canonical) or _parse_persona_agent_key(canonical)
+  return parsed[0] if parsed is not None else ""
+
 
 # ---------------------------------------------------------------------------
 # Scope-direction guard (block B4, spec §0 directional view/set + §2a)
@@ -588,7 +598,7 @@ _SCOPE_CONTAINMENT: tuple[str, ...] = SCOPE_CONTAINMENT
 # Which key-scope namespaces a COMMAND scope may WRITE (spec §0 + §2a): its OWN
 # namespace plus every scope it CONTAINS — ``settings_drops.writable_scopes``.
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
-    level: writable_scopes(level.value) for level in ConfigLevel
+  level: writable_scopes(level.value) for level in ConfigLevel
 }
 
 # The scope tokens whose prefixed keys are SETTINGS keys stored in a SETTINGS file.
@@ -597,31 +607,30 @@ _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
 _SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT)
 
 
-def _scope_direction_error(
-    canonical: str, command_scope: "ConfigLevel | None"
-) -> str | None:
-    """Enforce the §0 directional-WRITE rule for ``config set`` (block B4)."""
-    key_scope = canonical.split(".", 1)[0]
-    if key_scope not in _SCOPE_NAMESPACES:
-        # Scopeless key (model, allow_helpers, …) — own-file write.
-        return None
-    if key_scope == "meta":
-        return (
-            f"Error: '{canonical}' is a read-only meta.* identity key and cannot "
-            f"be set from the CLI (meta.* is set by the construct-time/bootstrap "
-            f"layer, spec §0)."
-        )
-    if command_scope is None:
-        return None
-    allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
-    if key_scope in allowed:
-        return None
+def _scope_direction_error(canonical: str, command_scope: "ConfigLevel | None") -> str | None:
+  """Enforce the §0 directional-WRITE rule for ``config set`` (block B4)."""
+  key_scope = canonical.split(".", 1)[0]
+  if key_scope not in _SCOPE_NAMESPACES:
+    # Scopeless key (model, allow_helpers, …) — own-file write.
+    return None
+  if key_scope == "meta":
     return (
-        f"Error: '{shown_key(canonical)}' (scope '{key_scope}') cannot be set from the "
-        f"{command_scope.value} scope. A config set writes keys of its own scope "
-        f"and of scopes it contains (system ⊃ agent ⊃ workset ⊃ box, spec §0); "
-        f"writing upward is refused. Set it at the {key_scope} scope instead."
+      f"Error: '{canonical}' is a read-only meta.* identity key and cannot "
+      f"be set from the CLI (meta.* is set by the construct-time/bootstrap "
+      f"layer, spec §0)."
     )
+  if command_scope is None:
+    return None
+  allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
+  if key_scope in allowed:
+    return None
+  return (
+    f"Error: '{shown_key(canonical)}' (scope '{key_scope}') cannot be set from the "
+    f"{command_scope.value} scope. A config set writes keys of its own scope "
+    f"and of scopes it contains (system ⊃ agent ⊃ workset ⊃ box, spec §0); "
+    f"writing upward is refused. Set it at the {key_scope} scope instead."
+  )
+
 
 # ---------------------------------------------------------------------------
 # ⚑⚑ THE FLAT UNDERSCORE SPELLING IS GONE, AND ITS ABSENCE IS THE FIX (P3/P7).
@@ -643,146 +652,152 @@ def _scope_direction_error(
 # Canonical key resolution
 # ---------------------------------------------------------------------------
 
-def agent_key_node(raw: str) -> str:
-    """The NODE a user-typed ``agent.<HERE>`` segment — or the ``agent`` noun's
-    positional — names.  Raises :class:`~kanibako.errors.ConfigError` for an illegal ref.
 
-    ⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF and passes through: ``default`` ADDRESSES
-    the reserved tier rather than naming an agent, and the ref grammar refuses a
-    reserved pseudo-agent name (keyspec §2d).  Canonicalizing it would raise and replace
-    the engine's refusal — which names the CURE — with a bare reservation notice.  It is
-    compared case-blind like any identifier (keyspec §0), so ``Default`` reaches the
-    same tier and the same cure.
-    ⚑ Every other spelling is an agent ADDRESS, and reaches its node through
-    :func:`kanibako.agent_ref.agent_address_node` — the one carrier of the fold, so
-    ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.label`` the
-    shell's (keyspec §0 "An agent's canonical case is carried by its _name_"),
-    exactly as the §0 check already reads them.
-    """
-    if find_identifier(raw, (AGENT_DEFAULT_SUB,)) is not None:
-        return AGENT_DEFAULT_SUB
-    return agent_address_node(raw)
+def agent_key_node(raw: str) -> str:
+  """The NODE a user-typed ``agent.<HERE>`` segment — or the ``agent`` noun's
+  positional — names.  Raises :class:`~kanibako.errors.ConfigError` for an illegal ref.
+
+  ⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF and passes through: ``default`` ADDRESSES
+  the reserved tier rather than naming an agent, and the ref grammar refuses a
+  reserved pseudo-agent name (keyspec §2d).  Canonicalizing it would raise and replace
+  the engine's refusal — which names the CURE — with a bare reservation notice.  It is
+  compared case-blind like any identifier (keyspec §0), so ``Default`` reaches the
+  same tier and the same cure.
+  ⚑ Every other spelling is an agent ADDRESS, and reaches its node through
+  :func:`kanibako.agent_ref.agent_address_node` — the one carrier of the fold, so
+  ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.label`` the
+  shell's (keyspec §0 "An agent's canonical case is carried by its _name_"),
+  exactly as the §0 check already reads them.
+  """
+  if find_identifier(raw, (AGENT_DEFAULT_SUB,)) is not None:
+    return AGENT_DEFAULT_SUB
+  return agent_address_node(raw)
 
 
 def _typed_key_node(node_raw: str, *, prefix: str) -> str:
-    """:func:`agent_key_node` for the node segment of a TYPED key, warning when it folds case.
+  """:func:`agent_key_node` for the node segment of a TYPED key, warning when it folds case.
 
-    Q87: the command line gets the relief a settings file gets — the capital node is
-    accepted, loudly, once per spelling per command (``settings_assemble.announce_drop_once``).
-    *prefix* is what the user typed before the node (``agent`` or ``pref.agent``), so the
-    warning names their key. The ``agent`` noun's positional is a NAME and folds silently
-    (keyspec §0 "An agent's canonical case is carried by its _name_"); it does not come here.
-    """
-    node = agent_key_node(node_raw)
-    if agent_segment_case(node_raw) != node_raw:
-        from kanibako.settings.settings_assemble import announce_drop_once
+  Q87: the command line gets the relief a settings file gets — the capital node is
+  accepted, loudly, once per spelling per command (``settings_assemble.announce_drop_once``).
+  *prefix* is what the user typed before the node (``agent`` or ``pref.agent``), so the
+  warning names their key. The ``agent`` noun's positional is a NAME and folds silently
+  (keyspec §0 "An agent's canonical case is carried by its _name_"); it does not come here.
+  """
+  node = agent_key_node(node_raw)
+  if agent_segment_case(node_raw) != node_raw:
+    from kanibako.settings.settings_assemble import announce_drop_once
 
-        if announce_drop_once(None, f"<command line> {prefix}.{node_raw}"):
-            _log.warning(
-                "The command line spells '%s.%s', but an agent's node is lowercase "
-                "(spec §0): it is read as '%s.%s'. Type the lowercase spelling; kanibako "
-                "accepts this one only with this warning.",
-                prefix, node_raw, prefix, display_agent_ref(node),
-            )
-    return node
+    if announce_drop_once(None, f"<command line> {prefix}.{node_raw}"):
+      _log.warning(
+        "The command line spells '%s.%s', but an agent's node is lowercase "
+        "(spec §0): it is read as '%s.%s'. Type the lowercase spelling; kanibako "
+        "accepts this one only with this warning.",
+        prefix,
+        node_raw,
+        prefix,
+        display_agent_ref(node),
+      )
+  return node
 
 
 def resolve_key(raw: str) -> str:
-    """Return the canonical config key for a user-supplied key name."""
-    # A §2h request for an agent key names its node exactly as the key does, and folds with it.
-    pref_agent = f"{PREF_ROOT}.agent."
-    if raw.startswith(pref_agent):
-        return f"{PREF_ROOT}.{_resolve_agent_key(raw[len(PREF_ROOT) + 1:], prefix=pref_agent[:-1])}"
-    return _resolve_agent_key(raw, prefix="agent")
+  """Return the canonical config key for a user-supplied key name."""
+  # A §2h request for an agent key names its node exactly as the key does, and folds with it.
+  pref_agent = f"{PREF_ROOT}.agent."
+  if raw.startswith(pref_agent):
+    return f"{PREF_ROOT}.{_resolve_agent_key(raw[len(PREF_ROOT) + 1 :], prefix=pref_agent[:-1])}"
+  return _resolve_agent_key(raw, prefix="agent")
 
 
 def _resolve_agent_key(raw: str, *, prefix: str) -> str:
-    """:func:`resolve_key` for a key that is not a ``pref.``; *prefix* is for the warning only."""
-    # ⚑ The bind arm is matched BEFORE the persona form; each takes the node segment
-    # as a WHOLE through :func:`agent_key_node`. Order and reasons: llm-docs.
-    bind = parse_agent_node_bind_key(raw)
-    if bind is not None:
-        node_raw, cat, name = bind
-        try:
-            node = _typed_key_node(node_raw, prefix=prefix)
-        except ConfigError:
-            return raw
-        return f"agent.{node}.{cat}.{name}"
-    secret = _parse_agent_node_secret_key(raw)
-    if secret is not None:
-        node_raw, var = secret
-        try:
-            node = _typed_key_node(node_raw, prefix=prefix)
-        except ConfigError:
-            return raw
-        return f"agent.{node}.secret_path.{var}"
-    parsed = _parse_persona_agent_key(raw)
-    if parsed is None:
-        return raw
-    node_raw, tail = parsed
+  """:func:`resolve_key` for a key that is not a ``pref.``; *prefix* is for the warning only."""
+  # ⚑ The bind arm is matched BEFORE the persona form; each takes the node segment
+  # as a WHOLE through :func:`agent_key_node`. Order and reasons: llm-docs.
+  bind = parse_agent_node_bind_key(raw)
+  if bind is not None:
+    node_raw, cat, name = bind
     try:
-        node = _typed_key_node(node_raw, prefix=prefix)
+      node = _typed_key_node(node_raw, prefix=prefix)
     except ConfigError:
-        return raw
-    return f"agent.{node}.{tail}"
+      return raw
+    return f"agent.{node}.{cat}.{name}"
+  secret = _parse_agent_node_secret_key(raw)
+  if secret is not None:
+    node_raw, var = secret
+    try:
+      node = _typed_key_node(node_raw, prefix=prefix)
+    except ConfigError:
+      return raw
+    return f"agent.{node}.secret_path.{var}"
+  parsed = _parse_persona_agent_key(raw)
+  if parsed is None:
+    return raw
+  node_raw, tail = parsed
+  try:
+    node = _typed_key_node(node_raw, prefix=prefix)
+  except ConfigError:
+    return raw
+  return f"agent.{node}.{tail}"
+
 
 # ---------------------------------------------------------------------------
 # The PLUGIN half of the agent vocabulary (spec §0) — supplied to every surface
 # in this module that asks what an agent leaf may be called.
 # ---------------------------------------------------------------------------
 
+
 def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
-    """harness → the leaves that PLUGIN declares (spec §0), or empty.
+  """harness → the leaves that PLUGIN declares (spec §0), or empty.
 
-    ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
-    the per-node RECOGNIZER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
-    §0 GATE (:func:`agent_key_reason`) asked two different sources until 2026-08-29, so
-    a plugin leaf was a key at one verb and not at another.  ``default_valid_agents`` is
-    the source both use now: it is the production ``valid_agents`` supplier, it memoizes
-    per process, and it has a documented reset seam (``reset_discovery_cache``) that the
-    ``settings_keyspace_probe`` memo — primed at ``pytest_configure`` — deliberately
-    does not.
-    ⚑ A MAP, because keyspec §0 "The leaf VOCABULARY is partitioned by TIER" makes the
-    vocabulary per-agent: a flat set here made ``agent.claude.provider`` a key on the
-    strength of goose's declaration.
-    ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
-    🛑 THE ATTRIBUTE IS ASKED FOR, NEVER ``getattr``-WITH-A-FALLBACK, AND NEVER
-    ``or {}``. Both were here, and both converted the STRICT signal into the
-    PERMISSIVE one: the supplier's map now carries its own concession, so replacing an
-    empty-but-conceding map with a bare ``{}`` — which concedes nothing — or a missing
-    attribute with one, silently swaps one keyspace for another. A ``getattr`` guard
-    also survives the rename that should have reddened it (``leaves`` → ``leaf_map``,
-    ``test_agent_file``).
-    """
-    from kanibako.settings.settings_prefs import default_valid_agents
+  ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
+  the per-node RECOGNIZER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
+  §0 GATE (:func:`agent_key_reason`) asked two different sources until 2026-08-29, so
+  a plugin leaf was a key at one verb and not at another.  ``default_valid_agents`` is
+  the source both use now: it is the production ``valid_agents`` supplier, it memoizes
+  per process, and it has a documented reset seam (``reset_discovery_cache``) that the
+  ``settings_keyspace_probe`` memo — primed at ``pytest_configure`` — deliberately
+  does not.
+  ⚑ A MAP, because keyspec §0 "The leaf VOCABULARY is partitioned by TIER" makes the
+  vocabulary per-agent: a flat set here made ``agent.claude.provider`` a key on the
+  strength of goose's declaration.
+  ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
+  🛑 THE ATTRIBUTE IS ASKED FOR, NEVER ``getattr``-WITH-A-FALLBACK, AND NEVER
+  ``or {}``. Both were here, and both converted the STRICT signal into the
+  PERMISSIVE one: the supplier's map now carries its own concession, so replacing an
+  empty-but-conceding map with a bare ``{}`` — which concedes nothing — or a missing
+  attribute with one, silently swaps one keyspace for another. A ``getattr`` guard
+  also survives the rename that should have reddened it (``leaves`` → ``leaf_map``,
+  ``test_agent_file``).
+  """
+  from kanibako.settings.settings_prefs import default_valid_agents
 
-    return default_valid_agents().leaf_map
+  return default_valid_agents().leaf_map
 
 
 class _PluginDeclaredLeafMap(Mapping[str, "Collection[str]"]):
-    """:func:`plugin_declared_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
+  """:func:`plugin_declared_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
 
-    ⚑⚑ IT MUST NOT BE MATERIALIZED AT IMPORT OR AT A CALL SITE.  Discovery imports and
-    instantiates every installed plugin, and those modules parse YAML in their module
-    bodies; it was measured at ``+67 ms`` per settings-resolving command (2026-08-25),
-    73% of the whole resolve, when it rode in as an eagerly-evaluated keyword argument.
-    Handed to :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` instead, the
-    CORE §2d table is asked first and this is reached only for a leaf core cannot
-    answer for.
-    ⚑ NOT A MEMO. Every access goes through the supplier, so a test that resets
-    discovery is seen here exactly as it is by every other reader.
-    """
+  ⚑⚑ IT MUST NOT BE MATERIALIZED AT IMPORT OR AT A CALL SITE.  Discovery imports and
+  instantiates every installed plugin, and those modules parse YAML in their module
+  bodies; it was measured at ``+67 ms`` per settings-resolving command (2026-08-25),
+  73% of the whole resolve, when it rode in as an eagerly-evaluated keyword argument.
+  Handed to :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` instead, the
+  CORE §2d table is asked first and this is reached only for a leaf core cannot
+  answer for.
+  ⚑ NOT A MEMO. Every access goes through the supplier, so a test that resets
+  discovery is seen here exactly as it is by every other reader.
+  """
 
-    __slots__ = ()
+  __slots__ = ()
 
-    def __getitem__(self, key: str) -> "Collection[str]":
-        return plugin_declared_leaf_map()[key]
+  def __getitem__(self, key: str) -> "Collection[str]":
+    return plugin_declared_leaf_map()[key]
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(plugin_declared_leaf_map())
+  def __iter__(self) -> Iterator[str]:
+    return iter(plugin_declared_leaf_map())
 
-    def __len__(self) -> int:
-        return len(plugin_declared_leaf_map())
+  def __len__(self) -> int:
+    return len(plugin_declared_leaf_map())
 
 
 _DECLARED_HERE: Final[_PluginDeclaredLeafMap] = _PluginDeclaredLeafMap()
@@ -799,7 +814,8 @@ _DECLARED_HERE: Final[_PluginDeclaredLeafMap] = _PluginDeclaredLeafMap()
 #: ``AgentNames`` concedes — one rule, read off the one map, rather than a second copy
 #: of it. Both stay LAZY: neither the view nor the concession discovers until asked.
 AGENT_LEAF_MAP: "Mapping[str, Collection[str]]" = ConcedingLeafMap(
-    _DECLARED_HERE, unread_harnesses(_DECLARED_HERE),
+  _DECLARED_HERE,
+  unread_harnesses(_DECLARED_HERE),
 )
 
 # ---------------------------------------------------------------------------
@@ -842,89 +858,92 @@ AGENT_DEFAULT_SUB = "default"
 _AGENT_DEFAULT_TIER_TABLE: Final = "'agent: default:' table of the system settings file"
 
 _AGENT_DEFAULT_TIER_CURE: Final = (
-    f"Author it in the {_AGENT_DEFAULT_TIER_TABLE}; the launch reads it from there."
+  f"Author it in the {_AGENT_DEFAULT_TIER_TABLE}; the launch reads it from there."
 )
 
 
 def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
-    """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
+  """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
 
-    ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
-    of the leaf verdict rather than the other way round — which is why the
-    per-agent judgment (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") had
-    to reach in here and not merely sit beside it.  The node offered to
-    :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is the whole
-    of ``parts[:-1]``, and that function normalizes it: the keys arriving here are
-    RAW (``resolve_key`` calls this BEFORE canonicalization), and ``harness_of``
-    splits on ``℘`` alone, so a raw ``nav+claude`` judged without normalizing would
-    miss the map and be silently CONCEDED.
+  ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
+  of the leaf verdict rather than the other way round — which is why the
+  per-agent judgment (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") had
+  to reach in here and not merely sit beside it.  The node offered to
+  :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is the whole
+  of ``parts[:-1]``, and that function normalizes it: the keys arriving here are
+  RAW (``resolve_key`` calls this BEFORE canonicalization), and ``harness_of``
+  splits on ``℘`` alone, so a raw ``nav+claude`` judged without normalizing would
+  miss the map and be silently CONCEDED.
 
-    🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
-    ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
-    to True and turns ``config_interface``'s ``set`` dispatch from a §0 refusal naming
-    the key into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
-    the closed keyspace's answer, not a parse failure.
-    ⚑⚑ BOTH ARMS JUDGE, AND ONLY SINCE 2026-09-09: the rule above was written for the
-    leaf arm and the ``env.`` arm below simply did not obey it, so the §0 breach it
-    describes was live at that spelling.  A new section admitted to
-    :data:`_PERSONA_ENV_SECTIONS` owes a judgment of its own tail — never a shape test
-    alone.
-    ⚑ NON-RAISING, like every recognizer: a malformed ref is not a key, and saying so
-    is the whole of the answer.
-    """
-    if not key.startswith("agent."):
-        return None
-    rest = key[len("agent."):]
-    parts = rest.split(".")
-    # env.<VAR> — the section is the 2nd-from-last segment, and the VAR is JUDGED, not
-    # merely counted. ⚑⚑ THIS ARM WAS PURELY STRUCTURAL, WHICH IS THE ONE THING THIS
-    # FUNCTION'S DOCSTRING FORBIDS: measured 2026-09-09, ``config set
-    # agent.claude.env.`` wrote ``{'env': {'': 'x'}}``, and ``env.foo-bar`` /
-    # ``env.1FOO`` wrote too. None of the three is a declared key under §2a's
-    # ``env.<VAR>``, and the reserved-name floor never sees them — it catches ``__x__``
-    # and ``keys``, but ``leaf_name_reason('')`` is ``None``.
-    # ⚑ FORWARDED, NOT RE-IMPLEMENTED: :data:`~kanibako.settings.settings_categories.
-    # SECRET_VAR_RE` is the declared §2a VAR shape and is NOT a secret-only rule (the
-    # launch emit reads it as the bare env-var shape); ``settings_keyspace._VAR_RE``,
-    # which is what already refuses these at :func:`key_validity`, is a compiled MIRROR
-    # of it. The shape has one source and this door now asks it rather than guessing.
-    if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
-        if not SECRET_VAR_RE.match(parts[-1]):
-            return None
-        return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
-    # Flat state leaf — the last segment, judged against THAT NODE's vocabulary.
-    if len(parts) >= 2 and agent_leaf_is_declared(
-        ".".join(parts[:-1]), parts[-1], AGENT_LEAF_MAP,
-    ):
-        return (".".join(parts[:-1]), parts[-1])
+  🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
+  ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
+  to True and turns ``config_interface``'s ``set`` dispatch from a §0 refusal naming
+  the key into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
+  the closed keyspace's answer, not a parse failure.
+  ⚑⚑ BOTH ARMS JUDGE, AND ONLY SINCE 2026-09-09: the rule above was written for the
+  leaf arm and the ``env.`` arm below simply did not obey it, so the §0 breach it
+  describes was live at that spelling.  A new section admitted to
+  :data:`_PERSONA_ENV_SECTIONS` owes a judgment of its own tail — never a shape test
+  alone.
+  ⚑ NON-RAISING, like every recognizer: a malformed ref is not a key, and saying so
+  is the whole of the answer.
+  """
+  if not key.startswith("agent."):
     return None
+  rest = key[len("agent.") :]
+  parts = rest.split(".")
+  # env.<VAR> — the section is the 2nd-from-last segment, and the VAR is JUDGED, not
+  # merely counted. ⚑⚑ THIS ARM WAS PURELY STRUCTURAL, WHICH IS THE ONE THING THIS
+  # FUNCTION'S DOCSTRING FORBIDS: measured 2026-09-09, ``config set
+  # agent.claude.env.`` wrote ``{'env': {'': 'x'}}``, and ``env.foo-bar`` /
+  # ``env.1FOO`` wrote too. None of the three is a declared key under §2a's
+  # ``env.<VAR>``, and the reserved-name floor never sees them — it catches ``__x__``
+  # and ``keys``, but ``leaf_name_reason('')`` is ``None``.
+  # ⚑ FORWARDED, NOT RE-IMPLEMENTED: :data:`~kanibako.settings.settings_categories.
+  # SECRET_VAR_RE` is the declared §2a VAR shape and is NOT a secret-only rule (the
+  # launch emit reads it as the bare env-var shape); ``settings_keyspace._VAR_RE``,
+  # which is what already refuses these at :func:`key_validity`, is a compiled MIRROR
+  # of it. The shape has one source and this door now asks it rather than guessing.
+  if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
+    if not SECRET_VAR_RE.match(parts[-1]):
+      return None
+    return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
+  # Flat state leaf — the last segment, judged against THAT NODE's vocabulary.
+  if len(parts) >= 2 and agent_leaf_is_declared(
+    ".".join(parts[:-1]),
+    parts[-1],
+    AGENT_LEAF_MAP,
+  ):
+    return (".".join(parts[:-1]), parts[-1])
+  return None
 
 
 def _is_persona_agent_key(key: str) -> bool:
-    """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
-    return _parse_persona_agent_key(key) is not None
+  """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
+  return _parse_persona_agent_key(key) is not None
 
 
 def is_access_key(canonical: str) -> bool:
-    """True iff *canonical* is the auth-critical ``access`` permission key."""
-    if canonical == "access":
-        return True
-    parsed = _parse_persona_agent_key(canonical)
-    return parsed is not None and parsed[1] == "access"
+  """True iff *canonical* is the auth-critical ``access`` permission key."""
+  if canonical == "access":
+    return True
+  parsed = _parse_persona_agent_key(canonical)
+  return parsed is not None and parsed[1] == "access"
 
 
 def access_value_error(canonical: str, value: str) -> str | None:
-    """The LOUD refusal for an illegal ``access`` value, or ``None`` when legal."""
-    # ⚑ EXACT match, no case folding: the launch resolver reads it back exactly.
-    if value in ACCESS_TIERS:
-        return None
-    legal = " | ".join(ACCESS_TIERS)
-    return (
-        f"Error: {shown_key(canonical)} must be one of {legal} (spec §2d); "
-        f"got {value!r}. "
-        f"An unrecognized permission tier is REFUSED, never treated as "
-        f"'{access_default()}'."
-    )
+  """The LOUD refusal for an illegal ``access`` value, or ``None`` when legal."""
+  # ⚑ EXACT match, no case folding: the launch resolver reads it back exactly.
+  if value in ACCESS_TIERS:
+    return None
+  legal = " | ".join(ACCESS_TIERS)
+  return (
+    f"Error: {shown_key(canonical)} must be one of {legal} (spec §2d); "
+    f"got {value!r}. "
+    f"An unrecognized permission tier is REFUSED, never treated as "
+    f"'{access_default()}'."
+  )
+
 
 # ---------------------------------------------------------------------------
 # Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``.
@@ -939,507 +958,514 @@ def access_value_error(canonical: str, value: str) -> str | None:
 # ⚑⚑ DO NOT WIDEN IT to the other four — there is nothing to widen it TO, and a
 # widened parser would invent a read for a spelling the keyspace refuses. See llm-docs.
 _AGENT_NODE_BIND_RE = re.compile(
-    r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
+  r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
 )
 
 
 def parse_agent_node_bind_key(key: str) -> "tuple[str, str, str] | None":
-    """Split ``agent.<node>.bindings.{ro,rw}.<name>`` into ``(node_raw, cat, name)``."""
-    m = _AGENT_NODE_BIND_RE.match(key)
-    if m is None:
-        return None
-    return m.group("node"), m.group("cat"), m.group("name")
+  """Split ``agent.<node>.bindings.{ro,rw}.<name>`` into ``(node_raw, cat, name)``."""
+  m = _AGENT_NODE_BIND_RE.match(key)
+  if m is None:
+    return None
+  return m.group("node"), m.group("cat"), m.group("name")
 
 
 def _is_agent_node_bind_key(key: str) -> bool:
-    """True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key (item-0)."""
-    # ⚑ The CLI WRITE half is RETIRED (R-9); recognition, the ``config get`` route
-    # and the persona-branch guard are all still live. Checked BEFORE the persona form.
-    return parse_agent_node_bind_key(key) is not None
+  """True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key (item-0)."""
+  # ⚑ The CLI WRITE half is RETIRED (R-9); recognition, the ``config get`` route
+  # and the persona-branch guard are all still live. Checked BEFORE the persona form.
+  return parse_agent_node_bind_key(key) is not None
+
 
 # ``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a):
 # DISCRIMINATED, stored in the node's OWN settings file, value a SCALAR host PATH.
 # ``<node>`` is NON-greedy so the FIRST ``.secret_path.`` splits node from VAR.
 _AGENT_NODE_SECRET_RE = re.compile(
-    rf"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>{ENV_VAR_NAME})$"
+  rf"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>{ENV_VAR_NAME})$"
 )
 
 
 def _parse_agent_node_secret_key(key: str) -> "tuple[str, str] | None":
-    """Split ``agent.<node>.secret_path.<VAR>`` into ``(node_raw, var)``, or ``None``."""
-    m = _AGENT_NODE_SECRET_RE.match(key)
-    if m is None:
-        return None
-    return m.group("node"), m.group("var")
+  """Split ``agent.<node>.secret_path.<VAR>`` into ``(node_raw, var)``, or ``None``."""
+  m = _AGENT_NODE_SECRET_RE.match(key)
+  if m is None:
+    return None
+  return m.group("node"), m.group("var")
 
 
 def _is_agent_node_secret_key(key: str) -> bool:
-    """True iff *key* is a per-node ``agent.<node>.secret_path.<VAR>`` key (SECRET category)."""
-    return _parse_agent_node_secret_key(key) is not None
+  """True iff *key* is a per-node ``agent.<node>.secret_path.<VAR>`` key (SECRET category)."""
+  return _parse_agent_node_secret_key(key) is not None
+
 
 def _persona_display_key(canonical: str) -> str:
-    """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
-    parsed = _parse_persona_agent_key(canonical)
-    if parsed is None:
-        return canonical
-    node, tail = parsed
-    return f"agent.{display_agent_ref(node)}.{tail}"
+  """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
+  parsed = _parse_persona_agent_key(canonical)
+  if parsed is None:
+    return canonical
+  node, tail = parsed
+  return f"agent.{display_agent_ref(node)}.{tail}"
 
 
 def _node_secret_display_key(canonical: str) -> str:
-    """Render a canonical ``…secret_path.<VAR>`` key for USER-FACING output (``℘`` -> ``+``)."""
-    parsed = _parse_agent_node_secret_key(canonical)
-    if parsed is None:
-        return canonical
-    node, var = parsed
-    return f"agent.{display_agent_ref(node)}.secret_path.{var}"
+  """Render a canonical ``…secret_path.<VAR>`` key for USER-FACING output (``℘`` -> ``+``)."""
+  parsed = _parse_agent_node_secret_key(canonical)
+  if parsed is None:
+    return canonical
+  node, var = parsed
+  return f"agent.{display_agent_ref(node)}.secret_path.{var}"
+
 
 # ⚑ ``_floor_bind_display`` USED TO LIVE HERE and was DELETED with the whole
 # set-time floor thread (R-9). Do not reintroduce it — llm-docs.
 
 
 def _is_bare_env_key(key: str) -> bool:
-    """The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a)."""
-    # ⚑ RECOGNIZE-TO-REFUSE ONLY; the live family is the SCOPED ``<scope>.env.<VAR>``.
-    return key.startswith("env.")
+  """The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a)."""
+  # ⚑ RECOGNIZE-TO-REFUSE ONLY; the live family is the SCOPED ``<scope>.env.<VAR>``.
+  return key.startswith("env.")
 
 
 def _file_scope_match(family: "re.Pattern[str]", key: str) -> "re.Match[str] | None":
-    """*family*'s match for *key* when its scope is a FILE scope (system/workset/box), else ``None``.
+  """*family*'s match for *key* when its scope is a FILE scope (system/workset/box), else ``None``.
 
-    ⚑ The family recognizers are ``settings_categories``' (one per family, with a ``scope``
-    group); the agent form is DISCRIMINATED and routed elsewhere, so it is filtered out here
-    rather than compiled as a narrower twin.  VAR matching is CASE-SENSITIVE.
-    """
-    m = family.match(key)
-    return m if m is not None and m["scope"] in FILE_SCOPES else None
+  ⚑ The family recognizers are ``settings_categories``' (one per family, with a ``scope``
+  group); the agent form is DISCRIMINATED and routed elsewhere, so it is filtered out here
+  rather than compiled as a narrower twin.  VAR matching is CASE-SENSITIVE.
+  """
+  m = family.match(key)
+  return m if m is not None and m["scope"] in FILE_SCOPES else None
 
 
 def _is_scope_env_key(key: str) -> bool:
-    """True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/box)."""
-    # ⚑ SHAPE only — the §0 RESERVED-NAME floor is enforced by :func:`scope_env_var_error`.
-    return _file_scope_match(ENV_KEY_RE, key) is not None
+  """True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/box)."""
+  # ⚑ SHAPE only — the §0 RESERVED-NAME floor is enforced by :func:`scope_env_var_error`.
+  return _file_scope_match(ENV_KEY_RE, key) is not None
 
 
 def scope_env_var_error(canonical: str) -> str | None:
-    """Refuse a ``<scope>.env.<VAR>`` WRITE whose VAR is a RESERVED name (spec §0)."""
-    # ⚑ Gates itself — ``None`` for every non-scope-env key, so verbs apply it always.
-    m = _file_scope_match(ENV_KEY_RE, canonical)
-    if m is None:
-        return None
-    reason = leaf_name_reason(m.group("name"))
-    return None if reason is None else f"Error: {reason}."
+  """Refuse a ``<scope>.env.<VAR>`` WRITE whose VAR is a RESERVED name (spec §0)."""
+  # ⚑ Gates itself — ``None`` for every non-scope-env key, so verbs apply it always.
+  m = _file_scope_match(ENV_KEY_RE, canonical)
+  if m is None:
+    return None
+  reason = leaf_name_reason(m.group("name"))
+  return None if reason is None else f"Error: {reason}."
 
 
 def bare_env_retired_error(
-    key: str, *, verb: str, command_scope: "ConfigLevel | None" = None,
+  key: str,
+  *,
+  verb: str,
+  command_scope: "ConfigLevel | None" = None,
 ) -> str | None:
-    """The refusal + cure for a RETIRED bare ``env.<VAR>`` op (R-39, spec §2a)."""
-    # ⚑ *verb* is REQUIRED; gates itself — ``None`` for every non-bare-env key.
-    if not _is_bare_env_key(key):
-        return None
-    var = key[len("env."):]
-    # ⚑ The AGENT scope is DISCRIMINATED (spec §0) — ``agent.env.<VAR>`` is NOT a key,
-    # so this arm must name the ``<agent>`` placeholder form, never ``command_scope.value``
-    # (that would hand the user a SECOND illegal spelling). Full reason: llm-docs.
-    if command_scope is ConfigLevel.agent:
-        cure = f"agent.<agent>.env.{var}"
-        store = "agent"
-    else:
-        store = command_scope.value if command_scope is not None else "box"
-        cure = f"{store}.env.{var}"
-    return (
-        f"Error: '{key}' cannot be {verb} — the bare env.<VAR> spelling is "
-        f"RETIRED (the env family is scoped, spec §2a). Use '{cure}', "
-        f"which is stored in the {store} settings file and exported into the box "
-        f"at launch. The docker .env files the bare spelling wrote are no longer "
-        f"read at all."
-    )
+  """The refusal + cure for a RETIRED bare ``env.<VAR>`` op (R-39, spec §2a)."""
+  # ⚑ *verb* is REQUIRED; gates itself — ``None`` for every non-bare-env key.
+  if not _is_bare_env_key(key):
+    return None
+  var = key[len("env.") :]
+  # ⚑ The AGENT scope is DISCRIMINATED (spec §0) — ``agent.env.<VAR>`` is NOT a key,
+  # so this arm must name the ``<agent>`` placeholder form, never ``command_scope.value``
+  # (that would hand the user a SECOND illegal spelling). Full reason: llm-docs.
+  if command_scope is ConfigLevel.agent:
+    cure = f"agent.<agent>.env.{var}"
+    store = "agent"
+  else:
+    store = command_scope.value if command_scope is not None else "box"
+    cure = f"{store}.env.{var}"
+  return (
+    f"Error: '{key}' cannot be {verb} — the bare env.<VAR> spelling is "
+    f"RETIRED (the env family is scoped, spec §2a). Use '{cure}', "
+    f"which is stored in the {store} settings file and exported into the box "
+    f"at launch. The docker .env files the bare spelling wrote are no longer "
+    f"read at all."
+  )
 
 
 def _is_agent_setting(key: str) -> bool:
-    """True iff *key* is the BARE CLI spelling of an ``agent.default.<leaf>`` key (spec §2d).
+  """True iff *key* is the BARE CLI spelling of an ``agent.default.<leaf>`` key (spec §2d).
 
-    ⚑ THE BARE FORM IS THE ONE THE CLI SERVES for the any-agent tier, and this predicate is
-    what makes it so at every verb: ``agent.default.<leaf>`` typed in full is refused with a
-    cure naming the bare spelling (``config_dest._persona_agent_target``).  Widening this to
-    the declaration SoT is therefore what makes that cure TRUE — before 2026-08-23 it named
-    ``template`` and ``canon``, and both answered "unknown config key".
-    ⚑ SCALAR leaves only: ``transform_settings`` holds a table and is refused by
-    :func:`agent_leaf_table_error` instead, at both spellings.
-    """
-    return key in SCALAR_AGENT_LEAVES
+  ⚑ THE BARE FORM IS THE ONE THE CLI SERVES for the any-agent tier, and this predicate is
+  what makes it so at every verb: ``agent.default.<leaf>`` typed in full is refused with a
+  cure naming the bare spelling (``config_dest._persona_agent_target``).  Widening this to
+  the declaration SoT is therefore what makes that cure TRUE — before 2026-08-23 it named
+  ``template`` and ``canon``, and both answered "unknown config key".
+  ⚑ SCALAR leaves only: ``transform_settings`` holds a table and is refused by
+  :func:`agent_leaf_table_error` instead, at both spellings.
+  """
+  return key in SCALAR_AGENT_LEAVES
 
 
 def agent_default_tier_leaf(key: str) -> str | None:
-    """The bare leaf *key* names when it spells the any-agent tier IN FULL, else ``None``.
+  """The bare leaf *key* names when it spells the any-agent tier IN FULL, else ``None``.
 
-    ``agent.default.model`` → ``"model"``; the reserved ``default`` node is the ANY-AGENT
-    TIER, not a persona, so the key it addresses is the one the bare spelling addresses and
-    it is stored in the NOUN's settings file under ``agent: default:`` — never in an
-    ``agents/default/agent.yaml``, which does not exist.
+  ``agent.default.model`` → ``"model"``; the reserved ``default`` node is the ANY-AGENT
+  TIER, not a persona, so the key it addresses is the one the bare spelling addresses and
+  it is stored in the NOUN's settings file under ``agent: default:`` — never in an
+  ``agents/default/agent.yaml``, which does not exist.
 
-    ⚑⚑ A DESTINATION FACT, NOT A PERMISSION.  ``set``/``reset`` still refuse this spelling
-    with the cure naming the bare form (``config_dest._persona_agent_target``); what this
-    answers is where the value LIVES, which is what makes the READ honest.  Until it
-    existed, ``system get agent.default.model`` answered "(not set)" at rc 0 over a value
-    ``system get model`` returned — a fabricated answer for a declared key (spec §0).
+  ⚑⚑ A DESTINATION FACT, NOT A PERMISSION.  ``set``/``reset`` still refuse this spelling
+  with the cure naming the bare form (``config_dest._persona_agent_target``); what this
+  answers is where the value LIVES, which is what makes the READ honest.  Until it
+  existed, ``system get agent.default.model`` answered "(not set)" at rc 0 over a value
+  ``system get model`` returned — a fabricated answer for a declared key (spec §0).
 
-    ⚑ THE DECLARED SET, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is the point:
-    ``transform_settings`` cannot be WRITTEN from the CLI but is declared, hand-authored
-    and read, so it must read back here too.
-    ⚑ DERIVED (P13) through :data:`DECLARED_AGENT_LEAVES`, the §2d declaration SoT — a
-    leaf entering the any-agent tier reaches this surface with no edit.  The ``env.``
-    section form parses to a dotted tail, which is in no leaf set; the two SCALAR CATEGORY
-    families of the same tier are :func:`agent_default_tier_category`'s, not this one's.
-    """
-    parsed = _parse_persona_agent_key(key)
-    if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
-        return None
-    # ⚑ NOT REDUNDANT WITH THE PARSE: the ``env.`` arm yields a DOTTED tail
-    # (``env.FOO``), which is in no leaf set, and that is exactly how this family is
-    # excluded.
-    # 🛑 CORE'S TABLE, AND THAT IS THE WHOLE POINT OF THE ANY-AGENT TIER.  This read the
-    # EFFECTIVE union, which DIVERGED from ``key_class`` the moment the classifier
-    # narrowed ``agent.default`` to core (2026-08-30, ``3b20488e``): measured,
-    # ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'`` here
-    # — a destination fabricated for a spelling the keyspace refuses, which is the §0
-    # breach this function exists to prevent, pointing the other way.  keyspec §0
-    # "The leaf VOCABULARY is partitioned by TIER": ``agent.default`` carries only the
-    # leaves established AT that tier.
-    return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
+  ⚑ THE DECLARED SET, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is the point:
+  ``transform_settings`` cannot be WRITTEN from the CLI but is declared, hand-authored
+  and read, so it must read back here too.
+  ⚑ DERIVED (P13) through :data:`DECLARED_AGENT_LEAVES`, the §2d declaration SoT — a
+  leaf entering the any-agent tier reaches this surface with no edit.  The ``env.``
+  section form parses to a dotted tail, which is in no leaf set; the two SCALAR CATEGORY
+  families of the same tier are :func:`agent_default_tier_category`'s, not this one's.
+  """
+  parsed = _parse_persona_agent_key(key)
+  if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+    return None
+  # ⚑ NOT REDUNDANT WITH THE PARSE: the ``env.`` arm yields a DOTTED tail
+  # (``env.FOO``), which is in no leaf set, and that is exactly how this family is
+  # excluded.
+  # 🛑 CORE'S TABLE, AND THAT IS THE WHOLE POINT OF THE ANY-AGENT TIER.  This read the
+  # EFFECTIVE union, which DIVERGED from ``key_class`` the moment the classifier
+  # narrowed ``agent.default`` to core (2026-08-30, ``3b20488e``): measured,
+  # ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'`` here
+  # — a destination fabricated for a spelling the keyspace refuses, which is the §0
+  # breach this function exists to prevent, pointing the other way.  keyspec §0
+  # "The leaf VOCABULARY is partitioned by TIER": ``agent.default`` carries only the
+  # leaves established AT that tier.
+  return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
 
 
 def agent_default_tier_category(key: str) -> "tuple[str, str] | None":
-    """The ``(category, VAR)`` *key* names when it spells the any-agent tier's SCALAR
-    category families IN FULL, else ``None``.
+  """The ``(category, VAR)`` *key* names when it spells the any-agent tier's SCALAR
+  category families IN FULL, else ``None``.
 
-    ``agent.default.env.FOO`` → ``("env", "FOO")``; ``agent.default.secret_path.TOK`` →
-    ``("secret_path", "TOK")``.  These are spec §0's only two name-parametric categories
-    and both are CLI-settable at every scope the agent tier included (§2a), so the tier
-    owes them a route — the SIBLING of :func:`agent_default_tier_leaf`, answering the same
-    question for the other half of the tier's vocabulary.
+  ``agent.default.env.FOO`` → ``("env", "FOO")``; ``agent.default.secret_path.TOK`` →
+  ``("secret_path", "TOK")``.  These are spec §0's only two name-parametric categories
+  and both are CLI-settable at every scope the agent tier included (§2a), so the tier
+  owes them a route — the SIBLING of :func:`agent_default_tier_leaf`, answering the same
+  question for the other half of the tier's vocabulary.
 
-    ⚑ A DESTINATION FACT, LIKE ITS SIBLING: ``default`` is the RESERVED any-agent tier and
-    has no ``agents/default/agent.yaml``, so the value lives in the NOUN's settings file
-    under ``agent: default: <category>:`` — the same table the bare leaves use, one level
-    deeper.  Until this existed both families were refused at every scope by a message
-    naming a hand-edit, and a hand-authored value read back "(not set)" (spec §0 forbids
-    the fabricated answer) — a declared, ``cli_set: true`` key with no CLI route at all.
+  ⚑ A DESTINATION FACT, LIKE ITS SIBLING: ``default`` is the RESERVED any-agent tier and
+  has no ``agents/default/agent.yaml``, so the value lives in the NOUN's settings file
+  under ``agent: default: <category>:`` — the same table the bare leaves use, one level
+  deeper.  Until this existed both families were refused at every scope by a message
+  naming a hand-edit, and a hand-authored value read back "(not set)" (spec §0 forbids
+  the fabricated answer) — a declared, ``cli_set: true`` key with no CLI route at all.
 
-    ⚑ DERIVED (P13) from the two RECOGNIZERS, never from a hand list of category names:
-    :func:`_parse_agent_node_secret_key` is the ``secret_path`` shape and
-    :func:`_parse_persona_agent_key`'s section arm is the ``env`` one, so both VARs are
-    JUDGED against the declared §2a shape rather than merely counted.
-    """
-    secret = _parse_agent_node_secret_key(key)
-    if secret is not None:
-        node, var = secret
-        return ("secret_path", var) if node == AGENT_DEFAULT_SUB else None
-    parsed = _parse_persona_agent_key(key)
-    if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
-        return None
-    # ⚑ The DOTTED tail is the section arm's signature and the flat leaf arm cannot
-    # produce one, so the split is a fact about which arm answered — not a re-parse.
-    category, sep, var = parsed[1].partition(".")
-    return (category, var) if sep else None
+  ⚑ DERIVED (P13) from the two RECOGNIZERS, never from a hand list of category names:
+  :func:`_parse_agent_node_secret_key` is the ``secret_path`` shape and
+  :func:`_parse_persona_agent_key`'s section arm is the ``env`` one, so both VARs are
+  JUDGED against the declared §2a shape rather than merely counted.
+  """
+  secret = _parse_agent_node_secret_key(key)
+  if secret is not None:
+    node, var = secret
+    return ("secret_path", var) if node == AGENT_DEFAULT_SUB else None
+  parsed = _parse_persona_agent_key(key)
+  if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+    return None
+  # ⚑ The DOTTED tail is the section arm's signature and the flat leaf arm cannot
+  # produce one, so the split is a fact about which arm answered — not a re-parse.
+  category, sep, var = parsed[1].partition(".")
+  return (category, var) if sep else None
 
 
 def is_agent_default_tier_key(key: str) -> bool:
-    """True iff *key* spells the any-agent tier IN FULL — a declared LEAF or one of the two
-    SCALAR category families.
+  """True iff *key* spells the any-agent tier IN FULL — a declared LEAF or one of the two
+  SCALAR category families.
 
-    ⚑ THE NAME FOR THE DISJUNCTION, so the read verbs state "the tier owns this spelling"
-    once instead of each asking both halves.  The per-node branches it guards must let the
-    tier through: the reserved ``default`` node is not a persona and its file does not
-    exist, so a per-node route answers a REFUSAL where a value was stored.
-    """
-    return (
-        agent_default_tier_leaf(key) is not None
-        or agent_default_tier_category(key) is not None
-    )
+  ⚑ THE NAME FOR THE DISJUNCTION, so the read verbs state "the tier owns this spelling"
+  once instead of each asking both halves.  The per-node branches it guards must let the
+  tier through: the reserved ``default`` node is not a persona and its file does not
+  exist, so a per-node route answers a REFUSAL where a value was stored.
+  """
+  return agent_default_tier_leaf(key) is not None or agent_default_tier_category(key) is not None
 
 
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
-    """Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
+  """Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
 
-    ⚑ *verb* is REQUIRED; gates itself — ``None`` for every other key, so the verbs apply it
-    unconditionally in their preamble.  It must run BEFORE the persona branch: the reserved
-    any-agent-tier refusal would otherwise answer ``agent.default.transform_settings`` with a
-    cure naming a bare spelling that this rule then refuses, which is the same broken-cure
-    shape it exists to prevent.
-    ⚑ It names the KEY and the SHAPE, never "unknown config key" — the key is declared, is
-    read fine by ``config get``, and is hand-authored in YAML today.
-    """
-    from kanibako.settings.agent_file import table_valued_refusal
+  ⚑ *verb* is REQUIRED; gates itself — ``None`` for every other key, so the verbs apply it
+  unconditionally in their preamble.  It must run BEFORE the persona branch: the reserved
+  any-agent-tier refusal would otherwise answer ``agent.default.transform_settings`` with a
+  cure naming a bare spelling that this rule then refuses, which is the same broken-cure
+  shape it exists to prevent.
+  ⚑ It names the KEY and the SHAPE, never "unknown config key" — the key is declared, is
+  read fine by ``config get``, and is hand-authored in YAML today.
+  """
+  from kanibako.settings.agent_file import table_valued_refusal
 
-    leaf = canonical.rsplit(".", 1)[-1]
-    if leaf not in TABLE_VALUED_AGENT_LEAVES or not _names_agent_leaf(canonical, leaf):
-        return None
-    return table_valued_refusal(
-        shown_key(canonical), verb,
-        f"Edit the '{leaf}' table in the settings file directly; the launch reads it from "
-        f"there.",
-        spec="§2d",
-    )
+  leaf = canonical.rsplit(".", 1)[-1]
+  if leaf not in TABLE_VALUED_AGENT_LEAVES or not _names_agent_leaf(canonical, leaf):
+    return None
+  return table_valued_refusal(
+    shown_key(canonical),
+    verb,
+    f"Edit the '{leaf}' table in the settings file directly; the launch reads it from there.",
+    spec="§2d",
+  )
 
 
 def _terminal_category_message(
-    display_key: str, *, verb: str, cure: str, survives: str,
+  display_key: str,
+  *,
+  verb: str,
+  cure: str,
+  survives: str,
 ) -> str:
-    """THE refusal text for a dest-keyed TERMINAL category write — ONE wording, three arms.
+  """THE refusal text for a dest-keyed TERMINAL category write — ONE wording, three arms.
 
-    ⚑ The sentence is :func:`kanibako.settings.agent_file.table_valued_refusal`'s, which the
-    AGENT noun's half of this same fact also builds: one key, one shape, one sentence,
-    whichever door a user knocks on.
-    ⚑ *survives* is a REQUIRED keyword, never a default — the honest read-back differs by
-    arm, and a default would let one arm inherit another's promise.
-    """
-    from kanibako.settings.agent_file import table_valued_refusal
+  ⚑ The sentence is :func:`kanibako.settings.agent_file.table_valued_refusal`'s, which the
+  AGENT noun's half of this same fact also builds: one key, one shape, one sentence,
+  whichever door a user knocks on.
+  ⚑ *survives* is a REQUIRED keyword, never a default — the honest read-back differs by
+  arm, and a default would let one arm inherit another's promise.
+  """
+  from kanibako.settings.agent_file import table_valued_refusal
 
-    return table_valued_refusal(
-        display_key, verb, f"{cure} {survives}",
-        shape="a TABLE keyed by box DESTINATION", spec="§2a",
-    )
+  return table_valued_refusal(
+    display_key,
+    verb,
+    f"{cure} {survives}",
+    shape="a TABLE keyed by box DESTINATION",
+    spec="§2a",
+  )
 
 
 def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
-    """Refuse a WRITE at a DEST-KEYED TERMINAL category key, or ``None`` (spec §2a).
+  """Refuse a WRITE at a DEST-KEYED TERMINAL category key, or ``None`` (spec §2a).
 
-    ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: ``kanibako system set
-    system.masks=/tmp`` answered "Error: unknown config key: system.masks" — telling a user
-    that a DECLARED key is not a key, which is the one thing §0's closed keyspace forbids in
-    both directions.  The REFUSAL is correct and stays: the registry's ``box.masks`` row
-    reads ``set: file`` and §2a makes every bind-shaped category YAML-only.  Only the
-    MESSAGE was wrong.
+  ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: ``kanibako system set
+  system.masks=/tmp`` answered "Error: unknown config key: system.masks" — telling a user
+  that a DECLARED key is not a key, which is the one thing §0's closed keyspace forbids in
+  both directions.  The REFUSAL is correct and stays: the registry's ``box.masks`` row
+  reads ``set: file`` and §2a makes every bind-shaped category YAML-only.  Only the
+  MESSAGE was wrong.
 
-    ⚑⚑ IT IS NOT "RETIRED", AND MUST NOT SAY SO.  ``scope_bind_retired_error`` /
-    ``agent_node_bind_retired_error`` cover the PER-NAME spellings — ``<scope>.<cat>.<name>``
-    — which once HAD a route.  The TERMINAL spelling never had one, so borrowing their word
-    would ship a false statement.  Their regexes require a trailing ``.<name>``, so the two
-    families are disjoint by construction and neither preempts the other.
+  ⚑⚑ IT IS NOT "RETIRED", AND MUST NOT SAY SO.  ``scope_bind_retired_error`` /
+  ``agent_node_bind_retired_error`` cover the PER-NAME spellings — ``<scope>.<cat>.<name>``
+  — which once HAD a route.  The TERMINAL spelling never had one, so borrowing their word
+  would ship a false statement.  Their regexes require a trailing ``.<name>``, so the two
+  families are disjoint by construction and neither preempts the other.
 
-    ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the same
-    predicate ``agent_category_read_error`` and ``foreign_scope_read_error`` gate on — a
-    category entering or leaving §2a moves all three with no edit here.
+  ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the same
+  predicate ``agent_category_read_error`` and ``foreign_scope_read_error`` gate on — a
+  category entering or leaving §2a moves all three with no edit here.
 
-    ⚑⚑ THREE CURE ARMS, EACH MEASURED BEFORE IT WAS PRINTED.  The ``default`` tier does NOT
-    belong with the per-node arm however much its spelling suggests it: there is no
-    ``agents/default/agent.yaml`` and ``kanibako agent get default caches`` exits 1 on
-    "agent 'default' not found", so that cure would be a lie.  It is a table in the SYSTEM
-    settings file and reads back at the system noun (measured, all seven categories).
-    """
-    from kanibako.settings.agent_file import file_spelling
-    from kanibako.settings.settings_keyspace import is_terminal_category_key
+  ⚑⚑ THREE CURE ARMS, EACH MEASURED BEFORE IT WAS PRINTED.  The ``default`` tier does NOT
+  belong with the per-node arm however much its spelling suggests it: there is no
+  ``agents/default/agent.yaml`` and ``kanibako agent get default caches`` exits 1 on
+  "agent 'default' not found", so that cure would be a lie.  It is a table in the SYSTEM
+  settings file and reads back at the system noun (measured, all seven categories).
+  """
+  from kanibako.settings.agent_file import file_spelling
+  from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-    if not is_terminal_category_key(canonical):
-        return None
-    scope, _, tail = canonical.partition(".")
-    if scope == "agent":
-        node, _, category = tail.partition(".")
-        if node != AGENT_DEFAULT_SUB:
-            shown_node = display_agent_ref(node)
-            return _terminal_category_message(
-                f"agent.{shown_node}.{category}",
-                verb=verb,
-                # ⚑ The file's own spelling from the BOUNDARY (``agent_file``), never a
-                # literal: this message QUOTES that file at the user.
-                cure=(
-                    f"Author it in the '{file_spelling(category)}' table of that agent's "
-                    f"own settings file (agents/{shown_node}/agent.yaml); the launch reads "
-                    f"it from there."
-                ),
-                survives=(
-                    f"Reading it back still works:\n"
-                    f"  kanibako agent get {shown_node} {category}"
-                ),
-            )
-        return _terminal_category_message(
-            canonical,
-            verb=verb,
-            cure=_AGENT_DEFAULT_TIER_CURE,
-            survives=(
-                f"Reading it back still works:\n  kanibako system get {shlex.quote(canonical)}"
-            ),
-        )
-    # ⚑ EXHAUSTIVE BY CONSTRUCTION: ``is_terminal_category_key`` requires a head in
-    # ``SCOPE_CONTAINMENT``, and the agent arm above took the only member
-    # :data:`_SCOPE_READ_COMMAND` does not key.
-    return _terminal_category_message(
-        canonical,
+  if not is_terminal_category_key(canonical):
+    return None
+  scope, _, tail = canonical.partition(".")
+  if scope == "agent":
+    node, _, category = tail.partition(".")
+    if node != AGENT_DEFAULT_SUB:
+      shown_node = display_agent_ref(node)
+      return _terminal_category_message(
+        f"agent.{shown_node}.{category}",
         verb=verb,
+        # ⚑ The file's own spelling from the BOUNDARY (``agent_file``), never a
+        # literal: this message QUOTES that file at the user.
         cure=(
-            f"Author it in the '{scope}:' table of the {scope} settings file; the launch "
-            f"reads it from there."
+          f"Author it in the '{file_spelling(category)}' table of that agent's "
+          f"own settings file (agents/{shown_node}/agent.yaml); the launch reads "
+          f"it from there."
         ),
-        survives=(
-            f"Reading it back still works:\n"
-            f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
-        ),
+        survives=(f"Reading it back still works:\n  kanibako agent get {shown_node} {category}"),
+      )
+    return _terminal_category_message(
+      canonical,
+      verb=verb,
+      cure=_AGENT_DEFAULT_TIER_CURE,
+      survives=(f"Reading it back still works:\n  kanibako system get {shlex.quote(canonical)}"),
     )
+  # ⚑ EXHAUSTIVE BY CONSTRUCTION: ``is_terminal_category_key`` requires a head in
+  # ``SCOPE_CONTAINMENT``, and the agent arm above took the only member
+  # :data:`_SCOPE_READ_COMMAND` does not key.
+  return _terminal_category_message(
+    canonical,
+    verb=verb,
+    cure=(
+      f"Author it in the '{scope}:' table of the {scope} settings file; the launch "
+      f"reads it from there."
+    ),
+    survives=(
+      f"Reading it back still works:\n  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
+    ),
+  )
 
 
 def _names_agent_leaf(canonical: str, leaf: str) -> bool:
-    """Does *canonical* address agent leaf *leaf* — bare, or as ``agent.<node>.<leaf>``?"""
-    # ⚑ The two spellings the CLI accepts for one key, and NOTHING else: a ``<scope>`` key
-    # that merely ENDS in the same word (a hypothetical ``box.transform_settings``) is not
-    # an agent leaf and must not inherit its refusal.
-    parsed = _parse_persona_agent_key(canonical)
-    return canonical == leaf or (parsed is not None and parsed[1] == leaf)
+  """Does *canonical* address agent leaf *leaf* — bare, or as ``agent.<node>.<leaf>``?"""
+  # ⚑ The two spellings the CLI accepts for one key, and NOTHING else: a ``<scope>`` key
+  # that merely ENDS in the same word (a hypothetical ``box.transform_settings``) is not
+  # an agent leaf and must not inherit its refusal.
+  parsed = _parse_persona_agent_key(canonical)
+  return canonical == leaf or (parsed is not None and parsed[1] == leaf)
+
 
 def _is_box_agent_key(key: str) -> bool:
-    """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b)."""
-    # ⚑ RECOGNIZE-TO-REFUSE ONLY (P7); the replacement is the §2h request.
-    return key.startswith("box.agent.")
+  """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b)."""
+  # ⚑ RECOGNIZE-TO-REFUSE ONLY (P7); the replacement is the §2h request.
+  return key.startswith("box.agent.")
 
 
 def box_agent_retired_error(
-    canonical: str, *, verb: str, active_agent: str | None = None,
+  canonical: str,
+  *,
+  verb: str,
+  active_agent: str | None = None,
 ) -> str:
-    """The refusal + cure for a RETIRED ``box.agent.<key>`` op (P7, spec §2b)."""
-    # ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS; do not promise
-    # ``meta.box.agent.<key>``, which no renderer emits today.
-    tail = canonical[len("box.agent."):]
-    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
-    return (
-        f"Error: '{canonical}' is RETIRED — a box no longer carries a settable "
-        f"mirror of its agent's settings (spec §2b). Tweak the agent for THIS box "
-        f"with the request '{verb} pref.agent.{agent}.{tail}' (spec §2h); "
-        f"'kanibako box config --effective' then shows that request beside the "
-        f"value it produced."
-    )
+  """The refusal + cure for a RETIRED ``box.agent.<key>`` op (P7, spec §2b)."""
+  # ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS; do not promise
+  # ``meta.box.agent.<key>``, which no renderer emits today.
+  tail = canonical[len("box.agent.") :]
+  agent = display_agent_ref(active_agent) if active_agent else "<agent>"
+  return (
+    f"Error: '{canonical}' is RETIRED — a box no longer carries a settable "
+    f"mirror of its agent's settings (spec §2b). Tweak the agent for THIS box "
+    f"with the request '{verb} pref.agent.{agent}.{tail}' (spec §2h); "
+    f"'kanibako box config --effective' then shows that request beside the "
+    f"value it produced."
+  )
+
 
 # The command scopes that CANNOT write a BARE agent behavior key — a bare write from
 # either is UPWARD and is DROPPED at launch. They differ in the CURE (see llm-docs).
 _NO_BARE_AGENT_KEY_SCOPES: "frozenset[ConfigLevel]" = frozenset(
-    {ConfigLevel.box, ConfigLevel.workset}
+  {ConfigLevel.box, ConfigLevel.workset}
 )
 
 
 def box_agent_redirect_key(
-    canonical: str,
-    command_scope: "ConfigLevel | None",
-    active_agent: str | None = None,
+  canonical: str,
+  command_scope: "ConfigLevel | None",
+  active_agent: str | None = None,
 ) -> str | None:
-    """The ``pref.agent.<active>.<key>`` request a BARE agent key redirects to at BOX scope."""
-    # ⚑ Fires ONLY for the bare form at BOX scope; *active_agent* is REQUIRED because
-    # the §2h request targets a DISCRIMINATED agent slot (§0). See llm-docs.
-    if (
-        command_scope is ConfigLevel.box
-        and _is_agent_setting(canonical)
-        and active_agent
-    ):
-        return f"pref.agent.{active_agent}.{canonical}"
-    return None
+  """The ``pref.agent.<active>.<key>`` request a BARE agent key redirects to at BOX scope."""
+  # ⚑ Fires ONLY for the bare form at BOX scope; *active_agent* is REQUIRED because
+  # the §2h request targets a DISCRIMINATED agent slot (§0). See llm-docs.
+  if command_scope is ConfigLevel.box and _is_agent_setting(canonical) and active_agent:
+    return f"pref.agent.{active_agent}.{canonical}"
+  return None
 
 
 def bare_agent_key_scope_error(
-    canonical: str,
-    command_scope: "ConfigLevel | None",
-    *,
-    verb: str,
-    active_agent: str | None = None,
+  canonical: str,
+  command_scope: "ConfigLevel | None",
+  *,
+  verb: str,
+  active_agent: str | None = None,
 ) -> str | None:
-    """Refuse a WRITE-shaped op on a BARE agent behavior key at box / workset scope."""
-    if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
-        return None
-    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
-    if command_scope is ConfigLevel.box:
-        return (
-            f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
-            f"key targets agent.default, which a box cannot write). "
-            f"Use '{verb} pref.agent.{agent}.<key>' — did you mean "
-            f"'{verb} pref.agent.{agent}.{canonical}'? (spec §2h)"
-        )
-    # workset — no mirror; point at system (all agents) or the per-box request.
-    # ⚑ WORKSET keeps the PLACEHOLDER on purpose: naming one box's agent would be a lie.
+  """Refuse a WRITE-shaped op on a BARE agent behavior key at box / workset scope."""
+  if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
+    return None
+  agent = display_agent_ref(active_agent) if active_agent else "<agent>"
+  if command_scope is ConfigLevel.box:
     return (
-        f"Error: agent settings can't be {verb} at workset scope (a workset spans "
-        f"multiple boxes/agents, so there's no single agent to configure). "
-        f"Configure them at system scope to apply to all agents (an agent whose "
-        f"plugin sets its own default for '{canonical}' needs "
-        f"'agent.<agent>.{canonical}'), or per-box via "
-        f"'pref.agent.<agent>.{canonical}' (spec §2h)."
+      f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
+      f"key targets agent.default, which a box cannot write). "
+      f"Use '{verb} pref.agent.{agent}.<key>' — did you mean "
+      f"'{verb} pref.agent.{agent}.{canonical}'? (spec §2h)"
     )
+  # workset — no mirror; point at system (all agents) or the per-box request.
+  # ⚑ WORKSET keeps the PLACEHOLDER on purpose: naming one box's agent would be a lie.
+  return (
+    f"Error: agent settings can't be {verb} at workset scope (a workset spans "
+    f"multiple boxes/agents, so there's no single agent to configure). "
+    f"Configure them at system scope to apply to all agents (an agent whose "
+    f"plugin sets its own default for '{canonical}' needs "
+    f"'agent.<agent>.{canonical}'), or per-box via "
+    f"'pref.agent.<agent>.{canonical}' (spec §2h)."
+  )
+
 
 #: ⚑ ``_agent_scope_node`` IS GONE (DS-BL1 = (a)) — no bind-shaped category reaches a
 #: set any more, so it answered a question nobody asks. Do not restore it (llm-doc).
 
 
 def is_known_key(arg: str) -> bool:
-    """Return True if *arg* looks like a config key (not a project name)."""
-    # ⚑ It answers False for SEVEN DECLARED KEYS on purpose — see the QUARANTINE
-    # block above :data:`KNOWN_CONFIG_KEYS`. Every branch below is KEY-SHAPED
-    # recognition only: a retired spelling must be refused by name, never read as a
-    # project name. Per-branch reasons: llm-docs.
-    # ⚑⚑ IT GATES NO VERB'S VOCABULARY ANY MORE (2026-08-28). ``system get`` was the
-    # last read on it, and those seven False answers reached the user as "unknown
-    # config key" for keys the engine reads fine; the §0 gate
-    # (:func:`scope_read_key_error` → ``key_validity``) is the only vocabulary now.
-    # What is left is the DISAMBIGUATION callers in ``commands/box/_parser.py``, whose
-    # question really is "key or project name" — so do NOT re-wire this into a gate.
-    if arg in KNOWN_CONFIG_KEYS:
-        return True
-    # Bare env.<VAR> — RETIRED (R-39), recognized so the verbs can refuse it.
-    if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
-        return True
-    # pref.<target-key> — the §2h REQUEST family; SHAPE-only here.
-    if _is_pref_key(arg):
-        return True
-    # agent.<node>.bindings.{ro,rw}.<name> — item-0; write route RETIRED (R-9), read lives.
-    if _is_agent_node_bind_key(arg):
-        return True
-    # agent.<node>.secret_path.<VAR> and the NON-agent <scope>.secret_path.<VAR>.
-    if _is_agent_node_secret_key(arg) or _is_scope_secret_key(arg):
-        return True
-    # <scope>.env.<VAR> (system/workset/box) — the LIVE env family (spec §2a).
-    if _is_scope_env_key(arg):
-        return True
-    # agent.<node>.<key> — the per-persona agent key (block B1).
-    if _is_persona_agent_key(arg):
-        return True
-    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b).
-    if _is_box_agent_key(arg):
-        return True
-    # {system,workset,box}.<bind-shaped category>.<name> — the RETIRED scope-level route.
-    if _is_scope_bind_key(arg):
-        return True
-    # agent.<node>.<bind-shaped category>.<name> — the AGENT spelling, retired the same way.
-    # ⚑ Must NOT be ``_is_path_category_key``: that predicate fails closed for every key
-    # since 2026-08-08c and silently took this arm down with it.
-    return _is_agent_scope_bind_key(arg)
+  """Return True if *arg* looks like a config key (not a project name)."""
+  # ⚑ It answers False for SEVEN DECLARED KEYS on purpose — see the QUARANTINE
+  # block above :data:`KNOWN_CONFIG_KEYS`. Every branch below is KEY-SHAPED
+  # recognition only: a retired spelling must be refused by name, never read as a
+  # project name. Per-branch reasons: llm-docs.
+  # ⚑⚑ IT GATES NO VERB'S VOCABULARY ANY MORE (2026-08-28). ``system get`` was the
+  # last read on it, and those seven False answers reached the user as "unknown
+  # config key" for keys the engine reads fine; the §0 gate
+  # (:func:`scope_read_key_error` → ``key_validity``) is the only vocabulary now.
+  # What is left is the DISAMBIGUATION callers in ``commands/box/_parser.py``, whose
+  # question really is "key or project name" — so do NOT re-wire this into a gate.
+  if arg in KNOWN_CONFIG_KEYS:
+    return True
+  # Bare env.<VAR> — RETIRED (R-39), recognized so the verbs can refuse it.
+  if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
+    return True
+  # pref.<target-key> — the §2h REQUEST family; SHAPE-only here.
+  if _is_pref_key(arg):
+    return True
+  # agent.<node>.bindings.{ro,rw}.<name> — item-0; write route RETIRED (R-9), read lives.
+  if _is_agent_node_bind_key(arg):
+    return True
+  # agent.<node>.secret_path.<VAR> and the NON-agent <scope>.secret_path.<VAR>.
+  if _is_agent_node_secret_key(arg) or _is_scope_secret_key(arg):
+    return True
+  # <scope>.env.<VAR> (system/workset/box) — the LIVE env family (spec §2a).
+  if _is_scope_env_key(arg):
+    return True
+  # agent.<node>.<key> — the per-persona agent key (block B1).
+  if _is_persona_agent_key(arg):
+    return True
+  # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b).
+  if _is_box_agent_key(arg):
+    return True
+  # {system,workset,box}.<bind-shaped category>.<name> — the RETIRED scope-level route.
+  if _is_scope_bind_key(arg):
+    return True
+  # agent.<node>.<bind-shaped category>.<name> — the AGENT spelling, retired the same way.
+  # ⚑ Must NOT be ``_is_path_category_key``: that predicate fails closed for every key
+  # since 2026-08-08c and silently took this arm down with it.
+  return _is_agent_scope_bind_key(arg)
+
 
 def is_config_file_only_key(key: str) -> bool:
-    """Keys whose value is READ from the bootstrap config file rather than a settings file."""
-    # ⚑⚑ THE ``SYSTEM_PATH_DEFAULTS`` FAMILY IS NO LONGER HERE, and its absence is the
-    # POINT (spec §2g): ``system.{template,canon,backup,cache,runtime,channelroot}`` and
-    # ``system.channels.*`` are Layer-2 SETTINGS keys — the keyspace manifest marks every
-    # one of them ``set: cli+file`` — so they route through ``_KEY_ROUTES`` to the SYSTEM
-    # SETTINGS file like ``workset.vault_ro`` does to the workset file. Refusing them as
-    # "structural" contradicted spec §0/§2g and the CLI-settable list at §2a. Do not
-    # re-add the family: a spec edit would have to come first.
-    # ⚑⚑ IT IS A READ ROUTE, NOT A REFUSAL (2026-08-23). It used to double as "and
-    # therefore the write verbs refuse it", which made ``system.setup_completed`` — declared
-    # ``set: cli+file``, "PERSISTS, user-resettable" — unsettable AND unresettable, with a
-    # refusal telling the user to hand-edit the file the CLI could have written. This
-    # predicate answers only "does a READ come from the config file".
-    # ⚑⚑ ``config.*`` IS THE WHOLE FAMILY (2026-08-26). :data:`SETUP_MARKER_KEY` was the
-    # last non-``config.*`` member and its STORAGE moved to ``{config.settings}`` (spec
-    # §2g), so it reads through ``_KEY_ROUTES`` like every other setting. What is left is
-    # exactly spec §1's Layer-1 set — which is the definition, not a coincidence.
-    # ⚑ set/reset short-circuit ``config.*`` earlier (B2) with their own ruled message.
-    return key.startswith("config.")
+  """Keys whose value is READ from the bootstrap config file rather than a settings file."""
+  # ⚑⚑ THE ``SYSTEM_PATH_DEFAULTS`` FAMILY IS NO LONGER HERE, and its absence is the
+  # POINT (spec §2g): ``system.{template,canon,backup,cache,runtime,channelroot}`` and
+  # ``system.channels.*`` are Layer-2 SETTINGS keys — the keyspace manifest marks every
+  # one of them ``set: cli+file`` — so they route through ``_KEY_ROUTES`` to the SYSTEM
+  # SETTINGS file like ``workset.vault_ro`` does to the workset file. Refusing them as
+  # "structural" contradicted spec §0/§2g and the CLI-settable list at §2a. Do not
+  # re-add the family: a spec edit would have to come first.
+  # ⚑⚑ IT IS A READ ROUTE, NOT A REFUSAL (2026-08-23). It used to double as "and
+  # therefore the write verbs refuse it", which made ``system.setup_completed`` — declared
+  # ``set: cli+file``, "PERSISTS, user-resettable" — unsettable AND unresettable, with a
+  # refusal telling the user to hand-edit the file the CLI could have written. This
+  # predicate answers only "does a READ come from the config file".
+  # ⚑⚑ ``config.*`` IS THE WHOLE FAMILY (2026-08-26). :data:`SETUP_MARKER_KEY` was the
+  # last non-``config.*`` member and its STORAGE moved to ``{config.settings}`` (spec
+  # §2g), so it reads through ``_KEY_ROUTES`` like every other setting. What is left is
+  # exactly spec §1's Layer-1 set — which is the definition, not a coincidence.
+  # ⚑ set/reset short-circuit ``config.*`` earlier (B2) with their own ruled message.
+  return key.startswith("config.")
 
 
 def _user_config_file_str() -> "Path | str":
-    """The RESOLVED user bootstrap config file, for refusal messages."""
-    # ⚑ ERROR path — it must never itself raise; the literal default is the fallback.
-    from kanibako.settings.config import user_config_file
+  """The RESOLVED user bootstrap config file, for refusal messages."""
+  # ⚑ ERROR path — it must never itself raise; the literal default is the fallback.
+  from kanibako.settings.config import user_config_file
 
-    try:
-        return user_config_file()
-    except Exception:
-        return f"~/.config/{CONFIG_FILE}"
+  try:
+    return user_config_file()
+  except Exception:
+    return f"~/.config/{CONFIG_FILE}"
 
 
 #: ⚑ ``system_key_refusal`` LIVED HERE AND IS DELETED (2026-08-23). It answered "'<key>'
@@ -1458,153 +1484,160 @@ def _user_config_file_str() -> "Path | str":
 
 
 def _config_key_refusal(canonical: str, *, action: str) -> str:
-    """Error string refusing a CLI set/reset of a ``config.*`` foundation key."""
-    # ⚑ The message deliberately does NOT mention ``setup`` — it is not how a
-    # ``config.*`` value is set. Rationale (load-bearing): llm-docs.
-    config_file = _user_config_file_str()
-    verb = "changed" if action == "reset" else "set"
-    return (
-        f"Error: config.* keys can only be {verb} by editing the configuration "
-        f"file ({config_file})."
-    )
+  """Error string refusing a CLI set/reset of a ``config.*`` foundation key."""
+  # ⚑ The message deliberately does NOT mention ``setup`` — it is not how a
+  # ``config.*`` value is set. Rationale (load-bearing): llm-docs.
+  config_file = _user_config_file_str()
+  verb = "changed" if action == "reset" else "set"
+  return (
+    f"Error: config.* keys can only be {verb} by editing the configuration file ({config_file})."
+  )
+
 
 def _is_scope_secret_key(key: str) -> bool:
-    """True iff *key* is a NON-agent ``<scope>.secret_path.<VAR>`` SECRET-category key."""
-    # ⚑ The agent form is DISCRIMINATED and routed to the node file elsewhere.
-    return _file_scope_match(SECRET_KEY_RE, key) is not None
+  """True iff *key* is a NON-agent ``<scope>.secret_path.<VAR>`` SECRET-category key."""
+  # ⚑ The agent form is DISCRIMINATED and routed to the node file elsewhere.
+  return _file_scope_match(SECRET_KEY_RE, key) is not None
+
 
 def _is_pref_key(key: str) -> bool:
-    """True iff *key* is a ``pref.<target-key>`` REQUEST key (spec §2h)."""
-    # ⚑ SHAPE ONLY — the real §2h validation runs in the set / get / reset branches.
-    return key.startswith(f"{PREF_ROOT}.")
+  """True iff *key* is a ``pref.<target-key>`` REQUEST key (spec §2h)."""
+  # ⚑ SHAPE ONLY — the real §2h validation runs in the set / get / reset branches.
+  return key.startswith(f"{PREF_ROOT}.")
 
 
 def _pref_level(command_scope: "ConfigLevel | None") -> str | None:
-    """The pref LEVEL name for a command scope, or ``None`` where it is illegal (spec §2h)."""
-    if command_scope is ConfigLevel.box:
-        return "box"
-    if command_scope is ConfigLevel.workset:
-        return "workset"
-    return None
+  """The pref LEVEL name for a command scope, or ``None`` where it is illegal (spec §2h)."""
+  if command_scope is ConfigLevel.box:
+    return "box"
+  if command_scope is ConfigLevel.workset:
+    return "workset"
+  return None
 
 
 def _pref_write_site_error(
-    canonical: str, command_scope: "ConfigLevel | None", *, verb: str = "set",
+  canonical: str,
+  command_scope: "ConfigLevel | None",
+  *,
+  verb: str = "set",
 ) -> str | None:
-    """Refuse a ``pref.*`` WRITE outside the workset / box scopes (spec §2h)."""
-    # ⚑ Workset and box ONLY — that restriction is what BOUNDS the resolution
-    # recursion, so it is a hard rule. Checked BEFORE the three TARGET filters.
-    if not _is_pref_key(canonical):
-        return None
-    if _pref_level(command_scope) is not None:
-        return None
-    if command_scope is None:
-        return None  # no command-scope context — the guard is skipped, as elsewhere.
-    target = canonical[len(PREF_ROOT) + 1:]
-    scope = target.split(".", 1)[0]
-    hint = (
-        f" Set '{shown_key(target)}' directly at the {scope} scope instead."
-        if scope in _SCOPE_CONTAINMENT
-        # ⚑ ...but NOT for a YAML-only target: there is no direct set to redirect to
-        # (:func:`has_no_cli_write_route`), and naming one would prescribe a command
-        # that refuses.
-        and not has_no_cli_write_route(target) else ""
-    )
-    return (
-        f"Error: '{shown_key(canonical)}' cannot be {verb} from the {command_scope.value} "
-        f"scope. A pref is a REQUEST written in a workset or box settings file "
-        f"only (spec §2h) — that restriction is what bounds the resolution "
-        f"recursion.{hint}"
-    )
+  """Refuse a ``pref.*`` WRITE outside the workset / box scopes (spec §2h)."""
+  # ⚑ Workset and box ONLY — that restriction is what BOUNDS the resolution
+  # recursion, so it is a hard rule. Checked BEFORE the three TARGET filters.
+  if not _is_pref_key(canonical):
+    return None
+  if _pref_level(command_scope) is not None:
+    return None
+  if command_scope is None:
+    return None  # no command-scope context — the guard is skipped, as elsewhere.
+  target = canonical[len(PREF_ROOT) + 1 :]
+  scope = target.split(".", 1)[0]
+  hint = (
+    f" Set '{shown_key(target)}' directly at the {scope} scope instead."
+    if scope in _SCOPE_CONTAINMENT
+    # ⚑ ...but NOT for a YAML-only target: there is no direct set to redirect to
+    # (:func:`has_no_cli_write_route`), and naming one would prescribe a command
+    # that refuses.
+    and not has_no_cli_write_route(target)
+    else ""
+  )
+  return (
+    f"Error: '{shown_key(canonical)}' cannot be {verb} from the {command_scope.value} "
+    f"scope. A pref is a REQUEST written in a workset or box settings file "
+    f"only (spec §2h) — that restriction is what bounds the resolution "
+    f"recursion.{hint}"
+  )
 
 
 def _pref_target_error(
-    canonical: str, command_scope: "ConfigLevel | None",
+  canonical: str,
+  command_scope: "ConfigLevel | None",
 ) -> str | None:
-    """Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time."""
-    # ⚑ The KEY is only half of a request — the VALUE is checked separately by
-    # :func:`_pref_value_error`; these two are NOT equivalent to launch-time validation.
-    from kanibako.settings.settings_prefs import (
-        PrefRequest,
-        default_valid_agents,
-        validate_pref,
-    )
+  """Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time."""
+  # ⚑ The KEY is only half of a request — the VALUE is checked separately by
+  # :func:`_pref_value_error`; these two are NOT equivalent to launch-time validation.
+  from kanibako.settings.settings_prefs import (
+    PrefRequest,
+    default_valid_agents,
+    validate_pref,
+  )
 
-    level = _pref_level(command_scope)
-    if level is None:
-        return None  # the write-site guard already refused (or there is no scope).
-    target = canonical[len(PREF_ROOT) + 1:]
-    why = validate_pref(
-        PrefRequest(target=target, value=None, level=level),
-        valid_agents=default_valid_agents(),
-    )
-    if why is None:
-        return None
-    return f"Error: '{shown_key(canonical)}' was refused: {why}."
+  level = _pref_level(command_scope)
+  if level is None:
+    return None  # the write-site guard already refused (or there is no scope).
+  target = canonical[len(PREF_ROOT) + 1 :]
+  why = validate_pref(
+    PrefRequest(target=target, value=None, level=level),
+    valid_agents=default_valid_agents(),
+  )
+  if why is None:
+    return None
+  return f"Error: '{shown_key(canonical)}' was refused: {why}."
 
 
 def _pref_sections_leaf(canonical: str) -> "tuple[tuple[str, ...], str]":
-    """The nested write location for a pref: ``(("pref", *head), leaf)``."""
-    parts = canonical.split(".")
-    return tuple(parts[:-1]), parts[-1]
+  """The nested write location for a pref: ``(("pref", *head), leaf)``."""
+  parts = canonical.split(".")
+  return tuple(parts[:-1]), parts[-1]
+
 
 def _scope_bind_match(key: str) -> "re.Match[str] | None":
-    """The :data:`SCOPE_BIND_KEY_RE` match for *key* — the ONE file-scope parse site."""
-    from kanibako.settings.settings_categories import SCOPE_BIND_KEY_RE
+  """The :data:`SCOPE_BIND_KEY_RE` match for *key* — the ONE file-scope parse site."""
+  from kanibako.settings.settings_categories import SCOPE_BIND_KEY_RE
 
-    return SCOPE_BIND_KEY_RE.match(key)
+  return SCOPE_BIND_KEY_RE.match(key)
 
 
 def _agent_bind_match(key: str) -> "re.Match[str] | None":
-    """The ``AGENT_BIND_KEY_RE`` match — the ONE agent-scope parse site (twin of the above)."""
-    from kanibako.settings.settings_categories import AGENT_BIND_KEY_RE
+  """The ``AGENT_BIND_KEY_RE`` match — the ONE agent-scope parse site (twin of the above)."""
+  from kanibako.settings.settings_categories import AGENT_BIND_KEY_RE
 
-    return AGENT_BIND_KEY_RE.match(key)
+  return AGENT_BIND_KEY_RE.match(key)
 
 
 def _is_agent_scope_bind_key(key: str) -> bool:
-    """The RETIRED AGENT-scope bind route ``agent.<node>.<bind-shaped category>.<name>``."""
-    # ⚑ A deliberate SUPERSET of :func:`_is_agent_node_bind_key` (all six categories,
-    # recognition only); where both matter the NARROW one is checked FIRST.
-    return _agent_bind_match(key) is not None
+  """The RETIRED AGENT-scope bind route ``agent.<node>.<bind-shaped category>.<name>``."""
+  # ⚑ A deliberate SUPERSET of :func:`_is_agent_node_bind_key` (all six categories,
+  # recognition only); where both matter the NARROW one is checked FIRST.
+  return _agent_bind_match(key) is not None
 
 
 def _is_scope_bind_key(key: str) -> bool:
-    """The RETIRED SCOPE-level bind route ``{system,workset,box}.bindings.{ro,rw}.<name>``."""
-    # ⚑ RECOGNIZE-TO-REFUSE (R-9); it does NOT cover the AGENT scope, which needs a
-    # non-greedy node split — that is :func:`_is_agent_scope_bind_key`.
-    return _scope_bind_match(key) is not None
+  """The RETIRED SCOPE-level bind route ``{system,workset,box}.bindings.{ro,rw}.<name>``."""
+  # ⚑ RECOGNIZE-TO-REFUSE (R-9); it does NOT cover the AGENT scope, which needs a
+  # non-greedy node split — that is :func:`_is_agent_scope_bind_key`.
+  return _scope_bind_match(key) is not None
 
 
 def _retired_because(category: str) -> str:
-    """WHY a bind-shaped category has no CLI write route — the one clause that differs BY CATEGORY."""
-    # ⚑ The two RETURNED strings are pinned APART by
-    # ``test_config_interface.TestCategoryConfigSet.test_the_refusal_states_the_RULING_not_the_shape``
-    # on the OLD justification; collapsing them is a behavior+test change. See llm-docs.
-    if category.startswith("bindings."):
-        return (
-            "the two bindings arms are a single terminal key keyed by DESTINATION, "
-            "so a per-name key no longer exists"
-        )
+  """WHY a bind-shaped category has no CLI write route — the one clause that differs BY CATEGORY."""
+  # ⚑ The two RETURNED strings are pinned APART by
+  # ``test_config_interface.TestCategoryConfigSet.test_the_refusal_states_the_RULING_not_the_shape``
+  # on the OLD justification; collapsing them is a behavior+test change. See llm-docs.
+  if category.startswith("bindings."):
     return (
-        "a bind-shaped category is authored in YAML only — the CLI has no write "
-        "route to one, an accepted loss tracked as DS-BL1"
+      "the two bindings arms are a single terminal key keyed by DESTINATION, "
+      "so a per-name key no longer exists"
     )
+  return (
+    "a bind-shaped category is authored in YAML only — the CLI has no write "
+    "route to one, an accepted loss tracked as DS-BL1"
+  )
 
 
 def has_no_cli_write_route(target: str) -> bool:
-    """True iff *target* has NO ``config set`` route, so no message may say "set it directly"."""
-    # ⚑ The agent-scope term MUST be :func:`_is_agent_scope_bind_key`, never
-    # :func:`_is_path_category_key` (which fails closed for every key since 2026-08-08c).
-    # ⚑ The ``system.channels.*`` paths are NOT covered here and never were — and since
-    # 2026-08-23 they are routed scalars, so answering False for them is now simply true.
-    from kanibako.settings.settings_keyspace import is_terminal_category_key
+  """True iff *target* has NO ``config set`` route, so no message may say "set it directly"."""
+  # ⚑ The agent-scope term MUST be :func:`_is_agent_scope_bind_key`, never
+  # :func:`_is_path_category_key` (which fails closed for every key since 2026-08-08c).
+  # ⚑ The ``system.channels.*`` paths are NOT covered here and never were — and since
+  # 2026-08-23 they are routed scalars, so answering False for them is now simply true.
+  from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-    return (
-        _is_scope_bind_key(target)
-        or _is_agent_scope_bind_key(target)
-        or is_terminal_category_key(target)
-    )
+  return (
+    _is_scope_bind_key(target)
+    or _is_agent_scope_bind_key(target)
+    or is_terminal_category_key(target)
+  )
 
 
 #: How a user SPELLS the surviving read at each file scope's own noun.
@@ -1614,215 +1647,217 @@ def has_no_cli_write_route(target: str) -> bool:
 #: project, ``system`` has none to resolve). Keyed by :data:`SCOPE_BIND_KEY_RE`'s
 #: own ``scope`` group, whose alternation is exactly these three.
 _SCOPE_READ_COMMAND = {
-    "system": "kanibako system get",
-    "workset": "kanibako workset get <workset>",
-    "box": "kanibako box get <box>",
+  "system": "kanibako system get",
+  "workset": "kanibako workset get <workset>",
+  "box": "kanibako box get <box>",
 }
 
 
 def _bind_route_retired_message(
-    display_key: str, *, verb: str, route: str, why: str, cure: str, survives: str,
+  display_key: str,
+  *,
+  verb: str,
+  route: str,
+  why: str,
+  cure: str,
+  survives: str,
 ) -> str:
-    """THE refusal text for a retired bind-shaped CLI write route — ONE wording, both scopes."""
-    # ⚑ *survives* is a REQUIRED keyword, never a default: the honest answer differs by
-    # door, and a default would let one door inherit the wrong one silently.
-    # ⚑ *display_key* is the ``+`` spelling — ``℘`` must never reach a message.
-    return (
-        f"Error: '{display_key}' cannot be {verb} from the CLI — the "
-        f"'{route}' route is RETIRED ({why}). {cure} {survives}"
-    )
+  """THE refusal text for a retired bind-shaped CLI write route — ONE wording, both scopes."""
+  # ⚑ *survives* is a REQUIRED keyword, never a default: the honest answer differs by
+  # door, and a default would let one door inherit the wrong one silently.
+  # ⚑ *display_key* is the ``+`` spelling — ``℘`` must never reach a message.
+  return (
+    f"Error: '{display_key}' cannot be {verb} from the CLI — the "
+    f"'{route}' route is RETIRED ({why}). {cure} {survives}"
+  )
 
 
 def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
-    """The refusal + cure for a RETIRED file-scope bind-shaped WRITE, or ``None``."""
-    # ⚑ Covers ALL SIX categories and widens WITHOUT an edit here (the regex is derived).
-    # ⚑ The ``survives`` clause offers the per-entry READ because at these three scopes a
-    # slot is still claimed for it — unlike the agent scope. See llm-docs.
-    m = _scope_bind_match(canonical)
-    if m is None:
-        return None
-    scope, category = m.group("scope"), m.group("category")
-    return _bind_route_retired_message(
-        canonical,
-        verb=verb,
-        route=f"{scope}.{category}.<name>",
-        why=_retired_because(category),
-        cure=(
-            f"Edit the '{scope}:' table of the {scope} settings file "
-            f"directly; the launch reads it from there."
-        ),
-        survives=(
-            f"Reading it back still works:\n"
-            f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
-        ),
-    )
+  """The refusal + cure for a RETIRED file-scope bind-shaped WRITE, or ``None``."""
+  # ⚑ Covers ALL SIX categories and widens WITHOUT an edit here (the regex is derived).
+  # ⚑ The ``survives`` clause offers the per-entry READ because at these three scopes a
+  # slot is still claimed for it — unlike the agent scope. See llm-docs.
+  m = _scope_bind_match(canonical)
+  if m is None:
+    return None
+  scope, category = m.group("scope"), m.group("category")
+  return _bind_route_retired_message(
+    canonical,
+    verb=verb,
+    route=f"{scope}.{category}.<name>",
+    why=_retired_because(category),
+    cure=(
+      f"Edit the '{scope}:' table of the {scope} settings file "
+      f"directly; the launch reads it from there."
+    ),
+    survives=(
+      f"Reading it back still works:\n  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
+    ),
+  )
 
 
 def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
-    """The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE, or ``None``."""
-    # ⚑ ONE PARSER, ALL SIX (``AGENT_BIND_KEY_RE``) — it used to be two, and the second
-    # half went silently DEAD on 2026-08-08c. Do not re-split it.
-    # ⚑ WHAT SURVIVES DIFFERS BY ARM: only a ``bindings`` arm on a REAL node keeps a
-    # per-entry READ.
-    # ⚑ THREE ARMS, AND THE TIER IS THE FIRST CUT: on a real node the cure names that
-    # NODE's own settings file, never a scope table; the reserved ``default`` tier has no
-    # such file and takes :data:`_AGENT_DEFAULT_TIER_CURE`.
-    from kanibako.settings.agent_file import file_spelling
+  """The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE, or ``None``."""
+  # ⚑ ONE PARSER, ALL SIX (``AGENT_BIND_KEY_RE``) — it used to be two, and the second
+  # half went silently DEAD on 2026-08-08c. Do not re-split it.
+  # ⚑ WHAT SURVIVES DIFFERS BY ARM: only a ``bindings`` arm on a REAL node keeps a
+  # per-entry READ.
+  # ⚑ THREE ARMS, AND THE TIER IS THE FIRST CUT: on a real node the cure names that
+  # NODE's own settings file, never a scope table; the reserved ``default`` tier has no
+  # such file and takes :data:`_AGENT_DEFAULT_TIER_CURE`.
+  from kanibako.settings.agent_file import file_spelling
 
-    m = _agent_bind_match(canonical)
-    if m is None:
-        return None
-    node, category, name = m.group("node"), m.group("category"), m.group("name")
-    shown_node = display_agent_ref(node)
-    display_key = f"agent.{shown_node}.{category}.{name}"
-    if node == AGENT_DEFAULT_SUB:
-        # ⚑⚑ THE RESERVED TIER IS NOT A NODE, so the per-node arm below is false here in
-        # BOTH halves — it named ``agents/default/agent.yaml``, a file that does not
-        # exist and MUST NOT, and promised a read at the ``agent`` noun that exits 1
-        # (measured, ``kanibako agent get default bindings.ro.x``). The sibling
-        # :func:`terminal_category_write_error` has carried this arm since 2026-08-28;
-        # this one did not, which is the whole of the defect.
-        # ⚑ THE PER-ENTRY READ DOES NOT SURVIVE AT THIS TIER EITHER — measured, ``system
-        # get agent.default.bindings.ro.x`` answers "(not set)" over a hand-authored
-        # value while ``…bindings.ro`` returns the whole map — so the ``bindings``
-        # concession below is deliberately NOT extended here. Promising it would rebuild
-        # the same broken cure one level down.
-        return _bind_route_retired_message(
-            display_key,
-            verb=verb,
-            route=f"agent.<node>.{category}.<name>",
-            why=_retired_because(category),
-            cure=_AGENT_DEFAULT_TIER_CURE,
-            survives=(
-                f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
-                f"dest-keyed map; an entry inside it is DATA, not a key of its own. "
-                f"Read the map with:\n"
-                f"  kanibako system get agent.{shown_node}.{category}"
-            ),
-        )
-    if _is_agent_node_bind_key(canonical):
-        # ⚑ The AGENT noun's own verb, and it takes the TAIL — the node is the
-        # SUBJECT, so repeating ``agent.<node>.`` inside the key double-prefixes it
-        # and the read refuses (measured). There is no ``config`` noun to fall back
-        # on; see :data:`_SCOPE_READ_COMMAND`.
-        survives = (
-            f"Reading it back still works:\n"
-            f"  kanibako agent get {shown_node} {shlex.quote(f'{category}.{name}')}"
-        )
-    else:
-        survives = (
-            f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
-            f"dest-keyed map; an entry inside it is DATA, not a key of its own."
-        )
+  m = _agent_bind_match(canonical)
+  if m is None:
+    return None
+  node, category, name = m.group("node"), m.group("category"), m.group("name")
+  shown_node = display_agent_ref(node)
+  display_key = f"agent.{shown_node}.{category}.{name}"
+  if node == AGENT_DEFAULT_SUB:
+    # ⚑⚑ THE RESERVED TIER IS NOT A NODE, so the per-node arm below is false here in
+    # BOTH halves — it named ``agents/default/agent.yaml``, a file that does not
+    # exist and MUST NOT, and promised a read at the ``agent`` noun that exits 1
+    # (measured, ``kanibako agent get default bindings.ro.x``). The sibling
+    # :func:`terminal_category_write_error` has carried this arm since 2026-08-28;
+    # this one did not, which is the whole of the defect.
+    # ⚑ THE PER-ENTRY READ DOES NOT SURVIVE AT THIS TIER EITHER — measured, ``system
+    # get agent.default.bindings.ro.x`` answers "(not set)" over a hand-authored
+    # value while ``…bindings.ro`` returns the whole map — so the ``bindings``
+    # concession below is deliberately NOT extended here. Promising it would rebuild
+    # the same broken cure one level down.
     return _bind_route_retired_message(
-        display_key,
-        verb=verb,
-        route=f"agent.<node>.{category}.<name>",
-        why=_retired_because(category),
-        # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
-        # here: this message QUOTES the agent file at the user, so it must say whatever that
-        # file actually spells — which is why S2's flatten changed it in ONE place.
-        # ⚑ The NODE is not in the spelling any more, and its absence is the point: the file IS
-        # that node's, so ``self:`` expands to ``agent.<node>`` and the category table sits
-        # DIRECTLY under it. The node stays in the PATH, which is what tells the user which
-        # file to open.
-        cure=(
-            f"Edit the '{file_spelling(category)}' table of that "
-            f"agent's own settings file (agents/{shown_node}/"
-            f"agent.yaml) directly; the launch reads it from there."
-        ),
-        survives=survives,
+      display_key,
+      verb=verb,
+      route=f"agent.<node>.{category}.<name>",
+      why=_retired_because(category),
+      cure=_AGENT_DEFAULT_TIER_CURE,
+      survives=(
+        f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
+        f"dest-keyed map; an entry inside it is DATA, not a key of its own. "
+        f"Read the map with:\n"
+        f"  kanibako system get agent.{shown_node}.{category}"
+      ),
     )
+  if _is_agent_node_bind_key(canonical):
+    # ⚑ The AGENT noun's own verb, and it takes the TAIL — the node is the
+    # SUBJECT, so repeating ``agent.<node>.`` inside the key double-prefixes it
+    # and the read refuses (measured). There is no ``config`` noun to fall back
+    # on; see :data:`_SCOPE_READ_COMMAND`.
+    survives = (
+      f"Reading it back still works:\n"
+      f"  kanibako agent get {shown_node} {shlex.quote(f'{category}.{name}')}"
+    )
+  else:
+    survives = (
+      f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
+      f"dest-keyed map; an entry inside it is DATA, not a key of its own."
+    )
+  return _bind_route_retired_message(
+    display_key,
+    verb=verb,
+    route=f"agent.<node>.{category}.<name>",
+    why=_retired_because(category),
+    # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
+    # here: this message QUOTES the agent file at the user, so it must say whatever that
+    # file actually spells — which is why S2's flatten changed it in ONE place.
+    # ⚑ The NODE is not in the spelling any more, and its absence is the point: the file IS
+    # that node's, so ``self:`` expands to ``agent.<node>`` and the category table sits
+    # DIRECTLY under it. The node stays in the PATH, which is what tells the user which
+    # file to open.
+    cure=(
+      f"Edit the '{file_spelling(category)}' table of that "
+      f"agent's own settings file (agents/{shown_node}/"
+      f"agent.yaml) directly; the launch reads it from there."
+    ),
+    survives=survives,
+  )
 
 
 def agent_key_reason(node: str, tail: str) -> str | None:
-    """The §0 reason *tail* is not a declared key of agent *node*, or ``None`` when it is.
+  """The §0 reason *tail* is not a declared key of agent *node*, or ``None`` when it is.
 
-    ⚑ ONE CONSTRUCTION, THREE CONSUMERS — the ``agent`` verb's write gate, its read gate, and the
-    refusal as an agent file is read (``agent_record``, which every reader, the launch included, uses).  A REASON rather than a
-    message, for the reason ``config_dest.NodeRouteRefusal`` gives: the rule is one, but a verb
-    owes a cure and a refused launch owes a file to open.
+  ⚑ ONE CONSTRUCTION, THREE CONSUMERS — the ``agent`` verb's write gate, its read gate, and the
+  refusal as an agent file is read (``agent_record``, which every reader, the launch included, uses).  A REASON rather than a
+  message, for the reason ``config_dest.NodeRouteRefusal`` gives: the rule is one, but a verb
+  owes a cure and a refused launch owes a file to open.
 
-    ⚑⚑ ``key_validity`` ON THE CANONICAL KEY, NEVER ``is_known_key``, AND THE DIFFERENCE IS
-    MEASURED: ``is_known_key("agent.claude.self.model")`` is **True** (the persona parser splits on
-    the LAST segment and reads the node as ``claude.self``), so the shape [spec:14-18, "self"]
-    exists to refuse would sail through, while ``run_args`` — live and pinned — would be
-    refused.
-    ``is_known_key`` answers "is this key-SHAPED, as opposed to a project name"; §0 asks
-    "is this a DECLARED key", and only ``key_validity`` answers that.
+  ⚑⚑ ``key_validity`` ON THE CANONICAL KEY, NEVER ``is_known_key``, AND THE DIFFERENCE IS
+  MEASURED: ``is_known_key("agent.claude.self.model")`` is **True** (the persona parser splits on
+  the LAST segment and reads the node as ``claude.self``), so the shape [spec:14-18, "self"]
+  exists to refuse would sail through, while ``run_args`` — live and pinned — would be
+  refused.
+  ``is_known_key`` answers "is this key-SHAPED, as opposed to a project name"; §0 asks
+  "is this a DECLARED key", and only ``key_validity`` answers that.
 
-    *node* is the agent whose file this is — it is KNOWN GOOD (the on-disk store dir), so it is
-    supplied AS the valid-agent set rather than re-litigated: an agent-discovery result must never
-    be able to refuse a key on an agent the user is demonstrably running.  The PLUGIN-declared
-    leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
-    which a legitimate ``agent.goose.provider`` would be refused.
+  *node* is the agent whose file this is — it is KNOWN GOOD (the on-disk store dir), so it is
+  supplied AS the valid-agent set rather than re-litigated: an agent-discovery result must never
+  be able to refuse a key on an agent the user is demonstrably running.  The PLUGIN-declared
+  leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
+  which a legitimate ``agent.goose.provider`` would be refused.
 
-    ⚑ :data:`AGENT_LEAF_MAP`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
-    materialized.  ``default_valid_agents().leaf_map`` read here directly would be the same
-    VALUE reached a second way, and the per-node recognizer did not read it at all — which is
-    how one verb came to declare a key another called unknown.  Passing it also DEFERS
-    discovery: a core §2d leaf is answered without importing a single plugin.
+  ⚑ :data:`AGENT_LEAF_MAP`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
+  materialized.  ``default_valid_agents().leaf_map`` read here directly would be the same
+  VALUE reached a second way, and the per-node recognizer did not read it at all — which is
+  how one verb came to declare a key another called unknown.  Passing it also DEFERS
+  discovery: a core §2d leaf is answered without importing a single plugin.
 
-    ⚑⚑ AND THE MAP IS WHAT MAKES THIS GATE CAPABLE OF CONCEDING AT ALL.  ``key_validity`` took a
-    FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
-    wherever goose was not installed — measured on a simulated claude-only machine, and this is
-    the gate every reader of an agent file passes, the launch included (``agent_record``), so a goose store on a machine where goose had
-    been uninstalled would not start.  keyspec §0 "The leaf VOCABULARY is partitioned by TIER":
-    per-agent judgment applies where the vocabulary is readable; where it is not, the concession
-    still governs.
+  ⚑⚑ AND THE MAP IS WHAT MAKES THIS GATE CAPABLE OF CONCEDING AT ALL.  ``key_validity`` took a
+  FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
+  wherever goose was not installed — measured on a simulated claude-only machine, and this is
+  the gate every reader of an agent file passes, the launch included (``agent_record``), so a goose store on a machine where goose had
+  been uninstalled would not start.  keyspec §0 "The leaf VOCABULARY is partitioned by TIER":
+  per-agent judgment applies where the vocabulary is readable; where it is not, the concession
+  still governs.
 
-    🛑 THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND DO NOT PUT ONE BACK (D8b, 2026-09-15).  An
-    ``if tail in {"name", "run_args"}: return None`` short-circuit stood above the gate, and the
-    ONE tail it rescued was ``name`` — the agent file's non-key identity field, now retired.  The
-    other, ``run_args``, is a declared §2d leaf, so the gate below admits it on its own: the
-    allowlist was the carve-out that let an undeclared entry live in a settings file, and
-    deleting the field deletes the need for it (P4).  The set it named is gone too (2026-09-18):
-    the FILE's shape asks ``agent_file._MODELED_KEYS``, which is not a keyspace question.
-    """
-    from kanibako.settings.settings_keyspace import key_validity
+  🛑 THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND DO NOT PUT ONE BACK (D8b, 2026-09-15).  An
+  ``if tail in {"name", "run_args"}: return None`` short-circuit stood above the gate, and the
+  ONE tail it rescued was ``name`` — the agent file's non-key identity field, now retired.  The
+  other, ``run_args``, is a declared §2d leaf, so the gate below admits it on its own: the
+  allowlist was the carve-out that let an undeclared entry live in a settings file, and
+  deleting the field deletes the need for it (P4).  The set it named is gone too (2026-09-18):
+  the FILE's shape asks ``agent_file._MODELED_KEYS``, which is not a keyspace question.
+  """
+  from kanibako.settings.settings_keyspace import key_validity
 
-    return key_validity(
-        f"agent.{node}.{tail}",
-        valid_agents=(node,),
-        agent_leaf_map=AGENT_LEAF_MAP,
-    )
+  return key_validity(
+    f"agent.{node}.{tail}",
+    valid_agents=(node,),
+    agent_leaf_map=AGENT_LEAF_MAP,
+  )
 
 
 def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None:
-    """Why ``agent <verb> <node> <tail>`` names no key, or ``None`` when it does (spec §0).
+  """Why ``agent <verb> <node> <tail>`` names no key, or ``None`` when it does (spec §0).
 
-    THE ``agent`` NOUN'S CLOSED-KEYSPACE GATE (D-5).  Its sibling verbs route through
-    ``set_config_value``, which owns this check for every other noun; this one has its own writer
-    and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
-    a closed-keyspace breach on a first-class write path, and the ONE place a user could type
-    ``self.`` and have it land [spec:14-18, "self"].
-    """
-    reason = agent_key_reason(node, tail)
-    if reason is None:
-        return None
-    return (
-        f"Error: '{tail}' cannot be {verb} on agent "
-        f"'{display_agent_ref(node)}': {reason}."
-    )
+  THE ``agent`` NOUN'S CLOSED-KEYSPACE GATE (D-5).  Its sibling verbs route through
+  ``set_config_value``, which owns this check for every other noun; this one has its own writer
+  and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
+  a closed-keyspace breach on a first-class write path, and the ONE place a user could type
+  ``self.`` and have it land [spec:14-18, "self"].
+  """
+  reason = agent_key_reason(node, tail)
+  if reason is None:
+    return None
+  return f"Error: '{tail}' cannot be {verb} on agent '{display_agent_ref(node)}': {reason}."
 
 
 def agent_read_key_error(node: str, tail: str) -> str | None:
-    """Why ``agent get <node> <tail>`` names no key, or ``None`` when it does (spec §0).
+  """Why ``agent get <node> <tail>`` names no key, or ``None`` when it does (spec §0).
 
-    The WRITE vocabulary (:func:`agent_write_key_error`) PLUS the one retired spelling whose READ
-    survived: ``agent.<node>.bindings.{ro,rw}.<name>`` is not a declared key — the arm is terminal
-    and its entries are destinations inside the value — but ``config get`` reads it anyway (R-9:
-    *"the read survived the write, on purpose"*), and the hand-edit that refusal prescribes is
-    only checkable if the read-back works.  Two verbs over ONE file must not disagree about it, so
-    the carve-out is taken from the SAME predicate ``get_config_value`` branches on rather than
-    re-stated here.
+  The WRITE vocabulary (:func:`agent_write_key_error`) PLUS the one retired spelling whose READ
+  survived: ``agent.<node>.bindings.{ro,rw}.<name>`` is not a declared key — the arm is terminal
+  and its entries are destinations inside the value — but ``config get`` reads it anyway (R-9:
+  *"the read survived the write, on purpose"*), and the hand-edit that refusal prescribes is
+  only checkable if the read-back works.  Two verbs over ONE file must not disagree about it, so
+  the carve-out is taken from the SAME predicate ``get_config_value`` branches on rather than
+  re-stated here.
 
-    ⚑ Reading an undeclared key is an error under §0 exactly as writing one is, which is why this
-    exists at all: ``agent get claude self.model`` refuses instead of answering "(not set)".
-    """
-    if _is_agent_node_bind_key(f"agent.{node}.{tail}"):
-        return None
-    return agent_write_key_error(node, tail, verb="read")
+  ⚑ Reading an undeclared key is an error under §0 exactly as writing one is, which is why this
+  exists at all: ``agent get claude self.model`` refuses instead of answering "(not set)".
+  """
+  if _is_agent_node_bind_key(f"agent.{node}.{tail}"):
+    return None
+  return agent_write_key_error(node, tail, verb="read")
 
 
 #: How a user SPELLS the STORED view at each file scope's own noun — the sibling of
@@ -1831,358 +1866,367 @@ def agent_read_key_error(node: str, tail: str) -> str | None:
 #: which is why :func:`scope_read_key_error` names it: the cure for such an entry is a
 #: hand edit, and nobody can hand-edit a line they were never shown.
 _SCOPE_SHOW_COMMAND = {
-    "system": "kanibako system show",
-    "workset": "kanibako workset show <workset>",
-    "box": "kanibako box show <box>",
+  "system": "kanibako system show",
+  "workset": "kanibako workset show <workset>",
+  "box": "kanibako box show <box>",
 }
 
 
 def scope_key_reason(canonical: str) -> str | None:
-    """The §0 reason *canonical* names no key, or ``None`` when it does.
+  """The §0 reason *canonical* names no key, or ``None`` when it does.
 
-    ⚑ ONE CONSTRUCTION, TWO CONSUMERS — the file-scope nouns' READ gate
-    (:func:`scope_read_key_error`) and the STORED view's undeclared-entry block
-    (``config_interface.show_config``).  The rule is one, so neither restates it.
+  ⚑ ONE CONSTRUCTION, TWO CONSUMERS — the file-scope nouns' READ gate
+  (:func:`scope_read_key_error`) and the STORED view's undeclared-entry block
+  (``config_interface.show_config``).  The rule is one, so neither restates it.
 
-    ⚑⚑ ``key_validity`` VIA ``key_reason``, NEVER ``is_known_key``, for exactly the reason
-    :func:`agent_key_reason` gives: ``is_known_key`` answers *"is this key-SHAPED, as opposed
-    to a project name"*, and §0 asks *"is this a DECLARED key"*.  The two disagree on SEVEN
-    declared keys (the six bind-shaped category terminals and ``<scope>.masks``), which is why
-    NO read gate is on ``is_known_key`` any more: ``system get`` carried one until 2026-08-28
-    and refused all seven by name.
-    ``key_reason`` also unions the PLUGIN-declared agent leaves, without which a legitimate
-    ``pref.agent.goose.provider`` would be refused.
-    """
-    from kanibako.settings.settings_prefs import default_valid_agents, key_reason
+  ⚑⚑ ``key_validity`` VIA ``key_reason``, NEVER ``is_known_key``, for exactly the reason
+  :func:`agent_key_reason` gives: ``is_known_key`` answers *"is this key-SHAPED, as opposed
+  to a project name"*, and §0 asks *"is this a DECLARED key"*.  The two disagree on SEVEN
+  declared keys (the six bind-shaped category terminals and ``<scope>.masks``), which is why
+  NO read gate is on ``is_known_key`` any more: ``system get`` carried one until 2026-08-28
+  and refused all seven by name.
+  ``key_reason`` also unions the PLUGIN-declared agent leaves, without which a legitimate
+  ``pref.agent.goose.provider`` would be refused.
+  """
+  from kanibako.settings.settings_prefs import default_valid_agents, key_reason
 
-    return key_reason(canonical, valid_agents=default_valid_agents())
+  return key_reason(canonical, valid_agents=default_valid_agents())
 
 
 def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str | None:
-    """Where a BARE table-valued agent leaf is actually readable, or ``None`` (spec §2d).
+  """Where a BARE table-valued agent leaf is actually readable, or ``None`` (spec §2d).
 
-    ⚑ THE READ HALF of :func:`agent_leaf_table_error`, which owns the write half.  Both
-    exist for the same §0 reason — a DECLARED key must be refused by its own rule, never
-    degraded to "not a key" — and the shapes match: the write verbs refuse the bare
-    spelling and name the file to edit, so the read verb refuses it and names the noun
-    that answers.  ``config_keys``' own :data:`KNOWN_CONFIG_KEYS` comment already promised
-    this ("so the READ gate admits it and the refusal can name the shape instead of
-    denying the key exists"); until this, only the write half kept it.
+  ⚑ THE READ HALF of :func:`agent_leaf_table_error`, which owns the write half.  Both
+  exist for the same §0 reason — a DECLARED key must be refused by its own rule, never
+  degraded to "not a key" — and the shapes match: the write verbs refuse the bare
+  spelling and name the file to edit, so the read verb refuses it and names the noun
+  that answers.  ``config_keys``' own :data:`KNOWN_CONFIG_KEYS` comment already promised
+  this ("so the READ gate admits it and the refusal can name the shape instead of
+  denying the key exists"); until this, only the write half kept it.
 
-    ⚑ THE BARE SPELLING ONLY (``canonical`` IS the leaf).  ``agent.<node>.<leaf>`` is not
-    refused by this gate at all, and a refusal of ``agent.<bogus>.transform_settings``
-    is about the NODE — appending a shape cure to it would answer a question the user
-    did not ask.
+  ⚑ THE BARE SPELLING ONLY (``canonical`` IS the leaf).  ``agent.<node>.<leaf>`` is not
+  refused by this gate at all, and a refusal of ``agent.<bogus>.transform_settings``
+  is about the NODE — appending a shape cure to it would answer a question the user
+  did not ask.
 
-    ⚑ It replaces the generic "your settings file may carry this entry" cure rather than
-    following it: that cure prescribes a HAND DELETION, and the entry this key names is
-    legitimate one scope up.  The head of the message — the key, then the §0 reason — is
-    untouched, for the reason ``settings_assemble.parse_naming_file`` states: the key
-    must stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
-    """
-    if canonical not in TABLE_VALUED_AGENT_LEAVES:
-        return None
-    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
-    return (
-        f" '{canonical}' IS a declared agent leaf (spec §2d), but a TABLE-valued one — "
-        f"no scalar request can carry it, so it has no bare spelling at a file scope. "
-        f"Read it at the agent noun:\n  kanibako agent get {agent} {shlex.quote(canonical)}"
-    )
+  ⚑ It replaces the generic "your settings file may carry this entry" cure rather than
+  following it: that cure prescribes a HAND DELETION, and the entry this key names is
+  legitimate one scope up.  The head of the message — the key, then the §0 reason — is
+  untouched, for the reason ``settings_assemble.parse_naming_file`` states: the key
+  must stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
+  """
+  if canonical not in TABLE_VALUED_AGENT_LEAVES:
+    return None
+  agent = display_agent_ref(active_agent) if active_agent else "<agent>"
+  return (
+    f" '{canonical}' IS a declared agent leaf (spec §2d), but a TABLE-valued one — "
+    f"no scalar request can carry it, so it has no bare spelling at a file scope. "
+    f"Read it at the agent noun:\n  kanibako agent get {agent} {shlex.quote(canonical)}"
+  )
 
 
 def agent_category_read_error(canonical: str, key: str) -> str | None:
-    """Why a FILE-SCOPE ``get`` cannot serve ``agent.<node>.<category>``, or ``None`` (spec §2a).
+  """Why a FILE-SCOPE ``get`` cannot serve ``agent.<node>.<category>``, or ``None`` (spec §2a).
 
-    ⚑ THE OTHER HALF OF :func:`table_leaf_read_cure`'s JOB, for the family that half does not
-    cover.  Both answer one question — *a declared key this noun has no read for: where IS it
-    readable?* — and both end in the same sentence, because the answer is the same noun.  What
-    differs is the reason: a bare table leaf has no spelling here at all, while THIS spelling is
-    a perfectly good key whose VALUE lives in a file the file-scope nouns never open.
+  ⚑ THE OTHER HALF OF :func:`table_leaf_read_cure`'s JOB, for the family that half does not
+  cover.  Both answer one question — *a declared key this noun has no read for: where IS it
+  readable?* — and both end in the same sentence, because the answer is the same noun.  What
+  differs is the reason: a bare table leaf has no spelling here at all, while THIS spelling is
+  a perfectly good key whose VALUE lives in a file the file-scope nouns never open.
 
-    ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: with an ``agents/claude/agent.yaml``
-    carrying all seven category tables, ``kanibako system get agent.claude.caches`` answered
-    "(not set)" at rc 0 — a fabricated answer over a table that IS there, which §0 forbids in
-    the same breath as the undeclared read.  ``key_validity`` DECLARES the key, so the closed
-    keyspace has no complaint and cannot be the thing that catches it.
+  ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: with an ``agents/claude/agent.yaml``
+  carrying all seven category tables, ``kanibako system get agent.claude.caches`` answered
+  "(not set)" at rc 0 — a fabricated answer over a table that IS there, which §0 forbids in
+  the same breath as the undeclared read.  ``key_validity`` DECLARES the key, so the closed
+  keyspace has no complaint and cannot be the thing that catches it.
 
-    ⚑ THE ``default`` TIER IS NOT THIS, AND MUST NOT BE SWEPT IN.  ``agent.default.<category>``
-    is the any-agent tier: it is stored in the SYSTEM settings file, ``get_config_value`` reads
-    it there, and ``kanibako system get agent.default.caches`` returns the map (measured beside
-    the case above).  Refusing it would break a working read, and the cure would be a lie —
-    there is no ``agents/default/agent.yaml`` and ``kanibako agent get default …`` exits 1 on
-    "agent 'default' not found".
+  ⚑ THE ``default`` TIER IS NOT THIS, AND MUST NOT BE SWEPT IN.  ``agent.default.<category>``
+  is the any-agent tier: it is stored in the SYSTEM settings file, ``get_config_value`` reads
+  it there, and ``kanibako system get agent.default.caches`` returns the map (measured beside
+  the case above).  Refusing it would break a working read, and the cure would be a lie —
+  there is no ``agents/default/agent.yaml`` and ``kanibako agent get default …`` exits 1 on
+  "agent 'default' not found".
 
-    ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the
-    declaration SoT for "dest-keyed terminal category, at the position a scope ends" — so a
-    category entering or leaving §2a moves this refusal with it, and the ``agent.<node>``
-    -vs-file-scope split is the one that predicate already makes.
-    """
-    from kanibako.settings.settings_keyspace import is_terminal_category_key
+  ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the
+  declaration SoT for "dest-keyed terminal category, at the position a scope ends" — so a
+  category entering or leaving §2a moves this refusal with it, and the ``agent.<node>``
+  -vs-file-scope split is the one that predicate already makes.
+  """
+  from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-    if not is_terminal_category_key(canonical):
-        return None
-    scope, _, tail = canonical.partition(".")
-    if scope != "agent":
-        return None
-    node, _, category = tail.partition(".")
-    if node == AGENT_DEFAULT_SUB:
-        return None
-    shown_node = display_agent_ref(node)
-    # ⚑ THE MESSAGE MUST NOT SPELL THE STRING "(not set)", however tempting — the refusal
-    # tests across this suite assert that literal is ABSENT from a refusal's output, which
-    # is how a fabricated answer is caught. Describing the fault beats quoting it.
-    return (
-        f"Error: '{key}' cannot be read here: a per-agent category table lives in that "
-        f"agent's own settings file (agents/{shown_node}/agent.yaml), which this noun does "
-        f"not read — reporting it unset here would invent an answer over a table that "
-        f"exists (spec §2a). Read it at the agent noun:\n"
-        f"  kanibako agent get {shown_node} {category}"
-    )
+  if not is_terminal_category_key(canonical):
+    return None
+  scope, _, tail = canonical.partition(".")
+  if scope != "agent":
+    return None
+  node, _, category = tail.partition(".")
+  if node == AGENT_DEFAULT_SUB:
+    return None
+  shown_node = display_agent_ref(node)
+  # ⚑ THE MESSAGE MUST NOT SPELL THE STRING "(not set)", however tempting — the refusal
+  # tests across this suite assert that literal is ABSENT from a refusal's output, which
+  # is how a fabricated answer is caught. Describing the fault beats quoting it.
+  return (
+    f"Error: '{key}' cannot be read here: a per-agent category table lives in that "
+    f"agent's own settings file (agents/{shown_node}/agent.yaml), which this noun does "
+    f"not read — reporting it unset here would invent an answer over a table that "
+    f"exists (spec §2a). Read it at the agent noun:\n"
+    f"  kanibako agent get {shown_node} {category}"
+  )
 
 
 def foreign_scope_read_error(
-    canonical: str, key: str, command_scope: "ConfigLevel | None",
+  canonical: str,
+  key: str,
+  command_scope: "ConfigLevel | None",
 ) -> str | None:
-    """Why a declared key belongs to a scope THIS noun cannot answer for, or ``None``.
+  """Why a declared key belongs to a scope THIS noun cannot answer for, or ``None``.
 
-    ⚑⚑ [Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'. it makes
-    no sense at the cli."*  A ``get`` reads what its own noun answers for; asking the ``system``
-    noun for ``box.caches`` is asking a question the CLI has no reason to answer.
+  ⚑⚑ [Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'. it makes
+  no sense at the cli."*  A ``get`` reads what its own noun answers for; asking the ``system``
+  noun for ``box.caches`` is asking a question the CLI has no reason to answer.
 
-    ⚑⚑ WHAT THE RULE IS NOT: "the key's scope must equal the noun's scope", flat.  MEASURED
-    2026-08-28 — that gate refuses **86** reads that answer today (29 at ``system``, 23 at
-    ``workset``, 34 at ``box``), because a DOWNWARD DEFAULT is spelled with the TARGET's scope
-    token while living in THIS noun's file.  ``kanibako system set box.image=…`` is a legal
-    containment write (spec §0/§2a), and refusing ``system get box.image`` would leave a write
-    with no read-back at the noun that performed it.
+  ⚑⚑ WHAT THE RULE IS NOT: "the key's scope must equal the noun's scope", flat.  MEASURED
+  2026-08-28 — that gate refuses **86** reads that answer today (29 at ``system``, 23 at
+  ``workset``, 34 at ``box``), because a DOWNWARD DEFAULT is spelled with the TARGET's scope
+  token while living in THIS noun's file.  ``kanibako system set box.image=…`` is a legal
+  containment write (spec §0/§2a), and refusing ``system get box.image`` would leave a write
+  with no read-back at the noun that performed it.
 
-    ⚑⚑⚑ THREE BASES WERE TRIED.  TWO ARE DEAD, AND BOTH LOOK RIGHT UNTIL MEASURED — which is
-    why the measurements are kept here rather than compressed to the verdict.
+  ⚑⚑⚑ THREE BASES WERE TRIED.  TWO ARE DEAD, AND BOTH LOOK RIGHT UNTIL MEASURED — which is
+  why the measurements are kept here rather than compressed to the verdict.
 
-    1. **THE WRITE ROUTE** (``has_no_cli_write_route``) — REJECTED, though it selects exactly
-       the right rows today.  It derives a ``get`` gate from whether ``set`` works, and the
-       two verbs are held apart deliberately [Jei:2026-08-28]: *"set is different tho"*, and
-       *"i did not say anything about set. set is different, i said, specifically."*  Right
-       rows, wrong reason:
-       if ``set``'s rules move, ``get`` would follow for a reason that has nothing to do with
-       reading.
-    2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and this is the
-       one a future reader is most likely to re-derive.  IT CANNOT DISTINGUISH ANYTHING: a
-       higher tier carrying a lower scope's key IS the cascade.  A ``box.<category>`` table
-       authored in the SYSTEM settings file is not inert — it reaches the box at launch.  Built
-       through ``build_launch_snapshot`` → ``snapshot_category_entries`` with the system file as
-       the ONLY file supplied, every category at every scope token came through
-       (``caches``/``seeded``/``common``/``synced``/``bindings.ro``/``bindings.rw``/``masks``,
-       × ``system``/``box``/``workset`` — 21 for 21), e.g.
-       ``CategoryEntry(category='caches', scope='box', box_dest='/home/agent/.dflt',
-       host_src='/host/dflt', delivery='MOUNT')``.  So the system file legitimately carries
-       ``box.caches``, this test answers YES for it, and the gate would let the very read the
-       ruling forbids straight through.
-    3. **THE FRAGMENT BASIS** — ADOPTED, and it is ``get``-native: it is about what a READ
-       MEANS and never mentions ``set``.  A terminal category key's value is **per-entry
-       cascade-merged across tiers** (spec ``:1085``, *"per-ENTRY cascade merge"*), so any ONE
-       tier's copy is a FRAGMENT, never the key's value.  Read at its OWN noun that fragment is
-       a complete statement of that scope's contribution — which is exactly R-9's *"Refuse the
-       write; keep the read honest"*, and why ``system get system.caches`` stays.  Read at a
-       FOREIGN noun it is a partial map no box ever sees.  A SCALAR has no such problem: one
-       tier holds one whole value, so ``system get box.image`` is a complete answer and stays.
+  1. **THE WRITE ROUTE** (``has_no_cli_write_route``) — REJECTED, though it selects exactly
+     the right rows today.  It derives a ``get`` gate from whether ``set`` works, and the
+     two verbs are held apart deliberately [Jei:2026-08-28]: *"set is different tho"*, and
+     *"i did not say anything about set. set is different, i said, specifically."*  Right
+     rows, wrong reason:
+     if ``set``'s rules move, ``get`` would follow for a reason that has nothing to do with
+     reading.
+  2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and this is the
+     one a future reader is most likely to re-derive.  IT CANNOT DISTINGUISH ANYTHING: a
+     higher tier carrying a lower scope's key IS the cascade.  A ``box.<category>`` table
+     authored in the SYSTEM settings file is not inert — it reaches the box at launch.  Built
+     through ``build_launch_snapshot`` → ``snapshot_category_entries`` with the system file as
+     the ONLY file supplied, every category at every scope token came through
+     (``caches``/``seeded``/``common``/``synced``/``bindings.ro``/``bindings.rw``/``masks``,
+     × ``system``/``box``/``workset`` — 21 for 21), e.g.
+     ``CategoryEntry(category='caches', scope='box', box_dest='/home/agent/.dflt',
+     host_src='/host/dflt', delivery='MOUNT')``.  So the system file legitimately carries
+     ``box.caches``, this test answers YES for it, and the gate would let the very read the
+     ruling forbids straight through.
+  3. **THE FRAGMENT BASIS** — ADOPTED, and it is ``get``-native: it is about what a READ
+     MEANS and never mentions ``set``.  A terminal category key's value is **per-entry
+     cascade-merged across tiers** (spec ``:1085``, *"per-ENTRY cascade merge"*), so any ONE
+     tier's copy is a FRAGMENT, never the key's value.  Read at its OWN noun that fragment is
+     a complete statement of that scope's contribution — which is exactly R-9's *"Refuse the
+     write; keep the read honest"*, and why ``system get system.caches`` stays.  Read at a
+     FOREIGN noun it is a partial map no box ever sees.  A SCALAR has no such problem: one
+     tier holds one whole value, so ``system get box.image`` is a complete answer and stays.
 
-    ⚑ DERIVED (P13), not hand-listed: the family is ``settings_keyspace.is_terminal_category_key``
-    — the same SoT :func:`agent_category_read_error` uses — so a category entering or leaving
-    §2a moves this refusal with it.
+  ⚑ DERIVED (P13), not hand-listed: the family is ``settings_keyspace.is_terminal_category_key``
+  — the same SoT :func:`agent_category_read_error` uses — so a category entering or leaving
+  §2a moves this refusal with it.
 
-    ⚑ ``meta.*`` IS THE SECOND ARM, and it is not a scope mismatch at all — it is DERIVED per
-    box at launch and stored in no settings file, so no file-scope noun has a value to report.
-    It reached this gate the same way the terminals did (``key_validity`` declares it), and
-    answering "(not set)" for all 24 would be the same fabrication.
-    """
-    from kanibako.settings.settings_keyspace import is_terminal_category_key
+  ⚑ ``meta.*`` IS THE SECOND ARM, and it is not a scope mismatch at all — it is DERIVED per
+  box at launch and stored in no settings file, so no file-scope noun has a value to report.
+  It reached this gate the same way the terminals did (``key_validity`` declares it), and
+  answering "(not set)" for all 24 would be the same fabrication.
+  """
+  from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-    if canonical.startswith("meta."):
-        return (
-            f"Error: '{key}' cannot be read here: 'meta.*' keys are DERIVED per box when it "
-            f"launches, not stored in any settings file, so no file-scope noun holds a value "
-            f"for one (spec §2c). Use 'kanibako box show <box> --effective', which resolves "
-            f"them against a real box."
-        )
-    scope = canonical.split(".")[0]
-    noun = command_scope.value if command_scope is not None else None
-    if noun is None or scope == noun or scope not in _SCOPE_READ_COMMAND:
-        return None
-    if not is_terminal_category_key(canonical):
-        return None
-    # ⚑ THE MESSAGE STATES THE FRAGMENT REASON, and must NOT say this noun cannot STORE the
-    # key — measured false (basis 2 above: the system file carries ``box.caches`` and the
-    # launch honors it).  What is true is that storing a fragment is not holding the value.
+  if canonical.startswith("meta."):
     return (
-        f"Error: '{key}' cannot be read at the '{noun}' noun: it is a declared {scope}-scope "
-        f"key whose value is merged entry by entry across tiers, so this noun holds at most a "
-        f"fragment of it and never the value (spec §2a). Read it with:\n"
-        f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(key)}"
+      f"Error: '{key}' cannot be read here: 'meta.*' keys are DERIVED per box when it "
+      f"launches, not stored in any settings file, so no file-scope noun holds a value "
+      f"for one (spec §2c). Use 'kanibako box show <box> --effective', which resolves "
+      f"them against a real box."
     )
+  scope = canonical.split(".")[0]
+  noun = command_scope.value if command_scope is not None else None
+  if noun is None or scope == noun or scope not in _SCOPE_READ_COMMAND:
+    return None
+  if not is_terminal_category_key(canonical):
+    return None
+  # ⚑ THE MESSAGE STATES THE FRAGMENT REASON, and must NOT say this noun cannot STORE the
+  # key — measured false (basis 2 above: the system file carries ``box.caches`` and the
+  # launch honors it).  What is true is that storing a fragment is not holding the value.
+  return (
+    f"Error: '{key}' cannot be read at the '{noun}' noun: it is a declared {scope}-scope "
+    f"key whose value is merged entry by entry across tiers, so this noun holds at most a "
+    f"fragment of it and never the value (spec §2a). Read it with:\n"
+    f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(key)}"
+  )
 
 
 def scope_read_key_error(
-    key: str,
-    command_scope: "ConfigLevel | None",
-    *,
-    active_agent: str | None = None,
+  key: str,
+  command_scope: "ConfigLevel | None",
+  *,
+  active_agent: str | None = None,
 ) -> str | None:
-    """Why ``<noun> get <key>`` names no key, or ``None`` when it does (spec §0).
+  """Why ``<noun> get <key>`` names no key, or ``None`` when it does (spec §0).
 
-    THE CLOSED-KEYSPACE READ GATE for the file-scope nouns, the twin of
-    :func:`agent_read_key_error`.  Without it ``box get <box> nonsense`` printed "(not set)"
-    at rc 0 — a silent accept of an undeclared name, which §0 forbids in the same breath as
-    the write: *"reading, setting, or resolving an undeclared key is an ERROR that NAMES the
-    offending key"*.
+  THE CLOSED-KEYSPACE READ GATE for the file-scope nouns, the twin of
+  :func:`agent_read_key_error`.  Without it ``box get <box> nonsense`` printed "(not set)"
+  at rc 0 — a silent accept of an undeclared name, which §0 forbids in the same breath as
+  the write: *"reading, setting, or resolving an undeclared key is an ERROR that NAMES the
+  offending key"*.
 
-    ⚑ IT JUDGES THE KEY THE ENGINE WILL ACTUALLY READ, which is two transforms deep:
-    ``resolve_key`` first, then the BOX-scope bare-agent redirect ``get_config_value`` applies
-    before it reads anything.  Judging the raw spelling instead refuses ``box get <box> model``
-    — a legal read — on the true-but-irrelevant ground that ``model`` is not a namespace.
+  ⚑ IT JUDGES THE KEY THE ENGINE WILL ACTUALLY READ, which is two transforms deep:
+  ``resolve_key`` first, then the BOX-scope bare-agent redirect ``get_config_value`` applies
+  before it reads anything.  Judging the raw spelling instead refuses ``box get <box> model``
+  — a legal read — on the true-but-irrelevant ground that ``model`` is not a namespace.
 
-    ⚑ The bind-shaped carve-out is taken from the SAME predicate ``get_config_value`` branches
-    on, as :func:`agent_read_key_error` takes its own: ``<scope>.bindings.{ro,rw}.<name>`` and
-    ``<scope>.{caches,seeded,common,synced}.<name>`` are NOT declared keys, and §0 keeps them
-    READABLE anyway — *"Refuse the write; keep the read honest"* — because a hand-authored
-    entry reporting "(not set)" is worse than the lost write route.  ``<scope>.masks.<anything>``
-    is deliberately NOT in it: ``masks`` never had entry names, so §0 gives it the generic
-    refusal and this gate is where that refusal happens.
+  ⚑ The bind-shaped carve-out is taken from the SAME predicate ``get_config_value`` branches
+  on, as :func:`agent_read_key_error` takes its own: ``<scope>.bindings.{ro,rw}.<name>`` and
+  ``<scope>.{caches,seeded,common,synced}.<name>`` are NOT declared keys, and §0 keeps them
+  READABLE anyway — *"Refuse the write; keep the read honest"* — because a hand-authored
+  entry reporting "(not set)" is worse than the lost write route.  ``<scope>.masks.<anything>``
+  is deliberately NOT in it: ``masks`` never had entry names, so §0 gives it the generic
+  refusal and this gate is where that refusal happens.
 
-    ⚑ LAST of the handlers' guards, never first.  ``bare_env_retired_error`` and
-    ``bare_agent_key_scope_error`` refuse a RECOGNIZED spelling by name and hand back a cure;
-    a generic "not a key" arriving before either one would overwrite the cure with less truth.
-    """
-    canonical = resolve_key(key)
-    redirect = box_agent_redirect_key(canonical, command_scope, active_agent)
-    if redirect is not None:
-        canonical = redirect
-    # ⚑ THE SPELLINGS THE SYSTEM NOUN ITSELF SERVES, admitted here so the gate cannot refuse
-    # an honest read.  Both terms are taken from the predicate ``get_config_value`` branches
-    # on, exactly as the bind carve-out below and :func:`agent_read_key_error` take theirs —
-    # the question is "does THIS noun's read serve this spelling", never "does the name look
-    # declared".  ⚑ SYSTEM-SCOPED, and deliberately not widened past it: what box and workset
-    # print for these spellings is settled elsewhere — the redirect just above for box, the
-    # handler's ``bare_agent_key_scope_error`` for workset — so dropping the scope test here
-    # would silently change two other nouns' output to fix a third.  Any such widening is its
-    # own change, with its own measurement.
-    #   · ``_is_agent_setting`` — a BARE agent leaf IS the any-agent tier's key at this noun
-    #     (``system set model=opus`` writes ``agent.default.model``).  It is SCALAR-only BY
-    #     CONSTRUCTION (``SCALAR_AGENT_LEAVES``), so the one leaf it withholds is the
-    #     TABLE-valued one — which is the point: ``transform_settings`` falls through to the
-    #     refusal below and gets the address cure, as at the other two nouns (spec §2d).
-    #   · ``_is_agent_node_bind_key`` — R-9's *"the read survived the write, on purpose"*;
-    #     a hand-authored ``agent.<node>.bindings.{ro,rw}.<name>`` reads back, and that
-    #     read-back is the only way to check the hand edit the write refusal prescribes.
-    #     ⚑ THE NARROW PREDICATE, NOT ``_is_agent_scope_bind_key``: the wide one also spans
-    #     ``caches``/``synced``/… , which the engine does NOT serve — a hand-authored entry
-    #     there reads "(not set)", so admitting it would re-fabricate the answer this gate
-    #     exists to stop.  MEASURED, not assumed (2026-08-27).
-    # ⚑ Derived, never listed (P13): a new scalar leaf is admitted, a new table leaf refused.
-    if command_scope is ConfigLevel.system and (
-        _is_agent_setting(canonical) or _is_agent_node_bind_key(canonical)
-    ):
-        return None
-    if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
-        return None
-    reason = scope_key_reason(canonical)
-    if reason is None:
-        # ⚑ DECLARED — and still not readable HERE, in two families.  The closed keyspace has
-        # nothing to say about a key it declares, so the fabricated-answer half of §0 needs
-        # its own tests; both return ``None`` for every key this noun can actually serve.
-        # ⚑ THE AGENT ARM FIRST: ``agent.<node>.caches`` is not a scope MISMATCH (``agent`` is
-        # not a file scope), and its cure names a different noun than the other arm's.
-        return agent_category_read_error(canonical, key) or foreign_scope_read_error(
-            canonical, key, command_scope,
-        )
-    # ⚑ The ADDRESS cure wins where there is one: a declared key refused only because
-    # this scope has no spelling for it is told WHERE it lives, not offered a deletion.
-    return scope_key_refusal(
-        key, reason, command_scope, verb="read",
-        cure=table_leaf_read_cure(canonical, active_agent),
+  ⚑ LAST of the handlers' guards, never first.  ``bare_env_retired_error`` and
+  ``bare_agent_key_scope_error`` refuse a RECOGNIZED spelling by name and hand back a cure;
+  a generic "not a key" arriving before either one would overwrite the cure with less truth.
+  """
+  canonical = resolve_key(key)
+  redirect = box_agent_redirect_key(canonical, command_scope, active_agent)
+  if redirect is not None:
+    canonical = redirect
+  # ⚑ THE SPELLINGS THE SYSTEM NOUN ITSELF SERVES, admitted here so the gate cannot refuse
+  # an honest read.  Both terms are taken from the predicate ``get_config_value`` branches
+  # on, exactly as the bind carve-out below and :func:`agent_read_key_error` take theirs —
+  # the question is "does THIS noun's read serve this spelling", never "does the name look
+  # declared".  ⚑ SYSTEM-SCOPED, and deliberately not widened past it: what box and workset
+  # print for these spellings is settled elsewhere — the redirect just above for box, the
+  # handler's ``bare_agent_key_scope_error`` for workset — so dropping the scope test here
+  # would silently change two other nouns' output to fix a third.  Any such widening is its
+  # own change, with its own measurement.
+  #   · ``_is_agent_setting`` — a BARE agent leaf IS the any-agent tier's key at this noun
+  #     (``system set model=opus`` writes ``agent.default.model``).  It is SCALAR-only BY
+  #     CONSTRUCTION (``SCALAR_AGENT_LEAVES``), so the one leaf it withholds is the
+  #     TABLE-valued one — which is the point: ``transform_settings`` falls through to the
+  #     refusal below and gets the address cure, as at the other two nouns (spec §2d).
+  #   · ``_is_agent_node_bind_key`` — R-9's *"the read survived the write, on purpose"*;
+  #     a hand-authored ``agent.<node>.bindings.{ro,rw}.<name>`` reads back, and that
+  #     read-back is the only way to check the hand edit the write refusal prescribes.
+  #     ⚑ THE NARROW PREDICATE, NOT ``_is_agent_scope_bind_key``: the wide one also spans
+  #     ``caches``/``synced``/… , which the engine does NOT serve — a hand-authored entry
+  #     there reads "(not set)", so admitting it would re-fabricate the answer this gate
+  #     exists to stop.  MEASURED, not assumed (2026-08-27).
+  # ⚑ Derived, never listed (P13): a new scalar leaf is admitted, a new table leaf refused.
+  if command_scope is ConfigLevel.system and (
+    _is_agent_setting(canonical) or _is_agent_node_bind_key(canonical)
+  ):
+    return None
+  if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
+    return None
+  reason = scope_key_reason(canonical)
+  if reason is None:
+    # ⚑ DECLARED — and still not readable HERE, in two families.  The closed keyspace has
+    # nothing to say about a key it declares, so the fabricated-answer half of §0 needs
+    # its own tests; both return ``None`` for every key this noun can actually serve.
+    # ⚑ THE AGENT ARM FIRST: ``agent.<node>.caches`` is not a scope MISMATCH (``agent`` is
+    # not a file scope), and its cure names a different noun than the other arm's.
+    return agent_category_read_error(canonical, key) or foreign_scope_read_error(
+      canonical,
+      key,
+      command_scope,
     )
+  # ⚑ The ADDRESS cure wins where there is one: a declared key refused only because
+  # this scope has no spelling for it is told WHERE it lives, not offered a deletion.
+  return scope_key_refusal(
+    key,
+    reason,
+    command_scope,
+    verb="read",
+    cure=table_leaf_read_cure(canonical, active_agent),
+  )
 
 
 def scope_key_refusal(
-    key: str,
-    reason: str,
-    command_scope: "ConfigLevel | None",
-    *,
-    verb: str,
-    cure: str | None = None,
+  key: str,
+  reason: str,
+  command_scope: "ConfigLevel | None",
+  *,
+  verb: str,
+  cure: str | None = None,
 ) -> str:
-    """The file-scope nouns' refusal of a name §0 declares no key — ``Error: '<key>' cannot
-    be <verb>: <reason>.`` plus the cure.
+  """The file-scope nouns' refusal of a name §0 declares no key — ``Error: '<key>' cannot
+  be <verb>: <reason>.`` plus the cure.
 
-    ONE message, three verbs: :func:`scope_read_key_error` (``get``), ``config_interface.
-    reset_config_value`` (its ``pref.*`` branch and generic tail), and ``set_config_value``'s
-    tail, which passes an EMPTY *cure* (a refused ``set`` stored nothing to remove).
-    *reason* is :func:`scope_key_reason`'s.  With no *cure* the cure is the HAND EDIT,
-    pointing at the stored view that lists the entry as undeclared — the one way to remove
-    that entry ALONE.  (One inside a scope table the noun may write also goes with
-    ``reset --all``, which drops the whole table, declared keys included.)
+  ONE message, three verbs: :func:`scope_read_key_error` (``get``), ``config_interface.
+  reset_config_value`` (its ``pref.*`` branch and generic tail), and ``set_config_value``'s
+  tail, which passes an EMPTY *cure* (a refused ``set`` stored nothing to remove).
+  *reason* is :func:`scope_key_reason`'s.  With no *cure* the cure is the HAND EDIT,
+  pointing at the stored view that lists the entry as undeclared — the one way to remove
+  that entry ALONE.  (One inside a scope table the noun may write also goes with
+  ``reset --all``, which drops the whole table, declared keys included.)
 
-    ⚑ *key* AS TYPED, not the canonical form: §0 asks the error to name the OFFENDING key,
-    and the user can only act on the string they wrote.  It is also the ``+`` spelling, so
-    ``℘`` cannot reach a message by this route.
-    """
-    if cure is None:
-        shown = _SCOPE_SHOW_COMMAND.get(
-            command_scope.value if command_scope is not None else "",
-        )
-        cure = (
-            f" If your settings file carries this entry, '{shown}' lists it as "
-            f"undeclared; removing it means editing that file by hand."
-            if shown else ""
-        )
-    return f"Error: '{key}' cannot be {verb}: {reason}.{cure}"
+  ⚑ *key* AS TYPED, not the canonical form: §0 asks the error to name the OFFENDING key,
+  and the user can only act on the string they wrote.  It is also the ``+`` spelling, so
+  ``℘`` cannot reach a message by this route.
+  """
+  if cure is None:
+    shown = _SCOPE_SHOW_COMMAND.get(
+      command_scope.value if command_scope is not None else "",
+    )
+    cure = (
+      f" If your settings file carries this entry, '{shown}' lists it as "
+      f"undeclared; removing it means editing that file by hand."
+      if shown
+      else ""
+    )
+  return f"Error: '{key}' cannot be {verb}: {reason}.{cure}"
 
 
 def _is_path_category_key(key: str) -> bool:
-    """True iff *key* is a PER-NAME PATH-TUPLE category key."""
-    # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).
-    # ⚑ KEPT, not inlined to ``False``: it must keep asking the REGEX, so re-admitting a
-    # per-name category stays a one-line edit to ``_NON_TERMINAL_BIND_CATEGORIES``.
-    # ⚑⚑ It is NO LONGER A RECOGNIZER — do not wire it back into one (llm-doc).
-    from kanibako.settings.settings_categories import BIND_KEY_RE
+  """True iff *key* is a PER-NAME PATH-TUPLE category key."""
+  # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).
+  # ⚑ KEPT, not inlined to ``False``: it must keep asking the REGEX, so re-admitting a
+  # per-name category stays a one-line edit to ``_NON_TERMINAL_BIND_CATEGORIES``.
+  # ⚑⚑ It is NO LONGER A RECOGNIZER — do not wire it back into one (llm-doc).
+  from kanibako.settings.settings_categories import BIND_KEY_RE
 
-    return BIND_KEY_RE.match(key) is not None
+  return BIND_KEY_RE.match(key) is not None
+
 
 def _has_dedicated_route(canonical: str) -> bool:
-    """Does SOME ``set_config_value`` branch claim *canonical*?"""
-    # ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order — edit
-    # the two together (``TestSetDispatchCoverage`` fails if they drift). PREAMBLE guards
-    # are NOT terms. ⚑ Do NOT restore the ``_is_path_category_key`` term: it would report
-    # a route for a key nothing writes.
-    return (
-        _is_pref_key(canonical)
-        # ⚑ A SUBSET of the two terms below it, and listed anyway: this branch DISPATCHES
-        # ahead of them, so a mirror that omitted it would read as if the per-node routes
-        # claimed the any-agent tier — which is the bug the branch exists to undo.
-        or agent_default_tier_category(canonical) is not None
-        or _is_agent_node_secret_key(canonical)
-        or _is_scope_secret_key(canonical)
-        or _is_scope_env_key(canonical)
-        or _is_persona_agent_key(canonical)
-        or _is_agent_setting(canonical)
-        or _is_box_agent_key(canonical)
-        # ⚑ THE MARKER ALONE, not ``is_config_file_only_key`` (2026-08-23): that
-        # predicate also answers True for ``config.*``, which set/reset refuse in the
-        # PREAMBLE — and a preamble guard is not a dispatch branch, per the rule above.
-        or canonical == SETUP_MARKER_KEY
-        or canonical in _KEY_ROUTES
-    )
+  """Does SOME ``set_config_value`` branch claim *canonical*?"""
+  # ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order — edit
+  # the two together (``TestSetDispatchCoverage`` fails if they drift). PREAMBLE guards
+  # are NOT terms. ⚑ Do NOT restore the ``_is_path_category_key`` term: it would report
+  # a route for a key nothing writes.
+  return (
+    _is_pref_key(canonical)
+    # ⚑ A SUBSET of the two terms below it, and listed anyway: this branch DISPATCHES
+    # ahead of them, so a mirror that omitted it would read as if the per-node routes
+    # claimed the any-agent tier — which is the bug the branch exists to undo.
+    or agent_default_tier_category(canonical) is not None
+    or _is_agent_node_secret_key(canonical)
+    or _is_scope_secret_key(canonical)
+    or _is_scope_env_key(canonical)
+    or _is_persona_agent_key(canonical)
+    or _is_agent_setting(canonical)
+    or _is_box_agent_key(canonical)
+    # ⚑ THE MARKER ALONE, not ``is_config_file_only_key`` (2026-08-23): that
+    # predicate also answers True for ``config.*``, which set/reset refuse in the
+    # PREAMBLE — and a preamble guard is not a dispatch branch, per the rule above.
+    or canonical == SETUP_MARKER_KEY
+    or canonical in _KEY_ROUTES
+  )
 
 
 def _probes_at_set_time(canonical: str) -> bool:
-    """Does a ``config set`` of *canonical* run the E3 RESOLUTION probe?"""
-    # ⚑ The test is "does this value reach the expander", NOT "is it a scalar".
-    # ⚑ The live ``<scope>.env.<VAR>`` arm is deliberately NOT excluded — do not "fix" a
-    # probe complaint on it by widening :func:`_is_bare_env_key`. See llm-docs.
-    if _is_pref_key(canonical):
-        # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and MUST NOT run there: it
-        # would write the target's leaf names into a KeyStore, and a RESERVED leaf name
-        # then raises ReservedKeyError, breaking the "never raises" contract. The pref
-        # route runs the REAL probe at the TARGET path (:func:`_pref_value_error`).
-        return False
-    return _has_dedicated_route(canonical)
+  """Does a ``config set`` of *canonical* run the E3 RESOLUTION probe?"""
+  # ⚑ The test is "does this value reach the expander", NOT "is it a scalar".
+  # ⚑ The live ``<scope>.env.<VAR>`` arm is deliberately NOT excluded — do not "fix" a
+  # probe complaint on it by widening :func:`_is_bare_env_key`. See llm-docs.
+  if _is_pref_key(canonical):
+    # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and MUST NOT run there: it
+    # would write the target's leaf names into a KeyStore, and a RESERVED leaf name
+    # then raises ReservedKeyError, breaking the "never raises" contract. The pref
+    # route runs the REAL probe at the TARGET path (:func:`_pref_value_error`).
+    return False
+  return _has_dedicated_route(canonical)

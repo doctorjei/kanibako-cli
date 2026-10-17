@@ -47,12 +47,14 @@ class _FakeUpstreamHandler(BaseHTTPRequestHandler):
 
   def _serve(self):
     declared = int(self.headers.get("Content-Length") or 0)
-    self.server.received.append(SimpleNamespace(
-      method=self.command,
-      path=self.path,
-      headers=dict(self.headers.items()),
-      body=self.rfile.read(declared) if declared else b"",
-    ))
+    self.server.received.append(
+      SimpleNamespace(
+        method=self.command,
+        path=self.path,
+        headers=dict(self.headers.items()),
+        body=self.rfile.read(declared) if declared else b"",
+      )
+    )
     if self.server.trickle is not None:
       self._trickle()
       return
@@ -113,11 +115,13 @@ def proxy_for(upstream):
   started = []
 
   def make(fixup_models=frozenset(), upstream_base=None):
-    server = ProxyServer(ProxyConfig(
-      upstream_base=upstream_base if upstream_base is not None else upstream.base_url,
-      fixup_models=fixup_models,
-      timeout=10.0,
-    ))
+    server = ProxyServer(
+      ProxyConfig(
+        upstream_base=upstream_base if upstream_base is not None else upstream.base_url,
+        fixup_models=fixup_models,
+        timeout=10.0,
+      )
+    )
     server.start()
     started.append(server)
     return server
@@ -131,11 +135,16 @@ def _post(server, body, path=MESSAGES_PATH, headers=None):
   """POST *body* to the proxy and read the whole answer back."""
   conn = http.client.HTTPConnection(server.host, server.port, timeout=10)
   try:
-    conn.request("POST", path, body=body, headers={
-      "Content-Type": "application/json",
-      "Authorization": _TOKEN,
-      **(headers or {}),
-    })
+    conn.request(
+      "POST",
+      path,
+      body=body,
+      headers={
+        "Content-Type": "application/json",
+        "Authorization": _TOKEN,
+        **(headers or {}),
+      },
+    )
     response = conn.getresponse()
     return SimpleNamespace(
       status=response.status,
@@ -202,8 +211,12 @@ class TestPassthrough:
 
     conn = http.client.HTTPConnection(server.host, server.port, timeout=10)
     try:
-      conn.request("POST", MESSAGES_PATH, body=_request_body(model="claude-sonnet-4"),
-                   headers={"Content-Type": "application/json"})
+      conn.request(
+        "POST",
+        MESSAGES_PATH,
+        body=_request_body(model="claude-sonnet-4"),
+        headers={"Content-Type": "application/json"},
+      )
       response = conn.getresponse()
       assert response.status == 200
 
@@ -247,8 +260,11 @@ class TestPassthrough:
 
 class TestFixup:
   def test_upstream_is_asked_without_streaming(self, upstream, proxy_for):
-    upstream.reply = (200, {"Content-Type": "application/json"},
-                      json.dumps(_COMPLETE_RESPONSE).encode())
+    upstream.reply = (
+      200,
+      {"Content-Type": "application/json"},
+      json.dumps(_COMPLETE_RESPONSE).encode(),
+    )
     server = proxy_for(fixup_models=_FIXUP)
 
     _post(server, _request_body())
@@ -259,8 +275,11 @@ class TestFixup:
     assert sent["messages"] == []
 
   def test_client_receives_a_synthesized_sse_stream(self, upstream, proxy_for):
-    upstream.reply = (200, {"Content-Type": "application/json"},
-                      json.dumps(_COMPLETE_RESPONSE).encode())
+    upstream.reply = (
+      200,
+      {"Content-Type": "application/json"},
+      json.dumps(_COMPLETE_RESPONSE).encode(),
+    )
     server = proxy_for(fixup_models=_FIXUP)
 
     response = _post(server, _request_body())
@@ -280,7 +299,10 @@ class TestFixup:
     assert events[0]["message"]["content"] == []
     assert events[0]["message"]["usage"] == {"input_tokens": 21146, "output_tokens": 0}
     assert events[1]["content_block"] == {
-      "type": "tool_use", "id": "toolu_01", "name": "Bash", "input": {},
+      "type": "tool_use",
+      "id": "toolu_01",
+      "name": "Bash",
+      "input": {},
     }
     assert json.loads(events[2]["delta"]["partial_json"]) == {"command": "ls"}
     assert events[4]["delta"]["stop_reason"] == "tool_use"
@@ -309,10 +331,16 @@ class TestFixup:
 
 class TestCredentials:
   def test_authorization_reaches_upstream_verbatim_and_is_never_logged(
-    self, upstream, proxy_for, caplog,
+    self,
+    upstream,
+    proxy_for,
+    caplog,
   ):
-    upstream.reply = (200, {"Content-Type": "application/json"},
-                      json.dumps(_COMPLETE_RESPONSE).encode())
+    upstream.reply = (
+      200,
+      {"Content-Type": "application/json"},
+      json.dumps(_COMPLETE_RESPONSE).encode(),
+    )
     server = proxy_for(fixup_models=_FIXUP)
 
     with caplog.at_level(logging.DEBUG, logger="kanibako"):

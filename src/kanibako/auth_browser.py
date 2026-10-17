@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from kanibako.browser_state import (
-    from_playwright_context,
-    load_state,
-    save_state,
-    to_playwright_context,
+  from_playwright_context,
+  load_state,
+  save_state,
+  to_playwright_context,
 )
 from kanibako.log import get_logger
 
@@ -32,263 +32,274 @@ PWTimeout: type[Exception] = Exception  # fallback type for except clauses
 
 @dataclass
 class AuthResult:
-    """Result of an automated OAuth refresh attempt."""
+  """Result of an automated OAuth refresh attempt."""
 
-    success: bool
-    key: str | None = None
-    error: str | None = None
+  success: bool
+  key: str | None = None
+  error: str | None = None
 
 
 def _check_playwright() -> bool:
-    """Check if Playwright is available and populate module-level symbols."""
-    global sync_playwright, PWTimeout  # noqa: PLW0603
-    try:
-        from playwright.sync_api import (  # type: ignore[import-not-found]
-            sync_playwright as _sp,
-            TimeoutError as _te,
-        )
-        sync_playwright = _sp
-        PWTimeout = _te
-        return True
-    except ImportError:
-        return False
+  """Check if Playwright is available and populate module-level symbols."""
+  global sync_playwright, PWTimeout  # noqa: PLW0603
+  try:
+    from playwright.sync_api import (  # type: ignore[import-not-found]
+      sync_playwright as _sp,
+      TimeoutError as _te,
+    )
+
+    sync_playwright = _sp
+    PWTimeout = _te
+    return True
+  except ImportError:
+    return False
 
 
 def refresh_auth(
-    url: str,
-    *,
-    headless: bool = True,
+  url: str,
+  *,
+  headless: bool = True,
 ) -> AuthResult:
-    """Attempt automated OAuth re-authorization via headless browser.
+  """Attempt automated OAuth re-authorization via headless browser.
 
-    1. Load stored browser state (cookies from previous sessions)
-    2. At OAuth URL, if authorize button is visible, click it → extract key
-    4. If IdP login form is shown → abort (manual login required)
-    5. Save updated browser state on success
+  1. Load stored browser state (cookies from previous sessions)
+  2. At OAuth URL, if authorize button is visible, click it → extract key
+  4. If IdP login form is shown → abort (manual login required)
+  5. Save updated browser state on success
 
-    The stored session is :mod:`kanibako.browser_state`'s to locate — it derives from
-    ``system.state`` itself (keyspec §2g system.state), so nothing about the jar is
-    threaded through here.
+  The stored session is :mod:`kanibako.browser_state`'s to locate — it derives from
+  ``system.state`` itself (keyspec §2g system.state), so nothing about the jar is
+  threaded through here.
 
-    Returns :class:`AuthResult` with success status and optional key.
-    """
-    if not _check_playwright():
-        return AuthResult(
-            success=False,
-            error="Playwright not installed. Run: pip install playwright && playwright install chromium",
+  Returns :class:`AuthResult` with success status and optional key.
+  """
+  if not _check_playwright():
+    return AuthResult(
+      success=False,
+      error="Playwright not installed. Run: pip install playwright && playwright install chromium",
+    )
+
+  state = load_state()
+  storage_state = to_playwright_context(state) if state.cookies else None
+
+  try:
+    with sync_playwright() as pw:
+      browser = pw.chromium.launch(headless=headless)
+      try:
+        context = (
+          browser.new_context(
+            storage_state=storage_state,
+          )
+          if storage_state
+          else browser.new_context()
         )
 
-    state = load_state()
-    storage_state = to_playwright_context(state) if state.cookies else None
+        page = context.new_page()
+        page.set_default_timeout(_NAVIGATION_TIMEOUT_MS)
 
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=headless)
-            try:
-                context = browser.new_context(
-                    storage_state=storage_state,
-                ) if storage_state else browser.new_context()
+        logger.debug("Navigating to OAuth URL: %s", url)
+        page.goto(url, wait_until="networkidle")
 
-                page = context.new_page()
-                page.set_default_timeout(_NAVIGATION_TIMEOUT_MS)
+        # Detect page state
+        result = _handle_auth_page(page)
 
-                logger.debug("Navigating to OAuth URL: %s", url)
-                page.goto(url, wait_until="networkidle")
+        if result.success:
+          # Save updated browser context
+          ctx_data = context.storage_state()
+          new_state = from_playwright_context(ctx_data)
+          save_state(new_state)
+          logger.info("OAuth refresh succeeded")
 
-                # Detect page state
-                result = _handle_auth_page(page)
+        context.close()
+        return result
 
-                if result.success:
-                    # Save updated browser context
-                    ctx_data = context.storage_state()
-                    new_state = from_playwright_context(ctx_data)
-                    save_state(new_state)
-                    logger.info("OAuth refresh succeeded")
+      finally:
+        browser.close()
 
-                context.close()
-                return result
-
-            finally:
-                browser.close()
-
-    except PWTimeout:
-        return AuthResult(success=False, error="OAuth page timed out")
-    except Exception as exc:
-        logger.warning("Browser automation failed: %s", exc)
-        return AuthResult(success=False, error=str(exc))
+  except PWTimeout:
+    return AuthResult(success=False, error="OAuth page timed out")
+  except Exception as exc:
+    logger.warning("Browser automation failed: %s", exc)
+    return AuthResult(success=False, error=str(exc))
 
 
 def _handle_auth_page(page) -> AuthResult:
-    """Detect and handle the OAuth authorization page.
+  """Detect and handle the OAuth authorization page.
 
-    Looks for an authorize button or a login form. If IdP session is still valid, authorize button
-    should be visible. If not, a login form (Google, GitHub, etc.) will be shown instead.
-    """
+  Looks for an authorize button or a login form. If IdP session is still valid, authorize button
+  should be visible. If not, a login form (Google, GitHub, etc.) will be shown instead.
+  """
 
-    # Check for authorize/approve button (Anthropic consent screen)
-    authorize_selectors = [
-        'button:has-text("Authorize")',
-        'button:has-text("Allow")',
-        'button:has-text("Approve")',
-        'input[type="submit"][value*="Authorize"]',
-        'input[type="submit"][value*="Allow"]',
-    ]
+  # Check for authorize/approve button (Anthropic consent screen)
+  authorize_selectors = [
+    'button:has-text("Authorize")',
+    'button:has-text("Allow")',
+    'button:has-text("Approve")',
+    'input[type="submit"][value*="Authorize"]',
+    'input[type="submit"][value*="Allow"]',
+  ]
 
-    for selector in authorize_selectors:
-        try:
-            button = page.wait_for_selector(selector, timeout=3000)
-            if button and button.is_visible():
-                logger.debug("Found authorize button: %s", selector)
-                button.click()
+  for selector in authorize_selectors:
+    try:
+      button = page.wait_for_selector(selector, timeout=3000)
+      if button and button.is_visible():
+        logger.debug("Found authorize button: %s", selector)
+        button.click()
 
-                # Wait for redirect after authorization
-                page.wait_for_load_state("networkidle")
+        # Wait for redirect after authorization
+        page.wait_for_load_state("networkidle")
 
-                # Try to extract the authorization key from the page
-                key = _extract_key(page)
-                return AuthResult(success=True, key=key)
-        except PWTimeout:
-            continue
+        # Try to extract the authorization key from the page
+        key = _extract_key(page)
+        return AuthResult(success=True, key=key)
+    except PWTimeout:
+      continue
 
-    # Check for IdP login form (Google, GitHub, etc.)
-    login_indicators = [
-        'input[type="email"]',
-        'input[type="password"]',
-        '#identifierId',  # Google
-        '#login_field',   # GitHub
-    ]
+  # Check for IdP login form (Google, GitHub, etc.)
+  login_indicators = [
+    'input[type="email"]',
+    'input[type="password"]',
+    "#identifierId",  # Google
+    "#login_field",  # GitHub
+  ]
 
-    for selector in login_indicators:
-        try:
-            el = page.wait_for_selector(selector, timeout=2000)
-            if el and el.is_visible():
-                return AuthResult(success=False, error="IdP session expired; manual login required",)
-        except PWTimeout:
-            continue
+  for selector in login_indicators:
+    try:
+      el = page.wait_for_selector(selector, timeout=2000)
+      if el and el.is_visible():
+        return AuthResult(
+          success=False,
+          error="IdP session expired; manual login required",
+        )
+    except PWTimeout:
+      continue
 
-    # Neither authorize nor login found
-    page_text = page.text_content("body") or ""
-    logger.debug("Unrecognized page state. Body preview: %s", page_text[:200])
-    return AuthResult(
-        success=False,
-        error="Unrecognized OAuth page — manual login required",
-    )
+  # Neither authorize nor login found
+  page_text = page.text_content("body") or ""
+  logger.debug("Unrecognized page state. Body preview: %s", page_text[:200])
+  return AuthResult(
+    success=False,
+    error="Unrecognized OAuth page — manual login required",
+  )
 
 
 def auto_refresh_auth(
-    claude_path: str,
-    *,
-    headless: bool = True,
-    login_timeout: float = 60,
-    env: dict[str, str] | None = None,
+  claude_path: str,
+  *,
+  headless: bool = True,
+  login_timeout: float = 60,
+  env: dict[str, str] | None = None,
 ) -> AuthResult:
-    """Orchestrate fully automated OAuth: start login, parse URL, automate browser.
+  """Orchestrate fully automated OAuth: start login, parse URL, automate browser.
 
-    1. Start ``claude auth login`` capturing stdout
-    2. Parse the OAuth URL from the output
-    3. Use :func:`refresh_auth` to navigate with stored cookies
-    4. If the browser clicks "Authorize", the redirect completes the login
-    5. Wait for ``claude auth login`` to finish
+  1. Start ``claude auth login`` capturing stdout
+  2. Parse the OAuth URL from the output
+  3. Use :func:`refresh_auth` to navigate with stored cookies
+  4. If the browser clicks "Authorize", the redirect completes the login
+  5. Wait for ``claude auth login`` to finish
 
-    *env*, when supplied, fully replaces the environment of the spawned ``claude auth login``
-    process.  Callers pass it to inject ``DISABLE_AUTOUPDATER=1`` so this host exec does not wake
-    Claude's async background auto-updater mid-launch.
+  *env*, when supplied, fully replaces the environment of the spawned ``claude auth login``
+  process.  Callers pass it to inject ``DISABLE_AUTOUPDATER=1`` so this host exec does not wake
+  Claude's async background auto-updater mid-launch.
 
-    Returns :class:`AuthResult` indicating success or failure.
-    """
-    import subprocess
-    import threading
+  Returns :class:`AuthResult` indicating success or failure.
+  """
+  import subprocess
+  import threading
 
-    from kanibako.auth_parser import parse_auth_output
+  from kanibako.auth_parser import parse_auth_output
 
-    if not _check_playwright():
-        return AuthResult(success=False, error="Playwright not installed", )
+  if not _check_playwright():
+    return AuthResult(
+      success=False,
+      error="Playwright not installed",
+    )
 
-    # Start claude auth login, capturing output to find the URL.
+  # Start claude auth login, capturing output to find the URL.
+  try:
+    proc = subprocess.Popen(
+      [claude_path, "auth", "login"],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      stdin=subprocess.PIPE,
+      text=True,
+      env=env,
+    )
+  except (FileNotFoundError, OSError) as exc:
+    return AuthResult(success=False, error=f"Failed to start auth: {exc}")
+
+  # Read output lines until we find an OAuth URL or the process exits.
+  output_lines: list[str] = []
+  url: str | None = None
+  code: str | None = None
+
+  def _read_output() -> None:
+    nonlocal url, code
+    assert proc.stdout is not None
+    for line in proc.stdout:
+      output_lines.append(line)
+      if url is None:
+        prompt = parse_auth_output("".join(output_lines))
+        if prompt:
+          url = prompt.url
+          code = prompt.code
+          return  # Got what we need
+
+  reader = threading.Thread(target=_read_output, daemon=True)
+  reader.start()
+  reader.join(timeout=15)
+
+  if not url:
+    # No URL found — kill process and bail.
+    proc.kill()
+    proc.wait()
+    return AuthResult(success=False, error="No OAuth URL found in auth output")
+
+  logger.info("Auto-auth: navigating to %s", url)
+  result = refresh_auth(url, headless=headless)
+
+  if result.success:
+    # If we got a key and the process is waiting for input, feed it.
+    key = result.key or code
+    if key and proc.poll() is None and proc.stdin:
+      try:
+        proc.stdin.write(key + "\n")
+        proc.stdin.flush()
+      except OSError:
+        pass
+
+    # Wait for claude auth login to complete.
     try:
-        proc = subprocess.Popen(
-            [claude_path, "auth", "login"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-    except (FileNotFoundError, OSError) as exc:
-        return AuthResult(success=False, error=f"Failed to start auth: {exc}")
+      proc.wait(timeout=login_timeout)
+    except subprocess.TimeoutExpired:
+      proc.kill()
+      proc.wait()
+  else:
+    proc.kill()
+    proc.wait()
 
-    # Read output lines until we find an OAuth URL or the process exits.
-    output_lines: list[str] = []
-    url: str | None = None
-    code: str | None = None
-
-    def _read_output() -> None:
-        nonlocal url, code
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            output_lines.append(line)
-            if url is None:
-                prompt = parse_auth_output("".join(output_lines))
-                if prompt:
-                    url = prompt.url
-                    code = prompt.code
-                    return  # Got what we need
-
-    reader = threading.Thread(target=_read_output, daemon=True)
-    reader.start()
-    reader.join(timeout=15)
-
-    if not url:
-        # No URL found — kill process and bail.
-        proc.kill()
-        proc.wait()
-        return AuthResult(success=False, error="No OAuth URL found in auth output")
-
-    logger.info("Auto-auth: navigating to %s", url)
-    result = refresh_auth(url, headless=headless)
-
-    if result.success:
-        # If we got a key and the process is waiting for input, feed it.
-        key = result.key or code
-        if key and proc.poll() is None and proc.stdin:
-            try:
-                proc.stdin.write(key + "\n")
-                proc.stdin.flush()
-            except OSError:
-                pass
-
-        # Wait for claude auth login to complete.
-        try:
-            proc.wait(timeout=login_timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-    else:
-        proc.kill()
-        proc.wait()
-
-    return result
+  return result
 
 
 def _extract_key(page) -> str | None:
-    """Try to extract the authorization key from the post-authorize page."""
-    # Look for common patterns: displayed code, input field with key, etc.
-    key_selectors = [
-        'code',
-        '.authorization-code',
-        'input[readonly]',
-        'pre',
-    ]
+  """Try to extract the authorization key from the post-authorize page."""
+  # Look for common patterns: displayed code, input field with key, etc.
+  key_selectors = [
+    "code",
+    ".authorization-code",
+    "input[readonly]",
+    "pre",
+  ]
 
-    for selector in key_selectors:
-        try:
-            el = page.wait_for_selector(selector, timeout=3000)
-            if el:
-                text = el.text_content() or el.get_attribute("value") or ""
-                text = text.strip()
-                if text and len(text) < 200:  # reasonable key length
-                    return text
-        except Exception:
-            continue
+  for selector in key_selectors:
+    try:
+      el = page.wait_for_selector(selector, timeout=3000)
+      if el:
+        text = el.text_content() or el.get_attribute("value") or ""
+        text = text.strip()
+        if text and len(text) < 200:  # reasonable key length
+          return text
+    except Exception:
+      continue
 
-    return None
+  return None

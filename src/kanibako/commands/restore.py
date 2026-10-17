@@ -18,12 +18,12 @@ from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.launch.box_identity import box_name_cure, refuse_standalone_rename
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
-    check_primary_box_name_free,
-    load_std_paths,
-    primary_box_name_for_workspace,
-    resolve_any_project,
+  BoxMode,
+  _early_scope,
+  check_primary_box_name_free,
+  load_std_paths,
+  primary_box_name_for_workspace,
+  resolve_any_project,
 )
 from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import confirm_or_abort, logical_cwd
@@ -33,445 +33,456 @@ from kanibako.settings.messages import MSG_DONE
 
 
 def _keep_links_filter(member: tarfile.TarInfo, dest_path: str) -> tarfile.TarInfo:
-    """The "data" extraction filter, except that a symlink keeps its text (Q70).
+  """The "data" extraction filter, except that a symlink keeps its text (Q70).
 
-    The "data" filter refuses an absolute or escaping symlink, which kanibako copies verbatim.
-    Every other member, a hard link included, still meets its checks: a hard link to a host
-    file would let a later member write through it.
-    """
-    if member.issym():
-        # None = "do not set", as ``data_filter`` itself does; typeshed types these as int/str.
-        return tarfile.tar_filter(member, dest_path).replace(
-            uid=None, gid=None, uname=None, gname=None, deep=False,  # type: ignore[arg-type]
-        )
-    return tarfile.data_filter(member, dest_path)
+  The "data" filter refuses an absolute or escaping symlink, which kanibako copies verbatim.
+  Every other member, a hard link included, still meets its checks: a hard link to a host
+  file would let a later member write through it.
+  """
+  if member.issym():
+    # None = "do not set", as ``data_filter`` itself does; typeshed types these as int/str.
+    info = tarfile.tar_filter(member, dest_path)
+    return info.replace(uid=None, gid=None, uname=None, gname=None, deep=False)  # type: ignore[arg-type]
+  return tarfile.data_filter(member, dest_path)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser(
-        "extract",
-        help="Extract session data from archive",
-        description="Extract session data from a .txz archive created by 'kanibako box archive'.",
-    )
-    p.add_argument("file", nargs="?", default=None, help="Archive file to extract from")
-    p.add_argument("path", nargs="?", default=None, help="Path to the project directory")
-    p.add_argument(
-        "--name", default=None,
-        help="Override project name for the extracted data",
-    )
-    p.add_argument(
-        "--all", action="store_true", dest="all_archives",
-        help="Extract all kanibako-*.txz archives in the current directory",
-    )
-    p.add_argument("--force", action="store_true", help="Skip all confirmation prompts")
-    p.set_defaults(func=run)
+  p = subparsers.add_parser(
+    "extract",
+    help="Extract session data from archive",
+    description="Extract session data from a .txz archive created by 'kanibako box archive'.",
+  )
+  p.add_argument("file", nargs="?", default=None, help="Archive file to extract from")
+  p.add_argument("path", nargs="?", default=None, help="Path to the project directory")
+  p.add_argument(
+    "--name",
+    default=None,
+    help="Override project name for the extracted data",
+  )
+  p.add_argument(
+    "--all",
+    action="store_true",
+    dest="all_archives",
+    help="Extract all kanibako-*.txz archives in the current directory",
+  )
+  p.add_argument("--force", action="store_true", help="Skip all confirmation prompts")
+  p.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:
-    config_file = user_config_file()
-    config = load_config(config_file)
-    std = load_std_paths(config)
+  config_file = user_config_file()
+  config = load_config(config_file)
+  std = load_std_paths(config)
 
-    if args.all_archives:
-        if getattr(args, "name", None):
-            # One name cannot address N boxes.  Refusing beats the old behavior
-            # (silently dropping it) — see the --name note in _restore_one.
-            print(
-                "Error: --name cannot be combined with --all (it names ONE box, "
-                "and --all restores many).",
-                file=sys.stderr,
-            )
-            return 1
-        return _restore_all(std, config, args)
+  if args.all_archives:
+    if getattr(args, "name", None):
+      # One name cannot address N boxes.  Refusing beats the old behavior
+      # (silently dropping it) — see the --name note in _restore_one.
+      print(
+        "Error: --name cannot be combined with --all (it names ONE box, and --all restores many).",
+        file=sys.stderr,
+      )
+      return 1
+    return _restore_all(std, config, args)
 
-    if args.file is None:
-        print("Error: specify an archive file, or use --all", file=sys.stderr)
-        return 1
+  if args.file is None:
+    print("Error: specify an archive file, or use --all", file=sys.stderr)
+    return 1
 
-    return _restore_one(std, config, project_dir=args.path,
-                        archive_file=Path(args.file), force=args.force,
-                        name=getattr(args, "name", None))
+  return _restore_one(
+    std,
+    config,
+    project_dir=args.path,
+    archive_file=Path(args.file),
+    force=args.force,
+    name=getattr(args, "name", None),
+  )
 
 
 def _restore_one(std, config, *, project_dir, archive_file, force, name=None) -> int:
-    """Extract session data from a single archive.
+  """Extract session data from a single archive.
 
-    ⚑ EXTRACT IS A RE-MATERIALIZATION, NOT A FILE COPY.  It must land in the box's
-    REAL metadata dir and leave that box REGISTERED, exactly as ``create`` does.
-    Before this was fixed it did neither: it resolved with ``initialize=False``, and
-    for a workspace with no registered box ``paths._resolve_local_dir`` returns the
-    SENTINEL ``("", std.boxes / "__unregistered__")`` — a name-assignment placeholder
-    that is only valid on the ``initialize=True`` path, where ``resolve_project``
-    overwrites it.  Used as a real destination it is a shared junk drawer: every
-    unregistered extract wrote into the SAME ``boxes/__unregistered__`` directory,
-    silently clobbering the previous one, and no box was ever registered.
-    (Proven on a real box, 2026-07-31; ``--name`` was parsed and then dropped.)
+  ⚑ EXTRACT IS A RE-MATERIALIZATION, NOT A FILE COPY.  It must land in the box's
+  REAL metadata dir and leave that box REGISTERED, exactly as ``create`` does.
+  Before this was fixed it did neither: it resolved with ``initialize=False``, and
+  for a workspace with no registered box ``paths._resolve_local_dir`` returns the
+  SENTINEL ``("", std.boxes / "__unregistered__")`` — a name-assignment placeholder
+  that is only valid on the ``initialize=True`` path, where ``resolve_project``
+  overwrites it.  Used as a real destination it is a shared junk drawer: every
+  unregistered extract wrote into the SAME ``boxes/__unregistered__`` directory,
+  silently clobbering the previous one, and no box was ever registered.
+  (Proven on a real box, 2026-07-31; ``--name`` was parsed and then dropped.)
 
-    The resolve is therefore SPLIT in two:
+  The resolve is therefore SPLIT in two:
 
-    * a VALIDATION resolve (``initialize=False``) — used ONLY for ``project_hash``
-      and ``project_path``, which the hash/git gates need and which do not depend on
-      a box existing.  Its ``metadata_path``/``name`` are the sentinel and must not
-      be touched;
-    * a DESTINATION resolve (``initialize=True, register=False``) taken only AFTER
-      those gates pass, so a canceled or mismatched extract does not materialize a
-      box dir.  ``register=False`` defers registration to after the copy succeeds —
-      create's ordering, for create's reason.
+  * a VALIDATION resolve (``initialize=False``) — used ONLY for ``project_hash``
+    and ``project_path``, which the hash/git gates need and which do not depend on
+    a box existing.  Its ``metadata_path``/``name`` are the sentinel and must not
+    be touched;
+  * a DESTINATION resolve (``initialize=True, register=False``) taken only AFTER
+    those gates pass, so a canceled or mismatched extract does not materialize a
+    box dir.  ``register=False`` defers registration to after the copy succeeds —
+    create's ordering, for create's reason.
 
-    (The same re-resolve-for-the-real-box pattern the deferred-persona launch uses,
-    ``start.py``'s ``__unregistered__`` note.)
-    """
-    if not archive_file.is_file():
-        print(f"Error: Archive file not found: {archive_file}", file=sys.stderr)
+  (The same re-resolve-for-the-real-box pattern the deferred-persona launch uses,
+  ``start.py``'s ``__unregistered__`` note.)
+  """
+  if not archive_file.is_file():
+    print(f"Error: Archive file not found: {archive_file}", file=sys.stderr)
+    return 1
+
+  # VALIDATION resolve — read project_hash / project_path ONLY.
+  proj = resolve_any_project(
+    std,
+    config,
+    project_dir=str(project_dir) if project_dir else None,
+    initialize=False,
+  )
+  refuse_inherited_per_owner(
+    workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj))
+  )
+
+  # A standalone box is not renamed by extract: its name comes from its root,
+  # so --name sets nothing.  Refused before the destination resolve.
+  if name and proj.mode is BoxMode.standalone:
+    try:
+      refuse_standalone_rename(name, proj.name)
+    except ProjectError as e:
+      print(f"Error: {e}", file=sys.stderr)
+      return 1
+
+  # ⚑ NAME COLLISION IS A TRUE PRE-FLIGHT, exactly as in ``box create``.  Extract
+  # DELETES the destination tree before copying, so a collision discovered at
+  # registration time (which is where it used to surface) would abort AFTER the old
+  # box was already gone — destroy-then-fail. Check before touching anything.
+  #
+  # ⚑ BUT ONLY WHEN THE NAME IS SOMEONE ELSE'S.  ``check_primary_box_name_free``
+  # refuses on MEMBERSHIP alone, so asking it about a box's OWN name always refuses,
+  # and naming your own box (``extract --name mybox`` into its workspace) is natural.
+  #
+  # The checker is NOT widened: ``box create`` depends on its refuse-on-membership
+  # semantics (a create must never land on an existing name).  The re-materialize
+  # exception belongs to extract, so extract states it, here.
+  if name and proj.mode is BoxMode.primary:
+    early = _early_scope(std, BoxMode.primary)
+    owner = primary_box_name_for_workspace(
+      std.primary_workset,
+      str(proj.project_path),
+      early=early,
+    )
+    if owner != name:
+      try:
+        check_primary_box_name_free(
+          std.primary_workset,
+          name,
+          str(proj.project_path),
+          early=early,
+        )
+      except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print(
+          "  Extract into that box's own workspace, pick another --name, "
+          "or remove the conflicting box first "
+          "('kanibako box list' to see them).",
+          file=sys.stderr,
+        )
         return 1
 
-    # VALIDATION resolve — read project_hash / project_path ONLY.
-    proj = resolve_any_project(
-        std, config,
-        project_dir=str(project_dir) if project_dir else None,
-        initialize=False,
-    )
-    refuse_inherited_per_owner(
-        workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
-
-    # A standalone box is not renamed by extract: its name comes from its root,
-    # so --name sets nothing.  Refused before the destination resolve.
-    if name and proj.mode is BoxMode.standalone:
-        try:
-            refuse_standalone_rename(name, proj.name)
-        except ProjectError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-    # ⚑ NAME COLLISION IS A TRUE PRE-FLIGHT, exactly as in ``box create``.  Extract
-    # DELETES the destination tree before copying, so a collision discovered at
-    # registration time (which is where it used to surface) would abort AFTER the old
-    # box was already gone — destroy-then-fail. Check before touching anything.
-    #
-    # ⚑ BUT ONLY WHEN THE NAME IS SOMEONE ELSE'S.  ``check_primary_box_name_free``
-    # refuses on MEMBERSHIP alone, so asking it about a box's OWN name always refuses,
-    # and naming your own box (``extract --name mybox`` into its workspace) is natural.
-    #
-    # The checker is NOT widened: ``box create`` depends on its refuse-on-membership
-    # semantics (a create must never land on an existing name).  The re-materialize
-    # exception belongs to extract, so extract states it, here.
-    if name and proj.mode is BoxMode.primary:
-        early = _early_scope(std, BoxMode.primary)
-        owner = primary_box_name_for_workspace(
-            std.primary_workset, str(proj.project_path), early=early,
-        )
-        if owner != name:
-            try:
-                check_primary_box_name_free(
-                    std.primary_workset, name,
-                    str(proj.project_path), early=early,
-                )
-            except (ProjectError, WorksetError) as e:
-                print(f"Error: {e}", file=sys.stderr)
-                print(
-                    "  Extract into that box's own workspace, pick another --name, "
-                    "or remove the conflicting box first "
-                    "('kanibako box list' to see them).",
-                    file=sys.stderr,
-                )
-                return 1
-
-    temp_dir = tempfile.mkdtemp()
+  temp_dir = tempfile.mkdtemp()
+  try:
     try:
-        try:
-            with tarfile.open(str(archive_file), "r:xz") as tar:
-                tar.extractall(temp_dir, filter=_keep_links_filter)
-        except (tarfile.TarError, OSError) as e:
-            print(f"Error: Failed to extract archive: {e}", file=sys.stderr)
-            return 1
+      with tarfile.open(str(archive_file), "r:xz") as tar:
+        tar.extractall(temp_dir, filter=_keep_links_filter)
+    except (tarfile.TarError, OSError) as e:
+      print(f"Error: Failed to extract archive: {e}", file=sys.stderr)
+      return 1
 
-        # Find the archive hash directory
-        entries = list(Path(temp_dir).iterdir())
-        if not entries:
-            print("Error: Empty archive.", file=sys.stderr)
-            return 1
-        archive_hash_dir = entries[0]
-        archive_hash = archive_hash_dir.name
-        info_file = archive_hash_dir / "kanibako-archive-info.txt"
+    # Find the archive hash directory
+    entries = list(Path(temp_dir).iterdir())
+    if not entries:
+      print("Error: Empty archive.", file=sys.stderr)
+      return 1
+    archive_hash_dir = entries[0]
+    archive_hash = archive_hash_dir.name
+    info_file = archive_hash_dir / "kanibako-archive-info.txt"
 
-        if not info_file.is_file():
-            print(
-                "Error: Invalid archive format (missing kanibako-archive-info.txt)",
-                file=sys.stderr,
-            )
-            return 1
+    if not info_file.is_file():
+      print(
+        "Error: Invalid archive format (missing kanibako-archive-info.txt)",
+        file=sys.stderr,
+      )
+      return 1
 
-        # Parse metadata
-        info = _parse_info(info_file)
-        archive_path = info.get("Project path", "")
-        archive_basename = Path(archive_path).name if archive_path else ""
-        from kanibako.commands.archive import _recorded_workspace_of
-        workspace = _recorded_workspace_of(std, proj)
-        current_basename = workspace.name if workspace is not None else ""
+    # Parse metadata
+    info = _parse_info(info_file)
+    archive_path = info.get("Project path", "")
+    archive_basename = Path(archive_path).name if archive_path else ""
+    from kanibako.commands.archive import _recorded_workspace_of
 
-        # Validate hash match
-        hash_match = (
-            archive_hash == proj.project_hash
-            or archive_basename == current_basename
-        )
+    workspace = _recorded_workspace_of(std, proj)
+    current_basename = workspace.name if workspace is not None else ""
 
-        if not hash_match and not force:
-            print("Warning: Project path mismatch")
-            print()
-            print(f"Archive from: {archive_path}")
-            print(f"Restoring to: {workspace or '<None>'}")
-            print()
-            if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
-                return 2
+    # Validate hash match
+    hash_match = archive_hash == proj.project_hash or archive_basename == current_basename
 
-        # Validate git state
-        git_in_archive = info.get("Git repository", "") == "yes"
-        if git_in_archive:
-            rc = _validate_git_state(workspace, info, force)
-            if rc != 0:
-                return rc
+    if not hash_match and not force:
+      print("Warning: Project path mismatch")
+      print()
+      print(f"Archive from: {archive_path}")
+      print(f"Restoring to: {workspace or '<None>'}")
+      print()
+      if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
+        return 2
 
-        # ⚑ DESTINATION resolve — only now that every gate has passed, so a
-        # canceled/mismatched extract leaves no box dir behind.  ``initialize=True``
-        # is what replaces the ``__unregistered__`` sentinel with the box's REAL
-        # metadata dir (assigning a name if the workspace has none, or REUSING the
-        # existing one via the registry reverse-lookup, which is what makes
-        # re-extracting over your own box restore in place rather than fork).
-        try:
-            proj = resolve_any_project(
-                std, config,
-                project_dir=str(project_dir) if project_dir else None,
-                initialize=True,
-                register=False,
-                name_override=name,
-            )
-        except DerivedBoxNameError as e:
-            # ⚑ Joined to ``$PWD``, NOT normalized: ``lnk/../x.txz`` is the file opened.
-            opened = (archive_file if archive_file.is_absolute()
-                      else Path(logical_cwd()) / archive_file)
-            cure = (f"kanibako box extract {shlex.quote(str(opened))} "
-                    f"{shlex.quote(str(proj.project_path))}")
-            print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
-            return 1
-        except (ProjectError, WorksetError) as e:
-            # Guard-1 path-uniqueness / name-collision: --name already belongs to a
-            # different workspace.  Name the cure rather than the rule.
-            print(f"Error: {e}", file=sys.stderr)
-            print(
-                "  Extract into the existing box's own workspace, pick another "
-                "--name, or remove the conflicting box first "
-                "('kanibako box list' to see them).",
-                file=sys.stderr,
-            )
-            return 1
+    # Validate git state
+    git_in_archive = info.get("Git repository", "") == "yes"
+    if git_in_archive:
+      rc = _validate_git_state(workspace, info, force)
+      if rc != 0:
+        return rc
 
-        if name and proj.mode is not BoxMode.primary:
-            # Named-only now: a workset member takes its name from its workspace
-            # dir, so --name is equally inert; the ruling named standalone only.
-            print(
-                f"Warning: --name is ignored for {proj.mode.value}-mode boxes "
-                f"(this box is named {proj.name!r}).",
-                file=sys.stderr,
-            )
+    # ⚑ DESTINATION resolve — only now that every gate has passed, so a
+    # canceled/mismatched extract leaves no box dir behind.  ``initialize=True``
+    # is what replaces the ``__unregistered__`` sentinel with the box's REAL
+    # metadata dir (assigning a name if the workspace has none, or REUSING the
+    # existing one via the registry reverse-lookup, which is what makes
+    # re-extracting over your own box restore in place rather than fork).
+    try:
+      proj = resolve_any_project(
+        std,
+        config,
+        project_dir=str(project_dir) if project_dir else None,
+        initialize=True,
+        register=False,
+        name_override=name,
+      )
+    except DerivedBoxNameError as e:
+      # ⚑ Joined to ``$PWD``, NOT normalized: ``lnk/../x.txz`` is the file opened.
+      opened = archive_file if archive_file.is_absolute() else Path(logical_cwd()) / archive_file
+      cure = (
+        f"kanibako box extract {shlex.quote(str(opened))} {shlex.quote(str(proj.project_path))}"
+      )
+      print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
+      return 1
+    except (ProjectError, WorksetError) as e:
+      # Guard-1 path-uniqueness / name-collision: --name already belongs to a
+      # different workspace.  Name the cure rather than the rule.
+      print(f"Error: {e}", file=sys.stderr)
+      print(
+        "  Extract into the existing box's own workspace, pick another "
+        "--name, or remove the conflicting box first "
+        "('kanibako box list' to see them).",
+        file=sys.stderr,
+      )
+      return 1
 
-        from kanibako.commands.start import _register_new_box
+    if name and proj.mode is not BoxMode.primary:
+      # Named-only now: a workset member takes its name from its workspace
+      # dir, so --name is equally inert; the ruling named standalone only.
+      print(
+        f"Warning: --name is ignored for {proj.mode.value}-mode boxes "
+        f"(this box is named {proj.name!r}).",
+        file=sys.stderr,
+      )
 
-        # Restore session data
-        print("Restoring session data... ", end="", flush=True)
-        projects_base = std.boxes
-        projects_base.mkdir(parents=True, exist_ok=True)
+    from kanibako.commands.start import _register_new_box
 
-        if proj.metadata_path.exists() and not remove_box_tree(proj.metadata_path):
-            # A box home carries the root-owned canon skeleton (J-7) and may carry
-            # files a rootless container wrote as root; a bare rmtree fails on both.
-            print("failed.")
-            print(
-                f"Error: could not remove the existing box data at "
-                f"{proj.metadata_path}.\nTry: podman unshare rm -rf "
-                f"{shlex.quote(str(proj.metadata_path))}",
-                file=sys.stderr,
-            )
-            return 1
+    # Restore session data
+    print("Restoring session data... ", end="", flush=True)
+    projects_base = std.boxes
+    projects_base.mkdir(parents=True, exist_ok=True)
 
-        copy_tree_keeping_links(archive_hash_dir, proj.metadata_path)
+    if proj.metadata_path.exists() and not remove_box_tree(proj.metadata_path):
+      # A box home carries the root-owned canon skeleton (J-7) and may carry
+      # files a rootless container wrote as root; a bare rmtree fails on both.
+      print("failed.")
+      print(
+        f"Error: could not remove the existing box data at "
+        f"{proj.metadata_path}.\nTry: podman unshare rm -rf "
+        f"{shlex.quote(str(proj.metadata_path))}",
+        file=sys.stderr,
+      )
+      return 1
 
-        # Remove info file from restored data
-        restored_info = proj.metadata_path / "kanibako-archive-info.txt"
-        restored_info.unlink(missing_ok=True)
+    copy_tree_keeping_links(archive_hash_dir, proj.metadata_path)
 
-        # ⚑ Re-assert the canon skeleton on the RESTORED home.  ``tar.extractall``
-        # runs ``_keep_links_filter`` ("data" for every member but a symlink), which
-        # STRIPS ownership AND NORMALIZES directory modes (to 0755) — so the
-        # extracted skeleton is host-user-owned (= the agent, in-box) and plainly
-        # writable.  This call RESTORES both the ownership
-        # and the declared 555/444 modes; it is not merely an ownership top-up.
-        if proj.shell_path.is_dir():
-            materialize_canon_skeleton(proj.shell_path)
+    # Remove info file from restored data
+    restored_info = proj.metadata_path / "kanibako-archive-info.txt"
+    restored_info.unlink(missing_ok=True)
 
-        # ⚑ REGISTER, exactly as create does — an extracted box that is not in the
-        # registry is invisible to `box list`, unreachable by name, and (being
-        # unregistered) would resolve back to the `__unregistered__` sentinel on the
-        # next command.  Deferred to here for create's reason: register only once
-        # the tree is actually in place.
-        try:
-            _register_new_box(std, proj)
-        except (ProjectError, WorksetError) as e:
-            # The tree is restored; only the registry write failed.  Report that
-            # recoverable state instead of letting a traceback escape.
-            print(MSG_DONE)
-            print(f"Error: restored data to {proj.metadata_path}, but could not "
-                  f"register the box: {e}", file=sys.stderr)
-            return 1
+    # ⚑ Re-assert the canon skeleton on the RESTORED home.  ``tar.extractall``
+    # runs ``_keep_links_filter`` ("data" for every member but a symlink), which
+    # STRIPS ownership AND NORMALIZES directory modes (to 0755) — so the
+    # extracted skeleton is host-user-owned (= the agent, in-box) and plainly
+    # writable.  This call RESTORES both the ownership
+    # and the declared 555/444 modes; it is not merely an ownership top-up.
+    if proj.shell_path.is_dir():
+      materialize_canon_skeleton(proj.shell_path)
 
-        print(MSG_DONE)
-        print(f"Session data restored to {workspace or '<None>'}")
-        print(f"  box: {proj.name} ({proj.mode.value})")
-        return 0
+    # ⚑ REGISTER, exactly as create does — an extracted box that is not in the
+    # registry is invisible to `box list`, unreachable by name, and (being
+    # unregistered) would resolve back to the `__unregistered__` sentinel on the
+    # next command.  Deferred to here for create's reason: register only once
+    # the tree is actually in place.
+    try:
+      _register_new_box(std, proj)
+    except (ProjectError, WorksetError) as e:
+      # The tree is restored; only the registry write failed.  Report that
+      # recoverable state instead of letting a traceback escape.
+      print(MSG_DONE)
+      print(
+        f"Error: restored data to {proj.metadata_path}, but could not register the box: {e}",
+        file=sys.stderr,
+      )
+      return 1
 
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    print(MSG_DONE)
+    print(f"Session data restored to {workspace or '<None>'}")
+    print(f"  box: {proj.name} ({proj.mode.value})")
+    return 0
+
+  finally:
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _peek_archive_info(archive_file: Path) -> dict[str, str] | None:
-    """Extract archive to a temp dir and parse the info file."""
-    temp_dir = tempfile.mkdtemp()
+  """Extract archive to a temp dir and parse the info file."""
+  temp_dir = tempfile.mkdtemp()
+  try:
     try:
-        try:
-            with tarfile.open(str(archive_file), "r:xz") as tar:
-                tar.extractall(temp_dir, filter=_keep_links_filter)
-        except (tarfile.TarError, OSError):
-            return None
-        entries = list(Path(temp_dir).iterdir())
-        if not entries:
-            return None
-        info_file = entries[0] / "kanibako-archive-info.txt"
-        if not info_file.is_file():
-            return None
-        info = _parse_info(info_file)
-        info["_archive_hash"] = entries[0].name
-        return info
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+      with tarfile.open(str(archive_file), "r:xz") as tar:
+        tar.extractall(temp_dir, filter=_keep_links_filter)
+    except (tarfile.TarError, OSError):
+      return None
+    entries = list(Path(temp_dir).iterdir())
+    if not entries:
+      return None
+    info_file = entries[0] / "kanibako-archive-info.txt"
+    if not info_file.is_file():
+      return None
+    info = _parse_info(info_file)
+    info["_archive_hash"] = entries[0].name
+    return info
+  finally:
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _restore_all(std, config, args) -> int:
-    """Restore all kanibako-*.txz archives in the current directory."""
-    scan_dir = Path(logical_cwd())
-    archives = sorted(scan_dir.glob("kanibako-*.txz"))
-    if not archives:
-        print(f"No kanibako-*.txz archives found in {scan_dir}")
-        return 0
+  """Restore all kanibako-*.txz archives in the current directory."""
+  scan_dir = Path(logical_cwd())
+  archives = sorted(scan_dir.glob("kanibako-*.txz"))
+  if not archives:
+    print(f"No kanibako-*.txz archives found in {scan_dir}")
+    return 0
 
-    # Peek into each archive to get project path
-    plan: list[tuple[Path, str]] = []
-    for archive in archives:
-        info = _peek_archive_info(archive)
-        if info is None:
-            print(f"  Skipping {archive.name} (invalid archive)", file=sys.stderr)
-            continue
-        project_path = info.get("Project path", "")
-        if not project_path:
-            print(f"  Skipping {archive.name} (no project path in metadata)", file=sys.stderr)
-            continue
-        plan.append((archive, project_path))
+  # Peek into each archive to get project path
+  plan: list[tuple[Path, str]] = []
+  for archive in archives:
+    info = _peek_archive_info(archive)
+    if info is None:
+      print(f"  Skipping {archive.name} (invalid archive)", file=sys.stderr)
+      continue
+    project_path = info.get("Project path", "")
+    if not project_path:
+      print(f"  Skipping {archive.name} (no project path in metadata)", file=sys.stderr)
+      continue
+    plan.append((archive, project_path))
 
-    if not plan:
-        print("No valid archives found to restore.")
-        return 0
+  if not plan:
+    print("No valid archives found to restore.")
+    return 0
 
-    print(f"Found {len(plan)} archive(s) to restore:")
-    for archive, project_path in plan:
-        print(f"  {archive.name} → {project_path}")
-    print()
+  print(f"Found {len(plan)} archive(s) to restore:")
+  for archive, project_path in plan:
+    print(f"  {archive.name} → {project_path}")
+  print()
 
-    if not confirm_or_abort(
-        args.force,
-        "Restore all listed archives? Existing session data will be overwritten.\n"
-        "Type 'yes' to confirm: ",
-    ):
-        return 2
+  if not confirm_or_abort(
+    args.force,
+    "Restore all listed archives? Existing session data will be overwritten.\n"
+    "Type 'yes' to confirm: ",
+  ):
+    return 2
 
-    restored = 0
-    failed = 0
-    for archive, project_path in plan:
-        print(f"\n--- {archive.name} → {project_path}")
-        rc = _restore_one(
-            std, config, project_dir=project_path,
-            archive_file=archive, force=True,
-        )
-        if rc == 0:
-            restored += 1
-        else:
-            failed += 1
+  restored = 0
+  failed = 0
+  for archive, project_path in plan:
+    print(f"\n--- {archive.name} → {project_path}")
+    rc = _restore_one(
+      std,
+      config,
+      project_dir=project_path,
+      archive_file=archive,
+      force=True,
+    )
+    if rc == 0:
+      restored += 1
+    else:
+      failed += 1
 
-    print(f"\nRestored {restored} archive(s).", end="")
-    if failed:
-        print(f" {failed} failed.", end="")
-    print()
-    return 1 if failed else 0
+  print(f"\nRestored {restored} archive(s).", end="")
+  if failed:
+    print(f" {failed} failed.", end="")
+  print()
+  return 1 if failed else 0
 
 
 def _parse_info(info_file: Path) -> dict[str, str]:
-    """Parse kanibako-archive-info.txt into a dict."""
-    result: dict[str, str] = {}
-    for line in info_file.read_text().splitlines():
-        if ": " in line and not line.startswith("  "):
-            key, _, value = line.partition(": ")
-            result[key.strip()] = value.strip()
-    return result
+  """Parse kanibako-archive-info.txt into a dict."""
+  result: dict[str, str] = {}
+  for line in info_file.read_text().splitlines():
+    if ": " in line and not line.startswith("  "):
+      key, _, value = line.partition(": ")
+      result[key.strip()] = value.strip()
+  return result
 
 
 def _validate_git_state(workspace: Path | None, info: dict[str, str], force: bool) -> int:
-    """Validate git state between archive and workspace. Returns 0 to continue."""
-    # A box with no workspace (a null ``workset.workspaces``) has no repo to compare.
-    if workspace is None or not is_git_repo(workspace):
-        if not force:
-            print(
-                "Warning: Archive came from a git repository, "
-                "but current workspace is not a git repo."
-            )
-            print()
-            for key in ("Branch", "Commit"):
-                if key in info:
-                    print(f"  {key}: {info[key]}")
-            print()
-            if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
-                return 2
-        return 0
-
-    archive_commit = info.get("Commit", "")
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=workspace,
-        capture_output=True,
-        text=True,
-    )
-    current_commit = result.stdout.strip() if result.returncode == 0 else ""
-
-    if archive_commit != current_commit and not force:
-        print("Warning: Git state mismatch")
-        print()
-        print("Archive from:")
-        for key in ("Branch", "Commit"):
-            if key in info:
-                print(f"  {key}: {info[key]}")
-        print()
-        print("Current workspace:")
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=workspace,
-            capture_output=True,
-            text=True,
-        )
-        current_branch = (
-            branch_result.stdout.strip()
-            if branch_result.returncode == 0
-            else "unknown"
-        )
-        print(f"  Branch: {current_branch}")
-        print(f"  Commit: {current_commit}")
-        print()
-        if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
-            return 2
-
+  """Validate git state between archive and workspace. Returns 0 to continue."""
+  # A box with no workspace (a null ``workset.workspaces``) has no repo to compare.
+  if workspace is None or not is_git_repo(workspace):
+    if not force:
+      print(
+        "Warning: Archive came from a git repository, but current workspace is not a git repo."
+      )
+      print()
+      for key in ("Branch", "Commit"):
+        if key in info:
+          print(f"  {key}: {info[key]}")
+      print()
+      if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
+        return 2
     return 0
+
+  archive_commit = info.get("Commit", "")
+  result = subprocess.run(
+    ["git", "rev-parse", "HEAD"],
+    cwd=workspace,
+    capture_output=True,
+    text=True,
+  )
+  current_commit = result.stdout.strip() if result.returncode == 0 else ""
+
+  if archive_commit != current_commit and not force:
+    print("Warning: Git state mismatch")
+    print()
+    print("Archive from:")
+    for key in ("Branch", "Commit"):
+      if key in info:
+        print(f"  {key}: {info[key]}")
+    print()
+    print("Current workspace:")
+    branch_result = subprocess.run(
+      ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+      cwd=workspace,
+      capture_output=True,
+      text=True,
+    )
+    current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
+    print(f"  Branch: {current_branch}")
+    print(f"  Commit: {current_commit}")
+    print()
+    if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
+      return 2
+
+  return 0

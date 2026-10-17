@@ -36,12 +36,12 @@ SELECTION_KEY: Final[str] = "system.agent"
 #: The value is a display TEMPLATE (``<agent>`` = the active discriminator), used by tests
 #: and by humans; the builder below is the executable form.
 CLI_SHADOWED_KEYS: Final[Mapping[str, str]] = {
-    "--agent": SELECTION_KEY,
-    "-M/--model": "agent.<agent>.model",
-    "-N/-C/-R": "agent.<agent>.continue_mode",
-    "-S/-A": "agent.<agent>.access",
-    "--image": "box.image",
-    "--share-images": "box.share_images",
+  "--agent": SELECTION_KEY,
+  "-M/--model": "agent.<agent>.model",
+  "-N/-C/-R": "agent.<agent>.continue_mode",
+  "-S/-A": "agent.<agent>.access",
+  "--image": "box.image",
+  "--share-images": "box.share_images",
 }
 
 #: Namespaces a CLI value may never target (spec §2h's CATEGORICAL tier, which the CLI does
@@ -52,164 +52,168 @@ _FORBIDDEN_HEADS: Final[frozenset[str]] = frozenset({"meta", "config", "pref"})
 
 
 def build_cli_level(
-    *,
-    selection: "Mapping[str, object] | None" = None,
-    active_agent: "str | None" = None,
-    model: "str | None" = None,
-    new_session: bool = False,
-    continue_session: bool = False,
-    resume: bool = False,
-    secure: bool = False,
-    autonomous: bool = False,
-    image: "str | None" = None,
-    share_images: bool = False,
+  *,
+  selection: "Mapping[str, object] | None" = None,
+  active_agent: "str | None" = None,
+  model: "str | None" = None,
+  new_session: bool = False,
+  continue_session: bool = False,
+  resume: bool = False,
+  secure: bool = False,
+  autonomous: bool = False,
+  image: "str | None" = None,
+  share_images: bool = False,
 ) -> "dict[str, object] | None":
-    """Build the §1A CLI level for one launch, or ``None`` when it is empty.
+  """Build the §1A CLI level for one launch, or ``None`` when it is empty.
 
-    *selection* is P7's resolved-agent level, carried through VERBATIM; agent-scope entries
-    are emitted only when *active_agent* is truthy. The llm-doc has the per-flag table.
+  *selection* is P7's resolved-agent level, carried through VERBATIM; agent-scope entries
+  are emitted only when *active_agent* is truthy. The llm-doc has the per-flag table.
 
-    ⚑ **The agent-scope spelling is ``agent.<active>.<leaf>``, never
-    ``agent.default.<leaf>``.** ``effective_behavior`` performs the §2d active-over-default
-    pick AFTER the cascade merge, so a default-spelled value would lose to any file's active
-    one even from level index 0 — contradicting "the highest, above everything".
+  ⚑ **The agent-scope spelling is ``agent.<active>.<leaf>``, never
+  ``agent.default.<leaf>``.** ``effective_behavior`` performs the §2d active-over-default
+  pick AFTER the cascade merge, so a default-spelled value would lose to any file's active
+  one even from level index 0 — contradicting "the highest, above everything".
 
-    ⚑ An un-given flag installs NOTHING: ``None``/``""`` for *model* and *image*, ``False``
-    for *share_images*, *secure* and *autonomous* (argparse ``store_true``s, so there is no
-    negative spelling). Absent ≠ an explicit override, and ``""`` is a terminal value the
-    resolver treats as meaningful.
+  ⚑ An un-given flag installs NOTHING: ``None``/``""`` for *model* and *image*, ``False``
+  for *share_images*, *secure* and *autonomous* (argparse ``store_true``s, so there is no
+  negative spelling). Absent ≠ an explicit override, and ``""`` is a terminal value the
+  resolver treats as meaningful.
 
-    ⚑ *secure* (``-S``) WINS over *autonomous* (``-A``) when both are given: on a
-    permission axis the stricter request is the one that cannot surprise the user.
+  ⚑ *secure* (``-S``) WINS over *autonomous* (``-A``) when both are given: on a
+  permission axis the stricter request is the one that cannot surprise the user.
 
-    ⚑ ``-R`` installing ``True`` is LOAD-BEARING, not cosmetic. ``assembly.resolve_mode``
-    falls through its picker arm for a descriptor with no ``resume`` mode (goose/codex) and
-    then keys on ``skip_continue``, so were ``-R`` to install nothing, a box with a stored
-    ``continue_mode: false`` would flip to ``"start"``.
-    """
-    level: dict[str, object] = {}
-    if selection:
-        level.update(selection)
-    if active_agent:
-        if model:
-            level[f"agent.{active_agent}.model"] = model
-        if new_session:
-            level[f"agent.{active_agent}.continue_mode"] = False
-        elif continue_session or resume:
-            level[f"agent.{active_agent}.continue_mode"] = True
-        if secure:
-            level[f"agent.{active_agent}.access"] = "restricted"
-        elif autonomous:
-            level[f"agent.{active_agent}.access"] = "full"
-    if image:
-        level["box.image"] = image
-    if share_images:
-        level["box.share_images"] = True
-    return level or None
+  ⚑ ``-R`` installing ``True`` is LOAD-BEARING, not cosmetic. ``assembly.resolve_mode``
+  falls through its picker arm for a descriptor with no ``resume`` mode (goose/codex) and
+  then keys on ``skip_continue``, so were ``-R`` to install nothing, a box with a stored
+  ``continue_mode: false`` would flip to ``"start"``.
+  """
+  level: dict[str, object] = {}
+  if selection:
+    level.update(selection)
+  if active_agent:
+    if model:
+      level[f"agent.{active_agent}.model"] = model
+    if new_session:
+      level[f"agent.{active_agent}.continue_mode"] = False
+    elif continue_session or resume:
+      level[f"agent.{active_agent}.continue_mode"] = True
+    if secure:
+      level[f"agent.{active_agent}.access"] = "restricted"
+    elif autonomous:
+      level[f"agent.{active_agent}.access"] = "full"
+  if image:
+    level["box.image"] = image
+  if share_images:
+    level["box.share_images"] = True
+  return level or None
 
 
 def guard_cli_level(
-    level: "Mapping[str, object] | None",
-    *,
-    active_agent: "str | None" = None,
-    valid_agents: "Collection[str] | None" = None,
+  level: "Mapping[str, object] | None",
+  *,
+  active_agent: "str | None" = None,
+  valid_agents: "Collection[str] | None" = None,
 ) -> None:
-    """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
+  """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
 
-    Called from INSIDE :func:`kanibako.settings.settings_launch.assemble_cascade`, before
-    the splice, so no call site can bypass it. A no-op for an empty level. The three arms
-    below run in order: closed keyspace, categorical head, locator closure.
+  Called from INSIDE :func:`kanibako.settings.settings_launch.assemble_cascade`, before
+  the splice, so no call site can bypass it. A no-op for an empty level. The three arms
+  below run in order: closed keyspace, categorical head, locator closure.
 
-    *active_agent* is UNIONED into *valid_agents* (:class:`_ActiveAgentNames`) — it is valid
-    BY CONSTRUCTION, having just been resolved. The union is not a bypass: a key naming any
-    OTHER agent is still refused. The llm-doc explains why ``None`` there means "do not pay
-    for plugin discovery".
+  *active_agent* is UNIONED into *valid_agents* (:class:`_ActiveAgentNames`) — it is valid
+  BY CONSTRUCTION, having just been resolved. The union is not a bypass: a key naming any
+  OTHER agent is still refused. The llm-doc explains why ``None`` there means "do not pay
+  for plugin discovery".
 
-    ⚑⚑ THE LEAF VOCABULARY IS SOURCED, NEVER TAKEN AS A PARAMETER. This door is the TWIN of
-    ``config_keys.agent_key_reason``: NAMES injected, vocabulary from
-    :data:`~kanibako.settings.config_keys.AGENT_LEAF_MAP` — which is a thing to ASK, so a core
-    §2d leaf still costs no plugin import, and which CONCEDES an agent it could not read
-    rather than refusing it (spec §0). A vocabulary a caller may omit judges every
-    agent against core alone; the llm-doc has the measured refusal that cost.
+  ⚑⚑ THE LEAF VOCABULARY IS SOURCED, NEVER TAKEN AS A PARAMETER. This door is the TWIN of
+  ``config_keys.agent_key_reason``: NAMES injected, vocabulary from
+  :data:`~kanibako.settings.config_keys.AGENT_LEAF_MAP` — which is a thing to ASK, so a core
+  §2d leaf still costs no plugin import, and which CONCEDES an agent it could not read
+  rather than refusing it (spec §0). A vocabulary a caller may omit judges every
+  agent against core alone; the llm-doc has the measured refusal that cost.
 
-    ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot is refused
-    by arm 1 rather than silently mis-parsed. Defense in depth since ``agent_ref`` banned
-    ``.`` in a persona/harness segment (2026-08-04), kept because every dotted-key builder in
-    the launch splits the same way; refusing loudly beats mis-resolving silently.
-    """
-    if not level:
-        return
-    # IMPORTED IN THE BODY TO KEEP THE LAYERING ONE-DIRECTIONAL — ``config_keys``
-    # imports ``settings_prefs`` at module scope, which this module also sits above, and
-    # a module-scope edge back would pull a ~100 KB module into every importer of this
-    # one. NOT for load purity: a module-scope import measures pure too (no file opens,
-    # no plugin import, no cycle in either order).
-    from kanibako.settings.config_keys import AGENT_LEAF_MAP
+  ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot is refused
+  by arm 1 rather than silently mis-parsed. Defense in depth since ``agent_ref`` banned
+  ``.`` in a persona/harness segment (2026-08-04), kept because every dotted-key builder in
+  the launch splits the same way; refusing loudly beats mis-resolving silently.
+  """
+  if not level:
+    return
+  # IMPORTED IN THE BODY TO KEEP THE LAYERING ONE-DIRECTIONAL — ``config_keys``
+  # imports ``settings_prefs`` at module scope, which this module also sits above, and
+  # a module-scope edge back would pull a ~100 KB module into every importer of this
+  # one. NOT for load purity: a module-scope import measures pure too (no file opens,
+  # no plugin import, no cycle in either order).
+  from kanibako.settings.config_keys import AGENT_LEAF_MAP
 
-    agents = _ActiveAgentNames(() if valid_agents is None else valid_agents, active_agent)
+  agents = _ActiveAgentNames(() if valid_agents is None else valid_agents, active_agent)
 
-    for key in level:
-        reason = key_validity(
-            key, valid_agents=agents, agent_leaf_map=AGENT_LEAF_MAP,
-        )
-        if reason is not None:
-            raise SettingsError(
-                f"the command line cannot set '{key}': {reason}. The keyspace is "
-                f"CLOSED (spec §0) — the CLI is a LEVEL over it, not a way around it."
-            )
+  for key in level:
+    reason = key_validity(
+      key,
+      valid_agents=agents,
+      agent_leaf_map=AGENT_LEAF_MAP,
+    )
+    if reason is not None:
+      raise SettingsError(
+        f"the command line cannot set '{key}': {reason}. The keyspace is "
+        f"CLOSED (spec §0) — the CLI is a LEVEL over it, not a way around it."
+      )
 
-        head = key.split(".", 1)[0]
-        if head in _FORBIDDEN_HEADS:
-            raise SettingsError(
-                f"the command line cannot set '{key}': '{head}.*' is never a CLI "
-                f"target (spec §1A / §2h categorical tier) — meta.* is RO by "
-                f"contract, config.* is the Layer-1 foundation resolved before the "
-                f"cascade, and pref.* is a request, not a value."
-            )
+    head = key.split(".", 1)[0]
+    if head in _FORBIDDEN_HEADS:
+      raise SettingsError(
+        f"the command line cannot set '{key}': '{head}.*' is never a CLI "
+        f"target (spec §1A / §2h categorical tier) — meta.* is RO by "
+        f"contract, config.* is the Layer-1 foundation resolved before the "
+        f"cascade, and pref.* is a request, not a value."
+      )
 
-        if key in LOCATOR_CLOSURE:
-            raise SettingsError(
-                f"the command line cannot set '{key}': it is a LOCATOR-class key "
-                f"(spec §1A L335-338) — it relocates the box root and the settings "
-                f"file the cascade reads. The CLI is not a pref, so §2h's forbidden "
-                f"tiers do not cover it and this guard bars it directly."
-            )
+    if key in LOCATOR_CLOSURE:
+      raise SettingsError(
+        f"the command line cannot set '{key}': it is a LOCATOR-class key "
+        f"(spec §1A L335-338) — it relocates the box root and the settings "
+        f"file the cascade reads. The CLI is not a pref, so §2h's forbidden "
+        f"tiers do not cover it and this guard bars it directly."
+      )
 
 
 def keys_needing_agent_names(
-    level: "Mapping[str, object] | None", *, active_agent: "str | None",
+  level: "Mapping[str, object] | None",
+  *,
+  active_agent: "str | None",
 ) -> list[str]:
-    """The keys of *level* whose agent NAME :func:`guard_cli_level` must look up.
+  """The keys of *level* whose agent NAME :func:`guard_cli_level` must look up.
 
-    Every key but ``agent.<active_agent>.*``, which the guard's active-agent union answers
-    without plugin discovery — the only agent scope :func:`build_cli_level` spells.
-    """
-    own = f"agent.{active_agent}." if active_agent else None
-    return [key for key in level or () if own is None or not key.startswith(own)]
+  Every key but ``agent.<active_agent>.*``, which the guard's active-agent union answers
+  without plugin discovery — the only agent scope :func:`build_cli_level` spells.
+  """
+  own = f"agent.{active_agent}." if active_agent else None
+  return [key for key in level or () if own is None or not key.startswith(own)]
 
 
 class _ActiveAgentNames(Collection[str]):
-    """*forwarded* UNIONED with the ACTIVE agent, without flattening *forwarded*.
+  """*forwarded* UNIONED with the ACTIVE agent, without flattening *forwarded*.
 
-    Membership asks *forwarded*'s OWN predicate: an ``AgentNames`` admits a persona node
-    by its harness, so its iteration is not the set of names it accepts. ``leaf_map`` and
-    ``discovery_failed`` are forwarded, so a reader that asks them gets *forwarded*'s
-    answer. Iteration yields both parts, for a refusal message's list of valid agents.
-    """
+  Membership asks *forwarded*'s OWN predicate: an ``AgentNames`` admits a persona node
+  by its harness, so its iteration is not the set of names it accepts. ``leaf_map`` and
+  ``discovery_failed`` are forwarded, so a reader that asks them gets *forwarded*'s
+  answer. Iteration yields both parts, for a refusal message's list of valid agents.
+  """
 
-    def __init__(self, forwarded: Collection[str], active_agent: "str | None") -> None:
-        self._forwarded = forwarded
-        self._active = active_agent or None
-        self.leaf_map = getattr(forwarded, "leaf_map", None)
-        self.discovery_failed = getattr(forwarded, "discovery_failed", False)
+  def __init__(self, forwarded: Collection[str], active_agent: "str | None") -> None:
+    self._forwarded = forwarded
+    self._active = active_agent or None
+    self.leaf_map = getattr(forwarded, "leaf_map", None)
+    self.discovery_failed = getattr(forwarded, "discovery_failed", False)
 
-    def __contains__(self, item: object) -> bool:
-        return (self._active is not None and item == self._active) or item in self._forwarded
+  def __contains__(self, item: object) -> bool:
+    return (self._active is not None and item == self._active) or item in self._forwarded
 
-    def __iter__(self) -> Iterator[str]:
-        yield from self._forwarded
-        if self._active is not None and self._active not in set(self._forwarded):
-            yield self._active
+  def __iter__(self) -> Iterator[str]:
+    yield from self._forwarded
+    if self._active is not None and self._active not in set(self._forwarded):
+      yield self._active
 
-    def __len__(self) -> int:
-        return sum(1 for _ in self)
+  def __len__(self) -> int:
+    return sum(1 for _ in self)

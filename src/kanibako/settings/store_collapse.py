@@ -159,7 +159,8 @@ def collapse_store_shapes(
   # concatenations here - nothing is pruned, nothing is refused for sharing a dest
   # with a mount, and no copy competes with one.
   bindings, declared_by = _collapse_mounts(
-    store_shape_set, home_bind,
+    store_shape_set,
+    home_bind,
     _mount_declaration_keys(entries or (), store_shape_set),
   )
   return CollapsedStore(
@@ -171,7 +172,8 @@ def collapse_store_shapes(
 
 
 def _mount_declaration_keys(
-  entries: Sequence[CategoryEntry], store_shape_set: StoreShapeSet,
+  entries: Sequence[CategoryEntry],
+  store_shape_set: StoreShapeSet,
 ) -> _MountKeys:
   """Each scope's MOUNT declarations, filed by ``(scope, kind, dest)`` (PURE).
 
@@ -253,7 +255,8 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
 
 
 def collapse_env(
-  entries: list[CategoryEntry], cli_env: Mapping[str, str] | None = None,
+  entries: list[CategoryEntry],
+  cli_env: Mapping[str, str] | None = None,
   origins: Mapping[str, str] | None = None,
 ) -> CollapsedEnvs:
   """Arbitrate the env VAR slots: the FIRST scope to name a VAR holds it (PURE).
@@ -337,7 +340,8 @@ def _apply_cli_env(slots: CollapsedEnvs, cli_env: Mapping[str, str] | None) -> N
   for var, value in (cli_env or {}).items():
     held = slots.get(var)
     slots[var] = (
-      CollapsedEnv(value, held.scope, held.key) if held is not None
+      CollapsedEnv(value, held.scope, held.key)
+      if held is not None
       else CollapsedEnv(value, CLI_PROVENANCE_SCOPE, f"-e {var}")
     )
 
@@ -365,14 +369,14 @@ def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].sync:
-      copies.append(
-        CollapsedCopy(entry.src, normalize_bind_dest(dest_path), entry.opts)
-      )
+      copies.append(CollapsedCopy(entry.src, normalize_bind_dest(dest_path), entry.opts))
   return copies
 
 
 def _collapse_mounts(
-  store_shape_set: StoreShapeSet, home_bind: BindEntry, mount_keys: _MountKeys,
+  store_shape_set: StoreShapeSet,
+  home_bind: BindEntry,
+  mount_keys: _MountKeys,
 ) -> tuple[CollapsedBindings, DeclaringKeys]:
   """Fold every scope's bind + mask arms over the home foundation, in scope order."""
   combined: CollapsedBindings = {
@@ -499,20 +503,18 @@ def covering_bind(bindings: Mapping[str, CollapsedBind], dest: str) -> str | Non
 
 def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
   """The BIND dests AT or INSIDE *dest* - what an arriving bind would subsume."""
-  return [
-    d for d, bind in combined.items() if bind.src is not None and is_within(d, dest)
-  ]
+  return [d for d, bind in combined.items() if bind.src is not None and is_within(d, dest)]
 
 
 def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]:
   """The MASK dests AT or CONTAINING *dest* - the "same or parent" side, inclusive."""
-  return [
-    d for d, bind in combined.items() if bind.src is None and is_within(dest, d)
-  ]
+  return [d for d, bind in combined.items() if bind.src is None and is_within(dest, d)]
 
 
 def _sweep(
-  combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str,
+  combined: CollapsedBindings,
+  declared_by: DeclaringKeys,
+  dest: str,
 ) -> None:
   """Delete every entry AT or INSIDE *dest* - the ONE operation both mounts share."""
   # ⚑ THE SIDE MAP IS SWEPT WITH THE MAP IT DESCRIBES. A subsumed dest keeps no
@@ -557,8 +559,7 @@ def _refuse_bind_over_bind(
   if not subsumed:
     return
   named = ", ".join(
-    f"{d!r} ({combined[d].src!r}{_declared_clause(declared_by.get(d))})"
-    for d in subsumed
+    f"{d!r} ({combined[d].src!r}{_declared_clause(declared_by.get(d))})" for d in subsumed
   )
   raise SettingsError(
     f"the binding{_declared_clause(key)} of {entry.src!r} at {dest!r} collides with the "
@@ -604,12 +605,16 @@ def _refuse_bind_under_mask(
   mask = parent_mask(combined, dest)
   if mask is None:
     return
-  raise SettingsError(under_mask_refusal(
-    f"the binding{_declared_clause(key)} of {entry.src!r}", dest, mask,
-    declared_by.get(mask),
-    f"A mask may be a child of a binding, never its parent - bind outside the mask, "
-    f"or SUPPRESS the mask. {SUPPRESS_THEN_ADD}.",
-  ))
+  raise SettingsError(
+    under_mask_refusal(
+      f"the binding{_declared_clause(key)} of {entry.src!r}",
+      dest,
+      mask,
+      declared_by.get(mask),
+      f"A mask may be a child of a binding, never its parent - bind outside the mask, "
+      f"or SUPPRESS the mask. {SUPPRESS_THEN_ADD}.",
+    )
+  )
 
 
 def parent_mask(bindings: CollapsedBindings, dest: str) -> str | None:
@@ -627,7 +632,11 @@ def parent_mask(bindings: CollapsedBindings, dest: str) -> str | None:
 
 
 def under_mask_refusal(
-  subject: str, dest: str, mask: str, mask_key: str | None, cure: str,
+  subject: str,
+  dest: str,
+  mask: str,
+  mask_key: str | None,
+  cure: str,
 ) -> str:
   """The ONE message for a delivery that sits inside a mask: subject, dest, mask, cure.
 
@@ -664,9 +673,7 @@ def _refuse_mask_on_mask(
   covering = _masks_over(combined, dest)
   if not covering:
     return
-  named = ", ".join(
-    f"{d!r}{_declared_clause(declared_by.get(d))}" for d in covering
-  )
+  named = ", ".join(f"{d!r}{_declared_clause(declared_by.get(d))}" for d in covering)
   raise SettingsError(
     f"the mask{_declared_clause(key)} at {dest!r} lands on the mask(s) already "
     f"collapsed at {named}. A mask may not take another mask's "
@@ -698,7 +705,8 @@ def _refuse_mask_over_home(dest: str, key: str | None) -> None:
 
 
 def refuse_uncovered_synced(
-  bindings: CollapsedBindings, copies: CollapsedCopies,
+  bindings: CollapsedBindings,
+  copies: CollapsedCopies,
 ) -> None:
   """Every ``synced`` dest must be COVERED by a mount - nothing bound is nothing kept.
 
@@ -789,7 +797,9 @@ def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
 
 
 def _refuse_env_twin(
-  arriving: CategoryEntry, held: CollapsedEnv, origins: Mapping[str, str],
+  arriving: CategoryEntry,
+  held: CollapsedEnv,
+  origins: Mapping[str, str],
 ) -> None:
   """Two scopes' ``env`` keys naming ONE variable: the slot is taken, so refuse - naming BOTH.
 
@@ -809,21 +819,23 @@ def _refuse_env_twin(
     source = origins.get(key)
     return f" (set by {source})" if source else ""
 
-  raise SettingsError(env_twin_refusal(
-    arriving.box_dest,
-    f"is claimed by two keys: "
-    f"{held_key!r}{set_by(held.key)} at the {held.scope!r} scope already holds "
-    f"it, and {arriving_key!r}{set_by(arriving.key)} at the {arriving.scope!r} "
-    f"scope names it again",
-    f"A variable "
-    f"is written ONCE and the containing scope writes it first, so the second "
-    f"declaration could never take effect. Give the variable ONE owner: keep the "
-    f"key at the scope the value belongs to and remove the other one. An override "
-    f"is not enough - these are two different KEYS, so both survive the cascade. To "
-    f"change the value WITHOUT moving its owner, write the SAME key "
-    f"({held_key!r}) in a nearer settings file: keys cascade, and the nearest "
-    f"file wins.",
-  ))
+  raise SettingsError(
+    env_twin_refusal(
+      arriving.box_dest,
+      f"is claimed by two keys: "
+      f"{held_key!r}{set_by(held.key)} at the {held.scope!r} scope already holds "
+      f"it, and {arriving_key!r}{set_by(arriving.key)} at the {arriving.scope!r} "
+      f"scope names it again",
+      f"A variable "
+      f"is written ONCE and the containing scope writes it first, so the second "
+      f"declaration could never take effect. Give the variable ONE owner: keep the "
+      f"key at the scope the value belongs to and remove the other one. An override "
+      f"is not enough - these are two different KEYS, so both survive the cascade. To "
+      f"change the value WITHOUT moving its owner, write the SAME key "
+      f"({held_key!r}) in a nearer settings file: keys cascade, and the nearest "
+      f"file wins.",
+    )
+  )
 
 
 def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None:
@@ -949,7 +961,8 @@ def _pair_one(
     # that reached the list reached it whole. One that did NOT is a declaration the
     # PRODUCER dropped - a same-scope loser - and that is a loss, not a copy.
     row = next(
-      (c for c in copies if c.dest == decl.dest and c.src == decl.src), None,
+      (c for c in copies if c.dest == decl.dest and c.src == decl.src),
+      None,
     )
     if row is not None:
       return Derivation(decl, DERIVED_COPY, decl.dest, copy=row)
@@ -977,7 +990,10 @@ def _pair_one(
   # answer is that the map cannot say which of them the mount came from.
   ambiguous = claims.get((decl.dest, decl.src), 0) > 1
   return Derivation(
-    decl, DERIVED_AMBIGUOUS if ambiguous else DERIVED_MOUNT, cover, bind,
+    decl,
+    DERIVED_AMBIGUOUS if ambiguous else DERIVED_MOUNT,
+    cover,
+    bind,
   )
 
 

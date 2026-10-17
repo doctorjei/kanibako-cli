@@ -15,87 +15,82 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
-    box_container,
-    e2e_requires,
-    run_kanibako,
-    wait_for_container,
+  box_container,
+  e2e_requires,
+  run_kanibako,
+  wait_for_container,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 
 class TestShellExecIntoRunning:
-    """shell against a live container execs in; it does not recreate."""
+  """shell against a live container execs in; it does not recreate."""
 
-    def test_shell_execs_into_existing_container(self, e2e_env):
-        """shell -- echo runs inside the live container; Id is unchanged."""
-        env = e2e_env["env"]
-        project = e2e_env["project"]
+  def test_shell_execs_into_existing_container(self, e2e_env):
+    """shell -- echo runs inside the live container; Id is unchanged."""
+    env = e2e_env["env"]
+    project = e2e_env["project"]
 
-        result = run_kanibako(
-            ["create", str(project), "--name", "e2e_exec"],
-            env=env,
-        )
-        assert result.returncode == 0, f"create failed: {result.stderr}"
+    result = run_kanibako(
+      ["create", str(project), "--name", "e2e_exec"],
+      env=env,
+    )
+    assert result.returncode == 0, f"create failed: {result.stderr}"
 
-        # Start a persistent, long-running container to exec into.
-        run_kanibako(
-            ["start", "e2e_exec",
-             "-e", "CLAUDE_STUB_MODE=long-running"],
-            env=env,
-        )
-        container_name = box_container("e2e_exec")
-        wait_for_container(container_name, timeout=15)
+    # Start a persistent, long-running container to exec into.
+    run_kanibako(
+      ["start", "e2e_exec", "-e", "CLAUDE_STUB_MODE=long-running"],
+      env=env,
+    )
+    container_name = box_container("e2e_exec")
+    wait_for_container(container_name, timeout=15)
 
-        # Capture the container Id before exec.
-        id_before = subprocess.run(
-            ["podman", "inspect", "--format", "{{.Id}}", container_name],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        ).stdout.strip()
-        assert id_before, "Could not read container Id before exec"
+    # Capture the container Id before exec.
+    id_before = subprocess.run(
+      ["podman", "inspect", "--format", "{{.Id}}", container_name],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    ).stdout.strip()
+    assert id_before, "Could not read container Id before exec"
 
-        # Exec a one-shot command via shell, carrying a per-run -e var.
-        # Guards that -e propagates on the exec-into-running path (it was
-        # previously dropped because the early exec branch never built the
-        # container env). printenv must echo the value we passed.
-        result = run_kanibako(
-            ["shell", "e2e_exec",
-             "-e", "KANIBAKO_E2E_EXEC_MARKER=exec-marker-77",
-             "--", "printenv", "KANIBAKO_E2E_EXEC_MARKER"],
-            env=env,
-        )
-        assert result.returncode == 0, f"shell exec failed: {result.stderr}"
-        assert "exec-marker-77" in result.stdout, (
-            f"Expected per-run -e var in exec output, got: {result.stdout!r}"
-        )
+    # Exec a one-shot command via shell, carrying a per-run -e var.
+    # Guards that -e propagates on the exec-into-running path (it was
+    # previously dropped because the early exec branch never built the
+    # container env). printenv must echo the value we passed.
+    result = run_kanibako(
+      [
+        "shell",
+        "e2e_exec",
+        "-e",
+        "KANIBAKO_E2E_EXEC_MARKER=exec-marker-77",
+        "--",
+        "printenv",
+        "KANIBAKO_E2E_EXEC_MARKER",
+      ],
+      env=env,
+    )
+    assert result.returncode == 0, f"shell exec failed: {result.stderr}"
+    assert "exec-marker-77" in result.stdout, (
+      f"Expected per-run -e var in exec output, got: {result.stdout!r}"
+    )
 
-        # The container Id must be unchanged — it exec'd in, did not recreate.
-        id_after = subprocess.run(
-            ["podman", "inspect", "--format", "{{.Id}}", container_name],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        ).stdout.strip()
-        assert id_after == id_before, (
-            f"Container Id changed (recreated?): {id_before} -> {id_after}"
-        )
+    # The container Id must be unchanged — it exec'd in, did not recreate.
+    id_after = subprocess.run(
+      ["podman", "inspect", "--format", "{{.Id}}", container_name],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    ).stdout.strip()
+    assert id_after == id_before, f"Container Id changed (recreated?): {id_before} -> {id_after}"
 
-        # Exactly one container with this name should exist.
-        ps_result = subprocess.run(
-            ["podman", "ps", "-a",
-             "--filter", f"name={container_name}",
-             "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        names = [
-            n.strip()
-            for n in ps_result.stdout.strip().splitlines()
-            if n.strip()
-        ]
-        assert names == [container_name], (
-            f"Expected exactly one {container_name}, got: {names}"
-        )
+    # Exactly one container with this name should exist.
+    ps_result = subprocess.run(
+      ["podman", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    names = [n.strip() for n in ps_result.stdout.strip().splitlines() if n.strip()]
+    assert names == [container_name], f"Expected exactly one {container_name}, got: {names}"

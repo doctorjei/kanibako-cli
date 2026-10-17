@@ -28,21 +28,21 @@ from kanibako.settings.config_io import parse_doc_text, yaml_problem
 
 @dataclass
 class RigMeta:
-    """In-image metadata for an extended rig.
+  """In-image metadata for an extended rig.
 
-    ``name`` is the short rig name; ``parent`` and ``foundation_source`` are arbitrary
-    image references / source descriptors (not validated here). ``recipe`` is an optional
-    captured shell history of the steps that built the rig -- informational only, because
-    extended rigs are not reproducible.
-    """
+  ``name`` is the short rig name; ``parent`` and ``foundation_source`` are arbitrary
+  image references / source descriptors (not validated here). ``recipe`` is an optional
+  captured shell history of the steps that built the rig -- informational only, because
+  extended rigs are not reproducible.
+  """
 
-    name: str
-    kind: str = "extended"
-    parent: str | None = None
-    foundation_source: str | None = None
-    reproducible: bool = False
-    created: str | None = None
-    recipe: list[str] | None = None
+  name: str
+  kind: str = "extended"
+  parent: str | None = None
+  foundation_source: str | None = None
+  reproducible: bool = False
+  created: str | None = None
+  recipe: list[str] | None = None
 
 
 # Field names in a stable, file-friendly order, used to filter unknown keys on
@@ -54,48 +54,48 @@ _ALWAYS: frozenset[str] = frozenset({"name", "kind", "reproducible"})
 
 
 def dump_rig_meta(meta: RigMeta) -> str:
-    """Serialize *meta* to a YAML string.
+  """Serialize *meta* to a YAML string.
 
-    ``name``, ``kind`` and ``reproducible`` are always emitted. The remaining
-    fields are omitted when ``None`` so the file stays clean (in particular
-    ``recipe`` disappears entirely when unset). Field order is stable and
-    readable (``sort_keys=False``).
-    """
-    data: dict[str, object] = {}
-    for field_name in _FIELD_NAMES:
-        value = getattr(meta, field_name)
-        if field_name not in _ALWAYS and value is None:
-            continue
-        data[field_name] = value
-    return yaml.safe_dump(data, sort_keys=False)
+  ``name``, ``kind`` and ``reproducible`` are always emitted. The remaining
+  fields are omitted when ``None`` so the file stays clean (in particular
+  ``recipe`` disappears entirely when unset). Field order is stable and
+  readable (``sort_keys=False``).
+  """
+  data: dict[str, object] = {}
+  for field_name in _FIELD_NAMES:
+    value = getattr(meta, field_name)
+    if field_name not in _ALWAYS and value is None:
+      continue
+    data[field_name] = value
+  return yaml.safe_dump(data, sort_keys=False)
 
 
 def write_rig_meta(meta: RigMeta, path: Path) -> None:
-    """Write *meta* to *path*, creating the parent directory if needed."""
-    atomic_write_text(path, dump_rig_meta(meta))
+  """Write *meta* to *path*, creating the parent directory if needed."""
+  atomic_write_text(path, dump_rig_meta(meta))
 
 
 def load_rig_meta(source: str | Path) -> RigMeta:
-    """Load a :class:`RigMeta` from a file *path* or a raw YAML *string*.
+  """Load a :class:`RigMeta` from a file *path* or a raw YAML *string*.
 
-    A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly as YAML text.
-    Unknown keys are ignored defensively (only known fields reach the constructor). Raises
-    :class:`ValueError` if the document is empty/invalid or is missing ``name``.
+  A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly as YAML text.
+  Unknown keys are ignored defensively (only known fields reach the constructor). Raises
+  :class:`ValueError` if the document is empty/invalid or is missing ``name``.
 
-    ⚑ Read through :func:`parse_doc_text`, the one entry point for a YAML document, and
-    render through :func:`yaml_problem`: a repeated key is never silently kept LAST.
-    """
-    text = source.read_text() if isinstance(source, Path) else source
+  ⚑ Read through :func:`parse_doc_text`, the one entry point for a YAML document, and
+  render through :func:`yaml_problem`: a repeated key is never silently kept LAST.
+  """
+  text = source.read_text() if isinstance(source, Path) else source
 
-    try:
-        data = parse_doc_text(text)
-    except yaml.YAMLError as exc:
-        raise ValueError(f"rig.yaml {yaml_problem(exc)}") from exc
-    if not isinstance(data, dict):
-        raise ValueError("rig.yaml must be a non-empty YAML mapping")
+  try:
+    data = parse_doc_text(text)
+  except yaml.YAMLError as exc:
+    raise ValueError(f"rig.yaml {yaml_problem(exc)}") from exc
+  if not isinstance(data, dict):
+    raise ValueError("rig.yaml must be a non-empty YAML mapping")
 
-    kwargs = {k: v for k, v in data.items() if k in _FIELD_NAMES}
-    if not kwargs.get("name"):
-        raise ValueError("rig.yaml is missing the required 'name' field")
+  kwargs = {k: v for k, v in data.items() if k in _FIELD_NAMES}
+  if not kwargs.get("name"):
+    raise ValueError("rig.yaml is missing the required 'name' field")
 
-    return RigMeta(**kwargs)
+  return RigMeta(**kwargs)

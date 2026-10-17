@@ -47,22 +47,22 @@ import pytest
 from kanibako.project.workset import create_workset
 from kanibako.settings.bootstrap import BOXES_PATH
 from kanibako.settings.config import (
-    BOX_META_FILE,
-    WORKSET_META_FILE,
-    null_path_keys_error,
-    refuses_box_store_value,
-    refuses_null_path_key,
-    usable_box_store_value,
+  BOX_META_FILE,
+  WORKSET_META_FILE,
+  null_path_keys_error,
+  refuses_box_store_value,
+  refuses_null_path_key,
+  usable_box_store_value,
 )
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.messages import (
-    ERR_BOX_STORE_EMPTY_REASON,
-    ERR_BOX_STORE_SET_HEAD,
-    ERR_BOX_STORE_TRAILING_REASON,
-    ERR_CONFIG_NULL_PATH_REASON,
-    ERR_CONFIG_NULL_PATH_SET_HEAD,
+  ERR_BOX_STORE_EMPTY_REASON,
+  ERR_BOX_STORE_SET_HEAD,
+  ERR_BOX_STORE_TRAILING_REASON,
+  ERR_CONFIG_NULL_PATH_REASON,
+  ERR_CONFIG_NULL_PATH_SET_HEAD,
 )
 from kanibako.settings.settings_configset import scan_tokens
 from kanibako.settings.settings_launch import _assert_box_root_resolved
@@ -81,642 +81,759 @@ _ORDERING = 'system-design "Ordering rule"'
 
 
 def _files(tmp_path: Path) -> dict:
-    """The settings files the scopes write, each in a plausible tier directory."""
-    ws = tmp_path / "ws"
-    box = tmp_path / "ws" / "boxes" / "b"
-    ws.mkdir(parents=True)
-    box.mkdir(parents=True)
-    return {
-        "config": tmp_path / CONFIG_FILENAME,
-        "system": tmp_path / "settings.yaml",
-        "workset": ws / WORKSET_META_FILE,
-        "box": box / BOX_META_FILE,
-        "agents": tmp_path / "agents",
-    }
+  """The settings files the scopes write, each in a plausible tier directory."""
+  ws = tmp_path / "ws"
+  box = tmp_path / "ws" / "boxes" / "b"
+  ws.mkdir(parents=True)
+  box.mkdir(parents=True)
+  return {
+    "config": tmp_path / CONFIG_FILENAME,
+    "system": tmp_path / "settings.yaml",
+    "workset": ws / WORKSET_META_FILE,
+    "box": box / BOX_META_FILE,
+    "agents": tmp_path / "agents",
+  }
 
 
 @pytest.fixture
 def ws_files(tmp_path, std):
-    """:func:`_files` over a REAL working set, so the workset tier holds its own anchor.
+  """:func:`_files` over a REAL working set, so the workset tier holds its own anchor.
 
-    ⚑ WITHOUT ONE, ``{workset.channelroot}`` dangles at the WORKSET door too and the
-    "unchanged at its own door" half of Row 2 would be testing a missing anchor rather
-    than the door's behavior. ``create_workset`` refuses a root that already exists, so
-    the tiers are laid down around it, not before it.
-    """
-    files = {
-        "config": tmp_path / CONFIG_FILENAME,
-        "system": tmp_path / "settings.yaml",
-        "agents": tmp_path / "agents",
-        "std": std,
-    }
-    ws = create_workset("setdoorws", tmp_path / "ws", std)
-    box = ws.root / "boxes" / "b"
-    box.mkdir(parents=True)
-    return files | {"ws": ws, "workset": ws.root / WORKSET_META_FILE,
-                    "box": box / BOX_META_FILE}
+  ⚑ WITHOUT ONE, ``{workset.channelroot}`` dangles at the WORKSET door too and the
+  "unchanged at its own door" half of Row 2 would be testing a missing anchor rather
+  than the door's behavior. ``create_workset`` refuses a root that already exists, so
+  the tiers are laid down around it, not before it.
+  """
+  files = {
+    "config": tmp_path / CONFIG_FILENAME,
+    "system": tmp_path / "settings.yaml",
+    "agents": tmp_path / "agents",
+    "std": std,
+  }
+  ws = create_workset("setdoorws", tmp_path / "ws", std)
+  box = ws.root / "boxes" / "b"
+  box.mkdir(parents=True)
+  return files | {"ws": ws, "workset": ws.root / WORKSET_META_FILE, "box": box / BOX_META_FILE}
 
 
 def _set(key: str, value, files: dict, scope: ConfigLevel, *, std=None, ws=None) -> str:
-    """Drive ``set_config_value`` with the threading the matching noun command uses.
+  """Drive ``set_config_value`` with the threading the matching noun command uses.
 
-    ⚑ ``std``/``ws`` are the real ones on purpose: the set-time probe builds the COMMAND's
-    target from them, and a caller that threads neither gets a target-LESS snapshot — so an
-    under-threaded helper would report a ref as dangling that the launch resolves.
-    """
-    if scope is ConfigLevel.system:
-        return set_config_value(
-            key, value, config_path=files["config"],
-            system_settings_path=files["system"], cascade_system_path=files["system"],
-            command_scope=scope, agents_root=files["agents"], std=std,
-        )
-    if scope is ConfigLevel.workset:
-        return set_config_value(
-            key, value, config_path=files["workset"],
-            cascade_system_path=files["system"], cascade_workset_path=files["workset"],
-            command_scope=scope, std=std, ws=ws,
-        )
+  ⚑ ``std``/``ws`` are the real ones on purpose: the set-time probe builds the COMMAND's
+  target from them, and a caller that threads neither gets a target-LESS snapshot — so an
+  under-threaded helper would report a ref as dangling that the launch resolves.
+  """
+  if scope is ConfigLevel.system:
     return set_config_value(
-        key, value, config_path=files["box"],
-        cascade_system_path=files["system"], cascade_workset_path=files["workset"],
-        cascade_box_path=files["box"], command_scope=scope,
+      key,
+      value,
+      config_path=files["config"],
+      system_settings_path=files["system"],
+      cascade_system_path=files["system"],
+      command_scope=scope,
+      agents_root=files["agents"],
+      std=std,
     )
+  if scope is ConfigLevel.workset:
+    return set_config_value(
+      key,
+      value,
+      config_path=files["workset"],
+      cascade_system_path=files["system"],
+      cascade_workset_path=files["workset"],
+      command_scope=scope,
+      std=std,
+      ws=ws,
+    )
+  return set_config_value(
+    key,
+    value,
+    config_path=files["box"],
+    cascade_system_path=files["system"],
+    cascade_workset_path=files["workset"],
+    cascade_box_path=files["box"],
+    command_scope=scope,
+  )
 
 
 # --------------------------------------------------------------------------- #
 # Row 1 — the box store at a value the launch refuses                        #
 # --------------------------------------------------------------------------- #
 
+
 class TestTheLaunchRefusesWhatSetAccepted:
-    """The defect's two shapes: ``set`` wrote the value, the launch refused it."""
+  """The defect's two shapes: ``set`` wrote the value, the launch refused it."""
 
-    def test_an_empty_box_store_is_refused_and_nothing_is_written(self, tmp_path):
-        files = _files(tmp_path)
-        message = _set(_BOXES, "", files, ConfigLevel.workset)
-        assert message.startswith("Error:"), message
-        assert _BOXES in message, message
-        assert ERR_BOX_STORE_SET_HEAD % _BOXES in message, message
-        assert ERR_BOX_STORE_EMPTY_REASON in message, message
-        assert "Nothing was written" in message, message
-        # ⚑ REFUSED BEFORE THE WRITE — on a fresh store the file does not EXIST, so there
-        # is no ``''`` anywhere to go and undo.
-        assert not files["workset"].exists(), (
-            f"{files['workset']} was written by a refused set: {message}"
-        )
+  def test_an_empty_box_store_is_refused_and_nothing_is_written(self, tmp_path):
+    files = _files(tmp_path)
+    message = _set(_BOXES, "", files, ConfigLevel.workset)
+    assert message.startswith("Error:"), message
+    assert _BOXES in message, message
+    assert ERR_BOX_STORE_SET_HEAD % _BOXES in message, message
+    assert ERR_BOX_STORE_EMPTY_REASON in message, message
+    assert "Nothing was written" in message, message
+    # ⚑ REFUSED BEFORE THE WRITE — on a fresh store the file does not EXIST, so there
+    # is no ``''`` anywhere to go and undo.
+    assert not files["workset"].exists(), (
+      f"{files['workset']} was written by a refused set: {message}"
+    )
 
-    def test_a_trailing_separator_box_store_is_refused_with_the_launchs_own_clause(
-        self, tmp_path,
-    ):
-        files = _files(tmp_path)
-        message = _set(_BOXES, "/tmp/boxes/", files, ConfigLevel.workset)
-        assert message.startswith("Error:"), message
-        assert ERR_BOX_STORE_TRAILING_REASON in message, message
-        assert not files["workset"].exists(), message
+  def test_a_trailing_separator_box_store_is_refused_with_the_launchs_own_clause(
+    self,
+    tmp_path,
+  ):
+    files = _files(tmp_path)
+    message = _set(_BOXES, "/tmp/boxes/", files, ConfigLevel.workset)
+    assert message.startswith("Error:"), message
+    assert ERR_BOX_STORE_TRAILING_REASON in message, message
+    assert not files["workset"].exists(), message
 
-    def test_the_same_refusal_holds_at_the_system_door(self, tmp_path):
-        """⚑ ONE RULE, EVERY DOOR: ``system set workset.boxes=`` is the same write, so the
-        launch's refusal cannot be reachable at one noun and not another."""
-        files = _files(tmp_path)
-        message = _set(_BOXES, "", files, ConfigLevel.system)
-        assert message.startswith("Error:"), message
-        assert ERR_BOX_STORE_EMPTY_REASON in message, message
-        assert not files["system"].exists(), message
+  def test_the_same_refusal_holds_at_the_system_door(self, tmp_path):
+    """⚑ ONE RULE, EVERY DOOR: ``system set workset.boxes=`` is the same write, so the
+    launch's refusal cannot be reachable at one noun and not another."""
+    files = _files(tmp_path)
+    message = _set(_BOXES, "", files, ConfigLevel.system)
+    assert message.startswith("Error:"), message
+    assert ERR_BOX_STORE_EMPTY_REASON in message, message
+    assert not files["system"].exists(), message
 
-    def test_a_valid_box_store_is_still_accepted_and_written(self, tmp_path, std):
-        from kanibako.project.workset import Workset
+  def test_a_valid_box_store_is_still_accepted_and_written(self, tmp_path, std):
+    from kanibako.project.workset import Workset
 
-        files = _files(tmp_path)
-        ws = Workset(name="ws", root=files["workset"].parent, early_system=std.early_system)
-        message = _set(_BOXES, "/tmp/boxstore", files, ConfigLevel.workset, std=std, ws=ws)
-        assert not message.startswith("Error:"), message
-        assert files["workset"].exists(), "a valid store was not written"
-        assert "boxstore" in files["workset"].read_text()
+    files = _files(tmp_path)
+    ws = Workset(name="ws", root=files["workset"].parent, early_system=std.early_system)
+    message = _set(_BOXES, "/tmp/boxstore", files, ConfigLevel.workset, std=std, ws=ws)
+    assert not message.startswith("Error:"), message
+    assert files["workset"].exists(), "a valid store was not written"
+    assert "boxstore" in files["workset"].read_text()
 
 
 class TestTheLaunchsOwnTestIsTheWholeRule:
-    """🛑 The membership is the launch's test, so it is pinned in BOTH directions."""
+  """🛑 The membership is the launch's test, so it is pinned in BOTH directions."""
 
-    @pytest.mark.parametrize("value", [
-        "",                       # the defect this file exists for
-        "/tmp/boxstore/",         # a trailing separator: the final segment resolved to nothing
-        0,                        # a non-str value: the launch's test refuses it too
-        None,                     # the --null door's shape — same predicate, other message
-    ])
-    def test_the_launch_refuses_these(self, value):
-        assert refuses_box_store_value(_BOXES, value) is True
+  @pytest.mark.parametrize(
+    "value",
+    [
+      "",  # the defect this file exists for
+      "/tmp/boxstore/",  # a trailing separator: the final segment resolved to nothing
+      0,  # a non-str value: the launch's test refuses it too
+      None,  # the --null door's shape — same predicate, other message
+    ],
+  )
+  def test_the_launch_refuses_these(self, value):
+    assert refuses_box_store_value(_BOXES, value) is True
 
-    @pytest.mark.parametrize("value", [
-        "/tmp/boxstore",
-        "/tmp/box store",         # a space inside is not an empty value
-        " ",                      # ⚑ WHITESPACE IS NOT EMPTY — the launch takes it
-        "\t",
-        "~",
-    ])
-    def test_the_launch_takes_these(self, value):
-        assert refuses_box_store_value(_BOXES, value) is False
+  @pytest.mark.parametrize(
+    "value",
+    [
+      "/tmp/boxstore",
+      "/tmp/box store",  # a space inside is not an empty value
+      " ",  # ⚑ WHITESPACE IS NOT EMPTY — the launch takes it
+      "\t",
+      "~",
+    ],
+  )
+  def test_the_launch_takes_these(self, value):
+    assert refuses_box_store_value(_BOXES, value) is False
 
-    @pytest.mark.parametrize("key", [
-        "system.canon",           # a path key, but not THE box store
-        "workset.workspaces",     # a workset dir key whose null MEANS "no dir" (§2c)
-        "workset.logs",
-        "box.image",
-    ])
-    def test_no_other_key_is_in_the_membership(self, key):
-        assert refuses_box_store_value(key, "") is False
+  @pytest.mark.parametrize(
+    "key",
+    [
+      "system.canon",  # a path key, but not THE box store
+      "workset.workspaces",  # a workset dir key whose null MEANS "no dir" (§2c)
+      "workset.logs",
+      "box.image",
+    ],
+  )
+  def test_no_other_key_is_in_the_membership(self, key):
+    assert refuses_box_store_value(key, "") is False
 
-    def test_a_whitespace_box_store_is_not_refused_by_this_door(self, tmp_path):
-        """⚑ A ``strip()`` here would be WORSE THAN BASE: the launch accepts a non-empty
-        string, so a set door that refused one would turn a working launch into a dead one."""
-        files = _files(tmp_path)
-        message = _set(_BOXES, " ", files, ConfigLevel.workset)
-        assert ERR_BOX_STORE_SET_HEAD not in message, message
+  def test_a_whitespace_box_store_is_not_refused_by_this_door(self, tmp_path):
+    """⚑ A ``strip()`` here would be WORSE THAN BASE: the launch accepts a non-empty
+    string, so a set door that refused one would turn a working launch into a dead one."""
+    files = _files(tmp_path)
+    message = _set(_BOXES, " ", files, ConfigLevel.workset)
+    assert ERR_BOX_STORE_SET_HEAD not in message, message
 
 
 class TestTheRefusalCarriesTheLaunchsOwnWords:
-    """One reason, one home — the anti-drift half, the way ``--null``'s door is built."""
+  """One reason, one home — the anti-drift half, the way ``--null``'s door is built."""
 
-    def test_both_value_classes_build_through_the_one_carrier(self):
-        """The empty-value door calls ``config.null_path_keys_error``, the same builder
-        ``_refuse_null_paths`` raises through, so a second copy of the text cannot exist."""
-        built = null_path_keys_error(
-            Path("/nowhere/settings.yaml"), (_BOXES,),
-            head=ERR_BOX_STORE_SET_HEAD, cure=ERR_BOX_STORE_EMPTY_REASON,
-        )
-        assert built is not None
-        assert built == ERR_BOX_STORE_SET_HEAD % _BOXES + ERR_BOX_STORE_EMPTY_REASON
+  def test_both_value_classes_build_through_the_one_carrier(self):
+    """The empty-value door calls ``config.null_path_keys_error``, the same builder
+    ``_refuse_null_paths`` raises through, so a second copy of the text cannot exist."""
+    built = null_path_keys_error(
+      Path("/nowhere/settings.yaml"),
+      (_BOXES,),
+      head=ERR_BOX_STORE_SET_HEAD,
+      cure=ERR_BOX_STORE_EMPTY_REASON,
+    )
+    assert built is not None
+    assert built == ERR_BOX_STORE_SET_HEAD % _BOXES + ERR_BOX_STORE_EMPTY_REASON
 
-    def test_the_null_membership_still_answers_for_the_null_door(self):
-        """The two doors are one value class apart, so neither borrows the other's message."""
-        assert refuses_null_path_key(_BOXES) is True
-        assert refuses_box_store_value(_BOXES, None) is True
+  def test_the_null_membership_still_answers_for_the_null_door(self):
+    """The two doors are one value class apart, so neither borrows the other's message."""
+    assert refuses_null_path_key(_BOXES) is True
+    assert refuses_box_store_value(_BOXES, None) is True
 
-    def test_the_null_door_keeps_its_own_lead(self, tmp_path):
-        files = _files(tmp_path)
-        message = _set(_BOXES, None, files, ConfigLevel.workset)
-        assert ERR_CONFIG_NULL_PATH_SET_HEAD % _BOXES in message, message
-        assert ERR_CONFIG_NULL_PATH_REASON in message, message
-        assert ERR_BOX_STORE_SET_HEAD % _BOXES not in message, message
-        assert not files["workset"].exists(), message
+  def test_the_null_door_keeps_its_own_lead(self, tmp_path):
+    files = _files(tmp_path)
+    message = _set(_BOXES, None, files, ConfigLevel.workset)
+    assert ERR_CONFIG_NULL_PATH_SET_HEAD % _BOXES in message, message
+    assert ERR_CONFIG_NULL_PATH_REASON in message, message
+    assert ERR_BOX_STORE_SET_HEAD % _BOXES not in message, message
+    assert not files["workset"].exists(), message
 
-    def test_the_lead_never_claims_a_file_holds_the_value(self, tmp_path):
-        """Nothing was written, so naming a file would be a false statement about the
-        user's own store — the reason the ``--null`` door has a lead of its own."""
-        files = _files(tmp_path)
-        message = _set(_BOXES, "", files, ConfigLevel.workset)
-        assert str(files["workset"]) not in message, message
+  def test_the_lead_never_claims_a_file_holds_the_value(self, tmp_path):
+    """Nothing was written, so naming a file would be a false statement about the
+    user's own store — the reason the ``--null`` door has a lead of its own."""
+    files = _files(tmp_path)
+    message = _set(_BOXES, "", files, ConfigLevel.workset)
+    assert str(files["workset"]) not in message, message
 
 
 # --------------------------------------------------------------------------- #
 # Row 2 — a fully spelled key of a CONTAINED scope                          #
 # --------------------------------------------------------------------------- #
 
+
 class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
-    """Spec §0's directional rule: a file may hold the keys of the scopes it CONTAINS."""
+  """Spec §0's directional rule: a file may hold the keys of the scopes it CONTAINS."""
 
-    def test_a_contained_scope_key_is_accepted_and_written_to_the_system_file(
-        self, tmp_path, std,
-    ):
-        files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, _CONTAINED_REF, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert files["system"].exists(), "the downward default was not written"
-        assert _CONTAINED_REF in files["system"].read_text()
+  def test_a_contained_scope_key_is_accepted_and_written_to_the_system_file(
+    self,
+    tmp_path,
+    std,
+  ):
+    files = _files(tmp_path)
+    message = _set(_CONTAINED_KEY, _CONTAINED_REF, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert files["system"].exists(), "the downward default was not written"
+    assert _CONTAINED_REF in files["system"].read_text()
 
-    def test_the_same_key_at_its_own_door_is_unchanged(self, ws_files):
-        """The contained scope's own door probes against the store that holds the referent,
-        so it was never blind and must not have been taught anything new."""
-        message = _set(_CONTAINED_KEY, _CONTAINED_REF, ws_files, ConfigLevel.workset,
-                       std=ws_files["std"], ws=ws_files["ws"])
-        assert not message.startswith("Error:"), message
+  def test_the_same_key_at_its_own_door_is_unchanged(self, ws_files):
+    """The contained scope's own door probes against the store that holds the referent,
+    so it was never blind and must not have been taught anything new."""
+    message = _set(
+      _CONTAINED_KEY,
+      _CONTAINED_REF,
+      ws_files,
+      ConfigLevel.workset,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert not message.startswith("Error:"), message
 
-    def test_a_dangling_ref_at_the_keys_own_door_is_still_refused(self, ws_files):
-        """The cure is keyed on the CONTAINMENT RELATION, so it cannot fire where the floor
-        DOES hold the referent — the contained scope's own door is not exempt."""
-        message = _set(_CONTAINED_KEY, "{workset.nonexistent}", ws_files,
-                       ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
-        assert message.startswith("Error:"), message
-        assert "dangling reference" in message, message
+  def test_a_dangling_ref_at_the_keys_own_door_is_still_refused(self, ws_files):
+    """The cure is keyed on the CONTAINMENT RELATION, so it cannot fire where the floor
+    DOES hold the referent — the contained scope's own door is not exempt."""
+    message = _set(
+      _CONTAINED_KEY,
+      "{workset.nonexistent}",
+      ws_files,
+      ConfigLevel.workset,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert message.startswith("Error:"), message
+    assert "dangling reference" in message, message
 
-    def test_a_contained_key_with_a_bare_value_is_unaffected(self, tmp_path, std):
-        """The cure is about a ref this floor cannot see; a plain value never went near it."""
-        files = _files(tmp_path)
-        message = _set("workset.template", "/srv/canon", files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
+  def test_a_contained_key_with_a_bare_value_is_unaffected(self, tmp_path, std):
+    """The cure is about a ref this floor cannot see; a plain value never went near it."""
+    files = _files(tmp_path)
+    message = _set("workset.template", "/srv/canon", files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
 
 
 class TestAMetaRefIsJudgedByItsScopeToken:
-    """``{meta.<scope>.*}`` names a scope in its SECOND segment: keyspec §2b's own default
-    for ``box.canon`` is ``{meta.box.path}/canon``, so a containing door that refused
-    ``{meta.box.path}/c2`` refused the shape of the declared default itself."""
+  """``{meta.<scope>.*}`` names a scope in its SECOND segment: keyspec §2b's own default
+  for ``box.canon`` is ``{meta.box.path}/canon``, so a containing door that refused
+  ``{meta.box.path}/c2`` refused the shape of the declared default itself."""
 
-    def test_a_box_key_may_reference_its_own_meta_scope_at_the_workset_door(self, ws_files):
-        message = _set("box.canon", "{meta.box.path}/c2", ws_files, ConfigLevel.workset,
-                       std=ws_files["std"], ws=ws_files["ws"])
-        assert not message.startswith("Error:"), message
-        assert "{meta.box.path}/c2" in ws_files["workset"].read_text()
+  def test_a_box_key_may_reference_its_own_meta_scope_at_the_workset_door(self, ws_files):
+    message = _set(
+      "box.canon",
+      "{meta.box.path}/c2",
+      ws_files,
+      ConfigLevel.workset,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert not message.startswith("Error:"), message
+    assert "{meta.box.path}/c2" in ws_files["workset"].read_text()
 
-    @pytest.mark.parametrize("key, value", [
-        ("workset.template", "{meta.workset.path}/t2"),   # own scope
-        ("box.canon", "{meta.workset.path}/{meta.box.name}/c3"),  # preceding sets
-    ])
-    def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
-        self, tmp_path, std, key, value,
-    ):
-        files = _files(tmp_path)
-        message = _set(key, value, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), f"{key}={value!r}: {message}"
-        assert value in files["system"].read_text()
+  @pytest.mark.parametrize(
+    "key, value",
+    [
+      ("workset.template", "{meta.workset.path}/t2"),  # own scope
+      ("box.canon", "{meta.workset.path}/{meta.box.name}/c3"),  # preceding sets
+    ],
+  )
+  def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
+    self,
+    tmp_path,
+    std,
+    key,
+    value,
+  ):
+    files = _files(tmp_path)
+    message = _set(key, value, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), f"{key}={value!r}: {message}"
+    assert value in files["system"].read_text()
 
-    @pytest.mark.parametrize("value, phrase", [
-        ("{meta.box.path}/t2", _ORDERING),              # meta.box resolves after workset
-        ("{meta.runtime.ws_root}/t2", "dangling reference"),   # no scope token
-        ("{meta.workset.nope}/t2", "dangling reference"),      # own scope, but undeclared
-    ])
-    def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value, phrase):
-        files = _files(tmp_path)
-        message = _set("workset.template", value, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-        assert phrase in message, message
-        assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
+  @pytest.mark.parametrize(
+    "value, phrase",
+    [
+      ("{meta.box.path}/t2", _ORDERING),  # meta.box resolves after workset
+      ("{meta.runtime.ws_root}/t2", "dangling reference"),  # no scope token
+      ("{meta.workset.nope}/t2", "dangling reference"),  # own scope, but undeclared
+    ],
+  )
+  def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value, phrase):
+    files = _files(tmp_path)
+    message = _set("workset.template", value, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+    assert phrase in message, message
+    assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
-    def test_a_later_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
-        message = _set("workset.template", "{meta.box.path}/t2", ws_files,
-                       ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
-        assert message.startswith("Error:"), message
-        assert _ORDERING in message, message
+  def test_a_later_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
+    message = _set(
+      "workset.template",
+      "{meta.box.path}/t2",
+      ws_files,
+      ConfigLevel.workset,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert message.startswith("Error:"), message
+    assert _ORDERING in message, message
 
 
 class TestAnUpwardWriteStaysRefused:
-    """The other half of §0's rule, and the message is UNCHANGED text."""
+  """The other half of §0's rule, and the message is UNCHANGED text."""
 
-    def test_a_workset_door_still_refuses_a_system_key(self, tmp_path):
-        files = _files(tmp_path)
-        message = _set("system.canon", "/tmp/canon", files, ConfigLevel.workset)
-        assert message.startswith("Error:"), message
-        assert "writing upward is refused" in message, message
-        assert "Set it at the system scope instead." in message, message
-        assert not files["workset"].exists(), message
+  def test_a_workset_door_still_refuses_a_system_key(self, tmp_path):
+    files = _files(tmp_path)
+    message = _set("system.canon", "/tmp/canon", files, ConfigLevel.workset)
+    assert message.startswith("Error:"), message
+    assert "writing upward is refused" in message, message
+    assert "Set it at the system scope instead." in message, message
+    assert not files["workset"].exists(), message
 
-    def test_a_system_door_still_refuses_a_meta_key(self, tmp_path):
-        files = _files(tmp_path)
-        message = _set("meta.box.name", "b", files, ConfigLevel.system)
-        assert message.startswith("Error:"), message
-        assert not files["system"].exists(), message
+  def test_a_system_door_still_refuses_a_meta_key(self, tmp_path):
+    files = _files(tmp_path)
+    message = _set("meta.box.name", "b", files, ConfigLevel.system)
+    assert message.startswith("Error:"), message
+    assert not files["system"].exists(), message
 
-    def test_a_ref_the_floor_does_hold_is_judged_normally(self, tmp_path, std):
-        """The blindness is a property of the ABSENCE, not a blanket pass: at the system
-        door the ``@system.*`` referent IS in the floor, so the probe judges it as always."""
-        files = _files(tmp_path)
-        message = _set("workset.template", "{system.canon}", files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
+  def test_a_ref_the_floor_does_hold_is_judged_normally(self, tmp_path, std):
+    """The blindness is a property of the ABSENCE, not a blanket pass: at the system
+    door the ``@system.*`` referent IS in the floor, so the probe judges it as always."""
+    files = _files(tmp_path)
+    message = _set("workset.template", "{system.canon}", files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
 
 
 class TestWhatStaysRefused:
-    """🛑 A RELAXED refusal is the real risk, so every non-blindness defect is pinned here."""
+  """🛑 A RELAXED refusal is the real risk, so every non-blindness defect is pinned here."""
 
-    @pytest.mark.parametrize("value", [
-        "{workset.nonexistent}",            # undeclared referent: a real dangling ref
-        "{workset.auth.path}",              # self-reference: a cycle, not a missing referent
-        "{workset.channelroot}/{workset.nope}",   # one declared and one not
-        "{config.nonexistent}",             # the Layer-1 foundation, not a cascade scope
-        "@",                                # malformed
-    ])
-    def test_these_are_still_refused_at_the_system_door(self, tmp_path, std, value):
-        files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-        assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
+  @pytest.mark.parametrize(
+    "value",
+    [
+      "{workset.nonexistent}",  # undeclared referent: a real dangling ref
+      "{workset.auth.path}",  # self-reference: a cycle, not a missing referent
+      "{workset.channelroot}/{workset.nope}",  # one declared and one not
+      "{config.nonexistent}",  # the Layer-1 foundation, not a cascade scope
+      "@",  # malformed
+    ],
+  )
+  def test_these_are_still_refused_at_the_system_door(self, tmp_path, std, value):
+    files = _files(tmp_path)
+    message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+    assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
-    @pytest.mark.parametrize("key, value", [
-        # ⚑ A ref into a LATER key set (system-design "Ordering rule"). Declared, and ABSENT
-        # from the system floor exactly as a blind referent is, so the blindness rule would
-        # swallow every one were the ordering rule not judged first.
-        ("workset.canon", "{box.canon}/x"),          # box resolves after workset
-        ("workset.canon", "{box.canon}"),
-        ("workset.boxes", "{box.bindings.ro}"),      # a declared, non-path box key
-        ("workset.boxes", "{box.canon}"),
-        ("workset.canon", "{box.canon}/{workset.channelroot}"),  # own set, in a later-set value
-        ("agent.claude.env.FOO", "{workset.canon}/x"),  # workset resolves after agent
-    ])
-    def test_a_ref_into_a_later_set_is_refused_at_the_containing_door(
-        self, tmp_path, std, key, value,
-    ):
-        """🛑 THE ORDERING RULE, and the reason the forgiveness is bounded.
+  @pytest.mark.parametrize(
+    "key, value",
+    [
+      # ⚑ A ref into a LATER key set (system-design "Ordering rule"). Declared, and ABSENT
+      # from the system floor exactly as a blind referent is, so the blindness rule would
+      # swallow every one were the ordering rule not judged first.
+      ("workset.canon", "{box.canon}/x"),  # box resolves after workset
+      ("workset.canon", "{box.canon}"),
+      ("workset.boxes", "{box.bindings.ro}"),  # a declared, non-path box key
+      ("workset.boxes", "{box.canon}"),
+      ("workset.canon", "{box.canon}/{workset.channelroot}"),  # own set, in a later-set value
+      ("agent.claude.env.FOO", "{workset.canon}/x"),  # workset resolves after agent
+    ],
+  )
+  def test_a_ref_into_a_later_set_is_refused_at_the_containing_door(
+    self,
+    tmp_path,
+    std,
+    key,
+    value,
+  ):
+    """🛑 THE ORDERING RULE, and the reason the forgiveness is bounded.
 
-        A ``workset.*`` key holding ``@box.*`` binds ONE box's settings for the whole
-        workset, so a set that stores it writes a value the cascade cannot honor and the
-        user learns it from a wrong ``handbook/workset`` mount instead of at the door.
-        """
-        files = _files(tmp_path)
-        message = _set(key, value, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"{key}={value!r} was ACCEPTED: {message}"
-        assert _ORDERING in message, message
-        assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
+    A ``workset.*`` key holding ``@box.*`` binds ONE box's settings for the whole
+    workset, so a set that stores it writes a value the cascade cannot honor and the
+    user learns it from a wrong ``handbook/workset`` mount instead of at the door.
+    """
+    files = _files(tmp_path)
+    message = _set(key, value, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), f"{key}={value!r} was ACCEPTED: {message}"
+    assert _ORDERING in message, message
+    assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
 
-    @pytest.mark.parametrize("value", ["{box.enable_vault}", "{box.image}"])
-    def test_a_later_set_ref_this_floor_HOLDS_is_refused_too(self, tmp_path, std, value):
-        """🛑 The rule reads the SPELLING, not the floor.
+  @pytest.mark.parametrize("value", ["{box.enable_vault}", "{box.image}"])
+  def test_a_later_set_ref_this_floor_HOLDS_is_refused_too(self, tmp_path, std, value):
+    """🛑 The rule reads the SPELLING, not the floor.
 
-        The declared floor carries some ``box.*`` defaults, so ``{box.enable_vault}`` and
-        ``{box.image}`` RESOLVE at the system command; a check that asked the floor would
-        store them.
-        """
-        files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-        assert _ORDERING in message, message
-        assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
+    The declared floor carries some ``box.*`` defaults, so ``{box.enable_vault}`` and
+    ``{box.image}`` RESOLVE at the system command; a check that asked the floor would
+    store them.
+    """
+    files = _files(tmp_path)
+    message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+    assert _ORDERING in message, message
+    assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
-    def test_the_keys_own_door_refuses_the_later_set_ref_too(self, ws_files):
-        """One rule, both doors, one wording."""
-        message = _set(_CONTAINED_KEY, "{box.canon}/x", ws_files, ConfigLevel.workset,
-                       std=ws_files["std"], ws=ws_files["ws"])
-        assert message.startswith("Error:"), message
-        assert _ORDERING in message, message
+  def test_the_keys_own_door_refuses_the_later_set_ref_too(self, ws_files):
+    """One rule, both doors, one wording."""
+    message = _set(
+      _CONTAINED_KEY,
+      "{box.canon}/x",
+      ws_files,
+      ConfigLevel.workset,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert message.startswith("Error:"), message
+    assert _ORDERING in message, message
 
-    def test_a_ref_into_a_preceding_meta_set_is_accepted(self, tmp_path, std):
-        """``meta.workset`` resolves before ``agent``, though the workset scope is contained
-        by the agent scope: the order decides, not the containment."""
-        files = _files(tmp_path)
-        message = _set("agent.claude.env.FOO", "{meta.workset.path}/x", files,
-                       ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        written = [p.read_text() for p in files["agents"].rglob("*") if p.is_file()]
-        assert any("{meta.workset.path}/x" in text for text in written), written
+  def test_a_ref_into_a_preceding_meta_set_is_accepted(self, tmp_path, std):
+    """``meta.workset`` resolves before ``agent``, though the workset scope is contained
+    by the agent scope: the order decides, not the containment."""
+    files = _files(tmp_path)
+    message = _set(
+      "agent.claude.env.FOO", "{meta.workset.path}/x", files, ConfigLevel.system, std=std
+    )
+    assert not message.startswith("Error:"), message
+    written = [p.read_text() for p in files["agents"].rglob("*") if p.is_file()]
+    assert any("{meta.workset.path}/x" in text for text in written), written
 
-    def test_a_malformed_variable_is_not_forgiven(self, tmp_path, std):
-        """⚑ THE VARIABLE FAMILY, which the blindness rule has to read before it forgives.
+  def test_a_malformed_variable_is_not_forgiven(self, tmp_path, std):
+    """⚑ THE VARIABLE FAMILY, which the blindness rule has to read before it forgives.
 
-        The forgiving path is the one place a set decides a token is a token, so it runs
-        the resolver's own scan; a ``{$}`` it never parsed is a defect it could not see.
-        """
-        files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "{workset.channelroot}/{$}", files,
-                       ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"a malformed {{$}} was ACCEPTED: {message}"
-        assert "malformed" in message, message
-        assert not files["system"].exists(), message
+    The forgiving path is the one place a set decides a token is a token, so it runs
+    the resolver's own scan; a ``{$}`` it never parsed is a defect it could not see.
+    """
+    files = _files(tmp_path)
+    message = _set(_CONTAINED_KEY, "{workset.channelroot}/{$}", files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), f"a malformed {{$}} was ACCEPTED: {message}"
+    assert "malformed" in message, message
+    assert not files["system"].exists(), message
 
-    def test_an_at_before_a_name_is_not_a_ref(self, tmp_path, std):
-        r"""``@workset.nonexistent`` is text, so the floor's blindness must not open.
+  def test_an_at_before_a_name_is_not_a_ref(self, tmp_path, std):
+    r"""``@workset.nonexistent`` is text, so the floor's blindness must not open.
 
-        ⚑ This is a GUARD, not a new behavior: the value never reaches the probe, because
-        the bare-relative refusal (keyspec §2a "A path key's stored value") takes it first. What is
-        pinned is that the blindness rule did not open behind that guard.
-        """
-        files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "@workset.nonexistent", files,
-                       ConfigLevel.system, std=std)
-        assert "dangling reference" not in message, message
-        assert not files["system"].exists(), message
+    ⚑ This is a GUARD, not a new behavior: the value never reaches the probe, because
+    the bare-relative refusal (keyspec §2a "A path key's stored value") takes it first. What is
+    pinned is that the blindness rule did not open behind that guard.
+    """
+    files = _files(tmp_path)
+    message = _set(_CONTAINED_KEY, "@workset.nonexistent", files, ConfigLevel.system, std=std)
+    assert "dangling reference" not in message, message
+    assert not files["system"].exists(), message
 
 
 # --------------------------------------------------------------------------- #
 # The launch's own test and its own two reasons — stated once, and shared      #
 # --------------------------------------------------------------------------- #
 
+
 class TestTheLaunchAndTheDoorShareOneTest:
-    """🛑 TWO DOORS, ONE TEST. The launch reads two keys with one value test; the set
-    door has to reach the same verdict or it refuses a launch that works."""
+  """🛑 TWO DOORS, ONE TEST. The launch reads two keys with one value test; the set
+  door has to reach the same verdict or it refuses a launch that works."""
 
-    @pytest.mark.parametrize("value", [
-        "/tmp/boxstore",       # usable — the launch continues, so must the door
-        "/tmp/box store",
-        " ",
-        "~",
-        "",                    # the defect: the launch raises
-        "/tmp/boxstore/",      # a trailing separator: the launch raises
-        0,
-        None,
-        [],
-    ])
-    def test_the_launch_agrees_with_the_shared_test_on_every_value(self, value):
-        """``_assert_box_root_resolved`` IS the launch's statement of the rule, and it
-        now states it by calling the predicate the door also calls."""
-        snapshot = _root_store(value)
-        if usable_box_store_value(value):
-            _assert_box_root_resolved(snapshot)          # no raise
-        else:
-            with pytest.raises(SettingsError):
-                _assert_box_root_resolved(snapshot)
+  @pytest.mark.parametrize(
+    "value",
+    [
+      "/tmp/boxstore",  # usable — the launch continues, so must the door
+      "/tmp/box store",
+      " ",
+      "~",
+      "",  # the defect: the launch raises
+      "/tmp/boxstore/",  # a trailing separator: the launch raises
+      0,
+      None,
+      [],
+    ],
+  )
+  def test_the_launch_agrees_with_the_shared_test_on_every_value(self, value):
+    """``_assert_box_root_resolved`` IS the launch's statement of the rule, and it
+    now states it by calling the predicate the door also calls."""
+    snapshot = _root_store(value)
+    if usable_box_store_value(value):
+      _assert_box_root_resolved(snapshot)  # no raise
+    else:
+      with pytest.raises(SettingsError):
+        _assert_box_root_resolved(snapshot)
 
-    def test_the_launch_checks_both_keys_with_that_one_test(self):
-        """⚑ THE ASYMMETRY, pinned: ``workset.boxes`` and ``meta.box.path`` are both read,
-        while the set door's membership is the ``workset.boxes`` KEY alone."""
-        for key in ("workset.boxes", "meta.box.path"):
-            with pytest.raises(SettingsError) as ei:
-                _assert_box_root_resolved(_root_store("", at=key))
-            assert key in str(ei.value), (key, str(ei.value))
+  def test_the_launch_checks_both_keys_with_that_one_test(self):
+    """⚑ THE ASYMMETRY, pinned: ``workset.boxes`` and ``meta.box.path`` are both read,
+    while the set door's membership is the ``workset.boxes`` KEY alone."""
+    for key in ("workset.boxes", "meta.box.path"):
+      with pytest.raises(SettingsError) as ei:
+        _assert_box_root_resolved(_root_store("", at=key))
+      assert key in str(ei.value), (key, str(ei.value))
 
-    def test_the_doors_membership_adds_the_key_and_nothing_else(self):
-        """``refuses_box_store_value`` is the key check composed onto the shared value
-        test — so a change to the launch's test cannot leave the door behind."""
-        for value in ("", "/tmp/bs/", 0, None, "/tmp/bs", " ", "~"):
-            assert refuses_box_store_value(_BOXES, value) is (
-                not usable_box_store_value(value)
-            )
-        # …and the key half, which the launch does not ask about:
-        for key in ("system.canon", "workset.workspaces", "meta.box.path"):
-            assert refuses_box_store_value(key, "") is False
+  def test_the_doors_membership_adds_the_key_and_nothing_else(self):
+    """``refuses_box_store_value`` is the key check composed onto the shared value
+    test — so a change to the launch's test cannot leave the door behind."""
+    for value in ("", "/tmp/bs/", 0, None, "/tmp/bs", " ", "~"):
+      assert refuses_box_store_value(_BOXES, value) is (not usable_box_store_value(value))
+    # …and the key half, which the launch does not ask about:
+    for key in ("system.canon", "workset.workspaces", "meta.box.path"):
+      assert refuses_box_store_value(key, "") is False
 
 
 class TestTheRefusalTextLivesInOnePlace:
-    """The two reason clauses are the launch's OWN sentences; a second copy is a second
-    opinion free to drift, so the launch quotes the constants the set door quotes."""
+  """The two reason clauses are the launch's OWN sentences; a second copy is a second
+  opinion free to drift, so the launch quotes the constants the set door quotes."""
 
-    @pytest.mark.parametrize("value, reason", [
-        ("", ERR_BOX_STORE_EMPTY_REASON),
-        ("/tmp/boxstore/", ERR_BOX_STORE_TRAILING_REASON),
-        (None, ERR_BOX_STORE_EMPTY_REASON),
-    ])
-    def test_the_launch_quotes_the_shared_clause(self, value, reason):
-        with pytest.raises(SettingsError) as ei:
-            _assert_box_root_resolved(_root_store(value))
-        assert reason in str(ei.value), str(ei.value)
+  @pytest.mark.parametrize(
+    "value, reason",
+    [
+      ("", ERR_BOX_STORE_EMPTY_REASON),
+      ("/tmp/boxstore/", ERR_BOX_STORE_TRAILING_REASON),
+      (None, ERR_BOX_STORE_EMPTY_REASON),
+    ],
+  )
+  def test_the_launch_quotes_the_shared_clause(self, value, reason):
+    with pytest.raises(SettingsError) as ei:
+      _assert_box_root_resolved(_root_store(value))
+    assert reason in str(ei.value), str(ei.value)
 
-    def test_the_set_door_quotes_the_same_clause(self, tmp_path):
-        files = _files(tmp_path)
-        assert ERR_BOX_STORE_EMPTY_REASON in _set(_BOXES, "", files, ConfigLevel.workset)
+  def test_the_set_door_quotes_the_same_clause(self, tmp_path):
+    files = _files(tmp_path)
+    assert ERR_BOX_STORE_EMPTY_REASON in _set(_BOXES, "", files, ConfigLevel.workset)
 
 
 class TestOneGrammarForOneValue:
-    """Fix 3: the set-time blindness rule reads the resolver's scan, so there is no
-    second opinion on what a value contains — including its ``{$VAR}`` tokens."""
+  """Fix 3: the set-time blindness rule reads the resolver's scan, so there is no
+  second opinion on what a value contains — including its ``{$VAR}`` tokens."""
 
-    def test_the_shared_scan_is_what_the_set_door_uses(self):
-        assert scan_tokens("{workset.canon}") == (["workset.canon"], [])
-        assert scan_tokens("{$XDG_DATA_HOME}/x") == ([], ["XDG_DATA_HOME"])
-        assert scan_tokens("@{a.b}.jsonl") == (["a.b"], [])
+  def test_the_shared_scan_is_what_the_set_door_uses(self):
+    assert scan_tokens("{workset.canon}") == (["workset.canon"], [])
+    assert scan_tokens("{$XDG_DATA_HOME}/x") == ([], ["XDG_DATA_HOME"])
+    assert scan_tokens("@{a.b}.jsonl") == (["a.b"], [])
 
-    @pytest.mark.parametrize("value", ["{", "{$X", "{workset.channelroot}/{$}"])
-    def test_a_malformed_token_raises_rather_than_scanning_past_it(self, value):
-        with pytest.raises(ValueError):
-            scan_tokens(value)
+  @pytest.mark.parametrize("value", ["{", "{$X", "{workset.channelroot}/{$}"])
+  def test_a_malformed_token_raises_rather_than_scanning_past_it(self, value):
+    with pytest.raises(ValueError):
+      scan_tokens(value)
 
-    def test_the_set_door_does_not_carry_a_snapshot_walk_of_its_own(self):
-        """A private re-walk of a value is what this removed; assert the shape, since a
-        behavioral test cannot see a duplicate that happens to agree today."""
-        from kanibako.settings import config_interface
+  def test_the_set_door_does_not_carry_a_snapshot_walk_of_its_own(self):
+    """A private re-walk of a value is what this removed; assert the shape, since a
+    behavioral test cannot see a duplicate that happens to agree today."""
+    from kanibako.settings import config_interface
 
-        assert not hasattr(config_interface, "_snapshot_has"), (
-            "config_interface still carries its own snapshot walk"
-        )
+    assert not hasattr(config_interface, "_snapshot_has"), (
+      "config_interface still carries its own snapshot walk"
+    )
 
 
 class TestTheRefusalNamesTheReallyBrokenRef:
-    """Spec §2a: "Name the broken upstream dependency." A chain holding both a ref this
-    floor cannot see and an undeclared one is refused by the UNDECLARED one — naming the
-    blind ref sends the user to strip an anchor that was never the fault."""
+  """Spec §2a: "Name the broken upstream dependency." A chain holding both a ref this
+  floor cannot see and an undeclared one is refused by the UNDECLARED one — naming the
+  blind ref sends the user to strip an anchor that was never the fault."""
 
-    _BOTH = "/x/{meta.workset.path}/{box.nope}/{meta.box.name}"
-    _STORED_BOTH = "box:\n  shell: /s/{meta.workset.path}/{box.nope}\n"
-    _STORED_BLIND = "box:\n  shell: /s/{meta.workset.path}\n"
-    _CHAIN = "/x/{box.shell}/{meta.box.name}"
+  _BOTH = "/x/{meta.workset.path}/{box.nope}/{meta.box.name}"
+  _STORED_BOTH = "box:\n  shell: /s/{meta.workset.path}/{box.nope}\n"
+  _STORED_BLIND = "box:\n  shell: /s/{meta.workset.path}\n"
+  _CHAIN = "/x/{box.shell}/{meta.box.name}"
 
-    def _refused(self, files, value, std):
-        before = files["system"].read_text() if files["system"].exists() else None
-        message = _set("box.canon", value, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), message
-        after = files["system"].read_text() if files["system"].exists() else None
-        assert after == before, f"{value!r} was WRITTEN: {message}"
-        return message
+  def _refused(self, files, value, std):
+    before = files["system"].read_text() if files["system"].exists() else None
+    message = _set("box.canon", value, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), message
+    after = files["system"].read_text() if files["system"].exists() else None
+    assert after == before, f"{value!r} was WRITTEN: {message}"
+    return message
 
-    def test_a_direct_value_names_the_undeclared_ref(self, tmp_path, std):
-        message = self._refused(_files(tmp_path), self._BOTH, std)
-        assert "'{box.nope}'" in message, message
-        assert "'{meta.workset.path}'" not in message, message
+  def test_a_direct_value_names_the_undeclared_ref(self, tmp_path, std):
+    message = self._refused(_files(tmp_path), self._BOTH, std)
+    assert "'{box.nope}'" in message, message
+    assert "'{meta.workset.path}'" not in message, message
 
-    def test_a_stored_chain_names_the_undeclared_ref(self, tmp_path, std):
-        files = _files(tmp_path)
-        files["system"].write_text(self._STORED_BOTH)
-        message = self._refused(files, "/x/{box.shell}", std)
-        assert "'{box.nope}'" in message, message
-        assert "'{meta.workset.path}'" not in message, message
+  def test_a_stored_chain_names_the_undeclared_ref(self, tmp_path, std):
+    files = _files(tmp_path)
+    files["system"].write_text(self._STORED_BOTH)
+    message = self._refused(files, "/x/{box.shell}", std)
+    assert "'{box.nope}'" in message, message
+    assert "'{meta.workset.path}'" not in message, message
 
-    def test_only_the_undeclared_ref_is_refused_as_before(self, tmp_path, std):
-        message = self._refused(_files(tmp_path), "/x/{box.nope}", std)
-        assert "'{box.nope}'" in message, message
+  def test_only_the_undeclared_ref_is_refused_as_before(self, tmp_path, std):
+    message = self._refused(_files(tmp_path), "/x/{box.nope}", std)
+    assert "'{box.nope}'" in message, message
 
-    def test_only_the_blind_ref_is_accepted_as_before(self, tmp_path, std):
-        files = _files(tmp_path)
-        value = "/x/{meta.workset.path}/{meta.box.name}"
-        message = _set("box.canon", value, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert value in files["system"].read_text()
+  def test_only_the_blind_ref_is_accepted_as_before(self, tmp_path, std):
+    files = _files(tmp_path)
+    value = "/x/{meta.workset.path}/{meta.box.name}"
+    message = _set("box.canon", value, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert value in files["system"].read_text()
 
-    def test_a_stored_chain_with_only_the_blind_ref_is_accepted(self, tmp_path, std):
-        files = _files(tmp_path)
-        files["system"].write_text(self._STORED_BLIND)
-        message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert self._CHAIN in files["system"].read_text()
+  def test_a_stored_chain_with_only_the_blind_ref_is_accepted(self, tmp_path, std):
+    files = _files(tmp_path)
+    files["system"].write_text(self._STORED_BLIND)
+    message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert self._CHAIN in files["system"].read_text()
 
-    @pytest.mark.parametrize("stored, phrase", [
-        ("box:\n  shell: /s/{meta.workset.path}/{box.image}\n  image: /i/{box.shell}\n",
-         "Cyclic reference"),
-        ("box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
-         "Unknown variable: {$NOPE_UNKNOWN}"),
-        ("box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
-         + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
-         + "    V70: /{meta.workset.path}/end\n",
-         "depth cap"),
-    ], ids=["cycle", "unknown-variable", "depth-cap"])
-    def test_a_stored_chain_names_the_defect_behind_the_blind_ref(
-        self, tmp_path, std, stored, phrase,
-    ):
-        files = _files(tmp_path)
-        files["system"].write_text(stored)
-        message = self._refused(files, self._CHAIN, std)
-        assert phrase in message, message
-        assert "'{meta.workset.path}'" not in message, message
+  @pytest.mark.parametrize(
+    "stored, phrase",
+    [
+      (
+        "box:\n  shell: /s/{meta.workset.path}/{box.image}\n  image: /i/{box.shell}\n",
+        "Cyclic reference",
+      ),
+      (
+        "box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
+        "Unknown variable: {$NOPE_UNKNOWN}",
+      ),
+      (
+        "box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
+        + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
+        + "    V70: /{meta.workset.path}/end\n",
+        "depth cap",
+      ),
+    ],
+    ids=["cycle", "unknown-variable", "depth-cap"],
+  )
+  def test_a_stored_chain_names_the_defect_behind_the_blind_ref(
+    self,
+    tmp_path,
+    std,
+    stored,
+    phrase,
+  ):
+    files = _files(tmp_path)
+    files["system"].write_text(stored)
+    message = self._refused(files, self._CHAIN, std)
+    assert phrase in message, message
+    assert "'{meta.workset.path}'" not in message, message
 
-    @pytest.mark.parametrize("stored, ref, phrase", [
-        ("", "{$NOPE_UNKNOWN}", "Unknown variable: {$NOPE_UNKNOWN}"),
-        ("box:\n  shell: /s/{box.image}\n  image: /i/{box.shell}\n", "{box.shell}",
-         "Cyclic reference"),
-    ], ids=["unknown-variable", "cycle"])
-    def test_a_direct_value_names_the_defect_beside_the_blind_ref(
-        self, tmp_path, std, stored, ref, phrase,
-    ):
-        files = _files(tmp_path)
-        if stored:
-            files["system"].write_text(stored)
-        message = self._refused(files, f"/x/{{meta.workset.path}}/{{meta.box.name}}/{ref}", std)
-        assert phrase in message, message
-        assert "'{meta.workset.path}'" not in message, message
+  @pytest.mark.parametrize(
+    "stored, ref, phrase",
+    [
+      ("", "{$NOPE_UNKNOWN}", "Unknown variable: {$NOPE_UNKNOWN}"),
+      (
+        "box:\n  shell: /s/{box.image}\n  image: /i/{box.shell}\n",
+        "{box.shell}",
+        "Cyclic reference",
+      ),
+    ],
+    ids=["unknown-variable", "cycle"],
+  )
+  def test_a_direct_value_names_the_defect_beside_the_blind_ref(
+    self,
+    tmp_path,
+    std,
+    stored,
+    ref,
+    phrase,
+  ):
+    files = _files(tmp_path)
+    if stored:
+      files["system"].write_text(stored)
+    message = self._refused(files, f"/x/{{meta.workset.path}}/{{meta.box.name}}/{ref}", std)
+    assert phrase in message, message
+    assert "'{meta.workset.path}'" not in message, message
 
 
 class TestADefectInATableReferentIsTheReferrersDefect:
-    """Spec §2a: the edited value's own upstream chain includes every leaf of a table it
-    references whole, so a broken leaf there refuses the set, named."""
+  """Spec §2a: the edited value's own upstream chain includes every leaf of a table it
+  references whole, so a broken leaf there refuses the set, named."""
 
-    _TABLE = "agent:\n  default:\n    env:\n      X: x\n"
-    _VALUE = "{agent.default.env}"
+  _TABLE = "agent:\n  default:\n    env:\n      X: x\n"
+  _VALUE = "{agent.default.env}"
 
-    def _stored(self, files, extra=""):
-        files["system"].write_text(self._TABLE + extra)
-        return files["system"].read_text()
+  def _stored(self, files, extra=""):
+    files["system"].write_text(self._TABLE + extra)
+    return files["system"].read_text()
 
-    @pytest.mark.parametrize("extra, phrase", [
-        ("      Y: '{agent.default.env.Y}'\n", "cyclic reference"),
-        ("      Y: '{box.nope}'\n", "dangling reference '{box.nope}'"),
-        ("".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(70))
-         + "      V70: end\n", "depth cap"),
-    ], ids=["cycle", "undeclared", "depth-cap"])
-    def test_a_broken_leaf_refuses_and_is_named(self, tmp_path, std, extra, phrase):
-        files = _files(tmp_path)
-        before = self._stored(files, extra)
-        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), message
-        assert "agent.default.env." in message and phrase in message, message
-        assert files["system"].read_text() == before
+  @pytest.mark.parametrize(
+    "extra, phrase",
+    [
+      ("      Y: '{agent.default.env.Y}'\n", "cyclic reference"),
+      ("      Y: '{box.nope}'\n", "dangling reference '{box.nope}'"),
+      (
+        "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(70))
+        + "      V70: end\n",
+        "depth cap",
+      ),
+    ],
+    ids=["cycle", "undeclared", "depth-cap"],
+  )
+  def test_a_broken_leaf_refuses_and_is_named(self, tmp_path, std, extra, phrase):
+    files = _files(tmp_path)
+    before = self._stored(files, extra)
+    message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:"), message
+    assert "agent.default.env." in message and phrase in message, message
+    assert files["system"].read_text() == before
 
-    def test_a_table_holding_its_referrer_is_a_cycle_not_a_crash(self, tmp_path, std):
-        files = _files(tmp_path)
-        files["system"].write_text("box:\n  env:\n    A: a\n")
-        message = _set("box.env.B", "{box.env}", files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:") and "cyclic reference" in message, message
-        assert "B:" not in files["system"].read_text()
+  def test_a_table_holding_its_referrer_is_a_cycle_not_a_crash(self, tmp_path, std):
+    files = _files(tmp_path)
+    files["system"].write_text("box:\n  env:\n    A: a\n")
+    message = _set("box.env.B", "{box.env}", files, ConfigLevel.system, std=std)
+    assert message.startswith("Error:") and "cyclic reference" in message, message
+    assert "B:" not in files["system"].read_text()
 
-    def test_the_trail_into_the_table_lends_its_leaves_no_depth(self, tmp_path, std):
-        files = _files(tmp_path)
-        files["system"].write_text(
-            "box:\n  env:\n    B: '{agent.default.env}'\nagent:\n  default:\n    env:\n"
-            + "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(2, 63))
-            + "      V63: /end\n")
-        value = "/{agent.default.env.V2}"
-        message = _set("agent.default.env.V1", value, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert value in files["system"].read_text()
+  def test_the_trail_into_the_table_lends_its_leaves_no_depth(self, tmp_path, std):
+    files = _files(tmp_path)
+    files["system"].write_text(
+      "box:\n  env:\n    B: '{agent.default.env}'\nagent:\n  default:\n    env:\n"
+      + "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(2, 63))
+      + "      V63: /end\n"
+    )
+    value = "/{agent.default.env.V2}"
+    message = _set("agent.default.env.V1", value, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert value in files["system"].read_text()
 
-    def test_a_clean_table_is_accepted(self, tmp_path, std):
-        files = _files(tmp_path)
-        self._stored(files)
-        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert self._VALUE in files["system"].read_text()
+  def test_a_clean_table_is_accepted(self, tmp_path, std):
+    files = _files(tmp_path)
+    self._stored(files)
+    message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert self._VALUE in files["system"].read_text()
 
-    def test_a_leaf_only_blind_here_is_accepted(self, tmp_path, std):
-        files = _files(tmp_path)
-        self._stored(files, "      Y: /s/{meta.workset.path}\n")
-        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
-        assert self._VALUE in files["system"].read_text()
+  def test_a_leaf_only_blind_here_is_accepted(self, tmp_path, std):
+    files = _files(tmp_path)
+    self._stored(files, "      Y: /s/{meta.workset.path}\n")
+    message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+    assert not message.startswith("Error:"), message
+    assert self._VALUE in files["system"].read_text()
 
 
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
-    """A resolved snapshot holding *value* at *at*, with the other root key usable."""
-    snapshot = KeyStore()
-    segments = at.split(".")
-    node = snapshot
-    for segment in segments[:-1]:
-        child = KeyStore()
-        node[segment] = child
-        node = child
-    node[segments[-1]] = value
-    if at != "meta.box.path":
-        snapshot["meta"] = KeyStore({"box": KeyStore({"path": "/tmp/onebox"})})
-    return snapshot
+  """A resolved snapshot holding *value* at *at*, with the other root key usable."""
+  snapshot = KeyStore()
+  segments = at.split(".")
+  node = snapshot
+  for segment in segments[:-1]:
+    child = KeyStore()
+    node[segment] = child
+    node = child
+  node[segments[-1]] = value
+  if at != "meta.box.path":
+    snapshot["meta"] = KeyStore({"box": KeyStore({"path": "/tmp/onebox"})})
+  return snapshot
 
 
 # --------------------------------------------------------------------------- #
@@ -728,65 +845,76 @@ _TEXT_ENDPOINT = "https://SEKRITU:SEKRITP@host.invalid/v1/$NOPE/~x/@{a.b}/a\\b"
 
 
 def _stored_endpoints(root: Path) -> list:
-    """Every ``endpoint`` leaf in every settings file under *root*, as loaded."""
-    from kanibako.settings.config_io import load_doc
+  """Every ``endpoint`` leaf in every settings file under *root*, as loaded."""
+  from kanibako.settings.config_io import load_doc
 
-    found: list = []
+  found: list = []
 
-    def walk(node: object) -> None:
-        if isinstance(node, dict):
-            for key, child in node.items():
-                if key == "endpoint":
-                    found.append(child)
-                walk(child)
+  def walk(node: object) -> None:
+    if isinstance(node, dict):
+      for key, child in node.items():
+        if key == "endpoint":
+          found.append(child)
+        walk(child)
 
-    for path in sorted(root.rglob("*.yaml")):
-        walk(load_doc(path))
-    return found
+  for path in sorted(root.rglob("*.yaml")):
+    walk(load_doc(path))
+  return found
 
 
 class TestTheEndpointIsStoredAsText:
-    """[Jei:2026-10-04]: the endpoint is stored VERBATIM at ``set`` and is never refused for the
-    characters it contains — ``https://u:k@host/v1`` was refused as a dangling ``@host``."""
+  """[Jei:2026-10-04]: the endpoint is stored VERBATIM at ``set`` and is never refused for the
+  characters it contains — ``https://u:k@host/v1`` was refused as a dangling ``@host``."""
 
-    @pytest.mark.parametrize("key,scope", [
-        ("endpoint", ConfigLevel.system),               # the agent.default tier
-        ("agent.claude.endpoint", ConfigLevel.system),  # the per-node door (`agent set`)
-    ])
-    def test_the_value_is_written_as_typed(self, ws_files, key, scope):
-        message = _set(key, _TEXT_ENDPOINT, ws_files, scope,
-                       std=ws_files["std"], ws=ws_files["ws"])
-        assert not message.startswith("Error:"), message
-        root = ws_files["system"].parent
-        assert _stored_endpoints(root) == [_TEXT_ENDPOINT]
+  @pytest.mark.parametrize(
+    "key,scope",
+    [
+      ("endpoint", ConfigLevel.system),  # the agent.default tier
+      ("agent.claude.endpoint", ConfigLevel.system),  # the per-node door (`agent set`)
+    ],
+  )
+  def test_the_value_is_written_as_typed(self, ws_files, key, scope):
+    message = _set(key, _TEXT_ENDPOINT, ws_files, scope, std=ws_files["std"], ws=ws_files["ws"])
+    assert not message.startswith("Error:"), message
+    root = ws_files["system"].parent
+    assert _stored_endpoints(root) == [_TEXT_ENDPOINT]
 
-    def test_a_sibling_key_is_still_an_expression(self, ws_files):
-        """CONTROL — the same text at ``model`` still carries the dangling ``@host``."""
-        message = _set("agent.claude.model", _TEXT_ENDPOINT, ws_files, ConfigLevel.system,
-                       std=ws_files["std"], ws=ws_files["ws"])
-        assert message.startswith("Error:"), message
+  def test_a_sibling_key_is_still_an_expression(self, ws_files):
+    """CONTROL — the same text at ``model`` still carries the dangling ``@host``."""
+    message = _set(
+      "agent.claude.model",
+      _TEXT_ENDPOINT,
+      ws_files,
+      ConfigLevel.system,
+      std=ws_files["std"],
+      ws=ws_files["ws"],
+    )
+    assert message.startswith("Error:"), message
 
 
-@pytest.mark.parametrize("value, phrase", [
+@pytest.mark.parametrize(
+  "value, phrase",
+  [
     ("{agent.zzz.model}", "'zzz' is not a valid agent"),
     ("{agent.claude.zork}", "'zork' is not a declared agent key of 'agent.claude'"),
     ("{agent.goose.provider}", "declared in the keyspace, but not in this command's cascade"),
     ("{agent.claude.env.NOPE}", "declared in the keyspace, but not in this command's cascade"),
-])
+  ],
+)
 def test_a_missing_agent_ref_is_judged_against_the_discovered_agents(tmp_path, value, phrase):
-    """The set door knows which agents exist, so an unknown agent or leaf is named as such,
-    and a real agent's declared key is never reported as outside the keyspace."""
-    files = _files(tmp_path)
-    message = _set("box.env.M", value, files, ConfigLevel.box)
-    assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-    assert phrase in message, message
+  """The set door knows which agents exist, so an unknown agent or leaf is named as such,
+  and a real agent's declared key is never reported as outside the keyspace."""
+  files = _files(tmp_path)
+  message = _set("box.env.M", value, files, ConfigLevel.box)
+  assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+  assert phrase in message, message
 
 
 def test_the_read_only_agent_mirror_is_judged_with_the_discovered_agents():
-    """``meta.box.agent.<key>`` is declared through the plugins' leaves, so the set door's
-    check must see them: ``provider`` is goose's, and with goose discovered it is a key."""
-    from kanibako.settings.config_keys import scope_key_reason
-    from kanibako.settings.settings_prefs import default_valid_agents
+  """``meta.box.agent.<key>`` is declared through the plugins' leaves, so the set door's
+  check must see them: ``provider`` is goose's, and with goose discovered it is a key."""
+  from kanibako.settings.config_keys import scope_key_reason
+  from kanibako.settings.settings_prefs import default_valid_agents
 
-    assert "goose" in default_valid_agents()
-    assert scope_key_reason("meta.box.agent.provider") is None
+  assert "goose" in default_valid_agents()
+  assert scope_key_reason("meta.box.agent.provider") is None

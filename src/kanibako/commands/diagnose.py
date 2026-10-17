@@ -14,106 +14,108 @@ from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 
 
 def _format_check(status: str, label: str, detail: str) -> str:
-    """Format a single diagnostic check line."""
-    return f"[{status}] {label}: {detail}"
+  """Format a single diagnostic check line."""
+  return f"[{status}] {label}: {detail}"
 
 
 class _SettingsErrorLog:
-    """One diagnose run's settings errors, reported as a single closing section.
+  """One diagnose run's settings errors, reported as a single closing section.
 
-    A settings error rarely breaks just one check.  A malformed config file
-    breaks Image, Storage and Journal in one ``system diagnose``; ``rig
-    diagnose`` loads settings twice, so one undeclared key refuses at both
-    "Configured image" and "  Baseline".  Every check it broke still prints its
-    own ``[!!]`` line (see :func:`_report_settings_error`) -- this collects the
-    multi-line BODIES so the same one is printed ONCE, named with every label
-    it broke, instead of six or twelve lines repeating a single root cause.
+  A settings error rarely breaks just one check.  A malformed config file
+  breaks Image, Storage and Journal in one ``system diagnose``; ``rig
+  diagnose`` loads settings twice, so one undeclared key refuses at both
+  "Configured image" and "  Baseline".  Every check it broke still prints its
+  own ``[!!]`` line (see :func:`_report_settings_error`) -- this collects the
+  multi-line BODIES so the same one is printed ONCE, named with every label
+  it broke, instead of six or twelve lines repeating a single root cause.
 
-    Deduplication is on the RENDERED TEXT and deliberately nothing cleverer.
-    Both triggers already embed their own location -- the §0 refusal names
-    every offending entry and every file the resolve loaded, and the
-    ``ConfigError`` names the file and the parse position -- so identical text
-    IS the same problem in the same place, and text that differs is a different
-    problem that must print too.  Parsing key names back out of a message to
-    group by them would make this a second carrier of that message's
-    structure, and the message is the only carrier there is.
+  Deduplication is on the RENDERED TEXT and deliberately nothing cleverer.
+  Both triggers already embed their own location -- the §0 refusal names
+  every offending entry and every file the resolve loaded, and the
+  ``ConfigError`` names the file and the parse position -- so identical text
+  IS the same problem in the same place, and text that differs is a different
+  problem that must print too.  Parsing key names back out of a message to
+  group by them would make this a second carrier of that message's
+  structure, and the message is the only carrier there is.
 
-    An instance belongs to one entry point and is passed down (``rig diagnose``
-    hands its own to :func:`_diagnose_baseline`, which is why the two loads
-    there share a report).  Module-level state would leak across invocations
-    and could not be tested.
+  An instance belongs to one entry point and is passed down (``rig diagnose``
+  hands its own to :func:`_diagnose_baseline`, which is why the two loads
+  there share a report).  Module-level state would leak across invocations
+  and could not be tested.
 
-    The message is reproduced UNCHANGED, one 8-space-indented line each (the
-    continuation indent this module already uses); composing a new one would
-    drop the entry names and the file list that make it actionable.
-    """
+  The message is reproduced UNCHANGED, one 8-space-indented line each (the
+  continuation indent this module already uses); composing a new one would
+  drop the entry names and the file list that make it actionable.
+  """
 
-    def __init__(self) -> None:
-        # Rendered error text -> the labels that hit it, in first-seen order.
-        self._by_text: dict[str, list[str]] = {}
+  def __init__(self) -> None:
+    # Rendered error text -> the labels that hit it, in first-seen order.
+    self._by_text: dict[str, list[str]] = {}
 
-    def add(self, label: str, err: KanibakoError) -> None:
-        """Record that the *label* check failed with *err*."""
-        labels = self._by_text.setdefault(str(err), [])
-        if label not in labels:
-            labels.append(label)
+  def add(self, label: str, err: KanibakoError) -> None:
+    """Record that the *label* check failed with *err*."""
+    labels = self._by_text.setdefault(str(err), [])
+    if label not in labels:
+      labels.append(label)
 
-    def emit(self) -> None:
-        """Print each distinct error once, naming every check it broke."""
-        if not self._by_text:
-            return
+  def emit(self) -> None:
+    """Print each distinct error once, naming every check it broke."""
+    if not self._by_text:
+      return
+    print()
+    print("Settings errors:")
+    for index, (text, labels) in enumerate(self._by_text.items()):
+      if index:
         print()
-        print("Settings errors:")
-        for index, (text, labels) in enumerate(self._by_text.items()):
-            if index:
-                print()
-            # Labels are printed here without the indent some of them carry for
-            # their own check line -- this is a list, not a nested section.
-            print(f"    affects: {', '.join(label.strip() for label in labels)}")
-            for line in text.splitlines():
-                print(f"        {line}")
+      # Labels are printed here without the indent some of them carry for
+      # their own check line -- this is a list, not a nested section.
+      print(f"    affects: {', '.join(label.strip() for label in labels)}")
+      for line in text.splitlines():
+        print(f"        {line}")
 
 
 def _report_settings_error(
-    label: str, err: KanibakoError, errors: _SettingsErrorLog,
+  label: str,
+  err: KanibakoError,
+  errors: _SettingsErrorLog,
 ) -> None:
-    """Print *label* as a FAILED check and hand *err* to *errors* for the body.
+  """Print *label* as a FAILED check and hand *err* to *errors* for the body.
 
-    Every settings load in this module used to sit inside a bare ``except
-    Exception`` whose only report was ``cannot check`` (some spelled ``cannot
-    check (not configured)``).  That text is a lie for every error the settings
-    engine raises deliberately, and there are TWO such triggers -- do NOT
-    collapse them:
+  Every settings load in this module used to sit inside a bare ``except
+  Exception`` whose only report was ``cannot check`` (some spelled ``cannot
+  check (not configured)``).  That text is a lie for every error the settings
+  engine raises deliberately, and there are TWO such triggers -- do NOT
+  collapse them:
 
-    * the spec §0 refusal of an undeclared key, which already names every
-      offending entry and every file the resolve loaded.  ONLY the loads that
-      run the keyspace resolve (``load_merged_config``) can raise it;
-    * a ``ConfigError`` from a malformed file, which names the file, the parse
-      position and the cure.  EVERY load can raise this one, including the
-      plain ``load_config`` / ``load_std_paths`` pair behind the Storage and
-      Journal checks, which never goes near the resolve.
+  * the spec §0 refusal of an undeclared key, which already names every
+    offending entry and every file the resolve loaded.  ONLY the loads that
+    run the keyspace resolve (``load_merged_config``) can raise it;
+  * a ``ConfigError`` from a malformed file, which names the file, the parse
+    position and the cure.  EVERY load can raise this one, including the
+    plain ``load_config`` / ``load_std_paths`` pair behind the Storage and
+    Journal checks, which never goes near the resolve.
 
-    ``diagnose`` is what a user runs when something is wrong, so naming a
-    missing configuration instead of the real error points them at the WRONG
-    cause.
+  ``diagnose`` is what a user runs when something is wrong, so naming a
+  missing configuration instead of the real error points them at the WRONG
+  cause.
 
-    One root cause still breaks SEVERAL checks in one run, and every check it
-    breaks still prints its own ``[!!]`` line right here, in sequence.  That
-    half is not negotiable: suppressing the repeat at the check line would put
-    some check back to a bland line or no line at all, which is the defect
-    itself.  What is not repeated is the multi-line BODY -- it goes to
-    *errors*, which prints it once for all of them
-    (:meth:`_SettingsErrorLog.emit`), so the check line points at that section
-    rather than promising the detail immediately below it.
+  One root cause still breaks SEVERAL checks in one run, and every check it
+  breaks still prints its own ``[!!]`` line right here, in sequence.  That
+  half is not negotiable: suppressing the repeat at the check line would put
+  some check back to a bland line or no line at all, which is the defect
+  itself.  What is not repeated is the multi-line BODY -- it goes to
+  *errors*, which prints it once for all of them
+  (:meth:`_SettingsErrorLog.emit`), so the check line points at that section
+  rather than promising the detail immediately below it.
 
-    ``KanibakoError`` is exactly the right predicate and NOT a discriminator:
-    ``errors.py`` defines it as the hierarchy ``cli.py`` catches, i.e. the
-    errors whose messages are already written to be shown to a user.  Anything
-    else still falls through to the ``(not configured)`` line, which keeps that
-    path for the case it was written for.
-    """
-    print(_format_check("!!", label, "settings error -- see 'Settings errors' below"))
-    errors.add(label, err)
+  ``KanibakoError`` is exactly the right predicate and NOT a discriminator:
+  ``errors.py`` defines it as the hierarchy ``cli.py`` catches, i.e. the
+  errors whose messages are already written to be shown to a user.  Anything
+  else still falls through to the ``(not configured)`` line, which keeps that
+  path for the case it was written for.
+  """
+  print(_format_check("!!", label, "settings error -- see 'Settings errors' below"))
+  errors.add(label, err)
 
 
 # ---------------------------------------------------------------------------
@@ -127,246 +129,248 @@ _PROBE_HIT_PREFIX = "KANIBAKO_HAS:"
 
 
 def probe_missing_executables(
-    runtime, image: str, executables: list[str],
+  runtime,
+  image: str,
+  executables: list[str],
 ) -> list[str]:
-    """Return the subset of *executables* missing from *image*.
+  """Return the subset of *executables* missing from *image*.
 
-    Runs ONE ephemeral container
-    (``<runtime> run --rm --entrypoint sh <image> -lc ...``) that loops over
-    every executable and prints a hit marker for each present one; the misses
-    are whatever wasn't reported.  This keeps the cost to a single container
-    spin-up regardless of how many executables are checked.
+  Runs ONE ephemeral container
+  (``<runtime> run --rm --entrypoint sh <image> -lc ...``) that loops over
+  every executable and prints a hit marker for each present one; the misses
+  are whatever wasn't reported.  This keeps the cost to a single container
+  spin-up regardless of how many executables are checked.
 
-    The ``--entrypoint sh`` override is essential: kanibako images set an
-    ENTRYPOINT (``kanibako-entrypoint``) that would otherwise swallow the probe
-    script, making every executable look missing.
+  The ``--entrypoint sh`` override is essential: kanibako images set an
+  ENTRYPOINT (``kanibako-entrypoint``) that would otherwise swallow the probe
+  script, making every executable look missing.
 
-    On any runtime failure (image missing, runtime broken) every executable is
-    reported as missing — the caller decides whether that is fatal.
-    """
-    import subprocess
+  On any runtime failure (image missing, runtime broken) every executable is
+  reported as missing — the caller decides whether that is fatal.
+  """
+  import subprocess
 
-    if not executables:
-        return []
-    # One portable POSIX-sh command per exe, each name `shlex.quote`d into a
-    # single literal word, emitting the hit marker iff `command -v` succeeds.
-    checks = "; ".join(
-        f"command -v {shlex.quote(exe)} >/dev/null 2>&1 "
-        f"&& echo {shlex.quote(_PROBE_HIT_PREFIX + exe)}"
-        for exe in executables
+  if not executables:
+    return []
+  # One portable POSIX-sh command per exe, each name `shlex.quote`d into a
+  # single literal word, emitting the hit marker iff `command -v` succeeds.
+  checks = "; ".join(
+    f"command -v {shlex.quote(exe)} >/dev/null 2>&1 && echo {shlex.quote(_PROBE_HIT_PREFIX + exe)}"
+    for exe in executables
+  )
+  try:
+    result = subprocess.run(
+      [runtime.cmd, "run", "--rm", "--entrypoint", "sh", image, "-lc", checks],
+      capture_output=True,
+      text=True,
     )
-    try:
-        result = subprocess.run(
-            [runtime.cmd, "run", "--rm", "--entrypoint", "sh", image, "-lc", checks],
-            capture_output=True,
-            text=True,
-        )
-    except Exception:
-        return list(executables)
-    if result.returncode != 0 and not result.stdout:
-        # Container could not start at all → treat everything as missing.
-        return list(executables)
-    present = {
-        line[len(_PROBE_HIT_PREFIX):]
-        for line in result.stdout.splitlines()
-        if line.startswith(_PROBE_HIT_PREFIX)
-    }
-    return [exe for exe in executables if exe not in present]
+  except Exception:
+    return list(executables)
+  if result.returncode != 0 and not result.stdout:
+    # Container could not start at all → treat everything as missing.
+    return list(executables)
+  present = {
+    line[len(_PROBE_HIT_PREFIX) :]
+    for line in result.stdout.splitlines()
+    if line.startswith(_PROBE_HIT_PREFIX)
+  }
+  return [exe for exe in executables if exe not in present]
 
 
 def _check_runtime() -> tuple[str, str]:
-    """Check container runtime availability. Returns (status, detail)."""
-    import subprocess
+  """Check container runtime availability. Returns (status, detail)."""
+  import subprocess
 
-    from kanibako.runtime.container import ContainerError, ContainerRuntime
+  from kanibako.runtime.container import ContainerError, ContainerRuntime
 
-    try:
-        runtime = ContainerRuntime()
-        result = subprocess.run(
-            [runtime.cmd, "--version"],
-            capture_output=True,
-            text=True,
-        )
-        version = (
-            result.stdout.strip() if result.returncode == 0 else "unknown version"
-        )
-        return "ok", f"{runtime.cmd} ({version})"
-    except ContainerError as exc:
-        # Its message names the cause: a bad KANIBAKO_DOCKER_CMD, or no runtime + the install hint.
-        return "!!", str(exc)
-    except Exception:
-        return "!!", "not found -- install podman (https://podman.io/) or Docker"
+  try:
+    runtime = ContainerRuntime()
+    result = subprocess.run(
+      [runtime.cmd, "--version"],
+      capture_output=True,
+      text=True,
+    )
+    version = result.stdout.strip() if result.returncode == 0 else "unknown version"
+    return "ok", f"{runtime.cmd} ({version})"
+  except ContainerError as exc:
+    # Its message names the cause: a bad KANIBAKO_DOCKER_CMD, or no runtime + the install hint.
+    return "!!", str(exc)
+  except Exception:
+    return "!!", "not found -- install podman (https://podman.io/) or Docker"
 
 
 def _check_image(config: object) -> tuple[str, str]:
-    """Check if the configured container image exists locally."""
-    try:
-        from kanibako.runtime.container import ContainerRuntime
+  """Check if the configured container image exists locally."""
+  try:
+    from kanibako.runtime.container import ContainerRuntime
 
-        runtime = ContainerRuntime()
-        image_name: str = getattr(config, "box_image", "")
-        data = runtime.image_inspect(image_name)
-        if data is not None:
-            return "ok", f"{image_name} (available locally)"
-        return (
-            "!!",
-            f"{image_name} (not found locally -- will be pulled on first use)",
-        )
-    except Exception:
-        return "--", "cannot check (no container runtime)"
+    runtime = ContainerRuntime()
+    image_name: str = getattr(config, "box_image", "")
+    data = runtime.image_inspect(image_name)
+    if data is not None:
+      return "ok", f"{image_name} (available locally)"
+    return (
+      "!!",
+      f"{image_name} (not found locally -- will be pulled on first use)",
+    )
+  except Exception:
+    return "--", "cannot check (no container runtime)"
 
 
 # Friendly labels for the box.shell resolver's source token (see
 # kanibako.launch.shells.resolve_box_shell), used in the no-agent "Shell" detail line.
 _SHELL_SOURCE_LABELS = {
-    "box.shell": "box.shell",
-    "image": "image default",
-    "sh": "fallback",
+  "box.shell": "box.shell",
+  "image": "image default",
+  "sh": "fallback",
 }
 
 
 def _resolved_shell_detail(config, std, runtime, image) -> str:
-    """Return the no-agent "Shell" detail (resolved box.shell + friendly source).
+  """Return the no-agent "Shell" detail (resolved box.shell + friendly source).
 
-    Defensive: diagnose must NEVER crash on shell resolution.  Without enough
-    context (no config/std) or on any failure, falls back to ``sh (fallback)``.
-    """
-    if config is None or std is None:
-        return "sh (fallback)"
-    try:
-        from kanibako.launch.shells import resolve_box_shell
+  Defensive: diagnose must NEVER crash on shell resolution.  Without enough
+  context (no config/std) or on any failure, falls back to ``sh (fallback)``.
+  """
+  if config is None or std is None:
+    return "sh (fallback)"
+  try:
+    from kanibako.launch.shells import resolve_box_shell
 
-        shell, source = resolve_box_shell(config, std, runtime=runtime, image=image)
-        label = _SHELL_SOURCE_LABELS.get(source, source)
-        return f"{shell} ({label})"
-    except Exception:
-        return "sh (fallback)"
+    shell, source = resolve_box_shell(config, std, runtime=runtime, image=image)
+    label = _SHELL_SOURCE_LABELS.get(source, source)
+    return f"{shell} ({label})"
+  except Exception:
+    return "sh (fallback)"
 
 
 def _check_agents(
-    config=None, std=None, runtime=None, image=None,
+  config=None,
+  std=None,
+  runtime=None,
+  image=None,
 ) -> list[tuple[str, str, str]]:
-    """Check all discovered agent targets.
+  """Check all discovered agent targets.
 
-    Returns list of (status, label, detail).  *config*/*std* (and optionally
-    *runtime*/*image*) are used only to resolve the no-agent "Shell" target's
-    launch shell via :func:`kanibako.launch.shells.resolve_box_shell`.
-    """
-    from kanibako.targets import discover_targets
+  Returns list of (status, label, detail).  *config*/*std* (and optionally
+  *runtime*/*image*) are used only to resolve the no-agent "Shell" target's
+  launch shell via :func:`kanibako.launch.shells.resolve_box_shell`.
+  """
+  from kanibako.targets import discover_targets
 
-    targets = discover_targets()
-    results: list[tuple[str, str, str]] = []
-    if not targets:
-        results.append(("!!", "Agents", "no agent plugins installed"))
-        return results
-    for name, cls in targets.items():
-        try:
-            instance = cls()
-            if not getattr(instance, "has_binary", True):
-                # No-binary fallback (the "Shell" no-agent target): it needs no
-                # host binary, so it is ALWAYS available -- never flag it.  Show
-                # the resolved launch shell and where it came from.
-                detail = _resolved_shell_detail(config, std, runtime, image)
-                results.append(("ok", f"Agent: {instance.display_name}", detail))
-                continue
-            install = instance.detect()
-            if install is not None:
-                binary = getattr(install, "binary", None)
-                # Validate the detected host binary the SAME way the launch
-                # path does: a dangling path, a 0-byte file, or a
-                # non-executable file are all real errors (a 0-byte binary
-                # passes a bare exists() check yet bricks the box at launch).
-                reason = (
-                    _validate_agent_binary(Path(binary)) if binary else None
-                )
-                if reason:
-                    results.append(
-                        (
-                            "!!",
-                            f"Agent: {instance.display_name}",
-                            reason,
-                        )
-                    )
-                else:
-                    detail = f"({binary})" if binary else "detected"
-                    results.append(("ok", f"Agent: {instance.display_name}", detail))
-            else:
-                # A real agent that simply isn't installed -- optional, not an
-                # error.
-                results.append(
-                    (
-                        "--",
-                        f"Agent: {instance.display_name}",
-                        "not installed (optional)",
-                    )
-                )
-        except Exception as e:
-            results.append(("!!", f"Agent: {name}", str(e)))
+  targets = discover_targets()
+  results: list[tuple[str, str, str]] = []
+  if not targets:
+    results.append(("!!", "Agents", "no agent plugins installed"))
     return results
+  for name, cls in targets.items():
+    try:
+      instance = cls()
+      if not getattr(instance, "has_binary", True):
+        # No-binary fallback (the "Shell" no-agent target): it needs no
+        # host binary, so it is ALWAYS available -- never flag it.  Show
+        # the resolved launch shell and where it came from.
+        detail = _resolved_shell_detail(config, std, runtime, image)
+        results.append(("ok", f"Agent: {instance.display_name}", detail))
+        continue
+      install = instance.detect()
+      if install is not None:
+        binary = getattr(install, "binary", None)
+        # Validate the detected host binary the SAME way the launch
+        # path does: a dangling path, a 0-byte file, or a
+        # non-executable file are all real errors (a 0-byte binary
+        # passes a bare exists() check yet bricks the box at launch).
+        reason = _validate_agent_binary(Path(binary)) if binary else None
+        if reason:
+          results.append(
+            (
+              "!!",
+              f"Agent: {instance.display_name}",
+              reason,
+            )
+          )
+        else:
+          detail = f"({binary})" if binary else "detected"
+          results.append(("ok", f"Agent: {instance.display_name}", detail))
+      else:
+        # A real agent that simply isn't installed -- optional, not an
+        # error.
+        results.append(
+          (
+            "--",
+            f"Agent: {instance.display_name}",
+            "not installed (optional)",
+          )
+        )
+    except Exception as e:
+      results.append(("!!", f"Agent: {name}", str(e)))
+  return results
 
 
 def _check_journal(std, box_key: str | None = None) -> list[tuple[str, str]]:
-    """Check the lifecycle journal for lingering in-flight / interrupted ops.
+  """Check the lifecycle journal for lingering in-flight / interrupted ops.
 
-    Reads ``std.journal`` (J1/J2 write-ahead log).  The journal is normally
-    EMPTY — an entry is the rare in-flight or crashed lifecycle op (create /
-    import / connect) that never cleared.  Each pending entry is reported as a
-    WARNING (``!!``) carrying op + box + ``started_at``, so a broken-state box is
-    visible; an empty journal is a clean ``ok``.
+  Reads ``std.journal`` (J1/J2 write-ahead log).  The journal is normally
+  EMPTY — an entry is the rare in-flight or crashed lifecycle op (create /
+  import / connect) that never cleared.  Each pending entry is reported as a
+  WARNING (``!!``) carrying op + box + ``started_at``, so a broken-state box is
+  visible; an empty journal is a clean ``ok``.
 
-    *box_key* (per-box diagnose): when given, only the entry keyed by that
-    host-side box dir is considered — a clean ``ok`` when that one box has no
-    pending op, regardless of unrelated entries elsewhere.  When None (system
-    diagnose) every entry is surfaced.
+  *box_key* (per-box diagnose): when given, only the entry keyed by that
+  host-side box dir is considered — a clean ``ok`` when that one box has no
+  pending op, regardless of unrelated entries elsewhere.  When None (system
+  diagnose) every entry is surfaced.
 
-    Returns a LIST of ``(status, detail)`` lines (one per pending entry, or a
-    single clean line).  Defensive: any failure degrades to a single ``--``
-    ("cannot check") line rather than crashing diagnose.
-    """
-    try:
-        from kanibako.launch import journal
+  Returns a LIST of ``(status, detail)`` lines (one per pending entry, or a
+  single clean line).  Defensive: any failure degrades to a single ``--``
+  ("cannot check") line rather than crashing diagnose.
+  """
+  try:
+    from kanibako.launch import journal
 
-        entries = journal.read_journal(std.journal)
-    except Exception:
-        return [("--", "cannot read journal")]
+    entries = journal.read_journal(std.journal)
+  except Exception:
+    return [("--", "cannot read journal")]
 
-    if box_key is not None:
-        entry = entries.get(box_key)
-        entries = {box_key: entry} if entry is not None else {}
+  if box_key is not None:
+    entry = entries.get(box_key)
+    entries = {box_key: entry} if entry is not None else {}
 
-    if not entries:
-        return [("ok", "no in-flight operations")]
+  if not entries:
+    return [("ok", "no in-flight operations")]
 
-    lines: list[tuple[str, str]] = []
-    for key, entry in sorted(entries.items()):
-        op = entry.get("op", "?")
-        name = entry.get("name", "?")
-        started = entry.get("started_at", "?")
-        lines.append((
-            "!!",
-            f"interrupted {op} of '{name}' at {key} (started {started}) -- "
-            "will be completed on next resolve",
-        ))
-    return lines
+  lines: list[tuple[str, str]] = []
+  for key, entry in sorted(entries.items()):
+    op = entry.get("op", "?")
+    name = entry.get("name", "?")
+    started = entry.get("started_at", "?")
+    lines.append(
+      (
+        "!!",
+        f"interrupted {op} of '{name}' at {key} (started {started}) -- "
+        "will be completed on next resolve",
+      )
+    )
+  return lines
 
 
 def _check_storage(data_path: Path) -> tuple[str, str]:
-    """Check available disk space at the data path."""
-    try:
-        usage = shutil.disk_usage(data_path)
-        free_gb = usage.free / (1024**3)
-        total_gb = usage.total / (1024**3)
-        if free_gb < 1:
-            return (
-                "!!",
-                f"{free_gb:.1f} GB free of {total_gb:.0f} GB in {data_path}",
-            )
-        return (
-            "ok",
-            f"{free_gb:.1f} GB free of {total_gb:.0f} GB in {data_path}",
-        )
-    except Exception:
-        return "--", f"cannot check ({data_path})"
+  """Check available disk space at the data path."""
+  try:
+    usage = shutil.disk_usage(data_path)
+    free_gb = usage.free / (1024**3)
+    total_gb = usage.total / (1024**3)
+    if free_gb < 1:
+      return (
+        "!!",
+        f"{free_gb:.1f} GB free of {total_gb:.0f} GB in {data_path}",
+      )
+    return (
+      "ok",
+      f"{free_gb:.1f} GB free of {total_gb:.0f} GB in {data_path}",
+    )
+  except Exception:
+    return "--", f"cannot check ({data_path})"
 
 
 # ---------------------------------------------------------------------------
@@ -378,503 +382,504 @@ def _check_storage(data_path: Path) -> tuple[str, str]:
 _DEVCONTAINERS_EXT_ID = "ms-vscode-remote.remote-containers"
 
 
-
-
 def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
-    """Check ``dev.containers.dockerPath`` in the user settings.
+  """Check ``dev.containers.dockerPath`` in the user settings.
 
-    Rootless podman is not Docker, so VS Code's Dev Containers must be told to
-    drive ``podman`` explicitly.  Two settings are OK:
+  Rootless podman is not Docker, so VS Code's Dev Containers must be told to
+  drive ``podman`` explicitly.  Two settings are OK:
 
-    * ``"podman"`` — local attach works (a NOTE flags that ``kanibako code
-      --remote`` needs the kanibako dispatch wrapper instead);
-    * the kanibako dispatch wrapper path — local AND ``--remote`` work, but
-      VS Code applies this user setting in Remote-SSH windows too, so an
-      attach through a Remote-SSH window fails on a host without that path.
+  * ``"podman"`` — local attach works (a NOTE flags that ``kanibako code
+    --remote`` needs the kanibako dispatch wrapper instead);
+  * the kanibako dispatch wrapper path — local AND ``--remote`` work, but
+    VS Code applies this user setting in Remote-SSH windows too, so an
+    attach through a Remote-SSH window fails on a host without that path.
 
-    Returns a single ``(status, label, detail)`` line: ``ok`` for either of the
-    above; ``!!`` (with remediation) when the file or key is absent, names an
-    absolute path missing on this machine (the far-host case), or holds another
-    value; ``--`` when the file exists but is unreadable / unparseable.
-    """
-    label = "VS Code dockerPath"
-    remediation = (
-        'set "dev.containers.dockerPath": "podman" in VS Code user settings.json'
-    )
-    if not settings_path.is_file():
-        return (
-            "!!",
-            label,
-            f"settings.json not found ({settings_path}) -- {remediation}",
-        )
-    try:
-        text = settings_path.read_text(encoding="utf-8")
-    except OSError:
-        return ("--", label, f"cannot read settings.json ({settings_path})")
-
-    data = _load_jsonc(text)
-    if not isinstance(data, dict):
-        return (
-            "--",
-            label,
-            f"settings.json present but could not be parsed ({settings_path})",
-        )
-    value = data.get("dev.containers.dockerPath")
-    if value == "podman":
-        return (
-            "ok",
-            label,
-            '"dev.containers.dockerPath": "podman" '
-            "(local only; 'kanibako code --remote' needs the kanibako wrapper)",
-        )
-    if isinstance(value, str) and Path(value).is_absolute() and not Path(value).exists():
-        return (
-            "!!",
-            label,
-            f'"dev.containers.dockerPath" is "{value}", which does not exist on '
-            "this machine (VS Code applies this user setting in Remote-SSH "
-            f"windows too) -- {remediation}",
-        )
-    from kanibako.vscode.vscode_remote import dispatch_wrapper_path
-
-    if value is not None and value == str(dispatch_wrapper_path()):
-        return (
-            "ok",
-            label,
-            f'"dev.containers.dockerPath": "{value}" (kanibako dispatch '
-            "wrapper; a Remote-SSH window to a host without this path fails)",
-        )
-    if value is None:
-        return ("!!", label, f'"dev.containers.dockerPath" not set -- {remediation}')
+  Returns a single ``(status, label, detail)`` line: ``ok`` for either of the
+  above; ``!!`` (with remediation) when the file or key is absent, names an
+  absolute path missing on this machine (the far-host case), or holds another
+  value; ``--`` when the file exists but is unreadable / unparseable.
+  """
+  label = "VS Code dockerPath"
+  remediation = 'set "dev.containers.dockerPath": "podman" in VS Code user settings.json'
+  if not settings_path.is_file():
     return (
-        "!!",
-        label,
-        f'"dev.containers.dockerPath" is "{value}", expected "podman" -- '
-        f"{remediation}",
+      "!!",
+      label,
+      f"settings.json not found ({settings_path}) -- {remediation}",
     )
+  try:
+    text = settings_path.read_text(encoding="utf-8")
+  except OSError:
+    return ("--", label, f"cannot read settings.json ({settings_path})")
+
+  data = _load_jsonc(text)
+  if not isinstance(data, dict):
+    return (
+      "--",
+      label,
+      f"settings.json present but could not be parsed ({settings_path})",
+    )
+  value = data.get("dev.containers.dockerPath")
+  if value == "podman":
+    return (
+      "ok",
+      label,
+      '"dev.containers.dockerPath": "podman" '
+      "(local only; 'kanibako code --remote' needs the kanibako wrapper)",
+    )
+  if isinstance(value, str) and Path(value).is_absolute() and not Path(value).exists():
+    return (
+      "!!",
+      label,
+      f'"dev.containers.dockerPath" is "{value}", which does not exist on '
+      "this machine (VS Code applies this user setting in Remote-SSH "
+      f"windows too) -- {remediation}",
+    )
+  from kanibako.vscode.vscode_remote import dispatch_wrapper_path
+
+  if value is not None and value == str(dispatch_wrapper_path()):
+    return (
+      "ok",
+      label,
+      f'"dev.containers.dockerPath": "{value}" (kanibako dispatch '
+      "wrapper; a Remote-SSH window to a host without this path fails)",
+    )
+  if value is None:
+    return ("!!", label, f'"dev.containers.dockerPath" not set -- {remediation}')
+  return (
+    "!!",
+    label,
+    f'"dev.containers.dockerPath" is "{value}", expected "podman" -- {remediation}',
+  )
 
 
 def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]:
-    """Check host prerequisites for VS Code "Attach to Running Container".
+  """Check host prerequisites for VS Code "Attach to Running Container".
 
-    ``kanibako code <box>`` (Phase 1) launches the host VS Code with an
-    ``attached-container`` remote URI; that flow needs, host-side: (1) the
-    ``code`` CLI on PATH, (2) the "Dev Containers" extension
-    (``ms-vscode-remote.remote-containers``), and (3)
-    ``"dev.containers.dockerPath": "podman"`` in the user ``settings.json``.
+  ``kanibako code <box>`` (Phase 1) launches the host VS Code with an
+  ``attached-container`` remote URI; that flow needs, host-side: (1) the
+  ``code`` CLI on PATH, (2) the "Dev Containers" extension
+  (``ms-vscode-remote.remote-containers``), and (3)
+  ``"dev.containers.dockerPath": "podman"`` in the user ``settings.json``.
 
-    Returns one ``(status, label, detail)`` line per sub-check.  *config_home*
-    is the XDG config base (defaults to ``$XDG_CONFIG_HOME`` / ``~/.config``);
-    injectable so tests can point ``settings.json`` at a tmp dir.
+  Returns one ``(status, label, detail)`` line per sub-check.  *config_home*
+  is the XDG config base (defaults to ``$XDG_CONFIG_HOME`` / ``~/.config``);
+  injectable so tests can point ``settings.json`` at a tmp dir.
 
-    NOTE (Phase-0 UNKNOWN): rootless podman may ALSO require the user podman
-    socket (``systemctl --user --now enable podman.socket``) plus a matching
-    ``dev.containers.dockerHost``.  Whether ``dockerPath: podman`` alone
-    suffices is unconfirmed, so a socket sub-check is deliberately NOT added
-    here yet; it may be added once Phase-0 settles it.
-    """
-    import subprocess
+  NOTE (Phase-0 UNKNOWN): rootless podman may ALSO require the user podman
+  socket (``systemctl --user --now enable podman.socket``) plus a matching
+  ``dev.containers.dockerHost``.  Whether ``dockerPath: podman`` alone
+  suffices is unconfirmed, so a socket sub-check is deliberately NOT added
+  here yet; it may be added once Phase-0 settles it.
+  """
+  import subprocess
 
-    results: list[tuple[str, str, str]] = []
+  results: list[tuple[str, str, str]] = []
 
-    # 1. `code` CLI on PATH.
-    code_bin = shutil.which("code")
-    if code_bin is None:
-        results.append(
-            (
-                "!!",
-                "VS Code CLI",
-                "'code' not on PATH -- install VS Code and run Command Palette "
-                "-> 'Shell Command: Install code command in PATH'",
-            )
+  # 1. `code` CLI on PATH.
+  code_bin = shutil.which("code")
+  if code_bin is None:
+    results.append(
+      (
+        "!!",
+        "VS Code CLI",
+        "'code' not on PATH -- install VS Code and run Command Palette "
+        "-> 'Shell Command: Install code command in PATH'",
+      )
+    )
+  else:
+    results.append(("ok", "VS Code CLI", code_bin))
+
+  # 2. Dev Containers extension -- only checkable via the `code` CLI.
+  if code_bin is None:
+    results.append(("--", "VS Code Dev Containers ext", "cannot check -- code not on PATH"))
+  else:
+    try:
+      proc = subprocess.run(
+        [code_bin, "--list-extensions"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+      )
+    except Exception:
+      # Catches a raising CLI AND a HANG: a wedged `code` (shell wrapper
+      # blocking on a remote, stuck node proc) would otherwise block
+      # diagnose forever.  subprocess.TimeoutExpired subclasses Exception,
+      # so a timeout routes here to the honest `-- cannot check` line.
+      proc = None
+    if proc is None or proc.returncode != 0:
+      results.append(
+        (
+          "--",
+          "VS Code Dev Containers ext",
+          "cannot check -- 'code --list-extensions' failed",
         )
+      )
     else:
-        results.append(("ok", "VS Code CLI", code_bin))
-
-    # 2. Dev Containers extension -- only checkable via the `code` CLI.
-    if code_bin is None:
+      installed = {line.strip().lower() for line in proc.stdout.splitlines() if line.strip()}
+      if _DEVCONTAINERS_EXT_ID.lower() in installed:
+        results.append(("ok", "VS Code Dev Containers ext", _DEVCONTAINERS_EXT_ID))
+      else:
         results.append(
-            ("--", "VS Code Dev Containers ext", "cannot check -- code not on PATH")
+          (
+            "!!",
+            "VS Code Dev Containers ext",
+            f"not installed -- run: code --install-extension {_DEVCONTAINERS_EXT_ID}",
+          )
         )
-    else:
-        try:
-            proc = subprocess.run(
-                [code_bin, "--list-extensions"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except Exception:
-            # Catches a raising CLI AND a HANG: a wedged `code` (shell wrapper
-            # blocking on a remote, stuck node proc) would otherwise block
-            # diagnose forever.  subprocess.TimeoutExpired subclasses Exception,
-            # so a timeout routes here to the honest `-- cannot check` line.
-            proc = None
-        if proc is None or proc.returncode != 0:
-            results.append(
-                (
-                    "--",
-                    "VS Code Dev Containers ext",
-                    "cannot check -- 'code --list-extensions' failed",
-                )
-            )
-        else:
-            installed = {
-                line.strip().lower()
-                for line in proc.stdout.splitlines()
-                if line.strip()
-            }
-            if _DEVCONTAINERS_EXT_ID.lower() in installed:
-                results.append(
-                    ("ok", "VS Code Dev Containers ext", _DEVCONTAINERS_EXT_ID)
-                )
-            else:
-                results.append(
-                    (
-                        "!!",
-                        "VS Code Dev Containers ext",
-                        "not installed -- run: code --install-extension "
-                        f"{_DEVCONTAINERS_EXT_ID}",
-                    )
-                )
 
-    # 3. dev.containers.dockerPath in the user settings.json.
-    if config_home is None:
-        from kanibako.settings.paths import user_config_home
+  # 3. dev.containers.dockerPath in the user settings.json.
+  if config_home is None:
+    from kanibako.settings.paths import user_config_home
 
-        config_home = user_config_home()
-    settings_path = config_home / "Code" / "User" / "settings.json"
-    results.append(_check_vscode_docker_path(settings_path))
+    config_home = user_config_home()
+  settings_path = config_home / "Code" / "User" / "settings.json"
+  results.append(_check_vscode_docker_path(settings_path))
 
-    return results
+  return results
 
 
 def run_system_diagnose(args: object) -> int:
-    """Run full system diagnostics."""
-    from kanibako.settings.config import user_config_file, load_config
-    from kanibako.settings.settings_launch import load_merged_config
-    from kanibako.settings.paths import load_std_paths
+  """Run full system diagnostics."""
+  from kanibako.settings.config import user_config_file, load_config
+  from kanibako.settings.settings_launch import load_merged_config
+  from kanibako.settings.paths import load_std_paths
 
-    print("Kanibako System Diagnostics")
-    print("=" * 40)
-    print()
+  print("Kanibako System Diagnostics")
+  print("=" * 40)
+  print()
 
-    # Every settings error found below is reported at its own check line and
-    # collected here, so one root cause breaking Image, Storage and Journal
-    # prints its body once at the end instead of three times.
-    errors = _SettingsErrorLog()
+  # Every settings error found below is reported at its own check line and
+  # collected here, so one root cause breaking Image, Storage and Journal
+  # prints its body once at the end instead of three times.
+  errors = _SettingsErrorLog()
 
-    # Runtime
-    status, detail = _check_runtime()
-    print(_format_check(status, "Container runtime", detail))
+  # Runtime
+  status, detail = _check_runtime()
+  print(_format_check(status, "Container runtime", detail))
 
-    # Image
-    merged = None
-    try:
-        merged = load_merged_config()
-        status, detail = _check_image(merged)
-        print(_format_check(status, "Image", detail))
-    except KanibakoError as e:
-        _report_settings_error("Image", e, errors)
-    except Exception:
-        print(_format_check("--", "Image", "cannot check (not configured)"))
+  # Image
+  merged = None
+  try:
+    merged = load_merged_config()
+    status, detail = _check_image(merged)
+    print(_format_check(status, "Image", detail))
+  except KanibakoError as e:
+    _report_settings_error("Image", e, errors)
+  except Exception:
+    print(_format_check("--", "Image", "cannot check (not configured)"))
 
-    # Agents -- resolve the no-agent Shell line with full box.shell precedence
-    # (config + std + the configured image; the resolver reads the image-shell
-    # store and only probes a container when nothing is stored yet).
+  # Agents -- resolve the no-agent Shell line with full box.shell precedence
+  # (config + std + the configured image; the resolver reads the image-shell
+  # store and only probes a container when nothing is stored yet).
+  std = None
+  std_err: KanibakoError | None = None
+  runtime = None
+  image = None
+  # Unlike the other settings loads here, this block prints NOTHING of its
+  # own: `std` feeds the Agents Shell detail just below and the Journal check
+  # ~30 lines down.  So a settings error is CAPTURED and reported at the
+  # Journal line, where the check it actually breaks prints.  Reporting it at
+  # the catch site instead would emit it out of sequence AND leave Journal
+  # still saying `cannot check`.
+  try:
+    cf = user_config_file()
+    std = load_std_paths(load_config(cf))
+  except KanibakoError as e:
     std = None
-    std_err: KanibakoError | None = None
-    runtime = None
-    image = None
-    # Unlike the other settings loads here, this block prints NOTHING of its
-    # own: `std` feeds the Agents Shell detail just below and the Journal check
-    # ~30 lines down.  So a settings error is CAPTURED and reported at the
-    # Journal line, where the check it actually breaks prints.  Reporting it at
-    # the catch site instead would emit it out of sequence AND leave Journal
-    # still saying `cannot check`.
+    std_err = e
+  except Exception:
+    std = None
+  if merged is not None:
+    image = getattr(merged, "box_image", None)
     try:
-        cf = user_config_file()
-        std = load_std_paths(load_config(cf))
-    except KanibakoError as e:
-        std = None
-        std_err = e
+      from kanibako.runtime.container import ContainerRuntime
+
+      runtime = ContainerRuntime()
     except Exception:
-        std = None
-    if merged is not None:
-        image = getattr(merged, "box_image", None)
-        try:
-            from kanibako.runtime.container import ContainerRuntime
+      runtime = None
+  for status, label, detail in _check_agents(
+    config=merged,
+    std=std,
+    runtime=runtime,
+    image=image,
+  ):
+    print(_format_check(status, label, detail))
 
-            runtime = ContainerRuntime()
-        except Exception:
-            runtime = None
-    for status, label, detail in _check_agents(
-        config=merged, std=std, runtime=runtime, image=image,
-    ):
-        print(_format_check(status, label, detail))
+  # Storage
+  try:
+    cf = user_config_file()
+    from kanibako.settings.paths import layer1_foundation
 
-    # Storage
-    try:
-        cf = user_config_file()
-        from kanibako.settings.paths import layer1_foundation
-        # ⚑ LAYER 1 ALONE.  A storage line that cannot print because some other file is
-        # broken reports the wrong thing; the system file still gets its own report from
-        # this command's ``load_std_paths`` check.
-        data_path = Path(layer1_foundation(cf, runtime_dir=True)["config.data"])
-        status, detail = _check_storage(data_path)
-        print(_format_check(status, "Storage", detail))
-    except KanibakoError as e:
-        _report_settings_error("Storage", e, errors)
-    except Exception:
-        print(_format_check("--", "Storage", "cannot check"))
+    # ⚑ LAYER 1 ALONE.  A storage line that cannot print because some other file is
+    # broken reports the wrong thing; the system file still gets its own report from
+    # this command's ``load_std_paths`` check.
+    data_path = Path(layer1_foundation(cf, runtime_dir=True)["config.data"])
+    status, detail = _check_storage(data_path)
+    print(_format_check(status, "Storage", detail))
+  except KanibakoError as e:
+    _report_settings_error("Storage", e, errors)
+  except Exception:
+    print(_format_check("--", "Storage", "cannot check"))
 
-    # Lifecycle journal: surface any lingering in-flight / interrupted ops
-    # (create/import/connect) globally.  Normally empty -> a clean PASS line.
-    if std is not None:
-        for status, detail in _check_journal(std):
-            print(_format_check(status, "Journal", detail))
-    elif std_err is not None:
-        _report_settings_error("Journal", std_err, errors)
-    else:
-        print(_format_check("--", "Journal", "cannot check"))
+  # Lifecycle journal: surface any lingering in-flight / interrupted ops
+  # (create/import/connect) globally.  Normally empty -> a clean PASS line.
+  if std is not None:
+    for status, detail in _check_journal(std):
+      print(_format_check(status, "Journal", detail))
+  elif std_err is not None:
+    _report_settings_error("Journal", std_err, errors)
+  else:
+    print(_format_check("--", "Journal", "cannot check"))
 
-    # VS Code "Attach to Running Container" host prerequisites (feature #1).
-    # This is a HOST-side prerequisite (does the operator's machine have the
-    # `code` CLI + Dev Containers extension + podman dockerPath?), not per-box
-    # state -- so it belongs on system-diagnose only, not run_box_diagnose.
-    # Wrapped so any failure degrades to a single `--` line, never crashing.
-    try:
-        for status, label, detail in _check_vscode():
-            print(_format_check(status, label, detail))
-    except Exception:
-        print(_format_check("--", "VS Code", "cannot check"))
+  # VS Code "Attach to Running Container" host prerequisites (feature #1).
+  # This is a HOST-side prerequisite (does the operator's machine have the
+  # `code` CLI + Dev Containers extension + podman dockerPath?), not per-box
+  # state -- so it belongs on system-diagnose only, not run_box_diagnose.
+  # Wrapped so any failure degrades to a single `--` line, never crashing.
+  try:
+    for status, label, detail in _check_vscode():
+      print(_format_check(status, label, detail))
+  except Exception:
+    print(_format_check("--", "VS Code", "cannot check"))
 
-    errors.emit()
+  errors.emit()
 
-    print()
-    return 0
+  print()
+  return 0
 
 
 def run_box_diagnose(args: object) -> int:
-    """Run diagnostics for a specific project box."""
-    from kanibako.settings.config import user_config_file, load_config
-    from kanibako.settings.paths import load_std_paths, resolve_any_project
+  """Run diagnostics for a specific project box."""
+  from kanibako.settings.config import user_config_file, load_config
+  from kanibako.settings.paths import load_std_paths, resolve_any_project
 
-    cf = user_config_file()
-    config = load_config(cf)
-    std = load_std_paths(config)
+  cf = user_config_file()
+  config = load_config(cf)
+  std = load_std_paths(config)
 
-    from kanibako.commands.flags import resolve_subject_value
-    project_dir = resolve_subject_value(
-        getattr(args, "project", None) or getattr(args, "path", None),
-        getattr(args, "box", None),
+  from kanibako.commands.flags import resolve_subject_value
+
+  project_dir = resolve_subject_value(
+    getattr(args, "project", None) or getattr(args, "path", None),
+    getattr(args, "box", None),
+  )
+  try:
+    proj = resolve_any_project(std, config, project_dir)
+  except Exception as e:
+    print(f"Error: {e}")
+    return 1
+
+  # `resolve_any_project` fabricates a default-mode resolution for ANY
+  # existing directory, so a successful return does NOT mean a kanibako
+  # project is actually registered at the target.  A real box has a
+  # box_resolve identity (registry membership / an in-place standalone
+  # settings file); a fabricated default-mode resolution of a plain dir does
+  # NOT.  Without this guard, diagnose would report a meaningless
+  # `[ok] Project directory` followed by a false `[!!] Shell directory:
+  # missing` for moved/copied/plain directories.  (P8a: replaces the
+  # transitional `read_project_meta(...) is not None` registration signal.)
+  from kanibako.launch import box_resolve
+
+  # A standalone box with no workspace (a null ``workset.workspaces``) resolves by its root.
+  is_registered = (
+    box_resolve.resolve_box_identity(
+      proj.project_path or proj.metadata_path,
+      std,
+      config,
     )
+    is not None
+  )
+  if not is_registered:
+    target = proj.project_path if proj.project_path else project_dir
+    leaf = Path(str(target)).name
+    # A bare ``kanibako create`` would create the box in cwd, not in the named target.
+    suggest = "kanibako create" + (
+      f" {shlex.quote(str(target))}" if project_dir and target else ""
+    )
+    print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
     try:
-        proj = resolve_any_project(std, config, project_dir)
-    except Exception as e:
-        print(f"Error: {e}")
-        return 1
-
-    # `resolve_any_project` fabricates a default-mode resolution for ANY
-    # existing directory, so a successful return does NOT mean a kanibako
-    # project is actually registered at the target.  A real box has a
-    # box_resolve identity (registry membership / an in-place standalone
-    # settings file); a fabricated default-mode resolution of a plain dir does
-    # NOT.  Without this guard, diagnose would report a meaningless
-    # `[ok] Project directory` followed by a false `[!!] Shell directory:
-    # missing` for moved/copied/plain directories.  (P8a: replaces the
-    # transitional `read_project_meta(...) is not None` registration signal.)
-    from kanibako.launch import box_resolve
-    # A standalone box with no workspace (a null ``workset.workspaces``) resolves by its root.
-    is_registered = box_resolve.resolve_box_identity(
-        proj.project_path or proj.metadata_path, std, config,
-    ) is not None
-    if not is_registered:
-        target = proj.project_path if proj.project_path else project_dir
-        leaf = Path(str(target)).name
-        # A bare ``kanibako create`` would create the box in cwd, not in the named target.
-        suggest = "kanibako create" + (
-            f" {shlex.quote(str(target))}" if project_dir and target else ""
-        )
-        print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
-        try:
-            refuse_derived_box_name(leaf or "project")
-        except DerivedBoxNameError as e:
-            cure_text = e.with_cure(box_name_cure(suggest, e.name))
-            print("\n".join("        " + ln.lstrip() for ln in cure_text.split("\n")))
-        else:
-            print(f"        To initialize a project here, run:  {suggest}")
-        print("        Or pass a project name/path.")
-        return 1
-
-    print(f"Box Diagnostics: {proj.project_path or '<None>'}")
-    print("=" * 40)
-    print()
-
-    # Project directory
-    if proj.project_path is None:
-        print(_format_check("!!", "Project directory", "<None> (workset.workspaces is null)"))
-    elif proj.project_path.is_dir():
-        print(_format_check("ok", "Project directory", str(proj.project_path)))
+      refuse_derived_box_name(leaf or "project")
+    except DerivedBoxNameError as e:
+      cure_text = e.with_cure(box_name_cure(suggest, e.name))
+      print("\n".join("        " + ln.lstrip() for ln in cure_text.split("\n")))
     else:
-        print(_format_check("!!", "Project directory", "missing"))
+      print(f"        To initialize a project here, run:  {suggest}")
+    print("        Or pass a project name/path.")
+    return 1
 
-    # Shell directory: for a registered project, an absent shell is NORMAL
-    # before the first launch (it is created on first run / initialize=True),
-    # so report it informationally rather than as an error.
-    # ⚑ Not when the box STORE is gone: a launch refuses that box rather than
-    # rebuilding it, so nothing is created on first run.
-    from kanibako.settings.paths import box_metadata_dir
-    store = box_metadata_dir(proj.mode, proj.metadata_path, early=proj._require_early())
-    if not store.is_dir():
-        print(_format_check("!!", "Box store", f"missing ({store})"))
-    elif proj.shell_path and proj.shell_path.is_dir():
-        print(_format_check("ok", "Shell directory", str(proj.shell_path)))
-    else:
-        print(
-            _format_check(
-                "--", "Shell directory", "not yet initialized (created on first run)",
-            )
-        )
+  print(f"Box Diagnostics: {proj.project_path or '<None>'}")
+  print("=" * 40)
+  print()
 
-    # Runtime check
-    status, detail = _check_runtime()
-    print(_format_check(status, "Container runtime", detail))
+  # Project directory
+  if proj.project_path is None:
+    print(_format_check("!!", "Project directory", "<None> (workset.workspaces is null)"))
+  elif proj.project_path.is_dir():
+    print(_format_check("ok", "Project directory", str(proj.project_path)))
+  else:
+    print(_format_check("!!", "Project directory", "missing"))
 
-    # Lifecycle journal (this box only): a pending create/import/connect entry
-    # for THIS box's host-side dir is an interrupted op needing attention.  The
-    # key is the dir CONTAINING home/ (Path(shell_path).parent), the uniform
-    # J1/J2 key scheme.  Normally absent -> a clean PASS line.
-    if proj.shell_path is not None:
-        box_key = str(Path(proj.shell_path).parent)
-        for status, detail in _check_journal(std, box_key=box_key):
-            print(_format_check(status, "Journal", detail))
+  # Shell directory: for a registered project, an absent shell is NORMAL
+  # before the first launch (it is created on first run / initialize=True),
+  # so report it informationally rather than as an error.
+  # ⚑ Not when the box STORE is gone: a launch refuses that box rather than
+  # rebuilding it, so nothing is created on first run.
+  from kanibako.settings.paths import box_metadata_dir
 
-    print()
-    return 0
+  store = box_metadata_dir(proj.mode, proj.metadata_path, early=proj._require_early())
+  if not store.is_dir():
+    print(_format_check("!!", "Box store", f"missing ({store})"))
+  elif proj.shell_path and proj.shell_path.is_dir():
+    print(_format_check("ok", "Shell directory", str(proj.shell_path)))
+  else:
+    print(
+      _format_check(
+        "--",
+        "Shell directory",
+        "not yet initialized (created on first run)",
+      )
+    )
+
+  # Runtime check
+  status, detail = _check_runtime()
+  print(_format_check(status, "Container runtime", detail))
+
+  # Lifecycle journal (this box only): a pending create/import/connect entry
+  # for THIS box's host-side dir is an interrupted op needing attention.  The
+  # key is the dir CONTAINING home/ (Path(shell_path).parent), the uniform
+  # J1/J2 key scheme.  Normally absent -> a clean PASS line.
+  if proj.shell_path is not None:
+    box_key = str(Path(proj.shell_path).parent)
+    for status, detail in _check_journal(std, box_key=box_key):
+      print(_format_check(status, "Journal", detail))
+
+  print()
+  return 0
 
 
 def run_rig_diagnose(args: object) -> int:
-    """Run diagnostics for rig/image status."""
-    from kanibako.settings.settings_launch import load_merged_config
+  """Run diagnostics for rig/image status."""
+  from kanibako.settings.settings_launch import load_merged_config
 
-    print("Rig (Image) Diagnostics")
-    print("=" * 40)
-    print()
+  print("Rig (Image) Diagnostics")
+  print("=" * 40)
+  print()
 
-    # Shared with `_diagnose_baseline` below: both load settings, so one
-    # refusal would otherwise print its body twice in this one run.
-    errors = _SettingsErrorLog()
+  # Shared with `_diagnose_baseline` below: both load settings, so one
+  # refusal would otherwise print its body twice in this one run.
+  errors = _SettingsErrorLog()
 
-    status, detail = _check_runtime()
-    print(_format_check(status, "Container runtime", detail))
+  status, detail = _check_runtime()
+  print(_format_check(status, "Container runtime", detail))
 
-    try:
-        merged = load_merged_config()
-        status, detail = _check_image(merged)
-        print(_format_check(status, "Configured image", detail))
-    except KanibakoError as e:
-        _report_settings_error("Configured image", e, errors)
-    except Exception:
-        print(_format_check("--", "Configured image", "cannot check"))
+  try:
+    merged = load_merged_config()
+    status, detail = _check_image(merged)
+    print(_format_check(status, "Configured image", detail))
+  except KanibakoError as e:
+    _report_settings_error("Configured image", e, errors)
+  except Exception:
+    print(_format_check("--", "Configured image", "cannot check"))
 
-    # List local images
-    try:
-        from kanibako.runtime.container import ContainerRuntime
+  # List local images
+  try:
+    from kanibako.runtime.container import ContainerRuntime
 
-        runtime = ContainerRuntime()
-        images = runtime.list_local_images()
-        if images:
-            print(_format_check("ok", "Local images", f"{len(images)} found"))
-            for repo, size in images:
-                print(f"        {repo}  {size}")
-        else:
-            print(_format_check("!!", "Local images", "none found"))
-    except Exception:
-        print(_format_check("--", "Local images", "cannot check"))
+    runtime = ContainerRuntime()
+    images = runtime.list_local_images()
+    if images:
+      print(_format_check("ok", "Local images", f"{len(images)} found"))
+      for repo, size in images:
+        print(f"        {repo}  {size}")
+    else:
+      print(_format_check("!!", "Local images", "none found"))
+  except Exception:
+    print(_format_check("--", "Local images", "cannot check"))
 
-    # Baseline executable probe (one ephemeral run per image).
-    print()
-    _diagnose_baseline(args, errors)
+  # Baseline executable probe (one ephemeral run per image).
+  print()
+  _diagnose_baseline(args, errors)
 
-    errors.emit()
+  errors.emit()
 
-    print()
-    return 0
+  print()
+  return 0
 
 
 def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
-    """Probe the image baseline executables and print the result.
+  """Probe the image baseline executables and print the result.
 
-    Honors ``--all`` (every local kanibako image), ``--only PKG`` and
-    ``--skip PKG`` (default = the single configured ``box_image``).  Reuses
-    :func:`probe_missing_executables` so a single ephemeral container checks all
-    baseline executables per image.
+  Honors ``--all`` (every local kanibako image), ``--only PKG`` and
+  ``--skip PKG`` (default = the single configured ``box_image``).  Reuses
+  :func:`probe_missing_executables` so a single ephemeral container checks all
+  baseline executables per image.
 
-    *errors* is the CALLER's collector, not one of our own, so a load here and
-    one in :func:`run_rig_diagnose` that hit the same file print one body
-    naming every check it broke.  The caller emits it.
-    """
-    from kanibako.runtime import baseline as baseline_mod
-    from kanibako.settings.paths import user_config_home
-    from kanibako.settings.settings_launch import load_merged_config
-    from kanibako.runtime.container import ContainerRuntime
+  *errors* is the CALLER's collector, not one of our own, so a load here and
+  one in :func:`run_rig_diagnose` that hit the same file print one body
+  naming every check it broke.  The caller emits it.
+  """
+  from kanibako.runtime import baseline as baseline_mod
+  from kanibako.settings.paths import user_config_home
+  from kanibako.settings.settings_launch import load_merged_config
+  from kanibako.runtime.container import ContainerRuntime
 
-    only = getattr(args, "only", None)
-    skip = getattr(args, "skip", None)
-    all_images = getattr(args, "all_images", False)
+  only = getattr(args, "only", None)
+  skip = getattr(args, "skip", None)
+  all_images = getattr(args, "all_images", False)
 
-    print("Baseline:")
-    # The user overlay's old home. It is never read; name the move instead.
-    retired = user_config_home() / "kanibako" / baseline_mod.BASELINE_FILENAME
-    if retired.is_file():
-        print(_format_check(
-            "!!", "  Baseline overlay",
-            f"{retired} is no longer read; move it to {baseline_mod.user_overlay_path()}",
-        ))
+  print("Baseline:")
+  # The user overlay's old home. It is never read; name the move instead.
+  retired = user_config_home() / "kanibako" / baseline_mod.BASELINE_FILENAME
+  if retired.is_file():
+    print(
+      _format_check(
+        "!!",
+        "  Baseline overlay",
+        f"{retired} is no longer read; move it to {baseline_mod.user_overlay_path()}",
+      )
+    )
+  try:
+    baseline = baseline_mod.load_baseline()
+  except KanibakoError as e:
+    _report_settings_error("  Baseline", e, errors)
+    return
+  pkgs = sorted(baseline)
+  if only:
+    only_set = set(only)
+    pkgs = [p for p in pkgs if p in only_set]
+  if skip:
+    skip_set = set(skip)
+    pkgs = [p for p in pkgs if p not in skip_set]
+  wanted_exes: list[str] = [exe for p in pkgs for exe in baseline[p]]
+  exe_to_pkg = {exe: p for p in pkgs for exe in baseline[p]}
+
+  try:
+    runtime = ContainerRuntime()
+  except Exception:
+    print(_format_check("--", "  Baseline", "cannot check (no runtime)"))
+    return
+
+  if all_images:
+    images = [repo for repo, _size in runtime.list_local_images()]
+    if not images:
+      print(_format_check("!!", "  Baseline", "no local images to probe"))
+      return
+  else:
     try:
-        baseline = baseline_mod.load_baseline()
+      merged = load_merged_config()
+      images = [merged.box_image]
     except KanibakoError as e:
-        _report_settings_error("  Baseline", e, errors)
-        return
-    pkgs = sorted(baseline)
-    if only:
-        only_set = set(only)
-        pkgs = [p for p in pkgs if p in only_set]
-    if skip:
-        skip_set = set(skip)
-        pkgs = [p for p in pkgs if p not in skip_set]
-    wanted_exes: list[str] = [exe for p in pkgs for exe in baseline[p]]
-    exe_to_pkg = {exe: p for p in pkgs for exe in baseline[p]}
-
-    try:
-        runtime = ContainerRuntime()
+      _report_settings_error("  Baseline", e, errors)
+      return
     except Exception:
-        print(_format_check("--", "  Baseline", "cannot check (no runtime)"))
-        return
+      print(_format_check("--", "  Baseline", "cannot check (not configured)"))
+      return
 
-    if all_images:
-        images = [repo for repo, _size in runtime.list_local_images()]
-        if not images:
-            print(_format_check("!!", "  Baseline", "no local images to probe"))
-            return
+  for image in images:
+    missing = probe_missing_executables(runtime, image, wanted_exes)
+    if not missing:
+      print(_format_check("ok", f"  {image}", "all baseline executables present"))
     else:
-        try:
-            merged = load_merged_config()
-            images = [merged.box_image]
-        except KanibakoError as e:
-            _report_settings_error("  Baseline", e, errors)
-            return
-        except Exception:
-            print(_format_check("--", "  Baseline", "cannot check (not configured)"))
-            return
-
-    for image in images:
-        missing = probe_missing_executables(runtime, image, wanted_exes)
-        if not missing:
-            print(_format_check("ok", f"  {image}", "all baseline executables present"))
-        else:
-            detail = ", ".join(
-                f"{exe_to_pkg.get(exe, '?')}:{exe}" for exe in missing
-            )
-            print(_format_check("!!", f"  {image}", f"missing {detail}"))
+      detail = ", ".join(f"{exe_to_pkg.get(exe, '?')}:{exe}" for exe in missing)
+      print(_format_check("!!", f"  {image}", f"missing {detail}"))

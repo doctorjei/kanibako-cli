@@ -16,195 +16,218 @@ from tests.support.repo import REPO_ROOT
 
 import pytest
 
-from kanibako.identifiers import (LEADING_DIGIT_FLAW, NAME_CHAR_CLASS, NAME_MAX_LEN,
-                                  agent_node_case, derived_name, find_identifier, is_name,
-                                  name_flaw, underscore_spelling)
+from kanibako.identifiers import (
+  LEADING_DIGIT_FLAW,
+  NAME_CHAR_CLASS,
+  NAME_MAX_LEN,
+  agent_node_case,
+  derived_name,
+  find_identifier,
+  is_name,
+  name_flaw,
+  underscore_spelling,
+)
 
 
 class TestNameRule:
-    """Spec §0: 1–64 ASCII letters, digits, or ``_``, not starting with a digit."""
+  """Spec §0: 1–64 ASCII letters, digits, or ``_``, not starting with a digit."""
 
-    @pytest.mark.parametrize("name", ["a", "_", "_2fa", "my_box", "MyBox", "x" * 64, "k3_9"])
-    def test_accepted(self, name):
-        assert name_flaw(name) is None and is_name(name)
+  @pytest.mark.parametrize("name", ["a", "_", "_2fa", "my_box", "MyBox", "x" * 64, "k3_9"])
+  def test_accepted(self, name):
+    assert name_flaw(name) is None and is_name(name)
 
-    @pytest.mark.parametrize("name, flaw", [
-        ("", "must not be empty"),
-        ("x" * 65, f"must be at most {NAME_MAX_LEN} characters"),
-        ("my-box", "must not contain '-'"),
-        ("my.box", "must not contain '.'"),
-        ("a b", "must not contain U+0020"),
-        ("café", "must not contain U+00E9"),
-        ("a\tb", "must not contain U+0009"),
-        ("2fa", LEADING_DIGIT_FLAW),
-    ])
-    def test_refused(self, name, flaw):
-        assert name_flaw(name) == flaw and not is_name(name)
+  @pytest.mark.parametrize(
+    "name, flaw",
+    [
+      ("", "must not be empty"),
+      ("x" * 65, f"must be at most {NAME_MAX_LEN} characters"),
+      ("my-box", "must not contain '-'"),
+      ("my.box", "must not contain '.'"),
+      ("a b", "must not contain U+0020"),
+      ("café", "must not contain U+00E9"),
+      ("a\tb", "must not contain U+0009"),
+      ("2fa", LEADING_DIGIT_FLAW),
+    ],
+  )
+  def test_refused(self, name, flaw):
+    assert name_flaw(name) == flaw and not is_name(name)
 
-    def test_every_ascii_character_is_judged_by_the_one_class(self):
-        allowed = {chr(c) for c in range(128) if re.fullmatch(f"[{NAME_CHAR_CLASS}]", chr(c))}
-        assert allowed == set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+  def test_every_ascii_character_is_judged_by_the_one_class(self):
+    allowed = {chr(c) for c in range(128) if re.fullmatch(f"[{NAME_CHAR_CLASS}]", chr(c))}
+    assert allowed == set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
-    def test_unicode_letters_and_digits_are_refused(self):
-        """``str.isalnum`` and ``\\w`` admit these; the rule does not."""
-        for ch in ("é", "ß", "漢", "я", "٣", "ａ"):
-            assert name_flaw(f"a{ch}") is not None, ch
+  def test_unicode_letters_and_digits_are_refused(self):
+    """``str.isalnum`` and ``\\w`` admit these; the rule does not."""
+    for ch in ("é", "ß", "漢", "я", "٣", "ａ"):
+      assert name_flaw(f"a{ch}") is not None, ch
 
 
 class TestDerivedName:
-    @pytest.mark.parametrize("folder, name", [
-        ("kanibako-cli", "kanibako_cli"), ("proj.fork", "proj_fork"), ("a-b.c", "a_b_c"),
-        (".hidden", "_hidden"), ("plain", "plain"),
-        # Nothing else is rewritten: the caller refuses what is left.
-        ("a b", "a b"), ("2048", "2048"), ("café", "café"),
-    ])
-    def test_writes_underscore_for_dash_and_dot_only(self, folder, name):
-        assert derived_name(folder) == name
+  @pytest.mark.parametrize(
+    "folder, name",
+    [
+      ("kanibako-cli", "kanibako_cli"),
+      ("proj.fork", "proj_fork"),
+      ("a-b.c", "a_b_c"),
+      (".hidden", "_hidden"),
+      ("plain", "plain"),
+      # Nothing else is rewritten: the caller refuses what is left.
+      ("a b", "a b"),
+      ("2048", "2048"),
+      ("café", "café"),
+    ],
+  )
+  def test_writes_underscore_for_dash_and_dot_only(self, folder, name):
+    assert derived_name(folder) == name
 
 
 class TestUnderscoreSpelling:
-    @pytest.mark.parametrize("name, spelled", [
-        ("my-box", "my_box"), ("my.box", "my_box"), ("a b", "a_b"), ("2fa", "_2fa"),
-        ("-x", "_x"), ("q$(x)", "q__x_"),
-    ])
-    def test_spells(self, name, spelled):
-        assert underscore_spelling(name) == spelled
+  @pytest.mark.parametrize(
+    "name, spelled",
+    [
+      ("my-box", "my_box"),
+      ("my.box", "my_box"),
+      ("a b", "a_b"),
+      ("2fa", "_2fa"),
+      ("-x", "_x"),
+      ("q$(x)", "q__x_"),
+    ],
+  )
+  def test_spells(self, name, spelled):
+    assert underscore_spelling(name) == spelled
 
-    @pytest.mark.parametrize("name", ["café", "", "x" * 65])
-    def test_no_spelling(self, name):
-        assert underscore_spelling(name) is None
-
+  @pytest.mark.parametrize("name", ["café", "", "x" * 65])
+  def test_no_spelling(self, name):
+    assert underscore_spelling(name) is None
 
 
 class TestFindIdentifier:
-    def test_exact_match_returns_the_candidate(self):
-        assert find_identifier("foo", ["bar", "foo"]) == "foo"
+  def test_exact_match_returns_the_candidate(self):
+    assert find_identifier("foo", ["bar", "foo"]) == "foo"
 
-    def test_a_case_variant_matches_and_returns_the_STORED_spelling(self):
-        """The whole point: compare case-blind, hand back the spelling on disk."""
-        assert find_identifier("Foo", ["bar", "foo"]) == "foo"
-        assert find_identifier("foo", ["bar", "FOO"]) == "FOO"
-        assert find_identifier("FoO", {"fOo": "/x"}) == "fOo"
+  def test_a_case_variant_matches_and_returns_the_STORED_spelling(self):
+    """The whole point: compare case-blind, hand back the spelling on disk."""
+    assert find_identifier("Foo", ["bar", "foo"]) == "foo"
+    assert find_identifier("foo", ["bar", "FOO"]) == "FOO"
+    assert find_identifier("FoO", {"fOo": "/x"}) == "fOo"
 
-    def test_a_miss_is_None(self):
-        assert find_identifier("foo", ["bar", "baz"]) is None
-        assert find_identifier("foo", []) is None
+  def test_a_miss_is_None(self):
+    assert find_identifier("foo", ["bar", "baz"]) is None
+    assert find_identifier("foo", []) is None
 
-    def test_a_dict_is_compared_by_its_KEYS(self):
-        """The usual call passes a registry straight in."""
-        assert find_identifier("Foo", {"foo": "/some/path"}) == "foo"
-        assert find_identifier("/some/path", {"foo": "/some/path"}) is None
+  def test_a_dict_is_compared_by_its_KEYS(self):
+    """The usual call passes a registry straight in."""
+    assert find_identifier("Foo", {"foo": "/some/path"}) == "foo"
+    assert find_identifier("/some/path", {"foo": "/some/path"}) is None
 
-    def test_the_empty_string_is_a_legal_candidate_and_a_FALSY_return(self):
-        """Why the documented contract says ``is not None``, never truthiness.
+  def test_the_empty_string_is_a_legal_candidate_and_a_FALSY_return(self):
+    """Why the documented contract says ``is not None``, never truthiness.
 
-        A caller writing ``if find_identifier(...):`` would read a real match as a
-        miss here — which is exactly the bug the docstring warns about, so it is
-        asserted rather than described.
-        """
-        found = find_identifier("", [""])
-        assert found == ""
-        assert found is not None
-        assert not found  # falsy, and still a hit
+    A caller writing ``if find_identifier(...):`` would read a real match as a
+    miss here — which is exactly the bug the docstring warns about, so it is
+    asserted rather than described.
+    """
+    found = find_identifier("", [""])
+    assert found == ""
+    assert found is not None
+    assert not found  # falsy, and still a hit
 
-    def test_casefold_not_lower(self):
-        """``casefold()`` is the wider fold, and agent segments admit non-ASCII.
+  def test_casefold_not_lower(self):
+    """``casefold()`` is the wider fold, and agent segments admit non-ASCII.
 
-        The German sharp s is the standard separator: ``"ß".lower()`` is ``"ß"``,
-        while ``"ß".casefold()`` is ``"ss"``.  A ``lower()``-based helper would miss
-        this pair, so the assertion discriminates the two implementations rather
-        than merely exercising one.
-        """
-        assert "STRASSE".lower() != "straße".lower()
-        assert find_identifier("STRASSE", ["straße"]) == "straße"
+    The German sharp s is the standard separator: ``"ß".lower()`` is ``"ß"``,
+    while ``"ß".casefold()`` is ``"ss"``.  A ``lower()``-based helper would miss
+    this pair, so the assertion discriminates the two implementations rather
+    than merely exercising one.
+    """
+    assert "STRASSE".lower() != "straße".lower()
+    assert find_identifier("STRASSE", ["straße"]) == "straße"
 
-    def test_a_registry_holding_BOTH_spellings_resolves_rather_than_raising(self):
-        """Documented contract: ambiguity is a STORAGE question, not this one's.
+  def test_a_registry_holding_BOTH_spellings_resolves_rather_than_raising(self):
+    """Documented contract: ambiguity is a STORAGE question, not this one's.
 
-        Phase 1 changes nothing about what is stored, so a table that already holds
-        ``Foo`` beside ``foo`` must keep resolving — by iteration order.  Refusing
-        here would turn an existing registry into an unusable one.
-        """
-        assert find_identifier("FOO", {"Foo": 1, "foo": 2}) == "Foo"
-        assert find_identifier("FOO", {"foo": 2, "Foo": 1}) == "foo"
+    Phase 1 changes nothing about what is stored, so a table that already holds
+    ``Foo`` beside ``foo`` must keep resolving — by iteration order.  Refusing
+    here would turn an existing registry into an unusable one.
+    """
+    assert find_identifier("FOO", {"Foo": 1, "foo": 2}) == "Foo"
+    assert find_identifier("FOO", {"foo": 2, "Foo": 1}) == "foo"
 
-    def test_candidates_may_be_a_one_shot_iterator(self):
-        assert find_identifier("Foo", iter(["a", "foo", "b"])) == "foo"
+  def test_candidates_may_be_a_one_shot_iterator(self):
+    assert find_identifier("Foo", iter(["a", "foo", "b"])) == "foo"
 
 
 class TestAgentNodeCase:
-    """The agent NODE derivation — keyspec §0's ``⚑ NAMING RULES``.
+  """The agent NODE derivation — keyspec §0's ``⚑ NAMING RULES``.
 
-    An agent has TWO spellings: the declared NAME keeps its case and lives in
-    values, the NODE is lowercase and keys ``agent.<node>.*`` and
-    ``agents/<node>/``.  This is the second one.
+  An agent has TWO spellings: the declared NAME keeps its case and lives in
+  values, the NODE is lowercase and keys ``agent.<node>.*`` and
+  ``agents/<node>/``.  This is the second one.
+  """
+
+  def test_a_declared_case_becomes_a_lowercase_node(self):
+    assert agent_node_case("Claude") == "claude"
+    assert agent_node_case("CLAUDE") == "claude"
+    assert agent_node_case("claude") == "claude"
+
+  def test_it_is_idempotent(self):
+    """A node handed back in is still that node — the store dir is spelled once."""
+    assert agent_node_case(agent_node_case("Shell")) == agent_node_case("Shell")
+
+  def test_a_node_it_built_is_still_reachable_through_the_comparison(self):
+    """The contract that matters: ``get_target`` must find what ``_register`` filed.
+
+    The two folds are DIFFERENT and do not have to agree — ``find_identifier``
+    casefolds BOTH sides, so a key this function built is reached by any
+    spelling of the query, including the one the wider fold collapses.
     """
+    node = agent_node_case("Straße")
+    assert find_identifier("straße", [node]) == node
+    assert find_identifier("STRASSE", [node]) == node
+    assert find_identifier("Straße", [node]) == node
 
-    def test_a_declared_case_becomes_a_lowercase_node(self):
-        assert agent_node_case("Claude") == "claude"
-        assert agent_node_case("CLAUDE") == "claude"
-        assert agent_node_case("claude") == "claude"
+  def test_it_LOWERCASES_rather_than_casefolding(self):
+    """``%tolower(…)%`` is a CASE change; ``casefold`` is a LETTER change.
 
-    def test_it_is_idempotent(self):
-        """A node handed back in is still that node — the store dir is spelled once."""
-        assert agent_node_case(agent_node_case("Shell")) == agent_node_case("Shell")
-
-    def test_a_node_it_built_is_still_reachable_through_the_comparison(self):
-        """The contract that matters: ``get_target`` must find what ``_register`` filed.
-
-        The two folds are DIFFERENT and do not have to agree — ``find_identifier``
-        casefolds BOTH sides, so a key this function built is reached by any
-        spelling of the query, including the one the wider fold collapses.
-        """
-        node = agent_node_case("Straße")
-        assert find_identifier("straße", [node]) == node
-        assert find_identifier("STRASSE", [node]) == node
-        assert find_identifier("Straße", [node]) == node
-
-    def test_it_LOWERCASES_rather_than_casefolding(self):
-        """``%tolower(…)%`` is a CASE change; ``casefold`` is a LETTER change.
-
-        Keyspec §2d spells the store-path fold ``%tolower({meta.agent.<agent>.name})%``
-        and §0 says the node is the name *in lowercase*.
-        ``"Straße".casefold()`` is ``"strasse"`` — a different word — so a
-        casefolded node would spell a plugin's store ``agents/strasse/`` where the
-        spec says ``agents/straße/``.  The assertion discriminates the two
-        implementations rather than merely exercising one.
-        """
-        assert "Straße".casefold() == "strasse"
-        assert agent_node_case("Straße") == "straße"
+    Keyspec §2d spells the store-path fold ``%tolower({meta.agent.<agent>.name})%``
+    and §0 says the node is the name *in lowercase*.
+    ``"Straße".casefold()`` is ``"strasse"`` — a different word — so a
+    casefolded node would spell a plugin's store ``agents/strasse/`` where the
+    spec says ``agents/straße/``.  The assertion discriminates the two
+    implementations rather than merely exercising one.
+    """
+    assert "Straße".casefold() == "strasse"
+    assert agent_node_case("Straße") == "straße"
 
 
 class TestTheCarrierIsATerminalLeaf:
-    """``identifiers.py`` imports nothing from the tree, and its docstring says why.
+  """``identifiers.py`` imports nothing from the tree, and its docstring says why.
 
-    ``settings/paths.py`` reaches it, and ``settings/paths.py`` →
-    ``settings/agent_config.py`` → ``agent_ref`` is a live module-scope chain; an
-    in-tree import here could close it.  ``test_import_graph.py`` asserts the whole
-    graph is a DAG, but only for imports that RUN at module scope — a function-local
-    import added here would be invisible to it and still make this module a hop in
-    someone else's cycle.  This scans the TEXT, so indentation cannot hide one.
-    """
+  ``settings/paths.py`` reaches it, and ``settings/paths.py`` →
+  ``settings/agent_config.py`` → ``agent_ref`` is a live module-scope chain; an
+  in-tree import here could close it.  ``test_import_graph.py`` asserts the whole
+  graph is a DAG, but only for imports that RUN at module scope — a function-local
+  import added here would be invisible to it and still make this module a hop in
+  someone else's cycle.  This scans the TEXT, so indentation cannot hide one.
+  """
 
-    def test_no_in_tree_import_at_any_indentation(self):
-        text = (REPO_ROOT / "src" / "kanibako" / "identifiers.py").read_text(
-            encoding="utf-8"
-        )
-        offenders = [
-            line.strip()
-            for line in text.splitlines()
-            if re.match(r"\s*(import|from)\s", line) and "kanibako" in line
-        ]
-        assert not offenders, (
-            "kanibako/identifiers.py grew an in-tree import; it is the "
-            f"comparison carrier and must stay a terminal leaf: {offenders}"
-        )
+  def test_no_in_tree_import_at_any_indentation(self):
+    text = (REPO_ROOT / "src" / "kanibako" / "identifiers.py").read_text(encoding="utf-8")
+    offenders = [
+      line.strip()
+      for line in text.splitlines()
+      if re.match(r"\s*(import|from)\s", line) and "kanibako" in line
+    ]
+    assert not offenders, (
+      "kanibako/identifiers.py grew an in-tree import; it is the "
+      f"comparison carrier and must stay a terminal leaf: {offenders}"
+    )
 
-    def test_the_scan_would_see_an_import_it_was_looking_for(self):
-        """Anti-vacuity: the matcher above is not simply matching nothing."""
-        sample = "def f():\n        from kanibako.settings.paths import StandardPaths\n"
-        assert [
-            line.strip()
-            for line in sample.splitlines()
-            if re.match(r"\s*(import|from)\s", line) and "kanibako" in line
-        ] == ["from kanibako.settings.paths import StandardPaths"]
+  def test_the_scan_would_see_an_import_it_was_looking_for(self):
+    """Anti-vacuity: the matcher above is not simply matching nothing."""
+    sample = "def f():\n        from kanibako.settings.paths import StandardPaths\n"
+    assert [
+      line.strip()
+      for line in sample.splitlines()
+      if re.match(r"\s*(import|from)\s", line) and "kanibako" in line
+    ] == ["from kanibako.settings.paths import StandardPaths"]

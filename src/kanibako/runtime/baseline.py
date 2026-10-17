@@ -31,113 +31,116 @@ BASELINE_FILENAME = "image-baseline.yaml"
 
 
 def _has_control_char(name: str) -> bool:
-    """Whether *name* holds a control character, which no executable name does."""
-    return any(ord(c) <= 0x1F or ord(c) == 0x7F for c in name)
+  """Whether *name* holds a control character, which no executable name does."""
+  return any(ord(c) <= 0x1F or ord(c) == 0x7F for c in name)
 
 
 def _read_doc(path: Path) -> dict[str, list[str]]:
-    """Parse a baseline YAML file into ``{package: [executables]}``.
+  """Parse a baseline YAML file into ``{package: [executables]}``.
 
-    Tolerates a missing/empty file (returns ``{}``).  Normalizes each value to a list of
-    strings; a bare string value becomes a single-element list.  ⚑ Read through
-    :func:`load_doc`, the one entry point for a user's YAML: a repeated key or a
-    non-mapping document is REFUSED BY NAME (ConfigError).  A package whose value is
-    neither a name nor a list of them is REFUSED BY NAME too, here: iterating it would
-    either raise a bare ``TypeError`` or accept a table's keys as executable names.  So
-    is a name carrying a control character: no shell can look one up whole.
-    """
-    if not is_file_unless_gone(path):
-        return {}
-    raw = load_doc(path)
-    result: dict[str, list[str]] = {}
-    for pkg, exes in raw.items():
-        if exes is None:
-            names: list[str] | None = []
-        elif isinstance(exes, str):
-            names = [exes]
-        elif isinstance(exes, list) and not any(
-            isinstance(e, (list, dict)) or e is None or isinstance(e, bool)
-            for e in exes
-        ):
-            names = [str(e) for e in exes]
-        else:
-            names = None
-        if names is None or any(_has_control_char(n) for n in names):
-            raise ConfigError(
-                f"the config file {path} sets '{pkg}' to a value that is not an "
-                "executable name or a list of them. Fix or remove that entry, "
-                "then retry."
-            )
-        result[str(pkg)] = names
-    return result
+  Tolerates a missing/empty file (returns ``{}``).  Normalizes each value to a list of
+  strings; a bare string value becomes a single-element list.  ⚑ Read through
+  :func:`load_doc`, the one entry point for a user's YAML: a repeated key or a
+  non-mapping document is REFUSED BY NAME (ConfigError).  A package whose value is
+  neither a name nor a list of them is REFUSED BY NAME too, here: iterating it would
+  either raise a bare ``TypeError`` or accept a table's keys as executable names.  So
+  is a name carrying a control character: no shell can look one up whole.
+  """
+  if not is_file_unless_gone(path):
+    return {}
+  raw = load_doc(path)
+  result: dict[str, list[str]] = {}
+  for pkg, exes in raw.items():
+    if exes is None:
+      names: list[str] | None = []
+    elif isinstance(exes, str):
+      names = [exes]
+    elif isinstance(exes, list) and not any(
+      isinstance(e, (list, dict)) or e is None or isinstance(e, bool) for e in exes
+    ):
+      names = [str(e) for e in exes]
+    else:
+      names = None
+    if names is None or any(_has_control_char(n) for n in names):
+      raise ConfigError(
+        f"the config file {path} sets '{pkg}' to a value that is not an "
+        "executable name or a list of them. Fix or remove that entry, "
+        "then retry."
+      )
+    result[str(pkg)] = names
+  return result
 
 
 def _shipped_default() -> dict[str, list[str]]:
-    """Read the bundled default baseline shipped as package data."""
-    ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, BASELINE_FILENAME)
-    return _read_doc(Path(str(ref)))
+  """Read the bundled default baseline shipped as package data."""
+  ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, BASELINE_FILENAME)
+  return _read_doc(Path(str(ref)))
 
 
 def user_overlay_path() -> Path:
-    """The user's overlay, ``{config.data}/global/image-baseline.yaml``."""
-    return resolve_data_path() / "global" / BASELINE_FILENAME
+  """The user's overlay, ``{config.data}/global/image-baseline.yaml``."""
+  return resolve_data_path() / "global" / BASELINE_FILENAME
 
 
 def _overlay_paths() -> list[Path]:
-    """Overlay locations, in additive merge order (machine then user)."""
-    return [Path(SITE_CONFIG_DIR) / BASELINE_FILENAME, user_overlay_path()]
+  """Overlay locations, in additive merge order (machine then user)."""
+  return [Path(SITE_CONFIG_DIR) / BASELINE_FILENAME, user_overlay_path()]
 
 
 def load_baseline() -> dict[str, list[str]]:
-    """Return the merged baseline ``{package: [executables]}``.
+  """Return the merged baseline ``{package: [executables]}``.
 
-    Starts from the shipped default, then additively merges the machine (``/etc``) and
-    user (``{config.data}/global``) overlays: a later layer adds a package or replaces its list.
-    """
-    merged = _shipped_default()
-    for path in _overlay_paths():
-        merged.update(_read_doc(path))
-    return merged
+  Starts from the shipped default, then additively merges the machine (``/etc``) and
+  user (``{config.data}/global``) overlays: a later layer adds a package or replaces its list.
+  """
+  merged = _shipped_default()
+  for path in _overlay_paths():
+    merged.update(_read_doc(path))
+  return merged
 
 
 def packages() -> list[str]:
-    """Return the baseline package names in sorted, stable order."""
-    return sorted(load_baseline())
+  """Return the baseline package names in sorted, stable order."""
+  return sorted(load_baseline())
 
 
 def executables() -> list[tuple[str, str]]:
-    """Return ``(package, executable)`` pairs, sorted by package then executable."""
-    pairs: list[tuple[str, str]] = []
-    baseline = load_baseline()
-    for pkg in sorted(baseline):
-        for exe in baseline[pkg]:
-            pairs.append((pkg, exe))
-    return pairs
+  """Return ``(package, executable)`` pairs, sorted by package then executable."""
+  pairs: list[tuple[str, str]] = []
+  baseline = load_baseline()
+  for pkg in sorted(baseline):
+    for exe in baseline[pkg]:
+      pairs.append((pkg, exe))
+  return pairs
 
 
 def verify(probe: Callable[[str], bool]) -> list[tuple[str, str]]:
-    """Return the ``(package, executable)`` pairs whose executable is missing.
+  """Return the ``(package, executable)`` pairs whose executable is missing.
 
-    *probe* answers "is this present?" (a ``command -v`` check); empty means satisfied.
-    """
-    return [(pkg, exe) for pkg, exe in executables() if not probe(exe)]
+  *probe* answers "is this present?" (a ``command -v`` check); empty means satisfied.
+  """
+  return [(pkg, exe) for pkg, exe in executables() if not probe(exe)]
 
 
 def install_command(pkgs: list[str]) -> list[str]:
-    """Build the apt-get install argv for *pkgs* (debian).
+  """Build the apt-get install argv for *pkgs* (debian).
 
-    Returns ``apt-get install -y --no-install-recommends <pkgs>``.  The caller decides
-    where it runs (host vs. in-box); skip it on non-debian (:func:`warn_non_debian`).
-    """
-    return [
-        "apt-get", "install", "-y", "--no-install-recommends", *pkgs,
-    ]
+  Returns ``apt-get install -y --no-install-recommends <pkgs>``.  The caller decides
+  where it runs (host vs. in-box); skip it on non-debian (:func:`warn_non_debian`).
+  """
+  return [
+    "apt-get",
+    "install",
+    "-y",
+    "--no-install-recommends",
+    *pkgs,
+  ]
 
 
 def warn_non_debian() -> None:
-    """Emit a stderr warning that auto-install only supports apt/debian."""
-    print(
-        "kanibako baseline: automatic install assumes apt/debian; "
-        "install the baseline packages with your distro's package manager.",
-        file=sys.stderr,
-    )
+  """Emit a stderr warning that auto-install only supports apt/debian."""
+  print(
+    "kanibako baseline: automatic install assumes apt/debian; "
+    "install the baseline packages with your distro's package manager.",
+    file=sys.stderr,
+  )

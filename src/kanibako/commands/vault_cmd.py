@@ -10,295 +10,310 @@ from kanibako.boxfs import SymlinkRefusedError
 from kanibako.errors import ProjectError
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import (
-    BoxMode,
-    load_std_paths,
-    project_cure_ref,
-    resolve_any_project,
+  BoxMode,
+  load_std_paths,
+  project_cure_ref,
+  resolve_any_project,
 )
 from kanibako.snapshots import (
-    _DEFAULT_MAX_SNAPSHOTS,
-    ForeignSnapshotError,
-    SnapshotSafetyError,
-    checked_store,
-    create_snapshot,
-    list_snapshots,
-    list_unsorted,
-    migrate_legacy_versions,
-    prune_snapshots,
-    refusal_text,
-    restore_snapshot,
-    snapshots_to_prune,
+  _DEFAULT_MAX_SNAPSHOTS,
+  ForeignSnapshotError,
+  SnapshotSafetyError,
+  checked_store,
+  create_snapshot,
+  list_snapshots,
+  list_unsorted,
+  migrate_legacy_versions,
+  prune_snapshots,
+  refusal_text,
+  restore_snapshot,
+  snapshots_to_prune,
 )
 from kanibako.utils import confirm_or_abort
 
 
 def add_vault_subparser(parent_sub: argparse._SubParsersAction) -> None:
-    """Register vault as a subcommand (used by box parser to nest under box)."""
-    p = parent_sub.add_parser(
-        "vault",
-        help="Vault snapshot commands (snapshot, list, restore, prune)",
-        description="Manage vault share-rw snapshots.",
-    )
-    _add_vault_subcommands(p)
+  """Register vault as a subcommand (used by box parser to nest under box)."""
+  p = parent_sub.add_parser(
+    "vault",
+    help="Vault snapshot commands (snapshot, list, restore, prune)",
+    description="Manage vault share-rw snapshots.",
+  )
+  _add_vault_subcommands(p)
 
 
 def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
-    vs = p.add_subparsers(dest="vault_command", metavar="COMMAND")
+  vs = p.add_subparsers(dest="vault_command", metavar="COMMAND")
 
-    # kanibako box vault snapshot [project]
-    snap_p = vs.add_parser(
-        "snapshot",
-        help="Create a snapshot of vault share-rw",
-        description="Create a point-in-time snapshot of the vault share-rw directory.",
-    )
-    snap_p.add_argument(
-        "project", nargs="?", default=None,
-        help="Project directory or name (default: cwd)",
-    )
-    snap_p.set_defaults(func=run_snapshot)
+  # kanibako box vault snapshot [project]
+  snap_p = vs.add_parser(
+    "snapshot",
+    help="Create a snapshot of vault share-rw",
+    description="Create a point-in-time snapshot of the vault share-rw directory.",
+  )
+  snap_p.add_argument(
+    "project",
+    nargs="?",
+    default=None,
+    help="Project directory or name (default: cwd)",
+  )
+  snap_p.set_defaults(func=run_snapshot)
 
-    # kanibako box vault list [project] [-q/--quiet]
-    list_p = vs.add_parser(
-        "list",
-        help="List vault snapshots (default)",
-        description="Show all snapshots for the current project's vault.",
-    )
-    list_p.add_argument(
-        "project", nargs="?", default=None,
-        help="Project directory or name (default: cwd)",
-    )
-    list_p.add_argument(
-        "-q", "--quiet", action="store_true",
-        help="Output snapshot names only, one per line",
-    )
-    list_p.set_defaults(func=run_list)
+  # kanibako box vault list [project] [-q/--quiet]
+  list_p = vs.add_parser(
+    "list",
+    help="List vault snapshots (default)",
+    description="Show all snapshots for the current project's vault.",
+  )
+  list_p.add_argument(
+    "project",
+    nargs="?",
+    default=None,
+    help="Project directory or name (default: cwd)",
+  )
+  list_p.add_argument(
+    "-q",
+    "--quiet",
+    action="store_true",
+    help="Output snapshot names only, one per line",
+  )
+  list_p.set_defaults(func=run_list)
 
-    # kanibako box vault restore <name> [project] [--force]
-    restore_p = vs.add_parser(
-        "restore",
-        help="Restore vault share-rw from a snapshot",
-        description="Replace the current share-rw contents with a snapshot.",
-    )
-    restore_p.add_argument("name", help="Snapshot name (e.g. 20260221T103000Z)")
-    restore_p.add_argument(
-        "project", nargs="?", default=None,
-        help="Project directory or name (default: cwd)",
-    )
-    restore_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompt",
-    )
-    restore_p.set_defaults(func=run_restore)
+  # kanibako box vault restore <name> [project] [--force]
+  restore_p = vs.add_parser(
+    "restore",
+    help="Restore vault share-rw from a snapshot",
+    description="Replace the current share-rw contents with a snapshot.",
+  )
+  restore_p.add_argument("name", help="Snapshot name (e.g. 20260221T103000Z)")
+  restore_p.add_argument(
+    "project",
+    nargs="?",
+    default=None,
+    help="Project directory or name (default: cwd)",
+  )
+  restore_p.add_argument(
+    "--force",
+    action="store_true",
+    help="Skip confirmation prompt",
+  )
+  restore_p.set_defaults(func=run_restore)
 
-    # kanibako box vault prune [project] [--keep N] [--force]
-    prune_p = vs.add_parser(
-        "prune",
-        help="Remove old snapshots",
-        description="Prune old vault snapshots, keeping the most recent ones.",
-    )
-    prune_p.add_argument(
-        "project", nargs="?", default=None,
-        help="Project directory or name (default: cwd)",
-    )
-    prune_p.add_argument(
-        "--keep", type=int, default=_DEFAULT_MAX_SNAPSHOTS,
-        help=f"Number of snapshots to keep (default: {_DEFAULT_MAX_SNAPSHOTS})",
-    )
-    prune_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompt",
-    )
-    prune_p.set_defaults(func=run_prune)
+  # kanibako box vault prune [project] [--keep N] [--force]
+  prune_p = vs.add_parser(
+    "prune",
+    help="Remove old snapshots",
+    description="Prune old vault snapshots, keeping the most recent ones.",
+  )
+  prune_p.add_argument(
+    "project",
+    nargs="?",
+    default=None,
+    help="Project directory or name (default: cwd)",
+  )
+  prune_p.add_argument(
+    "--keep",
+    type=int,
+    default=_DEFAULT_MAX_SNAPSHOTS,
+    help=f"Number of snapshots to keep (default: {_DEFAULT_MAX_SNAPSHOTS})",
+  )
+  prune_p.add_argument(
+    "--force",
+    action="store_true",
+    help="Skip confirmation prompt",
+  )
+  prune_p.set_defaults(func=run_prune)
 
-    p.set_defaults(func=run_list)
+  p.set_defaults(func=run_list)
 
 
 def _resolve_vault_rw(project_dir: str | None, usage: str):
-    """Resolve ``(share-rw path, box name, store-exclusive, held stores, cure ref)``.
+  """Resolve ``(share-rw path, box name, store-exclusive, held stores, cure ref)``.
 
-    The name keys the store; the cure ref (``paths.project_cure_ref``) is how a printed
-    command reaches this box from any cwd.  *usage* is the verb as typed before the box
-    argument (``"restore <name>"``), for the no-box cure.
+  The name keys the store; the cure ref (``paths.project_cure_ref``) is how a printed
+  command reaches this box from any cwd.  *usage* is the verb as typed before the box
+  argument (``"restore <name>"``), for the no-box cure.
 
-    ⚑ The held stores are the ones other registered standalone boxes compose
-    (``box_resolve.held_standalone_stores``): a standalone never adopts one.
-    """
-    config_file = user_config_file()
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    proj = resolve_any_project(std, config, project_dir, initialize=False)
+  ⚑ The held stores are the ones other registered standalone boxes compose
+  (``box_resolve.held_standalone_stores``): a standalone never adopts one.
+  """
+  config_file = user_config_file()
+  config = load_config(config_file)
+  std = load_std_paths(config)
+  proj = resolve_any_project(std, config, project_dir, initialize=False)
 
-    # ⚑ The nameless primary is the ``__unregistered__`` phantom: no box, so no store key.
-    from kanibako.launch.box_resolve import unregistered_box_refusal
-    head = unregistered_box_refusal(
-        proj, "a vault belongs to a box", f"kanibako box vault {usage} <box>")
-    if head is not None:
-        raise ProjectError(head + "  Or run it inside a box's directory.")
-    if not proj.vault_enabled():
-        print("Vault is disabled for this project.", file=sys.stderr)
-        return None
-    if proj.vault_rw_path is None:
-        print("This workset sets workset.vault_rw to null — there is no vault "
-              "directory to act on.", file=sys.stderr)
-        return None
-    exclusive = proj.mode is BoxMode.standalone
-    held: dict[str, str] = {}
-    if exclusive:
-        from kanibako.launch.box_resolve import held_standalone_stores
-        held = held_standalone_stores(std.registry, proj.metadata_path)
-    return (proj.vault_rw_path, proj.name, exclusive, held, project_cure_ref(proj))
+  # ⚑ The nameless primary is the ``__unregistered__`` phantom: no box, so no store key.
+  from kanibako.launch.box_resolve import unregistered_box_refusal
+
+  head = unregistered_box_refusal(
+    proj, "a vault belongs to a box", f"kanibako box vault {usage} <box>"
+  )
+  if head is not None:
+    raise ProjectError(head + "  Or run it inside a box's directory.")
+  if not proj.vault_enabled():
+    print("Vault is disabled for this project.", file=sys.stderr)
+    return None
+  if proj.vault_rw_path is None:
+    print(
+      "This workset sets workset.vault_rw to null — there is no vault directory to act on.",
+      file=sys.stderr,
+    )
+    return None
+  exclusive = proj.mode is BoxMode.standalone
+  held: dict[str, str] = {}
+  if exclusive:
+    from kanibako.launch.box_resolve import held_standalone_stores
+
+    held = held_standalone_stores(std.registry, proj.metadata_path)
+  return (proj.vault_rw_path, proj.name, exclusive, held, project_cure_ref(proj))
 
 
 def run_snapshot(args: argparse.Namespace) -> int:
-    project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir, "snapshot")
-    if resolved is None:
-        return 1
-    vault_rw, box_name, exclusive, held, _ref = resolved
+  project_dir = getattr(args, "project", None)
+  resolved = _resolve_vault_rw(project_dir, "snapshot")
+  if resolved is None:
+    return 1
+  vault_rw, box_name, exclusive, held, _ref = resolved
 
-    try:
-        snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive,
-                               held=held)
-    except SymlinkRefusedError as e:
-        return _link_refused(e)
-    if snap is None:
-        print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
-        return 0
-
-    print(f"Snapshot created: {snap.name}")
+  try:
+    snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+  except SymlinkRefusedError as e:
+    return _link_refused(e)
+  if snap is None:
+    print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
     return 0
+
+  print(f"Snapshot created: {snap.name}")
+  return 0
 
 
 def run_list(args: argparse.Namespace) -> int:
-    project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir, "list")
-    if resolved is None:
-        return 1
-    vault_rw, box_name, exclusive, held, _ref = resolved
+  project_dir = getattr(args, "project", None)
+  resolved = _resolve_vault_rw(project_dir, "list")
+  if resolved is None:
+    return 1
+  vault_rw, box_name, exclusive, held, _ref = resolved
 
-    quiet = getattr(args, "quiet", False)
+  quiet = getattr(args, "quiet", False)
 
-    try:
-        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
-        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
-                                held=held)
-    except SymlinkRefusedError as e:
-        return _link_refused(e)
+  try:
+    checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+  except SymlinkRefusedError as e:
+    return _link_refused(e)
 
-    snaps = list_snapshots(vault_rw, box_name=box_name)
-    if not snaps:
-        if not quiet:
-            print("No snapshots found.")
-    else:
-        for name, ts, size in snaps:
-            if quiet:
-                print(name)
-            else:
-                size_str = _human_size(size)
-                print(f"  {name}  {ts}  {size_str}")
+  snaps = list_snapshots(vault_rw, box_name=box_name)
+  if not snaps:
+    if not quiet:
+      print("No snapshots found.")
+  else:
+    for name, ts, size in snaps:
+      if quiet:
+        print(name)
+      else:
+        size_str = _human_size(size)
+        print(f"  {name}  {ts}  {size_str}")
 
-    unsorted = [] if quiet else list_unsorted(vault_rw)
-    if unsorted:
-        print("\n  Unsorted (pre-split, owner unknown — kept, never pruned,"
-              " not restorable by name):")
-        for name, ts, size in unsorted:
-            print(f"  {name}  {ts}  {_human_size(size)}")
+  unsorted = [] if quiet else list_unsorted(vault_rw)
+  if unsorted:
+    print("\n  Unsorted (pre-split, owner unknown — kept, never pruned, not restorable by name):")
+    for name, ts, size in unsorted:
+      print(f"  {name}  {ts}  {_human_size(size)}")
 
-    return 0
+  return 0
 
 
 def run_restore(args: argparse.Namespace) -> int:
-    project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir, f"restore {shlex.quote(args.name)}")
-    if resolved is None:
-        return 1
-    vault_rw, box_name, exclusive, held, box_ref = resolved
+  project_dir = getattr(args, "project", None)
+  resolved = _resolve_vault_rw(project_dir, f"restore {shlex.quote(args.name)}")
+  if resolved is None:
+    return 1
+  vault_rw, box_name, exclusive, held, box_ref = resolved
 
-    # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
-    try:
-        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
-        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
-                                held=held)
-    except SymlinkRefusedError as e:
-        return _link_refused(e)
+  # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
+  try:
+    checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+  except SymlinkRefusedError as e:
+    return _link_refused(e)
 
-    known = {
-        name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
-    }
-    if args.name in known and not confirm_or_abort(
-        getattr(args, "force", False),
-        f"Replace share-rw contents with snapshot {args.name}?\n"
-        "The current contents are snapshotted first, so this can be undone.\n"
-        "Type 'yes' to confirm: ",
-    ):
-        return 2
+  known = {name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)}
+  if args.name in known and not confirm_or_abort(
+    getattr(args, "force", False),
+    f"Replace share-rw contents with snapshot {args.name}?\n"
+    "The current contents are snapshotted first, so this can be undone.\n"
+    "Type 'yes' to confirm: ",
+  ):
+    return 2
 
-    try:
-        restore_snapshot(
-            vault_rw, args.name, box_name=box_name, store_exclusive=exclusive, held=held,
-            box_ref=box_ref,
-        )
-    except ForeignSnapshotError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except SnapshotSafetyError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        # The swap failed and was rolled back (restore_snapshot logs it if not).
-        print(f"Error: could not restore {args.name}: {e}", file=sys.stderr)
-        return 1
+  try:
+    restore_snapshot(
+      vault_rw,
+      args.name,
+      box_name=box_name,
+      store_exclusive=exclusive,
+      held=held,
+      box_ref=box_ref,
+    )
+  except ForeignSnapshotError as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except SnapshotSafetyError as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except FileNotFoundError as e:
+    print(f"Error: {e}", file=sys.stderr)
+    return 1
+  except OSError as e:
+    # The swap failed and was rolled back (restore_snapshot logs it if not).
+    print(f"Error: could not restore {args.name}: {e}", file=sys.stderr)
+    return 1
 
-    print(f"Restored vault share-rw from {args.name}")
-    return 0
+  print(f"Restored vault share-rw from {args.name}")
+  return 0
 
 
 def run_prune(args: argparse.Namespace) -> int:
-    project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir, "prune")
-    if resolved is None:
-        return 1
-    vault_rw, box_name, exclusive, held, _ref = resolved
+  project_dir = getattr(args, "project", None)
+  resolved = _resolve_vault_rw(project_dir, "prune")
+  if resolved is None:
+    return 1
+  vault_rw, box_name, exclusive, held, _ref = resolved
 
-    try:
-        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
-        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
-                                held=held)
-    except SymlinkRefusedError as e:
-        return _link_refused(e)
+  try:
+    checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+  except SymlinkRefusedError as e:
+    return _link_refused(e)
 
-    doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
-    if doomed and not confirm_or_abort(
-        getattr(args, "force", False),
-        f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
-        "This cannot be undone.\n"
-        "Type 'yes' to confirm: ",
-    ):
-        return 2
+  doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
+  if doomed and not confirm_or_abort(
+    getattr(args, "force", False),
+    f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
+    "This cannot be undone.\n"
+    "Type 'yes' to confirm: ",
+  ):
+    return 2
 
-    removed = prune_snapshots(vault_rw, max_keep=args.keep, box_name=box_name)
-    if removed:
-        print(f"Pruned {removed} snapshot(s), keeping {args.keep}.")
-    else:
-        print("Nothing to prune.")
-    return 0
+  removed = prune_snapshots(vault_rw, max_keep=args.keep, box_name=box_name)
+  if removed:
+    print(f"Pruned {removed} snapshot(s), keeping {args.keep}.")
+  else:
+    print("Nothing to prune.")
+  return 0
 
 
 def _link_refused(exc: SymlinkRefusedError) -> int:
-    """Print the refusal of a snapshot store behind a symlink; rc 1."""
-    print(f"Error: {refusal_text(exc)} and try again. Nothing was changed.",
-          file=sys.stderr)
-    return 1
+  """Print the refusal of a snapshot store behind a symlink; rc 1."""
+  print(f"Error: {refusal_text(exc)} and try again. Nothing was changed.", file=sys.stderr)
+  return 1
 
 
 def _human_size(nbytes: int) -> str:
-    """Format byte count as human-readable string."""
-    size = float(nbytes)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024:
-            return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
-        size /= 1024
-    return f"{size:.1f}TB"
+  """Format byte count as human-readable string."""
+  size = float(nbytes)
+  for unit in ("B", "KB", "MB", "GB"):
+    if size < 1024:
+      return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
+    size /= 1024
+  return f"{size:.1f}TB"

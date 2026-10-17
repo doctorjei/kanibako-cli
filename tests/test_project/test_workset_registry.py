@@ -21,8 +21,8 @@ from tests.support.early import early_record
 
 @pytest.fixture
 def reg(tmp_path: Path) -> Path:
-    """The resolved per-workset ``registry.yaml`` path under a fresh workset."""
-    return tmp_path / "workset" / "registry.yaml"
+  """The resolved per-workset ``registry.yaml`` path under a fresh workset."""
+  return tmp_path / "workset" / "registry.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -31,157 +31,160 @@ def reg(tmp_path: Path) -> Path:
 
 
 def test_absent_file_is_empty_membership(reg: Path) -> None:
-    """Absent registry file → empty membership (no scaffolding)."""
-    assert workset_registry.load_workset_boxes(reg) == {}
-    assert workset_registry.workset_box_path(reg, "mybox") is None
-    # Reading does not create the file.
-    assert not reg.exists()
+  """Absent registry file → empty membership (no scaffolding)."""
+  assert workset_registry.load_workset_boxes(reg) == {}
+  assert workset_registry.workset_box_path(reg, "mybox") is None
+  # Reading does not create the file.
+  assert not reg.exists()
 
 
 def test_present_but_null_boxes_section_is_empty(reg: Path) -> None:
-    """A registry file with a PRESENT-but-NULL ``boxes:`` section → ``{}``.
+  """A registry file with a PRESENT-but-NULL ``boxes:`` section → ``{}``.
 
-    Regression: yaml ``boxes:\\n`` makes the key present with value ``None``, so
-    the ``dict.get(..., {})`` default never fires — the ``or {}`` guard coerces
-    it to empty.  Mutation guard: dropping ``or {}`` makes this RED (``dict(None)``
-    raises ``TypeError``).
-    """
-    reg.parent.mkdir(parents=True, exist_ok=True)
-    reg.write_text("boxes:\n")
-    assert workset_registry.load_workset_boxes(reg) == {}
-    assert workset_registry.workset_box_path(reg, "mybox") is None
-    # A register onto the null section still works (no crash) and preserves it.
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/alpha"}
+  Regression: yaml ``boxes:\\n`` makes the key present with value ``None``, so
+  the ``dict.get(..., {})`` default never fires — the ``or {}`` guard coerces
+  it to empty.  Mutation guard: dropping ``or {}`` makes this RED (``dict(None)``
+  raises ``TypeError``).
+  """
+  reg.parent.mkdir(parents=True, exist_ok=True)
+  reg.write_text("boxes:\n")
+  assert workset_registry.load_workset_boxes(reg) == {}
+  assert workset_registry.workset_box_path(reg, "mybox") is None
+  # A register onto the null section still works (no crash) and preserves it.
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/alpha"}
 
 
 def test_register_and_load_round_trip(reg: Path) -> None:
-    """Register two boxes → both come back; names/lookup agree."""
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
-    assert workset_registry.load_workset_boxes(reg) == {
-        "alpha": "/abs/alpha",
-        "beta": "/abs/beta",
-    }
-    assert workset_registry.workset_box_path(reg, "alpha") == "/abs/alpha"
-    assert workset_registry.workset_box_path(reg, "beta") == "/abs/beta"
+  """Register two boxes → both come back; names/lookup agree."""
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
+  assert workset_registry.load_workset_boxes(reg) == {
+    "alpha": "/abs/alpha",
+    "beta": "/abs/beta",
+  }
+  assert workset_registry.workset_box_path(reg, "alpha") == "/abs/alpha"
+  assert workset_registry.workset_box_path(reg, "beta") == "/abs/beta"
 
 
 def test_register_replaces_path(reg: Path) -> None:
-    """Re-registering a name overwrites the stored path (a moved box)."""
-    workset_registry.register_workset_box(reg, "alpha", Path("/old"))
-    workset_registry.register_workset_box(reg, "alpha", Path("/new"))
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
+  """Re-registering a name overwrites the stored path (a moved box)."""
+  workset_registry.register_workset_box(reg, "alpha", Path("/old"))
+  workset_registry.register_workset_box(reg, "alpha", Path("/new"))
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
 
 
 def test_register_same_name_same_path_is_idempotent(reg: Path) -> None:
-    """Re-registering the SAME ``(name, path)`` is a no-op replace (no duplicate).
+  """Re-registering the SAME ``(name, path)`` is a no-op replace (no duplicate).
 
-    The uniqueness guard must never obstruct a legitimate re-register (the
-    ``connect``/import re-register flow).
-    """
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/alpha"}
+  The uniqueness guard must never obstruct a legitimate re-register (the
+  ``connect``/import re-register flow).
+  """
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/alpha"}
 
 
 def test_register_second_name_same_path_is_refused(reg: Path) -> None:
-    """A DIFFERENT name for an ALREADY-registered workspace path is refused.
+  """A DIFFERENT name for an ALREADY-registered workspace path is refused.
 
-    Bug A durable fix: within a workset a workspace path maps to exactly one box
-    name — a second name for the same path (the duplicate-row root cause) raises
-    and does NOT add an entry.  Mutation guard: dropping the uniqueness loop lets
-    both entries land, so the post-refusal membership assertion goes RED.
-    """
-    from kanibako.errors import ProjectError
+  Bug A durable fix: within a workset a workspace path maps to exactly one box
+  name — a second name for the same path (the duplicate-row root cause) raises
+  and does NOT add an entry.  Mutation guard: dropping the uniqueness loop lets
+  both entries land, so the post-refusal membership assertion goes RED.
+  """
+  from kanibako.errors import ProjectError
 
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/shared"))
-    with pytest.raises(ProjectError, match="already registered"):
-        workset_registry.register_workset_box(reg, "beta", Path("/abs/shared"))
-    # The refused register left the membership untouched — no duplicate.
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/shared"}
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/shared"))
+  with pytest.raises(ProjectError, match="already registered"):
+    workset_registry.register_workset_box(reg, "beta", Path("/abs/shared"))
+  # The refused register left the membership untouched — no duplicate.
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/shared"}
 
 
 def test_register_second_name_same_path_spelled_differently_is_refused(
-    reg: Path, tmp_path: Path,
+  reg: Path,
+  tmp_path: Path,
 ) -> None:
-    """A trailing-slash / ``..`` spelling of an already-registered path is refused."""
-    from kanibako.errors import ProjectError
+  """A trailing-slash / ``..`` spelling of an already-registered path is refused."""
+  from kanibako.errors import ProjectError
 
-    real = tmp_path / "real"
-    real.mkdir()
-    workset_registry.register_workset_box(reg, "alpha", real)
-    with pytest.raises(ProjectError, match="already registered"):
-        workset_registry.register_workset_box(reg, "beta", Path(f"{real}/../real/"))
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": str(real)}
+  real = tmp_path / "real"
+  real.mkdir()
+  workset_registry.register_workset_box(reg, "alpha", real)
+  with pytest.raises(ProjectError, match="already registered"):
+    workset_registry.register_workset_box(reg, "beta", Path(f"{real}/../real/"))
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": str(real)}
 
 
 def test_register_second_name_via_a_link_is_a_twin(
-    reg: Path, tmp_path: Path,
+  reg: Path,
+  tmp_path: Path,
 ) -> None:
-    """A link to a registered workspace is a DIFFERENT path, so a second box.
+  """A link to a registered workspace is a DIFFERENT path, so a second box.
 
-    Q4Jei 155-DUPLINK: identity is the path, not the resolved target; twin
-    boxes sharing one target are allowed.
-    """
-    real = tmp_path / "real"
-    real.mkdir()
-    link = tmp_path / "alias"
-    link.symlink_to(real)
-    workset_registry.register_workset_box(reg, "alpha", real)
-    workset_registry.register_workset_box(reg, "beta", link)
-    assert workset_registry.load_workset_boxes(reg) == {
-        "alpha": str(real), "beta": str(link),
-    }
-    assert workset_registry.reverse_lookup_workset_box(reg, link) == "beta"
+  Q4Jei 155-DUPLINK: identity is the path, not the resolved target; twin
+  boxes sharing one target are allowed.
+  """
+  real = tmp_path / "real"
+  real.mkdir()
+  link = tmp_path / "alias"
+  link.symlink_to(real)
+  workset_registry.register_workset_box(reg, "alpha", real)
+  workset_registry.register_workset_box(reg, "beta", link)
+  assert workset_registry.load_workset_boxes(reg) == {
+    "alpha": str(real),
+    "beta": str(link),
+  }
+  assert workset_registry.reverse_lookup_workset_box(reg, link) == "beta"
 
 
 def test_register_move_same_name_new_path_is_allowed(reg: Path) -> None:
-    """A MOVE (same name → new path) is NOT obstructed by the uniqueness guard."""
-    workset_registry.register_workset_box(reg, "alpha", Path("/old"))
-    workset_registry.register_workset_box(reg, "alpha", Path("/new"))
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
+  """A MOVE (same name → new path) is NOT obstructed by the uniqueness guard."""
+  workset_registry.register_workset_box(reg, "alpha", Path("/old"))
+  workset_registry.register_workset_box(reg, "alpha", Path("/new"))
+  assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
 
 
 def test_register_distinct_paths_stay_distinct(reg: Path) -> None:
-    """Distinct workspace paths under distinct names are never collapsed."""
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
-    assert workset_registry.load_workset_boxes(reg) == {
-        "alpha": "/abs/alpha",
-        "beta": "/abs/beta",
-    }
+  """Distinct workspace paths under distinct names are never collapsed."""
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
+  assert workset_registry.load_workset_boxes(reg) == {
+    "alpha": "/abs/alpha",
+    "beta": "/abs/beta",
+  }
 
 
 def test_unregister_removes_only_that_box(reg: Path) -> None:
-    """Unregister removes one box; the other survives."""
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
-    workset_registry.unregister_workset_box(reg, "alpha")
-    assert workset_registry.load_workset_boxes(reg) == {"beta": "/abs/beta"}
-    assert workset_registry.workset_box_path(reg, "alpha") is None
+  """Unregister removes one box; the other survives."""
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
+  workset_registry.unregister_workset_box(reg, "alpha")
+  assert workset_registry.load_workset_boxes(reg) == {"beta": "/abs/beta"}
+  assert workset_registry.workset_box_path(reg, "alpha") is None
 
 
 def test_unregister_absent_name_is_noop(reg: Path) -> None:
-    """Unregistering a name that is not present is a no-op (no crash)."""
-    workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
-    workset_registry.unregister_workset_box(reg, "missing")
-    assert workset_registry.load_workset_boxes(reg) == {"beta": "/abs/beta"}
+  """Unregistering a name that is not present is a no-op (no crash)."""
+  workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
+  workset_registry.unregister_workset_box(reg, "missing")
+  assert workset_registry.load_workset_boxes(reg) == {"beta": "/abs/beta"}
 
 
 def test_unregister_absent_file_is_noop(reg: Path) -> None:
-    """Unregistering when the file is absent is a no-op and creates nothing."""
-    workset_registry.unregister_workset_box(reg, "anything")
-    assert not reg.exists()
+  """Unregistering when the file is absent is a no-op and creates nothing."""
+  workset_registry.unregister_workset_box(reg, "anything")
+  assert not reg.exists()
 
 
 def test_box_names_sorted_on_write(reg: Path) -> None:
-    """Box entries are written sorted (stable diffs)."""
-    workset_registry.register_workset_box(reg, "zed", Path("/z"))
-    workset_registry.register_workset_box(reg, "abe", Path("/a"))
-    workset_registry.register_workset_box(reg, "mid", Path("/m"))
-    raw = load_doc(reg)
-    assert list(raw["boxes"].keys()) == ["abe", "mid", "zed"]
+  """Box entries are written sorted (stable diffs)."""
+  workset_registry.register_workset_box(reg, "zed", Path("/z"))
+  workset_registry.register_workset_box(reg, "abe", Path("/a"))
+  workset_registry.register_workset_box(reg, "mid", Path("/m"))
+  raw = load_doc(reg)
+  assert list(raw["boxes"].keys()) == ["abe", "mid", "zed"]
 
 
 # ---------------------------------------------------------------------------
@@ -190,53 +193,51 @@ def test_box_names_sorted_on_write(reg: Path) -> None:
 
 
 def test_register_drops_an_unknown_section_and_prints_it(reg: Path, caplog) -> None:
-    """Writing ``boxes:`` drops a section the module does not read, printing its text."""
-    dump_doc(reg, {"connected": {"/ext": {"workset": "w", "box": "b"}}})
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    assert load_doc(reg) == {"boxes": {"alpha": "/abs/alpha"}}
-    assert caplog.messages == [
-        f"{reg}: dropped the section 'connected', which kanibako does not read. It held:\n"
-        "connected:\n  /ext:\n    workset: w\n    box: b"
-    ]
+  """Writing ``boxes:`` drops a section the module does not read, printing its text."""
+  dump_doc(reg, {"connected": {"/ext": {"workset": "w", "box": "b"}}})
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  assert load_doc(reg) == {"boxes": {"alpha": "/abs/alpha"}}
+  assert caplog.messages == [
+    f"{reg}: dropped the section 'connected', which kanibako does not read. It held:\n"
+    "connected:\n  /ext:\n    workset: w\n    box: b"
+  ]
 
 
 def test_unregister_drops_an_unknown_section_and_prints_it(reg: Path, caplog) -> None:
-    """Unregister rewrites the file too; the unknown section goes with one warning."""
-    dump_doc(reg, {"boxes": {"alpha": "/abs/alpha"}, "connected": {"/ext": {"workset": "w"}}})
-    workset_registry.unregister_workset_box(reg, "alpha")
-    assert load_doc(reg) == {"boxes": {}}
-    assert len(caplog.messages) == 1 and "'connected'" in caplog.messages[0]
+  """Unregister rewrites the file too; the unknown section goes with one warning."""
+  dump_doc(reg, {"boxes": {"alpha": "/abs/alpha"}, "connected": {"/ext": {"workset": "w"}}})
+  workset_registry.unregister_workset_box(reg, "alpha")
+  assert load_doc(reg) == {"boxes": {}}
+  assert len(caplog.messages) == 1 and "'connected'" in caplog.messages[0]
 
 
 def test_the_registry_is_written_under_the_generated_header(reg: Path) -> None:
-    """The file opens with the CAPITALS header, and a comment in it does not survive a write."""
-    from kanibako.project.registry_store import REGISTRY_HEADER
+  """The file opens with the CAPITALS header, and a comment in it does not survive a write."""
+  from kanibako.project.registry_store import REGISTRY_HEADER
 
-    reg.parent.mkdir(parents=True)
-    reg.write_text("# keep me?\nboxes:\n  beta: /abs/beta  # and me?\n")
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    assert reg.read_text() == (
-        REGISTRY_HEADER + "boxes:\n  alpha: /abs/alpha\n  beta: /abs/beta\n"
-    )
+  reg.parent.mkdir(parents=True)
+  reg.write_text("# keep me?\nboxes:\n  beta: /abs/beta  # and me?\n")
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  assert reg.read_text() == (REGISTRY_HEADER + "boxes:\n  alpha: /abs/alpha\n  beta: /abs/beta\n")
 
 
 def test_register_writes_only_boxes_section(reg: Path) -> None:
-    """A first register on a fresh file writes ONLY the ``boxes:`` section.
+  """A first register on a fresh file writes ONLY the ``boxes:`` section.
 
-    No empty scaffolding of sections the module was not asked to write.
-    """
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    raw = load_doc(reg)
-    assert list(raw.keys()) == ["boxes"]
+  No empty scaffolding of sections the module was not asked to write.
+  """
+  workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+  raw = load_doc(reg)
+  assert list(raw.keys()) == ["boxes"]
 
 
 def test_register_write_is_atomic_no_temp_leftovers(reg: Path) -> None:
-    """Successive writes replace the file cleanly, leaving no temp files."""
-    workset_registry.register_workset_box(reg, "a", Path("/a"))
-    workset_registry.register_workset_box(reg, "b", Path("/b"))
-    workset_registry.unregister_workset_box(reg, "a")
-    leftovers = [p.name for p in reg.parent.iterdir() if p.name != "registry.yaml"]
-    assert leftovers == []
+  """Successive writes replace the file cleanly, leaving no temp files."""
+  workset_registry.register_workset_box(reg, "a", Path("/a"))
+  workset_registry.register_workset_box(reg, "b", Path("/b"))
+  workset_registry.unregister_workset_box(reg, "a")
+  leftovers = [p.name for p in reg.parent.iterdir() if p.name != "registry.yaml"]
+  assert leftovers == []
 
 
 # ---------------------------------------------------------------------------
@@ -245,94 +246,105 @@ def test_register_write_is_atomic_no_temp_leftovers(reg: Path) -> None:
 
 
 def test_resolve_default_is_workset_root_registry(tmp_path: Path) -> None:
-    """No ``workset.registry`` set → default ``<workset_root>/registry.yaml``."""
-    workset_root = tmp_path / "myws"
-    # None settings and empty settings both fall through to the default.
-    assert (
-        workset_registry.resolve_workset_registry_path(workset_root, None,
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        == workset_root / "registry.yaml"
+  """No ``workset.registry`` set → default ``<workset_root>/registry.yaml``."""
+  workset_root = tmp_path / "myws"
+  # None settings and empty settings both fall through to the default.
+  assert (
+    workset_registry.resolve_workset_registry_path(
+      workset_root, None, early=early_record(tmp_path, mode=BoxMode.primary)
     )
-    assert (
-        workset_registry.resolve_workset_registry_path(workset_root, {},
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        == workset_root / "registry.yaml"
+    == workset_root / "registry.yaml"
+  )
+  assert (
+    workset_registry.resolve_workset_registry_path(
+      workset_root, {}, early=early_record(tmp_path, mode=BoxMode.primary)
     )
-    # A ``workset`` table without ``registry`` also uses the default.
-    assert (
-        workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"image": "x"}}, early=early_record(tmp_path, mode=BoxMode.primary)
-        )
-        == workset_root / "registry.yaml"
+    == workset_root / "registry.yaml"
+  )
+  # A ``workset`` table without ``registry`` also uses the default.
+  assert (
+    workset_registry.resolve_workset_registry_path(
+      workset_root, {"workset": {"image": "x"}}, early=early_record(tmp_path, mode=BoxMode.primary)
     )
+    == workset_root / "registry.yaml"
+  )
 
 
 def test_resolve_honors_absolute_repoint(tmp_path: Path) -> None:
-    """A SET absolute ``workset.registry`` is honored, NOT the default.
+  """A SET absolute ``workset.registry`` is honored, NOT the default.
 
-    Mutation guard: if the repoint branch is broken (always returns the default
-    ``workset_root/registry.yaml``), this assertion fails.
-    """
-    workset_root = tmp_path / "myws"
-    custom = tmp_path / "elsewhere" / "myreg.yaml"
-    resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": str(custom)}}, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    assert resolved == custom
-    assert resolved != workset_root / "registry.yaml"
+  Mutation guard: if the repoint branch is broken (always returns the default
+  ``workset_root/registry.yaml``), this assertion fails.
+  """
+  workset_root = tmp_path / "myws"
+  custom = tmp_path / "elsewhere" / "myreg.yaml"
+  resolved = workset_registry.resolve_workset_registry_path(
+    workset_root,
+    {"workset": {"registry": str(custom)}},
+    early=early_record(tmp_path, mode=BoxMode.primary),
+  )
+  assert resolved == custom
+  assert resolved != workset_root / "registry.yaml"
 
 
 def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
-    """A ``~``-based repoint expands the user home (like sibling path keys)."""
-    workset_root = tmp_path / "myws"
-    resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "~/custom/reg.yaml"}}, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    assert resolved == Path("~/custom/reg.yaml").expanduser()
-    assert resolved.is_absolute()
+  """A ``~``-based repoint expands the user home (like sibling path keys)."""
+  workset_root = tmp_path / "myws"
+  resolved = workset_registry.resolve_workset_registry_path(
+    workset_root,
+    {"workset": {"registry": "~/custom/reg.yaml"}},
+    early=early_record(tmp_path, mode=BoxMode.primary),
+  )
+  assert resolved == Path("~/custom/reg.yaml").expanduser()
+  assert resolved.is_absolute()
 
 
 def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path, monkeypatch) -> None:
-    """A BARE relative repoint is refused, naming both readings
-    (keyspec §2a "A path key's stored value").
+  """A BARE relative repoint is refused, naming both readings
+  (keyspec §2a "A path key's stored value").
 
-    ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
-    "reg.yaml"`` and called that "deterministic" — deterministic it was, but the
-    determination was a guess between the workset root and the cwd, and the loser is
-    a registry written where nothing will look for it.
-    """
-    # Run from a link, as a shell does: only ``$PWD`` names the link.
-    real, link = tmp_path / "run-real", tmp_path / "run-from"
-    real.mkdir()
-    link.symlink_to(real)
-    monkeypatch.chdir(link)
-    monkeypatch.setenv("PWD", str(link))
-    workset_root = tmp_path / "myws"
-    with pytest.raises(SettingsError) as excinfo:
-        workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": "sub/reg.yaml"}}, early=early_record(tmp_path, mode=BoxMode.primary)
-        )
-    message = str(excinfo.value)
-    assert str(workset_root / "sub" / "reg.yaml") in message
-    assert str(link / "sub" / "reg.yaml") in message
-    assert str(real.resolve() / "sub" / "reg.yaml") not in message
+  ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
+  "reg.yaml"`` and called that "deterministic" — deterministic it was, but the
+  determination was a guess between the workset root and the cwd, and the loser is
+  a registry written where nothing will look for it.
+  """
+  # Run from a link, as a shell does: only ``$PWD`` names the link.
+  real, link = tmp_path / "run-real", tmp_path / "run-from"
+  real.mkdir()
+  link.symlink_to(real)
+  monkeypatch.chdir(link)
+  monkeypatch.setenv("PWD", str(link))
+  workset_root = tmp_path / "myws"
+  with pytest.raises(SettingsError) as excinfo:
+    workset_registry.resolve_workset_registry_path(
+      workset_root,
+      {"workset": {"registry": "sub/reg.yaml"}},
+      early=early_record(tmp_path, mode=BoxMode.primary),
+    )
+  message = str(excinfo.value)
+  assert str(workset_root / "sub" / "reg.yaml") in message
+  assert str(link / "sub" / "reg.yaml") in message
+  assert str(real.resolve() / "sub" / "reg.yaml") not in message
 
 
 def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -> None:
-    """Keeping the registry with the workset stays expressible — it has to be SAID."""
-    workset_root = tmp_path / "myws"
-    resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "{meta.workset.path}/sub/reg.yaml"}},
-                early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    assert resolved == workset_root / "sub" / "reg.yaml"
+  """Keeping the registry with the workset stays expressible — it has to be SAID."""
+  workset_root = tmp_path / "myws"
+  resolved = workset_registry.resolve_workset_registry_path(
+    workset_root,
+    {"workset": {"registry": "{meta.workset.path}/sub/reg.yaml"}},
+    early=early_record(tmp_path, mode=BoxMode.primary),
+  )
+  assert resolved == workset_root / "sub" / "reg.yaml"
 
 
 def test_resolve_is_pure_no_side_effects(tmp_path: Path) -> None:
-    """The resolver touches no filesystem (pure function of its inputs)."""
-    workset_root = tmp_path / "myws"
-    workset_registry.resolve_workset_registry_path(workset_root, None, early=early_record(tmp_path, mode=BoxMode.primary))
-    assert not workset_root.exists()
+  """The resolver touches no filesystem (pure function of its inputs)."""
+  workset_root = tmp_path / "myws"
+  workset_registry.resolve_workset_registry_path(
+    workset_root, None, early=early_record(tmp_path, mode=BoxMode.primary)
+  )
+  assert not workset_root.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -341,122 +353,135 @@ def test_resolve_is_pure_no_side_effects(tmp_path: Path) -> None:
 
 
 def test_a_null_registry_refuses_naming_the_key_and_the_file(tmp_path: Path) -> None:
-    """``workset.registry: null`` RAISES instead of taking the default.
+  """``workset.registry: null`` RAISES instead of taking the default.
 
-    The registry holds the workset's box MEMBERSHIP and its entry keys are the only
-    source of box names, so a null leaves no workset to read.  Mutation guard: an
-    absent-or-null read that falls through to ``<root>/registry.yaml`` returns that
-    path and this assertion never runs.
-    """
-    workset_root = tmp_path / "myws"
-    with pytest.raises(SettingsError) as excinfo:
-        workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": None}}, early=early_record(tmp_path, mode=BoxMode.primary)
-        )
-    message = str(excinfo.value)
-    assert "workset.registry" in message
-    assert str(workset_root / "workset.yaml") in message
+  The registry holds the workset's box MEMBERSHIP and its entry keys are the only
+  source of box names, so a null leaves no workset to read.  Mutation guard: an
+  absent-or-null read that falls through to ``<root>/registry.yaml`` returns that
+  path and this assertion never runs.
+  """
+  workset_root = tmp_path / "myws"
+  with pytest.raises(SettingsError) as excinfo:
+    workset_registry.resolve_workset_registry_path(
+      workset_root,
+      {"workset": {"registry": None}},
+      early=early_record(tmp_path, mode=BoxMode.primary),
+    )
+  message = str(excinfo.value)
+  assert "workset.registry" in message
+  assert str(workset_root / "workset.yaml") in message
 
 
 def test_the_null_refusal_is_the_path_key_carriers_own(tmp_path: Path) -> None:
-    """⚑ ONE CARRIER: this reader raises through ``config``'s carrier, like ``workset.boxes``.
+  """⚑ ONE CARRIER: this reader raises through ``config``'s carrier, like ``workset.boxes``.
 
-    A second wording spelled for the registry would be a second rule, free to drift
-    from the reason every other path-key door answers to.
-    """
-    from kanibako.settings.config import null_path_keys_error
+  A second wording spelled for the registry would be a second rule, free to drift
+  from the reason every other path-key door answers to.
+  """
+  from kanibako.settings.config import null_path_keys_error
 
-    workset_root = tmp_path / "myws"
-    with pytest.raises(SettingsError) as excinfo:
-        workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": None}}, early=early_record(tmp_path, mode=BoxMode.primary)
-        )
-    assert str(excinfo.value) == null_path_keys_error(
-        workset_root / "workset.yaml", ("workset.registry",)
+  workset_root = tmp_path / "myws"
+  with pytest.raises(SettingsError) as excinfo:
+    workset_registry.resolve_workset_registry_path(
+      workset_root,
+      {"workset": {"registry": None}},
+      early=early_record(tmp_path, mode=BoxMode.primary),
     )
+  assert str(excinfo.value) == null_path_keys_error(
+    workset_root / "workset.yaml", ("workset.registry",)
+  )
 
 
 def test_the_registry_key_is_in_the_doors_membership() -> None:
-    """The ``set`` door answers to :func:`config.refuses_null_path_key` for this key."""
-    from kanibako.settings.config import refuses_null_path_key
+  """The ``set`` door answers to :func:`config.refuses_null_path_key` for this key."""
+  from kanibako.settings.config import refuses_null_path_key
 
-    assert refuses_null_path_key("workset.registry") is True
+  assert refuses_null_path_key("workset.registry") is True
 
 
 def test_a_null_registry_is_refused_at_the_set_door_and_nothing_is_written(
-    tmp_path: Path,
+  tmp_path: Path,
 ) -> None:
-    """``set --null workset.registry`` is refused BEFORE the write, naming the key.
+  """``set --null workset.registry`` is refused BEFORE the write, naming the key.
 
-    Driven through :func:`set_config_value`, the door the ``workset set`` verb runs.
-    """
-    from kanibako.settings.config_interface import set_config_value
-    from kanibako.settings.config_keys import ConfigLevel
+  Driven through :func:`set_config_value`, the door the ``workset set`` verb runs.
+  """
+  from kanibako.settings.config_interface import set_config_value
+  from kanibako.settings.config_keys import ConfigLevel
 
-    workset_settings = tmp_path / "myws" / "workset.yaml"
-    message = set_config_value(
-        "workset.registry", None,
-        config_path=workset_settings, cascade_workset_path=workset_settings,
-        command_scope=ConfigLevel.workset,
-    )
-    assert message.startswith("Error:"), message
-    assert "workset.registry" in message, message
-    assert not workset_settings.exists(), f"{workset_settings} was written: {message}"
+  workset_settings = tmp_path / "myws" / "workset.yaml"
+  message = set_config_value(
+    "workset.registry",
+    None,
+    config_path=workset_settings,
+    cascade_workset_path=workset_settings,
+    command_scope=ConfigLevel.workset,
+  )
+  assert message.startswith("Error:"), message
+  assert "workset.registry" in message, message
+  assert not workset_settings.exists(), f"{workset_settings} was written: {message}"
 
 
-@pytest.mark.parametrize("settings_doc", [
-    None,                                          # no workset.yaml at all
-    {},                                            # a file that holds no table
-    {"workset": {}},                               # a table with no key in it
-    {"workset": {"logs": None}},                   # ...and one whose OTHER key is null
-], ids=["no_doc", "empty_doc", "empty_table", "sibling_null"])
+@pytest.mark.parametrize(
+  "settings_doc",
+  [
+    None,  # no workset.yaml at all
+    {},  # a file that holds no table
+    {"workset": {}},  # a table with no key in it
+    {"workset": {"logs": None}},  # ...and one whose OTHER key is null
+  ],
+  ids=["no_doc", "empty_doc", "empty_table", "sibling_null"],
+)
 def test_an_absent_registry_key_still_takes_the_default(
-    tmp_path: Path, settings_doc: dict | None,
+  tmp_path: Path,
+  settings_doc: dict | None,
 ) -> None:
-    """⚑ THE ABSENT/PRESENT LINE. Absent takes the default; only a PRESENT null refuses.
+  """⚑ THE ABSENT/PRESENT LINE. Absent takes the default; only a PRESENT null refuses.
 
-    Every shape here has no ``workset.registry`` at all, and every one must still read
-    ``<root>/registry.yaml`` — a refusal that reached past a present null and into the
-    absent case would strand every workset that never set the key.
-    """
-    workset_root = tmp_path / "myws"
-    assert (
-        workset_registry.resolve_workset_registry_path(workset_root, settings_doc,
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        == workset_root / "registry.yaml"
+  Every shape here has no ``workset.registry`` at all, and every one must still read
+  ``<root>/registry.yaml`` — a refusal that reached past a present null and into the
+  absent case would strand every workset that never set the key.
+  """
+  workset_root = tmp_path / "myws"
+  assert (
+    workset_registry.resolve_workset_registry_path(
+      workset_root, settings_doc, early=early_record(tmp_path, mode=BoxMode.primary)
     )
+    == workset_root / "registry.yaml"
+  )
 
 
 def test_concurrent_registrations_keep_every_row(tmp_path: Path, monkeypatch) -> None:
-    """Two registrations that read the registry at once must not drop a row.
+  """Two registrations that read the registry at once must not drop a row.
 
-    The read is held open until both have read, which is the interleaving that lost
-    two of twenty rows in a 5×4 concurrent-create run.
-    """
-    import threading
+  The read is held open until both have read, which is the interleaving that lost
+  two of twenty rows in a 5×4 concurrent-create run.
+  """
+  import threading
 
-    registry = tmp_path / "registry.yaml"
-    workset_registry.register_workset_box(registry, "seed", tmp_path / "seed")
-    real_load = workset_registry._load_boxes_raw
-    both_read = threading.Barrier(2, timeout=2)
+  registry = tmp_path / "registry.yaml"
+  workset_registry.register_workset_box(registry, "seed", tmp_path / "seed")
+  real_load = workset_registry._load_boxes_raw
+  both_read = threading.Barrier(2, timeout=2)
 
-    def _slow_load(path):
-        got = real_load(path)
-        try:
-            both_read.wait()
-        except threading.BrokenBarrierError:
-            pass  # serialized: the other writer is still waiting on the lock
-        return got
+  def _slow_load(path):
+    got = real_load(path)
+    try:
+      both_read.wait()
+    except threading.BrokenBarrierError:
+      pass  # serialized: the other writer is still waiting on the lock
+    return got
 
-    monkeypatch.setattr(workset_registry, "_load_boxes_raw", _slow_load)
-    threads = [
-        threading.Thread(target=workset_registry.register_workset_box,
-                         args=(registry, name, tmp_path / name))
-        for name in ("one", "two")
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+  monkeypatch.setattr(workset_registry, "_load_boxes_raw", _slow_load)
+  threads = [
+    threading.Thread(
+      target=workset_registry.register_workset_box, args=(registry, name, tmp_path / name)
+    )
+    for name in ("one", "two")
+  ]
+  for t in threads:
+    t.start()
+  for t in threads:
+    t.join()
 
-    assert set(workset_registry.load_workset_boxes(registry)) == {"seed", "one", "two"}
+  assert set(workset_registry.load_workset_boxes(registry)) == {"seed", "one", "two"}

@@ -8,374 +8,442 @@ from pathlib import Path
 
 
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.paths import (
+  WorksetSpec,
+  load_std_paths,
+  resolve_project,
+  resolve_workset_project,
+)
 from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
 class TestArchive:
-    def test_creates_archive(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.archive import run
+  def test_creates_archive(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.archive import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Put some data in metadata
-        (proj.metadata_path / "test_data.txt").write_text("hello")
+    # Put some data in metadata
+    (proj.metadata_path / "test_data.txt").write_text("hello")
 
-        archive_path = str(tmp_home / "test.txz")
-        args = argparse.Namespace(
-            path=project_dir,
-            file=archive_path,
-            all_projects=False,
-            allow_uncommitted=True,
-            allow_unpushed=True,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert Path(archive_path).exists()
+    archive_path = str(tmp_home / "test.txz")
+    args = argparse.Namespace(
+      path=project_dir,
+      file=archive_path,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert Path(archive_path).exists()
 
-        # Verify archive contents
-        with tarfile.open(archive_path, "r:xz") as tar:
-            names = tar.getnames()
-            assert any("test_data.txt" in n for n in names)
+    # Verify archive contents
+    with tarfile.open(archive_path, "r:xz") as tar:
+      names = tar.getnames()
+      assert any("test_data.txt" in n for n in names)
 
-    def test_no_session_data(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.archive import run
+  def test_no_session_data(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.archive import run
 
-        # Create a project dir but don't initialize it
-        new_project = tmp_home / "empty_project"
-        new_project.mkdir()
+    # Create a project dir but don't initialize it
+    new_project = tmp_home / "empty_project"
+    new_project.mkdir()
 
-        args = argparse.Namespace(
-            path=str(new_project),
-            file=None,
-            all_projects=False,
-            allow_uncommitted=True,
-            allow_unpushed=True,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 1
+    args = argparse.Namespace(
+      path=str(new_project),
+      file=None,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 1
 
 
 class TestArchiveExtended:
-    def _setup_project(self, config_file, tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        (proj.metadata_path / "data.txt").write_text("content")
-        return proj, project_dir
+  def _setup_project(self, config_file, tmp_home, credentials_dir):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    (proj.metadata_path / "data.txt").write_text("content")
+    return proj, project_dir
 
-    def test_git_uncommitted_blocked(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        from kanibako.commands.archive import run
-        import subprocess
+  def test_git_uncommitted_blocked(self, config_file, tmp_home, credentials_dir, fake_git_repo):
+    from kanibako.commands.archive import run
+    import subprocess
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
-        # Create and stage an uncommitted change so diff-index detects it
-        (fake_git_repo / "dirty.txt").write_text("dirty")
-        subprocess.run(["git", "add", "dirty.txt"], cwd=fake_git_repo, capture_output=True, check=True)
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    # Create and stage an uncommitted change so diff-index detects it
+    (fake_git_repo / "dirty.txt").write_text("dirty")
+    subprocess.run(["git", "add", "dirty.txt"], cwd=fake_git_repo, capture_output=True, check=True)
 
-        args = argparse.Namespace(
-            path=project_dir, file=str(tmp_home / "out.txz"),
-            all_projects=False, allow_uncommitted=False, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 1
+    args = argparse.Namespace(
+      path=project_dir,
+      file=str(tmp_home / "out.txz"),
+      all_projects=False,
+      allow_uncommitted=False,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 1
 
-    def test_uncommitted_allowed(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        from kanibako.commands.archive import run
+  def test_uncommitted_allowed(self, config_file, tmp_home, credentials_dir, fake_git_repo):
+    from kanibako.commands.archive import run
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
-        (fake_git_repo / "dirty.txt").write_text("dirty")
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    (fake_git_repo / "dirty.txt").write_text("dirty")
 
-        args = argparse.Namespace(
-            path=project_dir, file=str(tmp_home / "out.txz"),
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(
+      path=project_dir,
+      file=str(tmp_home / "out.txz"),
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
-    def test_unpushed_blocked(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        """With an upstream set and unpushed commits, archive should fail."""
-        from kanibako.commands.archive import run
-        import subprocess
+  def test_unpushed_blocked(self, config_file, tmp_home, credentials_dir, fake_git_repo):
+    """With an upstream set and unpushed commits, archive should fail."""
+    from kanibako.commands.archive import run
+    import subprocess
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
 
-        # Create a bare remote and set upstream
-        remote = tmp_home / "remote.git"
-        subprocess.run(["git", "init", "--bare", str(remote)], capture_output=True, check=True)
-        subprocess.run(
-            ["git", "remote", "add", "origin", str(remote)],
-            cwd=fake_git_repo, capture_output=True, check=True,
-        )
-        subprocess.run(
-            ["git", "push", "-u", "origin", "master"],
-            cwd=fake_git_repo, capture_output=True,
-        )
-        # If push failed (branch may be 'main'), try that
-        subprocess.run(
-            ["git", "push", "-u", "origin", "main"],
-            cwd=fake_git_repo, capture_output=True,
-        )
-        # Now create an unpushed commit
-        (fake_git_repo / "new.txt").write_text("new")
-        subprocess.run(["git", "add", "."], cwd=fake_git_repo, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", "local"],
-            cwd=fake_git_repo, capture_output=True, check=True,
-        )
+    # Create a bare remote and set upstream
+    remote = tmp_home / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], capture_output=True, check=True)
+    subprocess.run(
+      ["git", "remote", "add", "origin", str(remote)],
+      cwd=fake_git_repo,
+      capture_output=True,
+      check=True,
+    )
+    subprocess.run(
+      ["git", "push", "-u", "origin", "master"],
+      cwd=fake_git_repo,
+      capture_output=True,
+    )
+    # If push failed (branch may be 'main'), try that
+    subprocess.run(
+      ["git", "push", "-u", "origin", "main"],
+      cwd=fake_git_repo,
+      capture_output=True,
+    )
+    # Now create an unpushed commit
+    (fake_git_repo / "new.txt").write_text("new")
+    subprocess.run(["git", "add", "."], cwd=fake_git_repo, capture_output=True, check=True)
+    subprocess.run(
+      ["git", "commit", "-m", "local"],
+      cwd=fake_git_repo,
+      capture_output=True,
+      check=True,
+    )
 
-        args = argparse.Namespace(
-            path=project_dir, file=str(tmp_home / "out.txz"),
-            all_projects=False, allow_uncommitted=True, allow_unpushed=False, force=True,
-        )
-        rc = run(args)
-        assert rc == 1
+    args = argparse.Namespace(
+      path=project_dir,
+      file=str(tmp_home / "out.txz"),
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 1
 
-    def test_unpushed_allowed(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        from kanibako.commands.archive import run
+  def test_unpushed_allowed(self, config_file, tmp_home, credentials_dir, fake_git_repo):
+    from kanibako.commands.archive import run
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
 
-        args = argparse.Namespace(
-            path=project_dir, file=str(tmp_home / "out.txz"),
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(
+      path=project_dir,
+      file=str(tmp_home / "out.txz"),
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
-    def test_non_git_project_succeeds(self, config_file, tmp_home, credentials_dir):
-        """Archive works for non-git projects (no .git directory)."""
-        from kanibako.commands.archive import run
+  def test_non_git_project_succeeds(self, config_file, tmp_home, credentials_dir):
+    """Archive works for non-git projects (no .git directory)."""
+    from kanibako.commands.archive import run
 
-        # tmp_home/project has no .git
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    # tmp_home/project has no .git
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
 
-        args = argparse.Namespace(
-            path=project_dir, file=str(tmp_home / "out.txz"),
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert Path(tmp_home / "out.txz").exists()
+    args = argparse.Namespace(
+      path=project_dir,
+      file=str(tmp_home / "out.txz"),
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert Path(tmp_home / "out.txz").exists()
 
-    def test_auto_filename_format(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.archive import run
+  def test_auto_filename_format(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.archive import run
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
 
-        import os
-        os.chdir(tmp_home)
-        args = argparse.Namespace(
-            path=project_dir, file=None,
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        # Auto-generated filename should match pattern: kanibako-<name>-<hash>-<timestamp>.txz
-        import glob
-        files = glob.glob(str(tmp_home / "kanibako-project-*.txz"))
-        assert len(files) == 1
+    import os
 
-    def test_git_metadata_in_archive(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        from kanibako.commands.archive import run
+    os.chdir(tmp_home)
+    args = argparse.Namespace(
+      path=project_dir,
+      file=None,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    # Auto-generated filename should match pattern: kanibako-<name>-<hash>-<timestamp>.txz
+    import glob
 
-        proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
+    files = glob.glob(str(tmp_home / "kanibako-project-*.txz"))
+    assert len(files) == 1
 
-        archive_path = str(tmp_home / "meta.txz")
-        args = argparse.Namespace(
-            path=project_dir, file=archive_path,
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+  def test_git_metadata_in_archive(self, config_file, tmp_home, credentials_dir, fake_git_repo):
+    from kanibako.commands.archive import run
 
-        # Extract and check info file was created (then cleaned up from settings_path)
-        # The archive itself should contain the hash directory
-        with tarfile.open(archive_path, "r:xz") as tar:
-            names = tar.getnames()
-            assert any("data.txt" in n for n in names)
+    proj, project_dir = self._setup_project(config_file, tmp_home, credentials_dir)
 
-    def test_archive_standalone_project(self, config_file, tmp_home):
-        """Archive works for standalone projects (settings at the root)."""
-        from kanibako.commands.archive import run
+    archive_path = str(tmp_home / "meta.txz")
+    args = argparse.Namespace(
+      path=project_dir,
+      file=archive_path,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
-        config = load_config(config_file)
-        load_std_paths(config)
-        project_dir = tmp_home / "project"
-        # Standalone marker: the ROOT workset.yaml's stored registry null.
-        kanibako_dir = project_dir / "box_data"
-        kanibako_dir.mkdir(parents=True)
-        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
-        (kanibako_dir / "data.txt").write_text("standalone-data")
+    # Extract and check info file was created (then cleaned up from settings_path)
+    # The archive itself should contain the hash directory
+    with tarfile.open(archive_path, "r:xz") as tar:
+      names = tar.getnames()
+      assert any("data.txt" in n for n in names)
 
-        archive_path = str(tmp_home / "dec.txz")
-        args = argparse.Namespace(
-            path=str(project_dir), file=archive_path,
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert Path(archive_path).exists()
+  def test_archive_standalone_project(self, config_file, tmp_home):
+    """Archive works for standalone projects (settings at the root)."""
+    from kanibako.commands.archive import run
 
-        with tarfile.open(archive_path, "r:xz") as tar:
-            names = tar.getnames()
-            assert any("data.txt" in n for n in names)
+    config = load_config(config_file)
+    load_std_paths(config)
+    project_dir = tmp_home / "project"
+    # Standalone marker: the ROOT workset.yaml's stored registry null.
+    kanibako_dir = project_dir / "box_data"
+    kanibako_dir.mkdir(parents=True)
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (kanibako_dir / "data.txt").write_text("standalone-data")
+
+    archive_path = str(tmp_home / "dec.txz")
+    args = argparse.Namespace(
+      path=str(project_dir),
+      file=archive_path,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert Path(archive_path).exists()
+
+    with tarfile.open(archive_path, "r:xz") as tar:
+      names = tar.getnames()
+      assert any("data.txt" in n for n in names)
 
 
 class TestStubProject:
-    """P8a: ``_stub_project`` sources a gone-path box's NAME from box_resolve's
-    identity (registry KEY / composed standalone name), replacing the
-    transitional ``read_project_meta`` ``project.name`` read."""
+  """P8a: ``_stub_project`` sources a gone-path box's NAME from box_resolve's
+  identity (registry KEY / composed standalone name), replacing the
+  transitional ``read_project_meta`` ``project.name`` read."""
 
-    def test_name_from_box_resolve_registry_key(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """A gone-path primary box (workspace missing, still registered) stubs
-        with its registry KEY as the name — even when the box-dir leaf differs.
+  def test_name_from_box_resolve_registry_key(self, config_file, tmp_home, credentials_dir):
+    """A gone-path primary box (workspace missing, still registered) stubs
+    with its registry KEY as the name — even when the box-dir leaf differs.
 
-        Mutation proof: break the box_resolve identity read (fall straight to
-        ``metadata_path.name``) → the name becomes the dir leaf 'dirleaf'
-        instead of the registry key 'regkey' → RED.
-        """
-        from kanibako.project import workset_registry
-        from kanibako.commands.archive import _stub_project
-        from kanibako.settings.config_io import load_doc
+    Mutation proof: break the box_resolve identity read (fall straight to
+    ``metadata_path.name``) → the name becomes the dir leaf 'dirleaf'
+    instead of the registry key 'regkey' → RED.
+    """
+    from kanibako.project import workset_registry
+    from kanibako.commands.archive import _stub_project
+    from kanibako.settings.config_io import load_doc
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        # Registry KEY 'regkey' deliberately differs from the box-dir leaf, and
-        # the box's workspace never exists on disk (a gone path).
-        box_dir = std.boxes / "dirleaf"
-        box_dir.mkdir(parents=True)
-        gone_ws = tmp_home / "gone_workspace"
-        reg = workset_registry.resolve_workset_registry_path(
-            std.primary_workset,
-            load_doc(std.primary_workset / "workset.yaml"),
-            early=_early_scope(std, BoxMode.primary),
-        )
-        workset_registry.register_workset_box(reg, "regkey", gone_ws)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    # Registry KEY 'regkey' deliberately differs from the box-dir leaf, and
+    # the box's workspace never exists on disk (a gone path).
+    box_dir = std.boxes / "dirleaf"
+    box_dir.mkdir(parents=True)
+    gone_ws = tmp_home / "gone_workspace"
+    reg = workset_registry.resolve_workset_registry_path(
+      std.primary_workset,
+      load_doc(std.primary_workset / "workset.yaml"),
+      early=_early_scope(std, BoxMode.primary),
+    )
+    workset_registry.register_workset_box(reg, "regkey", gone_ws)
 
-        stub = _stub_project(box_dir, gone_ws, std, config)
-        assert stub.name == "regkey"
+    stub = _stub_project(box_dir, gone_ws, std, config)
+    assert stub.name == "regkey"
 
-    def test_name_falls_back_to_dir_leaf_when_unresolvable(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """A truly-absent box (no registry entry, no path) degrades gracefully
-        to the box-dir leaf name (the primary box name IS its dir)."""
-        from kanibako.commands.archive import _stub_project
+  def test_name_falls_back_to_dir_leaf_when_unresolvable(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    """A truly-absent box (no registry entry, no path) degrades gracefully
+    to the box-dir leaf name (the primary box name IS its dir)."""
+    from kanibako.commands.archive import _stub_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        box_dir = std.boxes / "orphanbox"
-        box_dir.mkdir(parents=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    box_dir = std.boxes / "orphanbox"
+    box_dir.mkdir(parents=True)
 
-        stub = _stub_project(box_dir, None, std, config)
-        assert stub.name == "orphanbox"
+    stub = _stub_project(box_dir, None, std, config)
+    assert stub.name == "orphanbox"
 
 
 class TestArchiveWorkset:
-    def test_archive_all_includes_workset_projects(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.archive import run
+  def test_archive_all_includes_workset_projects(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.archive import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create a default-mode project
-        ac_dir = tmp_home / "ac_arch"
-        ac_dir.mkdir()
-        resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
+    # Create a default-mode project
+    ac_dir = tmp_home / "ac_arch"
+    ac_dir.mkdir()
+    resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
-        # Create a workset with an initialized project
-        ws_root = tmp_home / "worksets" / "arch_ws"
-        ws = create_workset("arch_ws", ws_root, std)
-        source = tmp_home / "arch_src"
-        source.mkdir()
-        add_project(ws, "arch_proj", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "arch_proj", std, config, initialize=True)
-        (proj.metadata_path / "data.txt").write_text("ws-archive-data")
+    # Create a workset with an initialized project
+    ws_root = tmp_home / "worksets" / "arch_ws"
+    ws = create_workset("arch_ws", ws_root, std)
+    source = tmp_home / "arch_src"
+    source.mkdir()
+    add_project(ws, "arch_proj", source)
+    proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws), "arch_proj", std, config, initialize=True
+    )
+    (proj.metadata_path / "data.txt").write_text("ws-archive-data")
 
-        import os
-        os.chdir(tmp_home)
-        args = argparse.Namespace(
-            path=None, file=None,
-            all_projects=True, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+    import os
 
-        # Both default and workset archives should be created
-        import glob
-        files = glob.glob(str(tmp_home / "kanibako-*.txz"))
-        assert len(files) >= 2
+    os.chdir(tmp_home)
+    args = argparse.Namespace(
+      path=None,
+      file=None,
+      all_projects=True,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
-    def test_archive_workset_project_single(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.archive import run
+    # Both default and workset archives should be created
+    import glob
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    files = glob.glob(str(tmp_home / "kanibako-*.txz"))
+    assert len(files) >= 2
 
-        ws_root = tmp_home / "worksets" / "single_ws"
-        ws = create_workset("single_ws", ws_root, std)
-        source = tmp_home / "single_src"
-        source.mkdir()
-        add_project(ws, "single_proj", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single_proj", std, config, initialize=True)
-        (proj.metadata_path / "data.txt").write_text("single-data")
+  def test_archive_workset_project_single(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.archive import run
 
-        archive_path = str(tmp_home / "single.txz")
-        # Use workspace path as path arg
-        args = argparse.Namespace(
-            path=str(ws.workspaces_dir / "single_proj"), file=archive_path,
-            all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert Path(archive_path).exists()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    ws_root = tmp_home / "worksets" / "single_ws"
+    ws = create_workset("single_ws", ws_root, std)
+    source = tmp_home / "single_src"
+    source.mkdir()
+    add_project(ws, "single_proj", source)
+    proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws), "single_proj", std, config, initialize=True
+    )
+    (proj.metadata_path / "data.txt").write_text("single-data")
+
+    archive_path = str(tmp_home / "single.txz")
+    # Use workspace path as path arg
+    args = argparse.Namespace(
+      path=str(ws.workspaces_dir / "single_proj"),
+      file=archive_path,
+      all_projects=False,
+      allow_uncommitted=True,
+      allow_unpushed=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert Path(archive_path).exists()
 
 
 class TestArchiveReadsNoVaultCascade:
-    """2R / T4 — ``archive`` never resolves the vault flag.
+  """2R / T4 — ``archive`` never resolves the vault flag.
 
-    ``_archive_one`` reads neither vault field, and the stub ``ProjectPaths`` a gone-path
-    box gets leaves ``_enable_vault`` UNSET.  Before 2R that unset WAS the dataclass
-    default ``True``; after 2R it means "not yet resolved", and because nothing asks, R3
-    never runs and no fabricated ``True`` is needed.  The spy pins the property rather
-    than the current value: a later consumer that starts asking reddens this instead of
-    quietly putting a cascade read on the archive path.
-    """
+  ``_archive_one`` reads neither vault field, and the stub ``ProjectPaths`` a gone-path
+  box gets leaves ``_enable_vault`` UNSET.  Before 2R that unset WAS the dataclass
+  default ``True``; after 2R it means "not yet resolved", and because nothing asks, R3
+  never runs and no fabricated ``True`` is needed.  The spy pins the property rather
+  than the current value: a later consumer that starts asking reddens this instead of
+  quietly putting a cascade read on the archive path.
+  """
 
-    def test_archiving_a_primary_box_reads_no_vault_cascade(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        from kanibako.commands.archive import run
-        from kanibako.settings import paths as paths_mod
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_archiving_a_primary_box_reads_no_vault_cascade(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    from kanibako.commands.archive import run
+    from kanibako.settings import paths as paths_mod
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        (proj.metadata_path / "payload.txt").write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    (proj.metadata_path / "payload.txt").write_text("x")
 
-        calls: list = []
-        monkeypatch.setattr(
-            paths_mod, "resolve_box_enable_vault",
-            lambda *a, **k: calls.append((a, k)) or False,
-        )
+    calls: list = []
+    monkeypatch.setattr(
+      paths_mod,
+      "resolve_box_enable_vault",
+      lambda *a, **k: calls.append((a, k)) or False,
+    )
 
-        archive_path = str(tmp_home / "no-cascade.txz")
-        rc = run(argparse.Namespace(
-            path=project_dir, file=archive_path, all_projects=False,
-            allow_uncommitted=True, allow_unpushed=True, force=True,
-        ))
-        assert rc == 0
-        assert calls == [], f"archive read the vault cascade {len(calls)}x"
+    archive_path = str(tmp_home / "no-cascade.txz")
+    rc = run(
+      argparse.Namespace(
+        path=project_dir,
+        file=archive_path,
+        all_projects=False,
+        allow_uncommitted=True,
+        allow_unpushed=True,
+        force=True,
+      )
+    )
+    assert rc == 0
+    assert calls == [], f"archive read the vault cascade {len(calls)}x"

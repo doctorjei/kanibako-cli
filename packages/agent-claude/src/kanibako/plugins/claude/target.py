@@ -12,42 +12,42 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.settings.agent_defaults import (
-    load_behavior,
-    load_category_binds,
-    load_descriptor,
-    load_common,
-    load_envs,
+  load_behavior,
+  load_category_binds,
+  load_descriptor,
+  load_common,
+  load_envs,
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
-    AccessReport,
-    AgentInstall,
-    BindArm,
-    CategoryBindDefaults,
-    CredFileSpec,
-    PersonaProbeOutcome,
-    PersonaReadOutcome,
-    PersonaSettings,
-    PluginDescriptor,
-    ProbeEvidence,
-    Target,
-    TargetSetting,
-    access_outcome,
-    probe_general_access,
-    probe_model_access,
-    probe_token,
+  AccessReport,
+  AgentInstall,
+  BindArm,
+  CategoryBindDefaults,
+  CredFileSpec,
+  PersonaProbeOutcome,
+  PersonaReadOutcome,
+  PersonaSettings,
+  PluginDescriptor,
+  ProbeEvidence,
+  Target,
+  TargetSetting,
+  access_outcome,
+  probe_general_access,
+  probe_model_access,
+  probe_token,
 )
 from kanibako.targets import base as _targets_base
 
 from kanibako.plugins.claude.credentials import (
-    credentials_error,
-    merge_oauth_account_out,
-    merge_oauth_in,
+  credentials_error,
+  merge_oauth_account_out,
+  merge_oauth_in,
 )
 
 if TYPE_CHECKING:
-    from kanibako.settings.agent_config import AgentConfig
-    from kanibako.vscode.vscode_config import CodexModelProvider
+  from kanibako.settings.agent_config import AgentConfig
+  from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.claude")
 
@@ -83,37 +83,37 @@ _TIER_MODEL_VAR = "ANTHROPIC_DEFAULT_{tier}_MODEL"
 
 
 def _is_tier_alias(model: str) -> bool:
-    """*model* has the shape of a tier alias: a bare ASCII word, which no provider id is."""
-    return model.isascii() and model.isalnum()
+  """*model* has the shape of a tier alias: a bare ASCII word, which no provider id is."""
+  return model.isascii() and model.isalnum()
 
 
 def _wire_model(model: str | None, env: "Mapping[str, str] | None") -> tuple[str | None, str]:
-    """The model id the BOX would put on the wire, and a note saying where it came from.
+  """The model id the BOX would put on the wire, and a note saying where it came from.
 
-    ⚑ THE MEASURED FAILURE THIS EXISTS FOR: a persona whose ``model`` resolved to the
-    alias ``sonnet`` was probed with ``sonnet`` on the wire, the endpoint answered 403
-    ("team not allowed to access model"), and a working box was refused on a VALID
-    token.  In the box that same launch sends ``$ANTHROPIC_DEFAULT_SONNET_MODEL``, which
-    the endpoint serves.  A probe that sends something the box never sends is not
-    verifying the box.
+  ⚑ THE MEASURED FAILURE THIS EXISTS FOR: a persona whose ``model`` resolved to the
+  alias ``sonnet`` was probed with ``sonnet`` on the wire, the endpoint answered 403
+  ("team not allowed to access model"), and a working box was refused on a VALID
+  token.  In the box that same launch sends ``$ANTHROPIC_DEFAULT_SONNET_MODEL``, which
+  the endpoint serves.  A probe that sends something the box never sends is not
+  verifying the box.
 
-    ⚑ It resolves ONLY a mapping the USER wrote, and never invents one: a model with no
-    such var is returned AS GIVEN, and ``None`` stays ``None`` so the key is still
-    OMITTED (both rules of ``procedures/persona-resolution-model.md``, unchanged).  The
-    alias test is the shape of an alias — a real provider id (``claude-sonnet-4-5``,
-    ``gemma-4-31b-it``) is never a bare ASCII word, and a bare word that names no var
-    still goes out untouched.
-    """
-    if not model:
-        return None, ""
-    alias = model.strip()
-    if not _is_tier_alias(alias):
-        return alias, ""
-    var = _TIER_MODEL_VAR.format(tier=alias.upper())
-    resolved = (env or {}).get(var, "")
-    if not resolved:
-        return alias, ""
-    return resolved, f"the box resolves '{alias}' through {var}"
+  ⚑ It resolves ONLY a mapping the USER wrote, and never invents one: a model with no
+  such var is returned AS GIVEN, and ``None`` stays ``None`` so the key is still
+  OMITTED (both rules of ``procedures/persona-resolution-model.md``, unchanged).  The
+  alias test is the shape of an alias — a real provider id (``claude-sonnet-4-5``,
+  ``gemma-4-31b-it``) is never a bare ASCII word, and a bare word that names no var
+  still goes out untouched.
+  """
+  if not model:
+    return None, ""
+  alias = model.strip()
+  if not _is_tier_alias(alias):
+    return alias, ""
+  var = _TIER_MODEL_VAR.format(tier=alias.upper())
+  resolved = (env or {}).get(var, "")
+  if not resolved:
+    return alias, ""
+  return resolved, f"the box resolves '{alias}' through {var}"
 
 
 # Declarative descriptor for the generalized plugin interface.  LIVE: core
@@ -144,631 +144,632 @@ _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 def _autoupdater_disabled_env() -> dict[str, str]:
-    """Return a copy of os.environ with the Claude auto-updater disabled.
+  """Return a copy of os.environ with the Claude auto-updater disabled.
 
-    Every host exec of the ``claude`` binary that kanibako owns runs with
-    ``DISABLE_AUTOUPDATER=1`` so we never wake Claude's async background
-    auto-updater mid-launch (it would prune/repoint the version we are about
-    to bind, racing the mount).  The only update in our window is the explicit
-    synchronous ``claude update`` gate.
-    """
-    env = dict(os.environ)
-    env["DISABLE_AUTOUPDATER"] = "1"
-    return env
+  Every host exec of the ``claude`` binary that kanibako owns runs with
+  ``DISABLE_AUTOUPDATER=1`` so we never wake Claude's async background
+  auto-updater mid-launch (it would prune/repoint the version we are about
+  to bind, racing the mount).  The only update in our window is the explicit
+  synchronous ``claude update`` gate.
+  """
+  env = dict(os.environ)
+  env["DISABLE_AUTOUPDATER"] = "1"
+  return env
 
 
 class ClaudeTarget(Target):
-    """Target for Claude Code."""
+  """Target for Claude Code."""
 
-    @property
-    def name(self) -> str:
-        return "claude"
+  @property
+  def name(self) -> str:
+    return "claude"
 
-    @property
-    def display_name(self) -> str:
-        return "Claude Code"
+  @property
+  def display_name(self) -> str:
+    return "Claude Code"
 
-    @property
-    def descriptor(self) -> PluginDescriptor | None:
-        return _CLAUDE_DESCRIPTOR
+  @property
+  def descriptor(self) -> PluginDescriptor | None:
+    return _CLAUDE_DESCRIPTOR
 
-    def transform_cred(
-        self,
-        spec: CredFileSpec,
-        src: Path | None,
-        dst: Path,
-        direction: str,
-    ) -> None:
-        """Merge a claude credential file (PURE content op).
+  def transform_cred(
+    self,
+    spec: CredFileSpec,
+    src: Path | None,
+    dst: Path,
+    direction: str,
+  ) -> None:
+    """Merge a claude credential file (PURE content op).
 
-        Called by the credential-sync engine for ``filtered=True`` specs; the
-        engine owns all mtime/existence gating, so this hook performs NO mtime
-        checks.  It mirrors the legacy refresh / writeback content ops exactly:
+    Called by the credential-sync engine for ``filtered=True`` specs; the
+    engine owns all mtime/existence gating, so this hook performs NO mtime
+    checks.  It mirrors the legacy refresh / writeback content ops exactly:
 
-        * ``.credentials.json`` "in": claudeAiOauth merge host->project via
-          :func:`merge_oauth_in` (the gate-free refresh content op).  *dst* is the
-          engine's host-side copy of the box file, never the box file itself.
-        * ``.credentials.json`` "out": wholesale project->host copy (the gate-
-          free writeback content op).  *src* is the engine's host-side copy of the
-          box file, already checked by :meth:`cred_writeback_error`.
+    * ``.credentials.json`` "in": claudeAiOauth merge host->project via
+      :func:`merge_oauth_in` (the gate-free refresh content op).  *dst* is the
+      engine's host-side copy of the box file, never the box file itself.
+    * ``.credentials.json`` "out": wholesale project->host copy (the gate-
+      free writeback content op).  *src* is the engine's host-side copy of the
+      box file, already checked by :meth:`cred_writeback_error`.
 
-        Defensive throughout: never raises on a malformed file (matching the
-        warn-and-skip helpers).
+    Defensive throughout: never raises on a malformed file (matching the
+    warn-and-skip helpers).
 
-        NOTE: the host ``.claude.json`` config IMPORT (allowlist-filtered seed of
-        ``oauthAccount``/``hasCompletedOnboarding``) was removed in 1.6.0 — a box
-        gets its onboarding stub from the curated agent template, and auth flows
-        from the synced ``.credentials.json`` alone.
-        """
-        if spec.home_rel.endswith(".credentials.json"):
-            if direction == "out":
-                # project->host writeback: wholesale copy (engine gated mtime).
-                if src is not None and Path(src).is_file():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(str(src), str(dst))
-                return
-            # direction "in": host->project claudeAiOauth merge.
-            if src is not None and Path(src).is_file():
-                merge_oauth_in(src, dst)
-            return
+    NOTE: the host ``.claude.json`` config IMPORT (allowlist-filtered seed of
+    ``oauthAccount``/``hasCompletedOnboarding``) was removed in 1.6.0 — a box
+    gets its onboarding stub from the curated agent template, and auth flows
+    from the synced ``.credentials.json`` alone.
+    """
+    if spec.home_rel.endswith(".credentials.json"):
+      if direction == "out":
+        # project->host writeback: wholesale copy (engine gated mtime).
+        if src is not None and Path(src).is_file():
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(str(src), str(dst))
+        return
+      # direction "in": host->project claudeAiOauth merge.
+      if src is not None and Path(src).is_file():
+        merge_oauth_in(src, dst)
+      return
 
-    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
-        """Refuse a box ``.credentials.json`` that is not one claude can use."""
-        if spec.home_rel.endswith(".credentials.json"):
-            return credentials_error(data)
-        return None
+  def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
+    """Refuse a box ``.credentials.json`` that is not one claude can use."""
+    if spec.home_rel.endswith(".credentials.json"):
+      return credentials_error(data)
+    return None
 
-    def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
-        """Merge the box's ``.claude.json`` ``oauthAccount`` back to the host.
+  def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
+    """Merge the box's ``.claude.json`` ``oauthAccount`` back to the host.
 
-        After an in-box login, the box's ``~/.claude.json`` carries the
-        ``oauthAccount`` block; the ``.credentials.json`` writeback (a cred_file
-        spec) carries the token, but the account info lives only here.  We splice
-        JUST ``oauthAccount`` into the host ``~/.claude.json`` — never a wholesale
-        copy, which would clobber the host's machine-specific ``machineID`` /
-        ``userID`` / ``projects``.  Defensive (never raises).
-        """
-        merge_oauth_account_out(
-            project_home / ".claude.json", host_home / ".claude.json",
-            box_root=project_home,
-        )
+    After an in-box login, the box's ``~/.claude.json`` carries the
+    ``oauthAccount`` block; the ``.credentials.json`` writeback (a cred_file
+    spec) carries the token, but the account info lives only here.  We splice
+    JUST ``oauthAccount`` into the host ``~/.claude.json`` — never a wholesale
+    copy, which would clobber the host's machine-specific ``machineID`` /
+    ``userID`` / ``projects``.  Defensive (never raises).
+    """
+    merge_oauth_account_out(
+      project_home / ".claude.json",
+      host_home / ".claude.json",
+      box_root=project_home,
+    )
 
-    @property
-    def default_entrypoint(self) -> str | None:
-        return "claude"
+  @property
+  def default_entrypoint(self) -> str | None:
+    return "claude"
 
-    def has_resumable_session(self, home: Path) -> bool:
-        """Report whether claude has a transcript to resume under the box home.
+  def has_resumable_session(self, home: Path) -> bool:
+    """Report whether claude has a transcript to resume under the box home.
 
-        ``--continue`` resumes the newest session in claude's per-project
-        transcript dir ``<config>/projects/<cwd-encoded>/`` where ``<cwd>`` is
-        claude's in-box working directory with every ``/`` replaced by ``-``.
-        Kanibako always launches claude at the FIXED container WORKDIR
-        ``GUEST_HOME/workspace`` (``container.py`` ``-w``), so the encoded dir is
-        the constant ``-home-agent-workspace``; the transcripts live HOST-side
-        under ``<home>/.claude/projects/-home-agent-workspace/`` (``home`` is the
-        box home as seen from the host — the home bind source).
+    ``--continue`` resumes the newest session in claude's per-project
+    transcript dir ``<config>/projects/<cwd-encoded>/`` where ``<cwd>`` is
+    claude's in-box working directory with every ``/`` replaced by ``-``.
+    Kanibako always launches claude at the FIXED container WORKDIR
+    ``GUEST_HOME/workspace`` (``container.py`` ``-w``), so the encoded dir is
+    the constant ``-home-agent-workspace``; the transcripts live HOST-side
+    under ``<home>/.claude/projects/-home-agent-workspace/`` (``home`` is the
+    box home as seen from the host — the home bind source).
 
-        Layout-robust: claude writes sessions as ``*.jsonl`` (archived
-        ``*.jsonl.gz``) directly in that dir, but check recursively so a nested
-        layout (e.g. ``conversation_logs/``) still counts.  ANY transcript ⇒
-        ``True``; a missing / empty dir ⇒ ``False`` (launch fresh — the
-        "No conversation found" case).  Tolerant: any stat/glob error ⇒ ``False``
-        (a fresh start is always safe — the retry net was removed by design).
-        """
-        from kanibako.settings.settings_resolve import GUEST_HOME
+    Layout-robust: claude writes sessions as ``*.jsonl`` (archived
+    ``*.jsonl.gz``) directly in that dir, but check recursively so a nested
+    layout (e.g. ``conversation_logs/``) still counts.  ANY transcript ⇒
+    ``True``; a missing / empty dir ⇒ ``False`` (launch fresh — the
+    "No conversation found" case).  Tolerant: any stat/glob error ⇒ ``False``
+    (a fresh start is always safe — the retry net was removed by design).
+    """
+    from kanibako.settings.settings_resolve import GUEST_HOME
 
-        cwd = f"{GUEST_HOME}/workspace"          # /home/agent/workspace
-        encoded = cwd.replace("/", "-")          # -home-agent-workspace
-        projects = home / ".claude" / "projects" / encoded
-        try:
-            if not projects.is_dir():
-                return False
-            return (
-                next(projects.rglob("*.jsonl"), None) is not None
-                or next(projects.rglob("*.jsonl.gz"), None) is not None
-            )
-        except OSError:
-            return False
+    cwd = f"{GUEST_HOME}/workspace"  # /home/agent/workspace
+    encoded = cwd.replace("/", "-")  # -home-agent-workspace
+    projects = home / ".claude" / "projects" / encoded
+    try:
+      if not projects.is_dir():
+        return False
+      return (
+        next(projects.rglob("*.jsonl"), None) is not None
+        or next(projects.rglob("*.jsonl.gz"), None) is not None
+      )
+    except OSError:
+      return False
 
-    @property
-    def config_dir_name(self) -> str:
-        return ".claude"
+  @property
+  def config_dir_name(self) -> str:
+    return ".claude"
 
-    def deliver_directive_hook(
-        self,
-        *,
-        config_root: Path,
-        access: str,
-        model_provider: "CodexModelProvider | None" = None,
-    ) -> bool:
-        """Seed claude's full managed JSON hook set into the box's in-box
-        ``~/.claude/settings.json``: the instruction-delivery ``SessionStart``
-        hook + the per-PID liveness-marker write/remove hooks.
+  def deliver_directive_hook(
+    self,
+    *,
+    config_root: Path,
+    access: str,
+    model_provider: "CodexModelProvider | None" = None,
+  ) -> bool:
+    """Seed claude's full managed JSON hook set into the box's in-box
+    ``~/.claude/settings.json``: the instruction-delivery ``SessionStart``
+    hook + the per-PID liveness-marker write/remove hooks.
 
-        UNCONDITIONAL — orthogonal to *access* — and *model_provider* is
-        IGNORED (claude carries its persona endpoint/token via env, not config;
-        the write is byte-identical either way).  Union-merge, idempotent (see
-        :func:`kanibako.vscode.vscode_config.seed_session_start_hook`).
-        """
-        from kanibako.vscode.vscode_config import seed_session_start_hook
+    UNCONDITIONAL — orthogonal to *access* — and *model_provider* is
+    IGNORED (claude carries its persona endpoint/token via env, not config;
+    the write is byte-identical either way).  Union-merge, idempotent (see
+    :func:`kanibako.vscode.vscode_config.seed_session_start_hook`).
+    """
+    from kanibako.vscode.vscode_config import seed_session_start_hook
 
-        return seed_session_start_hook(
-            config_root / ".claude" / "settings.json", root=config_root,
-        )
+    return seed_session_start_hook(
+      config_root / ".claude" / "settings.json",
+      root=config_root,
+    )
 
-    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
-        """Extract persona values from a rendered claude ``settings.json``.
+  def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
+    """Extract persona values from a rendered claude ``settings.json``.
 
-        The persona-grata store renders a claude persona as a harness-native
-        ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
-        endpoint and whose top-level ``model`` names the model.  ``model`` keeps
-        its states apart: absent or a non-string non-null value reads as
-        ``None``; JSON ``null`` reads as
-        :data:`~kanibako.targets.base.PERSONA_DEFAULT_MODEL` (the persona's
-        default); a string, ``""`` included, stays as written (``""`` = no
-        model).
-        The bearer token var is claude's FIXED declared ``persona.token_var`` (the harness does
-        not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
-        block is carried through verbatim as
-        :attr:`~kanibako.targets.base.PersonaSettings.env` — the two
-        single-source vars are excluded (they ride the endpoint field and the
-        secret-path bind), and a non-string value is not deliverable as an env
-        value, so its NAME is reported in ``env_dropped`` rather than dropped
-        in silence.
+    The persona-grata store renders a claude persona as a harness-native
+    ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
+    endpoint and whose top-level ``model`` names the model.  ``model`` keeps
+    its states apart: absent or a non-string non-null value reads as
+    ``None``; JSON ``null`` reads as
+    :data:`~kanibako.targets.base.PERSONA_DEFAULT_MODEL` (the persona's
+    default); a string, ``""`` included, stays as written (``""`` = no
+    model).
+    The bearer token var is claude's FIXED declared ``persona.token_var`` (the harness does
+    not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
+    block is carried through verbatim as
+    :attr:`~kanibako.targets.base.PersonaSettings.env` — the two
+    single-source vars are excluded (they ride the endpoint field and the
+    secret-path bind), and a non-string value is not deliverable as an env
+    value, so its NAME is reported in ``env_dropped`` rather than dropped
+    in silence.
 
-        FAIL-SOFT (base-class contract): absent / unreadable, malformed JSON,
-        a non-object document, a non-object ``env``, or a missing/empty
-        ``ANTHROPIC_BASE_URL`` (a claude persona config without an endpoint is
-        unusable) each return an outcome NAMING that cause and the file.  Pure
-        read; never touches the token.
-        """
-        settings = config_dir / "settings.json"
-        try:
-            raw = settings.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            # UnicodeDecodeError is a ValueError, but it is an UNREADABLE-file
-            # problem, not a syntax one — keep it out of the JSON-parse arm.
-            return PersonaReadOutcome(None, (
-                f"claude persona config {settings} is absent or unreadable ({exc})"
-            ))
-        try:
-            data = json.loads(raw)
-        except ValueError as exc:
-            return PersonaReadOutcome(None, (
-                f"claude persona config {settings} is not valid JSON ({exc})"
-            ))
-        if not isinstance(data, dict):
-            return PersonaReadOutcome(None, (
-                f"claude persona config {settings} is not a JSON object"
-            ))
-        env = data.get("env")
-        if not isinstance(env, dict):
-            return PersonaReadOutcome(None, (
-                f"claude persona config {settings} has no 'env' object"
-            ))
-        base_url = env.get(_PERSONA_BASE_URL_VAR)
-        if not isinstance(base_url, str) or not base_url:
-            return PersonaReadOutcome(None, (
-                f"claude persona config {settings} names no "
-                f"env.{_PERSONA_BASE_URL_VAR} endpoint"
-            ))
-        model = data.get("model")
-        if "model" in data and model is None:
-            model = PERSONA_DEFAULT_MODEL
-        elif not isinstance(model, str):
-            model = None
-        single_source = (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
-        passthrough = {
-            k: v for k, v in env.items()
-            if isinstance(v, str) and k not in single_source
-        }
-        dropped = tuple(sorted(
-            k for k, v in env.items()
-            if not isinstance(v, str) and k not in single_source
-        ))
-        return PersonaReadOutcome(PersonaSettings(
-            endpoint=base_url,
-            model=model,
-            auth_env=_PERSONA_TOKEN_VAR,
-            env=passthrough,
-            env_dropped=dropped,
-        ), None)
+    FAIL-SOFT (base-class contract): absent / unreadable, malformed JSON,
+    a non-object document, a non-object ``env``, or a missing/empty
+    ``ANTHROPIC_BASE_URL`` (a claude persona config without an endpoint is
+    unusable) each return an outcome NAMING that cause and the file.  Pure
+    read; never touches the token.
+    """
+    settings = config_dir / "settings.json"
+    try:
+      raw = settings.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+      # UnicodeDecodeError is a ValueError, but it is an UNREADABLE-file
+      # problem, not a syntax one — keep it out of the JSON-parse arm.
+      return PersonaReadOutcome(
+        None, (f"claude persona config {settings} is absent or unreadable ({exc})")
+      )
+    try:
+      data = json.loads(raw)
+    except ValueError as exc:
+      return PersonaReadOutcome(
+        None, (f"claude persona config {settings} is not valid JSON ({exc})")
+      )
+    if not isinstance(data, dict):
+      return PersonaReadOutcome(None, (f"claude persona config {settings} is not a JSON object"))
+    env = data.get("env")
+    if not isinstance(env, dict):
+      return PersonaReadOutcome(None, (f"claude persona config {settings} has no 'env' object"))
+    base_url = env.get(_PERSONA_BASE_URL_VAR)
+    if not isinstance(base_url, str) or not base_url:
+      return PersonaReadOutcome(
+        None, (f"claude persona config {settings} names no env.{_PERSONA_BASE_URL_VAR} endpoint")
+      )
+    model = data.get("model")
+    if "model" in data and model is None:
+      model = PERSONA_DEFAULT_MODEL
+    elif not isinstance(model, str):
+      model = None
+    single_source = (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
+    passthrough = {k: v for k, v in env.items() if isinstance(v, str) and k not in single_source}
+    dropped = tuple(
+      sorted(k for k, v in env.items() if not isinstance(v, str) and k not in single_source)
+    )
+    return PersonaReadOutcome(
+      PersonaSettings(
+        endpoint=base_url,
+        model=model,
+        auth_env=_PERSONA_TOKEN_VAR,
+        env=passthrough,
+        env_dropped=dropped,
+      ),
+      None,
+    )
 
-    def verify_persona(
-        self,
-        endpoint: str,
-        token_path: Path | None,
-        model: str | None,
-        *,
-        env: Mapping[str, str] | None = None,
-        timeout: float = 5.0,
-        token: str | None = None,
-    ) -> PersonaProbeOutcome:
-        """Two-axis anthropic probe of a persona endpoint: ``GET /v1/models``, then ``/v1/messages``.
+  def verify_persona(
+    self,
+    endpoint: str,
+    token_path: Path | None,
+    model: str | None,
+    *,
+    env: Mapping[str, str] | None = None,
+    timeout: float = 5.0,
+    token: str | None = None,
+  ) -> PersonaProbeOutcome:
+    """Two-axis anthropic probe of a persona endpoint: ``GET /v1/models``, then ``/v1/messages``.
 
-        The GENERAL axis (:func:`~kanibako.targets.base.probe_general_access`) asks
-        for the model list, which names no model: with the token, then — only if
-        that answered 2xx — once more WITHOUT it (the control request carries no
-        credential).  The MODEL axis is a genuine 1-token completion request (the
-        messages wire an ``ANTHROPIC_BASE_URL`` endpoint serves).  Both always run,
-        each with its own *timeout*, bearer-authed with the token at *token_path*
-        when one is configured, or with *token*, a ``-e`` value that wins over it
-        (:func:`~kanibako.targets.base.probe_token`) — the same delivery shape the box uses
-        (the declared token var → ``Authorization: Bearer``).  The verdict is
-        :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is True only
-        for a full model id.  It is False for a tier alias, resolved or not, since a
-        rung above the store can map it to another id in the box, and False with no
-        model, since the box then rides the harness default, which the probe cannot
-        send.
+    The GENERAL axis (:func:`~kanibako.targets.base.probe_general_access`) asks
+    for the model list, which names no model: with the token, then — only if
+    that answered 2xx — once more WITHOUT it (the control request carries no
+    credential).  The MODEL axis is a genuine 1-token completion request (the
+    messages wire an ``ANTHROPIC_BASE_URL`` endpoint serves).  Both always run,
+    each with its own *timeout*, bearer-authed with the token at *token_path*
+    when one is configured, or with *token*, a ``-e`` value that wins over it
+    (:func:`~kanibako.targets.base.probe_token`) — the same delivery shape the box uses
+    (the declared token var → ``Authorization: Bearer``).  The verdict is
+    :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is True only
+    for a full model id.  It is False for a tier alias, resolved or not, since a
+    rung above the store can map it to another id in the box, and False with no
+    model, since the box then rides the harness default, which the probe cannot
+    send.
 
-        ⚑ **A PRESENT-null *token_path* (keyspec §2a secret_path.<VAR>) is still PROBED,
-        with the ``Authorization`` header OMITTED** — a persona whose
-        ``secret_path`` key is deliberately ``null`` declares this endpoint
-        keyless, and the request is sent bare for the server to decide (never a
-        placeholder credential — a hardwired-auth server can REJECT one it does
-        not serve, and a false ``REJECTED`` is a hard error that would refuse a
-        working box).
+    ⚑ **A PRESENT-null *token_path* (keyspec §2a secret_path.<VAR>) is still PROBED,
+    with the ``Authorization`` header OMITTED** — a persona whose
+    ``secret_path`` key is deliberately ``null`` declares this endpoint
+    keyless, and the request is sent bare for the server to decide (never a
+    placeholder credential — a hardwired-auth server can REJECT one it does
+    not serve, and a false ``REJECTED`` is a hard error that would refuse a
+    working box).
 
-        ⚑ **A persona that names no *model* is still PROBED, with the ``model``
-        key OMITTED from the body** — no model is required of a persona,
-        and a third-party ``ANTHROPIC_BASE_URL`` endpoint may serve exactly one
-        model or apply its own.  Declining to probe would let a DEAD token reach
-        the box, which is the one thing this gate is for.  A "model required"
-        reply then passes if the model-free request verified the credential, warns
-        if that request was refused, and is otherwise NOT_APPLICABLE rather than a
-        permanent warning; a refusal warns if the model-free request verified the
-        credential.
-        ⚑ NEVER substitute a placeholder/default/guessed model id to make the
-        call go through: a server with a hardwired model can REJECT an id it
-        does not serve, and a false ``REJECTED`` is a hard error that would
-        refuse a working box.  Omitting the key is the only correct behavior.
+    ⚑ **A persona that names no *model* is still PROBED, with the ``model``
+    key OMITTED from the body** — no model is required of a persona,
+    and a third-party ``ANTHROPIC_BASE_URL`` endpoint may serve exactly one
+    model or apply its own.  Declining to probe would let a DEAD token reach
+    the box, which is the one thing this gate is for.  A "model required"
+    reply then passes if the model-free request verified the credential, warns
+    if that request was refused, and is otherwise NOT_APPLICABLE rather than a
+    permanent warning; a refusal warns if the model-free request verified the
+    credential.
+    ⚑ NEVER substitute a placeholder/default/guessed model id to make the
+    call go through: a server with a hardwired model can REJECT an id it
+    does not serve, and a false ``REJECTED`` is a hard error that would
+    refuse a working box.  Omitting the key is the only correct behavior.
 
-        ⚑ **A TIER ALIAS is resolved through *env* first** (:func:`_wire_model`):
-        claude reads ``sonnet`` through ``ANTHROPIC_DEFAULT_SONNET_MODEL``, so the
-        alias is not what the box puts on the wire and probing with it refuses a
-        working box on the provider's answer to a question the box never asks.
-        That is a resolve of the USER's own mapping, not the substitution the rule
-        above forbids — with no mapping the id goes out exactly as given.
+    ⚑ **A TIER ALIAS is resolved through *env* first** (:func:`_wire_model`):
+    claude reads ``sonnet`` through ``ANTHROPIC_DEFAULT_SONNET_MODEL``, so the
+    alias is not what the box puts on the wire and probing with it refuses a
+    working box on the provider's answer to a question the box never asks.
+    That is a resolve of the USER's own mapping, not the substitution the rule
+    above forbids — with no mapping the id goes out exactly as given.
 
-        The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
-        (non-``None``) token file that is unreadable or empty.  The token is
-        read once, transiently, and sent on the keyed model-free request and the
-        model request only — never on the control request; never logged or
-        persisted.
-        """
-        headers: dict[str, str] = {"anthropic-version": "2023-06-01"}
-        bearer, unread = probe_token(token_path, token)
-        if unread is not None:
-            return unread
-        credential = None if bearer is None else ("Authorization", f"Bearer {bearer}")
-        wire_model, model_origin = _wire_model(model, env)
-        body: dict = {
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "ping"}],
-        }
-        if wire_model:
-            body["model"] = wire_model
-        sent = ProbeEvidence(
-            endpoint=endpoint,
-            model=wire_model,
-            model_origin=model_origin,
-            token_path=None if token is not None else token_path,
-            token_by_value=token is not None,
-        )
-        base = endpoint.rstrip("/")
-        general = probe_general_access(
-            base + "/v1/models",
-            headers=headers,
-            credential=credential,
-            sent=sent,
-            timeout=timeout,
-        )
-        if credential is not None:
-            headers[credential[0]] = credential[1]
-        access = probe_model_access(
-            base + "/v1/messages",
-            headers=headers,
-            body=body,
-            sent=sent,
-            timeout=timeout,
-        )
-        return access_outcome(
-            AccessReport(general, access),
-            model_exact=bool(wire_model) and not _is_tier_alias((model or "").strip()),
-        )
+    The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
+    (non-``None``) token file that is unreadable or empty.  The token is
+    read once, transiently, and sent on the keyed model-free request and the
+    model request only — never on the control request; never logged or
+    persisted.
+    """
+    headers: dict[str, str] = {"anthropic-version": "2023-06-01"}
+    bearer, unread = probe_token(token_path, token)
+    if unread is not None:
+      return unread
+    credential = None if bearer is None else ("Authorization", f"Bearer {bearer}")
+    wire_model, model_origin = _wire_model(model, env)
+    body: dict = {
+      "max_tokens": 1,
+      "messages": [{"role": "user", "content": "ping"}],
+    }
+    if wire_model:
+      body["model"] = wire_model
+    sent = ProbeEvidence(
+      endpoint=endpoint,
+      model=wire_model,
+      model_origin=model_origin,
+      token_path=None if token is not None else token_path,
+      token_by_value=token is not None,
+    )
+    base = endpoint.rstrip("/")
+    general = probe_general_access(
+      base + "/v1/models",
+      headers=headers,
+      credential=credential,
+      sent=sent,
+      timeout=timeout,
+    )
+    if credential is not None:
+      headers[credential[0]] = credential[1]
+    access = probe_model_access(
+      base + "/v1/messages",
+      headers=headers,
+      body=body,
+      sent=sent,
+      timeout=timeout,
+    )
+    return access_outcome(
+      AccessReport(general, access),
+      model_exact=bool(wire_model) and not _is_tier_alias((model or "").strip()),
+    )
 
-    def detect(self) -> AgentInstall | None:
-        """Detect Claude Code installation on the host.
+  def detect(self) -> AgentInstall | None:
+    """Detect Claude Code installation on the host.
 
-        Anchors to the per-agent contract paths (``_LAUNCHER`` /
-        ``_INSTALL_DIR``) rather than ``shutil.which`` — we never let ``$PATH``
-        choose a binary we execute on the host and bind into the box.
+    Anchors to the per-agent contract paths (``_LAUNCHER`` /
+    ``_INSTALL_DIR``) rather than ``shutil.which`` — we never let ``$PATH``
+    choose a binary we execute on the host and bind into the box.
 
-        Claude is treated as installed iff the contract launcher exists *or* is
-        a (possibly dangling) symlink: a present-but-dangling launcher still
-        counts here — the synchronous update gate / binary validation handles a
-        broken install downstream.  ``binary`` is the resolved (symlink-free)
-        path so nested-container mount sources are real files; ``launcher`` is
-        the contract launcher recorded as-is for the bind.
-        """
-        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
-            logger.debug("claude launcher not present at %s", _LAUNCHER)
-            return None
+    Claude is treated as installed iff the contract launcher exists *or* is
+    a (possibly dangling) symlink: a present-but-dangling launcher still
+    counts here — the synchronous update gate / binary validation handles a
+    broken install downstream.  ``binary`` is the resolved (symlink-free)
+    path so nested-container mount sources are real files; ``launcher`` is
+    the contract launcher recorded as-is for the bind.
+    """
+    if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+      logger.debug("claude launcher not present at %s", _LAUNCHER)
+      return None
 
-        try:
-            resolved = _LAUNCHER.resolve()
-        except OSError:
-            logger.debug("Failed to resolve launcher: %s", _LAUNCHER)
-            # Dangling/broken launcher: still "installed" per the contract; the
-            # update gate / validation surfaces the real problem.  Fall back to
-            # the launcher path itself as the binary.
-            resolved = _LAUNCHER
+    try:
+      resolved = _LAUNCHER.resolve()
+    except OSError:
+      logger.debug("Failed to resolve launcher: %s", _LAUNCHER)
+      # Dangling/broken launcher: still "installed" per the contract; the
+      # update gate / validation surfaces the real problem.  Fall back to
+      # the launcher path itself as the binary.
+      resolved = _LAUNCHER
 
+    logger.debug(
+      "Resolved binary: %s (from %s); install_dir: %s",
+      resolved,
+      _LAUNCHER,
+      _INSTALL_DIR,
+    )
+    return AgentInstall(
+      name="claude",
+      binary=resolved,
+      install_dir=_INSTALL_DIR,
+      launcher=_LAUNCHER,
+    )
+
+  def generate_agent_config(self) -> AgentConfig:
+    """Return default Claude Code agent configuration.
+
+    ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
+    settings file holds USER INTENT only, and defaults come from the
+    floors (``model`` has none of its own and inherits ``agent.default.model``,
+    ``<None>``).  Seeding that same value into the file would pin every
+    install ABOVE the floor, so a later change to the default could never
+    reach an existing box.
+
+    ⚑ AND SO IS THE REST OF IT: the ``name="Claude Code"`` this wrote is gone
+    (2026-09-15).  It was not a settings key, so it had no place in a settings
+    file at all; the description is declared as ``label`` in
+    ``claude-defaults.yaml``'s ``behavior:`` floor — ``agent.claude.label``,
+    spec §2d — where the same cascade rule governs it as every other key.
+    """
+    from kanibako.settings.agent_config import AgentConfig as _AgentConfig
+
+    return _AgentConfig(state={})
+
+  def default_common(self) -> dict[str, BindArm]:
+    """Declare claude's AGENT-scope common dirs (plugins + cache).
+
+    Both are shared across every box that runs claude and live under the
+    per-agent store dir ``{meta.agent.claude.path}`` = ``{config.agents}/claude``
+    — spec §2a's agent DECLARATION ROOT.  The bare ``host_src`` leaf in the
+    YAML is rooted BY THE LOADER, so what is STORED is the self-resolving
+    ``{meta.agent.claude.path}/common/<leaf>`` and no later layer prepends
+    anything (§2a).  The resolved host paths are
+    ``<data>/agents/claude/common/{plugins,cache}``, bound rw to
+    ``~/.claude/{plugins,cache}``:
+
+    * ``plugins`` — installed claude plugins (was an AGENT-scope SHARED_STORE
+      ``Binding`` under the removed ``shared/<agent_id>/`` store).
+    * ``cache``   — general cache (just changelog.md); promoted from a PROJECT
+      ``ResourceMapping`` so it persists across boxes of this agent.
+
+    The base ``default_common()`` returns ``{}``; this override injects these
+    as the AGENT level's declared defaults (overridable/suppressible by the
+    user at a more-specific level).  The entries are declared in this plugin's
+    ``claude-defaults.yaml`` (read via the loader) and land as ONE terminal key
+    ``agent.claude.common`` holding both, keyed by DESTINATION — the entry
+    names went with the 2026-08-08c dest-key retool.
+    """
+    return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
+  def default_category_binds(self) -> CategoryBindDefaults:
+    """Declare claude's AGENT-scope ``{key}``-ref-sourced category binds.
+
+    Read from ``claude-defaults.yaml`` (via the loader).  ONE member: the
+    tweakcc patched-binary cache, ``agent.claude.caches`` at
+    ``~/.kanibako/cache/tweakcc`` from ``{meta.agent.claude.path}/caches/tweakcc``
+    (spec §2d instantiation — a declared entry, NOT an identity mount; the
+    former ``{system.instructions}`` → ``~/.claude/KANIBAKO.md`` instructions
+    bind was retired — the box guide now ships INSIDE the RO ``general``
+    chapter bind at ``~/canon/charter/general`` + the flattened per-agent
+    FINAL file).
+    """
+    return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
+  def default_envs(self) -> dict[str, str]:
+    """Declare claude's AGENT-scope env defaults (spec §2d ``agent.claude.env.*``).
+
+    Read from ``claude-defaults.yaml``'s ``env:`` section (via the loader):
+    ``DISABLE_AUTOUPDATER`` and ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC``,
+    plus ``KANIBAKO_DIRECTIVE_FINAL`` naming claude's native user-memory slot
+    (``~/.claude/CLAUDE.md``), the file the box-start flattener writes.  They are
+    ordinary settings keys: overridable by the SAME key in a nearer file, and
+    refused when a second scope names the same variable.
+    """
+    return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
+  def check_auth(
+    self,
+    *,
+    box_home: Path | None = None,
+    delivered: frozenset[str] = frozenset(),
+  ) -> bool:
+    """Check if the user is authenticated with Claude.
+
+    Runs ``claude auth status --json`` and checks the ``loggedIn`` field.
+    If not logged in, runs ``claude auth login`` interactively and
+    re-checks status afterward.
+
+    Returns True if authentication is confirmed (or if the claude binary
+    is not found — the missing-binary warning already covers that case).
+    *box_home* and *delivered* are accepted and ignored: claude's verdict is
+    this host check, not the core box test.
+    """
+    # Anchor to the contract launcher; never let $PATH choose the binary we
+    # exec on the host.
+    if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+      return True
+    claude_path = str(_LAUNCHER)
+
+    # Every host exec of the binary runs with the auto-updater disabled so
+    # this auth probe doesn't wake the async updater mid-launch.
+    host_env = _autoupdater_disabled_env()
+
+    # Check current auth status.
+    try:
+      result = subprocess.run(
+        [claude_path, "auth", "status", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=host_env,
+      )
+    except (OSError, subprocess.TimeoutExpired):
+      # OSError covers FileNotFoundError and, critically, an
+      # "Exec format error" from a corrupt/0-byte binary -- never crash
+      # the launch with a traceback; treat auth status as unknown.
+      return True
+
+    if result.returncode != 0:
+      # Could not determine status; skip check.
+      return True
+
+    try:
+      status = json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+      return True
+
+    if status.get("loggedIn"):
+      return True
+
+    # Not logged in — prompt interactive login.
+    print(
+      "Claude is not authenticated. Running 'claude auth login'...",
+      file=sys.stderr,
+    )
+    try:
+      login_result = subprocess.run(
+        [claude_path, "auth", "login"],
+        timeout=120,
+        env=host_env,
+      )
+    except (OSError, subprocess.TimeoutExpired):
+      # Any exec failure (missing, EACCES, ENOEXEC) is a failed login,
+      # never a traceback.
+      return False
+
+    if login_result.returncode != 0:
+      return False
+
+    # Re-check after login.
+    try:
+      recheck = subprocess.run(
+        [claude_path, "auth", "status", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=host_env,
+      )
+      recheck_status = json.loads(recheck.stdout)
+      return bool(recheck_status.get("loggedIn"))
+    except Exception:
+      return False
+
+  def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None:
+    """Update the host Claude binary, then refresh host auth.
+
+    Owns all the Claude-specific host work that must happen before mounts
+    are built:
+
+    1. **Synchronous update gate.** Run ``claude update`` and wait for it,
+       so the host binary + ``~/.local/bin/claude`` symlink are at a stable
+       version BEFORE we bind them.  With the background auto-updater
+       disabled (``DISABLE_AUTOUPDATER=1`` on every exec we own + in the
+       container), this is the only update in our launch window — no async
+       race.  A foreground ``claude update`` is expected to block until the
+       install + symlink repoint complete.
+    2. **Auto auth refresh** (when *auto_auth* is set) with the updater
+       disabled, so this host exec doesn't wake the background updater.
+
+    This method MUST NOT crash the launch: every step is best-effort and
+    failures are logged, not raised.
+
+    ⚑ *data_path* is the ABC's parameter and this plugin reads none of it: the
+    OAuth session store it used to locate derives from ``system.state`` itself
+    (keyspec §2g system.state), so the jar is ``kanibako.browser_state``'s to
+    find.  Do not thread it back through the auth call.
+    """
+    # Anchor to the contract launcher; never let $PATH choose the binary we
+    # exec on the host.
+    if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+      return
+    claude_path = str(_LAUNCHER)
+
+    host_env = _autoupdater_disabled_env()
+
+    # 1. Synchronous update gate.  DISABLE_AUTOUPDATER does not disable an
+    # *explicit* update; it only suppresses the async background updater.
+    try:
+      result = subprocess.run(
+        [claude_path, "update"],
+        capture_output=True,
+        text=True,
+        timeout=_UPDATE_TIMEOUT,
+        env=host_env,
+      )
+      if result.returncode != 0:
         logger.debug(
-            "Resolved binary: %s (from %s); install_dir: %s",
-            resolved, _LAUNCHER, _INSTALL_DIR,
+          "claude update returned %s: %s",
+          result.returncode,
+          (result.stderr or result.stdout or "").strip(),
         )
-        return AgentInstall(
-            name="claude",
-            binary=resolved,
-            install_dir=_INSTALL_DIR,
-            launcher=_LAUNCHER,
+      else:
+        logger.debug("claude update completed")
+    except subprocess.TimeoutExpired:
+      logger.warning(
+        "claude update timed out after %ss; proceeding with current host binary.",
+        _UPDATE_TIMEOUT,
+      )
+    except OSError as exc:
+      # FileNotFoundError / Exec format error on a corrupt binary, etc.
+      logger.debug("claude update could not run: %s", exc)
+
+    # 2. Automated OAuth refresh (best-effort), with the updater disabled.
+    if auto_auth:
+      try:
+        from kanibako.auth_browser import auto_refresh_auth
+
+        auto_result = auto_refresh_auth(
+          str(install.binary),
+          env=host_env,
         )
+        if auto_result.success:
+          logger.info("Auto-auth succeeded")
+        else:
+          logger.debug("Auto-auth skipped: %s", auto_result.error)
+      except Exception as exc:
+        logger.debug("Auto-auth failed: %s", exc)
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return default Claude Code agent configuration.
+  def setting_descriptors(self) -> list[TargetSetting]:
+    """Declare Claude Code runtime settings.
 
-        ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
-        settings file holds USER INTENT only, and defaults come from the
-        floors (``model`` has none of its own and inherits ``agent.default.model``,
-        ``<None>``).  Seeding that same value into the file would pin every
-        install ABOVE the floor, so a later change to the default could never
-        reach an existing box.
+    - ``model``: freeform (Claude adds models regularly).
+    - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
+    - ``transform``: WHICH binary transform claude runs (spec §2d
+      ``agent.claude.transform | tweakcc``).  Spec §0 makes every non-universal
+      agent specific PLUGIN-established, so the word is declared HERE and core
+      only RECOGNIZES it (``kanibako.tweakcc.TRANSFORM_NAME``) — deliberately
+      NOT imported, so this plugin keeps working against an older core.  Unlike
+      ``model``/``endpoint`` it names no realization channel: it is consumed by
+      kanibako's own patch pipeline, never handed to the harness.
 
-        ⚑ AND SO IS THE REST OF IT: the ``name="Claude Code"`` this wrote is gone
-        (2026-09-15).  It was not a settings key, so it had no place in a settings
-        file at all; the description is declared as ``label`` in
-        ``claude-defaults.yaml``'s ``behavior:`` floor — ``agent.claude.label``,
-        spec §2d — where the same cascade rule governs it as every other key.
-        """
-        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
+    ``access`` is NOT declared here: it is the agent-scope permission TIER
+    key (spec §2d, ``agent.default.access | full``, enum
+    restricted|editing|full) redeemed by ``access_realization.setting_key`` and
+    resolved at launch (validated against the enum, defaulting to ``full``
+    when unset) — routed verbatim like ``allow_helpers``, with the per-launch
+    ``-S``/``-A`` flags overriding it through the §1A CLI level.
 
-        return _AgentConfig(state={})
-
-    def default_common(self) -> dict[str, BindArm]:
-        """Declare claude's AGENT-scope common dirs (plugins + cache).
-
-        Both are shared across every box that runs claude and live under the
-        per-agent store dir ``{meta.agent.claude.path}`` = ``{config.agents}/claude``
-        — spec §2a's agent DECLARATION ROOT.  The bare ``host_src`` leaf in the
-        YAML is rooted BY THE LOADER, so what is STORED is the self-resolving
-        ``{meta.agent.claude.path}/common/<leaf>`` and no later layer prepends
-        anything (§2a).  The resolved host paths are
-        ``<data>/agents/claude/common/{plugins,cache}``, bound rw to
-        ``~/.claude/{plugins,cache}``:
-
-        * ``plugins`` — installed claude plugins (was an AGENT-scope SHARED_STORE
-          ``Binding`` under the removed ``shared/<agent_id>/`` store).
-        * ``cache``   — general cache (just changelog.md); promoted from a PROJECT
-          ``ResourceMapping`` so it persists across boxes of this agent.
-
-        The base ``default_common()`` returns ``{}``; this override injects these
-        as the AGENT level's declared defaults (overridable/suppressible by the
-        user at a more-specific level).  The entries are declared in this plugin's
-        ``claude-defaults.yaml`` (read via the loader) and land as ONE terminal key
-        ``agent.claude.common`` holding both, keyed by DESTINATION — the entry
-        names went with the 2026-08-08c dest-key retool.
-        """
-        return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
-
-    def default_category_binds(self) -> CategoryBindDefaults:
-        """Declare claude's AGENT-scope ``{key}``-ref-sourced category binds.
-
-        Read from ``claude-defaults.yaml`` (via the loader).  ONE member: the
-        tweakcc patched-binary cache, ``agent.claude.caches`` at
-        ``~/.kanibako/cache/tweakcc`` from ``{meta.agent.claude.path}/caches/tweakcc``
-        (spec §2d instantiation — a declared entry, NOT an identity mount; the
-        former ``{system.instructions}`` → ``~/.claude/KANIBAKO.md`` instructions
-        bind was retired — the box guide now ships INSIDE the RO ``general``
-        chapter bind at ``~/canon/charter/general`` + the flattened per-agent
-        FINAL file).
-        """
-        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
-
-    def default_envs(self) -> dict[str, str]:
-        """Declare claude's AGENT-scope env defaults (spec §2d ``agent.claude.env.*``).
-
-        Read from ``claude-defaults.yaml``'s ``env:`` section (via the loader):
-        ``DISABLE_AUTOUPDATER`` and ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC``,
-        plus ``KANIBAKO_DIRECTIVE_FINAL`` naming claude's native user-memory slot
-        (``~/.claude/CLAUDE.md``), the file the box-start flattener writes.  They are
-        ordinary settings keys: overridable by the SAME key in a nearer file, and
-        refused when a second scope names the same variable.
-        """
-        return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
-
-    def check_auth(
-        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
-    ) -> bool:
-        """Check if the user is authenticated with Claude.
-
-        Runs ``claude auth status --json`` and checks the ``loggedIn`` field.
-        If not logged in, runs ``claude auth login`` interactively and
-        re-checks status afterward.
-
-        Returns True if authentication is confirmed (or if the claude binary
-        is not found — the missing-binary warning already covers that case).
-        *box_home* and *delivered* are accepted and ignored: claude's verdict is
-        this host check, not the core box test.
-        """
-        # Anchor to the contract launcher; never let $PATH choose the binary we
-        # exec on the host.
-        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
-            return True
-        claude_path = str(_LAUNCHER)
-
-        # Every host exec of the binary runs with the auto-updater disabled so
-        # this auth probe doesn't wake the async updater mid-launch.
-        host_env = _autoupdater_disabled_env()
-
-        # Check current auth status.
-        try:
-            result = subprocess.run(
-                [claude_path, "auth", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=host_env,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            # OSError covers FileNotFoundError and, critically, an
-            # "Exec format error" from a corrupt/0-byte binary -- never crash
-            # the launch with a traceback; treat auth status as unknown.
-            return True
-
-        if result.returncode != 0:
-            # Could not determine status; skip check.
-            return True
-
-        try:
-            status = json.loads(result.stdout)
-        except (json.JSONDecodeError, ValueError):
-            return True
-
-        if status.get("loggedIn"):
-            return True
-
-        # Not logged in — prompt interactive login.
-        print(
-            "Claude is not authenticated. Running 'claude auth login'...",
-            file=sys.stderr,
-        )
-        try:
-            login_result = subprocess.run(
-                [claude_path, "auth", "login"],
-                timeout=120,
-                env=host_env,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            # Any exec failure (missing, EACCES, ENOEXEC) is a failed login,
-            # never a traceback.
-            return False
-
-        if login_result.returncode != 0:
-            return False
-
-        # Re-check after login.
-        try:
-            recheck = subprocess.run(
-                [claude_path, "auth", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=host_env,
-            )
-            recheck_status = json.loads(recheck.stdout)
-            return bool(recheck_status.get("loggedIn"))
-        except Exception:
-            return False
-
-    def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None:
-        """Update the host Claude binary, then refresh host auth.
-
-        Owns all the Claude-specific host work that must happen before mounts
-        are built:
-
-        1. **Synchronous update gate.** Run ``claude update`` and wait for it,
-           so the host binary + ``~/.local/bin/claude`` symlink are at a stable
-           version BEFORE we bind them.  With the background auto-updater
-           disabled (``DISABLE_AUTOUPDATER=1`` on every exec we own + in the
-           container), this is the only update in our launch window — no async
-           race.  A foreground ``claude update`` is expected to block until the
-           install + symlink repoint complete.
-        2. **Auto auth refresh** (when *auto_auth* is set) with the updater
-           disabled, so this host exec doesn't wake the background updater.
-
-        This method MUST NOT crash the launch: every step is best-effort and
-        failures are logged, not raised.
-
-        ⚑ *data_path* is the ABC's parameter and this plugin reads none of it: the
-        OAuth session store it used to locate derives from ``system.state`` itself
-        (keyspec §2g system.state), so the jar is ``kanibako.browser_state``'s to
-        find.  Do not thread it back through the auth call.
-        """
-        # Anchor to the contract launcher; never let $PATH choose the binary we
-        # exec on the host.
-        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
-            return
-        claude_path = str(_LAUNCHER)
-
-        host_env = _autoupdater_disabled_env()
-
-        # 1. Synchronous update gate.  DISABLE_AUTOUPDATER does not disable an
-        # *explicit* update; it only suppresses the async background updater.
-        try:
-            result = subprocess.run(
-                [claude_path, "update"],
-                capture_output=True,
-                text=True,
-                timeout=_UPDATE_TIMEOUT,
-                env=host_env,
-            )
-            if result.returncode != 0:
-                logger.debug(
-                    "claude update returned %s: %s",
-                    result.returncode,
-                    (result.stderr or result.stdout or "").strip(),
-                )
-            else:
-                logger.debug("claude update completed")
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "claude update timed out after %ss; proceeding with current "
-                "host binary.", _UPDATE_TIMEOUT,
-            )
-        except OSError as exc:
-            # FileNotFoundError / Exec format error on a corrupt binary, etc.
-            logger.debug("claude update could not run: %s", exc)
-
-        # 2. Automated OAuth refresh (best-effort), with the updater disabled.
-        if auto_auth:
-            try:
-                from kanibako.auth_browser import auto_refresh_auth
-
-                auto_result = auto_refresh_auth(
-                    str(install.binary), env=host_env,
-                )
-                if auto_result.success:
-                    logger.info("Auto-auth succeeded")
-                else:
-                    logger.debug("Auto-auth skipped: %s", auto_result.error)
-            except Exception as exc:
-                logger.debug("Auto-auth failed: %s", exc)
-
-    def setting_descriptors(self) -> list[TargetSetting]:
-        """Declare Claude Code runtime settings.
-
-        - ``model``: freeform (Claude adds models regularly).
-        - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
-        - ``transform``: WHICH binary transform claude runs (spec §2d
-          ``agent.claude.transform | tweakcc``).  Spec §0 makes every non-universal
-          agent specific PLUGIN-established, so the word is declared HERE and core
-          only RECOGNIZES it (``kanibako.tweakcc.TRANSFORM_NAME``) — deliberately
-          NOT imported, so this plugin keeps working against an older core.  Unlike
-          ``model``/``endpoint`` it names no realization channel: it is consumed by
-          kanibako's own patch pipeline, never handed to the harness.
-
-        ``access`` is NOT declared here: it is the agent-scope permission TIER
-        key (spec §2d, ``agent.default.access | full``, enum
-        restricted|editing|full) redeemed by ``access_realization.setting_key`` and
-        resolved at launch (validated against the enum, defaulting to ``full``
-        when unset) — routed verbatim like ``allow_helpers``, with the per-launch
-        ``-S``/``-A`` flags overriding it through the §1A CLI level.
-
-        The keys and their FLOOR values are declared in ``claude-defaults.yaml``'s
-        ``behavior:`` section, not here: a default written in plugin code is a
-        second declaration site for something the shipped file already owns.
-        """
-        return list(_CLAUDE_BEHAVIOR)
-
+    The keys and their FLOOR values are declared in ``claude-defaults.yaml``'s
+    ``behavior:`` section, not here: a default written in plugin code is a
+    second declaration site for something the shipped file already owns.
+    """
+    return list(_CLAUDE_BEHAVIOR)

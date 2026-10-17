@@ -14,3744 +14,4270 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import BoxMode, WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
+from kanibako.settings.paths import (
+  BoxMode,
+  WorksetSpec,
+  load_std_paths,
+  resolve_standalone_project,
+  resolve_project,
+  resolve_workset_project,
+)
 from kanibako.settings.paths import _early_scope
 from kanibako.project.workset import add_project, create_workset, load_workset
 from tests.test_commands.test_start import _BLAME, _REFUSED_ROWS, _two_axis_outcome
 
 
 class TestBoxList:
-    def test_list_empty(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_empty(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        assert "No known projects" in capsys.readouterr().out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    assert "No known projects" in capsys.readouterr().out
 
-    def test_list_shows_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_shows_projects(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "stopped" in out
-        assert str(tmp_home / "project") in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "stopped" in out
+    assert str(tmp_home / "project") in out
 
-    def test_list_shows_orphans_and_flags_them(self, config_file, tmp_home, credentials_dir, capsys):
-        """An orphaned (missing) project is listed, with its condition on the row."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_shows_orphans_and_flags_them(self, config_file, tmp_home, credentials_dir, capsys):
+    """An orphaned (missing) project is listed, with its condition on the row."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # One healthy, one orphaned.
-        ok_dir = tmp_home / "alive_proj"
-        ok_dir.mkdir()
-        resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
+    # One healthy, one orphaned.
+    ok_dir = tmp_home / "alive_proj"
+    ok_dir.mkdir()
+    resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
 
-        gone_dir = tmp_home / "gone_project"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "gone_project"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "alive_proj" in out
-        assert "missing" in out
-        assert "gone_project" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "alive_proj" in out
+    assert "missing" in out
+    assert "gone_project" in out
 
-    def test_list_all_includes_orphans(self, config_file, tmp_home, credentials_dir, capsys):
-        """--all flag includes orphaned projects in the listing."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_all_includes_orphans(self, config_file, tmp_home, credentials_dir, capsys):
+    """--all flag includes orphaned projects in the listing."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        gone_dir = tmp_home / "gone_project"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "gone_project"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "missing" in out
+    args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "missing" in out
 
-    def test_list_quiet_names_only(self, config_file, tmp_home, credentials_dir, capsys):
-        """-q flag outputs names only, one per line."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_quiet_names_only(self, config_file, tmp_home, credentials_dir, capsys):
+    """-q flag outputs names only, one per line."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # Quiet mode: just the name, no header, no status columns.
-        lines = out.strip().split("\n")
-        assert len(lines) == 1
-        assert "NAME" not in out
-        assert "STATUS" not in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Quiet mode: just the name, no header, no status columns.
+    lines = out.strip().split("\n")
+    assert len(lines) == 1
+    assert "NAME" not in out
+    assert "STATUS" not in out
 
-    def test_list_quiet_empty(self, config_file, tmp_home, credentials_dir, capsys):
-        """Quiet mode on empty list produces no output."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_quiet_empty(self, config_file, tmp_home, credentials_dir, capsys):
+    """Quiet mode on empty list produces no output."""
+    from kanibako.commands.box._parser import run_list
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        assert capsys.readouterr().out == ""
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    assert capsys.readouterr().out == ""
 
-    def _park_deregistered(self, std, tmp_home, name="gonebox"):
-        """Create a deregistered box with a retained home dir under std.boxes."""
-        from kanibako.project import registry_store
+  def _park_deregistered(self, std, tmp_home, name="gonebox"):
+    """Create a deregistered box with a retained home dir under std.boxes."""
+    from kanibako.project import registry_store
 
-        meta = std.boxes / name
-        meta.mkdir(parents=True)
-        registry_store.register_deregistered(
-            std.registry, name, kind="primary",
-            workspace=str(tmp_home / name), metadata=str(meta),
-        )
-        return meta
+    meta = std.boxes / name
+    meta.mkdir(parents=True)
+    registry_store.register_deregistered(
+      std.registry,
+      name,
+      kind="primary",
+      workspace=str(tmp_home / name),
+      metadata=str(meta),
+    )
+    return meta
 
-    def test_list_shows_deregistered(self, config_file, tmp_home, credentials_dir, capsys):
-        """box list surfaces a deregistered box + its register/purge recovery hint."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_shows_deregistered(self, config_file, tmp_home, credentials_dir, capsys):
+    """box list surfaces a deregistered box + its register/purge recovery hint."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        self._park_deregistered(std, tmp_home)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    self._park_deregistered(std, tmp_home)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Deregistered boxes" in out
-        assert "gonebox" in out
-        assert "deregistered" in out  # the STATUS marker
-        # Recovery is discoverable from the listing itself.
-        assert "register" in out and "--purge" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Deregistered boxes" in out
+    assert "gonebox" in out
+    assert "deregistered" in out  # the STATUS marker
+    # Recovery is discoverable from the listing itself.
+    assert "register" in out and "--purge" in out
 
-    def test_list_keeps_a_gone_parked_box_so_its_purge_cure_works(
-        self, config_file, tmp_home, credentials_dir, capsys,
+  def test_list_keeps_a_gone_parked_box_so_its_purge_cure_works(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A parked box whose directory is gone stays listed, marked ``missing``, with only
+    the purge offered; that purge then drops it, rather than "not a registered box"."""
+    from kanibako.cli import main
+    from kanibako.project import registry_store
+
+    std = load_std_paths(load_config(config_file))
+    shutil.rmtree(self._park_deregistered(std, tmp_home))
+
+    def cli(*argv: str) -> int:
+      with pytest.raises(SystemExit) as info:
+        main(list(argv))
+      return int(info.value.code or 0)
+
+    capsys.readouterr()
+    assert cli("box", "list") == 0
+    out = capsys.readouterr().out
+    assert "gonebox" in out and "missing" in out
+    assert "Deregistered boxes (metadata retained unless missing):" in out
+    assert "box register" not in out
+    assert cli("box", "rm", "gonebox") == 0
+    out = capsys.readouterr().out
+    assert "'gonebox' is already deregistered.\n" in out
+    assert "metadata retained" not in out
+    assert f"It cannot be restored: {std.boxes / 'gonebox'} is gone. Delete its entry:" in out
+    assert "kanibako box rm gonebox --purge" in out and "box register" not in out
+    assert cli("box", "rm", "gonebox", "--purge", "--force") == 0, capsys.readouterr().err
+    assert registry_store.lookup_deregistered(std.registry, "gonebox") is None
+
+  @staticmethod
+  def _cli(*argv: str) -> int:
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as info:
+      main(list(argv))
+    return int(info.value.code or 0)
+
+  def test_recreate_over_a_gone_parked_box_drops_its_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """``create`` at the path of a parked box whose directory is gone makes a live box
+    under that name and drops the parked entry, which would otherwise shadow it."""
+    from kanibako.project import registry_store
+
+    std = load_std_paths(load_config(config_file))
+    ws = (tmp_home / "p" / "px").resolve()
+    ws.mkdir(parents=True)
+    assert self._cli("create", str(ws)) == 0
+    assert self._cli("box", "rm", "px") == 0
+    (std.boxes / "px").rename(tmp_home / "px-away")  # a seeded home is not rmtree-able
+    assert self._cli("box", "list") == 0
+    capsys.readouterr()
+    assert self._cli("create", str(ws)) == 0, capsys.readouterr().err
+    assert registry_store.lookup_deregistered(std.registry, "px") is None
+    capsys.readouterr()
+    assert self._cli("box", "list") == 0
+    out = capsys.readouterr().out
+    assert f"px                 stopped    {ws}" in out
+    assert "Deregistered" not in out
+    assert self._cli("box", "register", "px") == 0
+    assert f"'px' is already registered (primary box at {ws})." in capsys.readouterr().out
+
+  def test_list_never_hides_an_active_box_behind_a_parked_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A stale parked entry naming a live box's home is not listed; the live box is."""
+    from kanibako.project import registry_store
+
+    std = load_std_paths(load_config(config_file))
+    ws = (tmp_home / "p" / "py").resolve()
+    ws.mkdir(parents=True)
+    assert self._cli("create", str(ws)) == 0
+    registry_store.register_deregistered(
+      std.registry,
+      "py",
+      kind="primary",
+      workspace=str(ws),
+      metadata=str(std.boxes / "py"),
+    )
+    capsys.readouterr()
+    assert self._cli("box", "list") == 0
+    out = capsys.readouterr().out
+    assert f"py                 stopped    {ws}" in out
+    assert "Deregistered" not in out
+
+  def test_list_without_deregistered_omits_section(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A tree with NO deregistered boxes shows no deregistered section
+    (the surfacing is additive — output otherwise unchanged)."""
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj_dir = tmp_home / "proj"
+    proj_dir.mkdir()
+    resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
+
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "proj" in out
+    assert "Deregistered" not in out
+
+  def test_list_active_hides_deregistered(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """--active (and ps) never surface deregistered boxes — they aren't active."""
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    self._park_deregistered(std, tmp_home)
+
+    args = argparse.Namespace(
+      show_all=False,
+      orphan=False,
+      quiet=False,
+      active=True,
+    )
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Deregistered" not in out
+
+  def test_list_quiet_deregistered_names_only(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Quiet mode lists a deregistered box's bare name (no header)."""
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    self._park_deregistered(std, tmp_home)
+
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "gonebox" in out
+    assert "Deregistered" not in out
+
+  @pytest.mark.parametrize("quiet,orphan", [(False, False), (True, False), (False, True)])
+  def test_list_shows_deregistered_box_only_in_its_section(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    quiet,
+    orphan,
+  ):
+    """The retained box dir under std.boxes is not ALSO an active or orphan row."""
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    self._park_deregistered(std, tmp_home)
+
+    args = argparse.Namespace(show_all=False, orphan=orphan, quiet=quiet)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "(no breadcrumb)" not in out
+    rows = [ln for ln in out.splitlines() if ln.split()[:1] == ["gonebox"]]
+    assert len(rows) == (0 if orphan else 1)
+
+  def test_list_only_deregistered_not_no_known_projects(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A tree whose only records are deregistered still lists them (not the
+    'No known projects.' early-out)."""
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    self._park_deregistered(std, tmp_home)
+
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "No known projects" not in out
+    assert "gonebox" in out
+
+  def test_list_name_column_widens_for_long_names(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """NAME column grows so a long name doesn't overflow (BUG-A cosmetic).
+
+    A short name's row is padded to the LONGEST name's width, so its STATUS
+    column aligns.  Mutation proof: reverting the width to the fixed ``<18``
+    pads ``short`` to 18 (not the long width), reddening the assertion.
+    """
+    from kanibako.commands.box._parser import run_list
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    long_name = "ai-java-course-materials"  # 24 chars > 18
+    for base in ("short", long_name):
+      d = tmp_home / base
+      d.mkdir()
+      resolve_project(std, config, project_dir=str(d), initialize=True)
+
+    args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # name_width == len(long_name) == 24; the short row is ljust-padded to it.
+    assert "short".ljust(len(long_name)) in out
+
+  def test_list_dedups_identical_workset_rows(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Duplicate (name, path) workset rows collapse to one (BUG-A).
+
+    Simulates the observed duplicate-membership state by duplicating the
+    per-workset project entry ``iter_workset_projects`` yields; the printed
+    output must show the member exactly once.  Mutation proof: removing the
+    ``seen_rows`` dedup prints the name twice.
+    """
+    from kanibako.commands.box._parser import run_list
+    from kanibako.settings.paths import iter_workset_projects
+    from kanibako.project.workset import add_project, create_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("cluster", tmp_home / "worksets" / "cluster", std)
+    source = tmp_home / "cluster2-src"
+    source.mkdir()
+    add_project(ws, "cluster2", source)
+
+    real = iter_workset_projects(std, config)
+    # Duplicate every project entry within each workset (the dup-mint shape).
+    dup = [(wn, w, plist + plist) for wn, w, plist in real]
+
+    args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+    with patch(
+      "kanibako.commands.box._parser.iter_workset_projects",
+      return_value=dup,
     ):
-        """A parked box whose directory is gone stays listed, marked ``missing``, with only
-        the purge offered; that purge then drops it, rather than "not a registered box"."""
-        from kanibako.cli import main
-        from kanibako.project import registry_store
-
-        std = load_std_paths(load_config(config_file))
-        shutil.rmtree(self._park_deregistered(std, tmp_home))
-
-        def cli(*argv: str) -> int:
-            with pytest.raises(SystemExit) as info:
-                main(list(argv))
-            return int(info.value.code or 0)
-
-        capsys.readouterr()
-        assert cli("box", "list") == 0
-        out = capsys.readouterr().out
-        assert "gonebox" in out and "missing" in out
-        assert "Deregistered boxes (metadata retained unless missing):" in out
-        assert "box register" not in out
-        assert cli("box", "rm", "gonebox") == 0
-        out = capsys.readouterr().out
-        assert "'gonebox' is already deregistered.\n" in out
-        assert "metadata retained" not in out
-        assert f"It cannot be restored: {std.boxes / 'gonebox'} is gone. Delete its entry:" in out
-        assert "kanibako box rm gonebox --purge" in out and "box register" not in out
-        assert cli("box", "rm", "gonebox", "--purge", "--force") == 0, capsys.readouterr().err
-        assert registry_store.lookup_deregistered(std.registry, "gonebox") is None
-
-    @staticmethod
-    def _cli(*argv: str) -> int:
-        from kanibako.cli import main
-
-        with pytest.raises(SystemExit) as info:
-            main(list(argv))
-        return int(info.value.code or 0)
-
-    def test_recreate_over_a_gone_parked_box_drops_its_entry(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """``create`` at the path of a parked box whose directory is gone makes a live box
-        under that name and drops the parked entry, which would otherwise shadow it."""
-        from kanibako.project import registry_store
-
-        std = load_std_paths(load_config(config_file))
-        ws = (tmp_home / "p" / "px").resolve()
-        ws.mkdir(parents=True)
-        assert self._cli("create", str(ws)) == 0
-        assert self._cli("box", "rm", "px") == 0
-        (std.boxes / "px").rename(tmp_home / "px-away")  # a seeded home is not rmtree-able
-        assert self._cli("box", "list") == 0
-        capsys.readouterr()
-        assert self._cli("create", str(ws)) == 0, capsys.readouterr().err
-        assert registry_store.lookup_deregistered(std.registry, "px") is None
-        capsys.readouterr()
-        assert self._cli("box", "list") == 0
-        out = capsys.readouterr().out
-        assert f"px                 stopped    {ws}" in out
-        assert "Deregistered" not in out
-        assert self._cli("box", "register", "px") == 0
-        assert f"'px' is already registered (primary box at {ws})." in capsys.readouterr().out
-
-    def test_list_never_hides_an_active_box_behind_a_parked_entry(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """A stale parked entry naming a live box's home is not listed; the live box is."""
-        from kanibako.project import registry_store
-
-        std = load_std_paths(load_config(config_file))
-        ws = (tmp_home / "p" / "py").resolve()
-        ws.mkdir(parents=True)
-        assert self._cli("create", str(ws)) == 0
-        registry_store.register_deregistered(
-            std.registry, "py", kind="primary", workspace=str(ws),
-            metadata=str(std.boxes / "py"),
-        )
-        capsys.readouterr()
-        assert self._cli("box", "list") == 0
-        out = capsys.readouterr().out
-        assert f"py                 stopped    {ws}" in out
-        assert "Deregistered" not in out
-
-    def test_list_without_deregistered_omits_section(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """A tree with NO deregistered boxes shows no deregistered section
-        (the surfacing is additive — output otherwise unchanged)."""
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj_dir = tmp_home / "proj"
-        proj_dir.mkdir()
-        resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
-
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "proj" in out
-        assert "Deregistered" not in out
-
-    def test_list_active_hides_deregistered(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """--active (and ps) never surface deregistered boxes — they aren't active."""
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        self._park_deregistered(std, tmp_home)
-
-        args = argparse.Namespace(
-            show_all=False, orphan=False, quiet=False, active=True,
-        )
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Deregistered" not in out
-
-    def test_list_quiet_deregistered_names_only(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Quiet mode lists a deregistered box's bare name (no header)."""
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        self._park_deregistered(std, tmp_home)
-
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "gonebox" in out
-        assert "Deregistered" not in out
-
-    @pytest.mark.parametrize("quiet,orphan", [(False, False), (True, False), (False, True)])
-    def test_list_shows_deregistered_box_only_in_its_section(
-        self, config_file, tmp_home, credentials_dir, capsys, quiet, orphan,
-    ):
-        """The retained box dir under std.boxes is not ALSO an active or orphan row."""
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        self._park_deregistered(std, tmp_home)
-
-        args = argparse.Namespace(show_all=False, orphan=orphan, quiet=quiet)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "(no breadcrumb)" not in out
-        rows = [ln for ln in out.splitlines() if ln.split()[:1] == ["gonebox"]]
-        assert len(rows) == (0 if orphan else 1)
-
-    def test_list_only_deregistered_not_no_known_projects(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """A tree whose only records are deregistered still lists them (not the
-        'No known projects.' early-out)."""
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        self._park_deregistered(std, tmp_home)
-
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "No known projects" not in out
-        assert "gonebox" in out
-
-    def test_list_name_column_widens_for_long_names(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """NAME column grows so a long name doesn't overflow (BUG-A cosmetic).
-
-        A short name's row is padded to the LONGEST name's width, so its STATUS
-        column aligns.  Mutation proof: reverting the width to the fixed ``<18``
-        pads ``short`` to 18 (not the long width), reddening the assertion.
-        """
-        from kanibako.commands.box._parser import run_list
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        long_name = "ai-java-course-materials"  # 24 chars > 18
-        for base in ("short", long_name):
-            d = tmp_home / base
-            d.mkdir()
-            resolve_project(std, config, project_dir=str(d), initialize=True)
-
-        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # name_width == len(long_name) == 24; the short row is ljust-padded to it.
-        assert "short".ljust(len(long_name)) in out
-
-    def test_list_dedups_identical_workset_rows(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Duplicate (name, path) workset rows collapse to one (BUG-A).
-
-        Simulates the observed duplicate-membership state by duplicating the
-        per-workset project entry ``iter_workset_projects`` yields; the printed
-        output must show the member exactly once.  Mutation proof: removing the
-        ``seen_rows`` dedup prints the name twice.
-        """
-        from kanibako.commands.box._parser import run_list
-        from kanibako.settings.paths import iter_workset_projects
-        from kanibako.project.workset import add_project, create_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("cluster", tmp_home / "worksets" / "cluster", std)
-        source = tmp_home / "cluster2-src"
-        source.mkdir()
-        add_project(ws, "cluster2", source)
-
-        real = iter_workset_projects(std, config)
-        # Duplicate every project entry within each workset (the dup-mint shape).
-        dup = [(wn, w, plist + plist) for wn, w, plist in real]
-
-        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
-        with patch(
-            "kanibako.commands.box._parser.iter_workset_projects",
-            return_value=dup,
-        ):
-            rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # The member name appears exactly once (the source path does not contain
-        # the box name, so counting the name counts rows).
-        assert out.count("cluster2 ") == 1
+      rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # The member name appears exactly once (the source path does not contain
+    # the box name, so counting the name counts rows).
+    assert out.count("cluster2 ") == 1
 
 
 class TestBoxListOrphan:
-    """Tests for box list --orphan (replaces old box orphan subcommand)."""
+  """Tests for box list --orphan (replaces old box orphan subcommand)."""
 
-    def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        assert "No orphaned projects found" in capsys.readouterr().out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    assert "No orphaned projects found" in capsys.readouterr().out
 
-    def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        assert "No orphaned projects found" in capsys.readouterr().out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    assert "No orphaned projects found" in capsys.readouterr().out
 
-    def test_orphan_detects_missing_path(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_detects_missing_path(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        gone_dir = tmp_home / "gone_project"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "gone_project"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "gone_project" in out
-        assert "1 orphaned project(s)" in out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "gone_project" in out
+    assert "1 orphaned project(s)" in out
 
-    def test_orphan_skips_healthy_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_skips_healthy_projects(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # One healthy, one orphaned.
-        ok_dir = tmp_home / "alive_proj"
-        ok_dir.mkdir()
-        resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
+    # One healthy, one orphaned.
+    ok_dir = tmp_home / "alive_proj"
+    ok_dir.mkdir()
+    resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
 
-        gone_dir = tmp_home / "vanished_proj"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "vanished_proj"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "vanished_proj" in out
-        assert "alive_proj" not in out
-        assert "1 orphaned project(s)" in out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "vanished_proj" in out
+    assert "alive_proj" not in out
+    assert "1 orphaned project(s)" in out
 
-    def test_orphan_detects_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_detects_workset_missing_workspace(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "orphan_ws")
-        source = tmp_home / "orphan_src"
-        source.mkdir()
-        add_project(ws, "orphan_proj", source)
-        # Remove the workspace dir.
-        shutil.rmtree(ws.workspaces_dir / "orphan_proj")
+    ws, _ = _make_workset(tmp_home, std, "orphan_ws")
+    source = tmp_home / "orphan_src"
+    source.mkdir()
+    add_project(ws, "orphan_proj", source)
+    # Remove the workspace dir.
+    shutil.rmtree(ws.workspaces_dir / "orphan_proj")
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "orphan_ws" in out
-        assert "orphan_proj" in out
-        assert "1 orphaned project(s)" in out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "orphan_ws" in out
+    assert "orphan_proj" in out
+    assert "1 orphaned project(s)" in out
 
-    def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        gone_dir = tmp_home / "hint_project"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "hint_project"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
-        run_list(args)
-        out = capsys.readouterr().out
-        assert "remap" in out
-        assert "box rm" in out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+    run_list(args)
+    out = capsys.readouterr().out
+    assert "remap" in out
+    assert "box rm" in out
 
-    def test_orphan_quiet(self, config_file, tmp_home, credentials_dir, capsys):
-        """--orphan -q outputs orphan names only."""
-        from kanibako.commands.box._parser import run_list
+  def test_orphan_quiet(self, config_file, tmp_home, credentials_dir, capsys):
+    """--orphan -q outputs orphan names only."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        gone_dir = tmp_home / "quiet_orphan"
-        gone_dir.mkdir()
-        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
-        shutil.rmtree(gone_dir)
+    gone_dir = tmp_home / "quiet_orphan"
+    gone_dir.mkdir()
+    resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+    shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace(show_all=False, orphan=True, quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        lines = out.strip().split("\n")
-        assert len(lines) == 1
-        assert "NAME" not in out
-        assert "orphaned project" not in out
+    args = argparse.Namespace(show_all=False, orphan=True, quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.strip().split("\n")
+    assert len(lines) == 1
+    assert "NAME" not in out
+    assert "orphaned project" not in out
 
 
 def _plant_links(tree: Path, outside: Path) -> dict[str, str]:
-    """Plant one link of every kind in *tree*; returns name -> text.
+  """Plant one link of every kind in *tree*; returns name -> text.
 
-    Q70/Q74: a copy carries each one VERBATIM — inside, escaping, absolute, dangling, directory.
-    """
-    outside.mkdir(exist_ok=True)
-    (outside / "big.txt").write_text("outside data")
-    (tree / "q70_target.txt").write_text("inner")
-    texts = {
-        "q70_in": "q70_target.txt",
-        "q70_out": os.path.relpath(outside / "big.txt", tree),
-        "q70_abs": str(outside / "big.txt"),
-        "q70_gone": "q70-no-such",
-        "q70_dir": os.path.relpath(outside, tree),
-    }
-    for name, text in texts.items():
-        (tree / name).symlink_to(text)
-    return texts
+  Q70/Q74: a copy carries each one VERBATIM — inside, escaping, absolute, dangling, directory.
+  """
+  outside.mkdir(exist_ok=True)
+  (outside / "big.txt").write_text("outside data")
+  (tree / "q70_target.txt").write_text("inner")
+  texts = {
+    "q70_in": "q70_target.txt",
+    "q70_out": os.path.relpath(outside / "big.txt", tree),
+    "q70_abs": str(outside / "big.txt"),
+    "q70_gone": "q70-no-such",
+    "q70_dir": os.path.relpath(outside, tree),
+  }
+  for name, text in texts.items():
+    (tree / name).symlink_to(text)
+  return texts
 
 
 def _assert_links_verbatim(tree: Path, texts: dict[str, str]) -> None:
-    for name, text in texts.items():
-        assert os.readlink(tree / name) == text, f"{tree / name} is not the verbatim link"
+  for name, text in texts.items():
+    assert os.readlink(tree / name) == text, f"{tree / name} is not the verbatim link"
 
 
 class TestBoxDuplicate:
-    def _make_args(self, source, dest, bare=False, force=False, to_mode=None):
-        return argparse.Namespace(
-            source_path=str(source), new_path=str(dest),
-            bare=bare, force=force, to_mode=to_mode,
-        )
+  def _make_args(self, source, dest, bare=False, force=False, to_mode=None):
+    return argparse.Namespace(
+      source_path=str(source),
+      new_path=str(dest),
+      bare=bare,
+      force=force,
+      to_mode=to_mode,
+    )
 
-    def _named_source(self, std, config, root, name):
-        """A registered NAMED (workset) member with its own canary."""
-        ws = create_workset(f"ws_{name}", root, std)
-        leaf = ws.workspaces_dir / name
-        leaf.mkdir(parents=True)
-        (leaf / "keepme.txt").write_text("FROM-THE-SOURCE")
-        add_project(ws, name, leaf, std)
-        return leaf
+  def _named_source(self, std, config, root, name):
+    """A registered NAMED (workset) member with its own canary."""
+    ws = create_workset(f"ws_{name}", root, std)
+    leaf = ws.workspaces_dir / name
+    leaf.mkdir(parents=True)
+    (leaf / "keepme.txt").write_text("FROM-THE-SOURCE")
+    add_project(ws, name, leaf, std)
+    return leaf
 
-    def _armed_dest(self, path):
-        """A destination holding its own bytes at BOTH levels: a standalone target
-        merges into ``<dst>/workspace``, not ``<dst>`` itself, so a root-level
-        canary alone cannot see that route's damage."""
-        path.mkdir()
-        (path / "keepme.txt").write_text("THE-DESTINATION-OWN")
-        (path / "workspace").mkdir()
-        (path / "workspace" / "keepme.txt").write_text("THE-DESTINATION-OWN")
-        return path
+  def _armed_dest(self, path):
+    """A destination holding its own bytes at BOTH levels: a standalone target
+    merges into ``<dst>/workspace``, not ``<dst>`` itself, so a root-level
+    canary alone cannot see that route's damage."""
+    path.mkdir()
+    (path / "keepme.txt").write_text("THE-DESTINATION-OWN")
+    (path / "workspace").mkdir()
+    (path / "workspace" / "keepme.txt").write_text("THE-DESTINATION-OWN")
+    return path
 
-    def _both_levels_own(self, dst):
-        for f in (dst / "keepme.txt", dst / "workspace" / "keepme.txt"):
-            assert f.read_text() == "THE-DESTINATION-OWN", f"{f} was written"
+  def _both_levels_own(self, dst):
+    for f in (dst / "keepme.txt", dst / "workspace" / "keepme.txt"):
+      assert f.read_text() == "THE-DESTINATION-OWN", f"{f} was written"
 
-    def test_duplicate_success(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_success(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create source project with workspace content and metadata.
-        src_dir = tmp_home / "src_project"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('hello')")
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / "marker.txt").write_text("session-data")
+    # Create source project with workspace content and metadata.
+    src_dir = tmp_home / "src_project"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('hello')")
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / "marker.txt").write_text("session-data")
 
-        dst_dir = tmp_home / "dst_project"
+    dst_dir = tmp_home / "dst_project"
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 0
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 0
 
-        # Workspace copied.
-        assert (dst_dir / "code.py").read_text() == "print('hello')"
+    # Workspace copied.
+    assert (dst_dir / "code.py").read_text() == "print('hello')"
 
-        # Metadata copied.
-        projects_base = std.boxes
-        new_project = projects_base / "dst_project"
-        assert (new_project / "marker.txt").read_text() == "session-data"
+    # Metadata copied.
+    projects_base = std.boxes
+    new_project = projects_base / "dst_project"
+    assert (new_project / "marker.txt").read_text() == "session-data"
 
-        # Source is intact.
-        assert (src_dir / "code.py").read_text() == "print('hello')"
-        assert proj.metadata_path.is_dir()
+    # Source is intact.
+    assert (src_dir / "code.py").read_text() == "print('hello')"
+    assert proj.metadata_path.is_dir()
 
-    def test_duplicate_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_bare(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "bare_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    src_dir = tmp_home / "bare_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        dst_dir = tmp_home / "bare_dst"
+    dst_dir = tmp_home / "bare_dst"
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
-        assert rc == 0
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+    assert rc == 0
 
-        # Workspace NOT created.
-        assert not dst_dir.exists()
+    # Workspace NOT created.
+    assert not dst_dir.exists()
 
-        # Metadata exists.
-        projects_base = std.boxes
-        assert (projects_base / "bare_dst").is_dir()
+    # Metadata exists.
+    projects_base = std.boxes
+    assert (projects_base / "bare_dst").is_dir()
 
-    def test_duplicate_source_not_dir_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_source_not_dir_error(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        rc = run_duplicate(self._make_args(
-            tmp_home / "nonexistent", tmp_home / "dst", force=True,
-        ))
-        assert rc == 1
+    rc = run_duplicate(
+      self._make_args(
+        tmp_home / "nonexistent",
+        tmp_home / "dst",
+        force=True,
+      )
+    )
+    assert rc == 1
 
-    def test_duplicate_source_no_metadata_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_source_no_metadata_error(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        src_dir = tmp_home / "no_meta"
-        src_dir.mkdir()
+    src_dir = tmp_home / "no_meta"
+    src_dir.mkdir()
 
-        rc = run_duplicate(self._make_args(src_dir, tmp_home / "dst", force=True))
-        assert rc == 1
+    rc = run_duplicate(self._make_args(src_dir, tmp_home / "dst", force=True))
+    assert rc == 1
 
-    def test_duplicate_dst_exists_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_dst_exists_error(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "dup_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    src_dir = tmp_home / "dup_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        dst_dir = tmp_home / "dup_dst"
-        dst_dir.mkdir()
+    dst_dir = tmp_home / "dup_dst"
+    dst_dir.mkdir()
 
-        # Without --force, should fail because dst exists.
-        rc = run_duplicate(self._make_args(src_dir, dst_dir))
-        assert rc == 1
+    # Without --force, should fail because dst exists.
+    rc = run_duplicate(self._make_args(src_dir, dst_dir))
+    assert rc == 1
 
-    def test_duplicate_dst_metadata_exists_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_dst_metadata_exists_error(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "meta_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    src_dir = tmp_home / "meta_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        dst_dir = tmp_home / "meta_dst"
-        dst_dir.mkdir()
-        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+    dst_dir = tmp_home / "meta_dst"
+    dst_dir.mkdir()
+    resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-        # Without --force, should fail because dst metadata exists.
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True))
-        assert rc == 1
+    # Without --force, should fail because dst metadata exists.
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True))
+    assert rc == 1
 
-    def test_duplicate_lock_file_aborts_without_force(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_lock_file_aborts_without_force(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "locked_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / ".kanibako.lock").touch()
+    src_dir = tmp_home / "locked_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / ".kanibako.lock").touch()
 
-        dst_dir = tmp_home / "locked_dst"
+    dst_dir = tmp_home / "locked_dst"
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir))
-        assert rc == 2
+    rc = run_duplicate(self._make_args(src_dir, dst_dir))
+    assert rc == 2
 
-    def test_duplicate_lock_file_skipped_with_force(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_lock_file_skipped_with_force(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "lockforce_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / ".kanibako.lock").touch()
+    src_dir = tmp_home / "lockforce_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / ".kanibako.lock").touch()
 
-        dst_dir = tmp_home / "lockforce_dst"
+    dst_dir = tmp_home / "lockforce_dst"
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 0
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 0
 
-    def test_duplicate_excludes_lock_file(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_excludes_lock_file(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "excl_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / ".kanibako.lock").touch()
+    src_dir = tmp_home / "excl_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / ".kanibako.lock").touch()
 
-        dst_dir = tmp_home / "excl_dst"
+    dst_dir = tmp_home / "excl_dst"
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 0
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 0
 
-        projects_base = std.boxes
-        new_project = projects_base / "excl_dst"
-        assert not (new_project / ".kanibako.lock").exists()
+    projects_base = std.boxes
+    new_project = projects_base / "excl_dst"
+    assert not (new_project / ".kanibako.lock").exists()
 
-    def test_duplicate_force_overwrites_metadata(self, config_file, tmp_home, credentials_dir):
-        """A BARE duplicate whose destination workspace is ALREADY a registered
-        box refuses (one box per workspace path — the PRIMARY-membership Bug-A
-        guard).  Since the global ``projects:`` section retired, the membership is
-        the sole store and cannot hold a second box name for one workspace; the
-        old global store minted ``fw_dst2`` for the same dir (the duplicate-``list``-
-        rows bug).  ``--force`` overwrites metadata dirs, NOT the one-box invariant."""
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_force_overwrites_metadata(self, config_file, tmp_home, credentials_dir):
+    """A BARE duplicate whose destination workspace is ALREADY a registered
+    box refuses (one box per workspace path — the PRIMARY-membership Bug-A
+    guard).  Since the global ``projects:`` section retired, the membership is
+    the sole store and cannot hold a second box name for one workspace; the
+    old global store minted ``fw_dst2`` for the same dir (the duplicate-``list``-
+    rows bug).  ``--force`` overwrites metadata dirs, NOT the one-box invariant."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "fw_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / "fresh.txt").write_text("new")
+    src_dir = tmp_home / "fw_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / "fresh.txt").write_text("new")
 
-        dst_dir = tmp_home / "fw_dst"
-        dst_dir.mkdir()
-        dst_proj = resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
-        (dst_proj.metadata_path / "stale.txt").write_text("old")
+    dst_dir = tmp_home / "fw_dst"
+    dst_dir.mkdir()
+    dst_proj = resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+    (dst_proj.metadata_path / "stale.txt").write_text("old")
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
-        # Refused: dst_dir is already box "fw_dst"; a bare duplicate there would be
-        # a second box for one workspace.
-        assert rc == 1
-        # No stray fw_dst2 box was minted.
-        assert not (std.boxes / "fw_dst2").exists()
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+    # Refused: dst_dir is already box "fw_dst"; a bare duplicate there would be
+    # a second box for one workspace.
+    assert rc == 1
+    # No stray fw_dst2 box was minted.
+    assert not (std.boxes / "fw_dst2").exists()
 
-    def test_duplicate_force_refuses_deregistered_home(
-        self, config_file, tmp_home, credentials_dir, capsys,
+  def test_duplicate_force_refuses_deregistered_home(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """--force must NOT overwrite a std.boxes/<name> home occupied by a
+    DEREGISTERED box (same I4 data-loss class as create).  Refuse with
+    register/purge guidance; the retained home is untouched; no active
+    membership is stranded for the refused name."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    # Source primary box.
+    src_dir = tmp_home / "src_box"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    # A deregistered box 'target' with a retained home + sentinel.
+    home = std.boxes / "target"
+    home.mkdir(parents=True)
+    (home / "keep.txt").write_text("precious")
+    registry_store.register_deregistered(
+      std.registry,
+      "target",
+      kind="primary",
+      workspace=str(tmp_home / "target"),
+      metadata=str(home),
+    )
+
+    # Duplicating to a NEW path whose basename mints the name 'target' lands
+    # on that deregistered home.
+    dst_dir = tmp_home / "target"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 1
+    # Home NOT overwritten — sentinel intact.
+    assert (home / "keep.txt").read_text() == "precious"
+    # No active membership stranded for the refused name.
+    assert "target" not in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+    # Guidance is surfaced.
+    err = capsys.readouterr().err
+    assert "register" in err and "purge" in err
+
+  def test_duplicate_force_refuses_orphaned_home(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """--force also refuses an ORPHANED std.boxes/<name> home (no active or
+    deregistered registration) rather than clobbering it."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "src2"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    orphan = std.boxes / "orphan"
+    orphan.mkdir(parents=True)
+    (orphan / "keep.txt").write_text("precious")
+
+    dst_dir = tmp_home / "orphan"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 1
+    assert (orphan / "keep.txt").read_text() == "precious"
+
+  def test_duplicate_fresh_name_unaffected_by_guard(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A genuinely-fresh dup name (no deregistered/orphaned home) still
+    duplicates — the guard is a no-op for it."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "fresh_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("x = 1")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    # A deregistered box exists but under a DIFFERENT name, so the minted
+    # 'fresh_dst' home is free.
+    (std.boxes / "someoldbox").mkdir(parents=True)
+    from kanibako.project import registry_store
+
+    registry_store.register_deregistered(
+      std.registry,
+      "someoldbox",
+      kind="primary",
+      workspace=str(tmp_home / "someoldbox"),
+      metadata=str(std.boxes / "someoldbox"),
+    )
+
+    dst_dir = tmp_home / "fresh_dst"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 0
+    assert (std.boxes / "fresh_dst").is_dir()
+
+  def test_duplicate_force_overwrites_workspace(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "ws_src"
+    src_dir.mkdir()
+    (src_dir / "new_file.txt").write_text("new")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "ws_dst"
+    dst_dir.mkdir()
+    (dst_dir / "existing.txt").write_text("keep")
+
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert rc == 0
+
+    # New file merged in.
+    assert (dst_dir / "new_file.txt").read_text() == "new"
+    # Existing file preserved (dirs_exist_ok merges).
+    assert (dst_dir / "existing.txt").read_text() == "keep"
+
+  def test_duplicate_keeps_every_link_verbatim(self, config_file, tmp_home, credentials_dir):
+    """Workspace, box data and home: each link lands with the text it had, none followed."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "links_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    outside = tmp_home / "q70_outside"
+    trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
+    texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+    dst_dir = tmp_home / "links_dst"
+    assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
+
+    new_project = std.boxes / "links_dst"
+    _assert_links_verbatim(dst_dir, texts["workspace"])
+    _assert_links_verbatim(new_project, texts["data"])
+    _assert_links_verbatim(new_project / "home", texts["home"])
+
+  def test_force_link_replaces_a_file_or_link(self, config_file, tmp_home, credentials_dir):
+    """--force: a link overwrites a same-named file or link, as the file copy always did."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "rl_src"
+    src_dir.mkdir()
+    (src_dir / "f").symlink_to("../elsewhere/f")
+    (src_dir / "l").symlink_to("/abs/l")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    dst_dir = tmp_home / "rl_dst"
+    dst_dir.mkdir()
+    (dst_dir / "f").write_text("old")
+    (dst_dir / "l").symlink_to("prior")
+
+    assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
+
+    assert os.readlink(dst_dir / "f") == "../elsewhere/f"
+    assert os.readlink(dst_dir / "l") == "/abs/l"
+
+  def test_force_link_never_removes_a_directory(self, config_file, tmp_home, credentials_dir):
+    """--force: a directory where a link goes is reported, never removed."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "rd_src"
+    src_dir.mkdir()
+    (src_dir / "d").symlink_to("../elsewhere")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    dst_dir = tmp_home / "rd_dst"
+    (dst_dir / "d").mkdir(parents=True)
+    (dst_dir / "d" / "keep.txt").write_text("keep")
+
+    # Reported by name as a ProjectError (the CLI prints it), never a traceback.
+    from kanibako.errors import ProjectError
+
+    with pytest.raises(ProjectError) as exc:
+      run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+    assert f"Could not copy the workspace {src_dir} to {dst_dir}; 1 entry failed:" in str(
+      exc.value
+    )
+    assert f"  {src_dir / 'd'}: " in str(exc.value)
+
+    assert not (dst_dir / "d").is_symlink()
+    assert (dst_dir / "d" / "keep.txt").read_text() == "keep"
+
+  def test_duplicate_metadata_copy_failure_leaves_no_orphan(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A crash during the metadata copy must NOT strand a registered name.
+
+    Failure-injection (A2): ``run_duplicate`` registers a name via
+    ``assign_name`` before copying metadata.  If the copy raises, the name
+    must be unregistered and no partial dest dir left behind — duplicate
+    either fully succeeds or leaves no trace.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "orphan_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "orphan_dst"
+
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    # bare=True so only the metadata copytree runs (no prior workspace copy).
+    with patch(
+      "kanibako.commands.box._duplicate.shutil.copytree",
+      side_effect=RuntimeError("boom"),
     ):
-        """--force must NOT overwrite a std.boxes/<name> home occupied by a
-        DEREGISTERED box (same I4 data-loss class as create).  Refuse with
-        register/purge guidance; the retained home is untouched; no active
-        membership is stranded for the refused name."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
+      try:
+        run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+      except RuntimeError:
+        pass
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    # Name NOT left registered.
+    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert names_after == names_before
+    assert "orphan_dst" not in names_after
+    # No partial dest metadata dir.
+    assert not (std.boxes / "orphan_dst").exists()
 
-        # Source primary box.
-        src_dir = tmp_home / "src_box"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+  def test_duplicate_rollback_names_what_it_could_not_undo_once(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A failed duplicate's rollback names the name it could not unregister and the
+    dir it could not remove, each once, then one summary."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        # A deregistered box 'target' with a retained home + sentinel.
-        home = std.boxes / "target"
-        home.mkdir(parents=True)
-        (home / "keep.txt").write_text("precious")
-        registry_store.register_deregistered(
-            std.registry, "target", kind="primary",
-            workspace=str(tmp_home / "target"), metadata=str(home),
-        )
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "stuck_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    dst_dir = tmp_home / "stuck_dst"
 
-        # Duplicating to a NEW path whose basename mints the name 'target' lands
-        # on that deregistered home.
-        dst_dir = tmp_home / "target"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 1
-        # Home NOT overwritten — sentinel intact.
-        assert (home / "keep.txt").read_text() == "precious"
-        # No active membership stranded for the refused name.
-        assert "target" not in load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        # Guidance is surfaced.
-        err = capsys.readouterr().err
-        assert "register" in err and "purge" in err
+    def _boom(src, dst, *a, **kw):
+      from pathlib import Path
 
-    def test_duplicate_force_refuses_orphaned_home(
-        self, config_file, tmp_home, credentials_dir, capsys,
+      Path(dst).mkdir(parents=True, exist_ok=True)
+      raise RuntimeError("boom")
+
+    def _locked(*a, **kw):
+      raise OSError("registry locked")
+
+    with (
+      patch("kanibako.commands.box._duplicate.shutil.copytree", side_effect=_boom),
+      patch("kanibako.commands.box._duplicate.unregister_primary_box_name", side_effect=_locked),
+      patch("kanibako.commands.box._duplicate.remove_box_tree", return_value=False),
     ):
-        """--force also refuses an ORPHANED std.boxes/<name> home (no active or
-        deregistered registration) rather than clobbering it."""
-        from kanibako.commands.box._duplicate import run_duplicate
+      with pytest.raises(RuntimeError, match="boom"):
+        run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+    err = capsys.readouterr().err
+    left = std.boxes / "stuck_dst"
+    assert left.is_dir()
+    assert err.count("Note: could not undo a step of the duplicate: registry locked\n") == 1, err
+    assert err.count(f"Note: could not remove {left}, which this operation created") == 1, err
+    assert (
+      err.count(
+        "Note: the duplicate failed and was not fully undone; check the box "
+        f"'stuck_dst' and {left}"
+      )
+      == 1
+    ), err
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+  def test_registered_dest_refuses_before_the_workspace_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """task-dupforce: `--force` onto an ALREADY-REGISTERED destination must
+    refuse without writing a byte to that workspace.
 
-        src_dir = tmp_home / "src2"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    Pre-fix the workspace merge ran FIRST, so the destination's own files had
+    already been replaced by the source's by the time Guard-1 refused.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
 
-        orphan = std.boxes / "orphan"
-        orphan.mkdir(parents=True)
-        (orphan / "keep.txt").write_text("precious")
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        dst_dir = tmp_home / "orphan"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 1
-        assert (orphan / "keep.txt").read_text() == "precious"
+    src_dir = tmp_home / "dupwrite_src"
+    src_dir.mkdir()
+    (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-    def test_duplicate_fresh_name_unaffected_by_guard(
-        self, config_file, tmp_home, credentials_dir,
+    dst_dir = tmp_home / "dupwrite_dst"
+    dst_dir.mkdir()
+    (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
+    resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+    assert rc == 1
+    assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+
+  def test_orphan_home_refuses_before_the_workspace_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The home-free check is the SECOND refusal that used to land after the
+    copy; an orphaned ``std.boxes/<minted name>`` must stop the command before
+    the destination workspace is merged into, and stay untouched itself."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "duporphan_src"
+    src_dir.mkdir()
+    (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "duporphanleaf"
+    dst_dir.mkdir()
+    (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
+
+    orphan = std.boxes / "duporphanleaf"
+    orphan.mkdir(parents=True)
+    (orphan / "retained.txt").write_text("RETAINED")
+
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+    assert rc == 1
+    assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
+    assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+  # --- task-dupforce-fix1: three more routes of the SAME command ---
+  # ⚑ Red reference is the PREVIOUS tip (dc0f8af1), not main.
+
+  def test_named_source_no_to_refuses_before_the_destination_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Route 1: a NAMED source with no ``--to`` refuses Guard-1 without
+    touching a registered destination's files."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = self._named_source(std, config, tmp_home / "wsroot_r1", "r1src")
+    dst = self._armed_dest(tmp_home / "dupfix_r1")
+    resolve_project(std, config, project_dir=str(dst), initialize=True)
+
+    assert run_duplicate(self._make_args(src, dst, force=True)) == 1
+    self._both_levels_own(dst)
+
+  def test_named_source_orphan_home_refuses_before_the_destination_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Route 1's other refusal: the minted home is a retained/orphaned box."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = self._named_source(std, config, tmp_home / "wsroot_r1b", "r1bsrc")
+    dst = self._armed_dest(tmp_home / "dupfix_r1b")
+    orphan = std.boxes / "dupfix_r1b"
+    orphan.mkdir(parents=True)
+    (orphan / "retained.txt").write_text("RETAINED")
+
+    assert run_duplicate(self._make_args(src, dst, force=True)) == 1
+    self._both_levels_own(dst)
+    assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+  def test_to_primary_orphan_home_refuses_before_the_destination_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Route 2: ``--to primary`` onto a dst whose minted home is retained.
+    The F-3 front-run covers Guard-1 only, so this route still reached the
+    copy before the home-free check could stop it."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = tmp_home / "dupfix_r2_src"
+    src.mkdir()
+    (src / "keepme.txt").write_text("FROM-THE-SOURCE")
+    resolve_project(std, config, project_dir=str(src), initialize=True)
+    dst = self._armed_dest(tmp_home / "dupfix_r2")
+    orphan = std.boxes / "dupfix_r2"
+    orphan.mkdir(parents=True)
+    (orphan / "retained.txt").write_text("RETAINED")
+
+    assert run_duplicate(self._make_args(src, dst, force=True, to_mode="primary")) == 1
+    self._both_levels_own(dst)
+    assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+  def test_to_standalone_scalar_root_refuses_before_the_workspace_is_written(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Route 3: ``--to standalone`` onto a root whose ``workset.yaml`` holds a
+    scalar ``workset:``.  ``establish_standalone`` refuses that, but only
+    after the merge had already filled ``<dst>/workspace``."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = tmp_home / "dupfix_r3_src"
+    src.mkdir()
+    (src / "keepme.txt").write_text("FROM-THE-SOURCE")
+    resolve_project(std, config, project_dir=str(src), initialize=True)
+    dst = self._armed_dest(tmp_home / "dupfix_r3")
+    (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
+
+    from kanibako.errors import ConfigError
+
+    with pytest.raises(ConfigError):
+      run_duplicate(self._make_args(src, dst, force=True, to_mode="standalone"))
+    self._both_levels_own(dst)
+
+  def test_from_workset_to_standalone_scalar_root_refuses_before_the_write(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Route 3's second caller: a NAMED source ``--to standalone`` reaches the
+    same ``establish_standalone`` refusal from the other direction."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = self._named_source(std, config, tmp_home / "wsroot_r3b", "r3bsrc")
+    dst = self._armed_dest(tmp_home / "dupfix_r3b")
+    (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
+
+    from kanibako.errors import ConfigError
+
+    with pytest.raises(ConfigError):
+      run_duplicate(self._make_args(src, dst, force=True, to_mode="standalone"))
+    self._both_levels_own(dst)
+
+  def test_workspace_copy_failure_unregisters_the_minted_name(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The workspace copy now sits INSIDE the unwind, so a copy failure after
+    the name was minted leaves no "registered but no metadata" orphan."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dupunwind_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('unwind')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "dupunwind_dst"
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    def _boom(src, dst, *a, **kw):
+      from pathlib import Path
+
+      Path(dst).mkdir(parents=True, exist_ok=True)
+      raise OSError("disk full")
+
+    with patch(
+      "kanibako.commands.box._duplicate.shutil.copytree",
+      side_effect=_boom,
     ):
-        """A genuinely-fresh dup name (no deregistered/orphaned home) still
-        duplicates — the guard is a no-op for it."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "fresh_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("x = 1")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        # A deregistered box exists but under a DIFFERENT name, so the minted
-        # 'fresh_dst' home is free.
-        (std.boxes / "someoldbox").mkdir(parents=True)
-        from kanibako.project import registry_store
-        registry_store.register_deregistered(
-            std.registry, "someoldbox", kind="primary",
-            workspace=str(tmp_home / "someoldbox"),
-            metadata=str(std.boxes / "someoldbox"),
-        )
-
-        dst_dir = tmp_home / "fresh_dst"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 0
-        assert (std.boxes / "fresh_dst").is_dir()
-
-    def test_duplicate_force_overwrites_workspace(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "ws_src"
-        src_dir.mkdir()
-        (src_dir / "new_file.txt").write_text("new")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "ws_dst"
-        dst_dir.mkdir()
-        (dst_dir / "existing.txt").write_text("keep")
-
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert rc == 0
-
-        # New file merged in.
-        assert (dst_dir / "new_file.txt").read_text() == "new"
-        # Existing file preserved (dirs_exist_ok merges).
-        assert (dst_dir / "existing.txt").read_text() == "keep"
-
-    def test_duplicate_keeps_every_link_verbatim(self, config_file, tmp_home, credentials_dir):
-        """Workspace, box data and home: each link lands with the text it had, none followed."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "links_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        outside = tmp_home / "q70_outside"
-        trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
-        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
-
-        dst_dir = tmp_home / "links_dst"
-        assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
-
-        new_project = std.boxes / "links_dst"
-        _assert_links_verbatim(dst_dir, texts["workspace"])
-        _assert_links_verbatim(new_project, texts["data"])
-        _assert_links_verbatim(new_project / "home", texts["home"])
-
-    def test_force_link_replaces_a_file_or_link(self, config_file, tmp_home, credentials_dir):
-        """--force: a link overwrites a same-named file or link, as the file copy always did."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "rl_src"
-        src_dir.mkdir()
-        (src_dir / "f").symlink_to("../elsewhere/f")
-        (src_dir / "l").symlink_to("/abs/l")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        dst_dir = tmp_home / "rl_dst"
-        dst_dir.mkdir()
-        (dst_dir / "f").write_text("old")
-        (dst_dir / "l").symlink_to("prior")
-
-        assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
-
-        assert os.readlink(dst_dir / "f") == "../elsewhere/f"
-        assert os.readlink(dst_dir / "l") == "/abs/l"
-
-    def test_force_link_never_removes_a_directory(self, config_file, tmp_home, credentials_dir):
-        """--force: a directory where a link goes is reported, never removed."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "rd_src"
-        src_dir.mkdir()
-        (src_dir / "d").symlink_to("../elsewhere")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        dst_dir = tmp_home / "rd_dst"
-        (dst_dir / "d").mkdir(parents=True)
-        (dst_dir / "d" / "keep.txt").write_text("keep")
-
-        # Reported by name as a ProjectError (the CLI prints it), never a traceback.
-        from kanibako.errors import ProjectError
-        with pytest.raises(ProjectError) as exc:
-            run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-        assert f"Could not copy the workspace {src_dir} to {dst_dir}; 1 entry failed:" in str(exc.value)
-        assert f"  {src_dir / 'd'}: " in str(exc.value)
-
-        assert not (dst_dir / "d").is_symlink()
-        assert (dst_dir / "d" / "keep.txt").read_text() == "keep"
-
-    def test_duplicate_metadata_copy_failure_leaves_no_orphan(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A crash during the metadata copy must NOT strand a registered name.
-
-        Failure-injection (A2): ``run_duplicate`` registers a name via
-        ``assign_name`` before copying metadata.  If the copy raises, the name
-        must be unregistered and no partial dest dir left behind — duplicate
-        either fully succeeds or leaves no trace.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "orphan_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "orphan_dst"
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        # bare=True so only the metadata copytree runs (no prior workspace copy).
-        with patch(
-            "kanibako.commands.box._duplicate.shutil.copytree",
-            side_effect=RuntimeError("boom"),
-        ):
-            try:
-                run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
-            except RuntimeError:
-                pass
-
-        # Name NOT left registered.
-        names_after = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert names_after == names_before
-        assert "orphan_dst" not in names_after
-        # No partial dest metadata dir.
-        assert not (std.boxes / "orphan_dst").exists()
-
-    def test_duplicate_rollback_names_what_it_could_not_undo_once(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """A failed duplicate's rollback names the name it could not unregister and the
-        dir it could not remove, each once, then one summary."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "stuck_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        dst_dir = tmp_home / "stuck_dst"
-
-        def _boom(src, dst, *a, **kw):
-            from pathlib import Path
-            Path(dst).mkdir(parents=True, exist_ok=True)
-            raise RuntimeError("boom")
-
-        def _locked(*a, **kw):
-            raise OSError("registry locked")
-
-        with patch("kanibako.commands.box._duplicate.shutil.copytree", side_effect=_boom), \
-                patch("kanibako.commands.box._duplicate.unregister_primary_box_name",
-                      side_effect=_locked), \
-                patch("kanibako.commands.box._duplicate.remove_box_tree", return_value=False):
-            with pytest.raises(RuntimeError, match="boom"):
-                run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
-        err = capsys.readouterr().err
-        left = std.boxes / "stuck_dst"
-        assert left.is_dir()
-        assert err.count("Note: could not undo a step of the duplicate: registry locked\n") == 1, err
-        assert err.count(f"Note: could not remove {left}, which this operation created") == 1, err
-        assert err.count("Note: the duplicate failed and was not fully undone; check the box "
-                         f"'stuck_dst' and {left}") == 1, err
-
-
-    def test_registered_dest_refuses_before_the_workspace_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """task-dupforce: `--force` onto an ALREADY-REGISTERED destination must
-        refuse without writing a byte to that workspace.
-
-        Pre-fix the workspace merge ran FIRST, so the destination's own files had
-        already been replaced by the source's by the time Guard-1 refused.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dupwrite_src"
-        src_dir.mkdir()
-        (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "dupwrite_dst"
-        dst_dir.mkdir()
-        (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
-        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-
-        assert rc == 1
-        assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-
-    def test_orphan_home_refuses_before_the_workspace_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The home-free check is the SECOND refusal that used to land after the
-        copy; an orphaned ``std.boxes/<minted name>`` must stop the command before
-        the destination workspace is merged into, and stay untouched itself."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "duporphan_src"
-        src_dir.mkdir()
-        (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "duporphanleaf"
-        dst_dir.mkdir()
-        (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
-
-        orphan = std.boxes / "duporphanleaf"
-        orphan.mkdir(parents=True)
-        (orphan / "retained.txt").write_text("RETAINED")
-
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-
-        assert rc == 1
-        assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
-        assert (orphan / "retained.txt").read_text() == "RETAINED"
-
-    # --- task-dupforce-fix1: three more routes of the SAME command ---
-    # ⚑ Red reference is the PREVIOUS tip (dc0f8af1), not main.
-
-    def test_named_source_no_to_refuses_before_the_destination_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Route 1: a NAMED source with no ``--to`` refuses Guard-1 without
-        touching a registered destination's files."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = self._named_source(std, config, tmp_home / "wsroot_r1", "r1src")
-        dst = self._armed_dest(tmp_home / "dupfix_r1")
-        resolve_project(std, config, project_dir=str(dst), initialize=True)
-
-        assert run_duplicate(self._make_args(src, dst, force=True)) == 1
-        self._both_levels_own(dst)
-
-    def test_named_source_orphan_home_refuses_before_the_destination_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Route 1's other refusal: the minted home is a retained/orphaned box."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = self._named_source(std, config, tmp_home / "wsroot_r1b", "r1bsrc")
-        dst = self._armed_dest(tmp_home / "dupfix_r1b")
-        orphan = std.boxes / "dupfix_r1b"
-        orphan.mkdir(parents=True)
-        (orphan / "retained.txt").write_text("RETAINED")
-
-        assert run_duplicate(self._make_args(src, dst, force=True)) == 1
-        self._both_levels_own(dst)
-        assert (orphan / "retained.txt").read_text() == "RETAINED"
-
-    def test_to_primary_orphan_home_refuses_before_the_destination_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Route 2: ``--to primary`` onto a dst whose minted home is retained.
-        The F-3 front-run covers Guard-1 only, so this route still reached the
-        copy before the home-free check could stop it."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = tmp_home / "dupfix_r2_src"
-        src.mkdir()
-        (src / "keepme.txt").write_text("FROM-THE-SOURCE")
-        resolve_project(std, config, project_dir=str(src), initialize=True)
-        dst = self._armed_dest(tmp_home / "dupfix_r2")
-        orphan = std.boxes / "dupfix_r2"
-        orphan.mkdir(parents=True)
-        (orphan / "retained.txt").write_text("RETAINED")
-
-        assert run_duplicate(self._make_args(
-            src, dst, force=True, to_mode="primary")) == 1
-        self._both_levels_own(dst)
-        assert (orphan / "retained.txt").read_text() == "RETAINED"
-
-    def test_to_standalone_scalar_root_refuses_before_the_workspace_is_written(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Route 3: ``--to standalone`` onto a root whose ``workset.yaml`` holds a
-        scalar ``workset:``.  ``establish_standalone`` refuses that, but only
-        after the merge had already filled ``<dst>/workspace``."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = tmp_home / "dupfix_r3_src"
-        src.mkdir()
-        (src / "keepme.txt").write_text("FROM-THE-SOURCE")
-        resolve_project(std, config, project_dir=str(src), initialize=True)
-        dst = self._armed_dest(tmp_home / "dupfix_r3")
-        (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
-
-        from kanibako.errors import ConfigError
-        with pytest.raises(ConfigError):
-            run_duplicate(self._make_args(
-                src, dst, force=True, to_mode="standalone"))
-        self._both_levels_own(dst)
-
-    def test_from_workset_to_standalone_scalar_root_refuses_before_the_write(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Route 3's second caller: a NAMED source ``--to standalone`` reaches the
-        same ``establish_standalone`` refusal from the other direction."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = self._named_source(std, config, tmp_home / "wsroot_r3b", "r3bsrc")
-        dst = self._armed_dest(tmp_home / "dupfix_r3b")
-        (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
-
-        from kanibako.errors import ConfigError
-        with pytest.raises(ConfigError):
-            run_duplicate(self._make_args(
-                src, dst, force=True, to_mode="standalone"))
-        self._both_levels_own(dst)
-
-    def test_workspace_copy_failure_unregisters_the_minted_name(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The workspace copy now sits INSIDE the unwind, so a copy failure after
-        the name was minted leaves no "registered but no metadata" orphan."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dupunwind_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('unwind')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "dupunwind_dst"
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        def _boom(src, dst, *a, **kw):
-            from pathlib import Path
-            Path(dst).mkdir(parents=True, exist_ok=True)
-            raise OSError("disk full")
-
-        with patch(
-            "kanibako.commands.box._duplicate.shutil.copytree", side_effect=_boom,
-        ):
-            with pytest.raises(OSError, match="disk full"):
-                run_duplicate(self._make_args(src_dir, dst_dir, force=True))
-
-        names_after = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert names_after == names_before
-        assert "dupunwind_dst" not in names_after
+      with pytest.raises(OSError, match="disk full"):
+        run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert names_after == names_before
+    assert "dupunwind_dst" not in names_after
 
 
 class TestBoxInfo:
-    def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_info
+  def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_info
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(path=project_dir)
-        with patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "primary" in out
-        assert str(tmp_home / "project") in out
-        assert "Image:" in out
-        assert "Container:" in out
-
-    def test_info_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_info
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(path=project_dir)
-        with patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "standalone" in out
-
-    def test_info_by_box_name(self, config_file, tmp_home, credentials_dir, capsys):
-        """`box info --box <registered-name>` resolves by NAME, not as a path.
-
-        Regression: run_info used to do .is_dir() on the raw --box value before
-        the path-or-name resolver, so a bare box name failed with "directory
-        does not exist".
-        """
-        from kanibako.commands.box._parser import run_info
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "named_sa"
-        root.mkdir()
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
-        box_name = proj.name
-
-        # --box carries a bare NAME (no path separator); positional path absent.
-        args = argparse.Namespace(path=None, box=box_name)
-        with patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "standalone" in out
-        # Resolved to the box's real root, not cwd/<name>.
-        assert str(root) in out
-
-    def test_info_no_data(self, config_file, tmp_home, capsys):
-        from kanibako.commands.box._parser import run_info
-
-        args = argparse.Namespace(path=str(tmp_home / "project"))
-        with patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            rc = run_info(args)
-        assert rc == 1
-        out = capsys.readouterr().out
-        assert "No project data found" in out
-        # The cure names ``create`` and ONLY ``create``.  Offering "start a
-        # session with 'kanibako start'" was false from v1.7.0 on: the
-        # explicit-create gate makes a launch refuse instead of materializing.
-        assert "kanibako box create" in out
-        assert "kanibako start" not in out
-
-    def test_info_registered_box_with_missing_dir_names_the_real_cure(
-        self, config_file, tmp_home, credentials_dir, capsys,
+    args = argparse.Namespace(path=project_dir)
+    with patch(
+      "kanibako.commands.box._parser._check_container_running",
+      return_value=(False, "not running (kanibako-test)"),
     ):
-        """A REGISTERED box whose box dir is gone is not an "unused directory".
+      rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "primary" in out
+    assert str(tmp_home / "project") in out
+    assert "Image:" in out
+    assert "Container:" in out
 
-        ``box info`` must say what the launch gate says (``_unbuilt_box_error``),
-        not "this directory has not been used with kanibako yet".
-        """
-        from kanibako.commands.box._parser import run_info
+  def test_info_standalone(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_info
 
-        # ⚑ A BOX tree is removed through ``remove_box_tree``, never a bare
-        # ``shutil.rmtree`` (the rule `cfc7257` set for the MBR-6 tests, and the
-        # note at the top of ``tests/test_explicit_create.py``).  This case
-        # builds its box with ``resolve_project``, not ``run_create``, so there
-        # is no root-owned canon skeleton here and no ``protected_canon``
-        # fixture to take — but the deleter is still the one sanctioned route,
-        # so the test tree grows no second pattern to copy.
-        from kanibako.runtime.container import remove_box_tree
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(
-            std, config, project_dir=project_dir, initialize=True,
-        )
-        assert proj.name
-        assert remove_box_tree(proj.metadata_path), "the box tree must be gone"
+    resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(path=project_dir)
-        with patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            rc = run_info(args)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "has not been used with kanibako yet" not in captured.out
-        assert "is registered, but its box directory is gone" in captured.err
-        # PRIMARY box ⇒ the ``create`` cure (a NAMED box gets the workset one).
-        assert f"kanibako create {project_dir}" in captured.err
+    args = argparse.Namespace(path=project_dir)
+    with patch(
+      "kanibako.commands.box._parser._check_container_running",
+      return_value=(False, "not running (kanibako-test)"),
+    ):
+      rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "standalone" in out
 
-    def test_info_lock_status(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_info
+  def test_info_by_box_name(self, config_file, tmp_home, credentials_dir, capsys):
+    """`box info --box <registered-name>` resolves by NAME, not as a path.
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        import fcntl
+    Regression: run_info used to do .is_dir() on the raw --box value before
+    the path-or-name resolver, so a bare box name failed with "directory
+    does not exist".
+    """
+    from kanibako.commands.box._parser import run_info
 
-        args = argparse.Namespace(path=project_dir)
-        with open(proj.metadata_path / ".kanibako.lock", "w") as held, patch(
-            "kanibako.commands.box._parser._check_container_running",
-            return_value=(False, "not running (kanibako-test)"),
-        ):
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)  # a live session holds it
-            rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "ACTIVE" in out
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "named_sa"
+    root.mkdir()
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    box_name = proj.name
+
+    # --box carries a bare NAME (no path separator); positional path absent.
+    args = argparse.Namespace(path=None, box=box_name)
+    with patch(
+      "kanibako.commands.box._parser._check_container_running",
+      return_value=(False, "not running (kanibako-test)"),
+    ):
+      rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "standalone" in out
+    # Resolved to the box's real root, not cwd/<name>.
+    assert str(root) in out
+
+  def test_info_no_data(self, config_file, tmp_home, capsys):
+    from kanibako.commands.box._parser import run_info
+
+    args = argparse.Namespace(path=str(tmp_home / "project"))
+    with patch(
+      "kanibako.commands.box._parser._check_container_running",
+      return_value=(False, "not running (kanibako-test)"),
+    ):
+      rc = run_info(args)
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "No project data found" in out
+    # The cure names ``create`` and ONLY ``create``.  Offering "start a
+    # session with 'kanibako start'" was false from v1.7.0 on: the
+    # explicit-create gate makes a launch refuse instead of materializing.
+    assert "kanibako box create" in out
+    assert "kanibako start" not in out
+
+  def test_info_registered_box_with_missing_dir_names_the_real_cure(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """A REGISTERED box whose box dir is gone is not an "unused directory".
+
+    ``box info`` must say what the launch gate says (``_unbuilt_box_error``),
+    not "this directory has not been used with kanibako yet".
+    """
+    from kanibako.commands.box._parser import run_info
+
+    # ⚑ A BOX tree is removed through ``remove_box_tree``, never a bare
+    # ``shutil.rmtree`` (the rule `cfc7257` set for the MBR-6 tests, and the
+    # note at the top of ``tests/test_explicit_create.py``).  This case
+    # builds its box with ``resolve_project``, not ``run_create``, so there
+    # is no root-owned canon skeleton here and no ``protected_canon``
+    # fixture to take — but the deleter is still the one sanctioned route,
+    # so the test tree grows no second pattern to copy.
+    from kanibako.runtime.container import remove_box_tree
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=project_dir,
+      initialize=True,
+    )
+    assert proj.name
+    assert remove_box_tree(proj.metadata_path), "the box tree must be gone"
+
+    args = argparse.Namespace(path=project_dir)
+    with patch(
+      "kanibako.commands.box._parser._check_container_running",
+      return_value=(False, "not running (kanibako-test)"),
+    ):
+      rc = run_info(args)
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "has not been used with kanibako yet" not in captured.out
+    assert "is registered, but its box directory is gone" in captured.err
+    # PRIMARY box ⇒ the ``create`` cure (a NAMED box gets the workset one).
+    assert f"kanibako create {project_dir}" in captured.err
+
+  def test_info_lock_status(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_info
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    import fcntl
+
+    args = argparse.Namespace(path=project_dir)
+    with (
+      open(proj.metadata_path / ".kanibako.lock", "w") as held,
+      patch(
+        "kanibako.commands.box._parser._check_container_running",
+        return_value=(False, "not running (kanibako-test)"),
+      ),
+    ):
+      fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)  # a live session holds it
+      rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "ACTIVE" in out
 
 
 class TestBoxDuplicateCrossMode:
-    """Tests for cross-mode duplication (kanibako box duplicate --to)."""
+  """Tests for cross-mode duplication (kanibako box duplicate --to)."""
 
-    def _make_args(self, source, dest, to_mode, bare=False, force=True,
-                    workset=None, project_name=None, register=False):
-        return argparse.Namespace(
-            source_path=str(source), new_path=str(dest),
-            to_mode=to_mode, bare=bare, force=force,
-            workset=workset, project_name=project_name, register=register,
-        )
+  def _make_args(
+    self,
+    source,
+    dest,
+    to_mode,
+    bare=False,
+    force=True,
+    workset=None,
+    project_name=None,
+    register=False,
+  ):
+    return argparse.Namespace(
+      source_path=str(source),
+      new_path=str(dest),
+      to_mode=to_mode,
+      bare=bare,
+      force=force,
+      workset=workset,
+      project_name=project_name,
+      register=register,
+    )
 
-    @pytest.mark.parametrize("src_registered", [False, True])
-    @pytest.mark.parametrize("register", [False, True])
-    def test_standalone_copy_registers_only_on_register(
-        self, config_file, tmp_home, credentials_dir, src_registered, register,
+  @pytest.mark.parametrize("src_registered", [False, True])
+  @pytest.mark.parametrize("register", [False, True])
+  def test_standalone_copy_registers_only_on_register(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    src_registered,
+    register,
+  ):
+    """A standalone copy is a NEW box: unregistered unless ``--register``, whatever the source's state."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.project.registry_store import load_standalone
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "reg_src"
+    src_dir.mkdir()
+    resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(src_dir),
+      initialize=True,
+      register=src_registered,
+    )
+    before = set(load_standalone(std.registry).values())
+    dst_dir = tmp_home / "reg_dst"
+
+    assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone", register=register)) == 0
+
+    after = set(load_standalone(std.registry).values())
+    assert after - before == ({str(dst_dir)} if register else set())
+    assert before <= after
+
+  def test_duplicate_local_to_standalone(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_ac_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('hello')")
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / "marker.txt").write_text("ac-data")
+
+    dst_dir = tmp_home / "dup_ac_dst"
+
+    args = self._make_args(src_dir, dst_dir, "standalone")
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # Destination should have standalone layout: box_data/ marker dir holds
+    # session data; workset.yaml at the ROOT (drift I); the workspace files
+    # land in the workspace/ subdir (drift H).
+    assert (dst_dir / "box_data").is_dir()
+    assert (dst_dir / "box_data" / "marker.txt").read_text() == "ac-data"
+    assert (dst_dir / "workset.yaml").is_file()
+    assert not (dst_dir / "box_data" / "box.yaml").exists()
+    assert (dst_dir / "workspace" / "code.py").read_text() == "print('hello')"
+    # No breadcrumb in standalone.
+    assert not (dst_dir / "box_data" / "project-path.txt").exists()
+
+  def test_duplicate_standalone_to_standalone_no_nested_root(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A standalone->standalone duplicate must not nest the SOURCE root in box_data/.
+
+    A standalone source's ``metadata_path`` IS its root, so copying THAT
+    (rather than :func:`~kanibako.settings.paths.box_metadata_dir`) drags
+    ``workspace/`` + ``vault/`` into the destination's box dir AND lands the
+    source's WORKSET-tier ``workset.yaml`` -- carrying the SOURCE box's
+    identity -- one level down inside it.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "s2s_src"
+    src_dir.mkdir()
+    proj = resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(src_dir),
+      initialize=True,
+    )
+    (proj.project_path / "code.py").write_text("print('s2s')")
+    (proj.shell_path.parent / "marker.txt").write_text("s2s-data")
+
+    dst_dir = tmp_home / "s2s_dst"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, "standalone"))
+    assert rc == 0
+
+    # The box metadata the duplicate needs did travel.
+    box_data = dst_dir / "box_data"
+    assert (box_data / "marker.txt").read_text() == "s2s-data"
+    # ⚑ ...and the source ROOT's shape did NOT come with it.
+    for stray in ("workset.yaml", "workspace", "vault", "box_data"):
+      assert not (box_data / stray).exists(), f"stray {stray!r} under box_data/"
+
+    # The destination's own standalone shape is intact and resolves.
+    assert (dst_dir / "workset.yaml").is_file()
+    assert (dst_dir / "workspace" / "code.py").read_text() == "print('s2s')"
+    dup = resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(dst_dir),
+      initialize=False,
+    )
+    assert dup.mode is BoxMode.standalone
+    assert dup.name != proj.name
+
+  def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_dec_src"
+    src_dir.mkdir()
+    proj = resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(src_dir),
+      initialize=True,
+    )
+    # Workspace files live in the workspace/ subdir; session data (marker)
+    # lives in the box_data/ marker dir (drift H+I).
+    (proj.project_path / "code.py").write_text("print('dec')")
+    (proj.shell_path.parent / "marker.txt").write_text("dec-data")
+
+    dst_dir = tmp_home / "dup_dec_dst"
+
+    args = self._make_args(src_dir, dst_dir, "primary")
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # Destination should have local layout (box metadata under boxes/<name>,
+    # workspace files at the destination root).
+    projects_base = std.boxes
+    ac_project = projects_base / "dup_dec_dst"
+    assert ac_project.is_dir()
+    assert (ac_project / "marker.txt").read_text() == "dec-data"
+    assert not (ac_project / "project-path.txt").exists()
+    assert (dst_dir / "code.py").read_text() == "print('dec')"
+
+  def test_duplicate_to_standalone_keeps_every_link_verbatim(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "xl_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    outside = tmp_home / "q70_outside"
+    trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
+    texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+    dst_dir = tmp_home / "xl_dst"
+    assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone")) == 0
+
+    _assert_links_verbatim(dst_dir / "workspace", texts["workspace"])
+    _assert_links_verbatim(dst_dir / "box_data", texts["data"])
+    _assert_links_verbatim(dst_dir / "box_data" / "home", texts["home"])
+
+  def test_duplicate_standalone_to_local_keeps_every_link_verbatim(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "sl_src"
+    src_dir.mkdir()
+    proj = resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(src_dir),
+      initialize=True,
+    )
+    outside = tmp_home / "q70_outside"
+    trees = {
+      "workspace": proj.project_path,
+      "data": proj.shell_path.parent,
+      "home": proj.shell_path,
+    }
+    texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+    dst_dir = tmp_home / "sl_dst"
+    assert run_duplicate(self._make_args(src_dir, dst_dir, "primary")) == 0
+
+    new_project = std.boxes / "sl_dst"
+    _assert_links_verbatim(dst_dir, texts["workspace"])
+    _assert_links_verbatim(new_project, texts["data"])
+    _assert_links_verbatim(new_project / "home", texts["home"])
+
+  def test_duplicate_to_local_copy_failure_leaves_no_orphan(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A crash inside ``_duplicate_to_local`` must not strand a name.
+
+    Failure-injection (A2): the cross-mode standalone->default path routes
+    through ``_duplicate_to_local``, which calls ``assign_name`` (registers)
+    before copying metadata.  A copy failure must unwind the registration +
+    any partial dest dir.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "tlfail_src"
+    src_dir.mkdir()
+    proj = resolve_standalone_project(
+      std,
+      config,
+      project_dir=str(src_dir),
+      initialize=True,
+    )
+    (proj.metadata_path / "marker.txt").write_text("data")
+
+    dst_dir = tmp_home / "tlfail_dst"
+
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    # bare=True isolates the metadata copytree inside _duplicate_to_local.
+    with patch(
+      "kanibako.commands.box._duplicate.shutil.copytree",
+      side_effect=RuntimeError("boom"),
     ):
-        """A standalone copy is a NEW box: unregistered unless ``--register``, whatever the source's state."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.project.registry_store import load_standalone
+      try:
+        run_duplicate(self._make_args(src_dir, dst_dir, "primary", bare=True))
+      except RuntimeError:
+        pass
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "reg_src"
-        src_dir.mkdir()
-        resolve_standalone_project(
-            std, config, project_dir=str(src_dir), initialize=True, register=src_registered,
-        )
-        before = set(load_standalone(std.registry).values())
-        dst_dir = tmp_home / "reg_dst"
+    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert names_after == names_before
+    assert "tlfail_dst" not in names_after
+    assert not (std.boxes / "tlfail_dst").exists()
 
-        assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone", register=register)) == 0
+  def test_duplicate_cross_mode_to_registered_primary_refuses_cleanly(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """F2: a cross-mode ``--to primary`` onto a dest workspace that is
+    ALREADY a registered primary box hits Guard 1 (one box per workspace
+    path).  The refusal must be CLEAN (rc=1, no traceback), leave the dest
+    box's registration intact, and mint no stray box dir.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
 
-        after = set(load_standalone(std.registry).values())
-        assert after - before == ({str(dst_dir)} if register else set())
-        assert before <= after
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-    def test_duplicate_local_to_standalone(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+    src_dir = tmp_home / "xdup_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('src')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    # Dest is ALREADY a registered primary box (its workspace is a member).
+    dst_dir = tmp_home / "xdup_dst"
+    dst_dir.mkdir()
+    resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-        src_dir = tmp_home / "dup_ac_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('hello')")
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / "marker.txt").write_text("ac-data")
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-        dst_dir = tmp_home / "dup_ac_dst"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary", force=True))
+    assert rc == 1
 
-        args = self._make_args(src_dir, dst_dir, "standalone")
-        rc = run_duplicate(args)
-        assert rc == 0
+    # Dest box's pre-existing registration is intact; no second name minted.
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+    assert not (std.boxes / "xdup_dst2").exists()
 
-        # Destination should have standalone layout: box_data/ marker dir holds
-        # session data; workset.yaml at the ROOT (drift I); the workspace files
-        # land in the workspace/ subdir (drift H).
-        assert (dst_dir / "box_data").is_dir()
-        assert (dst_dir / "box_data" / "marker.txt").read_text() == "ac-data"
-        assert (dst_dir / "workset.yaml").is_file()
-        assert not (dst_dir / "box_data" / "box.yaml").exists()
-        assert (dst_dir / "workspace" / "code.py").read_text() == "print('hello')"
-        # No breadcrumb in standalone.
-        assert not (dst_dir / "box_data" / "project-path.txt").exists()
+  def test_duplicate_cross_mode_to_orphan_registered_dest_rolls_back_copy(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """F2 rollback branch: the dest workspace is REGISTERED but its dir is
+    ABSENT (orphan), so the cross-mode copytree CREATES ``new_path`` before
+    Guard 1 refuses.  The rollback (gated on ``new_path_existed``) must
+    remove the just-created workspace copy — no stranded partial state.
+    """
+    import shutil
 
-    def test_duplicate_standalone_to_standalone_no_nested_root(
-        self, config_file, tmp_home, credentials_dir,
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "odup_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('src')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    # Register the dest, then orphan it: membership survives, dir gone.
+    dst_dir = tmp_home / "odup_dst"
+    dst_dir.mkdir()
+    resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+    shutil.rmtree(dst_dir)
+
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
+    assert rc == 1
+
+    # The copy this call created was rolled back; registration intact.
+    assert not dst_dir.exists()
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+
+  def test_duplicate_cross_mode_oserror_mid_copy_rolls_back_clean(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """F-3: an OSError mid workspace-copy on a FRESH dest is caught (rc=1, no
+    traceback) and the partial dir THIS call created is rolled back.
+
+    Pre-fix the workspace copytree ran BEFORE (and outside) the only catch,
+    which caught ProjectError alone — so an OSError propagated UNCAUGHT and
+    left the partial ``new_path`` behind.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "oserr_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('src')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "oserr_dst"  # fresh: absent + unregistered
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    def _copytree_oserror(src, dst, *a, **kw):
+      # Materialize the destination dir, then fail — mimics a copy that
+      # dies partway and strands residue.
+      from pathlib import Path
+
+      Path(dst).mkdir(parents=True, exist_ok=True)
+      raise OSError("disk full")
+
+    with patch(
+      "kanibako.commands.box._duplicate.shutil.copytree",
+      side_effect=_copytree_oserror,
     ):
-        """A standalone->standalone duplicate must not nest the SOURCE root in box_data/.
+      rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
 
-        A standalone source's ``metadata_path`` IS its root, so copying THAT
-        (rather than :func:`~kanibako.settings.paths.box_metadata_dir`) drags
-        ``workspace/`` + ``vault/`` into the destination's box dir AND lands the
-        source's WORKSET-tier ``workset.yaml`` -- carrying the SOURCE box's
-        identity -- one level down inside it.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
+    assert rc == 1
+    # No stray dir created by this call; no orphan name registered.
+    assert not dst_dir.exists()
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+    assert not (std.boxes / "oserr_dst").exists()
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+  def test_duplicate_cross_mode_registered_dest_no_force_refuses_clean(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """F-3 (guard-before-copy): a --to primary onto an ALREADY-registered
+    primary workspace refuses CLEANLY (rc=1) even WITHOUT --force.
 
-        src_dir = tmp_home / "s2s_src"
-        src_dir.mkdir()
-        proj = resolve_standalone_project(
-            std, config, project_dir=str(src_dir), initialize=True,
-        )
-        (proj.project_path / "code.py").write_text("print('s2s')")
-        (proj.shell_path.parent / "marker.txt").write_text("s2s-data")
+    Pre-fix, without --force the workspace copytree (dirs_exist_ok=False) ran
+    first and raised FileExistsError (an OSError) UNCAUGHT — a traceback
+    instead of the Guard-1 refusal.  The up-front guard now refuses before any
+    copy/prompt.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
 
-        dst_dir = tmp_home / "s2s_dst"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, "standalone"))
-        assert rc == 0
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # The box metadata the duplicate needs did travel.
-        box_data = dst_dir / "box_data"
-        assert (box_data / "marker.txt").read_text() == "s2s-data"
-        # ⚑ ...and the source ROOT's shape did NOT come with it.
-        for stray in ("workset.yaml", "workspace", "vault", "box_data"):
-            assert not (box_data / stray).exists(), f"stray {stray!r} under box_data/"
+    src_dir = tmp_home / "regdst_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('src')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        # The destination's own standalone shape is intact and resolves.
-        assert (dst_dir / "workset.yaml").is_file()
-        assert (dst_dir / "workspace" / "code.py").read_text() == "print('s2s')"
-        dup = resolve_standalone_project(
-            std, config, project_dir=str(dst_dir), initialize=False,
-        )
-        assert dup.mode is BoxMode.standalone
-        assert dup.name != proj.name
+    dst_dir = tmp_home / "regdst_dst"
+    dst_dir.mkdir()
+    (dst_dir / "keep.txt").write_text("preexisting")
+    resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-    def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dup_dec_src"
-        src_dir.mkdir()
-        proj = resolve_standalone_project(
-            std, config, project_dir=str(src_dir), initialize=True,
-        )
-        # Workspace files live in the workspace/ subdir; session data (marker)
-        # lives in the box_data/ marker dir (drift H+I).
-        (proj.project_path / "code.py").write_text("print('dec')")
-        (proj.shell_path.parent / "marker.txt").write_text("dec-data")
-
-        dst_dir = tmp_home / "dup_dec_dst"
-
-        args = self._make_args(src_dir, dst_dir, "primary")
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # Destination should have local layout (box metadata under boxes/<name>,
-        # workspace files at the destination root).
-        projects_base = std.boxes
-        ac_project = projects_base / "dup_dec_dst"
-        assert ac_project.is_dir()
-        assert (ac_project / "marker.txt").read_text() == "dec-data"
-        assert not (ac_project / "project-path.txt").exists()
-        assert (dst_dir / "code.py").read_text() == "print('dec')"
-
-    def test_duplicate_to_standalone_keeps_every_link_verbatim(
-        self, config_file, tmp_home, credentials_dir,
+    # No --force → pre-fix would prompt then hit copytree's FileExistsError;
+    # mock the prompt so the pre-fix path would reach the copy (post-fix the
+    # guard refuses before the prompt, so this mock is simply unused).
+    with patch(
+      "kanibako.utils.confirm_prompt",
+      return_value=None,
     ):
-        from kanibako.commands.box._duplicate import run_duplicate
+      rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary", force=False))
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "xl_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        outside = tmp_home / "q70_outside"
-        trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
-        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+    assert rc == 1
+    # Pre-existing registration + dir/content untouched; no stray box dir.
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+    assert (dst_dir / "keep.txt").read_text() == "preexisting"
+    assert not (std.boxes / "regdst_dst2").exists()
 
-        dst_dir = tmp_home / "xl_dst"
-        assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone")) == 0
+  def test_duplicate_cross_mode_preexisting_dir_no_force_friendly_msg(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """F-3 (NIT): duplicating onto a pre-existing UNREGISTERED dir without
+    --force refuses with the friendly destination-exists message, NOT the raw
+    ``[Errno 17] File exists`` errno from copytree's FileExistsError.
 
-        _assert_links_verbatim(dst_dir / "workspace", texts["workspace"])
-        _assert_links_verbatim(dst_dir / "box_data", texts["data"])
-        _assert_links_verbatim(dst_dir / "box_data" / "home", texts["home"])
+    The dest dir exists on disk but is NOT a registered primary box, so the
+    up-front guard-before-copy does not fire; copytree(dirs_exist_ok=False)
+    raises FileExistsError, which the caught-and-translated branch now renders
+    as the run_duplicate-style message.  rc=1, dir untouched, no deletion.
+    """
+    import io
+    from contextlib import redirect_stderr
 
-    def test_duplicate_standalone_to_local_keeps_every_link_verbatim(
-        self, config_file, tmp_home, credentials_dir,
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.paths import load_primary_boxes
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "friendly_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('src')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    # Pre-existing but UNREGISTERED destination dir (not a kanibako box).
+    dst_dir = tmp_home / "friendly_dst"
+    dst_dir.mkdir()
+    (dst_dir / "keep.txt").write_text("preexisting")
+    names_before = load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+
+    # Unregistered dest → the guard-before-copy does NOT fire, so the confirm
+    # prompt is reached (no --force); accept it so the copy runs and hits the
+    # FileExistsError → friendly refusal.
+    buf = io.StringIO()
+    with (
+      redirect_stderr(buf),
+      patch(
+        "kanibako.utils.confirm_prompt",
+        return_value=None,
+      ),
     ):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "sl_src"
-        src_dir.mkdir()
-        proj = resolve_standalone_project(
-            std, config, project_dir=str(src_dir), initialize=True,
-        )
-        outside = tmp_home / "q70_outside"
-        trees = {
-            "workspace": proj.project_path, "data": proj.shell_path.parent,
-            "home": proj.shell_path,
-        }
-        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
-
-        dst_dir = tmp_home / "sl_dst"
-        assert run_duplicate(self._make_args(src_dir, dst_dir, "primary")) == 0
-
-        new_project = std.boxes / "sl_dst"
-        _assert_links_verbatim(dst_dir, texts["workspace"])
-        _assert_links_verbatim(new_project, texts["data"])
-        _assert_links_verbatim(new_project / "home", texts["home"])
-
-    def test_duplicate_to_local_copy_failure_leaves_no_orphan(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A crash inside ``_duplicate_to_local`` must not strand a name.
-
-        Failure-injection (A2): the cross-mode standalone->default path routes
-        through ``_duplicate_to_local``, which calls ``assign_name`` (registers)
-        before copying metadata.  A copy failure must unwind the registration +
-        any partial dest dir.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "tlfail_src"
-        src_dir.mkdir()
-        proj = resolve_standalone_project(
-            std, config, project_dir=str(src_dir), initialize=True,
-        )
-        (proj.metadata_path / "marker.txt").write_text("data")
-
-        dst_dir = tmp_home / "tlfail_dst"
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        # bare=True isolates the metadata copytree inside _duplicate_to_local.
-        with patch(
-            "kanibako.commands.box._duplicate.shutil.copytree",
-            side_effect=RuntimeError("boom"),
-        ):
-            try:
-                run_duplicate(self._make_args(src_dir, dst_dir, "primary", bare=True))
-            except RuntimeError:
-                pass
-
-        names_after = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert names_after == names_before
-        assert "tlfail_dst" not in names_after
-        assert not (std.boxes / "tlfail_dst").exists()
-
-    def test_duplicate_cross_mode_to_registered_primary_refuses_cleanly(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """F2: a cross-mode ``--to primary`` onto a dest workspace that is
-        ALREADY a registered primary box hits Guard 1 (one box per workspace
-        path).  The refusal must be CLEAN (rc=1, no traceback), leave the dest
-        box's registration intact, and mint no stray box dir.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "xdup_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('src')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        # Dest is ALREADY a registered primary box (its workspace is a member).
-        dst_dir = tmp_home / "xdup_dst"
-        dst_dir.mkdir()
-        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        rc = run_duplicate(
-            self._make_args(src_dir, dst_dir, "primary", force=True)
-        )
-        assert rc == 1
-
-        # Dest box's pre-existing registration is intact; no second name minted.
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-        assert not (std.boxes / "xdup_dst2").exists()
-
-    def test_duplicate_cross_mode_to_orphan_registered_dest_rolls_back_copy(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """F2 rollback branch: the dest workspace is REGISTERED but its dir is
-        ABSENT (orphan), so the cross-mode copytree CREATES ``new_path`` before
-        Guard 1 refuses.  The rollback (gated on ``new_path_existed``) must
-        remove the just-created workspace copy — no stranded partial state.
-        """
-        import shutil
-
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "odup_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('src')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        # Register the dest, then orphan it: membership survives, dir gone.
-        dst_dir = tmp_home / "odup_dst"
-        dst_dir.mkdir()
-        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
-        shutil.rmtree(dst_dir)
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
-        assert rc == 1
-
-        # The copy this call created was rolled back; registration intact.
-        assert not dst_dir.exists()
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-
-    def test_duplicate_cross_mode_oserror_mid_copy_rolls_back_clean(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """F-3: an OSError mid workspace-copy on a FRESH dest is caught (rc=1, no
-        traceback) and the partial dir THIS call created is rolled back.
-
-        Pre-fix the workspace copytree ran BEFORE (and outside) the only catch,
-        which caught ProjectError alone — so an OSError propagated UNCAUGHT and
-        left the partial ``new_path`` behind.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "oserr_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('src')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "oserr_dst"  # fresh: absent + unregistered
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        def _copytree_oserror(src, dst, *a, **kw):
-            # Materialize the destination dir, then fail — mimics a copy that
-            # dies partway and strands residue.
-            from pathlib import Path
-            Path(dst).mkdir(parents=True, exist_ok=True)
-            raise OSError("disk full")
-
-        with patch(
-            "kanibako.commands.box._duplicate.shutil.copytree",
-            side_effect=_copytree_oserror,
-        ):
-            rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
-
-        assert rc == 1
-        # No stray dir created by this call; no orphan name registered.
-        assert not dst_dir.exists()
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-        assert not (std.boxes / "oserr_dst").exists()
-
-    def test_duplicate_cross_mode_registered_dest_no_force_refuses_clean(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """F-3 (guard-before-copy): a --to primary onto an ALREADY-registered
-        primary workspace refuses CLEANLY (rc=1) even WITHOUT --force.
-
-        Pre-fix, without --force the workspace copytree (dirs_exist_ok=False) ran
-        first and raised FileExistsError (an OSError) UNCAUGHT — a traceback
-        instead of the Guard-1 refusal.  The up-front guard now refuses before any
-        copy/prompt.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "regdst_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('src')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "regdst_dst"
-        dst_dir.mkdir()
-        (dst_dir / "keep.txt").write_text("preexisting")
-        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
-
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        # No --force → pre-fix would prompt then hit copytree's FileExistsError;
-        # mock the prompt so the pre-fix path would reach the copy (post-fix the
-        # guard refuses before the prompt, so this mock is simply unused).
-        with patch(
-            "kanibako.utils.confirm_prompt",
-            return_value=None,
-        ):
-            rc = run_duplicate(
-                self._make_args(src_dir, dst_dir, "primary", force=False)
-            )
-
-        assert rc == 1
-        # Pre-existing registration + dir/content untouched; no stray box dir.
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-        assert (dst_dir / "keep.txt").read_text() == "preexisting"
-        assert not (std.boxes / "regdst_dst2").exists()
-
-    def test_duplicate_cross_mode_preexisting_dir_no_force_friendly_msg(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """F-3 (NIT): duplicating onto a pre-existing UNREGISTERED dir without
-        --force refuses with the friendly destination-exists message, NOT the raw
-        ``[Errno 17] File exists`` errno from copytree's FileExistsError.
-
-        The dest dir exists on disk but is NOT a registered primary box, so the
-        up-front guard-before-copy does not fire; copytree(dirs_exist_ok=False)
-        raises FileExistsError, which the caught-and-translated branch now renders
-        as the run_duplicate-style message.  rc=1, dir untouched, no deletion.
-        """
-        import io
-        from contextlib import redirect_stderr
-
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.paths import load_primary_boxes
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "friendly_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('src')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        # Pre-existing but UNREGISTERED destination dir (not a kanibako box).
-        dst_dir = tmp_home / "friendly_dst"
-        dst_dir.mkdir()
-        (dst_dir / "keep.txt").write_text("preexisting")
-        names_before = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-
-        # Unregistered dest → the guard-before-copy does NOT fire, so the confirm
-        # prompt is reached (no --force); accept it so the copy runs and hits the
-        # FileExistsError → friendly refusal.
-        buf = io.StringIO()
-        with redirect_stderr(buf), patch(
-            "kanibako.utils.confirm_prompt",
-            return_value=None,
-        ):
-            rc = run_duplicate(
-                self._make_args(src_dir, dst_dir, "primary", force=False)
-            )
-
-        assert rc == 1
-        err = buf.getvalue()
-        # Friendly message (matches run_duplicate's non-cross-mode style); NOT the
-        # raw errno traceback text.
-        assert "destination already exists" in err
-        assert "--force" in err
-        assert "Errno 17" not in err
-        # No deletion of the pre-existing dir / content; registry untouched.
-        assert (dst_dir / "keep.txt").read_text() == "preexisting"
-        assert load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
-
-    def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dup_bare_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('bare')")
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "dup_bare_dst"
-
-        args = self._make_args(src_dir, dst_dir, "standalone", bare=True)
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # Metadata exists but workspace content not copied.
-        assert (dst_dir / "box_data").is_dir()
-        assert not (dst_dir / "code.py").exists()
-
-    def test_duplicate_cross_mode_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dup_preserve_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / "marker.txt").write_text("original")
-
-        dst_dir = tmp_home / "dup_preserve_dst"
-
-        args = self._make_args(src_dir, dst_dir, "standalone")
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # Source should be unchanged.
-        assert proj.metadata_path.is_dir()
-        assert (proj.metadata_path / "marker.txt").read_text() == "original"
-
-    def test_duplicate_cross_mode_excludes_lock(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dup_lock_src"
-        src_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        (proj.metadata_path / ".kanibako.lock").touch()
-
-        dst_dir = tmp_home / "dup_lock_dst"
-
-        args = self._make_args(src_dir, dst_dir, "standalone", force=True)
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        assert not (dst_dir / "box_data" / ".kanibako.lock").exists()
-
-    def test_duplicate_primary_to_standalone_is_detectable_and_registered(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """BUG#3: duplicating a PRIMARY box --standalone --register must ESTABLISH a real
-        standalone box — detected as standalone, registered in
-        ``registry.standalone``, ``mode=standalone``, with a FRESH
-        ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
-        as a standalone, since primary boxes use the primary membership)."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.settings.config import WORKSET_META_FILE
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import BoxMode, detect_project_mode
-        from kanibako.project.registry_store import load_standalone
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "b3_src"
-        src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('b3')")
-        src_proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-        src_name = src_proj.name
-
-        dst_dir = tmp_home / "b3_dst"
-
-        args = self._make_args(src_dir, dst_dir, "standalone", register=True)
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # (1) Detected as standalone via the root workset.yaml marker.
-        result = detect_project_mode(dst_dir, std, config)
-        assert result.mode == BoxMode.standalone
-
-        # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
-        #     workset.yaml lives at the ROOT (drift I) and is materialized by the
-        #     sparse kuid write; no ``project:`` section on disk.
-        from kanibako.settings.config import read_workset_kuid
-        from kanibako.kuid import SENTINEL
-        assert "project" not in load_doc(dst_dir / WORKSET_META_FILE)
-        assert (dst_dir / WORKSET_META_FILE).is_file()
-        assert read_workset_kuid(dst_dir / WORKSET_META_FILE) != SENTINEL
-
-        # (3) Registered in registry.standalone keyed by a fresh <kuid>_<leaf>
-        #     name → dst root (NOT the source's name).
-        standalone = load_standalone(std.registry)
-        matches = [n for n, root in standalone.items() if root == str(dst_dir)]
-        assert len(matches) == 1
-        new_name = matches[0]
-        assert new_name != src_name
-        # <kuid>_<leaf>: 5-char Crockford base32 prefix + "_" + sanitized leaf.
-        prefix, _, leaf = new_name.partition("_")
-        assert len(prefix) == 5
-        assert leaf == "b3_dst"
-
-    def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        src_dir = tmp_home / "dup_ws_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
-
-        dst_dir = tmp_home / "dup_ws_dst"
-
-        # No --workset flag → error
-        args = self._make_args(src_dir, dst_dir, "named")
-        rc = run_duplicate(args)
-        assert rc == 1
-        assert "--workset is required with --to named" in capsys.readouterr().err
+      rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary", force=False))
+
+    assert rc == 1
+    err = buf.getvalue()
+    # Friendly message (matches run_duplicate's non-cross-mode style); NOT the
+    # raw errno traceback text.
+    assert "destination already exists" in err
+    assert "--force" in err
+    assert "Errno 17" not in err
+    # No deletion of the pre-existing dir / content; registry untouched.
+    assert (dst_dir / "keep.txt").read_text() == "preexisting"
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      == names_before
+    )
+
+  def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_bare_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('bare')")
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "dup_bare_dst"
+
+    args = self._make_args(src_dir, dst_dir, "standalone", bare=True)
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # Metadata exists but workspace content not copied.
+    assert (dst_dir / "box_data").is_dir()
+    assert not (dst_dir / "code.py").exists()
+
+  def test_duplicate_cross_mode_preserves_source(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_preserve_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / "marker.txt").write_text("original")
+
+    dst_dir = tmp_home / "dup_preserve_dst"
+
+    args = self._make_args(src_dir, dst_dir, "standalone")
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # Source should be unchanged.
+    assert proj.metadata_path.is_dir()
+    assert (proj.metadata_path / "marker.txt").read_text() == "original"
+
+  def test_duplicate_cross_mode_excludes_lock(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_lock_src"
+    src_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    (proj.metadata_path / ".kanibako.lock").touch()
+
+    dst_dir = tmp_home / "dup_lock_dst"
+
+    args = self._make_args(src_dir, dst_dir, "standalone", force=True)
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    assert not (dst_dir / "box_data" / ".kanibako.lock").exists()
+
+  def test_duplicate_primary_to_standalone_is_detectable_and_registered(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """BUG#3: duplicating a PRIMARY box --standalone --register must ESTABLISH a real
+    standalone box — detected as standalone, registered in
+    ``registry.standalone``, ``mode=standalone``, with a FRESH
+    ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
+    as a standalone, since primary boxes use the primary membership)."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import BoxMode, detect_project_mode
+    from kanibako.project.registry_store import load_standalone
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "b3_src"
+    src_dir.mkdir()
+    (src_dir / "code.py").write_text("print('b3')")
+    src_proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+    src_name = src_proj.name
+
+    dst_dir = tmp_home / "b3_dst"
+
+    args = self._make_args(src_dir, dst_dir, "standalone", register=True)
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # (1) Detected as standalone via the root workset.yaml marker.
+    result = detect_project_mode(dst_dir, std, config)
+    assert result.mode == BoxMode.standalone
+
+    # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
+    #     workset.yaml lives at the ROOT (drift I) and is materialized by the
+    #     sparse kuid write; no ``project:`` section on disk.
+    from kanibako.settings.config import read_workset_kuid
+    from kanibako.kuid import SENTINEL
+
+    assert "project" not in load_doc(dst_dir / WORKSET_META_FILE)
+    assert (dst_dir / WORKSET_META_FILE).is_file()
+    assert read_workset_kuid(dst_dir / WORKSET_META_FILE) != SENTINEL
+
+    # (3) Registered in registry.standalone keyed by a fresh <kuid>_<leaf>
+    #     name → dst root (NOT the source's name).
+    standalone = load_standalone(std.registry)
+    matches = [n for n, root in standalone.items() if root == str(dst_dir)]
+    assert len(matches) == 1
+    new_name = matches[0]
+    assert new_name != src_name
+    # <kuid>_<leaf>: 5-char Crockford base32 prefix + "_" + sanitized leaf.
+    prefix, _, leaf = new_name.partition("_")
+    assert len(prefix) == 5
+    assert leaf == "b3_dst"
+
+  def test_duplicate_cross_mode_to_workset_requires_workset_flag(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    src_dir = tmp_home / "dup_ws_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+    dst_dir = tmp_home / "dup_ws_dst"
+
+    # No --workset flag → error
+    args = self._make_args(src_dir, dst_dir, "named")
+    rc = run_duplicate(args)
+    assert rc == 1
+    assert "--workset is required with --to named" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
 # Helpers for workset-aware tests
 # ---------------------------------------------------------------------------
 
+
 def _make_workset(tmp_home, std, ws_name="testws"):
-    """Create a workset and return (ws, ws_root)."""
-    ws_root = tmp_home / "worksets" / ws_name
-    ws = create_workset(ws_name, ws_root, std)
-    return ws, ws_root
+  """Create a workset and return (ws, ws_root)."""
+  ws_root = tmp_home / "worksets" / ws_name
+  ws = create_workset(ws_name, ws_root, std)
+  return ws, ws_root
 
 
 def _connected_index(std):
-    """Reconstruct the ``{external_path: {workset, project}}`` connection view.
+  """Reconstruct the ``{external_path: {workset, project}}`` connection view.
 
-    The D10 replacement for the retired global ``connected:`` index: a connected
-    box is a NAMED workset's per-workset ``boxes:`` entry whose path is EXTERNAL
-    (outside that workset root).  Mirrors the old ``_load_connected`` return shape
-    so equivalence assertions stay legible.
-    """
-    from pathlib import Path
+  The D10 replacement for the retired global ``connected:`` index: a connected
+  box is a NAMED workset's per-workset ``boxes:`` entry whose path is EXTERNAL
+  (outside that workset root).  Mirrors the old ``_load_connected`` return shape
+  so equivalence assertions stay legible.
+  """
+  from pathlib import Path
 
-    from kanibako.project import registry_store, workset_registry
-    from kanibako.settings.config_io import load_doc
+  from kanibako.project import registry_store, workset_registry
+  from kanibako.settings.config_io import load_doc
 
-    out: dict[str, dict] = {}
-    for name, root_str in registry_store.load_section(
-        std.registry, "worksets"
-    ).items():
-        root = Path(root_str)
-        registry_path = workset_registry.resolve_workset_registry_path(
-            root, load_doc(root / "workset.yaml"), early=_early_scope(std, BoxMode.named, name),
-        )
-        for box_name, box_path in workset_registry.load_workset_boxes(
-            registry_path
-        ).items():
-            resolved = Path(box_path).resolve()
-            try:
-                resolved.relative_to(root.resolve())
-                continue  # in-tree box: not an external connection
-            except ValueError:
-                out[str(resolved)] = {"workset": name, "project": box_name}
-    return out
+  out: dict[str, dict] = {}
+  for name, root_str in registry_store.load_section(std.registry, "worksets").items():
+    root = Path(root_str)
+    registry_path = workset_registry.resolve_workset_registry_path(
+      root,
+      load_doc(root / "workset.yaml"),
+      early=_early_scope(std, BoxMode.named, name),
+    )
+    for box_name, box_path in workset_registry.load_workset_boxes(registry_path).items():
+      resolved = Path(box_path).resolve()
+      try:
+        resolved.relative_to(root.resolve())
+        continue  # in-tree box: not an external connection
+      except ValueError:
+        out[str(resolved)] = {"workset": name, "project": box_name}
+  return out
 
 
 def _make_local_project(tmp_home, std, config, name="myproj"):
-    """Create a default-mode project with a marker file, return (proj, project_dir)."""
-    project_dir = tmp_home / name
-    project_dir.mkdir()
-    (project_dir / "code.py").write_text("print('hello')")
-    proj = resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-    (proj.metadata_path / "marker.txt").write_text("ac-marker")
-    (proj.shell_path / "custom.sh").write_text("echo hello")
-    return proj, project_dir
+  """Create a default-mode project with a marker file, return (proj, project_dir)."""
+  project_dir = tmp_home / name
+  project_dir.mkdir()
+  (project_dir / "code.py").write_text("print('hello')")
+  proj = resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+  (proj.metadata_path / "marker.txt").write_text("ac-marker")
+  (proj.shell_path / "custom.sh").write_text("echo hello")
+  return proj, project_dir
 
 
 def _make_standalone_project(tmp_home, std, config, name="myproj"):
-    """Create a standalone project with a marker file, return (proj, project_dir)."""
-    project_dir = tmp_home / name
-    project_dir.mkdir()
-    (project_dir / "code.py").write_text("print('dec')")
-    proj = resolve_standalone_project(
-        std, config, project_dir=str(project_dir), initialize=True,
-    )
-    (proj.metadata_path / "marker.txt").write_text("dec-marker")
-    (proj.shell_path / "custom.sh").write_text("echo dec")
-    return proj, project_dir
+  """Create a standalone project with a marker file, return (proj, project_dir)."""
+  project_dir = tmp_home / name
+  project_dir.mkdir()
+  (project_dir / "code.py").write_text("print('dec')")
+  proj = resolve_standalone_project(
+    std,
+    config,
+    project_dir=str(project_dir),
+    initialize=True,
+  )
+  (proj.metadata_path / "marker.txt").write_text("dec-marker")
+  (proj.shell_path / "custom.sh").write_text("echo dec")
+  return proj, project_dir
 
 
 # ---------------------------------------------------------------------------
 # TestBoxListWorkset
 # ---------------------------------------------------------------------------
 
+
 class TestBoxListWorkset:
-    def test_list_shows_workset_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_shows_workset_projects(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "myws")
-        source = tmp_home / "src_proj"
-        source.mkdir()
-        add_project(ws, "cool_app", source)
+    ws, _ = _make_workset(tmp_home, std, "myws")
+    source = tmp_home / "src_proj"
+    source.mkdir()
+    add_project(ws, "cool_app", source)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "myws" in out
-        assert "cool_app" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "myws" in out
+    assert "cool_app" in out
 
-    def test_list_mixed_local_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_mixed_local_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Default-mode project
-        ac_dir = tmp_home / "ac_proj"
-        ac_dir.mkdir()
-        resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
+    # Default-mode project
+    ac_dir = tmp_home / "ac_proj"
+    ac_dir.mkdir()
+    resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
-        # Workset project
-        ws, _ = _make_workset(tmp_home, std, "mixed_ws")
-        source = tmp_home / "ws_src"
-        source.mkdir()
-        add_project(ws, "ws_proj", source)
+    # Workset project
+    ws, _ = _make_workset(tmp_home, std, "mixed_ws")
+    source = tmp_home / "ws_src"
+    source.mkdir()
+    add_project(ws, "ws_proj", source)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "NAME" in out  # local table header
-        assert str(ac_dir) in out
-        assert "mixed_ws" in out
-        assert "ws_proj" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "NAME" in out  # local table header
+    assert str(ac_dir) in out
+    assert "mixed_ws" in out
+    assert "ws_proj" in out
 
-    def test_list_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
-        """Workset missing workspace is hidden by default (orphan)."""
-        from kanibako.commands.box._parser import run_list
+  def test_list_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
+    """Workset missing workspace is hidden by default (orphan)."""
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "miss_ws")
-        source = tmp_home / "miss_src"
-        source.mkdir()
-        add_project(ws, "miss_proj", source)
-        # Remove the workspace dir
-        shutil.rmtree(ws.workspaces_dir / "miss_proj")
+    ws, _ = _make_workset(tmp_home, std, "miss_ws")
+    source = tmp_home / "miss_src"
+    source.mkdir()
+    add_project(ws, "miss_proj", source)
+    # Remove the workspace dir
+    shutil.rmtree(ws.workspaces_dir / "miss_proj")
 
-        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "missing" in out
+    args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "missing" in out
 
-    def test_list_workset_no_settings(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_workset_no_settings(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "nodata_ws")
-        source = tmp_home / "nodata_src"
-        source.mkdir()
-        add_project(ws, "nodata_proj", source)
-        # Remove the projects dir
-        shutil.rmtree(ws.projects_dir / "nodata_proj")
+    ws, _ = _make_workset(tmp_home, std, "nodata_ws")
+    source = tmp_home / "nodata_src"
+    source.mkdir()
+    add_project(ws, "nodata_proj", source)
+    # Remove the projects dir
+    shutil.rmtree(ws.projects_dir / "nodata_proj")
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "no-data" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "no-data" in out
 
-    def test_list_workset_root_missing(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_workset_root_missing(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws, ws_root = _make_workset(tmp_home, std, "gone_ws")
-        # Remove the workset root entirely
-        shutil.rmtree(ws_root)
+    ws, ws_root = _make_workset(tmp_home, std, "gone_ws")
+    # Remove the workset root entirely
+    shutil.rmtree(ws_root)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        err = capsys.readouterr().err
-        assert "Warning" in err
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "Warning" in err
 
 
 # ---------------------------------------------------------------------------
 # TestBoxConvertToWorkset
 # ---------------------------------------------------------------------------
 
+
 class TestBoxDuplicateToWorkset:
-    def _make_args(self, source, dest, workset=None, project_name=None,
-                    bare=False, force=True):
-        return argparse.Namespace(
-            source_path=str(source), new_path=str(dest),
-            to_mode="named", bare=bare, force=force,
-            workset=workset, project_name=project_name,
-        )
+  def _make_args(self, source, dest, workset=None, project_name=None, bare=False, force=True):
+    return argparse.Namespace(
+      source_path=str(source),
+      new_path=str(dest),
+      to_mode="named",
+      bare=bare,
+      force=force,
+      workset=workset,
+      project_name=project_name,
+    )
 
-    def test_duplicate_local_to_workset(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_local_to_workset(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_ac_src")
-        ws, _ = _make_workset(tmp_home, std, "dup_ws")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj, project_dir = _make_local_project(tmp_home, std, config, "dup_ac_src")
+    ws, _ = _make_workset(tmp_home, std, "dup_ws")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="dup_ws")
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(project_dir, tmp_home / "unused", workset="dup_ws")
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        # Workset copy exists
-        assert (ws.projects_dir / "dup_ac_src" / "marker.txt").read_text() == "ac-marker"
-        assert (ws.workspaces_dir / "dup_ac_src" / "code.py").read_text() == "print('hello')"
-        # Source untouched
-        assert proj.metadata_path.is_dir()
-        assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
+    # Workset copy exists
+    assert (ws.projects_dir / "dup_ac_src" / "marker.txt").read_text() == "ac-marker"
+    assert (ws.workspaces_dir / "dup_ac_src" / "code.py").read_text() == "print('hello')"
+    # Source untouched
+    assert proj.metadata_path.is_dir()
+    assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
 
-    def test_duplicate_to_workset_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_to_workset_bare(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_bare_src")
-        ws, _ = _make_workset(tmp_home, std, "bare_ws")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj, project_dir = _make_local_project(tmp_home, std, config, "dup_bare_src")
+    ws, _ = _make_workset(tmp_home, std, "bare_ws")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="bare_ws", bare=True)
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(project_dir, tmp_home / "unused", workset="bare_ws", bare=True)
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        # Metadata exists
-        assert (ws.projects_dir / "dup_bare_src" / "marker.txt").read_text() == "ac-marker"
-        # Workspace NOT copied (skeleton dir exists from add_project but no code.py)
-        assert not (ws.workspaces_dir / "dup_bare_src" / "code.py").exists()
+    # Metadata exists
+    assert (ws.projects_dir / "dup_bare_src" / "marker.txt").read_text() == "ac-marker"
+    # Workspace NOT copied (skeleton dir exists from add_project but no code.py)
+    assert not (ws.workspaces_dir / "dup_bare_src" / "code.py").exists()
 
-    @pytest.mark.parametrize("bare", [False, True])
-    def test_duplicate_to_workset_with_null_workspaces_refuses(
-        self, config_file, tmp_home, credentials_dir, bare,
+  @pytest.mark.parametrize("bare", [False, True])
+  def test_duplicate_to_workset_with_null_workspaces_refuses(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    bare,
+  ):
+    """Q96: a duplicate is always an in-tree member, so it refuses before the prompt."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.errors import WorksetError
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    _proj, project_dir = _make_local_project(tmp_home, std, config, "dup_null_src")
+    ws, _ = _make_workset(tmp_home, std, "null_ws")
+    dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
+
+    # ⚑ force=False: a refusal that fired after the prompt would read stdin instead.
+    args = self._make_args(
+      project_dir, tmp_home / "unused", workset="null_ws", bare=bare, force=False
+    )
+    with pytest.raises(WorksetError, match="workset.workspaces"):
+      run_duplicate(args)
+    assert not (ws.root / "workspaces" / "dup_null_src").exists()
+    assert not (ws.projects_dir / "dup_null_src").exists()
+
+  def test_duplicate_to_standalone_root_with_null_workspaces_refuses(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Q96: the copy lands in the destination's ``workset.workspaces``; a null has none."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.errors import WorksetError
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    _proj, project_dir = _make_local_project(tmp_home, std, config, "sa_null_src")
+    dest = tmp_home / "sa_null_dest"
+    dest.mkdir()
+    dump_doc(dest / "workset.yaml", {"workset": {"workspaces": None}})
+
+    args = argparse.Namespace(
+      source_path=str(project_dir),
+      new_path=str(dest),
+      to_mode="standalone",
+      bare=False,
+      force=True,
+      box=None,
+      workset=None,
+      project_name=None,
+    )
+    with pytest.raises(WorksetError, match="workset.workspaces") as exc_info:
+      run_duplicate(args)
+    assert "Connect a directory" not in str(exc_info.value)
+    assert sorted(p.name for p in dest.iterdir()) == ["workset.yaml"]
+
+  def test_duplicate_to_workset_requires_workset_flag(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    _, project_dir = _make_local_project(tmp_home, std, config, "dup_noflag_src")
+
+    args = self._make_args(project_dir, tmp_home / "unused")
+    rc = run_duplicate(args)
+    assert rc == 1
+    assert "--workset is required with --to named" in capsys.readouterr().err
+
+  def test_duplicate_to_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj, project_dir = _make_local_project(tmp_home, std, config, "dup_pres_src")
+    ws, _ = _make_workset(tmp_home, std, "pres_dup_ws")
+
+    args = self._make_args(project_dir, tmp_home / "unused", workset="pres_dup_ws")
+    rc = run_duplicate(args)
+    assert rc == 0
+
+    # Source untouched
+    assert proj.metadata_path.is_dir()
+    assert (project_dir / "code.py").read_text() == "print('hello')"
+    assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
+
+  @pytest.mark.parametrize("leaf", ["workspace", "box_tree"])
+  def test_occupied_landing_needs_force(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    leaf,
+  ):
+    """An existing ``workspaces/<name>`` or ``boxes/<name>`` is refused without --force."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    _proj, project_dir = _make_local_project(tmp_home, std, config, "occ_src")
+    ws, _ = _make_workset(tmp_home, std, "occ_ws")
+    occupied = {"workspace": ws.workspaces_dir, "box_tree": ws.projects_dir}[leaf]
+    occupied = occupied / "occ_src"
+    occupied.mkdir(parents=True)
+    (occupied / "keep.txt").write_text("mine")
+
+    args = self._make_args(project_dir, tmp_home / "unused", workset="occ_ws", force=False)
+    assert run_duplicate(args) == 1
+    err = capsys.readouterr().err
+    assert f"Error: destination already exists: {occupied}" in err
+    assert (occupied / "keep.txt").read_text() == "mine"
+    assert load_workset(ws.root, ws.name, early_system=std.early_system).projects == []
+
+  @pytest.mark.parametrize("bare", [False, True])
+  def test_failed_forced_duplicate_keeps_a_pre_existing_leaf(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    bare,
+  ):
+    """N2: the rollback deletes only the leaves the duplicate created."""
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    _proj, project_dir = _make_local_project(tmp_home, std, config, "n2_src")
+    ws, _ = _make_workset(tmp_home, std, "n2_ws")
+    leaf = ws.workspaces_dir / "n2_src"
+    leaf.mkdir(parents=True)
+    (leaf / "keep.txt").write_text("mine")
+
+    args = self._make_args(project_dir, tmp_home / "unused", workset="n2_ws", bare=bare)
+    with (
+      patch(
+        "kanibako.commands.box._lifecycle.materialize_canon_skeleton",
+        side_effect=RuntimeError("injected"),
+      ),
+      pytest.raises(RuntimeError, match="injected"),
     ):
-        """Q96: a duplicate is always an in-tree member, so it refuses before the prompt."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.errors import WorksetError
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        _proj, project_dir = _make_local_project(tmp_home, std, config, "dup_null_src")
-        ws, _ = _make_workset(tmp_home, std, "null_ws")
-        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
-
-        # ⚑ force=False: a refusal that fired after the prompt would read stdin instead.
-        args = self._make_args(project_dir, tmp_home / "unused", workset="null_ws",
-                               bare=bare, force=False)
-        with pytest.raises(WorksetError, match="workset.workspaces"):
-            run_duplicate(args)
-        assert not (ws.root / "workspaces" / "dup_null_src").exists()
-        assert not (ws.projects_dir / "dup_null_src").exists()
-
-    def test_duplicate_to_standalone_root_with_null_workspaces_refuses(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Q96: the copy lands in the destination's ``workset.workspaces``; a null has none."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.errors import WorksetError
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        _proj, project_dir = _make_local_project(tmp_home, std, config, "sa_null_src")
-        dest = tmp_home / "sa_null_dest"
-        dest.mkdir()
-        dump_doc(dest / "workset.yaml", {"workset": {"workspaces": None}})
-
-        args = argparse.Namespace(
-            source_path=str(project_dir), new_path=str(dest), to_mode="standalone",
-            bare=False, force=True, box=None, workset=None, project_name=None,
-        )
-        with pytest.raises(WorksetError, match="workset.workspaces") as exc_info:
-            run_duplicate(args)
-        assert "Connect a directory" not in str(exc_info.value)
-        assert sorted(p.name for p in dest.iterdir()) == ["workset.yaml"]
-
-    def test_duplicate_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        _, project_dir = _make_local_project(tmp_home, std, config, "dup_noflag_src")
-
-        args = self._make_args(project_dir, tmp_home / "unused")
-        rc = run_duplicate(args)
-        assert rc == 1
-        assert "--workset is required with --to named" in capsys.readouterr().err
-
-    def test_duplicate_to_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_pres_src")
-        ws, _ = _make_workset(tmp_home, std, "pres_dup_ws")
-
-        args = self._make_args(project_dir, tmp_home / "unused", workset="pres_dup_ws")
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # Source untouched
-        assert proj.metadata_path.is_dir()
-        assert (project_dir / "code.py").read_text() == "print('hello')"
-        assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
-
-    @pytest.mark.parametrize("leaf", ["workspace", "box_tree"])
-    def test_occupied_landing_needs_force(
-        self, config_file, tmp_home, credentials_dir, capsys, leaf,
-    ):
-        """An existing ``workspaces/<name>`` or ``boxes/<name>`` is refused without --force."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        _proj, project_dir = _make_local_project(tmp_home, std, config, "occ_src")
-        ws, _ = _make_workset(tmp_home, std, "occ_ws")
-        occupied = {"workspace": ws.workspaces_dir, "box_tree": ws.projects_dir}[leaf]
-        occupied = occupied / "occ_src"
-        occupied.mkdir(parents=True)
-        (occupied / "keep.txt").write_text("mine")
-
-        args = self._make_args(project_dir, tmp_home / "unused", workset="occ_ws",
-                               force=False)
-        assert run_duplicate(args) == 1
-        err = capsys.readouterr().err
-        assert f"Error: destination already exists: {occupied}" in err
-        assert (occupied / "keep.txt").read_text() == "mine"
-        assert load_workset(ws.root, ws.name, early_system=std.early_system).projects == []
-
-    @pytest.mark.parametrize("bare", [False, True])
-    def test_failed_forced_duplicate_keeps_a_pre_existing_leaf(
-        self, config_file, tmp_home, credentials_dir, bare,
-    ):
-        """N2: the rollback deletes only the leaves the duplicate created."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        _proj, project_dir = _make_local_project(tmp_home, std, config, "n2_src")
-        ws, _ = _make_workset(tmp_home, std, "n2_ws")
-        leaf = ws.workspaces_dir / "n2_src"
-        leaf.mkdir(parents=True)
-        (leaf / "keep.txt").write_text("mine")
-
-        args = self._make_args(project_dir, tmp_home / "unused", workset="n2_ws",
-                               bare=bare)
-        with patch(
-            "kanibako.commands.box._lifecycle.materialize_canon_skeleton",
-            side_effect=RuntimeError("injected"),
-        ), pytest.raises(RuntimeError, match="injected"):
-            run_duplicate(args)
-        assert (leaf / "keep.txt").read_text() == "mine"
-        assert not (ws.projects_dir / "n2_src").exists()
-        assert load_workset(ws.root, ws.name, early_system=std.early_system).projects == []
+      run_duplicate(args)
+    assert (leaf / "keep.txt").read_text() == "mine"
+    assert not (ws.projects_dir / "n2_src").exists()
+    assert load_workset(ws.root, ws.name, early_system=std.early_system).projects == []
 
 
 # ---------------------------------------------------------------------------
 # TestBoxDuplicateExternal — std-aware copy + refuse-bare-external (Phase 3)
 # ---------------------------------------------------------------------------
 
+
 class TestBoxDuplicateExternal:
-    """Duplicate behavior around external-connected sources.
+  """Duplicate behavior around external-connected sources.
 
-    Phase 3 repointed ``_duplicate_to_workset`` at the std-aware
-    ``copy_into_workset`` helper and added the refuse-``--bare``-external policy
-    (a connection is 1:1).
+  Phase 3 repointed ``_duplicate_to_workset`` at the std-aware
+  ``copy_into_workset`` helper and added the refuse-``--bare``-external policy
+  (a connection is 1:1).
+  """
+
+  def _make_external_connected(
+    self, tmp_home, std, config, ws_name="ext_ws", proj_name="ext-proj"
+  ):
+    """Create a workset with an EXTERNAL-connected project, return paths.
+
+    Returns ``(ws, ext_dir, proj_name)`` where *ext_dir* lives outside the
+    workset root and lives in the workset's per-workset ``boxes:`` entry.
     """
+    ws, _ = _make_workset(tmp_home, std, ws_name)
+    ext_dir = tmp_home / f"{proj_name}_external"
+    ext_dir.mkdir()
+    (ext_dir / "code.py").write_text("print('external')")
+    # Outside the workset root + std -> per-workset ``boxes:`` external entry.
+    add_project(ws, proj_name, ext_dir, std)
+    return ws, ext_dir, proj_name
 
-    def _make_external_connected(self, tmp_home, std, config,
-                                  ws_name="ext_ws", proj_name="ext-proj"):
-        """Create a workset with an EXTERNAL-connected project, return paths.
+  def test_copy_into_workset_lands_internal_std_aware(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The std-aware helper lands a real INTERNAL workspace, no connection.
 
-        Returns ``(ws, ext_dir, proj_name)`` where *ext_dir* lives outside the
-        workset root and lives in the workset's per-workset ``boxes:`` entry.
-        """
-        ws, _ = _make_workset(tmp_home, std, ws_name)
-        ext_dir = tmp_home / f"{proj_name}_external"
-        ext_dir.mkdir()
-        (ext_dir / "code.py").write_text("print('external')")
-        # Outside the workset root + std -> per-workset ``boxes:`` external entry.
-        add_project(ws, proj_name, ext_dir, std)
-        return ws, ext_dir, proj_name
+    Even when the source lives outside the workset root, a duplicate is a
+    copy (not a connection): ``workspaces/<name>`` is a real directory, not a
+    symlink, and no connection entry is written.
+    """
+    from kanibako.commands.box._lifecycle import copy_into_workset
+    from kanibako.settings.paths import BoxMode
 
-    def test_copy_into_workset_lands_internal_std_aware(
-        self, config_file, tmp_home, credentials_dir,
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    proj, project_dir = _make_local_project(tmp_home, std, config, "int_src")
+    ws, _ = _make_workset(tmp_home, std, "marker_ws")
+
+    copy_into_workset(
+      ws,
+      "int_src",
+      proj.metadata_path,
+      proj.shell_path,
+      project_dir,
+      BoxMode.primary,
+      copy_workspace=True,
+      std=std,
+    )
+
+    # Real internal workspace dir with the copied tree (not a symlink).
+    dup_ws = ws.workspaces_dir / "int_src"
+    assert dup_ws.is_dir()
+    assert not dup_ws.is_symlink()
+    assert (dup_ws / "code.py").read_text() == "print('hello')"
+    # Metadata + shell copied.
+    assert (ws.projects_dir / "int_src" / "marker.txt").read_text() == "ac-marker"
+    assert (ws.projects_dir / "int_src" / "home" / "custom.sh").exists()
+    # No external wiring — duplicate is a copy, not a connection.
+    assert _connected_index(std) == {}
+
+  def test_copy_into_workset_copy_failure_leaves_no_orphan(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A crash during the copies must roll back the add_project registration.
+
+    Failure-injection (Tier B): ``copy_into_workset`` calls ``add_project``
+    (registers in workset.yaml + creates per-project dirs) before the
+    metadata/shell/workspace copytrees.  A copy failure must undo the
+    registration and the dirs it created, then re-raise — no
+    registered-but-incomplete project is left behind.
+    """
+    from kanibako.commands.box._lifecycle import copy_into_workset
+    from kanibako.settings.paths import BoxMode
+    from kanibako.project.workset import list_worksets
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    proj, project_dir = _make_local_project(tmp_home, std, config, "cf_src")
+    ws, ws_root = _make_workset(tmp_home, std, "cf_ws")
+
+    with patch(
+      "kanibako.commands.box._lifecycle.shutil.copytree",
+      side_effect=RuntimeError("boom"),
     ):
-        """The std-aware helper lands a real INTERNAL workspace, no connection.
-
-        Even when the source lives outside the workset root, a duplicate is a
-        copy (not a connection): ``workspaces/<name>`` is a real directory, not a
-        symlink, and no connection entry is written.
-        """
-        from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.settings.paths import BoxMode
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        proj, project_dir = _make_local_project(tmp_home, std, config, "int_src")
-        ws, _ = _make_workset(tmp_home, std, "marker_ws")
-
+      try:
         copy_into_workset(
-            ws, "int_src", proj.metadata_path, proj.shell_path,
-            project_dir, BoxMode.primary, copy_workspace=True, std=std,
+          ws,
+          "cf_proj",
+          proj.metadata_path,
+          proj.shell_path,
+          project_dir,
+          BoxMode.primary,
+          copy_workspace=True,
+          std=std,
         )
+      except RuntimeError:
+        pass
 
-        # Real internal workspace dir with the copied tree (not a symlink).
-        dup_ws = ws.workspaces_dir / "int_src"
-        assert dup_ws.is_dir()
-        assert not dup_ws.is_symlink()
-        assert (dup_ws / "code.py").read_text() == "print('hello')"
-        # Metadata + shell copied.
-        assert (ws.projects_dir / "int_src" / "marker.txt").read_text() == "ac-marker"
-        assert (ws.projects_dir / "int_src" / "home" / "custom.sh").exists()
-        # No external wiring — duplicate is a copy, not a connection.
-        assert _connected_index(std) == {}
+    # Project NOT left registered in the workset (reload from disk).
+    registry = list_worksets(std)
+    reloaded = load_workset(registry["cf_ws"], "cf_ws", early_system=std.early_system)
+    assert all(p.name != "cf_proj" for p in reloaded.projects)
+    # No partial per-project dirs left behind.
+    assert not (ws.projects_dir / "cf_proj").exists()
+    assert not (ws.workspaces_dir / "cf_proj").exists()
 
-    def test_copy_into_workset_copy_failure_leaves_no_orphan(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A crash during the copies must roll back the add_project registration.
+  def test_bare_duplicate_external_source_refused(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """``--bare`` on an external-connected source is refused (1:1)."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        Failure-injection (Tier B): ``copy_into_workset`` calls ``add_project``
-        (registers in workset.yaml + creates per-project dirs) before the
-        metadata/shell/workspace copytrees.  A copy failure must undo the
-        registration and the dirs it created, then re-raise — no
-        registered-but-incomplete project is left behind.
-        """
-        from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.settings.paths import BoxMode
-        from kanibako.project.workset import list_worksets
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(tmp_home / "unused"),
+      to_mode="named",
+      bare=True,
+      force=True,
+      workset="ext_ws",
+      project_name="dup_proj",
+    )
+    rc = run_duplicate(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "external-connected" in err
+    # The duplicate was NOT registered.
+    assert not (ws.projects_dir / "dup_proj").exists()
 
-        proj, project_dir = _make_local_project(tmp_home, std, config, "cf_src")
-        ws, ws_root = _make_workset(tmp_home, std, "cf_ws")
+  def test_bare_duplicate_non_external_still_allowed(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A bare duplicate of an ordinary (non-external) source still works."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        with patch(
-            "kanibako.commands.box._lifecycle.shutil.copytree",
-            side_effect=RuntimeError("boom"),
-        ):
-            try:
-                copy_into_workset(
-                    ws, "cf_proj", proj.metadata_path, proj.shell_path,
-                    project_dir, BoxMode.primary, copy_workspace=True, std=std,
-                )
-            except RuntimeError:
-                pass
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src_dir = tmp_home / "plain_bare_src"
+    src_dir.mkdir()
+    resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
-        # Project NOT left registered in the workset (reload from disk).
-        registry = list_worksets(std)
-        reloaded = load_workset(registry["cf_ws"], "cf_ws", early_system=std.early_system)
-        assert all(p.name != "cf_proj" for p in reloaded.projects)
-        # No partial per-project dirs left behind.
-        assert not (ws.projects_dir / "cf_proj").exists()
-        assert not (ws.workspaces_dir / "cf_proj").exists()
+    args = argparse.Namespace(
+      source_path=str(src_dir),
+      new_path=str(tmp_home / "plain_bare_dst"),
+      to_mode=None,
+      bare=True,
+      force=True,
+    )
+    rc = run_duplicate(args)
+    assert rc == 0
+    assert (std.boxes / "plain_bare_dst").is_dir()
 
-    def test_bare_duplicate_external_source_refused(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """``--bare`` on an external-connected source is refused (1:1)."""
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_bare_refusal_runs_before_workset_resolution(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """The bare-external refusal fires first, before the to-workset checks.
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config,
-        )
+    A connected external source also resolves as a workset project, but the
+    1:1 refusal gives the clearer, earlier error and never touches state.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="named", bare=True, force=True,
-            workset="ext_ws", project_name="dup_proj",
-        )
-        rc = run_duplicate(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "external-connected" in err
-        # The duplicate was NOT registered.
-        assert not (ws.projects_dir / "dup_proj").exists()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+      ws_name="ext_ws2",
+      proj_name="ext-proj2",
+    )
+    before = _connected_index(std)
 
-    def test_bare_duplicate_non_external_still_allowed(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A bare duplicate of an ordinary (non-external) source still works."""
-        from kanibako.commands.box._duplicate import run_duplicate
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(tmp_home / "unused"),
+      to_mode="named",
+      bare=True,
+      force=True,
+      workset="ext_ws2",
+      project_name="dup_proj",
+    )
+    rc = run_duplicate(args)
+    assert rc == 1
+    assert "external-connected" in capsys.readouterr().err
+    # No state changed by the refusal.
+    assert _connected_index(std) == before
+    assert (ext_dir / "code.py").read_text() == "print('external')"
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src_dir = tmp_home / "plain_bare_src"
-        src_dir.mkdir()
-        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+  def test_non_bare_duplicate_local_to_workset_internal(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Regression: a normal non-bare default->workset duplicate stays internal.
 
-        args = argparse.Namespace(
-            source_path=str(src_dir), new_path=str(tmp_home / "plain_bare_dst"),
-            to_mode=None, bare=True, force=True,
-        )
-        rc = run_duplicate(args)
-        assert rc == 0
-        assert (std.boxes / "plain_bare_dst").is_dir()
+    The std-aware helper must keep producing a real ``workspaces/<name>``
+    directory (not an external symlink) for an ordinary out-of-workset
+    source, with no connection written.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
 
-    def test_bare_refusal_runs_before_workset_resolution(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """The bare-external refusal fires first, before the to-workset checks.
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj, project_dir = _make_local_project(tmp_home, std, config, "plain_ws_src")
+    ws, _ = _make_workset(tmp_home, std, "plain_ws")
 
-        A connected external source also resolves as a workset project, but the
-        1:1 refusal gives the clearer, earlier error and never touches state.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
+    args = argparse.Namespace(
+      source_path=str(project_dir),
+      new_path=str(tmp_home / "unused"),
+      to_mode="named",
+      bare=False,
+      force=True,
+      workset="plain_ws",
+      project_name=None,
+    )
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext_ws2", proj_name="ext-proj2",
-        )
-        before = _connected_index(std)
+    dup_ws = ws.workspaces_dir / "plain_ws_src"
+    assert dup_ws.is_dir()
+    assert not dup_ws.is_symlink()
+    assert (dup_ws / "code.py").read_text() == "print('hello')"
+    # No external wiring for an internal (copied) workspace.
+    assert _connected_index(std) == {}
 
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="named", bare=True, force=True,
-            workset="ext_ws2", project_name="dup_proj",
-        )
-        rc = run_duplicate(args)
-        assert rc == 1
-        assert "external-connected" in capsys.readouterr().err
-        # No state changed by the refusal.
-        assert _connected_index(std) == before
-        assert (ext_dir / "code.py").read_text() == "print('external')"
+  def test_duplicate_external_to_primary(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """``--to primary`` of an external-connected source succeeds.
 
-    def test_non_bare_duplicate_local_to_workset_internal(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Regression: a normal non-bare default->workset duplicate stays internal.
+    The destination gets the EXTERNAL dir's contents (copied from the live
+    workspace, not the discoverability symlink) plus default-mode metadata.
+    The source dir and its connection are untouched.  No WorksetError
+    escapes.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        The std-aware helper must keep producing a real ``workspaces/<name>``
-        directory (not an external symlink) for an ordinary out-of-workset
-        source, with no connection written.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+      ws_name="ext2def_ws",
+      proj_name="e2d",
+    )
+    before = _connected_index(std)
+    dest = tmp_home / "e2d_dst"
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj, project_dir = _make_local_project(tmp_home, std, config, "plain_ws_src")
-        ws, _ = _make_workset(tmp_home, std, "plain_ws")
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(dest),
+      to_mode="primary",
+      bare=False,
+      force=True,
+      workset=None,
+      project_name=None,
+    )
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        args = argparse.Namespace(
-            source_path=str(project_dir), new_path=str(tmp_home / "unused"),
-            to_mode="named", bare=False, force=True,
-            workset="plain_ws", project_name=None,
-        )
-        rc = run_duplicate(args)
-        assert rc == 0
+    # Destination has the external dir's CONTENTS + default-mode metadata.
+    assert (dest / "code.py").read_text() == "print('external')"
+    ac_project = std.boxes / "e2d_dst"
+    assert ac_project.is_dir()
+    # Source + connection untouched.
+    assert (ext_dir / "code.py").read_text() == "print('external')"
+    assert _connected_index(std) == before
+    assert (ws.projects_dir / proj_name).is_dir()
 
-        dup_ws = ws.workspaces_dir / "plain_ws_src"
-        assert dup_ws.is_dir()
-        assert not dup_ws.is_symlink()
-        assert (dup_ws / "code.py").read_text() == "print('hello')"
-        # No external wiring for an internal (copied) workspace.
-        assert _connected_index(std) == {}
+  def test_duplicate_external_to_standalone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """``--to standalone`` of an external-connected source succeeds."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-    def test_duplicate_external_to_primary(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """``--to primary`` of an external-connected source succeeds.
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+      ws_name="ext2sa_ws",
+      proj_name="e2s",
+    )
+    before = _connected_index(std)
+    dest = tmp_home / "e2s_dst"
 
-        The destination gets the EXTERNAL dir's contents (copied from the live
-        workspace, not the discoverability symlink) plus default-mode metadata.
-        The source dir and its connection are untouched.  No WorksetError
-        escapes.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(dest),
+      to_mode="standalone",
+      bare=False,
+      force=True,
+      workset=None,
+      project_name=None,
+    )
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext2def_ws", proj_name="e2d",
-        )
-        before = _connected_index(std)
-        dest = tmp_home / "e2d_dst"
+    # Standalone layout at destination with the external contents.
+    assert (dest / "box_data").is_dir()
+    assert (dest / "workspace" / "code.py").read_text() == "print('external')"
+    assert not (dest / "code.py").exists()
+    # Source + connection untouched.
+    assert (ext_dir / "code.py").read_text() == "print('external')"
+    assert _connected_index(std) == before
 
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(dest),
-            to_mode="primary", bare=False, force=True,
-            workset=None, project_name=None,
-        )
-        rc = run_duplicate(args)
-        assert rc == 0
+  def test_bare_duplicate_external_to_primary_allowed(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """``--bare --to primary`` of an external source succeeds (no aliasing).
 
-        # Destination has the external dir's CONTENTS + default-mode metadata.
-        assert (dest / "code.py").read_text() == "print('external')"
-        ac_project = std.boxes / "e2d_dst"
-        assert ac_project.is_dir()
-        # Source + connection untouched.
-        assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _connected_index(std) == before
-        assert (ws.projects_dir / proj_name).is_dir()
+    The bare result makes ``new_path`` itself the workspace, so the 1:1
+    refusal does NOT apply.  Metadata only, no crash, no
+    WorksetError.
+    """
+    from kanibako.commands.box._duplicate import run_duplicate
 
-    def test_duplicate_external_to_standalone(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """``--to standalone`` of an external-connected source succeeds."""
-        from kanibako.commands.box._duplicate import run_duplicate
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+      ws_name="extbare_ws",
+      proj_name="eb",
+    )
+    before = _connected_index(std)
+    dest = tmp_home / "eb_dst"
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext2sa_ws", proj_name="e2s",
-        )
-        before = _connected_index(std)
-        dest = tmp_home / "e2s_dst"
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(dest),
+      to_mode="primary",
+      bare=True,
+      force=True,
+      workset=None,
+      project_name=None,
+    )
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(dest),
-            to_mode="standalone", bare=False, force=True,
-            workset=None, project_name=None,
-        )
-        rc = run_duplicate(args)
-        assert rc == 0
+    # Metadata exists; workspace content NOT copied (bare).
+    assert (std.boxes / "eb_dst").is_dir()
+    assert not (dest / "code.py").exists()
+    # Source + connection untouched.
+    assert (ext_dir / "code.py").read_text() == "print('external')"
+    assert _connected_index(std) == before
 
-        # Standalone layout at destination with the external contents.
-        assert (dest / "box_data").is_dir()
-        assert (dest / "workspace" / "code.py").read_text() == "print('external')"
-        assert not (dest / "code.py").exists()
-        # Source + connection untouched.
-        assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _connected_index(std) == before
+  def test_bare_duplicate_external_to_named_still_refused(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """The narrowed guard still refuses ``--bare --to named`` (aliasing case)."""
+    from kanibako.commands.box._duplicate import run_duplicate
 
-    def test_bare_duplicate_external_to_primary_allowed(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """``--bare --to primary`` of an external source succeeds (no aliasing).
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, ext_dir, proj_name = self._make_external_connected(
+      tmp_home,
+      std,
+      config,
+      ws_name="extbarews_ws",
+      proj_name="ebw",
+    )
+    before = _connected_index(std)
 
-        The bare result makes ``new_path`` itself the workspace, so the 1:1
-        refusal does NOT apply.  Metadata only, no crash, no
-        WorksetError.
-        """
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="extbare_ws", proj_name="eb",
-        )
-        before = _connected_index(std)
-        dest = tmp_home / "eb_dst"
-
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(dest),
-            to_mode="primary", bare=True, force=True,
-            workset=None, project_name=None,
-        )
-        rc = run_duplicate(args)
-        assert rc == 0
-
-        # Metadata exists; workspace content NOT copied (bare).
-        assert (std.boxes / "eb_dst").is_dir()
-        assert not (dest / "code.py").exists()
-        # Source + connection untouched.
-        assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _connected_index(std) == before
-
-    def test_bare_duplicate_external_to_named_still_refused(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """The narrowed guard still refuses ``--bare --to named`` (aliasing case)."""
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="extbarews_ws", proj_name="ebw",
-        )
-        before = _connected_index(std)
-
-        args = argparse.Namespace(
-            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="named", bare=True, force=True,
-            workset="extbarews_ws", project_name="dup_proj",
-        )
-        rc = run_duplicate(args)
-        assert rc == 1
-        assert "external-connected" in capsys.readouterr().err
-        assert _connected_index(std) == before
+    args = argparse.Namespace(
+      source_path=str(ext_dir),
+      new_path=str(tmp_home / "unused"),
+      to_mode="named",
+      bare=True,
+      force=True,
+      workset="extbarews_ws",
+      project_name="dup_proj",
+    )
+    rc = run_duplicate(args)
+    assert rc == 1
+    assert "external-connected" in capsys.readouterr().err
+    assert _connected_index(std) == before
 
 
 # ---------------------------------------------------------------------------
 # TestBoxDuplicateFromWorkset
 # ---------------------------------------------------------------------------
 
+
 class TestBoxDuplicateFromWorkset:
-    def _make_workset_proj(self, tmp_home, std, config, ws_name="dfrom_ws", proj_name="ws_proj"):
-        ws, _ = _make_workset(tmp_home, std, ws_name)
-        source = tmp_home / f"{proj_name}_src"
-        source.mkdir()
-        add_project(ws, proj_name, source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), proj_name, std, config, initialize=True)
-        (proj.metadata_path / "marker.txt").write_text("ws-dup-marker")
-        (proj.shell_path / "custom.sh").write_text("echo ws-dup")
-        (ws.workspaces_dir / proj_name / "code.py").write_text("print('ws-dup')")
-        return ws, proj
+  def _make_workset_proj(self, tmp_home, std, config, ws_name="dfrom_ws", proj_name="ws_proj"):
+    ws, _ = _make_workset(tmp_home, std, ws_name)
+    source = tmp_home / f"{proj_name}_src"
+    source.mkdir()
+    add_project(ws, proj_name, source)
+    proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws), proj_name, std, config, initialize=True
+    )
+    (proj.metadata_path / "marker.txt").write_text("ws-dup-marker")
+    (proj.shell_path / "custom.sh").write_text("echo ws-dup")
+    (ws.workspaces_dir / proj_name / "code.py").write_text("print('ws-dup')")
+    return ws, proj
 
-    def _make_args(self, source, dest, to_mode, bare=False, force=True):
-        return argparse.Namespace(
-            source_path=str(source), new_path=str(dest),
-            to_mode=to_mode, bare=bare, force=force,
-            workset=None, project_name=None,
-        )
+  def _make_args(self, source, dest, to_mode, bare=False, force=True):
+    return argparse.Namespace(
+      source_path=str(source),
+      new_path=str(dest),
+      to_mode=to_mode,
+      bare=bare,
+      force=force,
+      workset=None,
+      project_name=None,
+    )
 
-    def test_duplicate_workset_to_local(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_workset_to_local(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config)
-        workspace_path = ws.workspaces_dir / "ws_proj"
-        dest = tmp_home / "dup_ws_ac_dst"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, proj = self._make_workset_proj(tmp_home, std, config)
+    workspace_path = ws.workspaces_dir / "ws_proj"
+    dest = tmp_home / "dup_ws_ac_dst"
 
-        args = self._make_args(workspace_path, dest, "primary")
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(workspace_path, dest, "primary")
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        # Local layout at destination
-        projects_base = std.boxes
-        ac_project = projects_base / "dup_ws_ac_dst"
-        assert ac_project.is_dir()
-        assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"
-        assert (dest / "code.py").read_text() == "print('ws-dup')"
+    # Local layout at destination
+    projects_base = std.boxes
+    ac_project = projects_base / "dup_ws_ac_dst"
+    assert ac_project.is_dir()
+    assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"
+    assert (dest / "code.py").read_text() == "print('ws-dup')"
 
-    def test_duplicate_workset_keeps_every_workspace_link_verbatim(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_workset_keeps_every_workspace_link_verbatim(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, _proj = self._make_workset_proj(tmp_home, std, config)
-        workspace_path = ws.workspaces_dir / "ws_proj"
-        texts = _plant_links(workspace_path, tmp_home / "q70_outside")
-        dest = tmp_home / "dup_ws_links_dst"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, _proj = self._make_workset_proj(tmp_home, std, config)
+    workspace_path = ws.workspaces_dir / "ws_proj"
+    texts = _plant_links(workspace_path, tmp_home / "q70_outside")
+    dest = tmp_home / "dup_ws_links_dst"
 
-        assert run_duplicate(self._make_args(workspace_path, dest, "primary")) == 0
+    assert run_duplicate(self._make_args(workspace_path, dest, "primary")) == 0
 
-        _assert_links_verbatim(dest, texts)
+    _assert_links_verbatim(dest, texts)
 
-    def test_duplicate_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_dec", "dec-proj")
-        workspace_path = ws.workspaces_dir / "dec-proj"
-        dest = tmp_home / "dup_ws_dec_dst"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_dec", "dec-proj")
+    workspace_path = ws.workspaces_dir / "dec-proj"
+    dest = tmp_home / "dup_ws_dec_dst"
 
-        args = self._make_args(workspace_path, dest, "standalone")
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(workspace_path, dest, "standalone")
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        assert (dest / "box_data").is_dir()
-        assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
-        assert (dest / "workspace" / "code.py").read_text() == "print('ws-dup')"
-        assert not (dest / "code.py").exists()
+    assert (dest / "box_data").is_dir()
+    assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
+    assert (dest / "workspace" / "code.py").read_text() == "print('ws-dup')"
+    assert not (dest / "code.py").exists()
 
-    def test_duplicate_workset_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_workset_bare(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_bare", "bare-proj")
-        workspace_path = ws.workspaces_dir / "bare-proj"
-        dest = tmp_home / "dup_ws_bare_dst"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_bare", "bare-proj")
+    workspace_path = ws.workspaces_dir / "bare-proj"
+    dest = tmp_home / "dup_ws_bare_dst"
 
-        args = self._make_args(workspace_path, dest, "standalone", bare=True)
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(workspace_path, dest, "standalone", bare=True)
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        # Metadata exists but workspace not copied
-        assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
-        assert not (dest / "workspace" / "code.py").exists()
-        assert not (dest / "code.py").exists()
+    # Metadata exists but workspace not copied
+    assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
+    assert not (dest / "workspace" / "code.py").exists()
+    assert not (dest / "code.py").exists()
 
-    def test_duplicate_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_duplicate_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_pres", "pres-proj")
-        workspace_path = ws.workspaces_dir / "pres-proj"
-        dest = tmp_home / "dup_ws_pres_dst"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_pres", "pres-proj")
+    workspace_path = ws.workspaces_dir / "pres-proj"
+    dest = tmp_home / "dup_ws_pres_dst"
 
-        args = self._make_args(workspace_path, dest, "primary")
-        rc = run_duplicate(args)
-        assert rc == 0
+    args = self._make_args(workspace_path, dest, "primary")
+    rc = run_duplicate(args)
+    assert rc == 0
 
-        # Source untouched
-        assert proj.metadata_path.is_dir()
-        assert (proj.metadata_path / "marker.txt").read_text() == "ws-dup-marker"
-        assert (workspace_path / "code.py").read_text() == "print('ws-dup')"
+    # Source untouched
+    assert proj.metadata_path.is_dir()
+    assert (proj.metadata_path / "marker.txt").read_text() == "ws-dup-marker"
+    assert (workspace_path / "code.py").read_text() == "print('ws-dup')"
 
 
 class TestBoxDuplicateNoToMode:
-    """Bare `box duplicate <src> <dst>` (no --to) for non-primary sources (BUG-B)."""
+  """Bare `box duplicate <src> <dst>` (no --to) for non-primary sources (BUG-B)."""
 
-    def _make_args(self, source, dest, bare=False, force=True, register=False):
-        return argparse.Namespace(
-            source_path=str(source), new_path=str(dest),
-            bare=bare, force=force, to_mode=None,
-            workset=None, project_name=None, register=register,
-        )
+  def _make_args(self, source, dest, bare=False, force=True, register=False):
+    return argparse.Namespace(
+      source_path=str(source),
+      new_path=str(dest),
+      bare=bare,
+      force=force,
+      to_mode=None,
+      workset=None,
+      project_name=None,
+      register=register,
+    )
 
-    def test_standalone_source_without_to_duplicates(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A standalone source resolves without --to and lands a fresh standalone (``--register`` indexes it)."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._duplicate import run_duplicate
+  def test_standalone_source_without_to_duplicates(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A standalone source resolves without --to and lands a fresh standalone (``--register`` indexes it)."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._duplicate import run_duplicate
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        src_dir = tmp_home / "sa_src"
-        src_dir.mkdir()
-        src_proj = resolve_standalone_project(
-            std, config, str(src_dir), initialize=True,
-        )
-        # The live workspace is the <root>/workspace subdir (drift H).
-        (src_proj.project_path / "code.py").write_text("print('sa')")
+    src_dir = tmp_home / "sa_src"
+    src_dir.mkdir()
+    src_proj = resolve_standalone_project(
+      std,
+      config,
+      str(src_dir),
+      initialize=True,
+    )
+    # The live workspace is the <root>/workspace subdir (drift H).
+    (src_proj.project_path / "code.py").write_text("print('sa')")
 
-        dst_dir = tmp_home / "sa_dst"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, register=True))
-        assert rc == 0
+    dst_dir = tmp_home / "sa_dst"
+    rc = run_duplicate(self._make_args(src_dir, dst_dir, register=True))
+    assert rc == 0
 
-        # Workspace copied into the dst workspace/ subdir + a fresh standalone
-        # box established at the dst root.
-        assert (dst_dir / "workspace" / "code.py").read_text() == "print('sa')"
-        assert (dst_dir / "box_data").is_dir()
-        assert (dst_dir / "workset.yaml").is_file()
-        sa = registry_store.load_standalone(std.registry)
-        dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
-        assert len(dst_names) == 1
-        # Fresh identity (not the source's box name).
-        assert dst_names[0] != src_proj.name
+    # Workspace copied into the dst workspace/ subdir + a fresh standalone
+    # box established at the dst root.
+    assert (dst_dir / "workspace" / "code.py").read_text() == "print('sa')"
+    assert (dst_dir / "box_data").is_dir()
+    assert (dst_dir / "workset.yaml").is_file()
+    sa = registry_store.load_standalone(std.registry)
+    dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
+    assert len(dst_names) == 1
+    # Fresh identity (not the source's box name).
+    assert dst_names[0] != src_proj.name
 
-    def test_named_source_without_to_duplicates_to_primary(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A workset (named) source resolves without --to into a primary box."""
-        from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.project.workset import add_project, create_workset
+  def test_named_source_without_to_duplicates_to_primary(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A workset (named) source resolves without --to into a primary box."""
+    from kanibako.commands.box._duplicate import run_duplicate
+    from kanibako.project.workset import add_project, create_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws_root = tmp_home / "worksets" / "wset"
-        ws = create_workset("wset", ws_root, std)
-        source = tmp_home / "orig"
-        source.mkdir()
-        add_project(ws, "app", source)
-        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
-        proj = resolve_workset_project(
-            WorksetSpec.from_workset(ws), "app", std, config, initialize=True,
-        )
-        (proj.project_path / "code.py").write_text("print('ws')")
+    ws_root = tmp_home / "worksets" / "wset"
+    ws = create_workset("wset", ws_root, std)
+    source = tmp_home / "orig"
+    source.mkdir()
+    add_project(ws, "app", source)
+    from kanibako.settings.paths import WorksetSpec, resolve_workset_project
 
-        dst_dir = tmp_home / "ws_dst"
-        rc = run_duplicate(self._make_args(proj.project_path, dst_dir))
-        assert rc == 0
-        assert (std.boxes / "ws_dst").is_dir()
+    proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws),
+      "app",
+      std,
+      config,
+      initialize=True,
+    )
+    (proj.project_path / "code.py").write_text("print('ws')")
+
+    dst_dir = tmp_home / "ws_dst"
+    rc = run_duplicate(self._make_args(proj.project_path, dst_dir))
+    assert rc == 0
+    assert (std.boxes / "ws_dst").is_dir()
 
 
 class TestBoxRmStandalone:
-    """`box rm` for standalone boxes (BUG-C)."""
+  """`box rm` for standalone boxes (BUG-C)."""
 
-    def _rm_args(self, target, purge=False, force=True):
-        return argparse.Namespace(target=str(target), purge=purge, force=force)
+  def _rm_args(self, target, purge=False, force=True):
+    return argparse.Namespace(target=str(target), purge=purge, force=force)
 
-    def _make_standalone(self, std, config, tmp_home, leaf="rm_sa"):
-        root = tmp_home / leaf
-        root.mkdir()
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
-        return root, proj.name
+  def _make_standalone(self, std, config, tmp_home, leaf="rm_sa"):
+    root = tmp_home / leaf
+    root.mkdir()
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    return root, proj.name
 
-    def test_rm_by_name_unregisters(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_by_name_unregisters(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root, box_name = self._make_standalone(std, config, tmp_home)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root, box_name = self._make_standalone(std, config, tmp_home)
 
-        rc = run_rm(self._rm_args(box_name))
-        assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.registry)
-        # Metadata left in place without --purge.
-        assert (root / "box_data").is_dir()
+    rc = run_rm(self._rm_args(box_name))
+    assert rc == 0
+    assert box_name not in registry_store.load_standalone(std.registry)
+    # Metadata left in place without --purge.
+    assert (root / "box_data").is_dir()
 
-    def test_rm_by_path_unregisters(self, config_file, tmp_home, credentials_dir):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_by_path_unregisters(self, config_file, tmp_home, credentials_dir):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_path")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_path")
 
-        rc = run_rm(self._rm_args(root))
-        assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.registry)
+    rc = run_rm(self._rm_args(root))
+    assert rc == 0
+    assert box_name not in registry_store.load_standalone(std.registry)
 
-    def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_purge")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_purge")
 
-        rc = run_rm(self._rm_args(box_name, purge=True))
-        assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.registry)
-        assert not (root / "box_data").exists()
+    rc = run_rm(self._rm_args(box_name, purge=True))
+    assert rc == 0
+    assert box_name not in registry_store.load_standalone(std.registry)
+    assert not (root / "box_data").exists()
 
-    def test_rm_unknown_target_errors(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_unknown_target_errors(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._parser import run_rm
 
-        rc = run_rm(self._rm_args("no-such-box"))
-        assert rc == 1
+    rc = run_rm(self._rm_args("no-such-box"))
+    assert rc == 1
 
 
 class TestBoxListStandalone:
-    """`box list` includes standalone boxes (BUG-E)."""
+  """`box list` includes standalone boxes (BUG-E)."""
 
-    def test_list_shows_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
+  def test_list_shows_standalone(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_listed"
-        root.mkdir()
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_listed"
+    root.mkdir()
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Standalone boxes:" in out
-        assert proj.name in out
-        assert str(root.resolve()) in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Standalone boxes:" in out
+    assert proj.name in out
+    assert str(root.resolve()) in out
 
-    def test_list_quiet_includes_standalone(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        from kanibako.commands.box._parser import run_list
+  def test_list_quiet_includes_standalone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_quiet"
-        root.mkdir()
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_quiet"
+    root.mkdir()
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out.splitlines()
-        assert proj.name in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out.splitlines()
+    assert proj.name in out
 
-    def test_list_shows_missing_standalone_and_flags_it(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        import shutil
+  def test_list_shows_missing_standalone_and_flags_it(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    import shutil
 
-        from kanibako.commands.box._parser import run_list
+    from kanibako.commands.box._parser import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_gone"
-        root.mkdir()
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
-        shutil.rmtree(root)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_gone"
+    root.mkdir()
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    shutil.rmtree(root)
 
-        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert proj.name in out
-        assert "missing" in out
+    args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert proj.name in out
+    assert "missing" in out
 
-        # --all shows the same row.
-        args_all = argparse.Namespace(show_all=True, orphan=False, quiet=False)
-        rc = run_list(args_all)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert proj.name in out
-        assert "missing" in out
+    # --all shows the same row.
+    args_all = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+    rc = run_list(args_all)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert proj.name in out
+    assert "missing" in out
 
 
 class TestCheckPersonaStoreForCreate:
-    """The create-side persona-grata trigger (`create --agent <pid>+<hid>`).
+  """The create-side persona-grata trigger (`create --agent <pid>+<hid>`).
 
-    ``_check_persona_store_for_create`` READS the store and refuses the create
-    when it cannot yield a usable persona; bare/plain refs, absent entries,
-    uninstalled harnesses and readerless harnesses fall through (return None) so
-    create behaves exactly as today for them.
+  ``_check_persona_store_for_create`` READS the store and refuses the create
+  when it cannot yield a usable persona; bare/plain refs, absent entries,
+  uninstalled harnesses and readerless harnesses fall through (return None) so
+  create behaves exactly as today for them.
 
-    ⚑ The gates are UNCHANGED from when this function still IMPORTED the store
-    into ``agents/<node>/agent.yaml`` — same hard errors, same warn-only
-    probe.  What changed is that it writes NOTHING, which is why almost every
-    test below also asserts the agents dir was never created.
+  ⚑ The gates are UNCHANGED from when this function still IMPORTED the store
+  into ``agents/<node>/agent.yaml`` — same hard errors, same warn-only
+  probe.  What changed is that it writes NOTHING, which is why almost every
+  test below also asserts the agents dir was never created.
+  """
+
+  _ENDPOINT = "https://api.navigator.example/v1"
+  _CODEX_TOML = (
+    'model = "gemma4"\n'
+    "[model_providers.navigator]\n"
+    'name = "navigator"\n'
+    'base_url = "https://api.navigator.example/v1"\n'
+    'wire_api = "responses"\n'
+    'env_key = "NAVIGATOR_API_KEY"\n'
+  )
+
+  def _store(self, tmp_home, *, config=True, pointer=True):
+    persona_dir = tmp_home / "config" / "personas" / "navigator"
+    (persona_dir / "codex").mkdir(parents=True)
+    if config:
+      (persona_dir / "codex" / "config.toml").write_text(self._CODEX_TOML)
+    if pointer:
+      (persona_dir / ".secret_path").write_text("./token\n")
+    return persona_dir
+
+  def _call(self, tmp_home, ref, monkeypatch, *, target="real", outcome=None):
+    import kanibako.commands.box._parser as parser_mod
+    from kanibako.commands.box._parser import _check_persona_store_for_create
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    if outcome is None:
+      outcome = PersonaProbeOutcome.passed()
+    if target == "real":
+      from kanibako.plugins.codex.target import CodexTarget
+
+      resolved = CodexTarget()
+      # Stub the network probe (instance-level): unit tests never do
+      # real I/O; the wire itself is covered in test_persona_settings.
+      resolved.verify_persona = (  # type: ignore[method-assign]
+        lambda *a, **k: outcome
+      )
+    else:
+      resolved = target
+    monkeypatch.setattr(
+      parser_mod,
+      "resolve_target",
+      lambda *a, **k: resolved,
+    )
+    return _check_persona_store_for_create(ref)
+
+  def _agents_root(self):
+    """⚑ The store ROOT production resolves — never one the test composes."""
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, user_config_home
+
+    return load_std_paths(
+      load_config(config_file_path(user_config_home())),
+    ).agents
+
+  def _settings_path(self):
+    # ⚑ The ROOT and the DIRNAME both come from the production helpers.
+    from kanibako.settings.agent_config import agent_settings_path
+
+    return agent_settings_path(self._agents_root(), "navigator+codex")
+
+  def test_the_watched_root_is_the_live_store_root(self, tmp_home):
+    """⚑ NEGATIVE CONTROL for the absence assertions in this class.
+
+    They are evidence only while they watch the root production resolves:
+    a root the product never writes makes every ``not …exists()`` below
+    pass whatever the code under test does.  So pin the root itself —
+    against the concrete tree, against the path a composing test builds,
+    and against the store path the product opens.
     """
-
-    _ENDPOINT = "https://api.navigator.example/v1"
-    _CODEX_TOML = (
-        'model = "gemma4"\n'
-        "[model_providers.navigator]\n"
-        'name = "navigator"\n'
-        'base_url = "https://api.navigator.example/v1"\n'
-        'wire_api = "responses"\n'
-        'env_key = "NAVIGATOR_API_KEY"\n'
+    assert self._agents_root() == tmp_home / "data" / "kanibako" / "agents"
+    assert self._agents_root() != tmp_home / "data" / "agents"
+    assert self._settings_path() == (
+      tmp_home / "data" / "kanibako" / "agents" / "navigator+codex" / "agent.yaml"
     )
 
-    def _store(self, tmp_home, *, config=True, pointer=True):
-        persona_dir = tmp_home / "config" / "personas" / "navigator"
-        (persona_dir / "codex").mkdir(parents=True)
-        if config:
-            (persona_dir / "codex" / "config.toml").write_text(self._CODEX_TOML)
-        if pointer:
-            (persona_dir / ".secret_path").write_text("./token\n")
-        return persona_dir
+  def test_bare_ref_falls_through(self, tmp_home, monkeypatch):
+    self._store(tmp_home)
+    assert self._call(tmp_home, "codex", monkeypatch) is None
+    assert not self._agents_root().exists()
 
-    def _call(self, tmp_home, ref, monkeypatch, *, target="real", outcome=None):
-        import kanibako.commands.box._parser as parser_mod
-        from kanibako.commands.box._parser import _check_persona_store_for_create
-        from kanibako.targets.base import PersonaProbeOutcome
+  def test_persona_without_store_falls_through(self, tmp_home, monkeypatch):
+    assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+    assert not self._agents_root().exists()
 
-        if outcome is None:
-            outcome = PersonaProbeOutcome.passed()
-        if target == "real":
-            from kanibako.plugins.codex.target import CodexTarget
+  def test_uninstalled_harness_falls_through(self, tmp_home, monkeypatch):
+    self._store(tmp_home)
+    assert self._call(tmp_home, "navigator+codex", monkeypatch, target=None) is None
+    assert not self._agents_root().exists()
 
-            resolved = CodexTarget()
-            # Stub the network probe (instance-level): unit tests never do
-            # real I/O; the wire itself is covered in test_persona_settings.
-            resolved.verify_persona = (  # type: ignore[method-assign]
-                lambda *a, **k: outcome
-            )
-        else:
-            resolved = target
-        monkeypatch.setattr(
-            parser_mod, "resolve_target", lambda *a, **k: resolved,
+  def test_store_entry_is_recognized_and_persists_nothing(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    """⚑ NEVER-PERSIST: a conforming store is CONFIRMED, not copied.
+
+    The create used to write ``agents/<node>/agent.yaml`` here from the
+    store.  It must not any more — the store is resolved live at every
+    launch — but the user must still be told the store was recognized.
+    """
+    self._store(tmp_home)
+    err = self._call(tmp_home, "navigator+codex", monkeypatch)
+    assert err is None
+    assert not self._agents_root().exists()
+    out = capsys.readouterr().out
+    assert "navigator+codex" in out
+    assert "persona store" in out
+
+  @staticmethod
+  def _no_block_target(*, endpoint: bool):
+    """A plugin with a working store reader and NO ``persona:`` block; its probe
+    records every call."""
+    import dataclasses
+
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+    class NoBlock(CodexTarget):
+      probed: list = []
+
+      @property
+      def descriptor(self):
+        return dataclasses.replace(super().descriptor, persona=None)
+
+      def read_persona_settings(self, config_dir):
+        if endpoint:
+          return super().read_persona_settings(config_dir)
+        return PersonaReadOutcome(
+          PersonaSettings(
+            endpoint=None,
+            model=None,
+            auth_env="NAVIGATOR_API_KEY",
+          ),
+          None,
         )
-        return _check_persona_store_for_create(ref)
 
-    def _agents_root(self):
-        """⚑ The store ROOT production resolves — never one the test composes."""
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import load_std_paths, user_config_home
+      def verify_persona(self, *a, **k):
+        self.probed.append(a)
+        raise AssertionError("a harness with no persona block was probed")
 
-        return load_std_paths(
-            load_config(config_file_path(user_config_home())),
-        ).agents
+    return NoBlock()
 
-    def _settings_path(self):
-        # ⚑ The ROOT and the DIRNAME both come from the production helpers.
-        from kanibako.settings.agent_config import agent_settings_path
+  @pytest.mark.parametrize("endpoint", [False, True], ids=["no-endpoint", "endpoint"])
+  def test_a_harness_with_no_persona_block_is_not_checked_at_create(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+    endpoint,
+  ):
+    """[Jei:2026-10-12], as at launch: no endpoint refusal and no probe for a
+    harness that declares no persona block.  (Mutation: drop the
+    ``_persona_wiring`` test → "names no endpoint" refusal, or a probe → RED.)"""
+    self._store(tmp_home)
+    target = self._no_block_target(endpoint=endpoint)
+    err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
+    assert err is None
+    assert target.probed == []
+    assert "creating" not in capsys.readouterr().err
+    assert not self._agents_root().exists()
 
-        return agent_settings_path(self._agents_root(), "navigator+codex")
+  def test_a_declared_block_with_no_endpoint_is_still_refused_at_create(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """The control: the same store with codex's real ``persona:`` block refuses."""
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
 
-    def test_the_watched_root_is_the_live_store_root(self, tmp_home):
-        """⚑ NEGATIVE CONTROL for the absence assertions in this class.
-
-        They are evidence only while they watch the root production resolves:
-        a root the product never writes makes every ``not …exists()`` below
-        pass whatever the code under test does.  So pin the root itself —
-        against the concrete tree, against the path a composing test builds,
-        and against the store path the product opens.
-        """
-        assert self._agents_root() == tmp_home / "data" / "kanibako" / "agents"
-        assert self._agents_root() != tmp_home / "data" / "agents"
-        assert self._settings_path() == (
-            tmp_home / "data" / "kanibako" / "agents" / "navigator+codex"
-            / "agent.yaml"
+    class Endpointless(CodexTarget):
+      def read_persona_settings(self, config_dir):
+        return PersonaReadOutcome(
+          PersonaSettings(
+            endpoint=None,
+            model=None,
+            auth_env="NAVIGATOR_API_KEY",
+          ),
+          None,
         )
 
-    def test_bare_ref_falls_through(self, tmp_home, monkeypatch):
-        self._store(tmp_home)
-        assert self._call(tmp_home, "codex", monkeypatch) is None
-        assert not self._agents_root().exists()
+    self._store(tmp_home)
+    err = self._call(tmp_home, "navigator+codex", monkeypatch, target=Endpointless())
+    assert err is not None and "names no endpoint" in err
 
-    def test_persona_without_store_falls_through(self, tmp_home, monkeypatch):
-        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
-        assert not self._agents_root().exists()
+  def test_readerless_harness_falls_through(self, tmp_home, monkeypatch):
+    """⚑ ``no_reader`` is a FALL-THROUGH, never a refusal.
 
-    def test_uninstalled_harness_falls_through(self, tmp_home, monkeypatch):
-        self._store(tmp_home)
-        assert (
-            self._call(tmp_home, "navigator+codex", monkeypatch, target=None)
-            is None
-        )
-        assert not self._agents_root().exists()
+    A goose-shaped persona is configured entirely through the keyspace and
+    may own a store dir purely for its ``.secret_path``; a harness that
+    cannot read a store config has made no complaint about any file.
+    """
+    from kanibako.targets.shell import ShellTarget
 
-    def test_store_entry_is_recognized_and_persists_nothing(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        """⚑ NEVER-PERSIST: a conforming store is CONFIRMED, not copied.
-
-        The create used to write ``agents/<node>/agent.yaml`` here from the
-        store.  It must not any more — the store is resolved live at every
-        launch — but the user must still be told the store was recognized.
-        """
-        self._store(tmp_home)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is None
-        assert not self._agents_root().exists()
-        out = capsys.readouterr().out
-        assert "navigator+codex" in out
-        assert "persona store" in out
-
-    @staticmethod
-    def _no_block_target(*, endpoint: bool):
-        """A plugin with a working store reader and NO ``persona:`` block; its probe
-        records every call."""
-        import dataclasses
-
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
-
-        class NoBlock(CodexTarget):
-            probed: list = []
-
-            @property
-            def descriptor(self):
-                return dataclasses.replace(super().descriptor, persona=None)
-
-            def read_persona_settings(self, config_dir):
-                if endpoint:
-                    return super().read_persona_settings(config_dir)
-                return PersonaReadOutcome(PersonaSettings(
-                    endpoint=None, model=None, auth_env="NAVIGATOR_API_KEY",
-                ), None)
-
-            def verify_persona(self, *a, **k):
-                self.probed.append(a)
-                raise AssertionError("a harness with no persona block was probed")
-
-        return NoBlock()
-
-    @pytest.mark.parametrize("endpoint", [False, True], ids=["no-endpoint", "endpoint"])
-    def test_a_harness_with_no_persona_block_is_not_checked_at_create(
-        self, tmp_home, monkeypatch, capsys, endpoint,
-    ):
-        """[Jei:2026-10-12], as at launch: no endpoint refusal and no probe for a
-        harness that declares no persona block.  (Mutation: drop the
-        ``_persona_wiring`` test → "names no endpoint" refusal, or a probe → RED.)"""
-        self._store(tmp_home)
-        target = self._no_block_target(endpoint=endpoint)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
-        assert err is None
-        assert target.probed == []
-        assert "creating" not in capsys.readouterr().err
-        assert not self._agents_root().exists()
-
-    def test_a_declared_block_with_no_endpoint_is_still_refused_at_create(
-        self, tmp_home, monkeypatch,
-    ):
-        """The control: the same store with codex's real ``persona:`` block refuses."""
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
-
-        class Endpointless(CodexTarget):
-            def read_persona_settings(self, config_dir):
-                return PersonaReadOutcome(PersonaSettings(
-                    endpoint=None, model=None, auth_env="NAVIGATOR_API_KEY",
-                ), None)
-
-        self._store(tmp_home)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=Endpointless())
-        assert err is not None and "names no endpoint" in err
-
-    def test_readerless_harness_falls_through(self, tmp_home, monkeypatch):
-        """⚑ ``no_reader`` is a FALL-THROUGH, never a refusal.
-
-        A goose-shaped persona is configured entirely through the keyspace and
-        may own a store dir purely for its ``.secret_path``; a harness that
-        cannot read a store config has made no complaint about any file.
-        """
-        from kanibako.targets.shell import ShellTarget
-
-        self._store(tmp_home)
-        assert self._call(
-            tmp_home, "navigator+codex", monkeypatch, target=ShellTarget(),
-        ) is None
-        assert not self._agents_root().exists()
-
-    def test_unusable_store_config_is_an_error(self, tmp_home, monkeypatch):
-        self._store(tmp_home, config=False)  # entry dir, no config.toml
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is not None and err.startswith("Error:")
-        assert not self._settings_path().exists()
-
-    def test_the_reject_reason_names_the_specific_cause(self, tmp_home, monkeypatch):
-        """The reader's OWN reason rides through, not a vague "no usable config"."""
-        store = self._store(tmp_home)
-        (store / "codex" / "config.toml").write_text("this is not = valid = toml\n")
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is not None
-        assert "not valid TOML" in err
-
-    def test_scheme_less_endpoint_is_refused_at_create(self, tmp_home, monkeypatch):
-        """Finding #6, create-side: the store TOML names a scheme-less base URL
-        (the live incident's exact shape) — the well-formedness gate at the
-        ``persona_store`` boundary must refuse it here too, via the SAME
-        ``reject_reason`` plumbing already wired for an unreadable config."""
-        store = self._store(tmp_home)
-        (store / "codex" / "config.toml").write_text(
-            'model = "gemma4"\n'
-            "[model_providers.navigator]\n"
-            'name = "navigator"\n'
-            'base_url = "myhost:8080/v1"\n'
-            'wire_api = "responses"\n'
-            'env_key = "NAVIGATOR_API_KEY"\n'
-        )
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is not None and err.startswith("Error:")
-        assert "myhost:8080/v1" in err
-        assert "not well-formed" in err
-        assert "agent.navigator+codex.endpoint=<url>" in err
-        assert not self._settings_path().exists()
-
-    @pytest.mark.parametrize("endpoint", [
-        "https://api.navigator.example/v1",
-        "http://myhost:8080",
-        "http://192.168.1.1:8080/v1",
-    ], ids=["https-plain", "http-host-port", "http-ipv4-literal"])
-    def test_ordinary_endpoint_variants_still_create(
-        self, tmp_home, monkeypatch, endpoint,
-    ):
-        """MUST NOT regress: a gate that rejects everything would pass this too."""
-        store = self._store(tmp_home)
-        (store / "codex" / "config.toml").write_text(
-            'model = "gemma4"\n'
-            "[model_providers.navigator]\n"
-            'name = "navigator"\n'
-            f'base_url = "{endpoint}"\n'
-            'wire_api = "responses"\n'
-            'env_key = "NAVIGATOR_API_KEY"\n'
-        )
-        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
-        assert not self._agents_root().exists()
-
-    def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
-        err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
-        assert err is not None and err.startswith("Error:")
-
-    def test_a_corrupt_agent_settings_file_is_no_longer_consulted(
-        self, tmp_home, monkeypatch,
-    ):
-        """⚑ The DELETED corrupt-file arm, asserted as its absence.
-
-        This gate used to LOAD ``agents/<node>/agent.yaml`` (to build the
-        import candidate on top of it) and convert a parse failure into a create
-        refusal.  Nothing reads that file here any more, so a corrupt one is
-        simply irrelevant — the store check passes straight through it.  (The
-        launch still meets the same file and reports it there.)
-        """
-        self._store(tmp_home)
-        settings = self._settings_path()
-        settings.parent.mkdir(parents=True)
-        settings.write_text("self:\n  endpoint: ok\n :\n  - [unclosed\n")
-
-        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
-        assert settings.read_text().endswith("- [unclosed\n")  # untouched
-
-    def test_token_pointer_warning_still_falls_through(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        self._store(tmp_home, pointer=False)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is None  # soft: the endpoint is still usable
-        assert "token pointer did not resolve" in capsys.readouterr().err
-        assert not self._agents_root().exists()
-
-    # --- the create-time WARN-ONLY probe (these values' ONE verify: a start
-    # --- does not re-probe) --------------------------------------------------
-
-    def test_verified_store_emits_no_warning(self, tmp_home, monkeypatch, capsys):
-        from kanibako.targets.base import PersonaProbeOutcome
-
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.passed(),
-        )
-        assert err is None
-        assert "Warning" not in capsys.readouterr().err
-
-    def test_rejected_token_warns_but_still_creates(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        """⚑ [Jei:2026-08-05]: an auth reject is WARN-ONLY here.
-
-        The LAUNCH path hard-errors on the same verdict; a create must not, so a
-        fixable token never blocks one.
-        """
-        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
-
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.rejected(ProbeEvidence(
-                endpoint="https://e.example", model="m", status=403,
-                provider_text="team not allowed to access model",
-            )),
-        )
-        assert err is None  # warn-only: create still proceeds
-        out = capsys.readouterr().err
-        assert "refused the probe with HTTP 403" in out
-        # ⚑ The evidence reaches the CREATE path too, and it does NOT accuse the token.
-        assert "team not allowed to access model" in out
-        # ⚑ It no longer ACCUSES the token: a 403 cannot tell a dead credential
-        # from a live one that lacks model entitlement.
-        assert "rejected the token" not in out
-        assert "fix the token" not in out.lower()
-        # ⚑ And it says WHERE the inputs came from.  On the create path that is
-        # EXACT — no cascade is built before create, so the store dir is the source.
-        assert f"came from the persona store at {tmp_home}" in out
-        assert "config/personas/navigator/codex" in out.replace("\\", "/")
-
-    @pytest.mark.parametrize(
-        "row, token, model_id, general, sentence", _REFUSED_ROWS,
-        ids=[f"row{r[0]}" for r in _REFUSED_ROWS],
+    self._store(tmp_home)
+    assert (
+      self._call(
+        tmp_home,
+        "navigator+codex",
+        monkeypatch,
+        target=ShellTarget(),
+      )
+      is None
     )
-    def test_every_refused_two_axis_row_warns_with_its_own_sentence(
-        self, tmp_home, monkeypatch, capsys, row, token, model_id, general, sentence,
-    ):
-        """S2 of the Q29 rule-3 plan: the create door stays WARN-ONLY on every
-        REJECTED row and prints the same sentence as the launch door.
-        """
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=_two_axis_outcome(general, "denied", token=token, model_id=model_id),
+    assert not self._agents_root().exists()
+
+  def test_unusable_store_config_is_an_error(self, tmp_home, monkeypatch):
+    self._store(tmp_home, config=False)  # entry dir, no config.toml
+    err = self._call(tmp_home, "navigator+codex", monkeypatch)
+    assert err is not None and err.startswith("Error:")
+    assert not self._settings_path().exists()
+
+  def test_the_reject_reason_names_the_specific_cause(self, tmp_home, monkeypatch):
+    """The reader's OWN reason rides through, not a vague "no usable config"."""
+    store = self._store(tmp_home)
+    (store / "codex" / "config.toml").write_text("this is not = valid = toml\n")
+    err = self._call(tmp_home, "navigator+codex", monkeypatch)
+    assert err is not None
+    assert "not valid TOML" in err
+
+  def test_scheme_less_endpoint_is_refused_at_create(self, tmp_home, monkeypatch):
+    """Finding #6, create-side: the store TOML names a scheme-less base URL
+    (the live incident's exact shape) — the well-formedness gate at the
+    ``persona_store`` boundary must refuse it here too, via the SAME
+    ``reject_reason`` plumbing already wired for an unreadable config."""
+    store = self._store(tmp_home)
+    (store / "codex" / "config.toml").write_text(
+      'model = "gemma4"\n'
+      "[model_providers.navigator]\n"
+      'name = "navigator"\n'
+      'base_url = "myhost:8080/v1"\n'
+      'wire_api = "responses"\n'
+      'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+    err = self._call(tmp_home, "navigator+codex", monkeypatch)
+    assert err is not None and err.startswith("Error:")
+    assert "myhost:8080/v1" in err
+    assert "not well-formed" in err
+    assert "agent.navigator+codex.endpoint=<url>" in err
+    assert not self._settings_path().exists()
+
+  @pytest.mark.parametrize(
+    "endpoint",
+    [
+      "https://api.navigator.example/v1",
+      "http://myhost:8080",
+      "http://192.168.1.1:8080/v1",
+    ],
+    ids=["https-plain", "http-host-port", "http-ipv4-literal"],
+  )
+  def test_ordinary_endpoint_variants_still_create(
+    self,
+    tmp_home,
+    monkeypatch,
+    endpoint,
+  ):
+    """MUST NOT regress: a gate that rejects everything would pass this too."""
+    store = self._store(tmp_home)
+    (store / "codex" / "config.toml").write_text(
+      'model = "gemma4"\n'
+      "[model_providers.navigator]\n"
+      'name = "navigator"\n'
+      f'base_url = "{endpoint}"\n'
+      'wire_api = "responses"\n'
+      'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+    assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+    assert not self._agents_root().exists()
+
+  def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
+    err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
+    assert err is not None and err.startswith("Error:")
+
+  def test_a_corrupt_agent_settings_file_is_no_longer_consulted(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """⚑ The DELETED corrupt-file arm, asserted as its absence.
+
+    This gate used to LOAD ``agents/<node>/agent.yaml`` (to build the
+    import candidate on top of it) and convert a parse failure into a create
+    refusal.  Nothing reads that file here any more, so a corrupt one is
+    simply irrelevant — the store check passes straight through it.  (The
+    launch still meets the same file and reports it there.)
+    """
+    self._store(tmp_home)
+    settings = self._settings_path()
+    settings.parent.mkdir(parents=True)
+    settings.write_text("self:\n  endpoint: ok\n :\n  - [unclosed\n")
+
+    assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+    assert settings.read_text().endswith("- [unclosed\n")  # untouched
+
+  def test_token_pointer_warning_still_falls_through(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    self._store(tmp_home, pointer=False)
+    err = self._call(tmp_home, "navigator+codex", monkeypatch)
+    assert err is None  # soft: the endpoint is still usable
+    assert "token pointer did not resolve" in capsys.readouterr().err
+    assert not self._agents_root().exists()
+
+  # --- the create-time WARN-ONLY probe (these values' ONE verify: a start
+  # --- does not re-probe) --------------------------------------------------
+
+  def test_verified_store_emits_no_warning(self, tmp_home, monkeypatch, capsys):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=PersonaProbeOutcome.passed(),
+    )
+    assert err is None
+    assert "Warning" not in capsys.readouterr().err
+
+  def test_rejected_token_warns_but_still_creates(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    """⚑ [Jei:2026-08-05]: an auth reject is WARN-ONLY here.
+
+    The LAUNCH path hard-errors on the same verdict; a create must not, so a
+    fixable token never blocks one.
+    """
+    from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=PersonaProbeOutcome.rejected(
+        ProbeEvidence(
+          endpoint="https://e.example",
+          model="m",
+          status=403,
+          provider_text="team not allowed to access model",
         )
-        assert err is None  # warn-only: create still proceeds
-        out = capsys.readouterr().err
-        assert "creating anyway" in out
-        assert sentence in out
-        assert "request   GET /v1/models — HTTP " in out
-        lowered = out.lower()
-        assert not [w for w in _BLAME if w in lowered]
+      ),
+    )
+    assert err is None  # warn-only: create still proceeds
+    out = capsys.readouterr().err
+    assert "refused the probe with HTTP 403" in out
+    # ⚑ The evidence reaches the CREATE path too, and it does NOT accuse the token.
+    assert "team not allowed to access model" in out
+    # ⚑ It no longer ACCUSES the token: a 403 cannot tell a dead credential
+    # from a live one that lacks model entitlement.
+    assert "rejected the token" not in out
+    assert "fix the token" not in out.lower()
+    # ⚑ And it says WHERE the inputs came from.  On the create path that is
+    # EXACT — no cascade is built before create, so the store dir is the source.
+    assert f"came from the persona store at {tmp_home}" in out
+    assert "config/personas/navigator/codex" in out.replace("\\", "/")
 
-    def _live_store(self, tmp_home, server, *, model, token):
-        """A codex store entry whose endpoint is *server* — the REAL probe runs."""
-        persona_dir = tmp_home / "config" / "personas" / "navigator"
-        (persona_dir / "codex").mkdir(parents=True)
-        (persona_dir / "codex" / "config.toml").write_text(
-            (f'model = "{model}"\n' if model else "")
-            + "[model_providers.navigator]\n"
-            + 'name = "navigator"\n'
-            + f'base_url = "{server.endpoint}/v1"\n'
-            + 'wire_api = "responses"\n'
-            + 'env_key = "NAVIGATOR_API_KEY"\n'
+  @pytest.mark.parametrize(
+    "row, token, model_id, general, sentence",
+    _REFUSED_ROWS,
+    ids=[f"row{r[0]}" for r in _REFUSED_ROWS],
+  )
+  def test_every_refused_two_axis_row_warns_with_its_own_sentence(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+    row,
+    token,
+    model_id,
+    general,
+    sentence,
+  ):
+    """S2 of the Q29 rule-3 plan: the create door stays WARN-ONLY on every
+    REJECTED row and prints the same sentence as the launch door.
+    """
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=_two_axis_outcome(general, "denied", token=token, model_id=model_id),
+    )
+    assert err is None  # warn-only: create still proceeds
+    out = capsys.readouterr().err
+    assert "creating anyway" in out
+    assert sentence in out
+    assert "request   GET /v1/models — HTTP " in out
+    lowered = out.lower()
+    assert not [w for w in _BLAME if w in lowered]
+
+  def _live_store(self, tmp_home, server, *, model, token):
+    """A codex store entry whose endpoint is *server* — the REAL probe runs."""
+    persona_dir = tmp_home / "config" / "personas" / "navigator"
+    (persona_dir / "codex").mkdir(parents=True)
+    (persona_dir / "codex" / "config.toml").write_text(
+      (f'model = "{model}"\n' if model else "")
+      + "[model_providers.navigator]\n"
+      + 'name = "navigator"\n'
+      + f'base_url = "{server.endpoint}/v1"\n'
+      + 'wire_api = "responses"\n'
+      + 'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+    if token:
+      (persona_dir / ".secret_path").write_text("./token\n")
+      (persona_dir / "token").write_text("sk-test-secret\n")
+
+  @pytest.mark.parametrize(
+    "pointer, keyspace",
+    [
+      (None, "key-path"),  # keyspace key path, no store pointer
+      (None, "keyless"),  # rows 15/16/19: a REAL keyless declaration
+      ("./a\n./b\n", None),  # malformed store pointer
+      ("./a\n./b\n", "keyless"),
+    ],
+    ids=["no-pointer+key-path", "no-pointer+keyless", "malformed", "malformed+keyless"],
+  )
+  @pytest.mark.parametrize(
+    "model, get, post",
+    [
+      ("gemma4", 200, 403),  # row 15
+      ("gemma4", 401, 401),  # row 16
+      (None, 200, 403),  # row 19
+    ],
+    ids=["row15", "row16", "row19"],
+  )
+  def test_a_store_without_a_resolved_token_is_never_probed_uncredentialed(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+    pointer,
+    keyspace,
+    model,
+    get,
+    post,
+  ):
+    """Round 2 of 177-q29s4: the store cannot declare a persona keyless, so a
+    store with no resolved token is an UNRESOLVED pointer.  Probing it without a
+    credential sent requests the box never sends and printed a false "declares
+    the endpoint keyless" refusal.  This door resolves no cascade, so even a
+    keyspace ``secret_path.<VAR>: null`` is not probed here (it is at launch).
+    The REAL codex probe would run if the door called it.
+    """
+    from kanibako.plugins.codex.target import CodexTarget
+    from tests.test_targets.test_persona_settings import _ProbeServer
+
+    server = _ProbeServer(
+      script={("GET", False): get, ("POST", False): post, ("GET", True): 200, ("POST", True): 200}
+    )
+    try:
+      self._live_store(tmp_home, server, model=model, token=False)
+      persona_dir = tmp_home / "config" / "personas" / "navigator"
+      if pointer is not None:
+        (persona_dir / ".secret_path").write_text(pointer)
+      if keyspace is not None:
+        value = "null" if keyspace == "keyless" else str(tmp_home / "tok")
+        (tmp_home / "tok").write_text("sk-keyspace\n")
+        self._settings_path().parent.mkdir(parents=True, exist_ok=True)
+        self._settings_path().write_text(
+          f"self:\n  secret_path:\n    NAVIGATOR_API_KEY: {value}\n",
         )
-        if token:
-            (persona_dir / ".secret_path").write_text("./token\n")
-            (persona_dir / "token").write_text("sk-test-secret\n")
+      err = self._call(tmp_home, "navigator+codex", monkeypatch, target=CodexTarget())
+    finally:
+      server.close()
+    assert err is None
+    out = capsys.readouterr().err
+    assert "token pointer did not resolve" in out  # base behavior, unchanged
+    assert server.log == []
+    assert "keyless" not in out
+    assert "Warning: the persona endpoint" not in out
+    assert "could not verify" not in out
 
-    @pytest.mark.parametrize("pointer, keyspace", [
-        (None, "key-path"),            # keyspace key path, no store pointer
-        (None, "keyless"),             # rows 15/16/19: a REAL keyless declaration
-        ("./a\n./b\n", None),          # malformed store pointer
-        ("./a\n./b\n", "keyless"),
-    ], ids=["no-pointer+key-path", "no-pointer+keyless", "malformed", "malformed+keyless"])
-    @pytest.mark.parametrize("model, get, post", [
-        ("gemma4", 200, 403),   # row 15
-        ("gemma4", 401, 401),   # row 16
-        (None, 200, 403),       # row 19
-    ], ids=["row15", "row16", "row19"])
-    def test_a_store_without_a_resolved_token_is_never_probed_uncredentialed(
-        self, tmp_home, monkeypatch, capsys, pointer, keyspace, model, get, post,
-    ):
-        """Round 2 of 177-q29s4: the store cannot declare a persona keyless, so a
-        store with no resolved token is an UNRESOLVED pointer.  Probing it without a
-        credential sent requests the box never sends and printed a false "declares
-        the endpoint keyless" refusal.  This door resolves no cascade, so even a
-        keyspace ``secret_path.<VAR>: null`` is not probed here (it is at launch).
-        The REAL codex probe would run if the door called it.
-        """
-        from kanibako.plugins.codex.target import CodexTarget
-        from tests.test_targets.test_persona_settings import _ProbeServer
+  def test_a_keyed_persona_is_probed_with_its_credential_unchanged(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.plugins.codex.target import CodexTarget
+    from tests.test_targets.test_persona_settings import _ProbeServer
 
-        server = _ProbeServer(script={("GET", False): get, ("POST", False): post,
-                                      ("GET", True): 200, ("POST", True): 200})
-        try:
-            self._live_store(tmp_home, server, model=model, token=False)
-            persona_dir = tmp_home / "config" / "personas" / "navigator"
-            if pointer is not None:
-                (persona_dir / ".secret_path").write_text(pointer)
-            if keyspace is not None:
-                value = "null" if keyspace == "keyless" else str(tmp_home / "tok")
-                (tmp_home / "tok").write_text("sk-keyspace\n")
-                self._settings_path().parent.mkdir(parents=True, exist_ok=True)
-                self._settings_path().write_text(
-                    f"self:\n  secret_path:\n    NAVIGATOR_API_KEY: {value}\n",
-                )
-            err = self._call(tmp_home, "navigator+codex", monkeypatch,
-                             target=CodexTarget())
-        finally:
-            server.close()
-        assert err is None
-        out = capsys.readouterr().err
-        assert "token pointer did not resolve" in out  # base behavior, unchanged
-        assert server.log == []
-        assert "keyless" not in out
-        assert "Warning: the persona endpoint" not in out
-        assert "could not verify" not in out
+    server = _ProbeServer(script={("GET", True): 200, ("GET", False): 401, ("POST", True): 200})
+    try:
+      self._live_store(tmp_home, server, model="gemma4", token=True)
+      err = self._call(tmp_home, "navigator+codex", monkeypatch, target=CodexTarget())
+    finally:
+      server.close()
+    assert err is None
+    assert "Warning" not in capsys.readouterr().err
+    bearer = "Bearer sk-test-secret"
+    assert [(m, p, a) for m, p, a, _, _ in server.log] == [
+      ("GET", "/v1/models", bearer),
+      ("GET", "/v1/models", None),
+      ("POST", "/v1/responses", bearer),
+    ]
 
-    def test_a_keyed_persona_is_probed_with_its_credential_unchanged(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        from kanibako.plugins.codex.target import CodexTarget
-        from tests.test_targets.test_persona_settings import _ProbeServer
+  @pytest.mark.parametrize("model", ["marker", ""], ids=["null", "empty"])
+  def test_a_null_or_empty_store_model_is_probed_with_no_model(
+    self,
+    tmp_home,
+    monkeypatch,
+    model,
+  ):
+    """A store ``null`` (the marker) and ``""`` both name NO model in a request
+    (persona procedure, probe rule 1): the probe gets ``model=None``."""
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.targets.base import (
+      PERSONA_DEFAULT_MODEL,
+      PersonaProbeOutcome,
+      PersonaReadOutcome,
+    )
 
-        server = _ProbeServer(script={("GET", True): 200, ("GET", False): 401,
-                                      ("POST", True): 200})
-        try:
-            self._live_store(tmp_home, server, model="gemma4", token=True)
-            err = self._call(tmp_home, "navigator+codex", monkeypatch,
-                             target=CodexTarget())
-        finally:
-            server.close()
-        assert err is None
-        assert "Warning" not in capsys.readouterr().err
-        bearer = "Bearer sk-test-secret"
-        assert [(m, p, a) for m, p, a, _, _ in server.log] == [
-            ("GET", "/v1/models", bearer), ("GET", "/v1/models", None),
-            ("POST", "/v1/responses", bearer),
-        ]
+    store_model = PERSONA_DEFAULT_MODEL if model == "marker" else model
 
-    @pytest.mark.parametrize("model", ["marker", ""], ids=["null", "empty"])
-    def test_a_null_or_empty_store_model_is_probed_with_no_model(
-        self, tmp_home, monkeypatch, model,
-    ):
-        """A store ``null`` (the marker) and ``""`` both name NO model in a request
-        (persona procedure, probe rule 1): the probe gets ``model=None``."""
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.targets.base import (
-            PERSONA_DEFAULT_MODEL,
-            PersonaProbeOutcome,
-            PersonaReadOutcome,
-        )
+    class Recording(CodexTarget):
+      probed: list = []
 
-        store_model = PERSONA_DEFAULT_MODEL if model == "marker" else model
-
-        class Recording(CodexTarget):
-            probed: list = []
-
-            def read_persona_settings(self, config_dir):
-                outcome = super().read_persona_settings(config_dir)
-                assert outcome.settings is not None
-                return PersonaReadOutcome(
-                    outcome.settings._replace(model=store_model), None,
-                )
-
-            def verify_persona(self, endpoint, token_path, model, **k):
-                self.probed.append(model)
-                return PersonaProbeOutcome.passed()
-
-        persona_dir = self._store(tmp_home)
-        (persona_dir / "token").write_text("sk-test-secret\n")
-        target = Recording()
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
-        assert err is None
-        assert target.probed == [None]
-
-    def test_a_two_axis_PASS_with_the_model_free_request_refused_only_logs(
-        self, tmp_home, monkeypatch, capsys, caplog,
-    ):
-        import logging
-
-        self._store(tmp_home)
-        with caplog.at_level(logging.DEBUG):
-            err = self._call(
-                tmp_home, "navigator+codex", monkeypatch,
-                outcome=_two_axis_outcome("denied", "ok"),
-            )
-        assert err is None
-        assert "Warning" not in capsys.readouterr().err
-        assert any(
-            "model-free request was refused (HTTP 403)" in r.getMessage()
-            for r in caplog.records
-        )
-
-    def test_a_status_less_REJECTED_still_names_the_endpoint_here(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        """The create door used to drop the endpoint on this arm while launch kept it.
-
-        With no status there is no evidence block, so the introducing sentence is
-        the ONLY place the endpoint can appear — and it did not.  Both doors now
-        render the sentence through ``PersonaProbeOutcome.refusal_phrase``, which
-        takes the endpoint the CALLER probed (the launch door has no bundle).
-        """
-        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
-
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.rejected(
-                ProbeEvidence(endpoint="https://api.navigator.example/v1"),
-            ),
-        )
-        assert err is None
-        out = capsys.readouterr().err
-        assert "(https://api.navigator.example/v1) refused the probe" in out
-
-    def test_a_RAISING_probe_leaves_its_traceback_in_the_debug_log(
-        self, tmp_home, monkeypatch, capsys, caplog,
-    ):
-        """The never-raise contract is a PLUGIN's to keep, and this door swallowed
-        the only evidence of which plugin broke it.
-
-        The warning cannot name the plugin, and the create does not fail — so with
-        the traceback discarded, a third-party ``verify_persona`` that raises on
-        every call left no record anywhere.  The launch door has always logged it
-        (``start.py::_persona_probe_error``); `MIGRATION.md`, *For plugin authors*,
-        tells plugin authors it goes to the debug log at BOTH doors.
-        (Mutation: drop the ``debug(..., exc_info=True)`` call → RED.)
-        """
-        import traceback
-
-        from kanibako.plugins.codex.target import CodexTarget
-
-        def _boom(*a, **k):
-            raise RuntimeError("the plugin exploded")
-
-        # The REAL target — the store reader must still work, or the bundle reads
-        # as ``no_reader`` and the probe is never reached.  Only the probe raises.
-        broken = CodexTarget()
-        broken.verify_persona = _boom  # type: ignore[method-assign]
-
-        # Level is set on ``kanibako``, the parent ``setup_logging`` configures.
-        self._store(tmp_home)
-        with caplog.at_level("DEBUG", logger="kanibako"):
-            err = self._call(tmp_home, "navigator+codex", monkeypatch, target=broken)
-        assert err is None                      # a probe bug never fails a create
-        assert "creating unverified" in capsys.readouterr().err
-        records = [r for r in caplog.records if "verify probe raised" in r.getMessage()]
-        assert records, [r.getMessage() for r in caplog.records]
-        assert records[0].exc_info is not None
-        assert "the plugin exploded" in "".join(
-            traceback.format_exception(*records[0].exc_info)
+      def read_persona_settings(self, config_dir):
+        outcome = super().read_persona_settings(config_dir)
+        assert outcome.settings is not None
+        return PersonaReadOutcome(
+          outcome.settings._replace(model=store_model),
+          None,
         )
 
-    def test_an_INCONCLUSIVE_endpoint_warns_but_still_creates(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        from kanibako.targets.base import PersonaProbeOutcome
+      def verify_persona(self, endpoint, token_path, model, **k):
+        self.probed.append(model)
+        return PersonaProbeOutcome.passed()
 
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.inconclusive("the endpoint imploded"),
-        )
-        assert err is None
-        out = capsys.readouterr().err
-        assert "could not verify" in out
-        assert "the endpoint imploded" in out
+    persona_dir = self._store(tmp_home)
+    (persona_dir / "token").write_text("sk-test-secret\n")
+    target = Recording()
+    err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
+    assert err is None
+    assert target.probed == [None]
 
-    def test_a_NOT_APPLICABLE_probe_is_SILENT_here_too(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        """⚑ WARN-ONLY covers the two ANSWERED verdicts, not this one.
+  def test_a_two_axis_PASS_with_the_model_free_request_refused_only_logs(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+    caplog,
+  ):
+    import logging
 
-        NOT_APPLICABLE means nothing was learned about the token and nothing will
-        be — a harness with no probe, an endpoint that wants a model this persona
-        does not name.  Warning about it on every create would be as un-actionable
-        as it was on every launch.
-        """
-        from kanibako.targets.base import PersonaProbeOutcome
+    self._store(tmp_home)
+    with caplog.at_level(logging.DEBUG):
+      err = self._call(
+        tmp_home,
+        "navigator+codex",
+        monkeypatch,
+        outcome=_two_axis_outcome("denied", "ok"),
+      )
+    assert err is None
+    assert "Warning" not in capsys.readouterr().err
+    assert any(
+      "model-free request was refused (HTTP 403)" in r.getMessage() for r in caplog.records
+    )
 
-        self._store(tmp_home)
-        err = self._call(
-            tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.not_applicable(
-                "the endpoint requires a model in the request (HTTP 400) and "
-                "the persona names none",
-            ),
-        )
-        assert err is None
-        assert "Warning" not in capsys.readouterr().err
+  def test_a_status_less_REJECTED_still_names_the_endpoint_here(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    """The create door used to drop the endpoint on this arm while launch kept it.
 
-    def test_probe_raise_is_held_to_the_contract(self, tmp_home, monkeypatch, capsys):
-        from kanibako.plugins.codex.target import CodexTarget
+    With no status there is no evidence block, so the introducing sentence is
+    the ONLY place the endpoint can appear — and it did not.  Both doors now
+    render the sentence through ``PersonaProbeOutcome.refusal_phrase``, which
+    takes the endpoint the CALLER probed (the launch door has no bundle).
+    """
+    from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
 
-        self._store(tmp_home)
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=PersonaProbeOutcome.rejected(
+        ProbeEvidence(endpoint="https://api.navigator.example/v1"),
+      ),
+    )
+    assert err is None
+    out = capsys.readouterr().err
+    assert "(https://api.navigator.example/v1) refused the probe" in out
 
-        def _boom(*a, **k):
-            raise RuntimeError("misbehaving plugin probe")
+  def test_a_RAISING_probe_leaves_its_traceback_in_the_debug_log(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+    caplog,
+  ):
+    """The never-raise contract is a PLUGIN's to keep, and this door swallowed
+    the only evidence of which plugin broke it.
 
-        resolved = CodexTarget()
-        resolved.verify_persona = _boom  # type: ignore[method-assign]
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=resolved)
-        assert err is None  # never crashes a create
-        assert "could not verify" in capsys.readouterr().err
+    The warning cannot name the plugin, and the create does not fail — so with
+    the traceback discarded, a third-party ``verify_persona`` that raises on
+    every call left no record anywhere.  The launch door has always logged it
+    (``start.py::_persona_probe_error``); `MIGRATION.md`, *For plugin authors*,
+    tells plugin authors it goes to the debug log at BOTH doors.
+    (Mutation: drop the ``debug(..., exc_info=True)`` call → RED.)
+    """
+    import traceback
+
+    from kanibako.plugins.codex.target import CodexTarget
+
+    def _boom(*a, **k):
+      raise RuntimeError("the plugin exploded")
+
+    # The REAL target — the store reader must still work, or the bundle reads
+    # as ``no_reader`` and the probe is never reached.  Only the probe raises.
+    broken = CodexTarget()
+    broken.verify_persona = _boom  # type: ignore[method-assign]
+
+    # Level is set on ``kanibako``, the parent ``setup_logging`` configures.
+    self._store(tmp_home)
+    with caplog.at_level("DEBUG", logger="kanibako"):
+      err = self._call(tmp_home, "navigator+codex", monkeypatch, target=broken)
+    assert err is None  # a probe bug never fails a create
+    assert "creating unverified" in capsys.readouterr().err
+    records = [r for r in caplog.records if "verify probe raised" in r.getMessage()]
+    assert records, [r.getMessage() for r in caplog.records]
+    assert records[0].exc_info is not None
+    assert "the plugin exploded" in "".join(traceback.format_exception(*records[0].exc_info))
+
+  def test_an_INCONCLUSIVE_endpoint_warns_but_still_creates(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=PersonaProbeOutcome.inconclusive("the endpoint imploded"),
+    )
+    assert err is None
+    out = capsys.readouterr().err
+    assert "could not verify" in out
+    assert "the endpoint imploded" in out
+
+  def test_a_NOT_APPLICABLE_probe_is_SILENT_here_too(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    """⚑ WARN-ONLY covers the two ANSWERED verdicts, not this one.
+
+    NOT_APPLICABLE means nothing was learned about the token and nothing will
+    be — a harness with no probe, an endpoint that wants a model this persona
+    does not name.  Warning about it on every create would be as un-actionable
+    as it was on every launch.
+    """
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    self._store(tmp_home)
+    err = self._call(
+      tmp_home,
+      "navigator+codex",
+      monkeypatch,
+      outcome=PersonaProbeOutcome.not_applicable(
+        "the endpoint requires a model in the request (HTTP 400) and the persona names none",
+      ),
+    )
+    assert err is None
+    assert "Warning" not in capsys.readouterr().err
+
+  def test_probe_raise_is_held_to_the_contract(self, tmp_home, monkeypatch, capsys):
+    from kanibako.plugins.codex.target import CodexTarget
+
+    self._store(tmp_home)
+
+    def _boom(*a, **k):
+      raise RuntimeError("misbehaving plugin probe")
+
+    resolved = CodexTarget()
+    resolved.verify_persona = _boom  # type: ignore[method-assign]
+    err = self._call(tmp_home, "navigator+codex", monkeypatch, target=resolved)
+    assert err is None  # never crashes a create
+    assert "could not verify" in capsys.readouterr().err
 
 
 class TestCreatePersistsAgentSelection:
-    """`create --agent <ref>` persists the §2h REQUEST ``pref.system.agent``.
+  """`create --agent <ref>` persists the §2h REQUEST ``pref.system.agent``.
 
-    Real-path ``run_create`` runs: the selection lands in the box settings file
-    through the sanctioned settings write, so a PLAIN ``start`` resolves the
-    selected agent (system.agent < workset pref < box pref < --agent) instead of
-    falling through to the system default.  ``start --agent <other>`` stays an
-    ephemeral override (never persisted).
+  Real-path ``run_create`` runs: the selection lands in the box settings file
+  through the sanctioned settings write, so a PLAIN ``start`` resolves the
+  selected agent (system.agent < workset pref < box pref < --agent) instead of
+  falling through to the system default.  ``start --agent <other>`` stays an
+  ephemeral override (never persisted).
 
-    ⮕ **P7:** the persisted key was ``box.agent_name``, RETIRED by spec §2b — a
-    box no longer names its agent with a key of its own; it REQUESTS one at the
-    key that resolves earlier.
-    """
+  ⮕ **P7:** the persisted key was ``box.agent_name``, RETIRED by spec §2b — a
+  box no longer names its agent with a key of its own; it REQUESTS one at the
+  key that resolves earlier.
+  """
 
-    def _create(self, tmp_home, *, agent=None):
-        import argparse
+  def _create(self, tmp_home, *, agent=None):
+    import argparse
 
-        from kanibako.commands.box._parser import run_create
+    from kanibako.commands.box._parser import run_create
 
-        ns = argparse.Namespace(
-            path=str(tmp_home / "project"), standalone=False, no_vault=True,
-            name=None, image=None, agent=agent, allow_home=False,
-        )
-        return run_create(ns)
+    ns = argparse.Namespace(
+      path=str(tmp_home / "project"),
+      standalone=False,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=agent,
+      allow_home=False,
+    )
+    return run_create(ns)
 
-    def _box_settings(self, config_file, tmp_home):
-        from kanibako.commands.start import _resolve_existing_box
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import BOX_META_FILE, load_std_paths
+  def _box_settings(self, config_file, tmp_home):
+    from kanibako.commands.start import _resolve_existing_box
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import BOX_META_FILE, load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
-        assert proj is not None
-        return proj.metadata_path / BOX_META_FILE
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+    assert proj is not None
+    return proj.metadata_path / BOX_META_FILE
 
-    def test_create_with_agent_persists_the_pref_request(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.settings.config_io import load_doc
+  def test_create_with_agent_persists_the_pref_request(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.settings.config_io import load_doc
 
-        assert self._create(tmp_home, agent="claude") == 0
-        settings = self._box_settings(config_file, tmp_home)
-        data = load_doc(settings)
-        # The NESTED pref table (never a dotted literal — P6 rejects that
-        # spelling, because a bind-shaped request would not be bind-parsed).
-        assert data["pref"]["system"]["agent"] == "claude"
-        # …and NOT the retired key.
-        assert "agent_name" not in data.get("box", {})
+    assert self._create(tmp_home, agent="claude") == 0
+    settings = self._box_settings(config_file, tmp_home)
+    data = load_doc(settings)
+    # The NESTED pref table (never a dotted literal — P6 rejects that
+    # spelling, because a bind-shaped request would not be bind-parsed).
+    assert data["pref"]["system"]["agent"] == "claude"
+    # …and NOT the retired key.
+    assert "agent_name" not in data.get("box", {})
 
-    def test_plain_create_writes_no_selection(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.settings.config_io import load_doc
+  def test_plain_create_writes_no_selection(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.settings.config_io import load_doc
 
-        assert self._create(tmp_home) == 0
-        settings = self._box_settings(config_file, tmp_home)
-        data = load_doc(settings)
-        assert "agent" not in data.get("pref", {}).get("system", {})
-        assert "agent_name" not in data.get("box", {})
+    assert self._create(tmp_home) == 0
+    settings = self._box_settings(config_file, tmp_home)
+    data = load_doc(settings)
+    assert "agent" not in data.get("pref", {}).get("system", {})
+    assert "agent_name" not in data.get("box", {})
 
-    def test_persisted_selection_drives_plain_start_resolution(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """⚑ THE CREATE→START ROUND TRIP — the single most important regression
-        test of this phase: what ``create --agent`` writes must be what a plain
-        ``start`` resolves. INVERT: write the retired ``box.agent_name`` at create
-        (or read it at start) and the box silently launches a different agent."""
-        from kanibako.settings.config import load_config, resolve_agent
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.settings.settings_launch import resolve_selected_agent
-        from kanibako.settings.agent_select import launch_resolve_ctx
-        from kanibako.commands.start import _resolve_existing_box
+  def test_persisted_selection_drives_plain_start_resolution(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """⚑ THE CREATE→START ROUND TRIP — the single most important regression
+    test of this phase: what ``create --agent`` writes must be what a plain
+    ``start`` resolves. INVERT: write the retired ``box.agent_name`` at create
+    (or read it at start) and the box silently launches a different agent."""
+    from kanibako.settings.config import load_config, resolve_agent
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.settings.settings_launch import resolve_selected_agent
+    from kanibako.settings.agent_select import launch_resolve_ctx
+    from kanibako.commands.start import _resolve_existing_box
 
-        assert self._create(tmp_home, agent="claude") == 0
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
-        assert proj is not None
-        settings = self._box_settings(config_file, tmp_home)
-        # ⚑ THE WHOLE SEAM, not a re-implementation of it: ``select_agent`` is what
-        # the launch calls, so this drives the create write, the refusal loop, the
-        # narrow selection resolve AND the arbiter in one step. (A test that only
-        # called ``resolve_selected_agent`` would leave the seam itself unpinned —
-        # deleting the refusal loop, or the ``select_agent`` call in start.py, would
-        # redden nothing.)
-        from kanibako.settings.agent_select import select_agent
+    assert self._create(tmp_home, agent="claude") == 0
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+    assert proj is not None
+    settings = self._box_settings(config_file, tmp_home)
+    # ⚑ THE WHOLE SEAM, not a re-implementation of it: ``select_agent`` is what
+    # the launch calls, so this drives the create write, the refusal loop, the
+    # narrow selection resolve AND the arbiter in one step. (A test that only
+    # called ``resolve_selected_agent`` would leave the seam itself unpinned —
+    # deleting the refusal loop, or the ``select_agent`` call in start.py, would
+    # redden nothing.)
+    from kanibako.settings.agent_select import select_agent
 
-        sel = select_agent(std=std, proj=proj, explicit_agent=None)
-        assert (sel.node, sel.source) == ("claude", "settings")
-        # …and the value the launch installs at the §1A level is that same node.
-        assert sel.selection_level == {"system.agent": "claude"}
-        # The narrow resolve underneath reads the REQUEST from the box file.
-        requested = resolve_selected_agent(
-            ctx=launch_resolve_ctx(std, proj, None),
-            system_path=std.settings, workset_path=None, box_path=settings,
-            valid_agents=frozenset({"claude", "goose"}),
-        )
-        assert requested == "claude"
-        assert resolve_agent(
-            explicit_agent=None, requested=str(requested),
-        ) == "claude"
-        # Ephemeral override on top: explicit wins, nothing re-persisted.
-        assert resolve_agent(
-            explicit_agent="goose", requested=str(requested),
-        ) == "goose"
+    sel = select_agent(std=std, proj=proj, explicit_agent=None)
+    assert (sel.node, sel.source) == ("claude", "settings")
+    # …and the value the launch installs at the §1A level is that same node.
+    assert sel.selection_level == {"system.agent": "claude"}
+    # The narrow resolve underneath reads the REQUEST from the box file.
+    requested = resolve_selected_agent(
+      ctx=launch_resolve_ctx(std, proj, None),
+      system_path=std.settings,
+      workset_path=None,
+      box_path=settings,
+      valid_agents=frozenset({"claude", "goose"}),
+    )
+    assert requested == "claude"
+    assert (
+      resolve_agent(
+        explicit_agent=None,
+        requested=str(requested),
+      )
+      == "claude"
+    )
+    # Ephemeral override on top: explicit wins, nothing re-persisted.
+    assert (
+      resolve_agent(
+        explicit_agent="goose",
+        requested=str(requested),
+      )
+      == "goose"
+    )
 
-    def test_persona_ref_is_persisted_raw(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        """A persona selector persists as TYPED (`+` form; the read side
-        canonicalizes) — and the persona store left NO agent settings file
-        behind (⚑ NEVER-PERSIST: the store is resolved live at every launch)."""
-        from kanibako.settings.config_io import load_doc
+  def test_persona_ref_is_persisted_raw(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    """A persona selector persists as TYPED (`+` form; the read side
+    canonicalizes) — and the persona store left NO agent settings file
+    behind (⚑ NEVER-PERSIST: the store is resolved live at every launch)."""
+    from kanibako.settings.config_io import load_doc
 
-        # Lay down a conforming store entry + a real token file so the persona
-        # create verdict (codex: usable token + model) passes on the real path.
-        persona_dir = tmp_home / "config" / "personas" / "navigator"
-        (persona_dir / "codex").mkdir(parents=True)
-        (persona_dir / "codex" / "config.toml").write_text(
-            'model = "gemma4"\n'
-            "[model_providers.navigator]\n"
-            'name = "navigator"\n'
-            'base_url = "https://api.navigator.example/v1"\n'
-            'wire_api = "responses"\n'
-            'env_key = "NAVIGATOR_API_KEY"\n'
-        )
-        (persona_dir / ".secret_path").write_text("./token\n")
-        (persona_dir / "token").write_text("sk-test\n")
+    # Lay down a conforming store entry + a real token file so the persona
+    # create verdict (codex: usable token + model) passes on the real path.
+    persona_dir = tmp_home / "config" / "personas" / "navigator"
+    (persona_dir / "codex").mkdir(parents=True)
+    (persona_dir / "codex" / "config.toml").write_text(
+      'model = "gemma4"\n'
+      "[model_providers.navigator]\n"
+      'name = "navigator"\n'
+      'base_url = "https://api.navigator.example/v1"\n'
+      'wire_api = "responses"\n'
+      'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+    (persona_dir / ".secret_path").write_text("./token\n")
+    (persona_dir / "token").write_text("sk-test\n")
 
-        assert self._create(tmp_home, agent="navigator+codex") == 0
-        settings = self._box_settings(config_file, tmp_home)
-        assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
-        # ⚑ NEVER-PERSIST. The node's agent.yaml exists — the one-time
-        # first-use GENERATE writes it — but it must be EMPTY of persona values.
-        # The store's endpoint/model/token reached this create as a live cascade
-        # level; a surviving import would have copied them in here.
-        from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
+    assert self._create(tmp_home, agent="navigator+codex") == 0
+    settings = self._box_settings(config_file, tmp_home)
+    assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
+    # ⚑ NEVER-PERSIST. The node's agent.yaml exists — the one-time
+    # first-use GENERATE writes it — but it must be EMPTY of persona values.
+    # The store's endpoint/model/token reached this create as a live cascade
+    # level; a surviving import would have copied them in here.
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
-        std = load_std_paths(load_config(config_file))
-        node_file = agent_settings_path(std.agents, "navigator+codex")
-        assert node_file.exists()
-        node_self = load_doc(node_file).get("self") or {}
-        assert "endpoint" not in node_self
-        assert "model" not in node_self
-        assert "secret_path" not in node_self
+    std = load_std_paths(load_config(config_file))
+    node_file = agent_settings_path(std.agents, "navigator+codex")
+    assert node_file.exists()
+    node_self = load_doc(node_file).get("self") or {}
+    assert "endpoint" not in node_self
+    assert "model" not in node_self
+    assert "secret_path" not in node_self
 
-    def test_failing_verdict_leaves_no_box_and_no_selection(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
-        leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
-        runs BEFORE box materialization and before the agent-selection write —
-        pin that ordering.  ⚑ The ``agents/<node>/agent.yaml`` the store
-        import used to leave behind was the ONE documented exception to "no
-        residue"; the import is gone, so the exception is gone with it and the
-        failure path now leaves NOTHING AT ALL."""
-        from kanibako.commands.start import _resolve_existing_box
-        from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
+  def test_failing_verdict_leaves_no_box_and_no_selection(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
+    leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
+    runs BEFORE box materialization and before the agent-selection write —
+    pin that ordering.  ⚑ The ``agents/<node>/agent.yaml`` the store
+    import used to leave behind was the ONE documented exception to "no
+    residue"; the import is gone, so the exception is gone with it and the
+    failure path now leaves NOTHING AT ALL."""
+    from kanibako.commands.start import _resolve_existing_box
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
-        # Conforming store entry whose token POINTER resolves but whose token
-        # FILE does not exist: the import succeeds; the create verdict's
-        # usable-token gate then refuses the create.
-        persona_dir = tmp_home / "config" / "personas" / "navigator"
-        (persona_dir / "codex").mkdir(parents=True)
-        (persona_dir / "codex" / "config.toml").write_text(
-            'model = "gemma4"\n'
-            "[model_providers.navigator]\n"
-            'name = "navigator"\n'
-            'base_url = "https://api.navigator.example/v1"\n'
-            'wire_api = "responses"\n'
-            'env_key = "NAVIGATOR_API_KEY"\n'
-        )
-        (persona_dir / ".secret_path").write_text("./token\n")
-        # NO token file written -> pointer unusable -> verdict refuses.
+    # Conforming store entry whose token POINTER resolves but whose token
+    # FILE does not exist: the import succeeds; the create verdict's
+    # usable-token gate then refuses the create.
+    persona_dir = tmp_home / "config" / "personas" / "navigator"
+    (persona_dir / "codex").mkdir(parents=True)
+    (persona_dir / "codex" / "config.toml").write_text(
+      'model = "gemma4"\n'
+      "[model_providers.navigator]\n"
+      'name = "navigator"\n'
+      'base_url = "https://api.navigator.example/v1"\n'
+      'wire_api = "responses"\n'
+      'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+    (persona_dir / ".secret_path").write_text("./token\n")
+    # NO token file written -> pointer unusable -> verdict refuses.
 
-        assert self._create(tmp_home, agent="navigator+codex") == 1
-        assert "Error" in capsys.readouterr().err
+    assert self._create(tmp_home, agent="navigator+codex") == 1
+    assert "Error" in capsys.readouterr().err
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        # No box was materialized: nothing resolves, no settings file exists,
-        # so pref.system.agent cannot have been written anywhere.
-        assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
-        # …and no persona residue either: the verdict refuses BEFORE the seed's
-        # first-use generate, and nothing persists the store any more, so the
-        # node dir is never created at all.  ⚑ The whole DIRECTORY, not just its
-        # ``agent.yaml``: a node dir can exist without that file — the persona
-        # share-symlink shim lays exactly such a dir — and this refusal must
-        # leave neither shape behind.
-        assert not agent_settings_path(std.agents, "navigator+codex").parent.exists()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    # No box was materialized: nothing resolves, no settings file exists,
+    # so pref.system.agent cannot have been written anywhere.
+    assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
+    # …and no persona residue either: the verdict refuses BEFORE the seed's
+    # first-use generate, and nothing persists the store any more, so the
+    # node dir is never created at all.  ⚑ The whole DIRECTORY, not just its
+    # ``agent.yaml``: a node dir can exist without that file — the persona
+    # share-symlink shim lays exactly such a dir — and this refusal must
+    # leave neither shape behind.
+    assert not agent_settings_path(std.agents, "navigator+codex").parent.exists()

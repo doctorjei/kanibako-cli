@@ -38,15 +38,15 @@ import pytest
 pexpect = pytest.importorskip("pexpect")
 
 from tests.e2e._entry_point_plugin import (  # noqa: E402
-    entry_point_plugin_path,
-    install_entry_point_plugin,
+  entry_point_plugin_path,
+  install_entry_point_plugin,
 )
 from tests.e2e.conftest import (  # noqa: E402
-    CONTAINER_PREFIX,
-    box_container,
-    e2e_requires,
-    run_kanibako,
-    write_e2e_settings_files,
+  CONTAINER_PREFIX,
+  box_container,
+  e2e_requires,
+  run_kanibako,
+  write_e2e_settings_files,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -77,400 +77,408 @@ SESSION_UP_TIMEOUT = 60
 
 @pytest.fixture()
 def dead_env(tmp_path, host_storage_conf) -> dict:
-    """Isolated e2e environment whose default agent crashes on launch.
+  """Isolated e2e environment whose default agent crashes on launch.
 
-    Mirrors :func:`e2e_env` (isolated HOME / XDG dirs, image pinned via
-    ``write_e2e_settings_files``, podman storage pinned via the reused ``host_storage_conf``
-    fixture) but targets the TESTING-ONLY ``DeadTarget`` instead of claude:
+  Mirrors :func:`e2e_env` (isolated HOME / XDG dirs, image pinned via
+  ``write_e2e_settings_files``, podman storage pinned via the reused ``host_storage_conf``
+  fixture) but targets the TESTING-ONLY ``DeadTarget`` instead of claude:
 
-      - the ``dead-agent`` crash script is installed at
-        ``<HOME>/.local/bin/dead-agent`` (the per-agent contract path that
-        ``DeadTarget.detect()`` anchors to), chmod 0755,
-      - ``dead.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
-        child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
-        which is the only route discovery reads, and
-      - system settings pin ``system.agent: dead`` so
-        ``resolve_agent`` selects it unambiguously.
+    - the ``dead-agent`` crash script is installed at
+      ``<HOME>/.local/bin/dead-agent`` (the per-agent contract path that
+      ``DeadTarget.detect()`` anchors to), chmod 0755,
+    - ``dead.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
+      child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
+      which is the only route discovery reads, and
+    - system settings pin ``system.agent: dead`` so
+      ``resolve_agent`` selects it unambiguously.
 
-    CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
-    out-of-band, so the fixture stays env-agnostic and just inherits os.environ
-    like ``e2e_env`` does.
-    """
-    home = tmp_path / "home"
-    config_home = tmp_path / "config"
-    data_home = tmp_path / "data"
-    state_home = tmp_path / "state"
-    cache_home = tmp_path / "cache"
-    project = tmp_path / "project"
+  CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
+  out-of-band, so the fixture stays env-agnostic and just inherits os.environ
+  like ``e2e_env`` does.
+  """
+  home = tmp_path / "home"
+  config_home = tmp_path / "config"
+  data_home = tmp_path / "data"
+  state_home = tmp_path / "state"
+  cache_home = tmp_path / "cache"
+  project = tmp_path / "project"
 
-    for d in (home, config_home, data_home, state_home, cache_home, project):
-        d.mkdir()
+  for d in (home, config_home, data_home, state_home, cache_home, project):
+    d.mkdir()
 
-    # The dead-agent crash script at the detect() contract path (~/.local/bin).
-    dead_bin_dir = home / ".local" / "bin"
-    dead_bin_dir.mkdir(parents=True)
-    dead_binary = dead_bin_dir / "dead-agent"
-    shutil.copy2(_DEAD_EXE_SRC, dead_binary)
-    dead_binary.chmod(0o755)
+  # The dead-agent crash script at the detect() contract path (~/.local/bin).
+  dead_bin_dir = home / ".local" / "bin"
+  dead_bin_dir.mkdir(parents=True)
+  dead_binary = dead_bin_dir / "dead-agent"
+  shutil.copy2(_DEAD_EXE_SRC, dead_binary)
+  dead_binary.chmod(0o755)
 
-    # DeadTarget, published to the child the way an installed package is.
-    plugin_site = install_entry_point_plugin(
-        tmp_path / "ep", src=_PLUGIN_SRC, module="dead",
-        entry="dead", attr="DeadTarget", dist="dead-agent",
-    )
+  # DeadTarget, published to the child the way an installed package is.
+  plugin_site = install_entry_point_plugin(
+    tmp_path / "ep",
+    src=_PLUGIN_SRC,
+    module="dead",
+    entry="dead",
+    attr="DeadTarget",
+    dist="dead-agent",
+  )
 
-    # Pin the e2e image and system.agent = dead, so selection picks DeadTarget
-    # (mirrors e2e_env's claude pin).  ⚑ The pin is REQUIRED: nothing is selected
-    # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
-    # the empty bootstrap file, come from the one writer — see
-    # write_e2e_settings_files.
-    write_e2e_settings_files(config_home, data_home, home=home, agent="dead")
+  # Pin the e2e image and system.agent = dead, so selection picks DeadTarget
+  # (mirrors e2e_env's claude pin).  ⚑ The pin is REQUIRED: nothing is selected
+  # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
+  # the empty bootstrap file, come from the one writer — see
+  # write_e2e_settings_files.
+  write_e2e_settings_files(config_home, data_home, home=home, agent="dead")
 
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(home),
-        "XDG_CONFIG_HOME": str(config_home),
-        "XDG_DATA_HOME": str(data_home),
-        "XDG_STATE_HOME": str(state_home),
-        "XDG_CACHE_HOME": str(cache_home),
-        # Put the dead-agent dir first on PATH for parity with e2e_env (detect()
-        # anchors to ~/.local/bin, but keep PATH consistent).
-        "PATH": f"{dead_bin_dir}:{env.get('PATH', '')}",
-        # The synthetic install the child discovers DeadTarget through.
-        "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
-        # Pin rootless podman storage to the host's real graphroot (see
-        # e2e_env / host_storage_conf).
-        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
-    })
-
-    yield {
-        "env": env,
-        "home": home,
-        "project": project,
-        "config_home": config_home,
-        "data_home": data_home,
-        "tmp_path": tmp_path,
+  env = os.environ.copy()
+  env.update(
+    {
+      "HOME": str(home),
+      "XDG_CONFIG_HOME": str(config_home),
+      "XDG_DATA_HOME": str(data_home),
+      "XDG_STATE_HOME": str(state_home),
+      "XDG_CACHE_HOME": str(cache_home),
+      # Put the dead-agent dir first on PATH for parity with e2e_env (detect()
+      # anchors to ~/.local/bin, but keep PATH consistent).
+      "PATH": f"{dead_bin_dir}:{env.get('PATH', '')}",
+      # The synthetic install the child discovers DeadTarget through.
+      "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
+      # Pin rootless podman storage to the host's real graphroot (see
+      # e2e_env / host_storage_conf).
+      "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
+  )
 
-    # Teardown: prefix-based cleanup of this test's containers (mirrors e2e_env).
-    podman = shutil.which("podman")
-    if podman is None:
-        return
-    import subprocess
+  yield {
+    "env": env,
+    "home": home,
+    "project": project,
+    "config_home": config_home,
+    "data_home": data_home,
+    "tmp_path": tmp_path,
+  }
 
-    result = subprocess.run(
-        [podman, "ps", "-a", "--format", "{{.Names}}"],
+  # Teardown: prefix-based cleanup of this test's containers (mirrors e2e_env).
+  podman = shutil.which("podman")
+  if podman is None:
+    return
+  import subprocess
+
+  result = subprocess.run(
+    [podman, "ps", "-a", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  for name in result.stdout.strip().splitlines():
+    name = name.strip()
+    if name.startswith(CONTAINER_PREFIX):
+      subprocess.run(
+        [podman, "rm", "-f", "-t", "1", name],
         capture_output=True,
-        text=True,
         timeout=10,
-    )
-    for name in result.stdout.strip().splitlines():
-        name = name.strip()
-        if name.startswith(CONTAINER_PREFIX):
-            subprocess.run(
-                [podman, "rm", "-f", "-t", "1", name],
-                capture_output=True,
-                timeout=10,
-            )
+      )
 
 
 class TestInteractiveAttachOnDeath:
-    """Interactive (PTY) launch of a box whose agent crashes on start."""
+  """Interactive (PTY) launch of a box whose agent crashes on start."""
 
-    def test_dead_agent_under_pty_fails_cleanly_not_raw_error(self, dead_env):
-        """A PTY-launched box with a crashing agent fails cleanly.
+  def test_dead_agent_under_pty_fails_cleanly_not_raw_error(self, dead_env):
+    """A PTY-launched box with a crashing agent fails cleanly.
 
-        Under a real PTY the interactive ``tmux attach`` path runs; the agent
-        exits non-zero, and kanibako must exit non-zero WITHOUT leaking the raw
-        ``container state improper`` podman error, and the crashed box's
-        container must be torn down (nothing left to Ctrl-B x out of).
-        """
-        env = dead_env["env"]
-        project = dead_env["project"]
+    Under a real PTY the interactive ``tmux attach`` path runs; the agent
+    exits non-zero, and kanibako must exit non-zero WITHOUT leaking the raw
+    ``container state improper`` podman error, and the crashed box's
+    container must be torn down (nothing left to Ctrl-B x out of).
+    """
+    env = dead_env["env"]
+    project = dead_env["project"]
 
-        # Create the box (plain subprocess; no PTY needed).
-        result = run_kanibako(
-            ["create", str(project), "--name", "dead_box"],
-            env=env,
-        )
-        assert result.returncode == 0, (
-            f"create failed: rc={result.returncode}\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    # Create the box (plain subprocess; no PTY needed).
+    result = run_kanibako(
+      ["create", str(project), "--name", "dead_box"],
+      env=env,
+    )
+    assert result.returncode == 0, (
+      f"create failed: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
-        # Start UNDER A PTY so kanibako sees an interactive terminal and takes
-        # the real tmux-attach passthrough.
-        child = pexpect.spawn(
-            "kanibako",
-            ["start", "dead_box"],
-            env=env,
-            encoding="utf-8",
-            dimensions=(40, 120),
-            timeout=START_TIMEOUT,
-        )
-        try:
-            child.expect(pexpect.EOF)
-        finally:
-            child.close()
+    # Start UNDER A PTY so kanibako sees an interactive terminal and takes
+    # the real tmux-attach passthrough.
+    child = pexpect.spawn(
+      "kanibako",
+      ["start", "dead_box"],
+      env=env,
+      encoding="utf-8",
+      dimensions=(40, 120),
+      timeout=START_TIMEOUT,
+    )
+    try:
+      child.expect(pexpect.EOF)
+    finally:
+      child.close()
 
-        out = child.before or ""
+    out = child.before or ""
 
-        # NOTE (contract change, 07-14b arc): the death-marker assertion
-        # (``"DEAD_AGENT_MARKER" in out``) was REMOVED.  The sole-agent
-        # teardown path's ``pane-died`` hook closes the pane on exit, so an
-        # instant crash's output is never captured/seen — the
-        # marker never reaches the PTY.  Crash-output surfacing is
-        # intentionally deferred to the pipe-pane follow-up (tasks.md
-        # 07-14b).  RESTORE the marker assertion when it lands.
-        assert "container state improper" not in out, (
-            "Raw podman 'container state improper' error leaked to the user "
-            f"instead of a clean failure.\nCaptured output:\n{out}"
-        )
-        assert child.exitstatus not in (0, None), (
-            "Expected a non-zero exit status from the crashing launch, got "
-            f"exitstatus={child.exitstatus!r} (signalstatus="
-            f"{child.signalstatus!r}).\nCaptured output:\n{out}"
-        )
-        # Prompt teardown: the crashed box's container is GONE afterwards (the
-        # two-state lifecycle tears an exited box down; the user lands back in
-        # the shell with no dead pane and no lingering container).
-        assert box_container("dead_box") not in _all_containers(), (
-            "Expected the crashed box's container to be torn down after the "
-            f"failed PTY launch, but '{box_container('dead_box')}' still exists."
-        )
+    # NOTE (contract change, 07-14b arc): the death-marker assertion
+    # (``"DEAD_AGENT_MARKER" in out``) was REMOVED.  The sole-agent
+    # teardown path's ``pane-died`` hook closes the pane on exit, so an
+    # instant crash's output is never captured/seen — the
+    # marker never reaches the PTY.  Crash-output surfacing is
+    # intentionally deferred to the pipe-pane follow-up (tasks.md
+    # 07-14b).  RESTORE the marker assertion when it lands.
+    assert "container state improper" not in out, (
+      "Raw podman 'container state improper' error leaked to the user "
+      f"instead of a clean failure.\nCaptured output:\n{out}"
+    )
+    assert child.exitstatus not in (0, None), (
+      "Expected a non-zero exit status from the crashing launch, got "
+      f"exitstatus={child.exitstatus!r} (signalstatus="
+      f"{child.signalstatus!r}).\nCaptured output:\n{out}"
+    )
+    # Prompt teardown: the crashed box's container is GONE afterwards (the
+    # two-state lifecycle tears an exited box down; the user lands back in
+    # the shell with no dead pane and no lingering container).
+    assert box_container("dead_box") not in _all_containers(), (
+      "Expected the crashed box's container to be torn down after the "
+      f"failed PTY launch, but '{box_container('dead_box')}' still exists."
+    )
 
 
 @pytest.fixture()
 def live_env(tmp_path, host_storage_conf) -> dict:
-    """Isolated e2e environment whose default agent stays alive (sleeps).
+  """Isolated e2e environment whose default agent stays alive (sleeps).
 
-    Mirrors :func:`dead_env` but targets the TESTING-ONLY ``LiveTarget`` instead
-    of the dead agent: the delivered ``live-agent`` script prints a marker and
-    then ``exec sleep``, so its tmux session persists and an interactive (PTY)
-    test can detach with ``Ctrl-b d`` and verify the box is KEPT running +
-    reattachable.
+  Mirrors :func:`dead_env` but targets the TESTING-ONLY ``LiveTarget`` instead
+  of the dead agent: the delivered ``live-agent`` script prints a marker and
+  then ``exec sleep``, so its tmux session persists and an interactive (PTY)
+  test can detach with ``Ctrl-b d`` and verify the box is KEPT running +
+  reattachable.
 
-      - the ``live-agent`` script is installed at ``<HOME>/.local/bin/live-agent``
-        (the per-agent contract path that ``LiveTarget.detect()`` anchors to),
-        chmod 0755,
-      - ``live.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
-        child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
-        which is the only route discovery reads, and
-      - system settings pin ``system.agent: live`` so
-        ``resolve_agent`` selects it unambiguously.
+    - the ``live-agent`` script is installed at ``<HOME>/.local/bin/live-agent``
+      (the per-agent contract path that ``LiveTarget.detect()`` anchors to),
+      chmod 0755,
+    - ``live.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
+      child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
+      which is the only route discovery reads, and
+    - system settings pin ``system.agent: live`` so
+      ``resolve_agent`` selects it unambiguously.
 
-    CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
-    out-of-band, so the fixture stays env-agnostic and just inherits os.environ
-    like ``e2e_env`` does.
-    """
-    home = tmp_path / "home"
-    config_home = tmp_path / "config"
-    data_home = tmp_path / "data"
-    state_home = tmp_path / "state"
-    cache_home = tmp_path / "cache"
-    project = tmp_path / "project"
+  CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
+  out-of-band, so the fixture stays env-agnostic and just inherits os.environ
+  like ``e2e_env`` does.
+  """
+  home = tmp_path / "home"
+  config_home = tmp_path / "config"
+  data_home = tmp_path / "data"
+  state_home = tmp_path / "state"
+  cache_home = tmp_path / "cache"
+  project = tmp_path / "project"
 
-    for d in (home, config_home, data_home, state_home, cache_home, project):
-        d.mkdir()
+  for d in (home, config_home, data_home, state_home, cache_home, project):
+    d.mkdir()
 
-    # The live-agent script at the detect() contract path (~/.local/bin).
-    live_bin_dir = home / ".local" / "bin"
-    live_bin_dir.mkdir(parents=True)
-    live_binary = live_bin_dir / "live-agent"
-    shutil.copy2(_LIVE_EXE_SRC, live_binary)
-    live_binary.chmod(0o755)
+  # The live-agent script at the detect() contract path (~/.local/bin).
+  live_bin_dir = home / ".local" / "bin"
+  live_bin_dir.mkdir(parents=True)
+  live_binary = live_bin_dir / "live-agent"
+  shutil.copy2(_LIVE_EXE_SRC, live_binary)
+  live_binary.chmod(0o755)
 
-    # LiveTarget, published to the child the way an installed package is.
-    plugin_site = install_entry_point_plugin(
-        tmp_path / "ep", src=_LIVE_PLUGIN_SRC, module="live",
-        entry="live", attr="LiveTarget", dist="live-agent",
-    )
+  # LiveTarget, published to the child the way an installed package is.
+  plugin_site = install_entry_point_plugin(
+    tmp_path / "ep",
+    src=_LIVE_PLUGIN_SRC,
+    module="live",
+    entry="live",
+    attr="LiveTarget",
+    dist="live-agent",
+  )
 
-    # Pin the e2e image and system.agent = live, so selection picks LiveTarget
-    # (mirrors dead_env's dead pin).  ⚑ The pin is REQUIRED: nothing is selected
-    # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
-    # the empty bootstrap file, come from the one writer — see
-    # write_e2e_settings_files.
-    write_e2e_settings_files(config_home, data_home, home=home, agent="live")
+  # Pin the e2e image and system.agent = live, so selection picks LiveTarget
+  # (mirrors dead_env's dead pin).  ⚑ The pin is REQUIRED: nothing is selected
+  # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
+  # the empty bootstrap file, come from the one writer — see
+  # write_e2e_settings_files.
+  write_e2e_settings_files(config_home, data_home, home=home, agent="live")
 
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(home),
-        "XDG_CONFIG_HOME": str(config_home),
-        "XDG_DATA_HOME": str(data_home),
-        "XDG_STATE_HOME": str(state_home),
-        "XDG_CACHE_HOME": str(cache_home),
-        # Put the live-agent dir first on PATH for parity with dead_env (detect()
-        # anchors to ~/.local/bin, but keep PATH consistent).
-        "PATH": f"{live_bin_dir}:{env.get('PATH', '')}",
-        # The synthetic install the child discovers LiveTarget through.
-        "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
-        # Pin rootless podman storage to the host's real graphroot (see
-        # e2e_env / host_storage_conf).
-        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
-    })
-
-    yield {
-        "env": env,
-        "home": home,
-        "project": project,
-        "config_home": config_home,
-        "data_home": data_home,
-        "tmp_path": tmp_path,
+  env = os.environ.copy()
+  env.update(
+    {
+      "HOME": str(home),
+      "XDG_CONFIG_HOME": str(config_home),
+      "XDG_DATA_HOME": str(data_home),
+      "XDG_STATE_HOME": str(state_home),
+      "XDG_CACHE_HOME": str(cache_home),
+      # Put the live-agent dir first on PATH for parity with dead_env (detect()
+      # anchors to ~/.local/bin, but keep PATH consistent).
+      "PATH": f"{live_bin_dir}:{env.get('PATH', '')}",
+      # The synthetic install the child discovers LiveTarget through.
+      "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
+      # Pin rootless podman storage to the host's real graphroot (see
+      # e2e_env / host_storage_conf).
+      "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
+  )
 
-    # Teardown: the live box's container (_LIVE_BOX_NAME) lacks the
-    # CONTAINER_PREFIX the suite teardown / dead_env match, so the
-    # prefix sweep would leave it running forever.  Remove it explicitly here
-    # so the test cleans up after itself even on failure; then also do the
-    # prefix sweep for parity with dead_env.
-    podman = shutil.which("podman")
-    if podman is None:
-        return
+  yield {
+    "env": env,
+    "home": home,
+    "project": project,
+    "config_home": config_home,
+    "data_home": data_home,
+    "tmp_path": tmp_path,
+  }
 
-    subprocess.run(
-        [podman, "rm", "-f", "-t", "1", _LIVE_BOX_NAME],
+  # Teardown: the live box's container (_LIVE_BOX_NAME) lacks the
+  # CONTAINER_PREFIX the suite teardown / dead_env match, so the
+  # prefix sweep would leave it running forever.  Remove it explicitly here
+  # so the test cleans up after itself even on failure; then also do the
+  # prefix sweep for parity with dead_env.
+  podman = shutil.which("podman")
+  if podman is None:
+    return
+
+  subprocess.run(
+    [podman, "rm", "-f", "-t", "1", _LIVE_BOX_NAME],
+    capture_output=True,
+    timeout=20,
+  )
+
+  result = subprocess.run(
+    [podman, "ps", "-a", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  for name in result.stdout.strip().splitlines():
+    name = name.strip()
+    if name.startswith(CONTAINER_PREFIX):
+      subprocess.run(
+        [podman, "rm", "-f", "-t", "1", name],
         capture_output=True,
-        timeout=20,
-    )
-
-    result = subprocess.run(
-        [podman, "ps", "-a", "--format", "{{.Names}}"],
-        capture_output=True,
-        text=True,
         timeout=10,
-    )
-    for name in result.stdout.strip().splitlines():
-        name = name.strip()
-        if name.startswith(CONTAINER_PREFIX):
-            subprocess.run(
-                [podman, "rm", "-f", "-t", "1", name],
-                capture_output=True,
-                timeout=10,
-            )
+      )
 
 
 def _all_containers() -> set[str]:
-    """Return the names of ALL containers (any state), via ``podman ps -a``."""
-    podman = shutil.which("podman")
-    assert podman is not None, "podman required"
-    out = subprocess.run(
-        [podman, "ps", "-a", "--format", "{{.Names}}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    return {line.strip() for line in out.stdout.strip().splitlines()}
+  """Return the names of ALL containers (any state), via ``podman ps -a``."""
+  podman = shutil.which("podman")
+  assert podman is not None, "podman required"
+  out = subprocess.run(
+    [podman, "ps", "-a", "--format", "{{.Names}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  return {line.strip() for line in out.stdout.strip().splitlines()}
 
 
 def _running_containers() -> dict[str, str]:
-    """Return ``name -> id`` for every RUNNING container (via ``podman ps``)."""
-    podman = shutil.which("podman")
-    assert podman is not None, "podman required"
-    out = subprocess.run(
-        [podman, "ps", "--format", "{{.Names}}\t{{.ID}}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    running: dict[str, str] = {}
-    for line in out.stdout.strip().splitlines():
-        if "\t" in line:
-            name, cid = line.split("\t", 1)
-            running[name.strip()] = cid.strip()
-    return running
+  """Return ``name -> id`` for every RUNNING container (via ``podman ps``)."""
+  podman = shutil.which("podman")
+  assert podman is not None, "podman required"
+  out = subprocess.run(
+    [podman, "ps", "--format", "{{.Names}}\t{{.ID}}"],
+    capture_output=True,
+    text=True,
+    timeout=10,
+  )
+  running: dict[str, str] = {}
+  for line in out.stdout.strip().splitlines():
+    if "\t" in line:
+      name, cid = line.split("\t", 1)
+      running[name.strip()] = cid.strip()
+  return running
 
 
 def _attach_then_detach(env: dict) -> tuple[int | None, str]:
-    """Launch ``kanibako start live_box`` under a PTY, detach, return (exit, out).
+  """Launch ``kanibako start live_box`` under a PTY, detach, return (exit, out).
 
-    Waits for the tmux session to be up (the live-agent marker on first attach,
-    or the tmux ``[kanibako]`` status line on a reattach where the marker has
-    scrolled off), then sends the tmux detach chord (``Ctrl-b d``) and waits for
-    EOF.  Modeled on the prototype probe.
-    """
-    child = pexpect.spawn(
-        "kanibako",
-        ["start", "live_box"],
-        env=env,
-        encoding="utf-8",
-        dimensions=(40, 120),
-        timeout=START_TIMEOUT,
+  Waits for the tmux session to be up (the live-agent marker on first attach,
+  or the tmux ``[kanibako]`` status line on a reattach where the marker has
+  scrolled off), then sends the tmux detach chord (``Ctrl-b d``) and waits for
+  EOF.  Modeled on the prototype probe.
+  """
+  child = pexpect.spawn(
+    "kanibako",
+    ["start", "live_box"],
+    env=env,
+    encoding="utf-8",
+    dimensions=(40, 120),
+    timeout=START_TIMEOUT,
+  )
+  out = ""
+  try:
+    # Wait for the session to be up.  On a reattach the marker may have
+    # scrolled, so also accept the tmux status indicator.
+    child.expect(
+      ["LIVE_AGENT_MARKER", r"\[kanibako\]", pexpect.TIMEOUT],
+      timeout=SESSION_UP_TIMEOUT,
     )
-    out = ""
-    try:
-        # Wait for the session to be up.  On a reattach the marker may have
-        # scrolled, so also accept the tmux status indicator.
-        child.expect(
-            ["LIVE_AGENT_MARKER", r"\[kanibako\]", pexpect.TIMEOUT],
-            timeout=SESSION_UP_TIMEOUT,
-        )
-        out += child.before or ""
-        out += child.after if isinstance(child.after, str) else ""
-        time.sleep(2)  # let the pane settle before sending the detach chord
-        child.sendcontrol("b")  # tmux prefix
-        time.sleep(0.3)
-        child.send("d")  # detach
-        child.expect(pexpect.EOF, timeout=30)
-        out += child.before or ""
-    finally:
-        child.close()
-    return child.exitstatus, out
+    out += child.before or ""
+    out += child.after if isinstance(child.after, str) else ""
+    time.sleep(2)  # let the pane settle before sending the detach chord
+    child.sendcontrol("b")  # tmux prefix
+    time.sleep(0.3)
+    child.send("d")  # detach
+    child.expect(pexpect.EOF, timeout=30)
+    out += child.before or ""
+  finally:
+    child.close()
+  return child.exitstatus, out
 
 
 class TestInteractiveDetach:
-    """Interactive (PTY) detach + reattach of a box whose agent stays alive."""
+  """Interactive (PTY) detach + reattach of a box whose agent stays alive."""
 
-    def test_detach_keeps_box_running_and_reattaches_same_container(
-        self, live_env
-    ):
-        """``Ctrl-b d`` keeps the box running; a reattach hits the SAME container.
+  def test_detach_keeps_box_running_and_reattaches_same_container(self, live_env):
+    """``Ctrl-b d`` keeps the box running; a reattach hits the SAME container.
 
-        Under a real PTY the interactive ``tmux attach`` path runs against a
-        live agent.  Detaching with the tmux chord must take the "detach ->
-        keep" half of the two-state lifecycle: the box container STAYS running
-        (not torn down).  A second ``kanibako start`` must REATTACH to that same
-        container (same id still running), not recreate it.
-        """
-        env = live_env["env"]
-        project = live_env["project"]
+    Under a real PTY the interactive ``tmux attach`` path runs against a
+    live agent.  Detaching with the tmux chord must take the "detach ->
+    keep" half of the two-state lifecycle: the box container STAYS running
+    (not torn down).  A second ``kanibako start`` must REATTACH to that same
+    container (same id still running), not recreate it.
+    """
+    env = live_env["env"]
+    project = live_env["project"]
 
-        # Create the box (plain subprocess; no PTY needed).
-        result = run_kanibako(
-            ["create", str(project), "--name", "live_box"],
-            env=env,
-        )
-        assert result.returncode == 0, (
-            f"create failed: rc={result.returncode}\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    # Create the box (plain subprocess; no PTY needed).
+    result = run_kanibako(
+      ["create", str(project), "--name", "live_box"],
+      env=env,
+    )
+    assert result.returncode == 0, (
+      f"create failed: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
-        before = set(_running_containers())
+    before = set(_running_containers())
 
-        # First attach under a PTY, then detach with Ctrl-b d.
-        exit1, out1 = _attach_then_detach(env)
+    # First attach under a PTY, then detach with Ctrl-b d.
+    exit1, out1 = _attach_then_detach(env)
 
-        # The box must be KEPT running after the detach.
-        after1 = _running_containers()
-        box = {n: i for n, i in after1.items() if n not in before}
-        assert box, (
-            "Expected the box container to STILL be running after Ctrl-b d "
-            "detach (two-state 'detach -> keep'), but no new running container "
-            f"was found.\nrunning after detach: {after1}\n"
-            f"first-attach exit={exit1!r}\nCaptured output:\n{out1}"
-        )
-        box_name = next(iter(box))
-        box_id = box[box_name]
+    # The box must be KEPT running after the detach.
+    after1 = _running_containers()
+    box = {n: i for n, i in after1.items() if n not in before}
+    assert box, (
+      "Expected the box container to STILL be running after Ctrl-b d "
+      "detach (two-state 'detach -> keep'), but no new running container "
+      f"was found.\nrunning after detach: {after1}\n"
+      f"first-attach exit={exit1!r}\nCaptured output:\n{out1}"
+    )
+    box_name = next(iter(box))
+    box_id = box[box_name]
 
-        # Reattach under a PTY and detach again; the SAME container must still
-        # be running (reattach, not recreate).
-        exit2, out2 = _attach_then_detach(env)
+    # Reattach under a PTY and detach again; the SAME container must still
+    # be running (reattach, not recreate).
+    exit2, out2 = _attach_then_detach(env)
 
-        after2 = _running_containers()
-        assert box_name in after2 and after2[box_name] == box_id, (
-            "Expected the SAME box container to still be running after a "
-            "reattach + second detach (reattach, not recreate), but the id "
-            f"changed or it is gone.\nbox {box_name}: {box_id} -> "
-            f"{after2.get(box_name)!r}\nrunning after reattach: {after2}\n"
-            f"reattach exit={exit2!r}\nCaptured output:\n{out2}"
-        )
+    after2 = _running_containers()
+    assert box_name in after2 and after2[box_name] == box_id, (
+      "Expected the SAME box container to still be running after a "
+      "reattach + second detach (reattach, not recreate), but the id "
+      f"changed or it is gone.\nbox {box_name}: {box_id} -> "
+      f"{after2.get(box_name)!r}\nrunning after reattach: {after2}\n"
+      f"reattach exit={exit2!r}\nCaptured output:\n{out2}"
+    )

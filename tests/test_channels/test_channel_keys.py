@@ -37,10 +37,10 @@ from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.config_keys import _KEY_ROUTES
 from kanibako.settings.paths import (
-    WorksetSpec,
-    resolve_project,
-    resolve_standalone_project,
-    resolve_workset_project,
+  WorksetSpec,
+  resolve_project,
+  resolve_standalone_project,
+  resolve_workset_project,
 )
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 
@@ -52,375 +52,404 @@ from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 # sibling module's fixture instead trips ``F811`` on every parameter that uses it.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-    ws_root = tmp_home / "worksets" / "my_set"
-    ws = create_workset("my_set", ws_root, std)
-    source = tmp_home / "original-project"
-    source.mkdir()
-    add_project(ws, "cool_app", source)
-    return resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
-    )
+  ws_root = tmp_home / "worksets" / "my_set"
+  ws = create_workset("my_set", ws_root, std)
+  source = tmp_home / "original-project"
+  source.mkdir()
+  add_project(ws, "cool_app", source)
+  return resolve_workset_project(
+    WorksetSpec.from_workset(ws),
+    "cool_app",
+    std,
+    config,
+    initialize=True,
+  )
 
 
 @pytest.fixture
 def primary_proj(std, config, project_dir):
-    return resolve_project(std, config, str(project_dir), initialize=True)
+  return resolve_project(std, config, str(project_dir), initialize=True)
 
 
 @pytest.fixture
 def standalone_proj(std, config, project_dir, credentials_dir):
-    return resolve_standalone_project(std, config, str(project_dir), initialize=True)
+  return resolve_standalone_project(std, config, str(project_dir), initialize=True)
 
 
 def _repoint(ws_root: Path, key: str, value: str) -> None:
-    """Store *value* at *key* in the workset's ``workset.yaml``.
+  """Store *value* at *key* in the workset's ``workset.yaml``.
 
-    ⚑ Through ``_KEY_ROUTES`` + ``write_nested_key`` — the exact tail of
-    ``config_interface.set_config_value``, so this writes where the CLI writes.  A test
-    that placed the value by hand would prove only that its own guess was readable.
-    """
-    sections, leaf = _KEY_ROUTES[key]
-    write_nested_key(ws_root / WORKSET_META_FILE, sections, leaf, value)
+  ⚑ Through ``_KEY_ROUTES`` + ``write_nested_key`` — the exact tail of
+  ``config_interface.set_config_value``, so this writes where the CLI writes.  A test
+  that placed the value by hand would prove only that its own guess was readable.
+  """
+  sections, leaf = _KEY_ROUTES[key]
+  write_nested_key(ws_root / WORKSET_META_FILE, sections, leaf, value)
 
 
 class TestTheRepointReaderIsTheCliRoute:
-    """Anti-vacuity for every case below: the helper writes the CLI's own slot."""
+  """Anti-vacuity for every case below: the helper writes the CLI's own slot."""
 
-    @pytest.mark.parametrize("leaf", sorted(DECLARED_WORKSET_CHANNEL_LEAVES))
-    def test_every_declared_leaf_is_a_routed_key(self, leaf):
-        assert _KEY_ROUTES[f"workset.channels.{leaf}"] == (
-            ("workset", "channels"), leaf,
-        )
+  @pytest.mark.parametrize("leaf", sorted(DECLARED_WORKSET_CHANNEL_LEAVES))
+  def test_every_declared_leaf_is_a_routed_key(self, leaf):
+    assert _KEY_ROUTES[f"workset.channels.{leaf}"] == (
+      ("workset", "channels"),
+      leaf,
+    )
 
 
 class TestWorksetLocalLeafRepoints:
-    """The four workset-LOCAL keys (spec §2c) — repoint each, read the derivation."""
+  """The four workset-LOCAL keys (spec §2c) — repoint each, read the derivation."""
 
-    def test_channelroot_repoint_moves_the_whole_family(self, named_proj, std):
-        """The pre-existing behavior, kept honest: the leaves follow their root."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channelroot", "{meta.workset.path}/comms")
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.root == ws_root / "comms"
-        assert wch.common == ws_root / "comms" / "common"
-        assert wch.chat == ws_root / "comms" / "chat"
-        assert wch.share == ws_root / "comms" / "share"
+  def test_channelroot_repoint_moves_the_whole_family(self, named_proj, std):
+    """The pre-existing behavior, kept honest: the leaves follow their root."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channelroot", "{meta.workset.path}/comms")
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.root == ws_root / "comms"
+    assert wch.common == ws_root / "comms" / "common"
+    assert wch.chat == ws_root / "comms" / "chat"
+    assert wch.share == ws_root / "comms" / "share"
 
-    def test_common_repoint_is_honored(self, named_proj, std):
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.common", str(ws_root / "elsewhere-common"))
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.common == ws_root / "elsewhere-common"
-        # The siblings are UNMOVED — a leaf is a leaf, not a second root.
-        assert wch.chat == wch.root / "chat"
+  def test_common_repoint_is_honored(self, named_proj, std):
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.common", str(ws_root / "elsewhere-common"))
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.common == ws_root / "elsewhere-common"
+    # The siblings are UNMOVED — a leaf is a leaf, not a second root.
+    assert wch.chat == wch.root / "chat"
 
-    def test_chat_repoint_is_honored(self, named_proj, std):
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat == ws_root / "talk"
-        assert wch.chat_general == ws_root / "talk" / "general.md"
-        # ⚑ broadcast DEFAULTS off the chat key (``{workset.channels.chat}/broadcast.md``),
-        # so moving chat moves it — that is the manifest's own formula, not a join.
-        assert wch.chat_broadcast == ws_root / "talk" / "broadcast.md"
+  def test_chat_repoint_is_honored(self, named_proj, std):
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat == ws_root / "talk"
+    assert wch.chat_general == ws_root / "talk" / "general.md"
+    # ⚑ broadcast DEFAULTS off the chat key (``{workset.channels.chat}/broadcast.md``),
+    # so moving chat moves it — that is the manifest's own formula, not a join.
+    assert wch.chat_broadcast == ws_root / "talk" / "broadcast.md"
 
-    def test_share_repoint_is_honored(self, named_proj, std):
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.share", str(ws_root / "outbox"))
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.share == ws_root / "outbox"
+  def test_share_repoint_is_honored(self, named_proj, std):
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.share", str(ws_root / "outbox"))
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.share == ws_root / "outbox"
 
-    def test_share_repoint_reaches_meta_box_share_workset(self, named_proj, std):
-        """The LATENT half of the split: the address, not just the bind."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.share", str(ws_root / "outbox"))
-        addr = channels.box_channel_addresses(named_proj, std)
-        assert addr.share_workset == ws_root / "outbox" / named_proj.name
+  def test_share_repoint_reaches_meta_box_share_workset(self, named_proj, std):
+    """The LATENT half of the split: the address, not just the bind."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.share", str(ws_root / "outbox"))
+    addr = channels.box_channel_addresses(named_proj, std)
+    assert addr.share_workset == ws_root / "outbox" / named_proj.name
 
-    def test_broadcast_repoint_is_honored(self, named_proj, std):
-        """``broadcast`` names a FILE, and had no consumer at all before R-35's repair."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat_broadcast == ws_root / "shout.md"
-        # ⚑ general.md is NOT a declared key, so it stays inside the chat dir.
-        assert wch.chat_general == wch.chat / "general.md"
+  def test_broadcast_repoint_is_honored(self, named_proj, std):
+    """``broadcast`` names a FILE, and had no consumer at all before R-35's repair."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat_broadcast == ws_root / "shout.md"
+    # ⚑ general.md is NOT a declared key, so it stays inside the chat dir.
+    assert wch.chat_general == wch.chat / "general.md"
 
-    @pytest.mark.parametrize(
-        "leaf, attr",
-        [("common", "common"), ("chat", "chat"),
-         ("share", "share"), ("broadcast", "chat_broadcast")],
-    )
-    def test_a_null_leaf_is_OMITTED_not_defaulted(
-        self, named_proj, std, leaf, attr,
+  @pytest.mark.parametrize(
+    "leaf, attr",
+    [("common", "common"), ("chat", "chat"), ("share", "share"), ("broadcast", "chat_broadcast")],
+  )
+  def test_a_null_leaf_is_OMITTED_not_defaulted(
+    self,
+    named_proj,
+    std,
+    leaf,
+    attr,
+  ):
+    """A present ``<None>`` answers ``None``; only an ABSENT key takes the default.
+
+    Spec §2a: a null arm is a declared value, so the bind that leaf feeds is
+    omitted rather than pointed at the default directory.
+    """
+    ws_root = named_proj.group.root
+    _repoint(ws_root, f"workset.channels.{leaf}", None)
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert getattr(wch, attr) is None
+    # The siblings are UNTOUCHED — one null leaf is not a null channel root.  The
+    # one exception is ``broadcast``, whose manifest row is an EMBEDDED ref off
+    # ``chat``: a null ``chat`` carries it (see the next test).
+    for sib, sib_attr in (
+      ("common", "common"),
+      ("chat", "chat"),
+      ("share", "share"),
+      ("broadcast", "chat_broadcast"),
     ):
-        """A present ``<None>`` answers ``None``; only an ABSENT key takes the default.
+      if sib == leaf:
+        continue
+      if leaf == "chat" and sib == "broadcast":
+        continue  # an embedded ref off chat — chat carries it (next test)
+      assert getattr(wch, sib_attr) is not None, sib
 
-        Spec §2a: a null arm is a declared value, so the bind that leaf feeds is
-        omitted rather than pointed at the default directory.
-        """
-        ws_root = named_proj.group.root
-        _repoint(ws_root, f"workset.channels.{leaf}", None)
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert getattr(wch, attr) is None
-        # The siblings are UNTOUCHED — one null leaf is not a null channel root.  The
-        # one exception is ``broadcast``, whose manifest row is an EMBEDDED ref off
-        # ``chat``: a null ``chat`` carries it (see the next test).
-        for sib, sib_attr in (
-            ("common", "common"), ("chat", "chat"),
-            ("share", "share"), ("broadcast", "chat_broadcast"),
-        ):
-            if sib == leaf:
-                continue
-            if leaf == "chat" and sib == "broadcast":
-                continue  # an embedded ref off chat — chat carries it (next test)
-            assert getattr(wch, sib_attr) is not None, sib
+  def test_a_null_chat_takes_broadcast_with_it(self, named_proj, std):
+    """A null ``chat`` takes ``general.md`` AND ``broadcast`` with it.
 
-    def test_a_null_chat_takes_broadcast_with_it(self, named_proj, std):
-        """A null ``chat`` takes ``general.md`` AND ``broadcast`` with it.
+    ``general.md`` names no key, so it follows ``chat`` into nothing.  ``broadcast``
+    is a key, but its manifest row is ``{workset.channels.chat}/broadcast.md`` — an
+    EMBEDDED ref, and §0: an embedded reference to a present ``<None>`` makes the
+    whole value ``<None>``.
+    """
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", None)
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat is None
+    assert wch.chat_general is None
+    assert wch.chat_broadcast is None
 
-        ``general.md`` names no key, so it follows ``chat`` into nothing.  ``broadcast``
-        is a key, but its manifest row is ``{workset.channels.chat}/broadcast.md`` — an
-        EMBEDDED ref, and §0: an embedded reference to a present ``<None>`` makes the
-        whole value ``<None>``.
-        """
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", None)
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat is None
-        assert wch.chat_general is None
-        assert wch.chat_broadcast is None
+  def test_an_explicit_broadcast_repoint_survives_a_null_chat(self, named_proj, std):
+    """A stored value REPLACES the manifest formula, so it still resolves."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", None)
+    _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat is None
+    assert wch.chat_broadcast == ws_root / "shout.md"
 
-    def test_an_explicit_broadcast_repoint_survives_a_null_chat(self, named_proj, std):
-        """A stored value REPLACES the manifest formula, so it still resolves."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", None)
-        _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat is None
-        assert wch.chat_broadcast == ws_root / "shout.md"
+  def test_an_absent_leaf_still_takes_the_default(self, named_proj, std):
+    """The other half of the three states: absent is not null."""
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat == wch.root / "chat"
+    assert wch.common == wch.root / "common"
+    assert wch.chat_general == wch.root / "chat" / "general.md"
 
-    def test_an_absent_leaf_still_takes_the_default(self, named_proj, std):
-        """The other half of the three states: absent is not null."""
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat == wch.root / "chat"
-        assert wch.common == wch.root / "common"
-        assert wch.chat_general == wch.root / "chat" / "general.md"
+  def test_a_null_share_reaches_meta_box_share_workset(self, named_proj, std):
+    """The address follows the leaf: a null ``share`` has no address either."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.share", None)
+    addr = channels.box_channel_addresses(named_proj, std)
+    assert addr.share_workset is None
 
-    def test_a_null_share_reaches_meta_box_share_workset(self, named_proj, std):
-        """The address follows the leaf: a null ``share`` has no address either."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.share", None)
-        addr = channels.box_channel_addresses(named_proj, std)
-        assert addr.share_workset is None
+  def test_an_unresolvable_repoint_is_REFUSED_BY_NAME(self, named_proj, std):
+    """A key that cannot be resolved is an error naming the key, never a fallback.
 
-    def test_an_unresolvable_repoint_is_REFUSED_BY_NAME(self, named_proj, std):
-        """A key that cannot be resolved is an error naming the key, never a fallback.
+    ⚑ The refusal is the pre-snapshot route's, not a second one — this asserts the
+    key SPELLING reaches it (``workset.channels.chat``, not ``workset.chat``), which
+    is the half a per-key wrapper can get wrong.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
 
-        ⚑ The refusal is the pre-snapshot route's, not a second one — this asserts the
-        key SPELLING reaches it (``workset.channels.chat``, not ``workset.chat``), which
-        is the half a per-key wrapper can get wrong.
-        """
-        from kanibako.settings.settings_resolve import SettingsError
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", "{config.registry}/nope")
+    with pytest.raises(SettingsError) as exc:
+      channels.workset_channel_paths(named_proj, std)
+    assert "workset.channels.chat" in str(exc.value)
+    assert "{config.registry}" in str(exc.value)
 
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", "{config.registry}/nope")
-        with pytest.raises(SettingsError) as exc:
-            channels.workset_channel_paths(named_proj, std)
-        assert "workset.channels.chat" in str(exc.value)
-        assert "{config.registry}" in str(exc.value)
+  def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
+    self,
+    named_proj,
+    std,
+    tmp_path,
+    monkeypatch,
+  ):
+    """keyspec §2a "A path key's stored value": the six channel leaves route through
+    the same one resolver, so the ambiguity refusal reaches them by the same seam
+    the token refusal above does.
 
-    def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
-        self, named_proj, std, tmp_path, monkeypatch,
-    ):
-        """keyspec §2a "A path key's stored value": the six channel leaves route through
-        the same one resolver, so the ambiguity refusal reaches them by the same seam
-        the token refusal above does.
+    ⚑ INVERTED, NOT DELETED: this used to assert ``wch.chat == ws_root / "talk"``
+    under the heading "the ONE pre-snapshot grammar, unchanged".  The grammar IS
+    still one — the root-relative reading just has to be SPELLED now.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
 
-        ⚑ INVERTED, NOT DELETED: this used to assert ``wch.chat == ws_root / "talk"``
-        under the heading "the ONE pre-snapshot grammar, unchanged".  The grammar IS
-        still one — the root-relative reading just has to be SPELLED now.
-        """
-        from kanibako.settings.settings_resolve import SettingsError
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", "talk")
+    with pytest.raises(SettingsError) as exc:
+      channels.workset_channel_paths(named_proj, std)
+    message = str(exc.value)
+    assert "workset.channels.chat" in message
+    assert str(ws_root / "talk") in message
+    assert str(link / "talk") in message
+    assert str(real.resolve() / "talk") not in message
 
-        # Run from a link, as a shell does: only ``$PWD`` names the link.
-        real, link = tmp_path / "run-real", tmp_path / "run-from"
-        real.mkdir()
-        link.symlink_to(real)
-        monkeypatch.chdir(link)
-        monkeypatch.setenv("PWD", str(link))
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", "talk")
-        with pytest.raises(SettingsError) as exc:
-            channels.workset_channel_paths(named_proj, std)
-        message = str(exc.value)
-        assert "workset.channels.chat" in message
-        assert str(ws_root / "talk") in message
-        assert str(link / "talk") in message
-        assert str(real.resolve() / "talk") not in message
-
-    def test_the_root_relative_reading_stays_expressible(self, named_proj, std):
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", "{meta.workset.path}/talk")
-        wch = channels.workset_channel_paths(named_proj, std)
-        assert wch is not None
-        assert wch.chat == ws_root / "talk"
+  def test_the_root_relative_reading_stays_expressible(self, named_proj, std):
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", "{meta.workset.path}/talk")
+    wch = channels.workset_channel_paths(named_proj, std)
+    assert wch is not None
+    assert wch.chat == ws_root / "talk"
 
 
 class TestThePrimaryWorksetIsNotSpecial:
-    """⚑ The default-mode box reads the SAME keys, out of the primary workset's file.
+  """⚑ The default-mode box reads the SAME keys, out of the primary workset's file.
 
-    Worth its own case because the primary workset is synthesized rather than created
-    by the user, so it is easy to assume it has no ``workset.yaml`` to repoint from —
-    and it is the workset almost every box is in.
-    """
+  Worth its own case because the primary workset is synthesized rather than created
+  by the user, so it is easy to assume it has no ``workset.yaml`` to repoint from —
+  and it is the workset almost every box is in.
+  """
 
-    def test_a_chat_repoint_in_the_primary_workset_is_honored(self, primary_proj, std):
-        ws_root = channels.workset_root(primary_proj, std)
-        assert ws_root == std.primary_workset
-        _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
-        wch = channels.workset_channel_paths(primary_proj, std)
-        assert wch is not None
-        assert wch.chat == ws_root / "talk"
+  def test_a_chat_repoint_in_the_primary_workset_is_honored(self, primary_proj, std):
+    ws_root = channels.workset_root(primary_proj, std)
+    assert ws_root == std.primary_workset
+    _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
+    wch = channels.workset_channel_paths(primary_proj, std)
+    assert wch is not None
+    assert wch.chat == ws_root / "talk"
 
-    def test_a_mailboxes_repoint_in_the_primary_workset_is_honored(
-        self, primary_proj, std,
-    ):
-        ws_root = channels.workset_root(primary_proj, std)
-        _repoint(ws_root, "workset.channels.mailboxes", str(ws_root / "mail"))
-        addr = channels.box_channel_addresses(primary_proj, std)
-        assert addr.inbox == ws_root / "mail" / primary_proj.name
+  def test_a_mailboxes_repoint_in_the_primary_workset_is_honored(
+    self,
+    primary_proj,
+    std,
+  ):
+    ws_root = channels.workset_root(primary_proj, std)
+    _repoint(ws_root, "workset.channels.mailboxes", str(ws_root / "mail"))
+    addr = channels.box_channel_addresses(primary_proj, std)
+    assert addr.inbox == ws_root / "mail" / primary_proj.name
 
 
 class TestAllProjectsPartitionRepoints:
-    """``mailboxes`` / ``share_global`` — ALL PROJECTS, every mode (spec §2c)."""
+  """``mailboxes`` / ``share_global`` — ALL PROJECTS, every mode (spec §2c)."""
 
-    def test_mailboxes_default_is_the_system_partition(self, named_proj, std):
-        part = channels.workset_partition_paths(named_proj, std)
-        assert part.mailboxes == std.channels_mailboxes / "my_set"
-        assert part.share_global == std.channels_share / "my_set"
+  def test_mailboxes_default_is_the_system_partition(self, named_proj, std):
+    part = channels.workset_partition_paths(named_proj, std)
+    assert part.mailboxes == std.channels_mailboxes / "my_set"
+    assert part.share_global == std.channels_share / "my_set"
 
-    def test_mailboxes_repoint_moves_the_boxs_own_inbox(self, named_proj, std, tmp_home):
-        """⚑ THE SHARPEST OF THE THREE: a user could believe this worked, and it did not."""
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.mailboxes", str(tmp_home / "mail"))
-        part = channels.workset_partition_paths(named_proj, std)
-        assert part.mailboxes == tmp_home / "mail"
-        addr = channels.box_channel_addresses(named_proj, std)
-        assert addr.inbox == tmp_home / "mail" / named_proj.name
+  def test_mailboxes_repoint_moves_the_boxs_own_inbox(self, named_proj, std, tmp_home):
+    """⚑ THE SHARPEST OF THE THREE: a user could believe this worked, and it did not."""
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.mailboxes", str(tmp_home / "mail"))
+    part = channels.workset_partition_paths(named_proj, std)
+    assert part.mailboxes == tmp_home / "mail"
+    addr = channels.box_channel_addresses(named_proj, std)
+    assert addr.inbox == tmp_home / "mail" / named_proj.name
 
-    def test_share_global_repoint_moves_the_boxs_own_share(
-        self, named_proj, std, tmp_home,
-    ):
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.share_global", str(tmp_home / "pub"))
-        addr = channels.box_channel_addresses(named_proj, std)
-        assert addr.share_global == tmp_home / "pub" / named_proj.name
+  def test_share_global_repoint_moves_the_boxs_own_share(
+    self,
+    named_proj,
+    std,
+    tmp_home,
+  ):
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.share_global", str(tmp_home / "pub"))
+    addr = channels.box_channel_addresses(named_proj, std)
+    assert addr.share_global == tmp_home / "pub" / named_proj.name
 
-    def test_a_standalone_box_has_the_partition_keys_too(self, standalone_proj, std):
-        """⚑ D-M9: standalone omits the workset-LOCAL channels and keeps the partition."""
-        assert channels.workset_channel_paths(standalone_proj, std) is None
-        part = channels.workset_partition_paths(standalone_proj, std)
-        assert part.mailboxes == (
-            std.channels_mailboxes / channels.WS_TOKEN_STANDALONE
-        )
+  def test_a_standalone_box_has_the_partition_keys_too(self, standalone_proj, std):
+    """⚑ D-M9: standalone omits the workset-LOCAL channels and keeps the partition."""
+    assert channels.workset_channel_paths(standalone_proj, std) is None
+    part = channels.workset_partition_paths(standalone_proj, std)
+    assert part.mailboxes == (std.channels_mailboxes / channels.WS_TOKEN_STANDALONE)
 
-    def test_a_standalone_box_honors_a_mailboxes_repoint(
-        self, standalone_proj, std, tmp_home,
-    ):
-        _repoint(
-            channels.workset_root(standalone_proj, std),
-            "workset.channels.mailboxes",
-            str(tmp_home / "solo-mail"),
-        )
-        addr = channels.box_channel_addresses(standalone_proj, std)
-        assert addr.inbox == tmp_home / "solo-mail" / standalone_proj.name
+  def test_a_standalone_box_honors_a_mailboxes_repoint(
+    self,
+    standalone_proj,
+    std,
+    tmp_home,
+  ):
+    _repoint(
+      channels.workset_root(standalone_proj, std),
+      "workset.channels.mailboxes",
+      str(tmp_home / "solo-mail"),
+    )
+    addr = channels.box_channel_addresses(standalone_proj, std)
+    assert addr.inbox == tmp_home / "solo-mail" / standalone_proj.name
 
 
 class TestTheChatSeederFollowsTheKey:
-    """The MEASURED user-visible defect: seeded logs landed outside the mount."""
+  """The MEASURED user-visible defect: seeded logs landed outside the mount."""
 
-    def test_the_logs_are_seeded_into_the_repointed_chat_dir(self, named_proj, std):
-        from kanibako.commands.start import _seed_channel_files
+  def test_the_logs_are_seeded_into_the_repointed_chat_dir(self, named_proj, std):
+    from kanibako.commands.start import _seed_channel_files
 
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
-        _seed_channel_files(std, named_proj)
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
+    _seed_channel_files(std, named_proj)
 
-        assert (ws_root / "talk" / "general.md").is_file()
-        assert (ws_root / "talk" / "broadcast.md").is_file()
-        # ⚑ AND NOWHERE ELSE.  The old code seeded the un-overridden join, which is
-        # mounted nowhere — so the guest's ~/channels/workset/chat was empty and the
-        # host grew a stray directory the user never asked for.
-        assert not (ws_root / "channels" / "chat").exists()
+    assert (ws_root / "talk" / "general.md").is_file()
+    assert (ws_root / "talk" / "broadcast.md").is_file()
+    # ⚑ AND NOWHERE ELSE.  The old code seeded the un-overridden join, which is
+    # mounted nowhere — so the guest's ~/channels/workset/chat was empty and the
+    # host grew a stray directory the user never asked for.
+    assert not (ws_root / "channels" / "chat").exists()
 
-    def test_a_broadcast_repoint_is_the_file_that_gets_created(self, named_proj, std):
-        from kanibako.commands.start import _seed_channel_files
+  def test_a_broadcast_repoint_is_the_file_that_gets_created(self, named_proj, std):
+    from kanibako.commands.start import _seed_channel_files
 
-        ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
-        _seed_channel_files(std, named_proj)
+    ws_root = named_proj.group.root
+    _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
+    _seed_channel_files(std, named_proj)
 
-        assert (ws_root / "shout.md").is_file()
-        assert not (ws_root / "channels" / "chat" / "broadcast.md").exists()
+    assert (ws_root / "shout.md").is_file()
+    assert not (ws_root / "channels" / "chat" / "broadcast.md").exists()
 
 
 class TestTheFloorCarriesTheWholeFamily:
-    """A key nothing installs is not resolvable, so ``{workset.channels.x}`` would dangle."""
+  """A key nothing installs is not resolvable, so ``{workset.channels.x}`` would dangle."""
 
-    def test_the_launch_floor_installs_channelroot_and_all_six_leaves(
-        self, named_proj, std,
-    ):
-        from kanibako.settings.settings_launch import _workset_channel_floor_values
-        from kanibako.settings.settings_launch import workset_anchor_floor
+  def test_the_launch_floor_installs_channelroot_and_all_six_leaves(
+    self,
+    named_proj,
+    std,
+  ):
+    from kanibako.settings.settings_launch import _workset_channel_floor_values
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
-        channelroot, leaves = _workset_channel_floor_values(
-            channels.workset_partition_paths(named_proj, std),
-            channels.workset_channel_paths(named_proj, std),
-        )
-        floor = workset_anchor_floor(
-            mode="named", channelroot=channelroot, workset_channels=leaves,
-        )
-        assert floor["workset.channelroot"] == str(
-            channels.workset_channel_paths(named_proj, std).root
-        )
-        for leaf in DECLARED_WORKSET_CHANNEL_LEAVES:
-            assert f"workset.channels.{leaf}" in floor, leaf
+    channelroot, leaves = _workset_channel_floor_values(
+      channels.workset_partition_paths(named_proj, std),
+      channels.workset_channel_paths(named_proj, std),
+    )
+    floor = workset_anchor_floor(
+      mode="named",
+      channelroot=channelroot,
+      workset_channels=leaves,
+    )
+    assert floor["workset.channelroot"] == str(
+      channels.workset_channel_paths(named_proj, std).root
+    )
+    for leaf in DECLARED_WORKSET_CHANNEL_LEAVES:
+      assert f"workset.channels.{leaf}" in floor, leaf
 
-    def test_a_standalone_launch_still_installs_the_partition_leaves(
-        self, standalone_proj, std,
-    ):
-        """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
-        partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
-        omitted (keyspec §0 "it must RESOLVE"): an absent key renders ``""`` inside an
-        embedded ``{key}``-ref."""
-        from kanibako.settings.settings_launch import _workset_channel_floor_values
-        from kanibako.settings.settings_launch import workset_anchor_floor
+  def test_a_standalone_launch_still_installs_the_partition_leaves(
+    self,
+    standalone_proj,
+    std,
+  ):
+    """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
+    partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
+    omitted (keyspec §0 "it must RESOLVE"): an absent key renders ``""`` inside an
+    embedded ``{key}``-ref."""
+    from kanibako.settings.settings_launch import _workset_channel_floor_values
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
-        channelroot, leaves = _workset_channel_floor_values(
-            channels.workset_partition_paths(standalone_proj, std),
-            channels.workset_channel_paths(standalone_proj, std),
-        )
-        assert channelroot is None
-        floor = workset_anchor_floor(
-            mode="standalone", channelroot=channelroot, workset_channels=leaves,
-        )
-        assert "workset.channelroot" in floor
-        assert floor["workset.channelroot"] is None
-        assert floor["workset.channels.mailboxes"] == str(
-            channels.workset_partition_paths(standalone_proj, std).mailboxes
-        )
-        for leaf in ("common", "chat", "broadcast", "share"):
-            assert f"workset.channels.{leaf}" in floor, leaf
-            assert floor[f"workset.channels.{leaf}"] is None, leaf
+    channelroot, leaves = _workset_channel_floor_values(
+      channels.workset_partition_paths(standalone_proj, std),
+      channels.workset_channel_paths(standalone_proj, std),
+    )
+    assert channelroot is None
+    floor = workset_anchor_floor(
+      mode="standalone",
+      channelroot=channelroot,
+      workset_channels=leaves,
+    )
+    assert "workset.channelroot" in floor
+    assert floor["workset.channelroot"] is None
+    assert floor["workset.channels.mailboxes"] == str(
+      channels.workset_partition_paths(standalone_proj, std).mailboxes
+    )
+    for leaf in ("common", "chat", "broadcast", "share"):
+      assert f"workset.channels.{leaf}" in floor, leaf
+      assert floor[f"workset.channels.{leaf}"] is None, leaf

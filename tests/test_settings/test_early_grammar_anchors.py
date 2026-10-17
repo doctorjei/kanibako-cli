@@ -36,14 +36,18 @@ def _read(value: str, early: EarlyScope, key: str = "channels.mailboxes") -> Pat
 @pytest.mark.parametrize("value", _MAILBOXES_DEFAULT)
 @pytest.mark.parametrize(("mode", "name", "token"), _PARTITIONS)
 def test_the_spec_mailboxes_default_resolves_per_partition(value, mode, name, token, tmp_path):
-  mailboxes = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)["system.channels.mailboxes"]
+  mailboxes = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)[
+    "system.channels.mailboxes"
+  ]
   early = early_record(tmp_path, mode=mode, name=name)
   assert _read(value, early) == Path(mailboxes) / token
 
 
 @pytest.mark.parametrize("value", ["/srv/mb/{meta.workset.name}"])
 def test_the_name_alone_spells_the_partition(value, tmp_path):
-  assert _read(value, early_record(tmp_path, mode=BoxMode.named, name="kento")) == Path("/srv/mb/kento")
+  assert _read(value, early_record(tmp_path, mode=BoxMode.named, name="kento")) == Path(
+    "/srv/mb/kento"
+  )
 
 
 @pytest.mark.parametrize("value", ["{system.cache}/x"])
@@ -57,9 +61,12 @@ def test_a_system_path_is_read_verbatim_from_the_record(value, tmp_path):
 def test_a_dropped_system_table_refuses_the_ref_naming_why(value, tmp_path):
   early = early_record(tmp_path, mode=BoxMode.primary)
   failed = EarlyScope(
-    replace(early.system, system_paths={}, system_refusal="system.cache is null"), early.workset_name,
+    replace(early.system, system_paths={}, system_refusal="system.cache is null"),
+    early.workset_name,
   )
-  with pytest.raises(SettingsError, match=r"'\{system.channels.mailboxes\}' cannot be read: system.cache is null"):
+  with pytest.raises(
+    SettingsError, match=r"'\{system.channels.mailboxes\}' cannot be read: system.cache is null"
+  ):
     _read(value, failed)
 
 
@@ -78,12 +85,15 @@ def test_no_other_anchor_is_admitted(value, tmp_path):
     _read(value, early_record(tmp_path, mode=BoxMode.primary))
 
 
-@pytest.mark.parametrize(("value", "cure"), [
-  ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
-  ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
-  ("@system.cache/x", "{system.cache}"),
-  ("/z/@system.agent", "{system.agent}"),
-])
+@pytest.mark.parametrize(
+  ("value", "cure"),
+  [
+    ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
+    ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
+    ("@system.cache/x", "{system.cache}"),
+    ("/z/@system.agent", "{system.agent}"),
+  ],
+)
 def test_the_old_spelling_is_refused_naming_the_braced_one(value, cure, tmp_path):
   """The one-release guard (keyspec "References") at the early read."""
   with pytest.raises(SettingsError, match=f"write '{re.escape(cure)}'"):

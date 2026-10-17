@@ -8,569 +8,622 @@ import pytest
 
 
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.paths import (
+  WorksetSpec,
+  load_std_paths,
+  resolve_project,
+  resolve_workset_project,
+)
 from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
 class TestClean:
-    def test_force_removes_data(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_force_removes_data(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.metadata_path.is_dir()
+    assert proj.metadata_path.is_dir()
 
-        args = argparse.Namespace(
-            path=project_dir,
-            all_projects=False,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert not proj.metadata_path.exists()
+    args = argparse.Namespace(
+      path=project_dir,
+      all_projects=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert not proj.metadata_path.exists()
 
-    def test_force_removes_the_box_logs(self, config_file, tmp_home, credentials_dir):
-        """Both per-box logs in ``workset.logs`` go with the session data — the helper log
-        and the creds watcher's log, which sit outside the box dir the rmtree takes."""
-        from kanibako.commands.clean import run
-        from kanibako.settings.paths import creds_watcher_log_path, helper_log_path
+  def test_force_removes_the_box_logs(self, config_file, tmp_home, credentials_dir):
+    """Both per-box logs in ``workset.logs`` go with the session data — the helper log
+    and the creds watcher's log, which sit outside the box dir the rmtree takes."""
+    from kanibako.commands.clean import run
+    from kanibako.settings.paths import creds_watcher_log_path, helper_log_path
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        logs = [helper_log_path(std, proj), creds_watcher_log_path(std, proj)]
-        for log in logs:
-            log.parent.mkdir(parents=True, exist_ok=True)
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    logs = [helper_log_path(std, proj), creds_watcher_log_path(std, proj)]
+    for log in logs:
+      log.parent.mkdir(parents=True, exist_ok=True)
+      log.write_text("x")
 
-        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
-        assert run(args) == 0
-        assert [log for log in logs if log.exists()] == []
+    args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+    assert run(args) == 0
+    assert [log for log in logs if log.exists()] == []
 
-    def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
-        """M2: purging a primary box drops its PRIMARY-membership entry."""
-        from kanibako.commands.clean import run
-        from kanibako.settings.paths import (
-            load_primary_boxes,
-            primary_box_name_for_workspace,
-        )
+  def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
+    """M2: purging a primary box drops its PRIMARY-membership entry."""
+    from kanibako.commands.clean import run
+    from kanibako.settings.paths import (
+      load_primary_boxes,
+      primary_box_name_for_workspace,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        (tmp_home / "registered_proj").mkdir()
-        project_dir = str(tmp_home / "registered_proj")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    (tmp_home / "registered_proj").mkdir()
+    project_dir = str(tmp_home / "registered_proj")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Initialized → registered.
-        assert primary_box_name_for_workspace(
-            std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)) is not None
+    # Initialized → registered.
+    assert (
+      primary_box_name_for_workspace(
+        std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)
+      )
+      is not None
+    )
 
-        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
-        assert run(args) == 0
+    args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+    assert run(args) == 0
 
-        # No dangling name → path entry remains.
-        assert primary_box_name_for_workspace(
-            std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)) is None
-        assert project_dir not in load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
+    # No dangling name → path entry remains.
+    assert (
+      primary_box_name_for_workspace(
+        std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)
+      )
+      is None
+    )
+    assert (
+      project_dir
+      not in load_primary_boxes(
+        std.primary_workset, early=_early_scope(std, BoxMode.primary)
+      ).values()
+    )
 
-    def test_purge_also_unregisters_primary_boxes_membership(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Bug A source fix: purging a primary box ALSO drops its PRIMARY-workset
-        ``boxes:`` membership — not just the global name — so the two registries
-        do not drift (the drift that later tripped ``register_workset_box``'s
-        uniqueness guard on a re-create).  Mutation guard: remove the membership
-        unregister in clean.py and the ``boxes:`` entry survives → this reddens.
-        """
-        from kanibako.project import workset_registry
-        from kanibako.commands.clean import run
-        from kanibako.settings.config_io import load_doc
+  def test_purge_also_unregisters_primary_boxes_membership(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Bug A source fix: purging a primary box ALSO drops its PRIMARY-workset
+    ``boxes:`` membership — not just the global name — so the two registries
+    do not drift (the drift that later tripped ``register_workset_box``'s
+    uniqueness guard on a re-create).  Mutation guard: remove the membership
+    unregister in clean.py and the ``boxes:`` entry survives → this reddens.
+    """
+    from kanibako.project import workset_registry
+    from kanibako.commands.clean import run
+    from kanibako.settings.config_io import load_doc
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        (tmp_home / "member_proj").mkdir()
-        project_dir = str(tmp_home / "member_proj")
-        proj = resolve_project(
-            std, config, project_dir=project_dir, initialize=True,
-        )
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    (tmp_home / "member_proj").mkdir()
+    project_dir = str(tmp_home / "member_proj")
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=project_dir,
+      initialize=True,
+    )
 
-        prim_reg = workset_registry.resolve_workset_registry_path(
-            std.primary_workset,
-            load_doc(std.primary_workset / "workset.yaml"),
-            early=_early_scope(std, BoxMode.primary),
-        )
-        assert proj.name in workset_registry.load_workset_boxes(prim_reg)
+    prim_reg = workset_registry.resolve_workset_registry_path(
+      std.primary_workset,
+      load_doc(std.primary_workset / "workset.yaml"),
+      early=_early_scope(std, BoxMode.primary),
+    )
+    assert proj.name in workset_registry.load_workset_boxes(prim_reg)
 
-        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
-        assert run(args) == 0
+    args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+    assert run(args) == 0
 
-        # Membership dropped too — no stale boxes: entry left behind.
-        assert proj.name not in workset_registry.load_workset_boxes(prim_reg)
+    # Membership dropped too — no stale boxes: entry left behind.
+    assert proj.name not in workset_registry.load_workset_boxes(prim_reg)
 
-    def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
-        """M2 mirror: --all purge clears every primary membership entry."""
-        from kanibako.commands.clean import run
-        from kanibako.settings.paths import load_primary_boxes
+  def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
+    """M2 mirror: --all purge clears every primary membership entry."""
+    from kanibako.commands.clean import run
+    from kanibako.settings.paths import load_primary_boxes
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        (tmp_home / "reg_a").mkdir()
-        (tmp_home / "reg_b").mkdir()
-        a = str(tmp_home / "reg_a")
-        b = str(tmp_home / "reg_b")
-        resolve_project(std, config, project_dir=a, initialize=True)
-        resolve_project(std, config, project_dir=b, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    (tmp_home / "reg_a").mkdir()
+    (tmp_home / "reg_b").mkdir()
+    a = str(tmp_home / "reg_a")
+    b = str(tmp_home / "reg_b")
+    resolve_project(std, config, project_dir=a, initialize=True)
+    resolve_project(std, config, project_dir=b, initialize=True)
 
-        args = argparse.Namespace(path=None, all_projects=True, force=True)
-        assert run(args) == 0
+    args = argparse.Namespace(path=None, all_projects=True, force=True)
+    assert run(args) == 0
 
-        projects = load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert a not in projects.values()
-        assert b not in projects.values()
+    projects = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert a not in projects.values()
+    assert b not in projects.values()
 
-    def test_no_session_data(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_no_session_data(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        new_project = tmp_home / "empty_project"
-        new_project.mkdir()
+    new_project = tmp_home / "empty_project"
+    new_project.mkdir()
 
-        args = argparse.Namespace(
-            path=str(new_project),
-            all_projects=False,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(
+      path=str(new_project),
+      all_projects=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
-    def test_no_path_no_all_returns_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_no_path_no_all_returns_error(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        args = argparse.Namespace(
-            path=None,
-            all_projects=False,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 1
+    args = argparse.Namespace(
+      path=None,
+      all_projects=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 1
 
-    def test_all_force_removes_all(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_all_force_removes_all(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create two projects
-        proj_a_dir = tmp_home / "proj_a"
-        proj_a_dir.mkdir()
-        proj_a = resolve_project(std, config, project_dir=str(proj_a_dir), initialize=True)
+    # Create two projects
+    proj_a_dir = tmp_home / "proj_a"
+    proj_a_dir.mkdir()
+    proj_a = resolve_project(std, config, project_dir=str(proj_a_dir), initialize=True)
 
-        proj_b_dir = tmp_home / "proj_b"
-        proj_b_dir.mkdir()
-        proj_b = resolve_project(std, config, project_dir=str(proj_b_dir), initialize=True)
+    proj_b_dir = tmp_home / "proj_b"
+    proj_b_dir.mkdir()
+    proj_b = resolve_project(std, config, project_dir=str(proj_b_dir), initialize=True)
 
-        assert proj_a.metadata_path.is_dir()
-        assert proj_b.metadata_path.is_dir()
+    assert proj_a.metadata_path.is_dir()
+    assert proj_b.metadata_path.is_dir()
 
-        args = argparse.Namespace(
-            path=None,
-            all_projects=True,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert not proj_a.metadata_path.exists()
-        assert not proj_b.metadata_path.exists()
+    args = argparse.Namespace(
+      path=None,
+      all_projects=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert not proj_a.metadata_path.exists()
+    assert not proj_b.metadata_path.exists()
 
-    def test_all_empty_returns_zero(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_all_empty_returns_zero(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        args = argparse.Namespace(
-            path=None,
-            all_projects=True,
-            force=True,
-        )
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(
+      path=None,
+      all_projects=True,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
 
 
 class TestCleanExtended:
-    def test_purge_standalone_project(self, config_file, tmp_home):
-        """Purge removes the in-tree artifacts (box_data/, root workset.yaml,
-        canon/, vault/) for a standalone project, leaving the project root itself."""
-        from kanibako.commands.clean import run
+  def test_purge_standalone_project(self, config_file, tmp_home):
+    """Purge removes the in-tree artifacts (box_data/, root workset.yaml,
+    canon/, vault/) for a standalone project, leaving the project root itself."""
+    from kanibako.commands.clean import run
 
-        project_dir = tmp_home / "project"
-        kanibako_dir = project_dir / "box_data"
-        kanibako_dir.mkdir(parents=True)
-        # Standalone marker: the ROOT workset.yaml's stored registry null.
-        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
-        (kanibako_dir / "data.txt").write_text("session-data")
-        (project_dir / "canon" / "handbook").mkdir(parents=True)
+    project_dir = tmp_home / "project"
+    kanibako_dir = project_dir / "box_data"
+    kanibako_dir.mkdir(parents=True)
+    # Standalone marker: the ROOT workset.yaml's stored registry null.
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (kanibako_dir / "data.txt").write_text("session-data")
+    (project_dir / "canon" / "handbook").mkdir(parents=True)
 
-        args = argparse.Namespace(
-            path=str(project_dir), all_projects=False, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert not kanibako_dir.exists()
-        assert not (project_dir / "workset.yaml").exists()
-        assert not (project_dir / "canon").exists()
-        # The project root itself is NOT deleted.
-        assert project_dir.is_dir()
+    args = argparse.Namespace(
+      path=str(project_dir),
+      all_projects=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert not kanibako_dir.exists()
+    assert not (project_dir / "workset.yaml").exists()
+    assert not (project_dir / "canon").exists()
+    # The project root itself is NOT deleted.
+    assert project_dir.is_dir()
 
-    def test_purge_standalone_unlinks_a_linked_vault(self, config_file, tmp_home):
-        """A ``vault/`` symlink goes as a link; nothing behind it is touched."""
-        from kanibako.commands.clean import run
+  def test_purge_standalone_unlinks_a_linked_vault(self, config_file, tmp_home):
+    """A ``vault/`` symlink goes as a link; nothing behind it is touched."""
+    from kanibako.commands.clean import run
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
-        outside = tmp_home / "extv"
-        (outside / "rw").mkdir(parents=True)
-        (outside / "rw" / "canary.txt").write_text("keep me\n")
-        (project_dir / "vault").symlink_to(outside)
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    outside = tmp_home / "extv"
+    (outside / "rw").mkdir(parents=True)
+    (outside / "rw" / "canary.txt").write_text("keep me\n")
+    (project_dir / "vault").symlink_to(outside)
 
-        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-        assert run(args) == 0
-        assert not (project_dir / "vault").is_symlink()
-        assert (outside / "rw" / "canary.txt").read_text() == "keep me\n"
+    args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+    assert run(args) == 0
+    assert not (project_dir / "vault").is_symlink()
+    assert (outside / "rw" / "canary.txt").read_text() == "keep me\n"
 
-    @pytest.mark.parametrize("where", ["outside", "at-root", "linked-parent"])
-    def test_purge_standalone_keeps_a_canon_not_strictly_inside(
-        self, config_file, tmp_home, capsys, where,
-    ):
-        """A ``workset.canon`` outside the root, AT it, or reached out through a linked
-        parent is kept and named; the rest of the purge still happens."""
-        from kanibako.commands.clean import run
+  @pytest.mark.parametrize("where", ["outside", "at-root", "linked-parent"])
+  def test_purge_standalone_keeps_a_canon_not_strictly_inside(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    where,
+  ):
+    """A ``workset.canon`` outside the root, AT it, or reached out through a linked
+    parent is kept and named; the rest of the purge still happens."""
+    from kanibako.commands.clean import run
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        (project_dir / "mine.txt").write_text("mine\n")
-        outside = tmp_home / "ext"
-        (outside / "canon").mkdir(parents=True)
-        (outside / "canon" / "canary.txt").write_text("keep me\n")
-        (project_dir / "lnk").symlink_to(outside)
-        canon, kept = {
-            "outside": (outside / "canon", outside / "canon"),
-            "at-root": (project_dir, project_dir),
-            "linked-parent": (project_dir / "lnk" / "canon", outside / "canon"),
-        }[where]
-        (project_dir / "workset.yaml").write_text(
-            f"workset:\n  registry: null\n  canon: '{canon}'\n")
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    (project_dir / "mine.txt").write_text("mine\n")
+    outside = tmp_home / "ext"
+    (outside / "canon").mkdir(parents=True)
+    (outside / "canon" / "canary.txt").write_text("keep me\n")
+    (project_dir / "lnk").symlink_to(outside)
+    canon, kept = {
+      "outside": (outside / "canon", outside / "canon"),
+      "at-root": (project_dir, project_dir),
+      "linked-parent": (project_dir / "lnk" / "canon", outside / "canon"),
+    }[where]
+    (project_dir / "workset.yaml").write_text(f"workset:\n  registry: null\n  canon: '{canon}'\n")
 
-        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-        assert run(args) == 0
-        assert f"left the canon folder at {kept} in place" in capsys.readouterr().err
-        assert not (project_dir / "box_data").exists()
-        assert not (project_dir / "workset.yaml").exists()
-        assert (project_dir / "mine.txt").read_text() == "mine\n"
-        assert (project_dir / "lnk").is_symlink()
-        assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
+    args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+    assert run(args) == 0
+    assert f"left the canon folder at {kept} in place" in capsys.readouterr().err
+    assert not (project_dir / "box_data").exists()
+    assert not (project_dir / "workset.yaml").exists()
+    assert (project_dir / "mine.txt").read_text() == "mine\n"
+    assert (project_dir / "lnk").is_symlink()
+    assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
 
-    def test_purge_standalone_names_a_canon_left_by_a_null_key(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.clean import run
+  def test_purge_standalone_names_a_canon_left_by_a_null_key(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.clean import run
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        (project_dir / "canon").mkdir()
-        (project_dir / "canon" / "mine.txt").write_text("mine\n")
-        (project_dir / "workset.yaml").write_text(
-            "workset:\n  registry: null\n  canon: null\n")
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    (project_dir / "canon").mkdir()
+    (project_dir / "canon" / "mine.txt").write_text("mine\n")
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n  canon: null\n")
 
-        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-        assert run(args) == 0
-        assert (f"left the canon folder at {project_dir / 'canon'} in place — not the "
-                "canon tier of this box") in capsys.readouterr().err
-        assert not (project_dir / "box_data").exists()
-        assert (project_dir / "canon" / "mine.txt").read_text() == "mine\n"
+    args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+    assert run(args) == 0
+    assert (
+      f"left the canon folder at {project_dir / 'canon'} in place — not the canon tier of this box"
+    ) in capsys.readouterr().err
+    assert not (project_dir / "box_data").exists()
+    assert (project_dir / "canon" / "mine.txt").read_text() == "mine\n"
 
-    def test_purge_standalone_drops_a_gitignore_holding_only_kanibakos_line(
-        self, config_file, tmp_home,
-    ):
-        from kanibako.commands.clean import run
+  def test_purge_standalone_drops_a_gitignore_holding_only_kanibakos_line(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    from kanibako.commands.clean import run
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
-        (project_dir / ".gitignore").write_text("box_data/\n")
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / ".gitignore").write_text("box_data/\n")
 
-        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-        assert run(args) == 0
-        assert not (project_dir / ".gitignore").exists()
+    args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+    assert run(args) == 0
+    assert not (project_dir / ".gitignore").exists()
 
-    def test_purge_standalone_refuses_a_malformed_root_file(self, config_file, tmp_home):
-        from kanibako.commands.clean import run
-        from kanibako.errors import ConfigError
+  def test_purge_standalone_refuses_a_malformed_root_file(self, config_file, tmp_home):
+    from kanibako.commands.clean import run
+    from kanibako.errors import ConfigError
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        bad = "workset:\n  registry: null\n  canon: @meta.workset.path/canon\n"
-        (project_dir / "workset.yaml").write_text(bad)
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    bad = "workset:\n  registry: null\n  canon: @meta.workset.path/canon\n"
+    (project_dir / "workset.yaml").write_text(bad)
 
-        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-        with pytest.raises(ConfigError, match="is not valid YAML"):
-            run(args)
-        assert (project_dir / "box_data").is_dir()
-        assert (project_dir / "workset.yaml").read_text() == bad
+    args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+    with pytest.raises(ConfigError, match="is not valid YAML"):
+      run(args)
+    assert (project_dir / "box_data").is_dir()
+    assert (project_dir / "workset.yaml").read_text() == bad
 
-    def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        """--all only covers default-mode projects, not standalone."""
-        from kanibako.commands.clean import run
+  def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
+    """--all only covers default-mode projects, not standalone."""
+    from kanibako.commands.clean import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create a default-mode project
-        ac_dir = tmp_home / "ac_project"
-        ac_dir.mkdir()
-        proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
+    # Create a default-mode project
+    ac_dir = tmp_home / "ac_project"
+    ac_dir.mkdir()
+    proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
-        # Create a standalone project
-        dec_dir = tmp_home / "dec_project"
-        dec_dir.mkdir()
-        (dec_dir / "box_data").mkdir()
-        (dec_dir / "box_data" / "box.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-        (dec_dir / "box_data" / "data.txt").write_text("dec-data")
+    # Create a standalone project
+    dec_dir = tmp_home / "dec_project"
+    dec_dir.mkdir()
+    (dec_dir / "box_data").mkdir()
+    (dec_dir / "box_data" / "box.yaml").write_text('project:\n  mode: "standalone"\n')
+    (dec_dir / "box_data" / "data.txt").write_text("dec-data")
 
-        args = argparse.Namespace(all_projects=True, force=True)
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(all_projects=True, force=True)
+    rc = run(args)
+    assert rc == 0
 
-        # Local settings should be gone
-        assert not proj.metadata_path.exists()
-        # Standalone box_data/ should still exist (not covered by --all)
-        assert (dec_dir / "box_data" / "data.txt").exists()
+    # Local settings should be gone
+    assert not proj.metadata_path.exists()
+    # Standalone box_data/ should still exist (not covered by --all)
+    assert (dec_dir / "box_data" / "data.txt").exists()
 
 
 class TestCleanWorkset:
-    def test_purge_all_includes_workset_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.clean import run
+  def test_purge_all_includes_workset_projects(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.clean import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create a default-mode project
-        ac_dir = tmp_home / "ac_purge"
-        ac_dir.mkdir()
-        ac_proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
+    # Create a default-mode project
+    ac_dir = tmp_home / "ac_purge"
+    ac_dir.mkdir()
+    ac_proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
-        # Create a workset with an initialized project
-        ws_root = tmp_home / "worksets" / "purge_ws"
-        ws = create_workset("purge_ws", ws_root, std)
-        source = tmp_home / "purge_src"
-        source.mkdir()
-        add_project(ws, "purge_proj", source)
-        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "purge_proj", std, config, initialize=True)
-        (ws_proj.metadata_path / "data.txt").write_text("ws-data")
+    # Create a workset with an initialized project
+    ws_root = tmp_home / "worksets" / "purge_ws"
+    ws = create_workset("purge_ws", ws_root, std)
+    source = tmp_home / "purge_src"
+    source.mkdir()
+    add_project(ws, "purge_proj", source)
+    ws_proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws), "purge_proj", std, config, initialize=True
+    )
+    (ws_proj.metadata_path / "data.txt").write_text("ws-data")
 
-        args = argparse.Namespace(all_projects=True, force=True)
-        rc = run(args)
-        assert rc == 0
+    args = argparse.Namespace(all_projects=True, force=True)
+    rc = run(args)
+    assert rc == 0
 
-        # Local settings should be gone
-        assert not ac_proj.metadata_path.exists()
-        # Workset settings should be gone
-        assert not (ws.projects_dir / "purge_proj" / "data.txt").exists()
+    # Local settings should be gone
+    assert not ac_proj.metadata_path.exists()
+    # Workset settings should be gone
+    assert not (ws.projects_dir / "purge_proj" / "data.txt").exists()
 
-    def test_purge_all_removes_every_box_log(self, config_file, tmp_home, credentials_dir):
-        """``--all`` deletes each box's log files — helper log and creds watcher log —
-        for PRIMARY boxes and for NAMED members alike."""
-        from kanibako.commands.clean import run
-        from kanibako.settings.paths import box_log_files
+  def test_purge_all_removes_every_box_log(self, config_file, tmp_home, credentials_dir):
+    """``--all`` deletes each box's log files — helper log and creds watcher log —
+    for PRIMARY boxes and for NAMED members alike."""
+    from kanibako.commands.clean import run
+    from kanibako.settings.paths import box_log_files
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        primary_dir = tmp_home / "all_logs"
-        primary_dir.mkdir()
-        primary = resolve_project(std, config, project_dir=str(primary_dir), initialize=True)
-        ws = create_workset("logs_ws", tmp_home / "worksets" / "logs_ws", std)
-        source = tmp_home / "logs_src"
-        source.mkdir()
-        add_project(ws, "logs_proj", source)
-        resolve_workset_project(
-            WorksetSpec.from_workset(ws), "logs_proj", std, config, initialize=True,
-        )
-        logs = [
-            *box_log_files(std.primary_logs, primary.metadata_path.name),
-            *box_log_files(ws.logs_dir, "logs_proj"),
-        ]
-        for log in logs:
-            log.parent.mkdir(parents=True, exist_ok=True)
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    primary_dir = tmp_home / "all_logs"
+    primary_dir.mkdir()
+    primary = resolve_project(std, config, project_dir=str(primary_dir), initialize=True)
+    ws = create_workset("logs_ws", tmp_home / "worksets" / "logs_ws", std)
+    source = tmp_home / "logs_src"
+    source.mkdir()
+    add_project(ws, "logs_proj", source)
+    resolve_workset_project(
+      WorksetSpec.from_workset(ws),
+      "logs_proj",
+      std,
+      config,
+      initialize=True,
+    )
+    logs = [
+      *box_log_files(std.primary_logs, primary.metadata_path.name),
+      *box_log_files(ws.logs_dir, "logs_proj"),
+    ]
+    for log in logs:
+      log.parent.mkdir(parents=True, exist_ok=True)
+      log.write_text("x")
 
-        assert run(argparse.Namespace(all_projects=True, force=True)) == 0
-        assert [log for log in logs if log.exists()] == []
+    assert run(argparse.Namespace(all_projects=True, force=True)) == 0
+    assert [log for log in logs if log.exists()] == []
 
-    def test_purge_workset_project_single(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.clean import run
+  def test_purge_workset_project_single(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.clean import run
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws_root = tmp_home / "worksets" / "single_purge_ws"
-        ws = create_workset("single_purge_ws", ws_root, std)
-        source = tmp_home / "single_purge_src"
-        source.mkdir()
-        add_project(ws, "single_purge_proj", source)
-        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single_purge_proj", std, config, initialize=True)
-        (ws_proj.metadata_path / "data.txt").write_text("purge-data")
+    ws_root = tmp_home / "worksets" / "single_purge_ws"
+    ws = create_workset("single_purge_ws", ws_root, std)
+    source = tmp_home / "single_purge_src"
+    source.mkdir()
+    add_project(ws, "single_purge_proj", source)
+    ws_proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws), "single_purge_proj", std, config, initialize=True
+    )
+    (ws_proj.metadata_path / "data.txt").write_text("purge-data")
 
-        # Use workspace path as path arg
-        args = argparse.Namespace(
-            path=str(ws.workspaces_dir / "single_purge_proj"),
-            all_projects=False, force=True,
-        )
-        rc = run(args)
-        assert rc == 0
-        assert not ws_proj.metadata_path.exists()
+    # Use workspace path as path arg
+    args = argparse.Namespace(
+      path=str(ws.workspaces_dir / "single_purge_proj"),
+      all_projects=False,
+      force=True,
+    )
+    rc = run(args)
+    assert rc == 0
+    assert not ws_proj.metadata_path.exists()
 
 
 class TestCleanCredsWatcherLock:
-    """``clean`` leaves the same root-level orphan ``box rm --purge`` used to: the lock
-    sits in the ROOT, outside the store the purge takes.  Unheld it goes; held it is
-    named and stays."""
+  """``clean`` leaves the same root-level orphan ``box rm --purge`` used to: the lock
+  sits in the ROOT, outside the store the purge takes.  Unheld it goes; held it is
+  named and stays."""
 
-    def _standalone(self, tmp_home):
-        from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
+  def _standalone(self, tmp_home):
+    from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
 
-        project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir(parents=True)
-        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
-        (project_dir / "box_data" / "data.txt").write_text("session-data")
-        return project_dir / CREDS_WATCHER_LOCK_FILE
+    project_dir = tmp_home / "project"
+    (project_dir / "box_data").mkdir(parents=True)
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "box_data" / "data.txt").write_text("session-data")
+    return project_dir / CREDS_WATCHER_LOCK_FILE
 
-    def test_an_unheld_lock_goes_with_the_purge(self, config_file, tmp_home, capsys):
-        from kanibako.commands.clean import run
+  def test_an_unheld_lock_goes_with_the_purge(self, config_file, tmp_home, capsys):
+    from kanibako.commands.clean import run
 
-        lock = self._standalone(tmp_home)
-        lock.write_text("stale\n")
-        capsys.readouterr()
+    lock = self._standalone(tmp_home)
+    lock.write_text("stale\n")
+    capsys.readouterr()
 
-        assert run(argparse.Namespace(path=str(tmp_home / "project"),
-                                    all_projects=False, force=True)) == 0
-        out = capsys.readouterr()
-        assert not lock.exists()
-        assert "Removed creds watcher lock" in out.out
+    assert (
+      run(argparse.Namespace(path=str(tmp_home / "project"), all_projects=False, force=True)) == 0
+    )
+    out = capsys.readouterr()
+    assert not lock.exists()
+    assert "Removed creds watcher lock" in out.out
 
-    def test_a_held_lock_is_named_and_stays(self, config_file, tmp_home, capsys):
-        import subprocess
-        import sys
+  def test_a_held_lock_is_named_and_stays(self, config_file, tmp_home, capsys):
+    import subprocess
+    import sys
 
-        from kanibako.commands.clean import run
+    from kanibako.commands.clean import run
 
-        lock = self._standalone(tmp_home)
-        lock.write_text("held\n")
-        holder = subprocess.Popen(
-            [sys.executable, "-c",
-             f"import fcntl,sys;fd=open({str(lock)!r},'a');fcntl.flock(fd,fcntl.LOCK_EX);"
-             "sys.stdout.write('HELD\\n');sys.stdout.flush();sys.stdin.readline()"],
-            stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True,
-        )
-        try:
-            assert holder.stdout.readline().strip() == "HELD"
-            capsys.readouterr()
-            assert run(argparse.Namespace(path=str(tmp_home / "project"),
-                                        all_projects=False, force=True)) == 0
-            out = capsys.readouterr()
-        finally:
-            holder.stdin.write("stop\n")
-            holder.stdin.flush()
-            holder.wait(timeout=10)
+    lock = self._standalone(tmp_home)
+    lock.write_text("held\n")
+    holder = subprocess.Popen(
+      [
+        sys.executable,
+        "-c",
+        f"import fcntl,sys;fd=open({str(lock)!r},'a');fcntl.flock(fd,fcntl.LOCK_EX);"
+        "sys.stdout.write('HELD\\n');sys.stdout.flush();sys.stdin.readline()",
+      ],
+      stdout=subprocess.PIPE,
+      stdin=subprocess.PIPE,
+      text=True,
+    )
+    try:
+      assert holder.stdout.readline().strip() == "HELD"
+      capsys.readouterr()
+      assert (
+        run(argparse.Namespace(path=str(tmp_home / "project"), all_projects=False, force=True))
+        == 0
+      )
+      out = capsys.readouterr()
+    finally:
+      holder.stdin.write("stop\n")
+      holder.stdin.flush()
+      holder.wait(timeout=10)
 
-        assert lock.exists(), "clean removed a HELD lock"
-        # ⚑ The held-lock Note goes to STDERR with every other kept-file Note.
-        assert "a live creds watcher holds it" in out.err
+    assert lock.exists(), "clean removed a HELD lock"
+    # ⚑ The held-lock Note goes to STDERR with every other kept-file Note.
+    assert "a live creds watcher holds it" in out.err
 
 
 def _chmod_tree(root, mode):
-    """Best-effort chmod of *root* and every directory under it, shallowest first."""
-    if not root.exists():
-        return
-    for d in sorted([p for p in root.rglob("*") if p.is_dir()] + [root],
-                   key=lambda p: len(p.parts)):
-        try:
-            d.chmod(mode)
-        except OSError:
-            pass
+  """Best-effort chmod of *root* and every directory under it, shallowest first."""
+  if not root.exists():
+    return
+  for d in sorted([p for p in root.rglob("*") if p.is_dir()] + [root], key=lambda p: len(p.parts)):
+    try:
+      d.chmod(mode)
+    except OSError:
+      pass
 
 
 class TestPurgeAnchorLast:
-    """D2: a purge that KEEPS something must leave the box DETECTABLE, or the retry it
-    prints is a promise it cannot keep.
+  """D2: a purge that KEEPS something must leave the box DETECTABLE, or the retry it
+  prints is a promise it cannot keep.
 
-    ``_purge_one`` sees a standalone only through ``box_data/``.  The store used to go
-    FIRST, so a later failure left the declarations behind with nothing that could find
-    them: pass 1 printed "re-running the purge can finish" and ``done.`` with rc 0, and
-    pass 2 printed "No session data found" with rc 0.  Both passes reported success and
-    the box was stranded.
-    """
+  ``_purge_one`` sees a standalone only through ``box_data/``.  The store used to go
+  FIRST, so a later failure left the declarations behind with nothing that could find
+  them: pass 1 printed "re-running the purge can finish" and ``done.`` with rc 0, and
+  pass 2 printed "No session data found" with rc 0.  Both passes reported success and
+  the box was stranded.
+  """
 
-    def test_a_failed_purge_keeps_the_store_so_the_retry_can_actually_run(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        from kanibako.commands.clean import _purge_one
-        from kanibako.project import registry_store
-        from kanibako.runtime.container import ContainerRuntime
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            load_std_paths,
-            resolve_standalone_project,
-        )
+  def test_a_failed_purge_keeps_the_store_so_the_retry_can_actually_run(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    from kanibako.commands.clean import _purge_one
+    from kanibako.project import registry_store
+    from kanibako.runtime.container import ContainerRuntime
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      load_std_paths,
+      resolve_standalone_project,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "d2_retry"
-        root.mkdir()
-        resolve_standalone_project(std, config, project_dir=str(root),
-                                   initialize=True)
-        assert (root / "box_data").is_dir()
-        # A 555 vault parent makes the vault removal fail.  The store sits elsewhere and
-        # would come away cleanly -- which is exactly the trap: a clean store removal is
-        # the worst possible thing to do while something else is being kept.
-        vault = root / "vault"
-        _chmod_tree(vault, 0o555)
-        try:
-            capsys.readouterr()
-            # ⚑ A working ``podman unshare rm`` ignores modes and would delete the 555
-            # vault (CI has one): this run models the host where it fails too.
-            with monkeypatch.context() as mp:
-                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
-                rc1 = _purge_one(std, config, str(root), force=True)
-            first = capsys.readouterr()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "d2_retry"
+    root.mkdir()
+    resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
+    assert (root / "box_data").is_dir()
+    # A 555 vault parent makes the vault removal fail.  The store sits elsewhere and
+    # would come away cleanly -- which is exactly the trap: a clean store removal is
+    # the worst possible thing to do while something else is being kept.
+    vault = root / "vault"
+    _chmod_tree(vault, 0o555)
+    try:
+      capsys.readouterr()
+      # ⚑ A working ``podman unshare rm`` ignores modes and would delete the 555
+      # vault (CI has one): this run models the host where it fails too.
+      with monkeypatch.context() as mp:
+        mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+        rc1 = _purge_one(std, config, str(root), force=True)
+      first = capsys.readouterr()
 
-            assert rc1 != 0, "a purge that kept a folder must not report success"
-            assert "done." not in first.out.lower(), first.out
-            assert (root / "workset.yaml").is_file()
-            assert (root / "box_data").is_dir(), (
-                "box_data/ is the anchor `_purge_one` detects a standalone by; it has "
-                "to survive a failed step or the retry cannot find the box at all")
-            parked = registry_store.load_deregistered(std.registry)
-            assert any(str(root) in str(e.get("metadata", ""))
-                      for e in dict(parked).values()), (
-                "a purge that kept something parks the entry rather than dropping the "
-                "trail: %s" % (dict(parked),))
+      assert rc1 != 0, "a purge that kept a folder must not report success"
+      assert "done." not in first.out.lower(), first.out
+      assert (root / "workset.yaml").is_file()
+      assert (root / "box_data").is_dir(), (
+        "box_data/ is the anchor `_purge_one` detects a standalone by; it has "
+        "to survive a failed step or the retry cannot find the box at all"
+      )
+      parked = registry_store.load_deregistered(std.registry)
+      assert any(str(root) in str(e.get("metadata", "")) for e in dict(parked).values()), (
+        "a purge that kept something parks the entry rather than dropping the "
+        "trail: %s" % (dict(parked),)
+      )
 
-            # The retry is real: the same command, once unblocked, finishes the job.
-            _chmod_tree(vault, 0o755)
-            capsys.readouterr()
-            rc2 = _purge_one(std, config, str(root), force=True)
-            second = capsys.readouterr()
-            assert "No session data found" not in second.out, (
-                "the retry must still see the box -- base printed exactly this: %s"
-                % second.out)
-            assert rc2 == 0, second.out
-            assert not (root / "box_data").exists()
-            assert not (root / "workset.yaml").exists()
-        finally:
-            _chmod_tree(vault, 0o755)
+      # The retry is real: the same command, once unblocked, finishes the job.
+      _chmod_tree(vault, 0o755)
+      capsys.readouterr()
+      rc2 = _purge_one(std, config, str(root), force=True)
+      second = capsys.readouterr()
+      assert "No session data found" not in second.out, (
+        "the retry must still see the box -- base printed exactly this: %s" % second.out
+      )
+      assert rc2 == 0, second.out
+      assert not (root / "box_data").exists()
+      assert not (root / "workset.yaml").exists()
+    finally:
+      _chmod_tree(vault, 0o755)

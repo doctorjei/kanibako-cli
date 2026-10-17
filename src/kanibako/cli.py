@@ -11,527 +11,546 @@ from kanibako.errors import KanibakoError, UserCanceled
 
 
 class _Formatter(argparse.RawDescriptionHelpFormatter):
-    """Wider action column so subcommand help text stays on one line."""
+  """Wider action column so subcommand help text stays on one line."""
 
-    def __init__(self, prog: str, **kwargs: Any) -> None:
-        kwargs.setdefault("max_help_position", 30)
-        super().__init__(prog, **kwargs)
+  def __init__(self, prog: str, **kwargs: Any) -> None:
+    kwargs.setdefault("max_help_position", 30)
+    super().__init__(prog, **kwargs)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="kanibako",
-        description="Safe, persistent workspaces for AI coding agents.",
-        epilog=(
-            "COMMANDS\n"
-            "    rig         Manage box rigs (images)\n"
-            "    box         Project lifecycle commands for boxes (containers)\n"
-            "    agent       Agent management, authentication, and settings\n"
-            "    workset     Project grouping\n"
-            "    system      Global configuration, upgrades, and system information\n"
-            "\n"
-            "SHORTCUTS (equivalent to 'box <command>'):\n"
-            "    create      Create a new project box\n"
-            "    list        List active and/or inactive boxes\n"
-            "    ps          List active (running) boxes\n"
-            "    rm          Remove a box\n"
-            "\n"
-            "    start       Start a box session (default)\n"
-            "    stop        Stop a running box session\n"
-            "    shell       Open a shell in a box\n"
-            "\n"
-            "common switches (for 'start' command):\n"
-            "  -N, --new           start a new conversation\n"
-            "  -C, --continue      continue the most recent conversation (default)\n"
-            "  -R, --resume        resume with conversation picker\n"
-            "  -A, --autonomous    run with full permissions (default)\n"
-            "  -S, --secure        run without --dangerously-skip-permissions\n"
-            "  -M, --model MODEL   override the agent model for this run\n"
-            "  -v, --verbose       show debug output (target detection, container cmd)\n"
-            "\n"
-            "run 'kanibako COMMAND --help' for subcommand-specific options"
-        ),
-        formatter_class=_Formatter,
-        add_help=False,
-    )
+  parser = argparse.ArgumentParser(
+    prog="kanibako",
+    description="Safe, persistent workspaces for AI coding agents.",
+    epilog=(
+      "COMMANDS\n"
+      "    rig         Manage box rigs (images)\n"
+      "    box         Project lifecycle commands for boxes (containers)\n"
+      "    agent       Agent management, authentication, and settings\n"
+      "    workset     Project grouping\n"
+      "    system      Global configuration, upgrades, and system information\n"
+      "\n"
+      "SHORTCUTS (equivalent to 'box <command>'):\n"
+      "    create      Create a new project box\n"
+      "    list        List active and/or inactive boxes\n"
+      "    ps          List active (running) boxes\n"
+      "    rm          Remove a box\n"
+      "\n"
+      "    start       Start a box session (default)\n"
+      "    stop        Stop a running box session\n"
+      "    shell       Open a shell in a box\n"
+      "\n"
+      "common switches (for 'start' command):\n"
+      "  -N, --new           start a new conversation\n"
+      "  -C, --continue      continue the most recent conversation (default)\n"
+      "  -R, --resume        resume with conversation picker\n"
+      "  -A, --autonomous    run with full permissions (default)\n"
+      "  -S, --secure        run without --dangerously-skip-permissions\n"
+      "  -M, --model MODEL   override the agent model for this run\n"
+      "  -v, --verbose       show debug output (target detection, container cmd)\n"
+      "\n"
+      "run 'kanibako COMMAND --help' for subcommand-specific options"
+    ),
+    formatter_class=_Formatter,
+    add_help=False,
+  )
 
-    # ``parser_class`` (B-5): every subcommand, nested ones included, accepts its
-    # flags in ANY position; see kanibako.commands.flags.hoist_optionals.
-    from kanibako.commands.flags import OptionsAnywhereParser
+  # ``parser_class`` (B-5): every subcommand, nested ones included, accepts its
+  # flags in ANY position; see kanibako.commands.flags.hoist_optionals.
+  from kanibako.commands.flags import OptionsAnywhereParser
 
-    subparsers = parser.add_subparsers(
-        dest="command", metavar="COMMAND", parser_class=OptionsAnywhereParser,
-    )
+  subparsers = parser.add_subparsers(
+    dest="command",
+    metavar="COMMAND",
+    parser_class=OptionsAnywhereParser,
+  )
 
-    # Import and register all subcommand parsers.
-    from kanibako.commands.start import (
-        add_shell_parser,
-        add_start_parser,
-    )
-    from kanibako.commands.code_cmd import add_code_parser
-    from kanibako.commands.image import add_parser as add_rig_parser
-    from kanibako.commands.box._parser import (
-        add_create_arguments,
-        add_list_arguments,
-        add_parser as add_box_parser,
-        add_ps_arguments,
-        add_register_arguments,
-        add_rm_arguments,
-    )
-    from kanibako.commands.stop import add_parser as add_stop_parser
-    from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.agent_cmd import add_parser as add_agent_parser
-    from kanibako.commands.system_cmd import add_parser as add_system_parser
-    from kanibako.commands.baseline_cmd import add_parser as add_baseline_parser
+  # Import and register all subcommand parsers.
+  from kanibako.commands.start import (
+    add_shell_parser,
+    add_start_parser,
+  )
+  from kanibako.commands.code_cmd import add_code_parser
+  from kanibako.commands.image import add_parser as add_rig_parser
+  from kanibako.commands.box._parser import (
+    add_create_arguments,
+    add_list_arguments,
+    add_parser as add_box_parser,
+    add_ps_arguments,
+    add_register_arguments,
+    add_rm_arguments,
+  )
+  from kanibako.commands.stop import add_parser as add_stop_parser
+  from kanibako.commands.workset_cmd import add_parser as add_workset_parser
+  from kanibako.commands.agent_cmd import add_parser as add_agent_parser
+  from kanibako.commands.system_cmd import add_parser as add_system_parser
+  from kanibako.commands.baseline_cmd import add_parser as add_baseline_parser
 
-    # Setup wizard (before management commands, works pre-init).
-    from kanibako.commands.setup_cmd import add_arguments as add_setup_arguments
-    from kanibako.commands.setup_cmd import run_setup
-    setup_p = subparsers.add_parser("setup", help="Run the setup wizard")
-    add_setup_arguments(setup_p)
-    setup_p.set_defaults(func=run_setup)
+  # Setup wizard (before management commands, works pre-init).
+  from kanibako.commands.setup_cmd import add_arguments as add_setup_arguments
+  from kanibako.commands.setup_cmd import run_setup
 
-    # Top-level aliases (start, shell, stop already have their own parsers).
-    add_start_parser(subparsers)
-    add_shell_parser(subparsers)
-    add_stop_parser(subparsers)
-    add_code_parser(subparsers)
+  setup_p = subparsers.add_parser("setup", help="Run the setup wizard")
+  add_setup_arguments(setup_p)
+  setup_p.set_defaults(func=run_setup)
 
-    # Top-level shortcuts for their ``box`` verbs: the same declaration, so the same
-    # arguments, help, and handler.
-    list_p = subparsers.add_parser("list", help="List active and/or inactive boxes")
-    add_list_arguments(list_p)
-    ps_p = subparsers.add_parser("ps", help="List active (running) boxes")
-    add_ps_arguments(ps_p)
-    create_p = subparsers.add_parser("create", help="Create a new project")
-    add_create_arguments(create_p)
-    rm_p = subparsers.add_parser("rm", help="Remove a project")
-    add_rm_arguments(rm_p)
-    register_p = subparsers.add_parser(
-        "register",
-        help="Re-register a deregistered box, or register a standalone box on disk",
-    )
-    add_register_arguments(register_p)
+  # Top-level aliases (start, shell, stop already have their own parsers).
+  add_start_parser(subparsers)
+  add_shell_parser(subparsers)
+  add_stop_parser(subparsers)
+  add_code_parser(subparsers)
 
-    # Management commands.
-    add_rig_parser(subparsers)
-    add_box_parser(subparsers)
-    add_workset_parser(subparsers)
-    add_agent_parser(subparsers)
-    add_system_parser(subparsers)
-    add_baseline_parser(subparsers)
+  # Top-level shortcuts for their ``box`` verbs: the same declaration, so the same
+  # arguments, help, and handler.
+  list_p = subparsers.add_parser("list", help="List active and/or inactive boxes")
+  add_list_arguments(list_p)
+  ps_p = subparsers.add_parser("ps", help="List active (running) boxes")
+  add_ps_arguments(ps_p)
+  create_p = subparsers.add_parser("create", help="Create a new project")
+  add_create_arguments(create_p)
+  rm_p = subparsers.add_parser("rm", help="Remove a project")
+  add_rm_arguments(rm_p)
+  register_p = subparsers.add_parser(
+    "register",
+    help="Re-register a deregistered box, or register a standalone box on disk",
+  )
+  add_register_arguments(register_p)
 
-    # Blanket --agent / --box flags (W1 Phase D): add them to every leaf
-    # subcommand AFTER the whole tree is built, so they PARSE everywhere.
-    # Relevance is enforced post-parse in main() via check_flag_relevance.
-    from kanibako.commands.flags import inject_blanket_flags
-    inject_blanket_flags(parser)
+  # Management commands.
+  add_rig_parser(subparsers)
+  add_box_parser(subparsers)
+  add_workset_parser(subparsers)
+  add_agent_parser(subparsers)
+  add_system_parser(subparsers)
+  add_baseline_parser(subparsers)
 
-    return parser
+  # Blanket --agent / --box flags (W1 Phase D): add them to every leaf
+  # subcommand AFTER the whole tree is built, so they PARSE everywhere.
+  # Relevance is enforced post-parse in main() via check_flag_relevance.
+  from kanibako.commands.flags import inject_blanket_flags
+
+  inject_blanket_flags(parser)
+
+  return parser
 
 
 _SUBCOMMANDS = {
-    # Top-level aliases (delegate to box subcommands).
-    "start", "stop", "shell", "code", "ps", "list", "create", "rm", "register",
-    # Management commands.
-    "box", "rig", "workset", "agent", "system", "baseline",
-    # Setup wizard.
-    "setup",
+  # Top-level aliases (delegate to box subcommands).
+  "start",
+  "stop",
+  "shell",
+  "code",
+  "ps",
+  "list",
+  "create",
+  "rm",
+  "register",
+  # Management commands.
+  "box",
+  "rig",
+  "workset",
+  "agent",
+  "system",
+  "baseline",
+  # Setup wizard.
+  "setup",
 }
 
 
 def _option_nargs(parser: argparse.ArgumentParser) -> dict[str, object]:
-    """Map every option string in *parser*'s whole tree to its ``nargs``.
+  """Map every option string in *parser*'s whole tree to its ``nargs``.
 
-    Walks each distinct subparser (aliases share one parser object), so
-    ``--agent``/``--box`` (injected by
-    :func:`~kanibako.commands.flags.inject_blanket_flags`), ``-e``, ``--image``,
-    ``--entrypoint`` and the rest are covered without a hand-kept list.  A leading
-    flag has not met its subcommand yet, so the union across commands is the
-    honest table; no option string is a value option in one command and a bare
-    switch in another.
-    """
-    from kanibako.commands.flags import _find_subparsers_action
+  Walks each distinct subparser (aliases share one parser object), so
+  ``--agent``/``--box`` (injected by
+  :func:`~kanibako.commands.flags.inject_blanket_flags`), ``-e``, ``--image``,
+  ``--entrypoint`` and the rest are covered without a hand-kept list.  A leading
+  flag has not met its subcommand yet, so the union across commands is the
+  honest table; no option string is a value option in one command and a bare
+  switch in another.
+  """
+  from kanibako.commands.flags import _find_subparsers_action
 
-    found: dict[str, object] = {}
-    seen: set[int] = set()
-    stack = [parser]
-    while stack:
-        p = stack.pop()
-        if id(p) in seen:
-            continue
-        seen.add(id(p))
-        for action in p._actions:
-            for opt in action.option_strings:
-                found[opt] = action.nargs
-        sub = _find_subparsers_action(p)
-        if sub is not None:
-            stack.extend(sub.choices.values())
-    return found
+  found: dict[str, object] = {}
+  seen: set[int] = set()
+  stack = [parser]
+  while stack:
+    p = stack.pop()
+    if id(p) in seen:
+      continue
+    seen.add(id(p))
+    for action in p._actions:
+      for opt in action.option_strings:
+        found[opt] = action.nargs
+    sub = _find_subparsers_action(p)
+    if sub is not None:
+      stack.extend(sub.choices.values())
+  return found
 
 
 def _normalize_command(
-    effective: list[str],
-    parser: argparse.ArgumentParser | None = None,
+  effective: list[str],
+  parser: argparse.ArgumentParser | None = None,
 ) -> list[str]:
-    """Reorder argv so a leading global-style flag doesn't swallow a subcommand.
+  """Reorder argv so a leading global-style flag doesn't swallow a subcommand.
 
-    The dispatcher's fallback rule ``effective[0] not in _SUBCOMMANDS -> prepend
-    "start"`` treats a LEADING flag (e.g. ``--agent goose shell``) as a bare
-    ``start`` with that flag — turning ``--agent goose shell`` into ``start
-    shell`` with ``project="shell"``, which both launches the wrong thing and
-    fires the Gate-1 setup nudge.
+  The dispatcher's fallback rule ``effective[0] not in _SUBCOMMANDS -> prepend
+  "start"`` treats a LEADING flag (e.g. ``--agent goose shell``) as a bare
+  ``start`` with that flag — turning ``--agent goose shell`` into ``start
+  shell`` with ``project="shell"``, which both launches the wrong thing and
+  fires the Gate-1 setup nudge.
 
-    To honor the blanket-flag design (``kanibako --agent X <subcommand>`` ==
-    ``kanibako <subcommand> --agent X``), when ``effective[0]`` is an option
-    (starts with ``-``) and a KNOWN subcommand appears later, move the FIRST such
-    subcommand token to the front, preserving the relative order of everything
-    else.  ``--agent goose shell`` -> ``["shell", "--agent", "goose"]``.
+  To honor the blanket-flag design (``kanibako --agent X <subcommand>`` ==
+  ``kanibako <subcommand> --agent X``), when ``effective[0]`` is an option
+  (starts with ``-``) and a KNOWN subcommand appears later, move the FIRST such
+  subcommand token to the front, preserving the relative order of everything
+  else.  ``--agent goose shell`` -> ``["shell", "--agent", "goose"]``.
 
-    The scan reads options the way argparse will, through
-    :func:`~kanibako.commands.flags._option_take` over :func:`_option_nargs` of
-    *parser* (built when not given).  The value of a value-taking option is never
-    a subcommand, so ``--agent shell -- x`` and ``--box shell start`` keep
-    ``shell`` as the value (``--agent=shell`` carries it in one token).  An option
-    of any other arity (``?``, ``+``, ``*``) leaves argv alone.  The scan stops at
-    the first ``--``: everything after it belongs to the agent, so ``--agent
-    claude -- ps aux`` is not reordered.
+  The scan reads options the way argparse will, through
+  :func:`~kanibako.commands.flags._option_take` over :func:`_option_nargs` of
+  *parser* (built when not given).  The value of a value-taking option is never
+  a subcommand, so ``--agent shell -- x`` and ``--box shell start`` keep
+  ``shell`` as the value (``--agent=shell`` carries it in one token).  An option
+  of any other arity (``?``, ``+``, ``*``) leaves argv alone.  The scan stops at
+  the first ``--``: everything after it belongs to the agent, so ``--agent
+  claude -- ps aux`` is not reordered.
 
-    The genuinely-no-subcommand cases are left untouched here so the caller's
-    existing ``prepend "start"`` rule still handles them: ``kanibako myproject``
-    (bare positional) and ``kanibako -A`` / ``kanibako -N`` (leading flags, no
-    subcommand) both fall through unchanged.
-    """
-    if not effective or not effective[0].startswith("-"):
-        return effective
-    from kanibako.commands.flags import _BAIL, _option_take
+  The genuinely-no-subcommand cases are left untouched here so the caller's
+  existing ``prepend "start"`` rule still handles them: ``kanibako myproject``
+  (bare positional) and ``kanibako -A`` / ``kanibako -N`` (leading flags, no
+  subcommand) both fall through unchanged.
+  """
+  if not effective or not effective[0].startswith("-"):
+    return effective
+  from kanibako.commands.flags import _BAIL, _option_take
 
-    if parser is None:
-        parser = build_parser()
-    option_nargs = _option_nargs(parser)
-    sub_idx: int | None = None
-    i = 0
-    while i < len(effective):
-        tok = effective[i]
-        if tok == "--":
-            break
-        take = _option_take(option_nargs, parser, tok)
-        if take == _BAIL:
-            return effective
-        if take is None and tok in _SUBCOMMANDS:
-            sub_idx = i
-            break
-        i += 1 + (take or 0)
-    if sub_idx is None:
-        return effective
-    sub = effective[sub_idx]
-    return [sub] + effective[:sub_idx] + effective[sub_idx + 1:]
+  if parser is None:
+    parser = build_parser()
+  option_nargs = _option_nargs(parser)
+  sub_idx: int | None = None
+  i = 0
+  while i < len(effective):
+    tok = effective[i]
+    if tok == "--":
+      break
+    take = _option_take(option_nargs, parser, tok)
+    if take == _BAIL:
+      return effective
+    if take is None and tok in _SUBCOMMANDS:
+      sub_idx = i
+      break
+    i += 1 + (take or 0)
+  if sub_idx is None:
+    return effective
+  sub = effective[sub_idx]
+  return [sub] + effective[:sub_idx] + effective[sub_idx + 1 :]
 
 
 def _ensure_initialized() -> None:
-    """Ensure kanibako is initialized (create config + data dirs on first run)."""
-    from kanibako.settings.config import (
-        user_config_file,
-        write_global_config,
+  """Ensure kanibako is initialized (create config + data dirs on first run)."""
+  from kanibako.settings.config import (
+    user_config_file,
+    write_global_config,
+  )
+  from pathlib import Path
+
+  from kanibako.settings.paths import default_data_home, load_system_config
+
+  cf = user_config_file()
+
+  if cf.exists():
+    return  # Already initialized
+
+  # First run: create the (EMPTY) config file and the data dirs.
+  # ⚑ The file carries ``config.*`` and nothing else, and first run has no non-default
+  # ``config.*`` to record — so it is created empty and its EXISTENCE is the whole
+  # signal this function returns early on above [Jei:2026-08-26].
+  write_global_config(cf)
+
+  # ⚑ ONE handler for the WHOLE first run.  Every step in this block can fail AFTER
+  # the config file exists: ``xdg``/``load_system_config``, the three ``mkdir``
+  # calls, ``discover_targets()``, ``save_agent_file``, ``load_std_paths()`` and
+  # ``install_packaged_templates``.  ANY exception from ANY of them — ConfigError,
+  # OSError, or a Ctrl-C, which is not an ``Exception`` — removes the config file,
+  # so the next run re-initializes from scratch instead of returning early at the
+  # "already initialized" check above and leaving a half-built data tree.  The early
+  # ``if cf.exists(): return`` guarantees this run created the file, so cleanup is
+  # always safe here.
+  try:
+    # Create data directories.
+    # ⚑ ``load_system_config``, NOT ``resolve_system_paths({})``.  The empty mapping
+    # resolved the box store off the DECLARED DEFAULTS alone, so a system settings file
+    # that repoints ``workset.boxes`` had first-run create a directory no later reader
+    # would ever use -- the store silently in the wrong place, with nothing pointing at it.
+    # Reading the files makes init create the store every reader resolves.  The Layer-1
+    # file was just written EMPTY, so its own contribution is the declared defaults.
+    data_home = default_data_home()
+    sys_paths = load_system_config(
+      cf,
+      data_home=data_home,
+      home=Path.home(),
     )
-    from pathlib import Path
+    data_path = sys_paths["config.data"]
+    (data_path / "containers").mkdir(parents=True, exist_ok=True)
+    sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
-    from kanibako.settings.paths import default_data_home, load_system_config
+    # The channel type-root skeleton is not pre-created here: the launch path creates
+    # it (start.py), and no host-side pre-launch consumer of it exists.
 
-    cf = user_config_file()
+    # Create agents directory and generate default per-agent settings files.
+    # Each agent's settings live INSIDE its store dir as
+    # agents/<agent>/agent.yaml (the per-agent store dir is created on
+    # demand by ``agent_file.save``).
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_file import save as save_agent_file
+    from kanibako.targets import discover_targets
 
-    if cf.exists():
-        return  # Already initialized
+    agents_path = sys_paths["config.agents"]
+    agents_path.mkdir(parents=True, exist_ok=True)
 
-    # First run: create the (EMPTY) config file and the data dirs.
-    # ⚑ The file carries ``config.*`` and nothing else, and first run has no non-default
-    # ``config.*`` to record — so it is created empty and its EXISTENCE is the whole
-    # signal this function returns early on above [Jei:2026-08-26].
-    write_global_config(cf)
+    # ⚑ NO standalone slot write (D2): the plain-shell file is the built-in's
+    # OWN dir (``agents/shell/agent.yaml``), written by the loop below like
+    # every other target's — a second write here would be the two-carriers
+    # defect the old ``general`` slot needed this block for.
+    target_names = list(discover_targets())
+    for target_name, cls in discover_targets().items():
+      target_toml = agent_settings_path(agents_path, target_name)
+      if not target_toml.exists():
+        save_agent_file(target_toml, cls().generate_agent_config())
 
-    # ⚑ ONE handler for the WHOLE first run.  Every step in this block can fail AFTER
-    # the config file exists: ``xdg``/``load_system_config``, the three ``mkdir``
-    # calls, ``discover_targets()``, ``save_agent_file``, ``load_std_paths()`` and
-    # ``install_packaged_templates``.  ANY exception from ANY of them — ConfigError,
-    # OSError, or a Ctrl-C, which is not an ``Exception`` — removes the config file,
-    # so the next run re-initializes from scratch instead of returning early at the
-    # "already initialized" check above and leaving a half-built data tree.  The early
-    # ``if cf.exists(): return`` guarantees this run created the file, so cleanup is
-    # always safe here.
-    try:
-        # Create data directories.
-        # ⚑ ``load_system_config``, NOT ``resolve_system_paths({})``.  The empty mapping
-        # resolved the box store off the DECLARED DEFAULTS alone, so a system settings file
-        # that repoints ``workset.boxes`` had first-run create a directory no later reader
-        # would ever use -- the store silently in the wrong place, with nothing pointing at it.
-        # Reading the files makes init create the store every reader resolves.  The Layer-1
-        # file was just written EMPTY, so its own contribution is the declared defaults.
-        data_home = default_data_home()
-        sys_paths = load_system_config(
-            cf, data_home=data_home, home=Path.home(),
-        )
-        data_path = sys_paths["config.data"]
-        (data_path / "containers").mkdir(parents=True, exist_ok=True)
-        sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
+    # Packaged content → the host stores.  The content ships as static package data
+    # and is installed here into its ENUMERATED destinations ({system.template}'s box
+    # + workset molds, {system.canon}/handbook, and every agent store under
+    # {config.agents}), create-if-absent so user edits survive an upgrade.  The
+    # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
+    # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
+    # the box HOME molds into each new box store at creation; the box handbook chapter
+    # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is
+    # not a ``seeded`` entry.
+    #
+    # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
+    # action" pair), and it runs the SAME full per-file mold stamp the deliberate
+    # SETUP trigger does — ``install_packaged_templates`` calls
+    # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
+    # mkdir this used to be is gone.
+    #
+    # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
+    # file exists), and since R-38 retired the template-staleness stamp NOTHING
+    # detects packaged-content drift on an already-initialized host automatically.
+    # A template change that RIDES A RELEASE is announced by the setup bands
+    # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
+    # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
+    # LOSS — its store materializes at the next ``kanibako setup``, the deliberate
+    # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
+    # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
+    # Recorded as migrations M-18 (superseded in part) and M-23.
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.launch.templates import install_packaged_templates
 
-        # The channel type-root skeleton is not pre-created here: the launch path creates
-        # it (start.py), and no host-side pre-launch consumer of it exists.
+    # ⚑ NO ARGUMENT: the config file was written above, so the default read finds it — and
+    # a Layer-1 read carries no settings for this call to have wanted.
+    std_paths = load_std_paths()
+    install_packaged_templates(std_paths, target_names)
+  except BaseException:
+    cf.unlink(missing_ok=True)
+    raise
 
-        # Create agents directory and generate default per-agent settings files.
-        # Each agent's settings live INSIDE its store dir as
-        # agents/<agent>/agent.yaml (the per-agent store dir is created on
-        # demand by ``agent_file.save``).
-        from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.settings.agent_file import save as save_agent_file
-        from kanibako.targets import discover_targets
+  # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a
+  # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
+  # system settings file — a default MATERIALIZED AT A SEAM, which is what
+  # ``tests/test_settings/test_defaults_enforcement.py`` forbids.  It is declared
+  # in ``data/rom/settings/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
+  # every box with nothing stored — including the installs this first-run path
+  # never reached, because it returns early once the config file exists.
+  # 🛑 Do not restore a write here: a value that needs a default belongs in a
+  # defaults file, and this function is not one.
 
-        agents_path = sys_paths["config.agents"]
-        agents_path.mkdir(parents=True, exist_ok=True)
+  # Try shell completion
+  try:
+    from kanibako.commands.install import _install_completion
 
-        # ⚑ NO standalone slot write (D2): the plain-shell file is the built-in's
-        # OWN dir (``agents/shell/agent.yaml``), written by the loop below like
-        # every other target's — a second write here would be the two-carriers
-        # defect the old ``general`` slot needed this block for.
-        target_names = list(discover_targets())
-        for target_name, cls in discover_targets().items():
-            target_toml = agent_settings_path(agents_path, target_name)
-            if not target_toml.exists():
-                save_agent_file(target_toml, cls().generate_agent_config())
-
-        # Packaged content → the host stores.  The content ships as static package data
-        # and is installed here into its ENUMERATED destinations ({system.template}'s box
-        # + workset molds, {system.canon}/handbook, and every agent store under
-        # {config.agents}), create-if-absent so user edits survive an upgrade.  The
-        # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
-        # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
-        # the box HOME molds into each new box store at creation; the box handbook chapter
-        # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is
-        # not a ``seeded`` entry.
-        #
-        # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
-        # action" pair), and it runs the SAME full per-file mold stamp the deliberate
-        # SETUP trigger does — ``install_packaged_templates`` calls
-        # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
-        # mkdir this used to be is gone.
-        #
-        # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
-        # file exists), and since R-38 retired the template-staleness stamp NOTHING
-        # detects packaged-content drift on an already-initialized host automatically.
-        # A template change that RIDES A RELEASE is announced by the setup bands
-        # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
-        # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
-        # LOSS — its store materializes at the next ``kanibako setup``, the deliberate
-        # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
-        # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
-        # Recorded as migrations M-18 (superseded in part) and M-23.
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.launch.templates import install_packaged_templates
-
-        # ⚑ NO ARGUMENT: the config file was written above, so the default read finds it — and
-        # a Layer-1 read carries no settings for this call to have wanted.
-        std_paths = load_std_paths()
-        install_packaged_templates(std_paths, target_names)
-    except BaseException:
-        cf.unlink(missing_ok=True)
-        raise
-
-    # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a
-    # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
-    # system settings file — a default MATERIALIZED AT A SEAM, which is what
-    # ``tests/test_settings/test_defaults_enforcement.py`` forbids.  It is declared
-    # in ``data/rom/settings/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
-    # every box with nothing stored — including the installs this first-run path
-    # never reached, because it returns early once the config file exists.
-    # 🛑 Do not restore a write here: a value that needs a default belongs in a
-    # defaults file, and this function is not one.
-
-    # Try shell completion
-    try:
-        from kanibako.commands.install import _install_completion
-
-        _install_completion()
-    except Exception:
-        pass
+    _install_completion()
+  except Exception:
+    pass
 
 
 def _setup_nudge(args: argparse.Namespace) -> None:
-    """Gate-1 setup/config compatibility gate (§Design 3/4; 5-band).
+  """Gate-1 setup/config compatibility gate (§Design 3/4; 5-band).
 
-    Fires only for the agent-requiring commands (those in
-    :data:`~kanibako.commands.flags.AGENT_FLAG_COMMANDS` — ``start``,
-    ``box start``, ``create``, ``box create``, ``agent reauth``), i.e. the ones that run the unified agent
-    resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
-    are intentionally excluded.
+  Fires only for the agent-requiring commands (those in
+  :data:`~kanibako.commands.flags.AGENT_FLAG_COMMANDS` — ``start``,
+  ``box start``, ``create``, ``box create``, ``agent reauth``), i.e. the ones that run the unified agent
+  resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
+  are intentionally excluded.
 
-    Delegates the band logic to :func:`~kanibako.settings.config.setup_compat_gate`:
+  Delegates the band logic to :func:`~kanibako.settings.config.setup_compat_gate`:
 
-    * NUDGE bands (absent/stale marker) → print the advisory to stderr and RETURN
-      (non-blocking — the command then proceeds to normal agent resolution).
-    * SILENT-BUMP / no-op bands → nothing printed, RETURN.
-    * ERROR bands (config from a newer build, or too old to auto-fill) → the gate
-      raises :class:`~kanibako.errors.ConfigError` (a
-      :class:`~kanibako.errors.KanibakoError`), which PROPAGATES so the CLI
-      converts it to the standard clean rc1.
+  * NUDGE bands (absent/stale marker) → print the advisory to stderr and RETURN
+    (non-blocking — the command then proceeds to normal agent resolution).
+  * SILENT-BUMP / no-op bands → nothing printed, RETURN.
+  * ERROR bands (config from a newer build, or too old to auto-fill) → the gate
+    raises :class:`~kanibako.errors.ConfigError` (a
+    :class:`~kanibako.errors.KanibakoError`), which PROPAGATES so the CLI
+    converts it to the standard clean rc1.
 
-    A deliberate :class:`ConfigError` (``KanibakoError``) band error is allowed
-    through; any other UNEXPECTED failure (a marker-read bug, missing file, a
-    failed silent-bump write) is swallowed so the gate never breaks a command.
-    """
-    from kanibako.commands.flags import AGENT_FLAG_COMMANDS, command_key
+  A deliberate :class:`ConfigError` (``KanibakoError``) band error is allowed
+  through; any other UNEXPECTED failure (a marker-read bug, missing file, a
+  failed silent-bump write) is swallowed so the gate never breaks a command.
+  """
+  from kanibako.commands.flags import AGENT_FLAG_COMMANDS, command_key
 
-    if command_key(args) not in AGENT_FLAG_COMMANDS:
-        return
+  if command_key(args) not in AGENT_FLAG_COMMANDS:
+    return
 
-    try:
-        from pathlib import Path
+  try:
+    from pathlib import Path
 
-        from kanibako.settings.bootstrap import LEGACY_CONFIG_FILE
-        from kanibako.settings.config import user_config_file, setup_compat_gate
-        from kanibako.settings.paths import default_data_home, load_system_config
+    from kanibako.settings.bootstrap import LEGACY_CONFIG_FILE
+    from kanibako.settings.config import user_config_file, setup_compat_gate
+    from kanibako.settings.paths import default_data_home, load_system_config
 
-        cf = user_config_file()
-        # The marker lives in the SYSTEM SETTINGS file (``{config.settings}``) since
-        # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
-        # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
-        # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
-        # resolves through the Layer-2 store, and a non-blocking advisory answers from
-        # Layer-1 alone.
-        # ⚑ A resolve failure here is caught by this function's own ``except`` — a
-        # ``KanibakoError`` (including ``ConfigError``) propagates to ``main`` and exits 1;
-        # any other exception degrades to "no gate ran" per the never-break-a-command contract.
-        settings_path = load_system_config(
-            cf, data_home=default_data_home(), home=Path.home(),
-        )["config.settings"]
-        # ⚑ The separate HARD template-staleness gate that used to run here is
-        # RETIRED (R-38): packaged-template drift is now announced by the bands
-        # above — a content change bumps ``SETUP_FCV`` (nudge), a structural one
-        # ``SETUP_BCV`` (hard block).  ``setup_compat_gate`` is the ONE gate.
-        message = setup_compat_gate(settings_path, cf.with_name(LEGACY_CONFIG_FILE))
-    except KanibakoError:
-        # Deliberate ERROR band — propagate so the CLI surfaces rc1.
-        raise
-    except Exception:  # pragma: no cover - defensive; never break a command
-        return
-    if message:
-        print(message, file=sys.stderr)
+    cf = user_config_file()
+    # The marker lives in the SYSTEM SETTINGS file (``{config.settings}``) since
+    # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
+    # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
+    # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
+    # resolves through the Layer-2 store, and a non-blocking advisory answers from
+    # Layer-1 alone.
+    # ⚑ A resolve failure here is caught by this function's own ``except`` — a
+    # ``KanibakoError`` (including ``ConfigError``) propagates to ``main`` and exits 1;
+    # any other exception degrades to "no gate ran" per the never-break-a-command contract.
+    settings_path = load_system_config(
+      cf,
+      data_home=default_data_home(),
+      home=Path.home(),
+    )["config.settings"]
+    # ⚑ The separate HARD template-staleness gate that used to run here is
+    # RETIRED (R-38): packaged-template drift is now announced by the bands
+    # above — a content change bumps ``SETUP_FCV`` (nudge), a structural one
+    # ``SETUP_BCV`` (hard block).  ``setup_compat_gate`` is the ONE gate.
+    message = setup_compat_gate(settings_path, cf.with_name(LEGACY_CONFIG_FILE))
+  except KanibakoError:
+    # Deliberate ERROR band — propagate so the CLI surfaces rc1.
+    raise
+  except Exception:  # pragma: no cover - defensive; never break a command
+    return
+  if message:
+    print(message, file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = build_parser()
+  parser = build_parser()
+
+  try:
+    import argcomplete
+
+    argcomplete.autocomplete(parser)
+  except ImportError:
+    pass
+
+  effective = list(argv if argv is not None else sys.argv[1:])
+
+  # Extract -v/--verbose before subcommand dispatch.
+  verbose = "-v" in effective or "--verbose" in effective
+  effective = [a for a in effective if a not in ("-v", "--verbose")]
+
+  from kanibako.log import setup_logging
+
+  setup_logging(verbose=verbose)
+
+  # Handle top-level --help and --version before argparse dispatch
+  # (kept off the parser so they don't appear in tab-completion).
+  if effective and effective[0] in ("-h", "--help"):
+    parser.print_help()
+    sys.exit(0)
+  elif effective and effective[0] == "--version":
+    print(f"kanibako {__version__}")
+    sys.exit(0)
+  else:
+    # Reorder a leading global-style flag ahead of a later subcommand so
+    # `kanibako --agent goose shell` dispatches as `shell` (not `start` with
+    # project="shell").  Must run BEFORE the prepend-"start" fallback and the
+    # `--` split below.
+    effective = _normalize_command(effective, parser)
+
+    # If the first arg isn't a known subcommand, default to "start".
+    if not effective or effective[0] not in _SUBCOMMANDS:
+      effective = ["start"] + effective
+
+    # For start/shell, split args at '--' so flags after the project
+    # positional still work (REMAINDER would otherwise swallow them).
+    # Everything before '--' goes to argparse; everything after becomes
+    # args passed to the agent/shell.
+    post_dash: list[str] | None = None
+    if len(effective) >= 2 and effective[0] in ("start", "shell") and "--" in effective[1:]:
+      idx = effective.index("--", 1)
+      post_dash = effective[idx + 1 :]
+      effective = effective[:idx]
+
+    args = parser.parse_args(effective)
+
+    # Relevance check for the blanket --agent/--box flags: they parse on
+    # every command, but passing one to an UNRELATED command is an error
+    # (not a silent no-op).
+    from kanibako.commands.flags import FlagRelevanceError, check_flag_relevance
 
     try:
-        import argcomplete
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
+      check_flag_relevance(args)
+    except FlagRelevanceError as exc:
+      print(f"Error: {exc}", file=sys.stderr)
+      sys.exit(2)
 
-    effective = list(argv if argv is not None else sys.argv[1:])
-
-    # Extract -v/--verbose before subcommand dispatch.
-    verbose = "-v" in effective or "--verbose" in effective
-    effective = [a for a in effective if a not in ("-v", "--verbose")]
-
-    from kanibako.log import setup_logging
-    setup_logging(verbose=verbose)
-
-    # Handle top-level --help and --version before argparse dispatch
-    # (kept off the parser so they don't appear in tab-completion).
-    if effective and effective[0] in ("-h", "--help"):
-        parser.print_help()
-        sys.exit(0)
-    elif effective and effective[0] == "--version":
-        print(f"kanibako {__version__}")
-        sys.exit(0)
-    else:
-        # Reorder a leading global-style flag ahead of a later subcommand so
-        # `kanibako --agent goose shell` dispatches as `shell` (not `start` with
-        # project="shell").  Must run BEFORE the prepend-"start" fallback and the
-        # `--` split below.
-        effective = _normalize_command(effective, parser)
-
-        # If the first arg isn't a known subcommand, default to "start".
-        if not effective or effective[0] not in _SUBCOMMANDS:
-            effective = ["start"] + effective
-
-        # For start/shell, split args at '--' so flags after the project
-        # positional still work (REMAINDER would otherwise swallow them).
-        # Everything before '--' goes to argparse; everything after becomes
-        # args passed to the agent/shell.
-        post_dash: list[str] | None = None
-        if (
-            len(effective) >= 2
-            and effective[0] in ("start", "shell")
-            and "--" in effective[1:]
-        ):
-            idx = effective.index("--", 1)
-            post_dash = effective[idx + 1:]
-            effective = effective[:idx]
-
-        args = parser.parse_args(effective)
-
-        # Relevance check for the blanket --agent/--box flags: they parse on
-        # every command, but passing one to an UNRELATED command is an error
-        # (not a silent no-op).
-        from kanibako.commands.flags import FlagRelevanceError, check_flag_relevance
-        try:
-            check_flag_relevance(args)
-        except FlagRelevanceError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(2)
-
-        # Gate 1 (§Design 3/4): the 5-band setup/config compatibility gate for
-        # the agent-requiring commands (those that run the unified resolver).
-        # NUDGE bands print to stderr and CONTINUE (never block); the two ERROR
-        # bands raise ConfigError (a KanibakoError), which we convert to the same
-        # clean rc1 every other KanibakoError path produces (mirrors the func()
-        # handler below — this call is OUTSIDE that try block).
-        #
-        # Lazy init: create config + data dirs on first run.
-        # Skip for agent (config-facing) and setup, and for the runtime
-        # box subcommands helper/fork (which run inside containers).
-        # ⚑ The init shares this handler: its ``load_std_paths()`` read refuses a bad
-        # Layer-2 path key (a ``null`` ``system.*`` path) with a ConfigError, and on a
-        # first run nothing else catches it.
-        skip_init = args.command in ("agent", "setup") or (
-            args.command == "box"
-            and getattr(args, "box_command", None) in ("helper", "fork")
-        )
-        try:
-            # ⚑ A command's settings-free refusals run BEFORE first-run setup writes.
-            precheck = getattr(args, "precheck", None)
-            refused = precheck(args) if precheck is not None else None
-            if refused is not None:
-                sys.exit(refused)
-            _setup_nudge(args)
-            if not skip_init:
-                _ensure_initialized()
-        except (KanibakoError, OSError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        except KeyboardInterrupt:
-            print()
-            sys.exit(130)
-
-        if args.command == "start":
-            args.agent_args = post_dash or []
-        elif args.command == "shell":
-            args.shell_args = post_dash or []
-
-    func = getattr(args, "func", None)
-    if func is None:
-        parser.print_help()
-        sys.exit(0)
-
+    # Gate 1 (§Design 3/4): the 5-band setup/config compatibility gate for
+    # the agent-requiring commands (those that run the unified resolver).
+    # NUDGE bands print to stderr and CONTINUE (never block); the two ERROR
+    # bands raise ConfigError (a KanibakoError), which we convert to the same
+    # clean rc1 every other KanibakoError path produces (mirrors the func()
+    # handler below — this call is OUTSIDE that try block).
+    #
+    # Lazy init: create config + data dirs on first run.
+    # Skip for agent (config-facing) and setup, and for the runtime
+    # box subcommands helper/fork (which run inside containers).
+    # ⚑ The init shares this handler: its ``load_std_paths()`` read refuses a bad
+    # Layer-2 path key (a ``null`` ``system.*`` path) with a ConfigError, and on a
+    # first run nothing else catches it.
+    skip_init = args.command in ("agent", "setup") or (
+      args.command == "box" and getattr(args, "box_command", None) in ("helper", "fork")
+    )
     try:
-        rc = func(args)
-    except UserCanceled:
-        print("Aborted.")
-        rc = 2
-    except KanibakoError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        rc = 1
+      # ⚑ A command's settings-free refusals run BEFORE first-run setup writes.
+      precheck = getattr(args, "precheck", None)
+      refused = precheck(args) if precheck is not None else None
+      if refused is not None:
+        sys.exit(refused)
+      _setup_nudge(args)
+      if not skip_init:
+        _ensure_initialized()
+    except (KanibakoError, OSError) as e:
+      print(f"Error: {e}", file=sys.stderr)
+      sys.exit(1)
     except KeyboardInterrupt:
-        print()
-        rc = 130
+      print()
+      sys.exit(130)
 
-    sys.exit(rc)
+    if args.command == "start":
+      args.agent_args = post_dash or []
+    elif args.command == "shell":
+      args.shell_args = post_dash or []
+
+  func = getattr(args, "func", None)
+  if func is None:
+    parser.print_help()
+    sys.exit(0)
+
+  try:
+    rc = func(args)
+  except UserCanceled:
+    print("Aborted.")
+    rc = 2
+  except KanibakoError as e:
+    print(f"Error: {e}", file=sys.stderr)
+    rc = 1
+  except KeyboardInterrupt:
+    print()
+    rc = 130
+
+  sys.exit(rc)

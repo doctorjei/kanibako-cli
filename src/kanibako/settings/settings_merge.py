@@ -29,149 +29,145 @@ _PREF_ROOT = "pref"
 
 
 def merge(levels: list[KeyStore]) -> KeyStore:
-    """Merge the ordered cascade partials into ONE raw snapshot.
+  """Merge the ordered cascade partials into ONE raw snapshot.
 
-    *levels* is block 2a's ``list[KeyStore]``, MOST-SPECIFIC-FIRST (S8):
-    ``[box, workset, agent.<active>, agent.default, system, base]`` — that order IS
-    the precedence, and no level is treated specially. Full per-name case table:
-    llm-doc. Empty *levels* → an empty snapshot.
-    """
-    return _merge_nodes(levels, path=())
+  *levels* is block 2a's ``list[KeyStore]``, MOST-SPECIFIC-FIRST (S8):
+  ``[box, workset, agent.<active>, agent.default, system, base]`` — that order IS
+  the precedence, and no level is treated specially. Full per-name case table:
+  llm-doc. Empty *levels* → an empty snapshot.
+  """
+  return _merge_nodes(levels, path=())
 
 
 def _is_set(level: KeyStore, name: str) -> bool:
-    """Is *name* SET at this *level*? (S3 — the canonical presence probe.)
+  """Is *name* SET at this *level*? (S3 — the canonical presence probe.)
 
-    ⚑ UNBOUND ``dict.get`` — NEVER the bound ``level.get`` (a key literally named
-    ``get`` shadows the method into a crash), and NEVER truthiness (a leaf set to
-    ``0`` / ``""`` / ``False`` / present-``None`` still SETS the name and must win).
-    """
-    return dict.get(level, name, __MISSING__) is not __MISSING__
+  ⚑ UNBOUND ``dict.get`` — NEVER the bound ``level.get`` (a key literally named
+  ``get`` shadows the method into a crash), and NEVER truthiness (a leaf set to
+  ``0`` / ``""`` / ``False`` / present-``None`` still SETS the name and must win).
+  """
+  return dict.get(level, name, __MISSING__) is not __MISSING__
 
 
 def _names_in_order(levels: list[KeyStore]) -> list[str]:
-    """Union of every name SET across *levels*, first-seen MOST-SPECIFIC order.
+  """Union of every name SET across *levels*, first-seen MOST-SPECIFIC order.
 
-    Deterministic — part of purity.
-    """
-    seen: dict[str, None] = {}
-    for level in levels:
-        # dict.keys(level) — NOT level.keys() — collision-safe (S3 general rule).
-        for name in dict.keys(level):
-            if name not in seen:
-                seen[name] = None
-    return list(seen)
+  Deterministic — part of purity.
+  """
+  seen: dict[str, None] = {}
+  for level in levels:
+    # dict.keys(level) — NOT level.keys() — collision-safe (S3 general rule).
+    for name in dict.keys(level):
+      if name not in seen:
+        seen[name] = None
+  return list(seen)
 
 
 def _merge_nodes(
-    levels: list[KeyStore],
-    *,
-    path: tuple[str, ...],
+  levels: list[KeyStore],
+  *,
+  path: tuple[str, ...],
 ) -> KeyStore:
-    """Merge co-located :class:`KeyStore` nodes (MOST-SPECIFIC-FIRST) into ONE fresh node.
+  """Merge co-located :class:`KeyStore` nodes (MOST-SPECIFIC-FIRST) into ONE fresh node.
 
-    *path* is the scope-qualified segment trail to this node, for the present-None
-    type-split (spec §2h, S16).
-    """
-    out = KeyStore()
-    for name in _names_in_order(levels):
-        # MOST-SPECIFIC-FIRST ⇒ setters[0] wins; non-empty (the name came from the
-        # union of SET names).
-        setters = [
-            (level, dict.get(level, name)) for level in levels if _is_set(level, name)
-        ]
-        winning_val = setters[0][1]
+  *path* is the scope-qualified segment trail to this node, for the present-None
+  type-split (spec §2h, S16).
+  """
+  out = KeyStore()
+  for name in _names_in_order(levels):
+    # MOST-SPECIFIC-FIRST ⇒ setters[0] wins; non-empty (the name came from the
+    # union of SET names).
+    setters = [(level, dict.get(level, name)) for level in levels if _is_set(level, name)]
+    winning_val = setters[0][1]
 
-        # ⚑ RECURSE on ANY subtree winner — not only when a LOWER setter is also a
-        # subtree (spec §2a "PER-ENTRY CASCADE MERGE"). A lone subtree winner must
-        # recurse too, or the present-None type-split (spec §2h) never reaches its
-        # leaves; the recursion is also what makes the node fresh (S15).
-        subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
-        if isinstance(winning_val, KeyStore):
-            out[name] = _merge_nodes(
-                subtrees,
-                path=(*path, name),
-            )
-            continue
+    # ⚑ RECURSE on ANY subtree winner — not only when a LOWER setter is also a
+    # subtree (spec §2a "PER-ENTRY CASCADE MERGE"). A lone subtree winner must
+    # recurse too, or the present-None type-split (spec §2h) never reaches its
+    # leaves; the recursion is also what makes the node fresh (S15).
+    subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
+    if isinstance(winning_val, KeyStore):
+      out[name] = _merge_nodes(
+        subtrees,
+        path=(*path, name),
+      )
+      continue
 
-        if winning_val is None:
-            kept = _resolve_present_none(path=(*path, name))
-            if kept is _OMIT:
-                continue  # bind/category/masks present-None → OMIT from snapshot.
-            out[name] = None  # scalar present-None → KEEP None (consumer default).
-            continue
+    if winning_val is None:
+      kept = _resolve_present_none(path=(*path, name))
+      if kept is _OMIT:
+        continue  # bind/category/masks present-None → OMIT from snapshot.
+      out[name] = None  # scalar present-None → KEEP None (consumer default).
+      continue
 
-        if isinstance(winning_val, list):
-            out[name] = list(winning_val)  # fresh list — never ALIAS a partial (S15).
-            continue
-        out[name] = winning_val  # scalar / Bind — immutable, stored verbatim.
-    return out
+    if isinstance(winning_val, list):
+      out[name] = list(winning_val)  # fresh list — never ALIAS a partial (S15).
+      continue
+    out[name] = winning_val  # scalar / Bind — immutable, stored verbatim.
+  return out
 
 
 class _Omit:
-    """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot
-    (spec §2a PER-ENTRY CASCADE MERGE).
+  """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot
+  (spec §2a PER-ENTRY CASCADE MERGE).
 
-    Never stored; distinct from :data:`__MISSING__` (absence) and from
-    present-``None`` (a kept scalar reset).
-    """
+  Never stored; distinct from :data:`__MISSING__` (absence) and from
+  present-``None`` (a kept scalar reset).
+  """
 
-    def __repr__(self) -> str:  # pragma: no cover - debug aid only
-        return "_OMIT"
+  def __repr__(self) -> str:  # pragma: no cover - debug aid only
+    return "_OMIT"
 
 
 _OMIT = _Omit()
 
 
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
-    """Classify a present-``None`` leaf at *path* by CATEGORY (spec §2h type-split, S16).
+  """Classify a present-``None`` leaf at *path* by CATEGORY (spec §2h type-split, S16).
 
-    Keyed by PATH, by POSITION: a category sits where the SCOPE ends (spec §2a), and
-    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` is the one
-    carrier of that rule.  :data:`_OMIT` for a bind / category / masks leaf; ``None``
-    for a scalar leaf.  A leaf is a category leaf when EITHER a proper PREFIX of its
-    path is a category (an ENTRY reset, :func:`_is_category_entry`) OR the leaf IS a
-    category root (a CATEGORY-ROOT reset, :func:`_is_category_root`).
+  Keyed by PATH, by POSITION: a category sits where the SCOPE ends (spec §2a), and
+  :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` is the one
+  carrier of that rule.  :data:`_OMIT` for a bind / category / masks leaf; ``None``
+  for a scalar leaf.  A leaf is a category leaf when EITHER a proper PREFIX of its
+  path is a category (an ENTRY reset, :func:`_is_category_entry`) OR the leaf IS a
+  category root (a CATEGORY-ROOT reset, :func:`_is_category_root`).
 
-    ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
-    REQUEST, not a value (spec §2h) and its path MIRRORS its target's, so
-    classifying it would delete the RECORD of a ``null`` request. That argument and
-    the tier-2 reasoning behind the ROOT case are in the llm-doc.
-    """
-    if path and path[0] == _PREF_ROOT:
-        return None  # a REQUEST record — kept verbatim, never classified (§2h).
-    if path and _is_category_root(path):
-        return _OMIT  # whole-category-root reset → drop the category.
-    if _is_category_entry(path):
-        return _OMIT  # an entry under a category (a bind dest, or a masks path → unmask).
-    return None
+  ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
+  REQUEST, not a value (spec §2h) and its path MIRRORS its target's, so
+  classifying it would delete the RECORD of a ``null`` request. That argument and
+  the tier-2 reasoning behind the ROOT case are in the llm-doc.
+  """
+  if path and path[0] == _PREF_ROOT:
+    return None  # a REQUEST record — kept verbatim, never classified (§2h).
+  if path and _is_category_root(path):
+    return _OMIT  # whole-category-root reset → drop the category.
+  if _is_category_entry(path):
+    return _OMIT  # an entry under a category (a bind dest, or a masks path → unmask).
+  return None
 
 
 def _is_category_root(path: tuple[str, ...]) -> bool:
-    """Is *path* a whole CATEGORY — a category token at the category POSITION? (spec §2a)
+  """Is *path* a whole CATEGORY — a category token at the category POSITION? (spec §2a)
 
-    ⚑ BY POSITION, NOT BY ITS LAST SEGMENT. ``workset.channels.common`` ENDS in the
-    ``common`` token and is an ordinary path scalar: spec §2a's discriminator is the
-    ``channels.`` segment, and a category sits where the SCOPE ends.  Reading the last
-    segment alone OMITTED a present ``None`` there as a ``common`` category reset, so the
-    §2c standalone ``<None>`` never reached the snapshot.  So did ``box.env.common`` and
-    ``box.secret_path.seeded`` — a ``<VAR>`` spelled like a category.
-    ⚑ A bare ``<scope>.bindings`` is NOT a category root: it is the NAMESPACE the two
-    arms hang under (spec §0 — the key *"ENDS at the category (for bindings, at the
-    ro/rw ARM)"*; §2a — a present-``None`` resets *"at the CATEGORY (for bindings, at
-    the ARM)"*).  A ``None`` there is KEPT, so the §0 audit refuses it by name as a
-    scalar at a namespace, exactly as it does ``<scope>.env = None``.
-    """
-    return is_terminal_category_key(".".join(path))
+  ⚑ BY POSITION, NOT BY ITS LAST SEGMENT. ``workset.channels.common`` ENDS in the
+  ``common`` token and is an ordinary path scalar: spec §2a's discriminator is the
+  ``channels.`` segment, and a category sits where the SCOPE ends.  Reading the last
+  segment alone OMITTED a present ``None`` there as a ``common`` category reset, so the
+  §2c standalone ``<None>`` never reached the snapshot.  So did ``box.env.common`` and
+  ``box.secret_path.seeded`` — a ``<VAR>`` spelled like a category.
+  ⚑ A bare ``<scope>.bindings`` is NOT a category root: it is the NAMESPACE the two
+  arms hang under (spec §0 — the key *"ENDS at the category (for bindings, at the
+  ro/rw ARM)"*; §2a — a present-``None`` resets *"at the CATEGORY (for bindings, at
+  the ARM)"*).  A ``None`` there is KEPT, so the §0 audit refuses it by name as a
+  scalar at a namespace, exactly as it does ``<scope>.env = None``.
+  """
+  return is_terminal_category_key(".".join(path))
 
 
 def _is_category_entry(path: tuple[str, ...]) -> bool:
-    """Is *path* an ENTRY of a category — does a proper prefix of it end at one?
+  """Is *path* an ENTRY of a category — does a proper prefix of it end at one?
 
-    ⚑ BY POSITION, like :func:`_is_category_root`: the prefix must be a terminal
-    category KEY (``box.masks``, ``box.bindings.rw``, ``agent.claude.seeded``, …), not
-    merely contain a category token somewhere above the leaf.
-    """
-    return any(
-        is_terminal_category_key(".".join(path[:i])) for i in range(1, len(path))
-    )
+  ⚑ BY POSITION, like :func:`_is_category_root`: the prefix must be a terminal
+  category KEY (``box.masks``, ``box.bindings.rw``, ``agent.claude.seeded``, …), not
+  merely contain a category token somewhere above the leaf.
+  """
+  return any(is_terminal_category_key(".".join(path[:i])) for i in range(1, len(path)))

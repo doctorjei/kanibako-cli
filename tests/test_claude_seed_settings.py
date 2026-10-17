@@ -28,24 +28,24 @@ from tests.test_claude_seed_hooks import shipped_settings
 
 
 def test_shipped_seed_declares_no_model():
-    """A seeded model cannot track the cascade, so the template must name none."""
-    settings = shipped_settings()
-    # ⚑ The absence assertion below passes vacuously on an empty object, which a broken
-    # packaging step could produce — so prove there is a template here to be wrong.
-    assert settings, "the shipped claude seed template parsed to an empty object"
-    assert "model" not in settings, (
-        "the shipped claude seed pins a model "
-        f"({settings['model']!r}); the box's model is resolved through "
-        "agent.<node>.model and delivered at launch, so any literal here either goes "
-        "stale or silently overrides the cascade"
-    )
+  """A seeded model cannot track the cascade, so the template must name none."""
+  settings = shipped_settings()
+  # ⚑ The absence assertion below passes vacuously on an empty object, which a broken
+  # packaging step could produce — so prove there is a template here to be wrong.
+  assert settings, "the shipped claude seed template parsed to an empty object"
+  assert "model" not in settings, (
+    "the shipped claude seed pins a model "
+    f"({settings['model']!r}); the box's model is resolved through "
+    "agent.<node>.model and delivered at launch, so any literal here either goes "
+    "stale or silently overrides the cascade"
+  )
 
 
 def test_shipped_seed_turns_off_every_attribution():
-    """No AI trailer or link from a seeded box: ``commit`` and ``pr`` are empty, and
-    ``sessionUrl`` is ``false`` — its default ``true`` appends a ``Claude-Session``
-    trailer to commits made from a Remote Control session."""
-    attribution = shipped_settings().get("attribution")
-    assert attribution == {"commit": "", "pr": "", "sessionUrl": False}, (
-        f"the shipped claude seed's attribution block is {attribution!r}"
-    )
+  """No AI trailer or link from a seeded box: ``commit`` and ``pr`` are empty, and
+  ``sessionUrl`` is ``false`` — its default ``true`` appends a ``Claude-Session``
+  trailer to commits made from a Remote Control session."""
+  attribution = shipped_settings().get("attribution")
+  assert attribution == {"commit": "", "pr": "", "sessionUrl": False}, (
+    f"the shipped claude seed's attribution block is {attribution!r}"
+  )

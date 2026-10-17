@@ -190,7 +190,9 @@ class KeyspaceRegistry:
     self._build_key_shapes(keys)
     self._ns_shapes = self._build_ns_shapes(keys)
     self._known: set[str] = set()
-    self._build_section_shapes(doc["not_keys"], doc["category_default_entries"], doc["plugin_contributed"])
+    self._build_section_shapes(
+      doc["not_keys"], doc["category_default_entries"], doc["plugin_contributed"]
+    )
     self._interiors |= self._cross_prefixes()
     self._pref_members, self._pref_interiors = self._read_allowlist(pref)
 
@@ -349,9 +351,7 @@ class KeyspaceRegistry:
         prefix = ".".join(segs[:i])
         if "<" in prefix or "*" in prefix:
           prefixes[prefix] = None
-    return [
-      self._compile(prefix, scope_alt, tier=False, true_agents=True) for prefix in prefixes
-    ]
+    return [self._compile(prefix, scope_alt, tier=False, true_agents=True) for prefix in prefixes]
 
   def _cross_prefixes(self) -> set[str]:
     """Proper prefixes of the finite scope-by-family terminal spellings."""
@@ -435,7 +435,9 @@ class KeyspaceRegistry:
       return 1
     return 0
 
-  def _read_allowlist(self, pref: dict[str, Any]) -> tuple[list[re.Pattern[str]], list[re.Pattern[str]]]:
+  def _read_allowlist(
+    self, pref: dict[str, Any]
+  ) -> tuple[list[re.Pattern[str]], list[re.Pattern[str]]]:
     """The ``pref`` family from its own section: allowlist entries, and their interiors.
 
     Spec §0 declares ``pref.<target-key>`` for the ALLOWLISTED targets only, so a

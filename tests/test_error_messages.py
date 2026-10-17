@@ -13,266 +13,310 @@ from kanibako.errors import ContainerError
 
 
 class TestRuntimeNotFoundMessages:
-    """Verify helpful message when no container runtime is installed."""
+  """Verify helpful message when no container runtime is installed."""
 
-    @staticmethod
-    def _real_detect(docker_cmd: str):
-        """The REAL runtime detection, on a host with no podman or docker on PATH."""
-        from kanibako.runtime.container import ContainerRuntime
+  @staticmethod
+  def _real_detect(docker_cmd: str):
+    """The REAL runtime detection, on a host with no podman or docker on PATH."""
+    from kanibako.runtime.container import ContainerRuntime
 
-        def _detect(*a, **kw):
-            with patch("shutil.which", return_value=None), \
-                 patch.dict("os.environ", {"KANIBAKO_DOCKER_CMD": docker_cmd}):
-                return ContainerRuntime()
-        return _detect
+    def _detect(*a, **kw):
+      with (
+        patch("shutil.which", return_value=None),
+        patch.dict("os.environ", {"KANIBAKO_DOCKER_CMD": docker_cmd}),
+      ):
+        return ContainerRuntime()
 
-    def _start_err(self, start_mocks, capsys, docker_cmd: str) -> str:
-        with start_mocks() as m:
-            m.runtime_cls.side_effect = self._real_detect(docker_cmd)
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        return capsys.readouterr().err
+    return _detect
 
-    def test_start_runtime_missing_shows_install_hint(self, start_mocks, capsys):
-        """Missing runtime suggests installing podman with URL."""
-        err = self._start_err(start_mocks, capsys, "")
-        assert "podman" in err
-        assert "https://podman.io/" in err or "Docker" in err
+  def _start_err(self, start_mocks, capsys, docker_cmd: str) -> str:
+    with start_mocks() as m:
+      m.runtime_cls.side_effect = self._real_detect(docker_cmd)
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    return capsys.readouterr().err
 
-    def test_start_names_a_bad_docker_cmd(self, start_mocks, capsys):
-        """A KANIBAKO_DOCKER_CMD naming a missing program is named, not called no runtime."""
-        err = self._start_err(start_mocks, capsys, "/nonexistent/podman")
-        assert "KANIBAKO_DOCKER_CMD names '/nonexistent/podman'" in err
-        assert "No container runtime found" not in err
+  def test_start_runtime_missing_shows_install_hint(self, start_mocks, capsys):
+    """Missing runtime suggests installing podman with URL."""
+    err = self._start_err(start_mocks, capsys, "")
+    assert "podman" in err
+    assert "https://podman.io/" in err or "Docker" in err
 
-    def test_stop_runtime_missing_shows_install_hint(self, capsys):
-        """Stop command also shows a helpful message when runtime is missing."""
-        with patch("shutil.which", return_value=None), \
-             patch.dict("os.environ", {}, clear=True):
-            args = argparse.Namespace(
-                all_containers=False, project=None, force=False,
-            )
-            rc = run(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "podman" in err
+  def test_start_names_a_bad_docker_cmd(self, start_mocks, capsys):
+    """A KANIBAKO_DOCKER_CMD naming a missing program is named, not called no runtime."""
+    err = self._start_err(start_mocks, capsys, "/nonexistent/podman")
+    assert "KANIBAKO_DOCKER_CMD names '/nonexistent/podman'" in err
+    assert "No container runtime found" not in err
 
-    def test_container_error_includes_url(self):
-        """ContainerError._detect() message includes podman URL."""
-        from kanibako.runtime.container import ContainerRuntime
+  def test_stop_runtime_missing_shows_install_hint(self, capsys):
+    """Stop command also shows a helpful message when runtime is missing."""
+    with patch("shutil.which", return_value=None), patch.dict("os.environ", {}, clear=True):
+      args = argparse.Namespace(
+        all_containers=False,
+        project=None,
+        force=False,
+      )
+      rc = run(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "podman" in err
 
-        with patch("shutil.which", return_value=None), \
-             patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ContainerError) as exc_info:
-                ContainerRuntime()
-            assert "https://podman.io/" in str(exc_info.value)
+  def test_container_error_includes_url(self):
+    """ContainerError._detect() message includes podman URL."""
+    from kanibako.runtime.container import ContainerRuntime
+
+    with patch("shutil.which", return_value=None), patch.dict("os.environ", {}, clear=True):
+      with pytest.raises(ContainerError) as exc_info:
+        ContainerRuntime()
+      assert "https://podman.io/" in str(exc_info.value)
 
 
 class TestImagePullFailureMessages:
-    """Verify that base-image pull failure gives actionable, build-free guidance."""
+  """Verify that base-image pull failure gives actionable, build-free guidance."""
 
-    def test_ensure_image_failure_is_actionable_no_build(self):
-        """When the image can't be pulled, the error guides building a custom base."""
-        from kanibako.runtime.container import ContainerRuntime
+  def test_ensure_image_failure_is_actionable_no_build(self):
+    """When the image can't be pulled, the error guides building a custom base."""
+    from kanibako.runtime.container import ContainerRuntime
 
-        real_rt = ContainerRuntime.__new__(ContainerRuntime)
-        real_rt.cmd = "podman"
+    real_rt = ContainerRuntime.__new__(ContainerRuntime)
+    real_rt.cmd = "podman"
 
-        with patch.object(ContainerRuntime, "image_exists", return_value=False), \
-             patch.object(ContainerRuntime, "pull", return_value=False), \
-             patch.object(ContainerRuntime, "build") as m_build:
-            with pytest.raises(ContainerError) as exc_info:
-                real_rt.ensure_image("kanibako-custom:v1")
-            msg = str(exc_info.value)
-            assert "kanibako-custom:v1" in msg
-            assert "images/ in github.com/doctorjei/kanibako-cli" in msg
-            assert "--image" in msg
-            # Pull-only: no build is ever attempted.
-            m_build.assert_not_called()
+    with (
+      patch.object(ContainerRuntime, "image_exists", return_value=False),
+      patch.object(ContainerRuntime, "pull", return_value=False),
+      patch.object(ContainerRuntime, "build") as m_build,
+    ):
+      with pytest.raises(ContainerError) as exc_info:
+        real_rt.ensure_image("kanibako-custom:v1")
+      msg = str(exc_info.value)
+      assert "kanibako-custom:v1" in msg
+      assert "images/ in github.com/doctorjei/kanibako-cli" in msg
+      assert "--image" in msg
+      # Pull-only: no build is ever attempted.
+      m_build.assert_not_called()
 
-    def test_ensure_image_failure_no_rebuild_guidance(self):
-        """The old 'kanibako rig rebuild' build guidance is gone."""
-        from kanibako.runtime.container import ContainerRuntime
+  def test_ensure_image_failure_no_rebuild_guidance(self):
+    """The old 'kanibako rig rebuild' build guidance is gone."""
+    from kanibako.runtime.container import ContainerRuntime
 
-        real_rt = ContainerRuntime.__new__(ContainerRuntime)
-        real_rt.cmd = "podman"
+    real_rt = ContainerRuntime.__new__(ContainerRuntime)
+    real_rt.cmd = "podman"
 
-        with patch.object(ContainerRuntime, "image_exists", return_value=False), \
-             patch.object(ContainerRuntime, "pull", return_value=False):
-            with pytest.raises(ContainerError) as exc_info:
-                real_rt.ensure_image("kanibako-oci:latest")
-            assert "rig rebuild" not in str(exc_info.value)
+    with (
+      patch.object(ContainerRuntime, "image_exists", return_value=False),
+      patch.object(ContainerRuntime, "pull", return_value=False),
+    ):
+      with pytest.raises(ContainerError) as exc_info:
+        real_rt.ensure_image("kanibako-oci:latest")
+      assert "rig rebuild" not in str(exc_info.value)
 
 
 class TestLockConflictMessages:
-    """Verify lock conflict message suggests kanibako stop."""
+  """Verify lock conflict message suggests kanibako stop."""
 
-    def test_lock_conflict_suggests_stop(self, start_mocks, capsys):
-        """Lock contention error mentions kanibako stop."""
-        with start_mocks() as m:
-            m.fcntl.flock.side_effect = OSError("locked")
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "kanibako stop" in err
+  def test_lock_conflict_suggests_stop(self, start_mocks, capsys):
+    """Lock contention error mentions kanibako stop."""
+    with start_mocks() as m:
+      m.fcntl.flock.side_effect = OSError("locked")
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "kanibako stop" in err
 
-    def test_lock_conflict_mentions_shell_alternative(self, start_mocks, capsys):
-        """Lock contention error also mentions kanibako shell as alternative."""
-        with start_mocks() as m:
-            m.fcntl.flock.side_effect = OSError("locked")
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        err = capsys.readouterr().err
-        assert "kanibako shell" in err
+  def test_lock_conflict_mentions_shell_alternative(self, start_mocks, capsys):
+    """Lock contention error also mentions kanibako shell as alternative."""
+    with start_mocks() as m:
+      m.fcntl.flock.side_effect = OSError("locked")
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    err = capsys.readouterr().err
+    assert "kanibako shell" in err
 
 
 class TestAuthFailureMessages:
-    """Verify auth failure suggests reauth."""
+  """Verify auth failure suggests reauth."""
 
-    def test_auth_failure_suggests_reauth(self, start_mocks, capsys):
-        """Auth failure mentions kanibako agent reauth."""
-        with start_mocks() as m:
-            m.target.check_auth.return_value = False
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "kanibako agent reauth" in err
+  def test_auth_failure_suggests_reauth(self, start_mocks, capsys):
+    """Auth failure mentions kanibako agent reauth."""
+    with start_mocks() as m:
+      m.target.check_auth.return_value = False
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "kanibako agent reauth" in err
 
-    def test_auth_failure_suggests_shell(self, start_mocks, capsys):
-        """Auth failure also suggests kanibako shell as escape hatch."""
-        with start_mocks() as m:
-            m.target.check_auth.return_value = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        err = capsys.readouterr().err
-        assert "kanibako shell" in err
+  def test_auth_failure_suggests_shell(self, start_mocks, capsys):
+    """Auth failure also suggests kanibako shell as escape hatch."""
+    with start_mocks() as m:
+      m.target.check_auth.return_value = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    err = capsys.readouterr().err
+    assert "kanibako shell" in err
 
 
 class TestContainerExistsMessage:
-    """Verify the container-exists refusal names a cure that fits the state."""
+  """Verify the container-exists refusal names a cure that fits the state."""
 
-    def test_running_container_suggests_reattach_and_stop(self, start_mocks, capsys):
-        """A LIVE box: the error mentions both start and stop."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            m.runtime.is_running.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "kanibako start" in err
-        assert "kanibako stop" in err
+  def test_running_container_suggests_reattach_and_stop(self, start_mocks, capsys):
+    """A LIVE box: the error mentions both start and stop."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      m.runtime.is_running.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "kanibako start" in err
+    assert "kanibako stop" in err
 
-    def test_paused_container_is_named_paused_and_suggests_stop(self, start_mocks, capsys):
-        """A PAUSED container (podman: not running) is named paused; ``kanibako stop`` clears it."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            m.runtime.is_running.return_value = False
-            m.runtime.container_state.return_value = "paused"
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "This project's box is paused" in err
-        assert "stopped container" not in err
-        assert "kanibako stop testproject" in err
+  def test_paused_container_is_named_paused_and_suggests_stop(self, start_mocks, capsys):
+    """A PAUSED container (podman: not running) is named paused; ``kanibako stop`` clears it."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      m.runtime.is_running.return_value = False
+      m.runtime.container_state.return_value = "paused"
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "This project's box is paused" in err
+    assert "stopped container" not in err
+    assert "kanibako stop testproject" in err
 
-    def test_exited_container_suggests_only_stop(self, start_mocks, capsys):
-        """An EXITED container: reattach and --restart are both no-ops there, so
-        neither is offered.  ``kanibako stop`` is, because it is the cure that
-        works — it falls through to ``rm`` for a container it did not stop."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            m.runtime.is_running.return_value = False
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "kanibako stop testproject" in err
-        assert "Reattach" not in err
-        assert "--restart" not in err
+  def test_exited_container_suggests_only_stop(self, start_mocks, capsys):
+    """An EXITED container: reattach and --restart are both no-ops there, so
+    neither is offered.  ``kanibako stop`` is, because it is the cure that
+    works — it falls through to ``rm`` for a container it did not stop."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      m.runtime.is_running.return_value = False
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "kanibako stop testproject" in err
+    assert "Reattach" not in err
+    assert "--restart" not in err
 
 
 class TestContainerStartFailureMessage:
-    """Verify persistent container failure suggests diagnose."""
+  """Verify persistent container failure suggests diagnose."""
 
-    def test_persistent_failure_suggests_diagnose(self, start_mocks, capsys):
-        """When persistent container dies, suggests system diagnose."""
-        with start_mocks() as m:
-            # Container never becomes running after detached launch.
-            m.runtime.is_running.return_value = False
-            m.runtime.run.side_effect = lambda *a, **kw: 0
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "kanibako system diagnose" in err
+  def test_persistent_failure_suggests_diagnose(self, start_mocks, capsys):
+    """When persistent container dies, suggests system diagnose."""
+    with start_mocks() as m:
+      # Container never becomes running after detached launch.
+      m.runtime.is_running.return_value = False
+      m.runtime.run.side_effect = lambda *a, **kw: 0
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "kanibako system diagnose" in err
 
 
 class TestFreshnessTerminology:
-    """Verify freshness warning uses new rig terminology."""
+  """Verify freshness warning uses new rig terminology."""
 
-    def test_freshness_uses_rig_update(self, tmp_path, capsys):
-        """Freshness warning points at 'kanibako rig update' (W2a: rebuild gone)."""
-        from kanibako.runtime.freshness import check_image_freshness
+  def test_freshness_uses_rig_update(self, tmp_path, capsys):
+    """Freshness warning points at 'kanibako rig update' (W2a: rebuild gone)."""
+    from kanibako.runtime.freshness import check_image_freshness
 
-        mock_runtime = MagicMock()
-        mock_runtime.get_local_digests.return_value = ["sha256:old"]
-        mock_runtime.get_local_platform.return_value = "linux/amd64"
-        mock_runtime.get_local_label.return_value = "1.5.0"  # local version
-        mock_runtime.get_local_tags.return_value = []
-        mock_runtime.get_local_created.return_value = None
+    mock_runtime = MagicMock()
+    mock_runtime.get_local_digests.return_value = ["sha256:old"]
+    mock_runtime.get_local_platform.return_value = "linux/amd64"
+    mock_runtime.get_local_label.return_value = "1.5.0"  # local version
+    mock_runtime.get_local_tags.return_value = []
+    mock_runtime.get_local_created.return_value = None
 
-        with (
-            patch(
-                "kanibako.runtime.freshness._cached_remote_digests",
-                return_value={"sha256:new"},
-            ),
-            patch(
-                "kanibako.runtime.freshness._cached_remote_tags",
-                return_value=["1.5.0", "1.6.0", "latest"],
-            ),
-            patch(
-                "kanibako.runtime.freshness._cached_tag_digest",
-                side_effect=lambda img, tag, cp: {"1.6.0": "sha256:new"}.get(tag),
-            ),
-        ):
-            check_image_freshness(mock_runtime, "kanibako-oci:latest", tmp_path)
+    with (
+      patch(
+        "kanibako.runtime.freshness._cached_remote_digests",
+        return_value={"sha256:new"},
+      ),
+      patch(
+        "kanibako.runtime.freshness._cached_remote_tags",
+        return_value=["1.5.0", "1.6.0", "latest"],
+      ),
+      patch(
+        "kanibako.runtime.freshness._cached_tag_digest",
+        side_effect=lambda img, tag, cp: {"1.6.0": "sha256:new"}.get(tag),
+      ),
+    ):
+      check_image_freshness(mock_runtime, "kanibako-oci:latest", tmp_path)
 
-        err = capsys.readouterr().err
-        assert "kanibako rig update" in err
-        assert "rig rebuild" not in err
-        assert "kanibako image rebuild" not in err
+    err = capsys.readouterr().err
+    assert "kanibako rig update" in err
+    assert "rig rebuild" not in err
+    assert "kanibako image rebuild" not in err
 
 
 # ---------------------------------------------------------------------------
@@ -281,163 +325,156 @@ class TestFreshnessTerminology:
 
 
 class TestSystemInfoOutput:
-    """Verify system info output improvements."""
+  """Verify system info output improvements."""
 
-    def test_info_capitalizes_kanibako(self, capsys):
-        """System info header shows 'Kanibako v...' with capital K and v prefix."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_capitalizes_kanibako(self, capsys):
+    """System info header shows 'Kanibako v...' with capital K and v prefix."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.config.bootstrap_config_paths"),
-            patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
-            patch("subprocess.run") as m_run,
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
-            m_rt.return_value = MagicMock(cmd="podman")
-            m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
-            rc = run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.config.bootstrap_config_paths"),
+      patch("kanibako.settings.paths.resolve_system_paths"),
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
+      patch("subprocess.run") as m_run,
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
+      m_rt.return_value = MagicMock(cmd="podman")
+      m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
+      rc = run_info(argparse.Namespace())
 
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert out.startswith("Kanibako v")
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Kanibako v")
 
-    def test_info_runtime_line_names_the_runtime_error(self, capsys):
-        """A ContainerError's own message is the Runtime line, so a bad KANIBAKO_DOCKER_CMD
-        is named rather than reported as no runtime installed."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_runtime_line_names_the_runtime_error(self, capsys):
+    """A ContainerError's own message is the Runtime line, so a bad KANIBAKO_DOCKER_CMD
+    is named rather than reported as no runtime installed."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
-            ),
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
-            run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
+      ),
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "Runtime:   KANIBAKO_DOCKER_CMD names 'x' (test)" in out
-        assert "not found" not in out
+    out = capsys.readouterr().out
+    assert "Runtime:   KANIBAKO_DOCKER_CMD names 'x' (test)" in out
+    assert "not found" not in out
 
-    def test_info_shows_agent_count(self, capsys):
-        """System info shows number of detected agents."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_shows_agent_count(self, capsys):
+    """System info shows number of detected agents."""
+    from kanibako.commands.system_cmd import run_info
 
-        mock_cls = MagicMock()
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.config.bootstrap_config_paths"),
-            patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
-            patch("subprocess.run") as m_run,
-            patch(
-                "kanibako.targets.discover_targets",
-                return_value={"claude": mock_cls},
-            ),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
-            m_rt.return_value = MagicMock(cmd="podman")
-            m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
-            run_info(argparse.Namespace())
+    mock_cls = MagicMock()
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.config.bootstrap_config_paths"),
+      patch("kanibako.settings.paths.resolve_system_paths"),
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
+      patch("subprocess.run") as m_run,
+      patch(
+        "kanibako.targets.discover_targets",
+        return_value={"claude": mock_cls},
+      ),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
+      m_rt.return_value = MagicMock(cmd="podman")
+      m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "1 detected" in out
-        assert "kanibako agent list" in out
+    out = capsys.readouterr().out
+    assert "1 detected" in out
+    assert "kanibako agent list" in out
 
-    def test_info_empty_shows_install_hint(self, capsys):
-        """System info shows install hint when no agents are found."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_empty_shows_install_hint(self, capsys):
+    """System info shows install hint when no agents are found."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.config.bootstrap_config_paths"),
-            patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
-            patch("subprocess.run") as m_run,
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
-            m_rt.return_value = MagicMock(cmd="podman")
-            m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
-            run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.config.bootstrap_config_paths"),
+      patch("kanibako.settings.paths.resolve_system_paths"),
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
+      patch("subprocess.run") as m_run,
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
+      m_rt.return_value = MagicMock(cmd="podman")
+      m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "none" in out.lower()
-        assert "kanibako-agent-claude" in out
+    out = capsys.readouterr().out
+    assert "none" in out.lower()
+    assert "kanibako-agent-claude" in out
 
-    def test_info_config_not_initialized(self, capsys):
-        """When config doesn't exist, shows setup hint."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_config_not_initialized(self, capsys):
+    """When config doesn't exist, shows setup hint."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
-            patch("subprocess.run") as m_run,
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
-            m_rt.return_value = MagicMock(cmd="podman")
-            m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
-            run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
+      patch("subprocess.run") as m_run,
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
+      m_rt.return_value = MagicMock(cmd="podman")
+      m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "not initialized" in out
-        assert "kanibako setup" in out or "kanibako start" in out
+    out = capsys.readouterr().out
+    assert "not initialized" in out
+    assert "kanibako setup" in out or "kanibako start" in out
 
-    def test_info_runtime_not_found(self, capsys):
-        """When runtime is missing, shows install suggestion."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_runtime_not_found(self, capsys):
+    """When runtime is missing, shows install suggestion."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=Exception("no runtime"),
-            ),
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
-            run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=Exception("no runtime"),
+      ),
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "not found" in out
-        assert "podman" in out
+    out = capsys.readouterr().out
+    assert "not found" in out
+    assert "podman" in out
 
-    def test_info_shows_diagnose_tip(self, capsys):
-        """System info always shows diagnose tip at the end."""
-        from kanibako.commands.system_cmd import run_info
+  def test_info_shows_diagnose_tip(self, capsys):
+    """System info always shows diagnose tip at the end."""
+    from kanibako.commands.system_cmd import run_info
 
-        with (
-            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.settings.config.bootstrap_config_paths"),
-            patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.settings.paths.layer1_foundation",
-                  return_value={"config.data": "/data"}),
-            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
-            patch("subprocess.run") as m_run,
-            patch("kanibako.targets.discover_targets", return_value={}),
-        ):
-            m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
-            m_rt.return_value = MagicMock(cmd="podman")
-            m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
-            run_info(argparse.Namespace())
+    with (
+      patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+      patch("kanibako.settings.config.bootstrap_config_paths"),
+      patch("kanibako.settings.paths.resolve_system_paths"),
+      patch("kanibako.settings.paths.layer1_foundation", return_value={"config.data": "/data"}),
+      patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
+      patch("subprocess.run") as m_run,
+      patch("kanibako.targets.discover_targets", return_value={}),
+    ):
+      m_cf.return_value = MagicMock(exists=MagicMock(return_value=True))
+      m_rt.return_value = MagicMock(cmd="podman")
+      m_run.return_value = MagicMock(returncode=0, stdout="podman 5.0")
+      run_info(argparse.Namespace())
 
-        out = capsys.readouterr().out
-        assert "kanibako system diagnose" in out
+    out = capsys.readouterr().out
+    assert "kanibako system diagnose" in out

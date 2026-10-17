@@ -135,8 +135,11 @@ def build_store_shape(
     else:
       mounts[arm][entry.box_dest] = bind
   shape = StoreShape(
-    ro=mounts["ro"], rw=mounts["rw"], mask=mask,
-    seed=copies["seed"], sync=copies["sync"],
+    ro=mounts["ro"],
+    rw=mounts["rw"],
+    mask=mask,
+    seed=copies["seed"],
+    sync=copies["sync"],
   )
   return shape, warnings
 
@@ -161,7 +164,8 @@ def _scope_survivors(
 
 
 def _within_scope_survivors(
-  box_dest: str, group: list[CategoryEntry],
+  box_dest: str,
+  group: list[CategoryEntry],
 ) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
   """Apply §0 at ONE dest in ONE scope: two mounts there are an error, but for one pair.
 
@@ -176,7 +180,9 @@ def _within_scope_survivors(
     raise_binding_vs_binding(box_dest, concrete)
   if concrete and abstract:
     raise_extension_onto_occupied(
-      box_dest, extension=abstract[-1], base=concrete[-1],
+      box_dest,
+      extension=abstract[-1],
+      base=concrete[-1],
     )
   if len(abstract) < 2:
     return group, []

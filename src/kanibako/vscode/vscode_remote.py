@@ -53,9 +53,9 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import (
-    env_from_inspect,
-    image_ref_or_none,
-    running_from_inspect,
+  env_from_inspect,
+  image_ref_or_none,
+  running_from_inspect,
 )
 from kanibako.settings.bootstrap import XDG_RUNTIME_DIR
 from kanibako.settings.paths import resolve_cache_path, resolve_state_path
@@ -76,61 +76,68 @@ _SCRIPT_VERSION = 2
 # ssh mux + lifecycle leg
 # ---------------------------------------------------------------------------
 
-def _runtime_dir() -> str:
-    """Resolve the runtime dir for the ssh ControlPath (design fallback chain).
 
-    Per the ratified design: ``$XDG_RUNTIME_DIR`` (honored iff set AND absolute),
-    else ``$TMPDIR`` (iff absolute), else ``/tmp``.  Deliberately NOT the
-    :func:`kanibako.settings.paths.resolve_xdg` runtime fallback (which appends
-    ``/kanibako`` and warns) — the ControlPath just needs a short, writable,
-    per-user dir the mux socket can live under.
-    """
-    val = os.environ.get(XDG_RUNTIME_DIR, "")
-    if val and os.path.isabs(val):
-        return val
-    val = os.environ.get("TMPDIR", "")
-    if val and os.path.isabs(val):
-        return val
-    return "/tmp"
+def _runtime_dir() -> str:
+  """Resolve the runtime dir for the ssh ControlPath (design fallback chain).
+
+  Per the ratified design: ``$XDG_RUNTIME_DIR`` (honored iff set AND absolute),
+  else ``$TMPDIR`` (iff absolute), else ``/tmp``.  Deliberately NOT the
+  :func:`kanibako.settings.paths.resolve_xdg` runtime fallback (which appends
+  ``/kanibako`` and warns) — the ControlPath just needs a short, writable,
+  per-user dir the mux socket can live under.
+  """
+  val = os.environ.get(XDG_RUNTIME_DIR, "")
+  if val and os.path.isabs(val):
+    return val
+  val = os.environ.get("TMPDIR", "")
+  if val and os.path.isabs(val):
+    return val
+  return "/tmp"
 
 
 def _control_path() -> str:
-    """The ssh ``ControlPath`` template (``%C`` is expanded by ssh itself)."""
-    return f"{_runtime_dir()}/kanibako-remote-%C"
+  """The ssh ``ControlPath`` template (``%C`` is expanded by ssh itself)."""
+  return f"{_runtime_dir()}/kanibako-remote-%C"
 
 
 def mux_ssh_options() -> list[str]:
-    """The KANIBAKO-OWNED ssh ControlMaster mux options (BINDING).
+  """The KANIBAKO-OWNED ssh ControlMaster mux options (BINDING).
 
-    Every ssh leg (the lifecycle legs + the unix-socket tunnel master) uses
-    these: a kanibako-owned ControlMaster (auto), a kanibako-owned ControlPath
-    under the runtime dir, and a 60s ControlPersist.  NEVER the user's
-    ControlMaster (session-kill footgun); NEVER mux-free (the ext shells out
-    dozens of times per attach).  The tunnel master overrides ControlPersist to
-    600 (see :func:`ensure_tunnel`); command legs keep 60.
-    """
-    return [
-        "-o", "ControlMaster=auto",
-        "-o", f"ControlPath={_control_path()}",
-        "-o", "ControlPersist=60",
-    ]
+  Every ssh leg (the lifecycle legs + the unix-socket tunnel master) uses
+  these: a kanibako-owned ControlMaster (auto), a kanibako-owned ControlPath
+  under the runtime dir, and a 60s ControlPersist.  NEVER the user's
+  ControlMaster (session-kill footgun); NEVER mux-free (the ext shells out
+  dozens of times per attach).  The tunnel master overrides ControlPersist to
+  600 (see :func:`ensure_tunnel`); command legs keep 60.
+  """
+  return [
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    f"ControlPath={_control_path()}",
+    "-o",
+    "ControlPersist=60",
+  ]
 
 
 def ssh_command(dest: str, remote_argv: list[str]) -> list[str]:
-    """Build the local ``ssh`` argv running *remote_argv* on *dest*.
+  """Build the local ``ssh`` argv running *remote_argv* on *dest*.
 
-    *dest* is an OPAQUE ssh destination (resolved by the user's ``~/.ssh/config``;
-    ``user@`` and ``:port`` pass through verbatim).  ``--`` terminates LOCAL
-    ssh option parsing BEFORE *dest*, so a destination beginning with ``-``
-    cannot be consumed as an ssh option (option-injection hardening).  Each
-    remote arg is :func:`shlex.quote`-d so the remote shell re-parses the
-    command exactly as given — ssh concatenates the trailing args with spaces
-    before handing them to the remote shell.
-    """
-    return [
-        "ssh", *mux_ssh_options(), "--", dest,
-        *[shlex.quote(a) for a in remote_argv],
-    ]
+  *dest* is an OPAQUE ssh destination (resolved by the user's ``~/.ssh/config``;
+  ``user@`` and ``:port`` pass through verbatim).  ``--`` terminates LOCAL
+  ssh option parsing BEFORE *dest*, so a destination beginning with ``-``
+  cannot be consumed as an ssh option (option-injection hardening).  Each
+  remote arg is :func:`shlex.quote`-d so the remote shell re-parses the
+  command exactly as given — ssh concatenates the trailing args with spaces
+  before handing them to the remote shell.
+  """
+  return [
+    "ssh",
+    *mux_ssh_options(),
+    "--",
+    dest,
+    *[shlex.quote(a) for a in remote_argv],
+  ]
 
 
 # A CONSTANT, user-data-free preamble prepended to the remote kanibako command
@@ -144,370 +151,378 @@ _REMOTE_PATH_PREAMBLE = 'PATH="$HOME/.local/bin:$PATH" '
 
 
 def format_remote_failure(command: str, dest: str, remote_output: str) -> str:
-    """Format an ATTRIBUTED failure message for a relayed remote command.
+  """Format an ATTRIBUTED failure message for a relayed remote command.
 
-    A remote ``kanibako`` invocation's own stderr is relayed back over ssh
-    verbatim; when the remote's message itself begins with ``Error:`` (its setup
-    compatibility gate, an argparse error, etc.), surfacing it raw under a
-    local ``Error:`` line produces TWO stacked ``Error:`` lines with nothing to
-    say the second came from the remote host — the user has to infer the
-    boundary (rc10 dogfood).  This wraps the remote output under a clear
-    ``Response from remote host:`` header, indented so the boundary between the
-    local surfacing and the remote's own reply is unambiguous.  An empty remote
-    output is called out explicitly (``(no output from remote host)``) rather
-    than left as a bare double error.
+  A remote ``kanibako`` invocation's own stderr is relayed back over ssh
+  verbatim; when the remote's message itself begins with ``Error:`` (its setup
+  compatibility gate, an argparse error, etc.), surfacing it raw under a
+  local ``Error:`` line produces TWO stacked ``Error:`` lines with nothing to
+  say the second came from the remote host — the user has to infer the
+  boundary (rc10 dogfood).  This wraps the remote output under a clear
+  ``Response from remote host:`` header, indented so the boundary between the
+  local surfacing and the remote's own reply is unambiguous.  An empty remote
+  output is called out explicitly (``(no output from remote host)``) rather
+  than left as a bare double error.
 
-    Returns the message body WITHOUT a leading ``Error:`` — the caller prepends
-    it (matching the codebase's ``print(f"Error: {...}")`` convention).
-    """
-    remote = (remote_output or "").strip()
-    if remote:
-        body = "\n".join(f"    {line}" for line in remote.splitlines())
-    else:
-        body = "    (no output from remote host)"
-    return (
-        f"remote '{command}' failed on '{dest}'. "
-        f"Response from remote host:\n{body}"
-    )
+  Returns the message body WITHOUT a leading ``Error:`` — the caller prepends
+  it (matching the codebase's ``print(f"Error: {...}")`` convention).
+  """
+  remote = (remote_output or "").strip()
+  if remote:
+    body = "\n".join(f"    {line}" for line in remote.splitlines())
+  else:
+    body = "    (no output from remote host)"
+  return f"remote '{command}' failed on '{dest}'. Response from remote host:\n{body}"
 
 
 def remote_run_kanibako(
-    dest: str, args: list[str],
+  dest: str,
+  args: list[str],
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``kanibako <args...>`` on *dest* over the mux ssh leg (captured).
+  """Run ``kanibako <args...>`` on *dest* over the mux ssh leg (captured).
 
-    The remote command is prefixed with a CONSTANT PATH preamble
-    (:data:`_REMOTE_PATH_PREAMBLE`) that puts ``$HOME/.local/bin`` — where
-    pipx/uv install kanibako per-user — on PATH, since a non-interactive ssh
-    command does not source ``~/.profile``.  The kanibako argv is
-    individually :func:`shlex.quote`-d and joined, then the constant preamble is
-    prepended; the whole string runs via ``sh -c`` (same channel as
-    :func:`probe_remote`) so the remote shell expands the preamble while every
-    user-supplied arg stays quoted (a hostile box name cannot break out).
-    """
-    remote_cmd = _REMOTE_PATH_PREAMBLE + shlex.join(["kanibako", *args])
-    return subprocess.run(
-        ssh_command(dest, ["sh", "-c", remote_cmd]),
-        capture_output=True, text=True,
-    )
+  The remote command is prefixed with a CONSTANT PATH preamble
+  (:data:`_REMOTE_PATH_PREAMBLE`) that puts ``$HOME/.local/bin`` — where
+  pipx/uv install kanibako per-user — on PATH, since a non-interactive ssh
+  command does not source ``~/.profile``.  The kanibako argv is
+  individually :func:`shlex.quote`-d and joined, then the constant preamble is
+  prepended; the whole string runs via ``sh -c`` (same channel as
+  :func:`probe_remote`) so the remote shell expands the preamble while every
+  user-supplied arg stays quoted (a hostile box name cannot break out).
+  """
+  remote_cmd = _REMOTE_PATH_PREAMBLE + shlex.join(["kanibako", *args])
+  return subprocess.run(
+    ssh_command(dest, ["sh", "-c", remote_cmd]),
+    capture_output=True,
+    text=True,
+  )
 
 
 # One ssh round-trip: print the remote uid and whether the rootless podman user
 # socket exists.  Markers are grepped from stdout so unrelated login banners are
 # tolerated.
 _PROBE_SCRIPT = (
-    'uid=$(id -u); '
-    'printf "KANIBAKO_UID=%s\\n" "$uid"; '
-    'if [ -S "/run/user/$uid/podman/podman.sock" ]; then '
-    'echo KANIBAKO_SOCK=ok; else echo KANIBAKO_SOCK=missing; fi'
+  "uid=$(id -u); "
+  'printf "KANIBAKO_UID=%s\\n" "$uid"; '
+  'if [ -S "/run/user/$uid/podman/podman.sock" ]; then '
+  "echo KANIBAKO_SOCK=ok; else echo KANIBAKO_SOCK=missing; fi"
 )
 
 _SOCKET_REMEDIATION = (
-    "The rootless podman API socket is not running on the remote host.\n"
-    "  On the remote host, enable it for your user:\n"
-    "      systemctl --user enable --now podman.socket\n"
-    "      loginctl enable-linger \"$USER\"\n"
-    "  (linger keeps the user socket up without an active login session.)"
+  "The rootless podman API socket is not running on the remote host.\n"
+  "  On the remote host, enable it for your user:\n"
+  "      systemctl --user enable --now podman.socket\n"
+  '      loginctl enable-linger "$USER"\n'
+  "  (linger keeps the user socket up without an active login session.)"
 )
 
 
 def probe_remote(dest: str) -> int:
-    """One ssh round-trip: return the remote uid; verify the podman socket.
+  """One ssh round-trip: return the remote uid; verify the podman socket.
 
-    Runs ``id -u`` + a ``test -S`` on ``/run/user/<uid>/podman/podman.sock``.
-    A missing socket raises :class:`~kanibako.errors.KanibakoError` carrying the
-    ``systemctl --user enable --now podman.socket`` + ``loginctl enable-linger``
-    remediation; an ssh failure or unreadable uid also raises.
-    """
-    result = subprocess.run(
-        ssh_command(dest, ["sh", "-c", _PROBE_SCRIPT]),
-        capture_output=True, text=True,
+  Runs ``id -u`` + a ``test -S`` on ``/run/user/<uid>/podman/podman.sock``.
+  A missing socket raises :class:`~kanibako.errors.KanibakoError` carrying the
+  ``systemctl --user enable --now podman.socket`` + ``loginctl enable-linger``
+  remediation; an ssh failure or unreadable uid also raises.
+  """
+  result = subprocess.run(
+    ssh_command(dest, ["sh", "-c", _PROBE_SCRIPT]),
+    capture_output=True,
+    text=True,
+  )
+  if result.returncode != 0:
+    stderr = (result.stderr or "").strip()
+    raise KanibakoError(
+      f"Could not reach '{dest}' over ssh (exit {result.returncode}).\n  {stderr}"
+      if stderr
+      else f"Could not reach '{dest}' over ssh (exit {result.returncode})."
     )
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        raise KanibakoError(
-            f"Could not reach '{dest}' over ssh (exit {result.returncode}).\n"
-            f"  {stderr}" if stderr else
-            f"Could not reach '{dest}' over ssh (exit {result.returncode})."
-        )
-    uid: str | None = None
-    sock: str | None = None
-    for line in result.stdout.splitlines():
-        if line.startswith("KANIBAKO_UID="):
-            uid = line[len("KANIBAKO_UID="):].strip()
-        elif line.startswith("KANIBAKO_SOCK="):
-            sock = line[len("KANIBAKO_SOCK="):].strip()
-    if uid is None or not uid.isdigit():
-        raise KanibakoError(
-            f"Could not read the remote uid from '{dest}' "
-            "(unexpected ssh output)."
-        )
-    if sock != "ok":
-        raise KanibakoError(_SOCKET_REMEDIATION)
-    return int(uid)
+  uid: str | None = None
+  sock: str | None = None
+  for line in result.stdout.splitlines():
+    if line.startswith("KANIBAKO_UID="):
+      uid = line[len("KANIBAKO_UID=") :].strip()
+    elif line.startswith("KANIBAKO_SOCK="):
+      sock = line[len("KANIBAKO_SOCK=") :].strip()
+  if uid is None or not uid.isdigit():
+    raise KanibakoError(f"Could not read the remote uid from '{dest}' (unexpected ssh output).")
+  if sock != "ok":
+    raise KanibakoError(_SOCKET_REMEDIATION)
+  return int(uid)
 
 
 def remote_socket_path(remote_uid: int) -> str:
-    """The rootless podman API socket path on the remote host for *remote_uid*."""
-    return f"/run/user/{remote_uid}/podman/podman.sock"
+  """The rootless podman API socket path on the remote host for *remote_uid*."""
+  return f"/run/user/{remote_uid}/podman/podman.sock"
 
 
 def tunnel_socket_path(context_name: str) -> Path:
-    """The LOCAL unix-socket path the ssh tunnel forwards to for *context_name*.
+  """The LOCAL unix-socket path the ssh tunnel forwards to for *context_name*.
 
-    Lives under the runtime dir (same fallback chain as the ssh ControlPath);
-    *context_name* is already fs-safe (:func:`remote_context_name`).
-    """
-    return Path(_runtime_dir()) / f"{context_name}.sock"
+  Lives under the runtime dir (same fallback chain as the ssh ControlPath);
+  *context_name* is already fs-safe (:func:`remote_context_name`).
+  """
+  return Path(_runtime_dir()) / f"{context_name}.sock"
 
 
 def _socket_accepts(path: Path) -> bool:
-    """Whether a unix socket at *path* accepts a connection (cheap liveness).
+  """Whether a unix socket at *path* accepts a connection (cheap liveness).
 
-    A plain ``connect`` — NOT a podman round-trip — so a live tunnel master's
-    forward answers instantly and a stale socket file (master gone) is treated
-    as down so the tunnel is re-established.
-    """
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        sock.connect(str(path))
-        return True
-    except OSError:
-        return False
-    finally:
-        sock.close()
+  A plain ``connect`` — NOT a podman round-trip — so a live tunnel master's
+  forward answers instantly and a stale socket file (master gone) is treated
+  as down so the tunnel is re-established.
+  """
+  sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+  try:
+    sock.connect(str(path))
+    return True
+  except OSError:
+    return False
+  finally:
+    sock.close()
 
 
 def ensure_tunnel(dest: str, remote_uid: int, local_sock: Path) -> None:
-    """Ensure a kanibako-owned ssh tunnel forwards *local_sock* to the remote
-    podman socket (idempotent).
+  """Ensure a kanibako-owned ssh tunnel forwards *local_sock* to the remote
+  podman socket (idempotent).
 
-    Fast path: if *local_sock* already accepts a connection (a live master's
-    forward), return immediately.  Otherwise invoke the REAL ssh binary to
-    background a ControlPersist master carrying the unix-socket forward::
+  Fast path: if *local_sock* already accepts a connection (a live master's
+  forward), return immediately.  Otherwise invoke the REAL ssh binary to
+  background a ControlPersist master carrying the unix-socket forward::
 
-        ssh -o ControlPersist=600 <mux opts> -o ExitOnForwardFailure=yes
-            -o StreamLocalBindUnlink=yes -f -N
-            -L <local_sock>:/run/user/<uid>/podman/podman.sock -- <dest>
+      ssh -o ControlPersist=600 <mux opts> -o ExitOnForwardFailure=yes
+          -o StreamLocalBindUnlink=yes -f -N
+          -L <local_sock>:/run/user/<uid>/podman/podman.sock -- <dest>
 
-    ``ControlPersist=600`` (the tunnel lease) is placed BEFORE the base
-    :func:`mux_ssh_options` — OpenSSH takes the FIRST obtained value for a
-    repeated option (ssh_config semantics, ``ssh -G``-confirmed), so the 600
-    must precede the base options' 60 to win.  ``StreamLocalBindUnlink``
-    clears any stale socket file; the tunnel made by REAL ssh reads the user's
-    ``~/.ssh/config`` (alias/port/ProxyJump/key-files all work, no ssh-agent
-    requirement).  A nonzero rc raises
-    :class:`~kanibako.errors.KanibakoError` carrying ssh's stderr verbatim.
-    """
-    if local_sock.exists() and _socket_accepts(local_sock):
-        return
-    forward = f"{local_sock}:{remote_socket_path(remote_uid)}"
-    argv = [
-        "ssh",
-        "-o", "ControlPersist=600",
-        *mux_ssh_options(),
-        "-o", "ExitOnForwardFailure=yes",
-        "-o", "StreamLocalBindUnlink=yes",
-        "-f", "-N",
-        "-L", forward,
-        "--", dest,
-    ]
-    result = subprocess.run(argv, capture_output=True, text=True)
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        raise KanibakoError(
-            f"Could not establish the ssh tunnel to the remote podman socket "
-            f"on '{dest}' (exit {result.returncode})."
-            + (f"\n  {stderr}" if stderr else "")
-        )
+  ``ControlPersist=600`` (the tunnel lease) is placed BEFORE the base
+  :func:`mux_ssh_options` — OpenSSH takes the FIRST obtained value for a
+  repeated option (ssh_config semantics, ``ssh -G``-confirmed), so the 600
+  must precede the base options' 60 to win.  ``StreamLocalBindUnlink``
+  clears any stale socket file; the tunnel made by REAL ssh reads the user's
+  ``~/.ssh/config`` (alias/port/ProxyJump/key-files all work, no ssh-agent
+  requirement).  A nonzero rc raises
+  :class:`~kanibako.errors.KanibakoError` carrying ssh's stderr verbatim.
+  """
+  if local_sock.exists() and _socket_accepts(local_sock):
+    return
+  forward = f"{local_sock}:{remote_socket_path(remote_uid)}"
+  argv = [
+    "ssh",
+    "-o",
+    "ControlPersist=600",
+    *mux_ssh_options(),
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-o",
+    "StreamLocalBindUnlink=yes",
+    "-f",
+    "-N",
+    "-L",
+    forward,
+    "--",
+    dest,
+  ]
+  result = subprocess.run(argv, capture_output=True, text=True)
+  if result.returncode != 0:
+    stderr = (result.stderr or "").strip()
+    raise KanibakoError(
+      f"Could not establish the ssh tunnel to the remote podman socket "
+      f"on '{dest}' (exit {result.returncode})." + (f"\n  {stderr}" if stderr else "")
+    )
 
 
 def engine_url(local_sock: Path) -> str:
-    """The podman remote engine URL for a LOCAL forwarded unix socket.
+  """The podman remote engine URL for a LOCAL forwarded unix socket.
 
-    Always ``unix://<local_sock>`` — podman dials the local end of the ssh
-    tunnel (:func:`ensure_tunnel`), never a golang ``ssh:`` connection.
-    """
-    return f"unix://{local_sock}"
+  Always ``unix://<local_sock>`` — podman dials the local end of the ssh
+  tunnel (:func:`ensure_tunnel`), never a golang ``ssh:`` connection.
+  """
+  return f"unix://{local_sock}"
 
 
 def context_slug(dest: str) -> str:
-    """A filesystem-safe slug for *dest* (used to name the docker context).
+  """A filesystem-safe slug for *dest* (used to name the docker context).
 
-    The readable part is lossy (``me@host`` and ``me/host`` both normalize to
-    ``me-host``), so a short digest of the VERBATIM dest is appended to keep
-    distinct destinations from sharing a context name / store entry.
-    """
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", dest).strip("-").lower()
-    digest = hashlib.sha256(dest.encode()).hexdigest()[:6]
-    return f"{slug or 'default'}-{digest}"
+  The readable part is lossy (``me@host`` and ``me/host`` both normalize to
+  ``me-host``), so a short digest of the VERBATIM dest is appended to keep
+  distinct destinations from sharing a context name / store entry.
+  """
+  slug = re.sub(r"[^a-zA-Z0-9]+", "-", dest).strip("-").lower()
+  digest = hashlib.sha256(dest.encode()).hexdigest()[:6]
+  return f"{slug or 'default'}-{digest}"
 
 
 def remote_context_name(dest: str) -> str:
-    """The kanibako-managed docker context NAME for *dest*."""
-    return f"{_CONTEXT_PREFIX}{context_slug(dest)}"
+  """The kanibako-managed docker context NAME for *dest*."""
+  return f"{_CONTEXT_PREFIX}{context_slug(dest)}"
 
 
 # ---------------------------------------------------------------------------
 # Connection store (flat, sh-greppable; NEVER sourced)
 # ---------------------------------------------------------------------------
 
-def _vscode_remote_state_dir() -> Path:
-    """State dir for the connection store + dispatch log — under ``system.state``.
 
-    keyspec §2g system.state: a state store derives from ``system.state`` and from nothing
-    else, so this is the declared key's resolved value, never ``$XDG_STATE_HOME`` composed
-    with a leaf. :func:`resolve_state_path` is PURE and TOTAL (never raises, creates
-    nothing): it degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever
-    the host config or settings file is absent/unreadable/malformed — so this function
-    stays as pure and total as it was with that path hardcoded, and reaches a repointed
-    state root when the files ARE readable.
-    """
-    return resolve_state_path() / "vscode-remote"
+def _vscode_remote_state_dir() -> Path:
+  """State dir for the connection store + dispatch log — under ``system.state``.
+
+  keyspec §2g system.state: a state store derives from ``system.state`` and from nothing
+  else, so this is the declared key's resolved value, never ``$XDG_STATE_HOME`` composed
+  with a leaf. :func:`resolve_state_path` is PURE and TOTAL (never raises, creates
+  nothing): it degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever
+  the host config or settings file is absent/unreadable/malformed — so this function
+  stays as pure and total as it was with that path hardcoded, and reaches a repointed
+  state root when the files ARE readable.
+  """
+  return resolve_state_path() / "vscode-remote"
 
 
 def contexts_dir() -> Path:
-    """Directory holding one flat ``KEY=VALUE`` file per stored context."""
-    return _vscode_remote_state_dir() / "contexts"
+  """Directory holding one flat ``KEY=VALUE`` file per stored context."""
+  return _vscode_remote_state_dir() / "contexts"
 
 
 def write_context_entry(
-    name: str, *, url: str, dest: str, uid: int, sock: str, remote_sock: str,
+  name: str,
+  *,
+  url: str,
+  dest: str,
+  uid: int,
+  sock: str,
+  remote_sock: str,
 ) -> Path:
-    """Write the flat ``KEY=VALUE`` store file for context *name*.
+  """Write the flat ``KEY=VALUE`` store file for context *name*.
 
-    One line each: ``URL=`` (``unix://<local_sock>``), ``DEST=``, ``UID=``,
-    ``SOCK=`` (the local forwarded socket) and ``REMOTE_SOCK=`` (the remote
-    podman socket) — sh-greppable (the wrapper extracts values with ``sed`` to
-    re-establish the tunnel + dial the local socket), NEVER sourced.  Returns
-    the file path.
-    """
-    d = contexts_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    path = d / name
-    path.write_text(
-        f"URL={url}\nDEST={dest}\nUID={uid}\n"
-        f"SOCK={sock}\nREMOTE_SOCK={remote_sock}\n"
-    )
-    return path
+  One line each: ``URL=`` (``unix://<local_sock>``), ``DEST=``, ``UID=``,
+  ``SOCK=`` (the local forwarded socket) and ``REMOTE_SOCK=`` (the remote
+  podman socket) — sh-greppable (the wrapper extracts values with ``sed`` to
+  re-establish the tunnel + dial the local socket), NEVER sourced.  Returns
+  the file path.
+  """
+  d = contexts_dir()
+  d.mkdir(parents=True, exist_ok=True)
+  path = d / name
+  path.write_text(f"URL={url}\nDEST={dest}\nUID={uid}\nSOCK={sock}\nREMOTE_SOCK={remote_sock}\n")
+  return path
 
 
 def read_context_entry(name: str) -> dict[str, str]:
-    """Read the flat store file for context *name* (``{}`` if absent/unreadable)."""
-    path = contexts_dir() / name
-    result: dict[str, str] = {}
-    try:
-        raw = path.read_text()
-    except OSError:
-        return result
-    for line in raw.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            result[key] = value
+  """Read the flat store file for context *name* (``{}`` if absent/unreadable)."""
+  path = contexts_dir() / name
+  result: dict[str, str] = {}
+  try:
+    raw = path.read_text()
+  except OSError:
     return result
+  for line in raw.splitlines():
+    if "=" in line:
+      key, value = line.split("=", 1)
+      result[key] = value
+  return result
 
 
 # ---------------------------------------------------------------------------
 # RemoteEngine — duck-typed ContainerRuntime subset for the attach seed path
 # ---------------------------------------------------------------------------
 
+
 class RemoteEngine:
-    """The subset of :class:`~kanibako.runtime.container.ContainerRuntime` the attach
-    seed path needs, driven by ``podman --remote --url unix://<local.sock>``.
+  """The subset of :class:`~kanibako.runtime.container.ContainerRuntime` the attach
+  seed path needs, driven by ``podman --remote --url unix://<local.sock>``.
 
-    Built on the podman remote argv prefix dialing the LOCAL end of the ssh
-    tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
-    ``ssh:`` client is bypassed entirely).  Does NOT touch
-    :class:`ContainerRuntime` — it does share that module's ``inspect`` parsers
-    (:func:`~kanibako.runtime.container.image_ref_or_none`,
-    :func:`~kanibako.runtime.container.running_from_inspect`,
-    :func:`~kanibako.runtime.container.env_from_inspect`), so both legs read the
-    engine's answers by one rule.
+  Built on the podman remote argv prefix dialing the LOCAL end of the ssh
+  tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
+  ``ssh:`` client is bypassed entirely).  Does NOT touch
+  :class:`ContainerRuntime` — it does share that module's ``inspect`` parsers
+  (:func:`~kanibako.runtime.container.image_ref_or_none`,
+  :func:`~kanibako.runtime.container.running_from_inspect`,
+  :func:`~kanibako.runtime.container.env_from_inspect`), so both legs read the
+  engine's answers by one rule.
+  """
+
+  def __init__(self, url: str, *, podman: str | None = None) -> None:
+    self.url = url
+    self.podman = podman or shutil.which("podman") or "podman"
+    self.argv_prefix = [self.podman, "--remote", "--url", url]
+
+  def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+      [*self.argv_prefix, *args],
+      capture_output=True,
+      text=True,
+    )
+
+  def version(self) -> subprocess.CompletedProcess[str]:
+    """Pre-flight the engine leg: ``podman --remote … version``.
+
+    Runs against the stored ``unix://`` URL, so a dead tunnel (local socket
+    not answering) is caught before the lifecycle legs run.  Returns the raw
+    CompletedProcess so the caller can surface podman's own stderr (see
+    :func:`preflight_engine`).
     """
+    return self._run(["version"])
 
-    def __init__(self, url: str, *, podman: str | None = None) -> None:
-        self.url = url
-        self.podman = podman or shutil.which("podman") or "podman"
-        self.argv_prefix = [self.podman, "--remote", "--url", url]
+  def running_with_stderr(self, name: str) -> tuple[bool, str]:
+    """Whether remote container *name* is running, plus podman's stderr.
 
-    def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [*self.argv_prefix, *args],
-            capture_output=True, text=True,
-        )
+    The stderr is the honest surface for the "did not come up" path — an
+    ``inspect`` that fails (no such container, engine unreachable) names the
+    underlying problem, which a bare bool would swallow.
+    """
+    result = self._run(
+      ["inspect", "--format", "{{.State.Running}}", name],
+    )
+    return running_from_inspect(result), (result.stderr or "").strip()
 
-    def version(self) -> subprocess.CompletedProcess[str]:
-        """Pre-flight the engine leg: ``podman --remote … version``.
+  def is_running(self, name: str) -> bool:
+    """Whether the remote container *name* is currently running."""
+    running, _ = self.running_with_stderr(name)
+    return running
 
-        Runs against the stored ``unix://`` URL, so a dead tunnel (local socket
-        not answering) is caught before the lifecycle legs run.  Returns the raw
-        CompletedProcess so the caller can surface podman's own stderr (see
-        :func:`preflight_engine`).
-        """
-        return self._run(["version"])
+  def inspect_env(self, name: str, key: str) -> str | None:
+    """The value of env var *key* on remote container *name*, or None."""
+    result = self._run(
+      ["inspect", "--format", "{{json .Config.Env}}", name],
+    )
+    return env_from_inspect(result, key)
 
-    def running_with_stderr(self, name: str) -> tuple[bool, str]:
-        """Whether remote container *name* is running, plus podman's stderr.
-
-        The stderr is the honest surface for the "did not come up" path — an
-        ``inspect`` that fails (no such container, engine unreachable) names the
-        underlying problem, which a bare bool would swallow.
-        """
-        result = self._run(
-            ["inspect", "--format", "{{.State.Running}}", name],
-        )
-        return running_from_inspect(result), (result.stderr or "").strip()
-
-    def is_running(self, name: str) -> bool:
-        """Whether the remote container *name* is currently running."""
-        running, _ = self.running_with_stderr(name)
-        return running
-
-    def inspect_env(self, name: str, key: str) -> str | None:
-        """The value of env var *key* on remote container *name*, or None."""
-        result = self._run(
-            ["inspect", "--format", "{{json .Config.Env}}", name],
-        )
-        return env_from_inspect(result, key)
-
-    def container_image(self, name: str) -> str | None:
-        """The image reference remote container *name* was created from, or None."""
-        # Same format string as the local leg, so the same guard: whatever an engine
-        # without ``.ImageName`` prints must never key a config as if it were a
-        # reference (see :func:`~kanibako.runtime.container.image_ref_or_none`).
-        result = self._run(["inspect", "--format", "{{.ImageName}}", name])
-        if result.returncode != 0:
-            return None
-        return image_ref_or_none(result.stdout)
+  def container_image(self, name: str) -> str | None:
+    """The image reference remote container *name* was created from, or None."""
+    # Same format string as the local leg, so the same guard: whatever an engine
+    # without ``.ImageName`` prints must never key a config as if it were a
+    # reference (see :func:`~kanibako.runtime.container.image_ref_or_none`).
+    result = self._run(["inspect", "--format", "{{.ImageName}}", name])
+    if result.returncode != 0:
+      return None
+    return image_ref_or_none(result.stdout)
 
 
 _PREFLIGHT_TUNNEL_HINT = (
-    "Hint: the local end of the ssh tunnel to the remote podman socket is not "
-    "answering. Check that the ssh tunnel came up (kanibako owns a "
-    "ControlPersist master; see the dispatch log) and that the remote "
-    "podman.socket is running."
+  "Hint: the local end of the ssh tunnel to the remote podman socket is not "
+  "answering. Check that the ssh tunnel came up (kanibako owns a "
+  "ControlPersist master; see the dispatch log) and that the remote "
+  "podman.socket is running."
 )
 
 
 def preflight_engine(engine: RemoteEngine) -> None:
-    """Pre-flight the remote podman engine leg; raise on a dead connection.
+  """Pre-flight the remote podman engine leg; raise on a dead connection.
 
-    Runs ``podman --remote --url unix://<local.sock> version`` (via
-    :meth:`RemoteEngine.version`) BEFORE the lifecycle legs, so a dead tunnel
-    (the local forwarded socket not answering) is caught with podman's OWN
-    stderr plus a generic tunnel remediation rather than a downstream
-    "did not come up".  Raises :class:`~kanibako.errors.KanibakoError` carrying
-    podman's stderr verbatim; returns None on success.
-    """
-    result = engine.version()
-    if result.returncode == 0:
-        return
-    stderr = (result.stderr or "").strip()
-    body = stderr or "(podman produced no error output)"
-    raise KanibakoError(
-        f"Could not reach the remote podman engine over the ssh tunnel.\n"
-        f"  {body}\n  {_PREFLIGHT_TUNNEL_HINT}"
-    )
+  Runs ``podman --remote --url unix://<local.sock> version`` (via
+  :meth:`RemoteEngine.version`) BEFORE the lifecycle legs, so a dead tunnel
+  (the local forwarded socket not answering) is caught with podman's OWN
+  stderr plus a generic tunnel remediation rather than a downstream
+  "did not come up".  Raises :class:`~kanibako.errors.KanibakoError` carrying
+  podman's stderr verbatim; returns None on success.
+  """
+  result = engine.version()
+  if result.returncode == 0:
+    return
+  stderr = (result.stderr or "").strip()
+  body = stderr or "(podman produced no error output)"
+  raise KanibakoError(
+    f"Could not reach the remote podman engine over the ssh tunnel.\n"
+    f"  {body}\n  {_PREFLIGHT_TUNNEL_HINT}"
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -520,74 +535,72 @@ DOCKER_CONTEXT_META_FILE = "meta.json"
 
 
 def _docker_config_dir() -> Path:
-    val = os.environ.get("DOCKER_CONFIG")
-    if val and os.path.isabs(val):
-        return Path(val)
-    return Path.home() / ".docker"
+  val = os.environ.get("DOCKER_CONFIG")
+  if val and os.path.isabs(val):
+    return Path(val)
+  return Path.home() / ".docker"
 
 
 def ensure_docker_context_meta(name: str, url: str) -> Path:
-    """Write the docker-CLI-convention ``meta.json`` for context *name*.
+  """Write the docker-CLI-convention ``meta.json`` for context *name*.
 
-    Docker keys a context by ``sha256(name)``: the file lives at
-    ``<docker config>/contexts/meta/<sha256(name)>/meta.json`` (the docker CLI
-    itself is NOT required to write it).  Idempotent (rewritten only on change);
-    refuses any non-``kanibako-remote-*`` name so it never touches a user's own
-    contexts.  Returns the meta.json path.
-    """
-    if not name.startswith(_CONTEXT_PREFIX):
-        raise ValueError(
-            f"refusing to write docker context meta for non-kanibako "
-            f"context {name!r}"
-        )
-    digest = hashlib.sha256(name.encode()).hexdigest()
-    meta_dir = _docker_config_dir() / "contexts" / "meta" / digest
-    meta_file = meta_dir / DOCKER_CONTEXT_META_FILE
-    payload = {
-        "Name": name,
-        "Metadata": {},
-        "Endpoints": {"docker": {"Host": url, "SkipTLSVerify": False}},
-    }
-    content = json.dumps(payload, separators=(",", ":"))
-    try:
-        if meta_file.read_text() == content:
-            return meta_file
-    except OSError:
-        pass
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    meta_file.write_text(content)
-    return meta_file
+  Docker keys a context by ``sha256(name)``: the file lives at
+  ``<docker config>/contexts/meta/<sha256(name)>/meta.json`` (the docker CLI
+  itself is NOT required to write it).  Idempotent (rewritten only on change);
+  refuses any non-``kanibako-remote-*`` name so it never touches a user's own
+  contexts.  Returns the meta.json path.
+  """
+  if not name.startswith(_CONTEXT_PREFIX):
+    raise ValueError(f"refusing to write docker context meta for non-kanibako context {name!r}")
+  digest = hashlib.sha256(name.encode()).hexdigest()
+  meta_dir = _docker_config_dir() / "contexts" / "meta" / digest
+  meta_file = meta_dir / DOCKER_CONTEXT_META_FILE
+  payload = {
+    "Name": name,
+    "Metadata": {},
+    "Endpoints": {"docker": {"Host": url, "SkipTLSVerify": False}},
+  }
+  content = json.dumps(payload, separators=(",", ":"))
+  try:
+    if meta_file.read_text() == content:
+      return meta_file
+  except OSError:
+    pass
+  meta_dir.mkdir(parents=True, exist_ok=True)
+  meta_file.write_text(content)
+  return meta_file
 
 
 # ---------------------------------------------------------------------------
 # Generated dispatch wrapper
 # ---------------------------------------------------------------------------
 
-def vscode_remote_bin_dir() -> Path:
-    """Directory holding the generated ``podman-dispatch`` wrapper.
 
-    Anchored on ``system.cache`` itself (:func:`resolve_cache_path`), not on the
-    XDG cache base plus a hardcoded leaf: a user who repoints ``system.cache``
-    gets the generated wrapper inside the cache root they configured. The wrapper
-    is regenerable output — ``kanibako code --remote`` rewrites it, so a cache
-    wipe is safe — while the data store holds user-meaningful content; generated
-    output does not belong there. ⚑ Contrast :func:`_vscode_remote_state_dir`,
-    the module's other resolved root: the connection store is STATE and derives
-    from ``system.state`` (keyspec §2g system.state). Two keys, two bases,
-    neither derived from the other. :func:`resolve_cache_path` is PURE and TOTAL,
-    so this stays as total as it was.
-    """
-    return resolve_cache_path() / "vscode-remote" / "bin"
+def vscode_remote_bin_dir() -> Path:
+  """Directory holding the generated ``podman-dispatch`` wrapper.
+
+  Anchored on ``system.cache`` itself (:func:`resolve_cache_path`), not on the
+  XDG cache base plus a hardcoded leaf: a user who repoints ``system.cache``
+  gets the generated wrapper inside the cache root they configured. The wrapper
+  is regenerable output — ``kanibako code --remote`` rewrites it, so a cache
+  wipe is safe — while the data store holds user-meaningful content; generated
+  output does not belong there. ⚑ Contrast :func:`_vscode_remote_state_dir`,
+  the module's other resolved root: the connection store is STATE and derives
+  from ``system.state`` (keyspec §2g system.state). Two keys, two bases,
+  neither derived from the other. :func:`resolve_cache_path` is PURE and TOTAL,
+  so this stays as total as it was.
+  """
+  return resolve_cache_path() / "vscode-remote" / "bin"
 
 
 def dispatch_wrapper_path() -> Path:
-    """Path VS Code's ``dev.containers.dockerPath`` points at."""
-    return vscode_remote_bin_dir() / "podman-dispatch"
+  """Path VS Code's ``dev.containers.dockerPath`` points at."""
+  return vscode_remote_bin_dir() / "podman-dispatch"
 
 
 def dispatch_log_path() -> Path:
-    """Path of the wrapper's one-line-per-invocation audit log."""
-    return _vscode_remote_state_dir() / "dispatch.log"
+  """Path of the wrapper's one-line-per-invocation audit log."""
+  return _vscode_remote_state_dir() / "dispatch.log"
 
 
 # The wrapper is built from a template with @@TOKEN@@ placeholders substituted
@@ -724,34 +737,33 @@ exec "$_podman" "$@"
 
 
 def _wrapper_content() -> str:
-    return (
-        _WRAPPER_TEMPLATE
-        .replace("@@VERSION@@", str(_SCRIPT_VERSION))
-        .replace("@@STORE_DIR@@", str(contexts_dir()))
-        .replace("@@LOG_FILE@@", str(dispatch_log_path()))
-        .replace("@@CONTROL_PATH@@", _control_path())
-    )
+  return (
+    _WRAPPER_TEMPLATE.replace("@@VERSION@@", str(_SCRIPT_VERSION))
+    .replace("@@STORE_DIR@@", str(contexts_dir()))
+    .replace("@@LOG_FILE@@", str(dispatch_log_path()))
+    .replace("@@CONTROL_PATH@@", _control_path())
+  )
 
 
 def _write_script(path: Path, content: str) -> bool:
-    """Write *content* to *path* as a 0755 script iff it changed (idempotent).
+  """Write *content* to *path* as a 0755 script iff it changed (idempotent).
 
-    Returns True iff the file content was (re)written.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        if path.read_text() == content:
-            path.chmod(0o755)
-            return False
-    except OSError:
-        pass
-    path.write_text(content)
-    path.chmod(0o755)
-    return True
+  Returns True iff the file content was (re)written.
+  """
+  path.parent.mkdir(parents=True, exist_ok=True)
+  try:
+    if path.read_text() == content:
+      path.chmod(0o755)
+      return False
+  except OSError:
+    pass
+  path.write_text(content)
+  path.chmod(0o755)
+  return True
 
 
 def ensure_dispatch_wrapper() -> Path:
-    """Install/refresh the ``podman-dispatch`` wrapper (idempotent). Returns path."""
-    path = dispatch_wrapper_path()
-    _write_script(path, _wrapper_content())
-    return path
+  """Install/refresh the ``podman-dispatch`` wrapper (idempotent). Returns path."""
+  path = dispatch_wrapper_path()
+  _write_script(path, _wrapper_content())
+  return path

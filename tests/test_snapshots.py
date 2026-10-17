@@ -11,19 +11,19 @@ import pytest
 
 from kanibako import snapshots as snapshots_mod
 from kanibako.snapshots import (
-    UNSORTED_DIRNAME,
-    ForeignSnapshotError,
-    UnsafeSnapshotNameError,
-    _test_reflink,
-    auto_snapshot,
-    create_snapshot,
-    detect_snapshot_strategy,
-    list_snapshots,
-    list_unsorted,
-    migrate_legacy_versions,
-    prune_snapshots,
-    restore_snapshot,
-    snapshots_to_prune,
+  UNSORTED_DIRNAME,
+  ForeignSnapshotError,
+  UnsafeSnapshotNameError,
+  _test_reflink,
+  auto_snapshot,
+  create_snapshot,
+  detect_snapshot_strategy,
+  list_snapshots,
+  list_unsorted,
+  migrate_legacy_versions,
+  prune_snapshots,
+  restore_snapshot,
+  snapshots_to_prune,
 )
 from tests.support.link_proof import sentinel_tree, tree_digest
 
@@ -34,27 +34,29 @@ from tests.support.link_proof import sentinel_tree, tree_digest
 
 
 def _populate_rw(vault_rw: Path) -> None:
-    """Put some files into share-rw for snapshot tests."""
-    vault_rw.mkdir(parents=True, exist_ok=True)
-    (vault_rw / "file1.txt").write_text("hello")
-    sub = vault_rw / "subdir"
-    sub.mkdir()
-    (sub / "file2.txt").write_text("world")
+  """Put some files into share-rw for snapshot tests."""
+  vault_rw.mkdir(parents=True, exist_ok=True)
+  (vault_rw / "file1.txt").write_text("hello")
+  sub = vault_rw / "subdir"
+  sub.mkdir()
+  (sub / "file2.txt").write_text("world")
 
 
 def _make_dir_snapshot(versions: Path, name: str, vault_rw: Path) -> Path:
-    """Create a directory snapshot manually for testing."""
-    snap_dir = versions / name
-    snap_dir.mkdir(parents=True, exist_ok=True)
-    for item in vault_rw.iterdir():
-        dest = snap_dir / item.name
-        if item.is_dir():
-            import shutil
-            shutil.copytree(item, dest)
-        else:
-            import shutil
-            shutil.copy2(item, dest)
-    return snap_dir
+  """Create a directory snapshot manually for testing."""
+  snap_dir = versions / name
+  snap_dir.mkdir(parents=True, exist_ok=True)
+  for item in vault_rw.iterdir():
+    dest = snap_dir / item.name
+    if item.is_dir():
+      import shutil
+
+      shutil.copytree(item, dest)
+    else:
+      import shutil
+
+      shutil.copy2(item, dest)
+  return snap_dir
 
 
 # ---------------------------------------------------------------------------
@@ -63,73 +65,73 @@ def _make_dir_snapshot(versions: Path, name: str, vault_rw: Path) -> Path:
 
 
 class TestCreateSnapshot:
-    def test_creates_directory_snapshot(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_creates_directory_snapshot(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = create_snapshot(vault_rw, box_name="testbox")
+    result = create_snapshot(vault_rw, box_name="testbox")
 
-        assert result is not None
-        assert result.exists()
-        assert result.is_dir()
-        assert result.parent.name == "testbox"
+    assert result is not None
+    assert result.exists()
+    assert result.is_dir()
+    assert result.parent.name == "testbox"
 
-    def test_returns_none_when_empty(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.mkdir(parents=True)
+  def test_returns_none_when_empty(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.mkdir(parents=True)
 
-        assert create_snapshot(vault_rw, box_name="testbox") is None
+    assert create_snapshot(vault_rw, box_name="testbox") is None
 
-    def test_returns_none_when_missing(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
+  def test_returns_none_when_missing(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
 
-        assert create_snapshot(vault_rw, box_name="testbox") is None
+    assert create_snapshot(vault_rw, box_name="testbox") is None
 
-    def test_snapshot_contains_files(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_snapshot_contains_files(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = create_snapshot(vault_rw, box_name="testbox")
-        assert result is not None
-        assert (result / "file1.txt").read_text() == "hello"
-        assert (result / "subdir" / "file2.txt").read_text() == "world"
+    result = create_snapshot(vault_rw, box_name="testbox")
+    assert result is not None
+    assert (result / "file1.txt").read_text() == "hello"
+    assert (result / "subdir" / "file2.txt").read_text() == "world"
 
-    def test_create_snapshot_hardlink(self, tmp_path: Path) -> None:
-        """strategy='hardlink' produces a directory snapshot."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_create_snapshot_hardlink(self, tmp_path: Path) -> None:
+    """strategy='hardlink' produces a directory snapshot."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
 
-        assert result is not None
-        assert result.is_dir()
-        assert (result / "file1.txt").read_text() == "hello"
-        assert (result / "subdir" / "file2.txt").read_text() == "world"
-        assert result.parent.name == "testbox"
+    assert result is not None
+    assert result.is_dir()
+    assert (result / "file1.txt").read_text() == "hello"
+    assert (result / "subdir" / "file2.txt").read_text() == "world"
+    assert result.parent.name == "testbox"
 
-    def test_create_snapshot_hardlink_link_dest(self, tmp_path: Path) -> None:
-        """Second hardlink snapshot can use --link-dest from the first."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        _populate_rw(vault_rw)
+  def test_create_snapshot_hardlink_link_dest(self, tmp_path: Path) -> None:
+    """Second hardlink snapshot can use --link-dest from the first."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    _populate_rw(vault_rw)
 
-        # Create the first snapshot manually with a known timestamp.
-        first = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert first is not None
+    # Create the first snapshot manually with a known timestamp.
+    first = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert first is not None
 
-        # Rename to a distinct timestamp so the second doesn't collide.
-        first_renamed = versions / "20260101T000000Z"
-        first.rename(first_renamed)
-        first = first_renamed
+    # Rename to a distinct timestamp so the second doesn't collide.
+    first_renamed = versions / "20260101T000000Z"
+    first.rename(first_renamed)
+    first = first_renamed
 
-        # Modify a file so the second snapshot differs.
-        (vault_rw / "file1.txt").write_text("changed")
-        second = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert second is not None
-        assert second != first
-        assert (second / "file1.txt").read_text() == "changed"
-        # Original snapshot is untouched.
-        assert (first / "file1.txt").read_text() == "hello"
+    # Modify a file so the second snapshot differs.
+    (vault_rw / "file1.txt").write_text("changed")
+    second = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert second is not None
+    assert second != first
+    assert (second / "file1.txt").read_text() == "changed"
+    # Original snapshot is untouched.
+    assert (first / "file1.txt").read_text() == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -148,94 +150,90 @@ class TestCreateSnapshot:
 
 
 def _assert_full_snapshot(snap: Path | None, vault_rw: Path) -> None:
-    """Assert *snap* is a complete copy of *vault_rw* (file set + contents)."""
-    assert snap is not None
-    assert snap.is_dir()
+  """Assert *snap* is a complete copy of *vault_rw* (file set + contents)."""
+  assert snap is not None
+  assert snap.is_dir()
 
-    def rel_files(root: Path) -> dict[str, str]:
-        return {
-            str(f.relative_to(root)): f.read_text()
-            for f in root.rglob("*")
-            if f.is_file()
-        }
+  def rel_files(root: Path) -> dict[str, str]:
+    return {str(f.relative_to(root)): f.read_text() for f in root.rglob("*") if f.is_file()}
 
-    assert rel_files(snap) == rel_files(vault_rw)
+  assert rel_files(snap) == rel_files(vault_rw)
 
 
 class TestSnapshotFallbackChain:
-    def test_hardlink_rsync_failure_falls_back_to_copy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """rsync returning non-zero -> copytree fallback -> full snapshot."""
-        import subprocess
+  def test_hardlink_rsync_failure_falls_back_to_copy(
+    self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+  ) -> None:
+    """rsync returning non-zero -> copytree fallback -> full snapshot."""
+    import subprocess
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        real_run = subprocess.run
+    real_run = subprocess.run
 
-        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
-            # Simulate an rsync that fails (e.g. EXDEV on --link-dest).
-            if cmd and cmd[0] == "rsync":
-                raise subprocess.CalledProcessError(1, cmd)
-            return real_run(cmd, *args, **kwargs)
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+      # Simulate an rsync that fails (e.g. EXDEV on --link-dest).
+      if cmd and cmd[0] == "rsync":
+        raise subprocess.CalledProcessError(1, cmd)
+      return real_run(cmd, *args, **kwargs)
 
-        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+    monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
 
-        result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        _assert_full_snapshot(result, vault_rw)
+    result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    _assert_full_snapshot(result, vault_rw)
 
-    def test_hardlink_rsync_missing_falls_back_to_copy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """rsync not installed (FileNotFoundError) -> copytree fallback."""
-        import subprocess
+  def test_hardlink_rsync_missing_falls_back_to_copy(
+    self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+  ) -> None:
+    """rsync not installed (FileNotFoundError) -> copytree fallback."""
+    import subprocess
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        real_run = subprocess.run
+    real_run = subprocess.run
 
-        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if cmd and cmd[0] == "rsync":
-                raise FileNotFoundError("rsync not found")
-            return real_run(cmd, *args, **kwargs)
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+      if cmd and cmd[0] == "rsync":
+        raise FileNotFoundError("rsync not found")
+      return real_run(cmd, *args, **kwargs)
 
-        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+    monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
 
-        result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        _assert_full_snapshot(result, vault_rw)
+    result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    _assert_full_snapshot(result, vault_rw)
 
-    def test_no_reflink_fs_detects_hardlink_and_snapshots(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """No-reflink fs: detection returns hardlink, snapshot still complete.
+  def test_no_reflink_fs_detects_hardlink_and_snapshots(
+    self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+  ) -> None:
+    """No-reflink fs: detection returns hardlink, snapshot still complete.
 
-        This mirrors the real launch path (start.py): detect the strategy,
-        then create_snapshot with it.  On a filesystem whose reflink probe
-        fails, detection must pick ``hardlink`` so the reflink path -- which
-        has no in-path fallback -- is never executed.
-        """
-        import subprocess
+    This mirrors the real launch path (start.py): detect the strategy,
+    then create_snapshot with it.  On a filesystem whose reflink probe
+    fails, detection must pick ``hardlink`` so the reflink path -- which
+    has no in-path fallback -- is never executed.
+    """
+    import subprocess
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        real_run = subprocess.run
+    real_run = subprocess.run
 
-        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
-            # Make the `cp --reflink=always` probe report no reflink support.
-            if cmd and cmd[0] == "cp" and "--reflink=always" in cmd:
-                return subprocess.CompletedProcess(cmd, 1, b"", b"unsupported")
-            return real_run(cmd, *args, **kwargs)
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+      # Make the `cp --reflink=always` probe report no reflink support.
+      if cmd and cmd[0] == "cp" and "--reflink=always" in cmd:
+        return subprocess.CompletedProcess(cmd, 1, b"", b"unsupported")
+      return real_run(cmd, *args, **kwargs)
 
-        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+    monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
 
-        strategy = detect_snapshot_strategy(vault_rw)
-        assert strategy == "hardlink"
+    strategy = detect_snapshot_strategy(vault_rw)
+    assert strategy == "hardlink"
 
-        result = create_snapshot(vault_rw, box_name="testbox", strategy=strategy)
-        _assert_full_snapshot(result, vault_rw)
+    result = create_snapshot(vault_rw, box_name="testbox", strategy=strategy)
+    _assert_full_snapshot(result, vault_rw)
 
 
 # ---------------------------------------------------------------------------
@@ -244,27 +242,27 @@ class TestSnapshotFallbackChain:
 
 
 class TestDetectSnapshotStrategy:
-    def test_reflink_returns_false_on_tmpfs(self, tmp_path: Path) -> None:
-        """_test_reflink returns False on typical test filesystems (tmpfs)."""
-        # Most CI / tmpfs filesystems do not support reflinks.
-        # This test ensures the probe does not crash.
-        result = _test_reflink(tmp_path)
-        # We can't guarantee the result, but it should be a bool.
-        assert isinstance(result, bool)
+  def test_reflink_returns_false_on_tmpfs(self, tmp_path: Path) -> None:
+    """_test_reflink returns False on typical test filesystems (tmpfs)."""
+    # Most CI / tmpfs filesystems do not support reflinks.
+    # This test ensures the probe does not crash.
+    result = _test_reflink(tmp_path)
+    # We can't guarantee the result, but it should be a bool.
+    assert isinstance(result, bool)
 
-    def test_reflink_returns_false_for_missing_dir(self) -> None:
-        assert _test_reflink(Path("/nonexistent/path")) is False
+  def test_reflink_returns_false_for_missing_dir(self) -> None:
+    assert _test_reflink(Path("/nonexistent/path")) is False
 
-    def test_detect_defaults_to_hardlink(self, tmp_path: Path) -> None:
-        """On filesystems without reflink support, returns 'hardlink'."""
-        # Patch _test_reflink to always return False.
-        with patch("kanibako.snapshots._test_reflink", return_value=False):
-            assert detect_snapshot_strategy(tmp_path) == "hardlink"
+  def test_detect_defaults_to_hardlink(self, tmp_path: Path) -> None:
+    """On filesystems without reflink support, returns 'hardlink'."""
+    # Patch _test_reflink to always return False.
+    with patch("kanibako.snapshots._test_reflink", return_value=False):
+      assert detect_snapshot_strategy(tmp_path) == "hardlink"
 
-    def test_detect_returns_reflink_when_supported(self, tmp_path: Path) -> None:
-        """When reflink is supported, returns 'reflink'."""
-        with patch("kanibako.snapshots._test_reflink", return_value=True):
-            assert detect_snapshot_strategy(tmp_path) == "reflink"
+  def test_detect_returns_reflink_when_supported(self, tmp_path: Path) -> None:
+    """When reflink is supported, returns 'reflink'."""
+    with patch("kanibako.snapshots._test_reflink", return_value=True):
+      assert detect_snapshot_strategy(tmp_path) == "reflink"
 
 
 # ---------------------------------------------------------------------------
@@ -273,80 +271,80 @@ class TestDetectSnapshotStrategy:
 
 
 class TestListSnapshots:
-    def test_reader_parses_the_name_the_writer_stamps(self, tmp_path: Path, frozen_utc) -> None:
-        """A snapshot named at a frozen instant lists with that instant, to the second."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_reader_parses_the_name_the_writer_stamps(self, tmp_path: Path, frozen_utc) -> None:
+    """A snapshot named at a frozen instant lists with that instant, to the second."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        create_snapshot(vault_rw, box_name="testbox")
+    create_snapshot(vault_rw, box_name="testbox")
 
-        (name, ts, _size), = list_snapshots(vault_rw, box_name="testbox")
-        assert name == "20261012T040506Z"
-        assert ts == "2026-10-12 04:05:06 UTC"
+    ((name, ts, _size),) = list_snapshots(vault_rw, box_name="testbox")
+    assert name == "20261012T040506Z"
+    assert ts == "2026-10-12 04:05:06 UTC"
 
-    def test_lists_snapshots(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_lists_snapshots(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        create_snapshot(vault_rw, box_name="testbox")
-        snaps = list_snapshots(vault_rw, box_name="testbox")
+    create_snapshot(vault_rw, box_name="testbox")
+    snaps = list_snapshots(vault_rw, box_name="testbox")
 
-        assert len(snaps) == 1
-        name, ts, size = snaps[0]
-        assert not name.endswith(".tar.xz")
-        assert "UTC" in ts
-        assert size > 0
+    assert len(snaps) == 1
+    name, ts, size = snaps[0]
+    assert not name.endswith(".tar.xz")
+    assert "UTC" in ts
+    assert size > 0
 
-    def test_empty_when_no_versions(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.mkdir(parents=True)
+  def test_empty_when_no_versions(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.mkdir(parents=True)
 
-        assert list_snapshots(vault_rw, box_name="testbox") == []
+    assert list_snapshots(vault_rw, box_name="testbox") == []
 
-    def test_sorted_by_time(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_sorted_by_time(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        # Manually create two directory snapshots with different timestamps.
-        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
-        _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
+    # Manually create two directory snapshots with different timestamps.
+    _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
+    _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
 
-        snaps = list_snapshots(vault_rw, box_name="testbox")
-        assert len(snaps) == 2
-        assert snaps[0][0] == "20260101T000000Z"
-        assert snaps[1][0] == "20260201T000000Z"
+    snaps = list_snapshots(vault_rw, box_name="testbox")
+    assert len(snaps) == 2
+    assert snaps[0][0] == "20260101T000000Z"
+    assert snaps[1][0] == "20260201T000000Z"
 
-    def test_lists_directory_snapshots(self, tmp_path: Path) -> None:
-        """Directory snapshots are listed with computed size."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_lists_directory_snapshots(self, tmp_path: Path) -> None:
+    """Directory snapshots are listed with computed size."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert result is not None
+    result = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert result is not None
 
-        snaps = list_snapshots(vault_rw, box_name="testbox")
-        assert len(snaps) == 1
-        name, ts, size = snaps[0]
-        assert not name.endswith(".tar.xz")
-        assert "UTC" in ts
-        assert size > 0
+    snaps = list_snapshots(vault_rw, box_name="testbox")
+    assert len(snaps) == 1
+    name, ts, size = snaps[0]
+    assert not name.endswith(".tar.xz")
+    assert "UTC" in ts
+    assert size > 0
 
-    def test_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
-        """A leftover legacy .tar.xz archive is no longer recognized."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
+    """A leftover legacy .tar.xz archive is no longer recognized."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        # An old-format archive file is simply ignored (not listed).
-        (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
-        _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
+    # An old-format archive file is simply ignored (not listed).
+    (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
+    _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
 
-        snaps = list_snapshots(vault_rw, box_name="testbox")
-        assert len(snaps) == 1
-        assert snaps[0][0] == "20260201T000000Z"
+    snaps = list_snapshots(vault_rw, box_name="testbox")
+    assert len(snaps) == 1
+    assert snaps[0][0] == "20260201T000000Z"
 
 
 # ---------------------------------------------------------------------------
@@ -355,121 +353,119 @@ class TestListSnapshots:
 
 
 class TestRestoreSnapshot:
-    def test_restores_contents(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_restores_contents(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        snap = create_snapshot(vault_rw, box_name="testbox")
+    snap = create_snapshot(vault_rw, box_name="testbox")
 
-        # Modify share-rw.
-        (vault_rw / "file1.txt").write_text("modified")
-        (vault_rw / "new_file.txt").write_text("should disappear")
+    # Modify share-rw.
+    (vault_rw / "file1.txt").write_text("modified")
+    (vault_rw / "new_file.txt").write_text("should disappear")
 
+    restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+    assert (vault_rw / "file1.txt").read_text() == "hello"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not (vault_rw / "new_file.txt").exists()
+
+  def test_raises_on_missing_snapshot(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.mkdir(parents=True)
+
+    with pytest.raises(FileNotFoundError, match="Snapshot not found"):
+      restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
+
+  def test_restore_from_directory_snapshot(self, tmp_path: Path) -> None:
+    """Restore from a directory snapshot (hardlink/reflink)."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+
+    # Modify share-rw.
+    (vault_rw / "file1.txt").write_text("modified")
+    (vault_rw / "new_file.txt").write_text("should disappear")
+
+    restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+    assert (vault_rw / "file1.txt").read_text() == "hello"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not (vault_rw / "new_file.txt").exists()
+
+  def test_raises_on_nonexistent_directory_snapshot(self, tmp_path: Path) -> None:
+    """Raises FileNotFoundError for a missing directory snapshot."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    vault_rw.mkdir(parents=True)
+
+    with pytest.raises(FileNotFoundError, match="Snapshot not found"):
+      restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
+
+  def test_restore_atomic_on_failure_dir_snapshot(self, tmp_path: Path) -> None:
+    """A mid-restore failure (dir snapshot) preserves live contents."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+
+    # Mutate live data so we can detect destruction.
+    (vault_rw / "file1.txt").write_text("live-precious")
+    (vault_rw / "live_only.txt").write_text("must-survive")
+
+    # Make the swap-in fail after the wipe point.
+    real_rename = snapshots_mod.boxfs.rename
+
+    def failing_swap(src: Path, dst: Path, root: Path) -> None:
+      if ".restore.tmp" in str(src):
+        raise OSError("disk full")
+      real_rename(src, dst, root)
+
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=failing_swap):
+      with pytest.raises(OSError, match="disk full"):
         restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not (vault_rw / "new_file.txt").exists()
+    # Pre-existing live contents survived (not destroyed).
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+    # No staging/backup dirs left behind.
+    leftovers = [p for p in vault_rw.parent.iterdir() if p.name.startswith(".share-rw.")]
+    assert leftovers == []
 
-    def test_raises_on_missing_snapshot(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.mkdir(parents=True)
+  def test_restore_partial_swap_rolls_back(self, tmp_path: Path) -> None:
+    """A failure partway through the swap rolls back the live contents."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        with pytest.raises(FileNotFoundError, match="Snapshot not found"):
-            restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
 
-    def test_restore_from_directory_snapshot(self, tmp_path: Path) -> None:
-        """Restore from a directory snapshot (hardlink/reflink)."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+    (vault_rw / "file1.txt").write_text("live-precious")
+    (vault_rw / "live_only.txt").write_text("must-survive")
 
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
+    real_rename = snapshots_mod.boxfs.rename
+    calls = {"n": 0}
 
-        # Modify share-rw.
-        (vault_rw / "file1.txt").write_text("modified")
-        (vault_rw / "new_file.txt").write_text("should disappear")
+    def flaky_rename(src: Path, dst: Path, root: Path) -> None:
+      # Fail only when swapping STAGED contents in (src under staging);
+      # let the move-aside and the rollback moves succeed.
+      if ".restore.tmp" in str(src):
+        calls["n"] += 1
+        if calls["n"] >= 2:
+          raise OSError("write error mid-swap")
+      real_rename(src, dst, root)
 
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
+      with pytest.raises(OSError, match="write error mid-swap"):
         restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not (vault_rw / "new_file.txt").exists()
-
-    def test_raises_on_nonexistent_directory_snapshot(self, tmp_path: Path) -> None:
-        """Raises FileNotFoundError for a missing directory snapshot."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        vault_rw.mkdir(parents=True)
-
-        with pytest.raises(FileNotFoundError, match="Snapshot not found"):
-            restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
-
-    def test_restore_atomic_on_failure_dir_snapshot(self, tmp_path: Path) -> None:
-        """A mid-restore failure (dir snapshot) preserves live contents."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-
-        # Mutate live data so we can detect destruction.
-        (vault_rw / "file1.txt").write_text("live-precious")
-        (vault_rw / "live_only.txt").write_text("must-survive")
-
-        # Make the swap-in fail after the wipe point.
-        real_rename = snapshots_mod.boxfs.rename
-
-        def failing_swap(src: Path, dst: Path, root: Path) -> None:
-            if ".restore.tmp" in str(src):
-                raise OSError("disk full")
-            real_rename(src, dst, root)
-
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=failing_swap):
-            with pytest.raises(OSError, match="disk full"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
-
-        # Pre-existing live contents survived (not destroyed).
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
-        # No staging/backup dirs left behind.
-        leftovers = [
-            p for p in vault_rw.parent.iterdir() if p.name.startswith(".share-rw.")
-        ]
-        assert leftovers == []
-
-    def test_restore_partial_swap_rolls_back(self, tmp_path: Path) -> None:
-        """A failure partway through the swap rolls back the live contents."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-
-        (vault_rw / "file1.txt").write_text("live-precious")
-        (vault_rw / "live_only.txt").write_text("must-survive")
-
-        real_rename = snapshots_mod.boxfs.rename
-        calls = {"n": 0}
-
-        def flaky_rename(src: Path, dst: Path, root: Path) -> None:
-            # Fail only when swapping STAGED contents in (src under staging);
-            # let the move-aside and the rollback moves succeed.
-            if ".restore.tmp" in str(src):
-                calls["n"] += 1
-                if calls["n"] >= 2:
-                    raise OSError("write error mid-swap")
-            real_rename(src, dst, root)
-
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
-            with pytest.raises(OSError, match="write error mid-swap"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
-
-        # All original live contents are restored intact.
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    # All original live contents are restored intact.
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
 
 
 # ---------------------------------------------------------------------------
@@ -478,159 +474,162 @@ class TestRestoreSnapshot:
 
 
 class TestPruneSnapshots:
-    def test_prunes_old_snapshots(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_prunes_old_snapshots(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        # Create 7 snapshots manually.
-        for i in range(7):
-            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+    # Create 7 snapshots manually.
+    for i in range(7):
+      _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
 
-        removed = prune_snapshots(vault_rw, max_keep=3, box_name="testbox")
+    removed = prune_snapshots(vault_rw, max_keep=3, box_name="testbox")
 
-        assert removed == 4
-        remaining = list(versions.iterdir())
-        assert len(remaining) == 3
+    assert removed == 4
+    remaining = list(versions.iterdir())
+    assert len(remaining) == 3
 
-    def test_prunes_snapshot_containing_read_only_dir(
-        self, tmp_path: Path,
-    ) -> None:
-        """A READ-ONLY directory inside a snapshot must not block pruning.
+  def test_prunes_snapshot_containing_read_only_dir(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    """A READ-ONLY directory inside a snapshot must not block pruning.
 
-        Regression, measured on a real host 2026-08-17: a read-only tree copied
-        into ``vault/rw`` propagated into ``.versions/`` and made this raise
-        ``PermissionError: [Errno 13] ... /.versions/<ts>/<dir>`` from inside
-        ``start._run_container``, so the box could not be started AT ALL until
-        the directories were moved out by hand.  Unlinking needs write on the
-        PARENT, so the read-only mode goes on the containing directory.
-        """
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+    Regression, measured on a real host 2026-08-17: a read-only tree copied
+    into ``vault/rw`` propagated into ``.versions/`` and made this raise
+    ``PermissionError: [Errno 13] ... /.versions/<ts>/<dir>`` from inside
+    ``start._run_container``, so the box could not be started AT ALL until
+    the directories were moved out by hand.  Unlinking needs write on the
+    PARENT, so the read-only mode goes on the containing directory.
+    """
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        for i in range(3):
-            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+    for i in range(3):
+      _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
 
-        locked = versions / "20260101T000000Z" / "locked"
-        locked.mkdir()
-        (locked / "trapped.txt").write_text("cannot be unlinked from a 0555 parent")
-        locked.chmod(0o555)
-        try:
-            removed = prune_snapshots(vault_rw, max_keep=1, box_name="testbox")
+    locked = versions / "20260101T000000Z" / "locked"
+    locked.mkdir()
+    (locked / "trapped.txt").write_text("cannot be unlinked from a 0555 parent")
+    locked.chmod(0o555)
+    try:
+      removed = prune_snapshots(vault_rw, max_keep=1, box_name="testbox")
 
-            assert removed == 2
-            assert [p.name for p in versions.iterdir()] == ["20260103T000000Z"]
-        finally:
-            # Never leave an undeletable tree behind if the assertions fail.
-            if locked.exists():
-                locked.chmod(0o755)
+      assert removed == 2
+      assert [p.name for p in versions.iterdir()] == ["20260103T000000Z"]
+    finally:
+      # Never leave an undeletable tree behind if the assertions fail.
+      if locked.exists():
+        locked.chmod(0o755)
 
-    def test_prune_reports_and_continues_when_a_snapshot_cannot_be_removed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """An unremovable snapshot is skipped, not raised, so a launch survives.
+  def test_prune_reports_and_continues_when_a_snapshot_cannot_be_removed(
+    self,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+  ) -> None:
+    """An unremovable snapshot is skipped, not raised, so a launch survives.
 
-        ``prune_snapshots`` runs inside the launch path; housekeeping must never
-        be able to refuse to start a box.  The count reflects what was ACTUALLY
-        reclaimed, so a caller cannot read a skipped snapshot as pruned.
-        """
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+    ``prune_snapshots`` runs inside the launch path; housekeeping must never
+    be able to refuse to start a box.  The count reflects what was ACTUALLY
+    reclaimed, so a caller cannot read a skipped snapshot as pruned.
+    """
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        for i in range(3):
-            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+    for i in range(3):
+      _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
 
-        doomed = versions / "20260101T000000Z"
+    doomed = versions / "20260101T000000Z"
 
-        def _fake_rmtree(path: Path) -> None:
-            if Path(path) == doomed:
-                raise PermissionError(13, "Permission denied", str(path))
-            shutil.rmtree(path)
+    def _fake_rmtree(path: Path) -> None:
+      if Path(path) == doomed:
+        raise PermissionError(13, "Permission denied", str(path))
+      shutil.rmtree(path)
 
-        monkeypatch.setattr(snapshots_mod, "_rmtree_force", _fake_rmtree)
+    monkeypatch.setattr(snapshots_mod, "_rmtree_force", _fake_rmtree)
 
-        removed = prune_snapshots(vault_rw, max_keep=1, box_name="testbox")
+    removed = prune_snapshots(vault_rw, max_keep=1, box_name="testbox")
 
-        assert removed == 1
-        assert doomed.is_dir()
+    assert removed == 1
+    assert doomed.is_dir()
 
-    def test_no_prune_when_under_limit(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        create_snapshot(vault_rw, box_name="testbox")
+  def test_no_prune_when_under_limit(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    create_snapshot(vault_rw, box_name="testbox")
 
-        removed = prune_snapshots(vault_rw, max_keep=5, box_name="testbox")
-        assert removed == 0
+    removed = prune_snapshots(vault_rw, max_keep=5, box_name="testbox")
+    assert removed == 0
 
-    def test_no_prune_when_no_versions(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.mkdir(parents=True)
+  def test_no_prune_when_no_versions(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.mkdir(parents=True)
 
-        removed = prune_snapshots(vault_rw, max_keep=5, box_name="testbox")
-        assert removed == 0
+    removed = prune_snapshots(vault_rw, max_keep=5, box_name="testbox")
+    assert removed == 0
 
-    def test_prune_keep_zero_removes_all(self, tmp_path: Path) -> None:
-        """max_keep=0 removes every snapshot (not none)."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_prune_keep_zero_removes_all(self, tmp_path: Path) -> None:
+    """max_keep=0 removes every snapshot (not none)."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
-        _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
-        _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
+    _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
+    _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
+    _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
 
-        removed = prune_snapshots(vault_rw, max_keep=0, box_name="testbox")
+    removed = prune_snapshots(vault_rw, max_keep=0, box_name="testbox")
 
-        assert removed == 3
-        assert list(versions.iterdir()) == []
+    assert removed == 3
+    assert list(versions.iterdir()) == []
 
-    def test_prune_directory_snapshots(self, tmp_path: Path) -> None:
-        """Prune handles directory snapshots correctly."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_prune_directory_snapshots(self, tmp_path: Path) -> None:
+    """Prune handles directory snapshots correctly."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        # Create 5 directory snapshots manually.
-        for i in range(5):
-            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+    # Create 5 directory snapshots manually.
+    for i in range(5):
+      _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
 
-        removed = prune_snapshots(vault_rw, max_keep=2, box_name="testbox")
+    removed = prune_snapshots(vault_rw, max_keep=2, box_name="testbox")
 
-        assert removed == 3
-        remaining = sorted(d.name for d in versions.iterdir())
-        assert len(remaining) == 2
-        # Kept the two newest.
-        assert remaining == ["20260104T000000Z", "20260105T000000Z"]
+    assert removed == 3
+    remaining = sorted(d.name for d in versions.iterdir())
+    assert len(remaining) == 2
+    # Kept the two newest.
+    assert remaining == ["20260104T000000Z", "20260105T000000Z"]
 
-    def test_prune_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
-        """Prune ignores leftover legacy tar.xz archives (only dirs counted)."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        versions = tmp_path / "vault" / ".versions" / "testbox"
-        versions.mkdir(parents=True)
-        _populate_rw(vault_rw)
+  def test_prune_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
+    """Prune ignores leftover legacy tar.xz archives (only dirs counted)."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    versions = tmp_path / "vault" / ".versions" / "testbox"
+    versions.mkdir(parents=True)
+    _populate_rw(vault_rw)
 
-        # A leftover legacy archive is not a recognized snapshot.
-        (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
+    # A leftover legacy archive is not a recognized snapshot.
+    (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
 
-        # Directory snapshots.
-        _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
-        _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
+    # Directory snapshots.
+    _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
+    _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
 
-        removed = prune_snapshots(vault_rw, max_keep=2, box_name="testbox")
+    removed = prune_snapshots(vault_rw, max_keep=2, box_name="testbox")
 
-        # Only the two directory snapshots count; nothing pruned, archive kept.
-        assert removed == 0
-        remaining = sorted(e.name for e in versions.iterdir())
-        assert "20260101T000000Z.tar.xz" in remaining
-        assert "20260102T000000Z" in remaining
-        assert "20260103T000000Z" in remaining
+    # Only the two directory snapshots count; nothing pruned, archive kept.
+    assert removed == 0
+    remaining = sorted(e.name for e in versions.iterdir())
+    assert "20260101T000000Z.tar.xz" in remaining
+    assert "20260102T000000Z" in remaining
+    assert "20260103T000000Z" in remaining
 
 
 # ---------------------------------------------------------------------------
@@ -639,29 +638,29 @@ class TestPruneSnapshots:
 
 
 class TestAutoSnapshot:
-    def test_creates_and_prunes(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_creates_and_prunes(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = auto_snapshot(vault_rw, box_name="testbox", max_keep=2)
-        assert result is not None
-        assert result.exists()
+    result = auto_snapshot(vault_rw, box_name="testbox", max_keep=2)
+    assert result is not None
+    assert result.exists()
 
-    def test_returns_none_when_empty(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.mkdir(parents=True)
+  def test_returns_none_when_empty(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.mkdir(parents=True)
 
-        assert auto_snapshot(vault_rw, box_name="testbox") is None
+    assert auto_snapshot(vault_rw, box_name="testbox") is None
 
-    def test_auto_snapshot_with_strategy(self, tmp_path: Path) -> None:
-        """auto_snapshot accepts and passes through the strategy parameter."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
+  def test_auto_snapshot_with_strategy(self, tmp_path: Path) -> None:
+    """auto_snapshot accepts and passes through the strategy parameter."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
 
-        result = auto_snapshot(vault_rw, box_name="testbox", strategy="hardlink", max_keep=3)
-        assert result is not None
-        assert result.is_dir()
-        assert (result / "file1.txt").read_text() == "hello"
+    result = auto_snapshot(vault_rw, box_name="testbox", strategy="hardlink", max_keep=3)
+    assert result is not None
+    assert result.is_dir()
+    assert (result / "file1.txt").read_text() == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -670,107 +669,114 @@ class TestAutoSnapshot:
 
 
 def _populate_links(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
-    """share-rw holding every kind of link, beside an ``outside`` tree; returns the link texts."""
-    vault_rw = tmp_path / "vault" / "share-rw"
-    _populate_rw(vault_rw)
-    outside = tmp_path / "outside"
-    (outside / "deep").mkdir(parents=True)
-    (outside / "big.txt").write_text("outside data")
-    (outside / "deep" / "nested.txt").write_text("nested")
-    texts = {
-        "abs": str(outside / "big.txt"),
-        "in": "subdir/file2.txt",
-        "out": "../../outside/big.txt",
-        "subdir/out2": "../../../outside/big.txt",
-        "gone": "../../outside/no-such",
-        "dirlink": "../../outside",
-    }
-    for rel, text in texts.items():
-        (vault_rw / rel).symlink_to(text)
-    return vault_rw, outside, texts
+  """share-rw holding every kind of link, beside an ``outside`` tree; returns the link texts."""
+  vault_rw = tmp_path / "vault" / "share-rw"
+  _populate_rw(vault_rw)
+  outside = tmp_path / "outside"
+  (outside / "deep").mkdir(parents=True)
+  (outside / "big.txt").write_text("outside data")
+  (outside / "deep" / "nested.txt").write_text("nested")
+  texts = {
+    "abs": str(outside / "big.txt"),
+    "in": "subdir/file2.txt",
+    "out": "../../outside/big.txt",
+    "subdir/out2": "../../../outside/big.txt",
+    "gone": "../../outside/no-such",
+    "dirlink": "../../outside",
+  }
+  for rel, text in texts.items():
+    (vault_rw / rel).symlink_to(text)
+  return vault_rw, outside, texts
 
 
 def _snapshot_via(strategy: str, vault_rw: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Snapshot through one of the three copiers: rsync, the copytree fallback, or ``cp -a``."""
-    import subprocess
+  """Snapshot through one of the three copiers: rsync, the copytree fallback, or ``cp -a``."""
+  import subprocess
 
-    real_run = subprocess.run
+  real_run = subprocess.run
 
-    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
-        if strategy == "fallback" and cmd and cmd[0] == "rsync":
-            raise FileNotFoundError("rsync not found")
-        if strategy == "cp" and cmd and cmd[0] == "cp":
-            # tmpfs has no reflink; the link handling is cp -a's, which is what is under test.
-            cmd = [c for c in cmd if c != "--reflink=always"]
-        return real_run(cmd, *args, **kwargs)
+  def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+    if strategy == "fallback" and cmd and cmd[0] == "rsync":
+      raise FileNotFoundError("rsync not found")
+    if strategy == "cp" and cmd and cmd[0] == "cp":
+      # tmpfs has no reflink; the link handling is cp -a's, which is what is under test.
+      cmd = [c for c in cmd if c != "--reflink=always"]
+    return real_run(cmd, *args, **kwargs)
 
-    monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
-    snap = create_snapshot(vault_rw, box_name="testbox", strategy="reflink" if strategy == "cp" else "hardlink")
-    assert snap is not None
-    return snap
+  monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+  snap = create_snapshot(
+    vault_rw, box_name="testbox", strategy="reflink" if strategy == "cp" else "hardlink"
+  )
+  assert snap is not None
+  return snap
 
 
 class TestSnapshotSymlinks:
-    @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
-    def test_snapshot_copies_links_verbatim(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strategy: str,
-    ) -> None:
-        vault_rw, _outside, texts = _populate_links(tmp_path)
-        snap = _snapshot_via(strategy, vault_rw, monkeypatch)
-        for rel, text in texts.items():
-            assert (snap / rel).is_symlink(), rel
-            assert os.readlink(snap / rel) == text, rel
-        # The outside tree was not copied into the snapshot.
-        assert not [p for p in snap.rglob("*") if p.name in ("big.txt", "nested.txt")]
+  @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
+  def test_snapshot_copies_links_verbatim(
+    self,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    strategy: str,
+  ) -> None:
+    vault_rw, _outside, texts = _populate_links(tmp_path)
+    snap = _snapshot_via(strategy, vault_rw, monkeypatch)
+    for rel, text in texts.items():
+      assert (snap / rel).is_symlink(), rel
+      assert os.readlink(snap / rel) == text, rel
+    # The outside tree was not copied into the snapshot.
+    assert not [p for p in snap.rglob("*") if p.name in ("big.txt", "nested.txt")]
 
-    @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
-    def test_restore_round_trips_link_texts(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strategy: str,
-    ) -> None:
-        vault_rw, outside, texts = _populate_links(tmp_path)
-        snap = _snapshot_via(strategy, vault_rw, monkeypatch)
-        for rel in texts:
-            (vault_rw / rel).unlink()
-        (vault_rw / "later.txt").write_text("after the snapshot")
+  @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
+  def test_restore_round_trips_link_texts(
+    self,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    strategy: str,
+  ) -> None:
+    vault_rw, outside, texts = _populate_links(tmp_path)
+    snap = _snapshot_via(strategy, vault_rw, monkeypatch)
+    for rel in texts:
+      (vault_rw / rel).unlink()
+    (vault_rw / "later.txt").write_text("after the snapshot")
 
+    restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+    for rel, text in texts.items():
+      assert (vault_rw / rel).is_symlink(), rel
+      assert os.readlink(vault_rw / rel) == text, rel
+    assert not (vault_rw / "later.txt").exists()
+    assert (vault_rw / "out").read_text() == "outside data"
+    # The outside tree is untouched and was never materialized in the vault.
+    assert (outside / "deep" / "nested.txt").read_text() == "nested"
+    assert not [
+      p for p in vault_rw.rglob("*") if p.name in ("big.txt", "nested.txt") and not p.is_symlink()
+    ]
+
+  def test_rollback_unlinks_a_restored_directory_link(self, tmp_path: Path) -> None:
+    """A failed swap after a dir link landed must still put the live vault back."""
+    vault_rw, outside, _texts = _populate_links(tmp_path)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "dirlink").unlink()
+    (vault_rw / "live_only.txt").write_text("must-survive")
+
+    real_rename = snapshots_mod.boxfs.rename
+
+    def flaky_rename(src: Path, dst: Path, root: Path) -> None:
+      # Fail the swap the moment dirlink has landed as a link — whatever the directory
+      # order — so the rollback always meets it and the pin can never pass vacuously.
+      real_rename(src, dst, root)
+      if ".restore.tmp" in str(src) and (vault_rw / "dirlink").is_symlink():
+        raise OSError("write error mid-swap")
+
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
+      with pytest.raises(OSError, match="write error mid-swap"):
         restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        for rel, text in texts.items():
-            assert (vault_rw / rel).is_symlink(), rel
-            assert os.readlink(vault_rw / rel) == text, rel
-        assert not (vault_rw / "later.txt").exists()
-        assert (vault_rw / "out").read_text() == "outside data"
-        # The outside tree is untouched and was never materialized in the vault.
-        assert (outside / "deep" / "nested.txt").read_text() == "nested"
-        assert not [
-            p for p in vault_rw.rglob("*")
-            if p.name in ("big.txt", "nested.txt") and not p.is_symlink()
-        ]
-
-    def test_rollback_unlinks_a_restored_directory_link(self, tmp_path: Path) -> None:
-        """A failed swap after a dir link landed must still put the live vault back."""
-        vault_rw, outside, _texts = _populate_links(tmp_path)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "dirlink").unlink()
-        (vault_rw / "live_only.txt").write_text("must-survive")
-
-        real_rename = snapshots_mod.boxfs.rename
-
-        def flaky_rename(src: Path, dst: Path, root: Path) -> None:
-            # Fail the swap the moment dirlink has landed as a link — whatever the directory
-            # order — so the rollback always meets it and the pin can never pass vacuously.
-            real_rename(src, dst, root)
-            if ".restore.tmp" in str(src) and (vault_rw / "dirlink").is_symlink():
-                raise OSError("write error mid-swap")
-
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
-            with pytest.raises(OSError, match="write error mid-swap"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
-
-        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
-        assert not (vault_rw / "dirlink").exists()
-        assert (outside / "deep" / "nested.txt").read_text() == "nested"
+    assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+    assert not (vault_rw / "dirlink").exists()
+    assert (outside / "deep" / "nested.txt").read_text() == "nested"
 
 
 # ---------------------------------------------------------------------------
@@ -779,155 +785,165 @@ class TestSnapshotSymlinks:
 
 
 class TestUnsafeSnapshotNames:
-    """``restore`` replaces share-rw wholesale, so an escaping name IS data loss.
+  """``restore`` replaces share-rw wholesale, so an escaping name IS data loss.
 
-    Measured on base: every case below replaced the live share-rw with the
-    outside directory at rc 0, unprompted -- the CLI only prompts for names
-    ``list`` already knows, and an escaping name never appears there.
+  Measured on base: every case below replaced the live share-rw with the
+  outside directory at rc 0, unprompted -- the CLI only prompts for names
+  ``list`` already knows, and an escaping name never appears there.
+  """
+
+  @staticmethod
+  def _vault(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """share-rw with content, one good snapshot, one outside payload.
+
+    ``versions`` is the box's OWN store -- the guard under test is about a
+    name escaping that store, so the good snapshot has to live inside it.
     """
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    versions = vault_rw.parent / ".versions" / "testbox"
+    versions.mkdir(parents=True, exist_ok=True)
+    _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
+    outside = tmp_path / "evil"
+    outside.mkdir()
+    (outside / "attacker.txt").write_text("owned")
+    return vault_rw, versions, outside
 
-    @staticmethod
-    def _vault(tmp_path: Path) -> tuple[Path, Path, Path]:
-        """share-rw with content, one good snapshot, one outside payload.
+  @pytest.mark.parametrize(
+    "bad",
+    [
+      "../../../evil",
+      "../../../../../../evil",
+      ".",
+      "..",
+      "",
+      "   ",
+      "20260101T000000Z/../20260101T000000Z",
+    ],
+  )
+  def test_refuses_any_name_that_is_not_a_direct_child(
+    self,
+    tmp_path: Path,
+    bad: str,
+  ) -> None:
+    vault_rw, _versions, _outside = self._vault(tmp_path)
 
-        ``versions`` is the box's OWN store -- the guard under test is about a
-        name escaping that store, so the good snapshot has to live inside it.
-        """
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        versions = vault_rw.parent / ".versions" / "testbox"
-        versions.mkdir(parents=True, exist_ok=True)
-        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
-        outside = tmp_path / "evil"
-        outside.mkdir()
-        (outside / "attacker.txt").write_text("owned")
-        return vault_rw, versions, outside
+    with pytest.raises(UnsafeSnapshotNameError):
+      restore_snapshot(vault_rw, bad, box_name="testbox")
 
-    @pytest.mark.parametrize("bad", [
-        "../../../evil",
-        "../../../../../../evil",
-        ".",
-        "..",
-        "",
-        "   ",
-        "20260101T000000Z/../20260101T000000Z",
-    ])
-    def test_refuses_any_name_that_is_not_a_direct_child(
-        self, tmp_path: Path, bad: str,
-    ) -> None:
-        vault_rw, _versions, _outside = self._vault(tmp_path)
+    assert (vault_rw / "file1.txt").read_text() == "hello"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
 
-        with pytest.raises(UnsafeSnapshotNameError):
-            restore_snapshot(vault_rw, bad, box_name="testbox")
+  def test_refuses_an_absolute_name_that_exists(self, tmp_path: Path) -> None:
+    vault_rw, _versions, outside = self._vault(tmp_path)
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    with pytest.raises(UnsafeSnapshotNameError, match="absolute"):
+      restore_snapshot(vault_rw, str(outside), box_name="testbox")
 
-    def test_refuses_an_absolute_name_that_exists(self, tmp_path: Path) -> None:
-        vault_rw, _versions, outside = self._vault(tmp_path)
+    assert (vault_rw / "file1.txt").read_text() == "hello"
 
-        with pytest.raises(UnsafeSnapshotNameError, match="absolute"):
-            restore_snapshot(vault_rw, str(outside), box_name="testbox")
+  def test_refuses_a_symlink_pointing_out_of_versions(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    vault_rw, versions, outside = self._vault(tmp_path)
+    (versions / "evil-link").symlink_to(outside, target_is_directory=True)
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
+    with pytest.raises(UnsafeSnapshotNameError, match="outside"):
+      restore_snapshot(vault_rw, "evil-link", box_name="testbox")
 
-    def test_refuses_a_symlink_pointing_out_of_versions(
-        self, tmp_path: Path,
-    ) -> None:
-        vault_rw, versions, outside = self._vault(tmp_path)
-        (versions / "evil-link").symlink_to(outside, target_is_directory=True)
+    assert (vault_rw / "file1.txt").read_text() == "hello"
 
-        with pytest.raises(UnsafeSnapshotNameError, match="outside"):
-            restore_snapshot(vault_rw, "evil-link", box_name="testbox")
+  def test_refusal_writes_nothing(self, tmp_path: Path) -> None:
+    """The check runs FIRST: no staging, no backup, no moved live entry."""
+    vault_rw, _versions, _outside = self._vault(tmp_path)
+    before = sorted(p.name for p in vault_rw.iterdir())
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
+    with pytest.raises(UnsafeSnapshotNameError):
+      restore_snapshot(vault_rw, "..", box_name="testbox")
 
-    def test_refusal_writes_nothing(self, tmp_path: Path) -> None:
-        """The check runs FIRST: no staging, no backup, no moved live entry."""
-        vault_rw, _versions, _outside = self._vault(tmp_path)
-        before = sorted(p.name for p in vault_rw.iterdir())
+    assert sorted(p.name for p in vault_rw.iterdir()) == before
+    leftovers = [p.name for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    assert leftovers == []
 
-        with pytest.raises(UnsafeSnapshotNameError):
-            restore_snapshot(vault_rw, "..", box_name="testbox")
+  def test_a_direct_child_still_restores(self, tmp_path: Path) -> None:
+    """The guard must not refuse the name ``list`` hands the user."""
+    vault_rw, _versions, _outside = self._vault(tmp_path)
+    (vault_rw / "file1.txt").write_text("drifted")
 
-        assert sorted(p.name for p in vault_rw.iterdir()) == before
-        leftovers = [
-            p.name for p in vault_rw.parent.iterdir() if ".restore." in p.name
-        ]
-        assert leftovers == []
+    restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
 
-    def test_a_direct_child_still_restores(self, tmp_path: Path) -> None:
-        """The guard must not refuse the name ``list`` hands the user."""
-        vault_rw, _versions, _outside = self._vault(tmp_path)
-        (vault_rw / "file1.txt").write_text("drifted")
+    assert (vault_rw / "file1.txt").read_text() == "hello"
 
-        restore_snapshot(vault_rw, "20260101T000000Z", box_name="testbox")
+  def test_an_internal_link_is_not_an_escape(self, tmp_path: Path) -> None:
+    """``latest -> <snapshot>`` stays inside the dir, so it still restores."""
+    vault_rw, versions, _outside = self._vault(tmp_path)
+    (vault_rw / "file1.txt").write_text("drifted")
+    (versions / "latest").symlink_to(
+      versions / "20260101T000000Z",
+      target_is_directory=True,
+    )
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
+    restore_snapshot(vault_rw, "latest", box_name="testbox")
 
-    def test_an_internal_link_is_not_an_escape(self, tmp_path: Path) -> None:
-        """``latest -> <snapshot>`` stays inside the dir, so it still restores."""
-        vault_rw, versions, _outside = self._vault(tmp_path)
-        (vault_rw / "file1.txt").write_text("drifted")
-        (versions / "latest").symlink_to(
-            versions / "20260101T000000Z", target_is_directory=True,
-        )
+    assert (vault_rw / "file1.txt").read_text() == "hello"
 
-        restore_snapshot(vault_rw, "latest", box_name="testbox")
+  def test_prune_skips_a_link_and_spares_its_target(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    vault_rw, versions, outside = self._vault(tmp_path)
+    for name in ("20260102T000000Z", "20260103T000000Z"):
+      _make_dir_snapshot(versions, name, vault_rw)
+    (versions / "evil-link").symlink_to(outside, target_is_directory=True)
 
-        assert (vault_rw / "file1.txt").read_text() == "hello"
+    doomed = snapshots_to_prune(vault_rw, max_keep=1, box_name="testbox")
+    assert [p.name for p in doomed] == [
+      "20260101T000000Z",
+      "20260102T000000Z",
+    ]
 
-    def test_prune_skips_a_link_and_spares_its_target(
-        self, tmp_path: Path,
-    ) -> None:
-        vault_rw, versions, outside = self._vault(tmp_path)
-        for name in ("20260102T000000Z", "20260103T000000Z"):
-            _make_dir_snapshot(versions, name, vault_rw)
-        (versions / "evil-link").symlink_to(outside, target_is_directory=True)
+    assert prune_snapshots(vault_rw, max_keep=1, box_name="testbox") == 2
+    assert (outside / "attacker.txt").read_text() == "owned"
+    assert (versions / "evil-link").is_symlink()
+    assert (versions / "20260103T000000Z").is_dir()
 
-        doomed = snapshots_to_prune(vault_rw, max_keep=1, box_name="testbox")
-        assert [p.name for p in doomed] == [
-            "20260101T000000Z", "20260102T000000Z",
-        ]
+  def test_prune_does_not_count_an_inward_link(self, tmp_path: Path) -> None:
+    """``zz-latest -> <snapshot>`` sorts last; it must not take a keep slot."""
+    vault_rw, versions, _outside = self._vault(tmp_path)
+    for name in ("20260102T000000Z", "20260103T000000Z"):
+      _make_dir_snapshot(versions, name, vault_rw)
+    (versions / "zz-latest").symlink_to(
+      versions / "20260103T000000Z",
+      target_is_directory=True,
+    )
 
-        assert prune_snapshots(vault_rw, max_keep=1, box_name="testbox") == 2
-        assert (outside / "attacker.txt").read_text() == "owned"
-        assert (versions / "evil-link").is_symlink()
-        assert (versions / "20260103T000000Z").is_dir()
+    doomed = snapshots_to_prune(vault_rw, max_keep=1, box_name="testbox")
+    assert [p.name for p in doomed] == [
+      "20260101T000000Z",
+      "20260102T000000Z",
+    ]
 
-    def test_prune_does_not_count_an_inward_link(self, tmp_path: Path) -> None:
-        """``zz-latest -> <snapshot>`` sorts last; it must not take a keep slot."""
-        vault_rw, versions, _outside = self._vault(tmp_path)
-        for name in ("20260102T000000Z", "20260103T000000Z"):
-            _make_dir_snapshot(versions, name, vault_rw)
-        (versions / "zz-latest").symlink_to(
-            versions / "20260103T000000Z", target_is_directory=True,
-        )
+    assert prune_snapshots(vault_rw, max_keep=1, box_name="testbox") == 2
+    assert (versions / "20260103T000000Z").is_dir()
+    assert (versions / "zz-latest").is_symlink()
+    assert (versions / "zz-latest").exists()
 
-        doomed = snapshots_to_prune(vault_rw, max_keep=1, box_name="testbox")
-        assert [p.name for p in doomed] == [
-            "20260101T000000Z", "20260102T000000Z",
-        ]
+  def test_link_dest_never_picks_a_link(self, tmp_path: Path) -> None:
+    vault_rw, versions, outside = self._vault(tmp_path)
+    (versions / "zz-inward").symlink_to(
+      versions / "20260101T000000Z",
+      target_is_directory=True,
+    )
+    (versions / "zz-outward").symlink_to(outside, target_is_directory=True)
 
-        assert prune_snapshots(vault_rw, max_keep=1, box_name="testbox") == 2
-        assert (versions / "20260103T000000Z").is_dir()
-        assert (versions / "zz-latest").is_symlink()
-        assert (versions / "zz-latest").exists()
+    with patch("kanibako.snapshots.subprocess.run") as run:
+      snapshots_mod._snapshot_hardlink(vault_rw, versions, "20260102T000000Z")
 
-    def test_link_dest_never_picks_a_link(self, tmp_path: Path) -> None:
-        vault_rw, versions, outside = self._vault(tmp_path)
-        (versions / "zz-inward").symlink_to(
-            versions / "20260101T000000Z", target_is_directory=True,
-        )
-        (versions / "zz-outward").symlink_to(outside, target_is_directory=True)
-
-        with patch("kanibako.snapshots.subprocess.run") as run:
-            snapshots_mod._snapshot_hardlink(vault_rw, versions, "20260102T000000Z")
-
-        cmd = run.call_args.args[0]
-        assert cmd[cmd.index("--link-dest") + 1] == str(
-            versions / "20260101T000000Z",
-        )
+    cmd = run.call_args.args[0]
+    assert cmd[cmd.index("--link-dest") + 1] == str(
+      versions / "20260101T000000Z",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -938,351 +954,331 @@ class TestUnsafeSnapshotNames:
 
 
 class TestPerBoxStore:
-    @staticmethod
-    def _two_boxes(tmp_path: Path) -> tuple[Path, Path]:
-        """Two boxes' share-rw dirs under ONE vault base, each with its own file."""
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        beta = base / "beta"
-        alpha.mkdir(parents=True)
-        beta.mkdir(parents=True)
-        (alpha / "alpha_only.txt").write_text("ALPHA-SECRET")
-        (beta / "b_only.txt").write_text("BETA-SECRET")
-        return alpha, beta
+  @staticmethod
+  def _two_boxes(tmp_path: Path) -> tuple[Path, Path]:
+    """Two boxes' share-rw dirs under ONE vault base, each with its own file."""
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    beta = base / "beta"
+    alpha.mkdir(parents=True)
+    beta.mkdir(parents=True)
+    (alpha / "alpha_only.txt").write_text("ALPHA-SECRET")
+    (beta / "b_only.txt").write_text("BETA-SECRET")
+    return alpha, beta
 
-    def test_a_box_lists_only_its_own_snapshots(self, tmp_path: Path) -> None:
-        alpha, beta = self._two_boxes(tmp_path)
-        create_snapshot(alpha, box_name="alpha")
+  def test_a_box_lists_only_its_own_snapshots(self, tmp_path: Path) -> None:
+    alpha, beta = self._two_boxes(tmp_path)
+    create_snapshot(alpha, box_name="alpha")
 
-        assert len(list_snapshots(alpha, box_name="alpha")) == 1
-        assert list_snapshots(beta, box_name="beta") == []
+    assert len(list_snapshots(alpha, box_name="alpha")) == 1
+    assert list_snapshots(beta, box_name="beta") == []
 
-    def test_prune_from_one_box_spares_the_other(self, tmp_path: Path) -> None:
-        alpha, beta = self._two_boxes(tmp_path)
-        for _ in range(3):
-            create_snapshot(alpha, box_name="alpha")
-            create_snapshot(beta, box_name="beta")
+  def test_prune_from_one_box_spares_the_other(self, tmp_path: Path) -> None:
+    alpha, beta = self._two_boxes(tmp_path)
+    for _ in range(3):
+      create_snapshot(alpha, box_name="alpha")
+      create_snapshot(beta, box_name="beta")
 
-        prune_snapshots(alpha, max_keep=1, box_name="alpha")
+    prune_snapshots(alpha, max_keep=1, box_name="alpha")
 
-        assert len(list_snapshots(alpha, box_name="alpha")) == 1
-        assert len(list_snapshots(beta, box_name="beta")) == 3
+    assert len(list_snapshots(alpha, box_name="alpha")) == 1
+    assert len(list_snapshots(beta, box_name="beta")) == 3
 
-    def test_restore_refuses_a_foreign_snapshot_and_names_its_owner(
-        self, tmp_path: Path
-    ) -> None:
-        alpha, beta = self._two_boxes(tmp_path)
-        foreign = create_snapshot(beta, box_name="beta")
-        assert foreign is not None
+  def test_restore_refuses_a_foreign_snapshot_and_names_its_owner(self, tmp_path: Path) -> None:
+    alpha, beta = self._two_boxes(tmp_path)
+    foreign = create_snapshot(beta, box_name="beta")
+    assert foreign is not None
 
-        with pytest.raises(ForeignSnapshotError, match="belongs to 'beta'"):
-            restore_snapshot(alpha, foreign.name, box_name="alpha")
+    with pytest.raises(ForeignSnapshotError, match="belongs to 'beta'"):
+      restore_snapshot(alpha, foreign.name, box_name="alpha")
 
-        # The refusal is total: alpha's vault is untouched.
-        assert (alpha / "alpha_only.txt").read_text() == "ALPHA-SECRET"
-        assert not (alpha / "b_only.txt").exists()
+    # The refusal is total: alpha's vault is untouched.
+    assert (alpha / "alpha_only.txt").read_text() == "ALPHA-SECRET"
+    assert not (alpha / "b_only.txt").exists()
 
-    def test_two_boxes_in_the_same_second_do_not_merge(self, tmp_path: Path) -> None:
-        """The base merged both boxes into ONE snapshot dir; per-box stores cannot."""
-        alpha, beta = self._two_boxes(tmp_path)
-        sa = create_snapshot(alpha, box_name="alpha")
-        sb = create_snapshot(beta, box_name="beta")
-        assert sa is not None and sb is not None
+  def test_two_boxes_in_the_same_second_do_not_merge(self, tmp_path: Path) -> None:
+    """The base merged both boxes into ONE snapshot dir; per-box stores cannot."""
+    alpha, beta = self._two_boxes(tmp_path)
+    sa = create_snapshot(alpha, box_name="alpha")
+    sb = create_snapshot(beta, box_name="beta")
+    assert sa is not None and sb is not None
 
-        assert sa != sb
-        assert sorted(f.name for f in sa.iterdir()) == ["alpha_only.txt"]
-        assert sorted(f.name for f in sb.iterdir()) == ["b_only.txt"]
+    assert sa != sb
+    assert sorted(f.name for f in sa.iterdir()) == ["alpha_only.txt"]
+    assert sorted(f.name for f in sb.iterdir()) == ["b_only.txt"]
 
-    def test_restore_keeps_a_copy_of_what_it_replaces(self, tmp_path: Path) -> None:
-        """A successful restore must not destroy the live contents it displaces."""
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "old.txt").write_text("old")
-        first = create_snapshot(alpha, box_name="alpha")
-        assert first is not None
+  def test_restore_keeps_a_copy_of_what_it_replaces(self, tmp_path: Path) -> None:
+    """A successful restore must not destroy the live contents it displaces."""
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "old.txt").write_text("old")
+    first = create_snapshot(alpha, box_name="alpha")
+    assert first is not None
 
-        (alpha / "new_work.md").write_text("IRREPLACEABLE")
+    (alpha / "new_work.md").write_text("IRREPLACEABLE")
 
-        safety = restore_snapshot(alpha, first.name, box_name="alpha")
+    safety = restore_snapshot(alpha, first.name, box_name="alpha")
 
-        assert safety is not None
-        assert (safety / "new_work.md").read_text() == "IRREPLACEABLE"
-        assert not (alpha / "new_work.md").exists()
+    assert safety is not None
+    assert (safety / "new_work.md").read_text() == "IRREPLACEABLE"
+    assert not (alpha / "new_work.md").exists()
 
-    def test_a_restore_is_undoable_by_restoring_again(self, tmp_path: Path) -> None:
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "old.txt").write_text("old")
-        first = create_snapshot(alpha, box_name="alpha")
-        assert first is not None
-        (alpha / "new_work.md").write_text("IRREPLACEABLE")
+  def test_a_restore_is_undoable_by_restoring_again(self, tmp_path: Path) -> None:
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "old.txt").write_text("old")
+    first = create_snapshot(alpha, box_name="alpha")
+    assert first is not None
+    (alpha / "new_work.md").write_text("IRREPLACEABLE")
 
-        safety = restore_snapshot(alpha, first.name, box_name="alpha")
-        assert safety is not None
-        assert not (alpha / "new_work.md").exists()
+    safety = restore_snapshot(alpha, first.name, box_name="alpha")
+    assert safety is not None
+    assert not (alpha / "new_work.md").exists()
 
-        restore_snapshot(alpha, safety.name, box_name="alpha")
-        assert (alpha / "new_work.md").read_text() == "IRREPLACEABLE"
+    restore_snapshot(alpha, safety.name, box_name="alpha")
+    assert (alpha / "new_work.md").read_text() == "IRREPLACEABLE"
 
-    def test_restore_aborts_when_the_safety_copy_cannot_be_made(
-        self, tmp_path: Path
-    ) -> None:
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "keep.txt").write_text("live")
-        first = create_snapshot(alpha, box_name="alpha")
-        assert first is not None
+  def test_restore_aborts_when_the_safety_copy_cannot_be_made(self, tmp_path: Path) -> None:
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "keep.txt").write_text("live")
+    first = create_snapshot(alpha, box_name="alpha")
+    assert first is not None
 
-        # r2 item 4 changed the contract: a failed safety copy raises
-        # SnapshotSafetyError ("Nothing was changed") rather than letting the
-        # raw OSError escape.  The cause still carries the underlying error.
-        from kanibako.snapshots import SnapshotSafetyError
+    # r2 item 4 changed the contract: a failed safety copy raises
+    # SnapshotSafetyError ("Nothing was changed") rather than letting the
+    # raw OSError escape.  The cause still carries the underlying error.
+    from kanibako.snapshots import SnapshotSafetyError
 
-        with patch("kanibako.snapshots.create_snapshot", side_effect=OSError("disk full")):
-            with pytest.raises(SnapshotSafetyError, match="Nothing was changed") as caught:
-                restore_snapshot(alpha, first.name, box_name="alpha")
-        assert "disk full" in str(caught.value)
+    with patch("kanibako.snapshots.create_snapshot", side_effect=OSError("disk full")):
+      with pytest.raises(SnapshotSafetyError, match="Nothing was changed") as caught:
+        restore_snapshot(alpha, first.name, box_name="alpha")
+    assert "disk full" in str(caught.value)
 
-        assert (alpha / "keep.txt").read_text() == "live"
+    assert (alpha / "keep.txt").read_text() == "live"
 
 
 class TestLegacyStoreSplit:
-    def test_shared_legacy_entries_go_to_unsorted(self, tmp_path: Path) -> None:
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("x")
-        versions = base / ".versions"
-        _make_dir_snapshot(versions, "20260101T000000Z", alpha)
+  def test_shared_legacy_entries_go_to_unsorted(self, tmp_path: Path) -> None:
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("x")
+    versions = base / ".versions"
+    _make_dir_snapshot(versions, "20260101T000000Z", alpha)
 
-        moved = migrate_legacy_versions(alpha, box_name="alpha")
+    moved = migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert moved["unsorted"] == ["20260101T000000Z"]
-        assert moved["attributed"] == []
-        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
-        assert not (versions / "20260101T000000Z").exists()
+    assert moved["unsorted"] == ["20260101T000000Z"]
+    assert moved["attributed"] == []
+    assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+    assert not (versions / "20260101T000000Z").exists()
 
-    def test_unsorted_is_listed_but_never_pruned(self, tmp_path: Path) -> None:
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("x")
-        versions = base / ".versions"
-        _make_dir_snapshot(versions, "20260101T000000Z", alpha)
-        migrate_legacy_versions(alpha, box_name="alpha")
+  def test_unsorted_is_listed_but_never_pruned(self, tmp_path: Path) -> None:
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("x")
+    versions = base / ".versions"
+    _make_dir_snapshot(versions, "20260101T000000Z", alpha)
+    migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert [n for n, _ts, _sz in list_unsorted(alpha)] == ["20260101T000000Z"]
-        prune_snapshots(alpha, max_keep=0, box_name="alpha")
-        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+    assert [n for n, _ts, _sz in list_unsorted(alpha)] == ["20260101T000000Z"]
+    prune_snapshots(alpha, max_keep=0, box_name="alpha")
+    assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
 
-    def test_unsorted_is_not_restorable_by_name(self, tmp_path: Path) -> None:
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("live")
-        _make_dir_snapshot(base / ".versions", "20260101T000000Z", alpha)
+  def test_unsorted_is_not_restorable_by_name(self, tmp_path: Path) -> None:
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("live")
+    _make_dir_snapshot(base / ".versions", "20260101T000000Z", alpha)
 
-        with pytest.raises(ForeignSnapshotError, match=UNSORTED_DIRNAME):
-            restore_snapshot(alpha, "20260101T000000Z", box_name="alpha")
+    with pytest.raises(ForeignSnapshotError, match=UNSORTED_DIRNAME):
+      restore_snapshot(alpha, "20260101T000000Z", box_name="alpha")
 
-        assert (alpha / "f.txt").read_text() == "live"
+    assert (alpha / "f.txt").read_text() == "live"
 
-    def test_an_exclusive_store_attributes_its_legacy_entries(
-        self, tmp_path: Path
-    ) -> None:
-        """A standalone box's store is inside its own tree, so its legacy
-        snapshots are provably its own and stay restorable by name."""
-        project = tmp_path / "sabox"
-        alpha = project / "vault" / "rw"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("live")
-        _make_dir_snapshot(alpha.parent / ".versions", "20260101T000000Z", alpha)
+  def test_an_exclusive_store_attributes_its_legacy_entries(self, tmp_path: Path) -> None:
+    """A standalone box's store is inside its own tree, so its legacy
+    snapshots are provably its own and stay restorable by name."""
+    project = tmp_path / "sabox"
+    alpha = project / "vault" / "rw"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("live")
+    _make_dir_snapshot(alpha.parent / ".versions", "20260101T000000Z", alpha)
 
-        moved = migrate_legacy_versions(
-            alpha, box_name="dhnj2_sabox", store_exclusive=True
-        )
+    moved = migrate_legacy_versions(alpha, box_name="dhnj2_sabox", store_exclusive=True)
 
-        assert moved["attributed"] == ["20260101T000000Z"]
-        assert moved["unsorted"] == []
-        restore_snapshot(
-            alpha, "20260101T000000Z", box_name="dhnj2_sabox",
-            store_exclusive=True,
-        )
-        assert (alpha / "f.txt").exists()
+    assert moved["attributed"] == ["20260101T000000Z"]
+    assert moved["unsorted"] == []
+    restore_snapshot(
+      alpha,
+      "20260101T000000Z",
+      box_name="dhnj2_sabox",
+      store_exclusive=True,
+    )
+    assert (alpha / "f.txt").exists()
 
-    def test_migration_is_idempotent(self, tmp_path: Path) -> None:
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("x")
-        _make_dir_snapshot(base / ".versions", "20260101T000000Z", alpha)
+  def test_migration_is_idempotent(self, tmp_path: Path) -> None:
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("x")
+    _make_dir_snapshot(base / ".versions", "20260101T000000Z", alpha)
 
-        migrate_legacy_versions(alpha, box_name="alpha")
-        again = migrate_legacy_versions(alpha, box_name="alpha")
+    migrate_legacy_versions(alpha, box_name="alpha")
+    again = migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert again == {"attributed": [], "unsorted": []}
+    assert again == {"attributed": [], "unsorted": []}
 
-    def test_a_box_store_directory_is_not_mistaken_for_a_legacy_snapshot(
-        self, tmp_path: Path
-    ) -> None:
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "f.txt").write_text("x")
-        create_snapshot(alpha, box_name="alpha")
+  def test_a_box_store_directory_is_not_mistaken_for_a_legacy_snapshot(
+    self, tmp_path: Path
+  ) -> None:
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "f.txt").write_text("x")
+    create_snapshot(alpha, box_name="alpha")
 
-        moved = migrate_legacy_versions(alpha, box_name="alpha")
+    moved = migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert moved == {"attributed": [], "unsorted": []}
-        assert len(list_snapshots(alpha, box_name="alpha")) == 1
+    assert moved == {"attributed": [], "unsorted": []}
+    assert len(list_snapshots(alpha, box_name="alpha")) == 1
 
-    def test_two_snapshots_of_one_box_in_the_same_second_stay_separate(
-        self, tmp_path: Path
-    ) -> None:
-        """Second-resolution names collide within a box too; neither copy merges."""
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "a.txt").write_text("one")
-        s1 = create_snapshot(alpha, box_name="alpha")
-        (alpha / "b.txt").write_text("two")
-        s2 = create_snapshot(alpha, box_name="alpha")
+  def test_two_snapshots_of_one_box_in_the_same_second_stay_separate(self, tmp_path: Path) -> None:
+    """Second-resolution names collide within a box too; neither copy merges."""
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "a.txt").write_text("one")
+    s1 = create_snapshot(alpha, box_name="alpha")
+    (alpha / "b.txt").write_text("two")
+    s2 = create_snapshot(alpha, box_name="alpha")
 
-        assert s1 is not None and s2 is not None
-        assert s1 != s2
-        assert sorted(f.name for f in s1.iterdir()) == ["a.txt"]
-        assert sorted(f.name for f in s2.iterdir()) == ["a.txt", "b.txt"]
+    assert s1 is not None and s2 is not None
+    assert s1 != s2
+    assert sorted(f.name for f in s1.iterdir()) == ["a.txt"]
+    assert sorted(f.name for f in s2.iterdir()) == ["a.txt", "b.txt"]
 
 
 class TestLayoutMarkerAndReservedKeys:
-    """No box name may resolve to the layout bucket or be read as legacy.
+  """No box name may resolve to the layout bucket or be read as legacy.
 
-    ``unsorted`` and ``20200101T000000Z`` are both LEGAL box names, so a bucket
-    or a name-match that lands on either hands one box another's data.
-    """
+  ``unsorted`` and ``20200101T000000Z`` are both LEGAL box names, so a bucket
+  or a name-match that lands on either hands one box another's data.
+  """
 
-    def test_a_box_named_unsorted_does_not_own_the_bucket(
-        self, tmp_path: Path
-    ) -> None:
-        """The bucket is ``.unsorted``, so box ``unsorted``'s prune cannot reach it."""
-        base = tmp_path / "vault" / "rw"
-        box = base / "unsorted"
-        box.mkdir(parents=True)
-        (box / "live.txt").write_text("live")
-        versions = base / ".versions"
-        _make_dir_snapshot(versions, "20260101T000000Z", box)
-        _make_dir_snapshot(versions, "20260102T000000Z", box)
-        migrate_legacy_versions(box, box_name="unsorted")
+  def test_a_box_named_unsorted_does_not_own_the_bucket(self, tmp_path: Path) -> None:
+    """The bucket is ``.unsorted``, so box ``unsorted``'s prune cannot reach it."""
+    base = tmp_path / "vault" / "rw"
+    box = base / "unsorted"
+    box.mkdir(parents=True)
+    (box / "live.txt").write_text("live")
+    versions = base / ".versions"
+    _make_dir_snapshot(versions, "20260101T000000Z", box)
+    _make_dir_snapshot(versions, "20260102T000000Z", box)
+    migrate_legacy_versions(box, box_name="unsorted")
 
-        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+    assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
 
-        prune_snapshots(box, max_keep=0, box_name="unsorted")
+    prune_snapshots(box, max_keep=0, box_name="unsorted")
 
-        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
-        assert (versions / UNSORTED_DIRNAME / "20260102T000000Z").is_dir()
+    assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+    assert (versions / UNSORTED_DIRNAME / "20260102T000000Z").is_dir()
 
-    def test_a_reserved_layout_name_is_not_a_box_store_key(
-        self, tmp_path: Path
-    ) -> None:
-        from kanibako.snapshots import LAYOUT_MARKER_NAME
+  def test_a_reserved_layout_name_is_not_a_box_store_key(self, tmp_path: Path) -> None:
+    from kanibako.snapshots import LAYOUT_MARKER_NAME
 
-        base = tmp_path / "vault" / "rw" / "b"
-        base.mkdir(parents=True)
+    base = tmp_path / "vault" / "rw" / "b"
+    base.mkdir(parents=True)
 
-        with pytest.raises(UnsafeSnapshotNameError, match="layout"):
-            list_snapshots(base, box_name=UNSORTED_DIRNAME)
-        with pytest.raises(UnsafeSnapshotNameError, match="layout"):
-            list_snapshots(base, box_name=LAYOUT_MARKER_NAME)
+    with pytest.raises(UnsafeSnapshotNameError, match="layout"):
+      list_snapshots(base, box_name=UNSORTED_DIRNAME)
+    with pytest.raises(UnsafeSnapshotNameError, match="layout"):
+      list_snapshots(base, box_name=LAYOUT_MARKER_NAME)
 
-    def test_a_timestamp_named_box_is_not_swept_by_another_boxs_legacy_pass(
-        self, tmp_path: Path
-    ) -> None:
-        """``20200101T000000Z`` is a valid box name; its store is not a legacy entry."""
-        base = tmp_path / "vault" / "rw"
-        tsbox = base / "20200101T000000Z"
-        tsbox.mkdir(parents=True)
-        (tsbox / "mine.txt").write_text("mine")
-        create_snapshot(tsbox, box_name="20200101T000000Z")
-        mine = list_snapshots(tsbox, box_name="20200101T000000Z")
-        assert len(mine) == 1
+  def test_a_timestamp_named_box_is_not_swept_by_another_boxs_legacy_pass(
+    self, tmp_path: Path
+  ) -> None:
+    """``20200101T000000Z`` is a valid box name; its store is not a legacy entry."""
+    base = tmp_path / "vault" / "rw"
+    tsbox = base / "20200101T000000Z"
+    tsbox.mkdir(parents=True)
+    (tsbox / "mine.txt").write_text("mine")
+    create_snapshot(tsbox, box_name="20200101T000000Z")
+    mine = list_snapshots(tsbox, box_name="20200101T000000Z")
+    assert len(mine) == 1
 
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "a.txt").write_text("a")
-        migrate_legacy_versions(alpha, box_name="alpha")
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "a.txt").write_text("a")
+    migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert list_snapshots(tsbox, box_name="20200101T000000Z") == mine
-        assert list_unsorted(alpha) == []
+    assert list_snapshots(tsbox, box_name="20200101T000000Z") == mine
+    assert list_unsorted(alpha) == []
 
-    def test_legacy_detection_never_runs_once_the_marker_is_present(
-        self, tmp_path: Path
-    ) -> None:
-        from kanibako.snapshots import LAYOUT_MARKER_NAME, LAYOUT_MARKER_VALUE
+  def test_legacy_detection_never_runs_once_the_marker_is_present(self, tmp_path: Path) -> None:
+    from kanibako.snapshots import LAYOUT_MARKER_NAME, LAYOUT_MARKER_VALUE
 
-        base = tmp_path / "vault" / "rw"
-        alpha = base / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "a.txt").write_text("a")
-        versions = base / ".versions"
-        _make_dir_snapshot(versions, "20260101T000000Z", alpha)
-        migrate_legacy_versions(alpha, box_name="alpha")
-        assert (versions / LAYOUT_MARKER_NAME).read_text() == LAYOUT_MARKER_VALUE
+    base = tmp_path / "vault" / "rw"
+    alpha = base / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "a.txt").write_text("a")
+    versions = base / ".versions"
+    _make_dir_snapshot(versions, "20260101T000000Z", alpha)
+    migrate_legacy_versions(alpha, box_name="alpha")
+    assert (versions / LAYOUT_MARKER_NAME).read_text() == LAYOUT_MARKER_VALUE
 
-        _make_dir_snapshot(versions, "20260102T000000Z", alpha)
-        moved = migrate_legacy_versions(alpha, box_name="alpha")
+    _make_dir_snapshot(versions, "20260102T000000Z", alpha)
+    moved = migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert moved == {"attributed": [], "unsorted": []}
-        assert (versions / "20260102T000000Z").is_dir()
+    assert moved == {"attributed": [], "unsorted": []}
+    assert (versions / "20260102T000000Z").is_dir()
 
-    def test_a_writer_marks_a_base_that_has_nothing_to_migrate(
-        self, tmp_path: Path
-    ) -> None:
-        """Marking only on a real move would leave the first store unprotected."""
-        from kanibako.snapshots import LAYOUT_MARKER_NAME
+  def test_a_writer_marks_a_base_that_has_nothing_to_migrate(self, tmp_path: Path) -> None:
+    """Marking only on a real move would leave the first store unprotected."""
+    from kanibako.snapshots import LAYOUT_MARKER_NAME
 
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "a.txt").write_text("a")
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "a.txt").write_text("a")
 
-        create_snapshot(alpha, box_name="alpha")
+    create_snapshot(alpha, box_name="alpha")
 
-        assert (alpha.parent / ".versions" / LAYOUT_MARKER_NAME).exists()
+    assert (alpha.parent / ".versions" / LAYOUT_MARKER_NAME).exists()
 
-    def test_a_reader_does_not_create_the_base(self, tmp_path: Path) -> None:
-        """``list`` / ``migrate`` on a vault with no store must not make one."""
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "a.txt").write_text("a")
+  def test_a_reader_does_not_create_the_base(self, tmp_path: Path) -> None:
+    """``list`` / ``migrate`` on a vault with no store must not make one."""
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "a.txt").write_text("a")
 
-        migrate_legacy_versions(alpha, box_name="alpha")
+    migrate_legacy_versions(alpha, box_name="alpha")
 
-        assert not (alpha.parent / ".versions").exists()
+    assert not (alpha.parent / ".versions").exists()
 
 
 class TestSafetyCopyFailure:
-    """A failed pre-restore copy is a refusal with a message, not a traceback."""
+  """A failed pre-restore copy is a refusal with a message, not a traceback."""
 
-    def test_a_failed_safety_copy_raises_a_clean_error(
-        self, tmp_path: Path
-    ) -> None:
-        import subprocess
+  def test_a_failed_safety_copy_raises_a_clean_error(self, tmp_path: Path) -> None:
+    import subprocess
 
-        from kanibako.snapshots import SnapshotSafetyError
+    from kanibako.snapshots import SnapshotSafetyError
 
-        alpha = tmp_path / "vault" / "rw" / "alpha"
-        alpha.mkdir(parents=True)
-        (alpha / "keep.txt").write_text("live")
-        snap = create_snapshot(alpha, box_name="alpha")
-        assert snap is not None
-        (alpha / "keep.txt").write_text("changed")
+    alpha = tmp_path / "vault" / "rw" / "alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "keep.txt").write_text("live")
+    snap = create_snapshot(alpha, box_name="alpha")
+    assert snap is not None
+    (alpha / "keep.txt").write_text("changed")
 
-        boom = subprocess.CalledProcessError(1, ["rsync", "--link-dest"])
-        with patch(
-            "kanibako.snapshots.create_snapshot", side_effect=boom
-        ):
-            with pytest.raises(SnapshotSafetyError, match="Nothing was changed"):
-                restore_snapshot(alpha, snap.name, box_name="alpha")
+    boom = subprocess.CalledProcessError(1, ["rsync", "--link-dest"])
+    with patch("kanibako.snapshots.create_snapshot", side_effect=boom):
+      with pytest.raises(SnapshotSafetyError, match="Nothing was changed"):
+        restore_snapshot(alpha, snap.name, box_name="alpha")
 
-        assert (alpha / "keep.txt").read_text() == "changed"
+    assert (alpha / "keep.txt").read_text() == "changed"
 
 
 # ---------------------------------------------------------------------------
@@ -1291,417 +1287,448 @@ class TestSafetyCopyFailure:
 
 
 class TestReflinkProbeNeverWritesInTheVault:
-    @pytest.mark.parametrize("where", ["outside", "inside"])
-    @pytest.mark.parametrize("leaf", [".reflink-test-src", ".reflink-test-dst"])
-    def test_planted_probe_name_is_never_written_through(
-        self, tmp_path: Path, where: str, leaf: str,
-    ) -> None:
-        """The box can plant the old fixed probe names; nothing it plants is touched."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        if where == "outside":
-            dest_tree = sentinel_tree(tmp_path)
-            dest = dest_tree / "sentinel.txt"
-        else:
-            dest_tree = vault_rw
-            dest = vault_rw / "file1.txt"
-        (vault_rw / leaf).symlink_to(dest)
-        before = tree_digest(dest_tree)
-        listing = sorted(p.name for p in vault_rw.iterdir())
+  @pytest.mark.parametrize("where", ["outside", "inside"])
+  @pytest.mark.parametrize("leaf", [".reflink-test-src", ".reflink-test-dst"])
+  def test_planted_probe_name_is_never_written_through(
+    self,
+    tmp_path: Path,
+    where: str,
+    leaf: str,
+  ) -> None:
+    """The box can plant the old fixed probe names; nothing it plants is touched."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    if where == "outside":
+      dest_tree = sentinel_tree(tmp_path)
+      dest = dest_tree / "sentinel.txt"
+    else:
+      dest_tree = vault_rw
+      dest = vault_rw / "file1.txt"
+    (vault_rw / leaf).symlink_to(dest)
+    before = tree_digest(dest_tree)
+    listing = sorted(p.name for p in vault_rw.iterdir())
 
-        assert detect_snapshot_strategy(vault_rw) in ("reflink", "hardlink")
+    assert detect_snapshot_strategy(vault_rw) in ("reflink", "hardlink")
 
-        assert tree_digest(dest_tree) == before
-        assert sorted(p.name for p in vault_rw.iterdir()) == listing
-        assert not [p for p in vault_rw.parent.iterdir() if "reflink" in p.name]
+    assert tree_digest(dest_tree) == before
+    assert sorted(p.name for p in vault_rw.iterdir()) == listing
+    assert not [p for p in vault_rw.parent.iterdir() if "reflink" in p.name]
 
-    def test_probe_runs_in_the_versions_base_when_present(self, tmp_path: Path) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        versions = tmp_path / "vault" / ".versions"
-        versions.mkdir()
-        seen: list[Path] = []
+  def test_probe_runs_in_the_versions_base_when_present(self, tmp_path: Path) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    versions = tmp_path / "vault" / ".versions"
+    versions.mkdir()
+    seen: list[Path] = []
 
-        def spy(path: Path) -> bool:
-            seen.append(path)
-            return False
+    def spy(path: Path) -> bool:
+      seen.append(path)
+      return False
 
-        with patch("kanibako.snapshots._test_reflink", side_effect=spy):
-            assert detect_snapshot_strategy(vault_rw) == "hardlink"
-        assert seen == [versions]
-        versions.rmdir()
-        with patch("kanibako.snapshots._test_reflink", side_effect=spy):
-            detect_snapshot_strategy(vault_rw)
-        assert seen[-1] == vault_rw.parent
+    with patch("kanibako.snapshots._test_reflink", side_effect=spy):
+      assert detect_snapshot_strategy(vault_rw) == "hardlink"
+    assert seen == [versions]
+    versions.rmdir()
+    with patch("kanibako.snapshots._test_reflink", side_effect=spy):
+      detect_snapshot_strategy(vault_rw)
+    assert seen[-1] == vault_rw.parent
 
 
 def _plant_during_swap(
-    vault_rw: Path, after: str, plant: str, target: Path,
+  vault_rw: Path,
+  after: str,
+  plant: str,
+  target: Path,
 ):  # type: ignore[no-untyped-def]
-    """A wrapper for the swap's mover that plants ``vault_rw/<plant> -> target`` right
-    after the staged *after* lands -- the box racing a live restore.  It wraps
-    ``boxfs.rename`` and ``shutil.move`` alike, whichever the code under test uses.
-    """
-    real_rename = snapshots_mod.boxfs.rename if hasattr(snapshots_mod, "boxfs") else None
-    real_move = shutil.move
-    state = {"planted": False}
+  """A wrapper for the swap's mover that plants ``vault_rw/<plant> -> target`` right
+  after the staged *after* lands -- the box racing a live restore.  It wraps
+  ``boxfs.rename`` and ``shutil.move`` alike, whichever the code under test uses.
+  """
+  real_rename = snapshots_mod.boxfs.rename if hasattr(snapshots_mod, "boxfs") else None
+  real_move = shutil.move
+  state = {"planted": False}
 
-    def after_hook(src: object) -> None:
-        if (not state["planted"] and ".restore.tmp" in str(src)
-                and Path(str(src)).name == after):
-            target.mkdir(exist_ok=True)
-            (vault_rw / plant).symlink_to(target)
-            state["planted"] = True
+  def after_hook(src: object) -> None:
+    if not state["planted"] and ".restore.tmp" in str(src) and Path(str(src)).name == after:
+      target.mkdir(exist_ok=True)
+      (vault_rw / plant).symlink_to(target)
+      state["planted"] = True
 
-    def rename(src: Path, dst: Path, root: Path) -> None:
-        assert real_rename is not None
-        real_rename(src, dst, root)
-        after_hook(src)
+  def rename(src: Path, dst: Path, root: Path) -> None:
+    assert real_rename is not None
+    real_rename(src, dst, root)
+    after_hook(src)
 
-    def move(src: str, dst: str):  # type: ignore[no-untyped-def]
-        out = real_move(src, dst)
-        after_hook(src)
-        return out
+  def move(src: str, dst: str):  # type: ignore[no-untyped-def]
+    out = real_move(src, dst)
+    after_hook(src)
+    return out
 
-    return rename, move, state
+  return rename, move, state
 
 
 class TestRestoreRefusesAPlantedLink:
-    @pytest.mark.parametrize("where", ["outside", "inside"])
-    def test_link_planted_mid_swap_is_refused_and_rolled_back(
-        self, tmp_path: Path, where: str,
-    ) -> None:
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        # Inside: the box makes a dir in the live vault mid-swap and links to it.
-        target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
-        before = tree_digest(target)
-        rename, move, state = _plant_during_swap(vault_rw, "file1.txt", "subdir", target)
+  @pytest.mark.parametrize("where", ["outside", "inside"])
+  def test_link_planted_mid_swap_is_refused_and_rolled_back(
+    self,
+    tmp_path: Path,
+    where: str,
+  ) -> None:
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    # Inside: the box makes a dir in the live vault mid-swap and links to it.
+    target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
+    before = tree_digest(target)
+    rename, move, state = _plant_during_swap(vault_rw, "file1.txt", "subdir", target)
 
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename, create=True), \
-                patch("kanibako.snapshots.shutil.move", side_effect=move):
-            with pytest.raises(snapshots_mod.KanibakoError, match="symlink"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
-
-        assert state["planted"]
-        if where == "outside":
-            assert tree_digest(target) == before
-        # Rolled back: the live vault is what it was; what the box planted is gone.
-        assert sorted(p.name for p in vault_rw.iterdir()) == ["file1.txt", "subdir"]
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not (vault_rw / "subdir").is_symlink()
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
-
-    def test_link_planted_after_the_check_is_never_followed(self, tmp_path: Path) -> None:
-        """The race past the check: a link already at the destination when the rename
-        runs.  ``renameat`` replaces or refuses it; nothing lands in its target."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        outside = sentinel_tree(tmp_path)
-        before = tree_digest(outside)
-        real_rename = snapshots_mod.boxfs.rename
-
-        def racing_rename(src: Path, dst: Path, root: Path) -> None:
-            if ".restore.tmp" in str(src) and Path(src).name == "subdir":
-                Path(dst).symlink_to(outside)
-            real_rename(src, dst, root)
-
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=racing_rename):
-            with pytest.raises(OSError):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
-
-        assert tree_digest(outside) == before
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-
-    def test_control_a_vault_reached_through_the_hosts_own_link_restores(
-        self, tmp_path: Path,
-    ) -> None:
-        """A link AT the vault is the host's repoint, not the box's: still restored."""
-        real = tmp_path / "disk" / "share-rw"
-        _populate_rw(real)
-        vault_rw = tmp_path / "vault" / "share-rw"
-        vault_rw.parent.mkdir(parents=True)
-        vault_rw.symlink_to(real)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (real / "file1.txt").write_text("changed")
-
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename, create=True),
+      patch("kanibako.snapshots.shutil.move", side_effect=move),
+    ):
+      with pytest.raises(snapshots_mod.KanibakoError, match="symlink"):
         restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert vault_rw.is_symlink()
-        assert (real / "file1.txt").read_text() == "hello"
+    assert state["planted"]
+    if where == "outside":
+      assert tree_digest(target) == before
+    # Rolled back: the live vault is what it was; what the box planted is gone.
+    assert sorted(p.name for p in vault_rw.iterdir()) == ["file1.txt", "subdir"]
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not (vault_rw / "subdir").is_symlink()
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+  def test_link_planted_after_the_check_is_never_followed(self, tmp_path: Path) -> None:
+    """The race past the check: a link already at the destination when the rename
+    runs.  ``renameat`` replaces or refuses it; nothing lands in its target."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    outside = sentinel_tree(tmp_path)
+    before = tree_digest(outside)
+    real_rename = snapshots_mod.boxfs.rename
+
+    def racing_rename(src: Path, dst: Path, root: Path) -> None:
+      if ".restore.tmp" in str(src) and Path(src).name == "subdir":
+        Path(dst).symlink_to(outside)
+      real_rename(src, dst, root)
+
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=racing_rename):
+      with pytest.raises(OSError):
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+    assert tree_digest(outside) == before
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+
+  def test_control_a_vault_reached_through_the_hosts_own_link_restores(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    """A link AT the vault is the host's repoint, not the box's: still restored."""
+    real = tmp_path / "disk" / "share-rw"
+    _populate_rw(real)
+    vault_rw = tmp_path / "vault" / "share-rw"
+    vault_rw.parent.mkdir(parents=True)
+    vault_rw.symlink_to(real)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (real / "file1.txt").write_text("changed")
+
+    restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+    assert vault_rw.is_symlink()
+    assert (real / "file1.txt").read_text() == "hello"
 
 
 def _crossing_rename(vault_rw: Path, err: int):  # type: ignore[no-untyped-def]
-    """``boxfs.rename`` as it behaves when the live vault is a MOUNT POINT: a rename into
-    or out of it raises *err* (EXDEV, or EBUSY); one beside it still works."""
-    import errno as _errno
+  """``boxfs.rename`` as it behaves when the live vault is a MOUNT POINT: a rename into
+  or out of it raises *err* (EXDEV, or EBUSY); one beside it still works."""
+  import errno as _errno
 
-    live = vault_rw.resolve()
-    real_rename = snapshots_mod.boxfs.rename
-    calls = {"refused": 0}
+  live = vault_rw.resolve()
+  real_rename = snapshots_mod.boxfs.rename
+  calls = {"refused": 0}
 
-    def rename(src: Path, dst: Path, root: Path) -> None:
-        if (Path(src).parent == live) != (Path(dst).parent == live):
-            calls["refused"] += 1
-            raise OSError(err, os.strerror(err), str(src))
-        real_rename(src, dst, root)
+  def rename(src: Path, dst: Path, root: Path) -> None:
+    if (Path(src).parent == live) != (Path(dst).parent == live):
+      calls["refused"] += 1
+      raise OSError(err, os.strerror(err), str(src))
+    real_rename(src, dst, root)
 
-    assert err in (_errno.EXDEV, _errno.EBUSY)
-    return rename, calls
+  assert err in (_errno.EXDEV, _errno.EBUSY)
+  return rename, calls
 
 
 class TestRestoreAcrossAMount:
-    """The vault leaf may be a mount point: ``shutil.move`` copied across, so the boxfs
-    renames fall back to a no-follow copy, both into and out of the vault."""
+  """The vault leaf may be a mount point: ``shutil.move`` copied across, so the boxfs
+  renames fall back to a no-follow copy, both into and out of the vault."""
 
-    @pytest.mark.parametrize("err", ["EXDEV"])
-    def test_restore_copies_when_the_vault_is_a_mount_point(
-        self, tmp_path: Path, err: str,
-    ) -> None:
-        import errno as _errno
-        import stat as _stat
+  @pytest.mark.parametrize("err", ["EXDEV"])
+  def test_restore_copies_when_the_vault_is_a_mount_point(
+    self,
+    tmp_path: Path,
+    err: str,
+  ) -> None:
+    import errno as _errno
+    import stat as _stat
 
-        vault_rw, outside, texts = _populate_links(tmp_path)
-        (vault_rw / "ro").mkdir()
-        (vault_rw / "ro" / "kept.txt").write_text("read-only dir")
-        (vault_rw / "ro").chmod(0o555)
-        vault_rw.chmod(0o750)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        before = tree_digest(outside)
-        # Change the live vault in every way the restore must undo.
-        (vault_rw / "file1.txt").write_text("changed")
-        (vault_rw / "live_only.txt").write_text("goes")
-        (vault_rw / "in").unlink()
-        (vault_rw / "ro").chmod(0o755)
-        (vault_rw / "ro" / "new.txt").write_text("goes")
-        (vault_rw / "ro").chmod(0o555)
+    vault_rw, outside, texts = _populate_links(tmp_path)
+    (vault_rw / "ro").mkdir()
+    (vault_rw / "ro" / "kept.txt").write_text("read-only dir")
+    (vault_rw / "ro").chmod(0o555)
+    vault_rw.chmod(0o750)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    before = tree_digest(outside)
+    # Change the live vault in every way the restore must undo.
+    (vault_rw / "file1.txt").write_text("changed")
+    (vault_rw / "live_only.txt").write_text("goes")
+    (vault_rw / "in").unlink()
+    (vault_rw / "ro").chmod(0o755)
+    (vault_rw / "ro" / "new.txt").write_text("goes")
+    (vault_rw / "ro").chmod(0o555)
 
-        rename, calls = _crossing_rename(vault_rw, getattr(_errno, err))
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename):
-            restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    rename, calls = _crossing_rename(vault_rw, getattr(_errno, err))
+    with patch("kanibako.snapshots.boxfs.rename", side_effect=rename):
+      restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert calls["refused"] >= 2  # the move-aside and the swap both crossed
-        assert (vault_rw / "file1.txt").read_text() == "hello"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not (vault_rw / "live_only.txt").exists()
-        assert sorted(os.listdir(vault_rw / "ro")) == ["kept.txt"]
-        assert _stat.S_IMODE((vault_rw / "ro").stat().st_mode) == 0o555
-        assert _stat.S_IMODE(vault_rw.stat().st_mode) == 0o750
-        for rel, text in texts.items():
-            assert os.readlink(vault_rw / rel) == text
-        assert tree_digest(outside) == before
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
-        (vault_rw / "ro").chmod(0o755)
+    assert calls["refused"] >= 2  # the move-aside and the swap both crossed
+    assert (vault_rw / "file1.txt").read_text() == "hello"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not (vault_rw / "live_only.txt").exists()
+    assert sorted(os.listdir(vault_rw / "ro")) == ["kept.txt"]
+    assert _stat.S_IMODE((vault_rw / "ro").stat().st_mode) == 0o555
+    assert _stat.S_IMODE(vault_rw.stat().st_mode) == 0o750
+    for rel, text in texts.items():
+      assert os.readlink(vault_rw / rel) == text
+    assert tree_digest(outside) == before
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    (vault_rw / "ro").chmod(0o755)
 
-    def test_a_failed_copy_into_the_vault_puts_it_back_by_copy(self, tmp_path: Path) -> None:
-        import errno as _errno
+  def test_a_failed_copy_into_the_vault_puts_it_back_by_copy(self, tmp_path: Path) -> None:
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        (vault_rw / "live_only.txt").write_text("must-survive")
-        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
-        real_copy = snapshots_mod.boxfs.copy_tree
-        seen: list[str] = []
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    (vault_rw / "live_only.txt").write_text("must-survive")
+    rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+    real_copy = snapshots_mod.boxfs.copy_tree
+    seen: list[str] = []
 
-        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
-            seen.append(Path(src).name)
-            if ".restore.tmp" in str(src):
-                (Path(dst) / "half-copied.txt").write_text("partial")
-                raise OSError(_errno.ENOSPC, "No space left on device")
-            return real_copy(src, dst, **kw)
+    def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+      seen.append(Path(src).name)
+      if ".restore.tmp" in str(src):
+        (Path(dst) / "half-copied.txt").write_text("partial")
+        raise OSError(_errno.ENOSPC, "No space left on device")
+      return real_copy(src, dst, **kw)
 
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
-            with pytest.raises(OSError, match="No space"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree),
+    ):
+      with pytest.raises(OSError, match="No space"):
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        # Out (live → backup), in (staging → live, failed), back (backup → live).
-        assert seen == ["share-rw", ".share-rw.restore.tmp", ".share-rw.restore.bak"]
-        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "live_only.txt", "subdir"]
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    # Out (live → backup), in (staging → live, failed), back (backup → live).
+    assert seen == ["share-rw", ".share-rw.restore.tmp", ".share-rw.restore.bak"]
+    assert sorted(os.listdir(vault_rw)) == ["file1.txt", "live_only.txt", "subdir"]
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
 
-    def test_a_failed_copy_out_of_the_vault_leaves_it_in_place(self, tmp_path: Path) -> None:
-        import errno as _errno
+  def test_a_failed_copy_out_of_the_vault_leaves_it_in_place(self, tmp_path: Path) -> None:
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
 
-        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
-            (Path(dst) / "file1.txt").write_text("partial")
-            raise OSError(_errno.ENOSPC, "No space left on device")
+    def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+      (Path(dst) / "file1.txt").write_text("partial")
+      raise OSError(_errno.ENOSPC, "No space left on device")
 
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
-            with pytest.raises(OSError, match="No space"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree),
+    ):
+      with pytest.raises(OSError, match="No space"):
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
 
-    @pytest.mark.parametrize("when", ["before-the-check", "during-the-copy"])
-    @pytest.mark.parametrize("where", ["outside", "inside"])
-    def test_a_link_planted_in_a_copied_swap_is_refused_and_rolled_back(
-        self, tmp_path: Path, when: str, where: str,
-    ) -> None:
-        import errno as _errno
+  @pytest.mark.parametrize("when", ["before-the-check", "during-the-copy"])
+  @pytest.mark.parametrize("where", ["outside", "inside"])
+  def test_a_link_planted_in_a_copied_swap_is_refused_and_rolled_back(
+    self,
+    tmp_path: Path,
+    when: str,
+    where: str,
+  ) -> None:
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
-        before = tree_digest(target)
-        crossing, _ = _crossing_rename(vault_rw, _errno.EXDEV)
-        real_copy = snapshots_mod.boxfs.copy_tree
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
+    before = tree_digest(target)
+    crossing, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+    real_copy = snapshots_mod.boxfs.copy_tree
 
-        def plant() -> None:
-            target.mkdir(exist_ok=True)
-            (vault_rw / "subdir").symlink_to(target)
+    def plant() -> None:
+      target.mkdir(exist_ok=True)
+      (vault_rw / "subdir").symlink_to(target)
 
-        def rename(src: Path, dst: Path, root: Path) -> None:
-            if when == "before-the-check" and ".restore.tmp" in str(src):
-                plant()
-            crossing(src, dst, root)
+    def rename(src: Path, dst: Path, root: Path) -> None:
+      if when == "before-the-check" and ".restore.tmp" in str(src):
+        plant()
+      crossing(src, dst, root)
 
-        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
-            if when == "during-the-copy" and ".restore.tmp" in str(src):
-                plant()
-            return real_copy(src, dst, **kw)
+    def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+      if when == "during-the-copy" and ".restore.tmp" in str(src):
+        plant()
+      return real_copy(src, dst, **kw)
 
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
-            with pytest.raises(snapshots_mod.RestoreLinkRefusedError, match="symlink"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree),
+    ):
+      with pytest.raises(snapshots_mod.RestoreLinkRefusedError, match="symlink"):
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        if where == "outside":
-            assert tree_digest(target) == before
-        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert not (vault_rw / "subdir").is_symlink()
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    if where == "outside":
+      assert tree_digest(target) == before
+    assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert not (vault_rw / "subdir").is_symlink()
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
 
-    def test_an_undo_that_fails_keeps_the_backup_and_says_so(self, tmp_path: Path) -> None:
-        import errno as _errno
+  def test_an_undo_that_fails_keeps_the_backup_and_says_so(self, tmp_path: Path) -> None:
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
-        real_copy = snapshots_mod.boxfs.copy_tree
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+    real_copy = snapshots_mod.boxfs.copy_tree
 
-        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
-            if ".restore." in Path(src).name:  # the swap in, and the undo
-                raise OSError(_errno.ENOSPC, "No space left on device")
-            return real_copy(src, dst, **kw)
+    def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+      if ".restore." in Path(src).name:  # the swap in, and the undo
+        raise OSError(_errno.ENOSPC, "No space left on device")
+      return real_copy(src, dst, **kw)
 
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
-            with pytest.raises(snapshots_mod.RestoreUndoFailedError) as caught:
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree),
+    ):
+      with pytest.raises(snapshots_mod.RestoreUndoFailedError) as caught:
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        backup = vault_rw.parent / ".share-rw.restore.bak"
-        text = str(caught.value)
-        assert str(backup) in text and "No space" in text
-        assert "put back as it was" not in text
-        assert (backup / "file1.txt").read_text() == "live-precious"
-        assert not (vault_rw.parent / ".share-rw.restore.tmp").exists()
+    backup = vault_rw.parent / ".share-rw.restore.bak"
+    text = str(caught.value)
+    assert str(backup) in text and "No space" in text
+    assert "put back as it was" not in text
+    assert (backup / "file1.txt").read_text() == "live-precious"
+    assert not (vault_rw.parent / ".share-rw.restore.tmp").exists()
 
-        # A later restore never deletes the kept backup: refused, naming it.
-        names_before = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
-        with pytest.raises(snapshots_mod.RestoreRefusedError, match="restore.bak"):
-            restore_snapshot(vault_rw, snap.name, box_name="testbox")
-        assert (backup / "file1.txt").read_text() == "live-precious"
-        names_after = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
-        assert names_after == names_before  # refused before the safety snapshot
+    # A later restore never deletes the kept backup: refused, naming it.
+    names_before = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
+    with pytest.raises(snapshots_mod.RestoreRefusedError, match="restore.bak"):
+      restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    assert (backup / "file1.txt").read_text() == "live-precious"
+    names_after = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
+    assert names_after == names_before  # refused before the safety snapshot
 
-    def test_an_entry_that_is_a_mount_point_is_refused_before_any_copy(
-        self, tmp_path: Path,
-    ) -> None:
-        """EBUSY: the entry is a mount point, which can never be removed."""
-        import errno as _errno
+  def test_an_entry_that_is_a_mount_point_is_refused_before_any_copy(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    """EBUSY: the entry is a mount point, which can never be removed."""
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        real_rename = snapshots_mod.boxfs.rename
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    real_rename = snapshots_mod.boxfs.rename
 
-        def rename(src: Path, dst: Path, root: Path) -> None:
-            if Path(src).name == "subdir":
-                raise OSError(_errno.EBUSY, os.strerror(_errno.EBUSY), str(src))
-            real_rename(src, dst, root)
+    def rename(src: Path, dst: Path, root: Path) -> None:
+      if Path(src).name == "subdir":
+        raise OSError(_errno.EBUSY, os.strerror(_errno.EBUSY), str(src))
+      real_rename(src, dst, root)
 
-        copies: list[Path] = []
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.copy_tree",
-                      side_effect=lambda src, dst, **kw: copies.append(src)):
-            with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point") as caught:
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    copies: list[Path] = []
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch(
+        "kanibako.snapshots.boxfs.copy_tree", side_effect=lambda src, dst, **kw: copies.append(src)
+      ),
+    ):
+      with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point") as caught:
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert str(vault_rw.resolve() / "subdir") in str(caught.value)
-        assert copies == []
-        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    assert str(vault_rw.resolve() / "subdir") in str(caught.value)
+    assert copies == []
+    assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
 
-    def test_a_mount_point_entry_in_a_mounted_vault_is_refused_before_any_copy(
-        self, tmp_path: Path,
-    ) -> None:
-        """EXDEV on the vault, and an entry on a device of its own: refused, not copied."""
-        import errno as _errno
+  def test_a_mount_point_entry_in_a_mounted_vault_is_refused_before_any_copy(
+    self,
+    tmp_path: Path,
+  ) -> None:
+    """EXDEV on the vault, and an entry on a device of its own: refused, not copied."""
+    import errno as _errno
 
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
-        assert snap is not None
-        (vault_rw / "file1.txt").write_text("live-precious")
-        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
-        real_stat = snapshots_mod.boxfs.stat
-        mounted = vault_rw.resolve() / "subdir"
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+    assert snap is not None
+    (vault_rw / "file1.txt").write_text("live-precious")
+    rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+    real_stat = snapshots_mod.boxfs.stat
+    mounted = vault_rw.resolve() / "subdir"
 
-        def stat(path: Path, root: Path) -> os.stat_result:
-            st = real_stat(path, root)
-            if Path(path) == mounted:
-                fields = list(st)
-                fields[2] += 1  # st_dev
-                return os.stat_result(fields)
-            return st
+    def stat(path: Path, root: Path) -> os.stat_result:
+      st = real_stat(path, root)
+      if Path(path) == mounted:
+        fields = list(st)
+        fields[2] += 1  # st_dev
+        return os.stat_result(fields)
+      return st
 
-        copies: list[Path] = []
-        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
-                patch("kanibako.snapshots.boxfs.stat", side_effect=stat), \
-                patch("kanibako.snapshots.boxfs.copy_tree",
-                      side_effect=lambda src, dst, **kw: copies.append(src)):
-            with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point"):
-                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+    copies: list[Path] = []
+    with (
+      patch("kanibako.snapshots.boxfs.rename", side_effect=rename),
+      patch("kanibako.snapshots.boxfs.stat", side_effect=stat),
+      patch(
+        "kanibako.snapshots.boxfs.copy_tree", side_effect=lambda src, dst, **kw: copies.append(src)
+      ),
+    ):
+      with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point"):
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
-        assert copies == []
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
-        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+    assert copies == []
+    assert (vault_rw / "file1.txt").read_text() == "live-precious"
+    assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+    assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]

@@ -32,15 +32,15 @@ from kanibako.log import get_logger
 from kanibako.utils import CONTAINER_NAME_PREFIX
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
 from kanibako.settings.settings_resolve import (
-    GUEST_GID,
-    GUEST_HOME,
-    GUEST_UID,
-    GUEST_VAULT_RO,
-    GUEST_VAULT_RO_RELPATH,
-    GUEST_VAULT_RW,
-    GUEST_VAULT_RW_RELPATH,
-    GUEST_WORKSPACE,
-    GUEST_WORKSPACE_RELPATH,
+  GUEST_GID,
+  GUEST_HOME,
+  GUEST_UID,
+  GUEST_VAULT_RO,
+  GUEST_VAULT_RO_RELPATH,
+  GUEST_VAULT_RW,
+  GUEST_VAULT_RW_RELPATH,
+  GUEST_WORKSPACE,
+  GUEST_WORKSPACE_RELPATH,
 )
 
 
@@ -57,11 +57,11 @@ _POST_START_POLL_S = 0.25
 
 
 def _run_post_start(hook: "Callable[[], None]") -> None:
-    """Invoke a post-start *hook*, swallowing anything it raises."""
-    try:
-        hook()
-    except Exception as exc:  # noqa: BLE001 - a hook must never break a launch
-        logger.debug("post-start hook failed: %s", exc)
+  """Invoke a post-start *hook*, swallowing anything it raises."""
+  try:
+    hook()
+  except Exception as exc:  # noqa: BLE001 - a hook must never break a launch
+    logger.debug("post-start hook failed: %s", exc)
 
 
 # The smallest rule a string must satisfy to be an image reference AT ALL: a registry
@@ -72,29 +72,29 @@ _IMAGE_REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]*\Z")
 
 
 def image_ref_or_none(raw: str) -> str | None:
-    """Return ``inspect`` output *raw* as an image reference, or None if it cannot be one.
+  """Return ``inspect`` output *raw* as an image reference, or None if it cannot be one.
 
-    The ONE guard for every ``inspect --format`` read of an image reference — the local
-    leg (:meth:`ContainerRuntime.container_image`) and the remote one
-    (``vscode.vscode_remote.RemoteEngine.container_image``) both route through it, so the
-    two cannot disagree about what a reference is.
+  The ONE guard for every ``inspect --format`` read of an image reference — the local
+  leg (:meth:`ContainerRuntime.container_image`) and the remote one
+  (``vscode.vscode_remote.RemoteEngine.container_image``) both route through it, so the
+  two cannot disagree about what a reference is.
 
-    ⚑ Why an exit-0 read needs a guard at all: Go's ``text/template`` errors on a missing
-    STRUCT field but prints the literal ``<no value>`` — at exit 0 — for a missing MAP
-    key, so an engine rendering inspect templates against a decoded map hands back a
-    string that is not a reference.  The engine is not ours to constrain: ``self.cmd`` is
-    whatever ``KANIBAKO_DOCKER_CMD`` or ``$PATH`` supplies.  Unguarded, such a value keys
-    a VS Code attached-container config — and a settings image tier — off ``"<no value>"``.
+  ⚑ Why an exit-0 read needs a guard at all: Go's ``text/template`` errors on a missing
+  STRUCT field but prints the literal ``<no value>`` — at exit 0 — for a missing MAP
+  key, so an engine rendering inspect templates against a decoded map hands back a
+  string that is not a reference.  The engine is not ours to constrain: ``self.cmd`` is
+  whatever ``KANIBAKO_DOCKER_CMD`` or ``$PATH`` supplies.  Unguarded, such a value keys
+  a VS Code attached-container config — and a settings image tier — off ``"<no value>"``.
 
-    Deliberately NOT checked: that the reference names an image that exists, or that it is
-    fully qualified.  A caller wanting either must ask the engine.
-    """
-    ref = raw.strip()
-    if _IMAGE_REF_RE.match(ref):
-        return ref
-    if ref:
-        logger.debug("container inspect returned a non-reference image value: %r", ref)
-    return None
+  Deliberately NOT checked: that the reference names an image that exists, or that it is
+  fully qualified.  A caller wanting either must ask the engine.
+  """
+  ref = raw.strip()
+  if _IMAGE_REF_RE.match(ref):
+    return ref
+  if ref:
+    logger.debug("container inspect returned a non-reference image value: %r", ref)
+  return None
 
 
 #: The ``ps -a`` states of a container caught part-way out — its removal or stop began
@@ -104,830 +104,852 @@ STUCK_STATES = frozenset({"removing", "stopping"})
 
 
 def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool:
-    """Whether an ``inspect --format {{.State.Running}}`` *result* says the container runs.
+  """Whether an ``inspect --format {{.State.Running}}`` *result* says the container runs.
 
-    Shared by the local leg (:meth:`ContainerRuntime.is_running`) and the remote one
-    (``vscode.vscode_remote.RemoteEngine.running_with_stderr``).  A failed ``inspect``
-    (no such container, engine unreachable) reads as not running.
-    """
-    return result.returncode == 0 and result.stdout.strip() == "true"
+  Shared by the local leg (:meth:`ContainerRuntime.is_running`) and the remote one
+  (``vscode.vscode_remote.RemoteEngine.running_with_stderr``).  A failed ``inspect``
+  (no such container, engine unreachable) reads as not running.
+  """
+  return result.returncode == 0 and result.stdout.strip() == "true"
 
 
 def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None:
-    """The value of env var *key* in an ``inspect --format {{json .Config.Env}}`` *result*.
+  """The value of env var *key* in an ``inspect --format {{json .Config.Env}}`` *result*.
 
-    Shared by the local leg (:meth:`ContainerRuntime.inspect_env`) and the remote one
-    (``vscode.vscode_remote.RemoteEngine.inspect_env``).  ``None`` when the ``inspect``
-    failed, its output is not a JSON list, or *key* is not set.
-    """
-    if result.returncode != 0:
-        return None
-    try:
-        env_list = json.loads(result.stdout.strip() or "null")
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(env_list, list):
-        return None
-    prefix = f"{key}="
-    for item in env_list:
-        if isinstance(item, str) and item.startswith(prefix):
-            return item[len(prefix):]
+  Shared by the local leg (:meth:`ContainerRuntime.inspect_env`) and the remote one
+  (``vscode.vscode_remote.RemoteEngine.inspect_env``).  ``None`` when the ``inspect``
+  failed, its output is not a JSON list, or *key* is not set.
+  """
+  if result.returncode != 0:
     return None
+  try:
+    env_list = json.loads(result.stdout.strip() or "null")
+  except (ValueError, TypeError):
+    return None
+  if not isinstance(env_list, list):
+    return None
+  prefix = f"{key}="
+  for item in env_list:
+    if isinstance(item, str) and item.startswith(prefix):
+      return item[len(prefix) :]
+  return None
 
 
 class ContainerRuntime:
-    """Wrapper around podman/docker CLI."""
+  """Wrapper around podman/docker CLI."""
 
-    def __init__(self, command: str | None = None) -> None:
-        # True only when ``KANIBAKO_DOCKER_CMD`` chose ``cmd``; an explicit *command*
-        # skips detection, so it never reads the variable.
-        self.cmd_overridden = False
-        if command:
-            self.cmd = command
-        else:
-            self.cmd, self.cmd_overridden = self._detect()
+  def __init__(self, command: str | None = None) -> None:
+    # True only when ``KANIBAKO_DOCKER_CMD`` chose ``cmd``; an explicit *command*
+    # skips detection, so it never reads the variable.
+    self.cmd_overridden = False
+    if command:
+      self.cmd = command
+    else:
+      self.cmd, self.cmd_overridden = self._detect()
 
-    @staticmethod
-    def _detect() -> tuple[str, bool]:
-        """Return the runtime command and whether ``KANIBAKO_DOCKER_CMD`` supplied it."""
-        env = os.environ.get("KANIBAKO_DOCKER_CMD")
-        if env:
-            # Checked here, at the one place every verb gets its runtime: an unrunnable
-            # value would otherwise surface as a FileNotFoundError traceback on first use.
-            if shutil.which(env) is None:
-                raise ContainerError(
-                    f"KANIBAKO_DOCKER_CMD names {env!r}, which is not a runnable command. "
-                    "Point it at podman or docker, or unset it."
-                )
-            return env, True
-        for name in ("podman", "docker"):
-            path = shutil.which(name)
-            if path:
-                return path, False
+  @staticmethod
+  def _detect() -> tuple[str, bool]:
+    """Return the runtime command and whether ``KANIBAKO_DOCKER_CMD`` supplied it."""
+    env = os.environ.get("KANIBAKO_DOCKER_CMD")
+    if env:
+      # Checked here, at the one place every verb gets its runtime: an unrunnable
+      # value would otherwise surface as a FileNotFoundError traceback on first use.
+      if shutil.which(env) is None:
         raise ContainerError(
-            "No container runtime found. "
-            "Install podman (https://podman.io/) or Docker."
+          f"KANIBAKO_DOCKER_CMD names {env!r}, which is not a runnable command. "
+          "Point it at podman or docker, or unset it."
         )
+      return env, True
+    for name in ("podman", "docker"):
+      path = shutil.which(name)
+      if path:
+        return path, False
+    raise ContainerError(
+      "No container runtime found. Install podman (https://podman.io/) or Docker."
+    )
 
-    # ------------------------------------------------------------------
-    # Image operations
-    # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # Image operations
+  # ------------------------------------------------------------------
 
-    def image_exists(self, image: str) -> bool:
-        result = subprocess.run(
-            [self.cmd, "image", "inspect", image],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def image_exists(self, image: str) -> bool:
+    result = subprocess.run(
+      [self.cmd, "image", "inspect", image],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-    def image_inspect(self, image: str) -> dict | None:
-        """Return image metadata as a dict, or None if not found."""
-        result = subprocess.run(
-            [self.cmd, "image", "inspect", image, "--format", "json"],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0:
-            return None
-        import json
-        data = json.loads(result.stdout)
-        if isinstance(data, list) and data:
-            return data[0]
-        return data if isinstance(data, dict) else None
+  def image_inspect(self, image: str) -> dict | None:
+    """Return image metadata as a dict, or None if not found."""
+    result = subprocess.run(
+      [self.cmd, "image", "inspect", image, "--format", "json"],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      return None
+    import json
 
-    def pull(self, image: str, *, quiet: bool = True) -> bool:
-        """Pull *image* from registry. Returns True on success."""
-        result = subprocess.run(
-            [self.cmd, "pull", image],
-            capture_output=quiet,
-        )
-        return result.returncode == 0
+    data = json.loads(result.stdout)
+    if isinstance(data, list) and data:
+      return data[0]
+    return data if isinstance(data, dict) else None
 
-    def remove_image(self, image: str) -> None:
-        """Remove a local image. Raises ContainerError on failure."""
-        result = subprocess.run(
-            [self.cmd, "rmi", image],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise ContainerError(f"Failed to remove rig {image}:\n{result.stderr}")
+  def pull(self, image: str, *, quiet: bool = True) -> bool:
+    """Pull *image* from registry. Returns True on success."""
+    result = subprocess.run(
+      [self.cmd, "pull", image],
+      capture_output=quiet,
+    )
+    return result.returncode == 0
 
-    def unshare_rm(self, path: Path) -> bool:
-        """Remove *path* from within the rootless user namespace; False for docker/failure."""
-        if "podman" not in Path(self.cmd).name:
-            return False
-        result = subprocess.run(
-            [self.cmd, "unshare", "rm", "-rf", str(path)],
-            capture_output=True,
-            text=True,
-        )
-        return result.returncode == 0
+  def remove_image(self, image: str) -> None:
+    """Remove a local image. Raises ContainerError on failure."""
+    result = subprocess.run(
+      [self.cmd, "rmi", image],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      raise ContainerError(f"Failed to remove rig {image}:\n{result.stderr}")
 
-    def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool:
-        """``chown uid:gid`` *paths* from within the rootless user namespace."""
-        # ⚑ NO ``-R``: callers pass an EXPLICIT list — a recursive sweep of ``~/canon``
-        # would take the seeded, agent-owned ``notebook/``/``workbook/`` books with it.
-        # ⚑ ``-h``: a symlink among *paths* is chowned itself, never its target.
-        return self._unshare_apply(["chown", "-h", f"{uid}:{gid}"], paths)
+  def unshare_rm(self, path: Path) -> bool:
+    """Remove *path* from within the rootless user namespace; False for docker/failure."""
+    if "podman" not in Path(self.cmd).name:
+      return False
+    result = subprocess.run(
+      [self.cmd, "unshare", "rm", "-rf", str(path)],
+      capture_output=True,
+      text=True,
+    )
+    return result.returncode == 0
 
-    def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
-        """``chmod mode`` *paths* from within the rootless user namespace."""
-        # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
-        # ⚑ NO ``-h``: GNU chmod has it only from coreutils 9.5, so on an older host it
-        # would fail every call.  Callers on a box path refuse links first (boxfs).
-        return self._unshare_apply(["chmod", mode], paths)
+  def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool:
+    """``chown uid:gid`` *paths* from within the rootless user namespace."""
+    # ⚑ NO ``-R``: callers pass an EXPLICIT list — a recursive sweep of ``~/canon``
+    # would take the seeded, agent-owned ``notebook/``/``workbook/`` books with it.
+    # ⚑ ``-h``: a symlink among *paths* is chowned itself, never its target.
+    return self._unshare_apply(["chown", "-h", f"{uid}:{gid}"], paths)
 
-    def unshare_rename(self, src: Path, dst: Path) -> bool:
-        """``rename(2)`` *src* to *dst* from within the rootless user namespace; never a copy."""
-        return self._unshare_apply(
-            [sys.executable, "-I", "-c", "import os,sys; os.rename(*sys.argv[1:])"],
-            [src, dst],
-        )
+  def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
+    """``chmod mode`` *paths* from within the rootless user namespace."""
+    # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
+    # ⚑ NO ``-h``: GNU chmod has it only from coreutils 9.5, so on an older host it
+    # would fail every call.  Callers on a box path refuse links first (boxfs).
+    return self._unshare_apply(["chmod", mode], paths)
 
-    def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
-        if not paths:
-            return False
-        if "podman" not in Path(self.cmd).name:
-            return False
-        result = subprocess.run(
-            [self.cmd, "unshare", *argv, *(str(p) for p in paths)],
-            capture_output=True,
-            text=True,
-        )
-        return result.returncode == 0
+  def unshare_rename(self, src: Path, dst: Path) -> bool:
+    """``rename(2)`` *src* to *dst* from within the rootless user namespace; never a copy."""
+    return self._unshare_apply(
+      [sys.executable, "-I", "-c", "import os,sys; os.rename(*sys.argv[1:])"],
+      [src, dst],
+    )
 
-    def build(self, image: str, containerfile: Path, context: Path) -> None:
-        """Build *image* from *containerfile*. Raises ContainerError on failure."""
-        result = subprocess.run(
-            [self.cmd, "build", "-t", image, "-f", str(containerfile), str(context)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise ContainerError(
-                f"Failed to build rig {image}:\n{result.stderr}"
-            )
+  def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
+    if not paths:
+      return False
+    if "podman" not in Path(self.cmd).name:
+      return False
+    result = subprocess.run(
+      [self.cmd, "unshare", *argv, *(str(p) for p in paths)],
+      capture_output=True,
+      text=True,
+    )
+    return result.returncode == 0
 
-    def rebuild(
-        self,
-        image: str,
-        containerfile: Path,
-        context: Path,
-        build_args: dict[str, str] | None = None,
-    ) -> int:
-        """Rebuild *image* with --no-cache, streaming output. Returns exit code."""
-        cmd = [self.cmd, "build", "--no-cache", "-t", image, "-f", str(containerfile)]
-        if build_args:
-            for key, val in build_args.items():
-                cmd.extend(["--build-arg", f"{key}={val}"])
-        cmd.append(str(context))
-        result = subprocess.run(cmd)
-        return result.returncode
+  def build(self, image: str, containerfile: Path, context: Path) -> None:
+    """Build *image* from *containerfile*. Raises ContainerError on failure."""
+    result = subprocess.run(
+      [self.cmd, "build", "-t", image, "-f", str(containerfile), str(context)],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      raise ContainerError(f"Failed to build rig {image}:\n{result.stderr}")
 
-    def run_interactive(self, image: str, *, container_name: str | None = None) -> int:
-        """Run an interactive container. Returns exit code."""
-        cmd = [self.cmd, "run", "-it"]
-        if container_name:
-            cmd.extend(["--name", container_name])
-        cmd.append(image)
-        result = subprocess.run(cmd)
-        return result.returncode
+  def rebuild(
+    self,
+    image: str,
+    containerfile: Path,
+    context: Path,
+    build_args: dict[str, str] | None = None,
+  ) -> int:
+    """Rebuild *image* with --no-cache, streaming output. Returns exit code."""
+    cmd = [self.cmd, "build", "--no-cache", "-t", image, "-f", str(containerfile)]
+    if build_args:
+      for key, val in build_args.items():
+        cmd.extend(["--build-arg", f"{key}={val}"])
+    cmd.append(str(context))
+    result = subprocess.run(cmd)
+    return result.returncode
 
-    def commit(self, container: str, image: str) -> None:
-        """Commit a container to a new image. Raises ContainerError on failure."""
-        result = subprocess.run(
-            [self.cmd, "commit", container, image],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise ContainerError(f"Failed to commit container: {result.stderr}")
+  def run_interactive(self, image: str, *, container_name: str | None = None) -> int:
+    """Run an interactive container. Returns exit code."""
+    cmd = [self.cmd, "run", "-it"]
+    if container_name:
+      cmd.extend(["--name", container_name])
+    cmd.append(image)
+    result = subprocess.run(cmd)
+    return result.returncode
 
-    def cp(self, src: Path, dest: str) -> bool:
-        """Copy *src* into a container at *dest* (``<container>:<path>``); True on success."""
-        result = subprocess.run(
-            [self.cmd, "cp", str(src), dest],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def commit(self, container: str, image: str) -> None:
+    """Commit a container to a new image. Raises ContainerError on failure."""
+    result = subprocess.run(
+      [self.cmd, "commit", container, image],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      raise ContainerError(f"Failed to commit container: {result.stderr}")
 
-    def save(self, image: str, out: Path) -> bool:
-        """Save *image* to a tar archive at *out*. Returns True on success."""
-        result = subprocess.run(
-            [self.cmd, "save", "-o", str(out), image],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def cp(self, src: Path, dest: str) -> bool:
+    """Copy *src* into a container at *dest* (``<container>:<path>``); True on success."""
+    result = subprocess.run(
+      [self.cmd, "cp", str(src), dest],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-    def load(self, archive: Path) -> str | None:
-        """Load an image from the tar *archive*; returns its ref, or None if load failed."""
-        result = subprocess.run(
-            [self.cmd, "load", "-i", str(archive)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return None
-        # ⚑ THREE observed output shapes: ``Loaded image:``, ``Loaded image(s):``, ``Loaded image ID:``.
-        for line in result.stdout.splitlines():
-            m = re.search(r"Loaded image(?:\(s\)| ID)?:\s*(\S.*)$", line)
-            if m:
-                return m.group(1).strip()
-        return ""
+  def save(self, image: str, out: Path) -> bool:
+    """Save *image* to a tar archive at *out*. Returns True on success."""
+    result = subprocess.run(
+      [self.cmd, "save", "-o", str(out), image],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-    def diff(self, image: str) -> list[str]:
-        """Return the changed paths for *image* as verbatim lines; empty list on failure."""
-        result = subprocess.run(
-            [self.cmd, "diff", image],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return []
-        return [line for line in result.stdout.splitlines() if line]
+  def load(self, archive: Path) -> str | None:
+    """Load an image from the tar *archive*; returns its ref, or None if load failed."""
+    result = subprocess.run(
+      [self.cmd, "load", "-i", str(archive)],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      return None
+    # ⚑ THREE observed output shapes: ``Loaded image:``, ``Loaded image(s):``, ``Loaded image ID:``.
+    for line in result.stdout.splitlines():
+      m = re.search(r"Loaded image(?:\(s\)| ID)?:\s*(\S.*)$", line)
+      if m:
+        return m.group(1).strip()
+    return ""
 
-    def ensure_image(self, image: str, containers_dir: Path | None = None) -> None:
-        """Make sure *image* is available locally: inspect, then pull.  Base images are PULL-ONLY."""
-        if self.image_exists(image):
+  def diff(self, image: str) -> list[str]:
+    """Return the changed paths for *image* as verbatim lines; empty list on failure."""
+    result = subprocess.run(
+      [self.cmd, "diff", image],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      return []
+    return [line for line in result.stdout.splitlines() if line]
+
+  def ensure_image(self, image: str, containers_dir: Path | None = None) -> None:
+    """Make sure *image* is available locally: inspect, then pull.  Base images are PULL-ONLY."""
+    if self.image_exists(image):
+      return
+
+    print(
+      f"Rig not found locally. Pulling {image}...",
+      file=sys.stderr,
+      flush=True,
+    )
+    if self.pull(image, quiet=False):
+      print("Rig pulled successfully.", file=sys.stderr)
+      return
+
+    raise ContainerError(
+      f"Failed to pull rig '{image}'.\n"
+      "Check your network/registry access. To use a custom base image, build it\n"
+      "yourself from images/ in github.com/doctorjei/kanibako-cli and pass it via\n"
+      "--image or set box_image in your config."
+    )
+
+  # ------------------------------------------------------------------
+  # Run
+  # ------------------------------------------------------------------
+
+  def run(
+    self,
+    image: str,
+    *,
+    shell_path: Path,
+    project_path: Path,
+    vault_ro_path: Path | None,
+    vault_rw_path: Path | None,
+    extra_mounts: list | None = None,
+    tmpfs_masks: list[str] | None = None,
+    enable_vault: bool = True,
+    env: dict[str, str] | None = None,
+    name: str | None = None,
+    labels: dict[str, str] | None = None,
+    entrypoint: str | None = None,
+    cli_args: list[str] | None = None,
+    detach: bool = False,
+    post_start: "Callable[[], None] | None" = None,
+  ) -> int:
+    """Run a container and return the exit code; *detach* backgrounds it (``-dt``, no ``--rm``)."""
+    masks = tmpfs_masks or []
+    # Stubs first: crun cannot mkdir a bind dest inside a bind-mounted overlay (LXC).
+    _precreate_mount_stubs(
+      shell_path,
+      project_path,
+      extra_mounts,
+      enable_vault,
+      vault_ro_path,
+      vault_rw_path,
+      masks,
+    )
+
+    if detach:
+      run_flags = ["-dt", KEEP_ID_USERNS]
+    else:
+      tty_flag = "-it" if sys.stdin.isatty() else "-i"
+      run_flags = [tty_flag, "--rm", KEEP_ID_USERNS]
+    cmd: list[str] = [
+      self.cmd,
+      "run",
+      *run_flags,
+      # ⚑ NO hardwired binds: home/workspace/vault arrive via *extra_mounts* (single route).
+      "-w",
+      GUEST_WORKSPACE,
+    ]
+    # ⚑ ``notmpcopyup`` IS LOAD-BEARING: the ``tmpcopyup`` default copies the dest's
+    # content UP, downgrading the path to read-only instead of emptying it.  A mask is
+    # a VOID.  Dropping it regresses SILENTLY — every test stays green.
+    # ⚑ OUTSIDE any vault arm, and it must STAY outside: a mask is a user key of its own.
+    for mask in masks:
+      cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
+    # ⚑ MASKS BEFORE BINDS, and the order is load-bearing: it is why a bind whose dest
+    # sits under a mask still takes at runtime.  Binds go via ``-v`` — the ONLY
+    # ``--mount`` in this argv is the tmpfs above.
+    if extra_mounts:
+      for mount in extra_mounts:
+        cmd += ["-v", mount.to_volume_arg()]
+    if env:
+      for k, v in sorted(env.items()):
+        cmd += ["-e", f"{k}={v}"]
+    if name:
+      cmd += ["--name", name]
+    for key, value in sorted((labels or {}).items()):
+      cmd += ["--label", f"{key}={value}"]
+    if entrypoint:
+      cmd += ["--entrypoint", entrypoint]
+    cmd.append(image)
+    if cli_args:
+      cmd.extend(cli_args)
+
+    logger.debug("Container command: %s", cmd)
+
+    if detach:
+      # Capture the container id podman prints; the caller reattaches by NAME.
+      result = subprocess.run(cmd, capture_output=True, text=True)
+      if result.returncode != 0:
+        logger.error("Detached container launch failed (exit %s)", result.returncode)
+        if result.stderr:
+          sys.stderr.write(result.stderr)
+      else:
+        logger.debug("Detached container started: %s", (result.stdout or "").strip())
+        # The box is up the instant ``run -d`` returns: hook runs INLINE, no watcher.
+        if post_start is not None:
+          _run_post_start(post_start)
+      return result.returncode
+
+    # Foreground: inherit the terminal, and BLOCK for the whole session — so there is no
+    # "after start" moment in this thread and the hook needs a watcher alongside it.
+    watcher = None
+    if post_start is not None and name:
+      watcher = self._watch_for_start(name, post_start)
+    try:
+      fg_result = subprocess.run(cmd)
+    finally:
+      if watcher is not None:
+        watcher.set()
+      # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER: a box shorter-lived than one
+      # poll interval is never observed running, so this UNCONDITIONAL re-assert is
+      # what makes the on-disk state always end protected.  Never gate it on *watcher*.
+      if post_start is not None:
+        _run_post_start(post_start)
+    return fg_result.returncode
+
+  def _watch_for_start(
+    self,
+    name: str,
+    post_start: "Callable[[], None]",
+  ) -> "threading.Event":
+    """Fire *post_start* once *name* is running; return a cancel Event."""
+    canceled = threading.Event()
+
+    def _wait() -> None:
+      deadline = time.monotonic() + _POST_START_TIMEOUT_S
+      while not canceled.is_set() and time.monotonic() < deadline:
+        try:
+          if self.is_running(name):
+            _run_post_start(post_start)
             return
+        except Exception as exc:  # noqa: BLE001 - never break a launch
+          logger.debug("post-start watcher probe failed: %s", exc)
+        canceled.wait(_POST_START_POLL_S)
+      logger.debug("post-start watcher gave up waiting for %s", name)
 
-        print(
-            f"Rig not found locally. Pulling {image}...",
-            file=sys.stderr,
-            flush=True,
-        )
-        if self.pull(image, quiet=False):
-            print("Rig pulled successfully.", file=sys.stderr)
-            return
+    threading.Thread(target=_wait, daemon=True, name=f"kanibako-poststart-{name}").start()
+    return canceled
 
-        raise ContainerError(
-            f"Failed to pull rig '{image}'.\n"
-            "Check your network/registry access. To use a custom base image, build it\n"
-            "yourself from images/ in github.com/doctorjei/kanibako-cli and pass it via\n"
-            "--image or set box_image in your config."
-        )
+  def exec(
+    self,
+    name: str,
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    attach: bool = False,
+  ) -> int:
+    """Run a command in a running container; *attach* marks a ``tmux attach`` handoff."""
+    # ⚑ pty ONLY on a real terminal: under CI/subprocess, ``-t`` makes ``tmux attach``
+    # render but never return.
+    interactive = sys.stdin.isatty()
+    tty_flag = "-it" if interactive else "-i"
+    cmd: list[str] = [self.cmd, "exec", tty_flag]
+    if env:
+      for k, v in sorted(env.items()):
+        cmd += ["-e", f"{k}={v}"]
+    cmd.append(name)
+    cmd.extend(command)
 
-    # ------------------------------------------------------------------
-    # Run
-    # ------------------------------------------------------------------
+    logger.debug("Container exec: %s", cmd)
+    if not attach:
+      # Output IS the user's payload: inherit all stdio, tty or not.
+      return subprocess.run(cmd).returncode
+    # ⚑ Attach captures stderr in BOTH arms so podman's teardown race error does not
+    # leak to the caller as if it were agent output.
+    if interactive:
+      # Real terminal: stdout stays on the TTY, so it drains itself — no deadlock.
+      result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
+    else:
+      # ⚑ Capturing stdout here is REQUIRED, not tidy: inherited to an undrained
+      # caller pipe, a live ``tmux attach`` fills the buffer and DEADLOCKS.
+      result = subprocess.run(cmd, capture_output=True, text=True)
+    err = (result.stderr or "").strip()
+    if err:
+      logger.debug("attach exec rc=%s stderr=%s", result.returncode, err)
+    return result.returncode
 
-    def run(
-        self,
-        image: str,
-        *,
-        shell_path: Path,
-        project_path: Path,
-        vault_ro_path: Path | None,
-        vault_rw_path: Path | None,
-        extra_mounts: list | None = None,
-        tmpfs_masks: list[str] | None = None,
-        enable_vault: bool = True,
-        env: dict[str, str] | None = None,
-        name: str | None = None,
-        labels: dict[str, str] | None = None,
-        entrypoint: str | None = None,
-        cli_args: list[str] | None = None,
-        detach: bool = False,
-        post_start: "Callable[[], None] | None" = None,
-    ) -> int:
-        """Run a container and return the exit code; *detach* backgrounds it (``-dt``, no ``--rm``)."""
-        masks = tmpfs_masks or []
-        # Stubs first: crun cannot mkdir a bind dest inside a bind-mounted overlay (LXC).
-        _precreate_mount_stubs(
-            shell_path, project_path, extra_mounts,
-            enable_vault, vault_ro_path, vault_rw_path, masks,
-        )
+  def exec_ready(self, name: str) -> bool:
+    """Probe whether the container can accept an exec session right now."""
+    return self.exec_succeeds(name, ["true"])
 
-        if detach:
-            run_flags = ["-dt", KEEP_ID_USERNS]
-        else:
-            tty_flag = "-it" if sys.stdin.isatty() else "-i"
-            run_flags = [tty_flag, "--rm", KEEP_ID_USERNS]
-        cmd: list[str] = [
-            self.cmd, "run", *run_flags,
-            # ⚑ NO hardwired binds: home/workspace/vault arrive via *extra_mounts* (single route).
-            "-w", GUEST_WORKSPACE,
-        ]
-        # ⚑ ``notmpcopyup`` IS LOAD-BEARING: the ``tmpcopyup`` default copies the dest's
-        # content UP, downgrading the path to read-only instead of emptying it.  A mask is
-        # a VOID.  Dropping it regresses SILENTLY — every test stays green.
-        # ⚑ OUTSIDE any vault arm, and it must STAY outside: a mask is a user key of its own.
-        for mask in masks:
-            cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
-        # ⚑ MASKS BEFORE BINDS, and the order is load-bearing: it is why a bind whose dest
-        # sits under a mask still takes at runtime.  Binds go via ``-v`` — the ONLY
-        # ``--mount`` in this argv is the tmpfs above.
-        if extra_mounts:
-            for mount in extra_mounts:
-                cmd += ["-v", mount.to_volume_arg()]
-        if env:
-            for k, v in sorted(env.items()):
-                cmd += ["-e", f"{k}={v}"]
-        if name:
-            cmd += ["--name", name]
-        for key, value in sorted((labels or {}).items()):
-            cmd += ["--label", f"{key}={value}"]
-        if entrypoint:
-            cmd += ["--entrypoint", entrypoint]
-        cmd.append(image)
-        if cli_args:
-            cmd.extend(cli_args)
+  def exec_succeeds(self, name: str, command: list[str]) -> bool:
+    """True iff *command* exits 0 in *name*, output captured."""
+    result = subprocess.run(
+      [self.cmd, "exec", name, *command],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-        logger.debug("Container command: %s", cmd)
+  def container_exists(self, name: str) -> bool:
+    """Check if a container exists (running or stopped)."""
+    result = subprocess.run(
+      [self.cmd, "inspect", name],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-        if detach:
-            # Capture the container id podman prints; the caller reattaches by NAME.
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                logger.error(
-                    "Detached container launch failed (exit %s)", result.returncode
-                )
-                if result.stderr:
-                    sys.stderr.write(result.stderr)
-            else:
-                logger.debug(
-                    "Detached container started: %s", (result.stdout or "").strip()
-                )
-                # The box is up the instant ``run -d`` returns: hook runs INLINE, no watcher.
-                if post_start is not None:
-                    _run_post_start(post_start)
-            return result.returncode
+  def stop(self, name: str) -> bool:
+    """Ask the runtime to stop container *name*; return True on exit status 0.
 
-        # Foreground: inherit the terminal, and BLOCK for the whole session — so there is no
-        # "after start" moment in this thread and the hook needs a watcher alongside it.
-        watcher = None
-        if post_start is not None and name:
-            watcher = self._watch_for_start(name, post_start)
-        try:
-            fg_result = subprocess.run(cmd)
-        finally:
-            if watcher is not None:
-                watcher.set()
-            # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER: a box shorter-lived than one
-            # poll interval is never observed running, so this UNCONDITIONAL re-assert is
-            # what makes the on-disk state always end protected.  Never gate it on *watcher*.
-            if post_start is not None:
-                _run_post_start(post_start)
-        return fg_result.returncode
+    🛑 THIS IS NOT A LIVENESS READING, and reading it as one prints a false
+    message.  ``podman stop`` exits 0 for a container that was ALREADY
+    EXITED — there was nothing to stop and it says so by succeeding — so
+    True means "the runtime found this container and it is now not
+    running", never "it was running".  A caller that needs to know whether
+    the box was live must take that reading BEFORE calling this, from
+    ``kanibako.commands.stop._is_live`` (a PAUSED box is live, and
+    :meth:`is_running` alone reads it as not running).
 
-    def _watch_for_start(
-        self, name: str, post_start: "Callable[[], None]",
-    ) -> "threading.Event":
-        """Fire *post_start* once *name* is running; return a cancel Event."""
-        canceled = threading.Event()
+    ⚑ A PAUSED container refuses a stop (podman exits 125) while it still
+    holds the name, so a failed stop of one is answered by unpausing it and
+    asking again.  Only that retry's status is returned.
+    """
+    if self._ask_stop(name):
+      return True
+    if self.container_state(name) != "paused" or not self.unpause(name):
+      return False
+    return self._ask_stop(name)
 
-        def _wait() -> None:
-            deadline = time.monotonic() + _POST_START_TIMEOUT_S
-            while not canceled.is_set() and time.monotonic() < deadline:
-                try:
-                    if self.is_running(name):
-                        _run_post_start(post_start)
-                        return
-                except Exception as exc:  # noqa: BLE001 - never break a launch
-                    logger.debug("post-start watcher probe failed: %s", exc)
-                canceled.wait(_POST_START_POLL_S)
-            logger.debug("post-start watcher gave up waiting for %s", name)
+  def _ask_stop(self, name: str) -> bool:
+    """One ``stop`` request for *name*; True on exit status 0."""
+    result = subprocess.run(
+      [self.cmd, "stop", name],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-        threading.Thread(target=_wait, daemon=True, name=f"kanibako-poststart-{name}").start()
-        return canceled
+  def unpause(self, name: str) -> bool:
+    """Unpause container *name*; True on exit status 0."""
+    result = subprocess.run(
+      [self.cmd, "unpause", name],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-    def exec(
-        self,
-        name: str,
-        command: list[str],
-        *,
-        env: dict[str, str] | None = None,
-        attach: bool = False,
-    ) -> int:
-        """Run a command in a running container; *attach* marks a ``tmux attach`` handoff."""
-        # ⚑ pty ONLY on a real terminal: under CI/subprocess, ``-t`` makes ``tmux attach``
-        # render but never return.
-        interactive = sys.stdin.isatty()
-        tty_flag = "-it" if interactive else "-i"
-        cmd: list[str] = [self.cmd, "exec", tty_flag]
-        if env:
-            for k, v in sorted(env.items()):
-                cmd += ["-e", f"{k}={v}"]
-        cmd.append(name)
-        cmd.extend(command)
+  def rm(self, name: str) -> bool:
+    """Remove a stopped container by name. Returns True if removed."""
+    result = subprocess.run(
+      [self.cmd, "rm", name],
+      capture_output=True,
+    )
+    return result.returncode == 0
 
-        logger.debug("Container exec: %s", cmd)
-        if not attach:
-            # Output IS the user's payload: inherit all stdio, tty or not.
-            return subprocess.run(cmd).returncode
-        # ⚑ Attach captures stderr in BOTH arms so podman's teardown race error does not
-        # leak to the caller as if it were agent output.
-        if interactive:
-            # Real terminal: stdout stays on the TTY, so it drains itself — no deadlock.
-            result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
-        else:
-            # ⚑ Capturing stdout here is REQUIRED, not tidy: inherited to an undrained
-            # caller pipe, a live ``tmux attach`` fills the buffer and DEADLOCKS.
-            result = subprocess.run(cmd, capture_output=True, text=True)
-        err = (result.stderr or "").strip()
-        if err:
-            logger.debug("attach exec rc=%s stderr=%s", result.returncode, err)
-        return result.returncode
+  def container_states(
+    self, prefix: str = CONTAINER_NAME_PREFIX, *, timeout: float | None = None
+  ) -> dict[str, str]:
+    """``{name: state}`` (``{{.State}}``: ``running``, ``exited``, ``removing``, …) for
+    every container, running or not, whose name starts with *prefix*.
 
-    def exec_ready(self, name: str) -> bool:
-        """Probe whether the container can accept an exec session right now."""
-        return self.exec_succeeds(name, ["true"])
+    ⚑ Read from ``ps -a``, never ``inspect``: a container stuck in ``removing`` has a
+    half-deleted layer, so ``inspect`` fails on it, yet it still holds its name and
+    ``ps -a`` still lists it.  A runtime that fails or cannot run answers none.  A
+    call that outlasts *timeout* seconds is killed and raises
+    :class:`subprocess.TimeoutExpired`.
+    """
+    try:
+      result = subprocess.run(
+        [self.cmd, "ps", "-a", "--filter", f"name={prefix}", "--format", "{{.Names}}\t{{.State}}"],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+      )
+    except OSError:
+      return {}
+    if result.returncode != 0:
+      return {}
+    states: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+      found, sep, state = line.partition("\t")
+      if sep and found.startswith(prefix):
+        states[found] = state.strip().lower()
+    return states
 
-    def exec_succeeds(self, name: str, command: list[str]) -> bool:
-        """True iff *command* exits 0 in *name*, output captured."""
-        result = subprocess.run(
-            [self.cmd, "exec", name, *command],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def container_state(self, name: str, *, timeout: float | None = None) -> str | None:
+    """Container *name*'s state (``running``, ``paused``, ``exited``, ``removing``, ...),
+    else None: the ONE state reader, from ``ps -a`` (see :meth:`container_states`).
 
-    def container_exists(self, name: str) -> bool:
-        """Check if a container exists (running or stopped)."""
-        result = subprocess.run(
-            [self.cmd, "inspect", name],
-            capture_output=True,
-        )
-        return result.returncode == 0
+    ⚑ podman reads a PAUSED container as not running (``.State.Running`` false), so a
+    caller asking "is the box live" asks this too.  *timeout* as in
+    :meth:`container_states`.
+    """
+    return self.container_states(prefix=name, timeout=timeout).get(name)
 
-    def stop(self, name: str) -> bool:
-        """Ask the runtime to stop container *name*; return True on exit status 0.
+  def is_running(self, name: str, *, timeout: float | None = None) -> bool:
+    """Check if a named container is currently running.
 
-        🛑 THIS IS NOT A LIVENESS READING, and reading it as one prints a false
-        message.  ``podman stop`` exits 0 for a container that was ALREADY
-        EXITED — there was nothing to stop and it says so by succeeding — so
-        True means "the runtime found this container and it is now not
-        running", never "it was running".  A caller that needs to know whether
-        the box was live must take that reading BEFORE calling this, from
-        ``kanibako.commands.stop._is_live`` (a PAUSED box is live, and
-        :meth:`is_running` alone reads it as not running).
+    A call that outlasts *timeout* seconds is killed and raises
+    :class:`subprocess.TimeoutExpired`.
+    """
+    result = subprocess.run(
+      [self.cmd, "inspect", "--format", "{{.State.Running}}", name],
+      capture_output=True,
+      text=True,
+      timeout=timeout,
+    )
+    return running_from_inspect(result)
 
-        ⚑ A PAUSED container refuses a stop (podman exits 125) while it still
-        holds the name, so a failed stop of one is answered by unpausing it and
-        asking again.  Only that retry's status is returned.
-        """
-        if self._ask_stop(name):
-            return True
-        if self.container_state(name) != "paused" or not self.unpause(name):
-            return False
-        return self._ask_stop(name)
+  def inspect_env(self, name: str, key: str) -> str | None:
+    """Return the value of env var *key* recorded on container *name*, or None."""
+    result = subprocess.run(
+      [self.cmd, "inspect", "--format", "{{json .Config.Env}}", name],
+      capture_output=True,
+      text=True,
+    )
+    return env_from_inspect(result, key)
 
-    def _ask_stop(self, name: str) -> bool:
-        """One ``stop`` request for *name*; True on exit status 0."""
-        result = subprocess.run(
-            [self.cmd, "stop", name],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def container_image(self, name: str) -> str | None:
+    """Return the image reference container *name* was created from, or None."""
+    # ⚑ ``.ImageName`` is a PODMAN field, and docker REFUSES it rather than printing
+    # Go's ``<no value>``: docker/cli renders the template against the typed struct
+    # first, then retries against the raw JSON with ``missingkey=error``
+    # (``cli/command/inspect/inspector.go``), so an unknown TOP-LEVEL field exits 1 —
+    # pinned by moby's own ``TestInspectTemplateError`` (``{{.ThisDoesNotExist}}`` →
+    # "template parsing error").  READ FROM SOURCE, never measured: no docker here.
+    # ⚑ It was NOT always so — docker built with Go 1.4 (pre-1.12) printed
+    # ``<no value>`` at exit 0 (moby#15566) — which is why the rc check below is
+    # backed by :func:`image_ref_or_none` instead of trusted on its own.
+    result = subprocess.run(
+      [self.cmd, "inspect", "--format", "{{.ImageName}}", name],
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0:
+      return None
+    return image_ref_or_none(result.stdout)
 
-    def unpause(self, name: str) -> bool:
-        """Unpause container *name*; True on exit status 0."""
-        result = subprocess.run(
-            [self.cmd, "unpause", name],
-            capture_output=True,
-        )
-        return result.returncode == 0
+  def find_labeled(
+    self, labels: Mapping[str, str | None], *, without: str | None = None, check: bool = False
+  ) -> list[str]:
+    """The names of the containers, running or not, that carry every one of *labels*
+    (a ``None`` value: the key, with any value) and, when *without* is given, no label
+    of that key.  A runtime that fails or cannot run answers none (the caller falls
+    back to a container's name); with *check* it raises ``LabelQueryError`` instead,
+    so a destructive caller never reads a failed query as "no container".
 
-    def rm(self, name: str) -> bool:
-        """Remove a stopped container by name. Returns True if removed."""
-        result = subprocess.run(
-            [self.cmd, "rm", name],
-            capture_output=True,
-        )
-        return result.returncode == 0
+    ⚑ Repeated ``label=`` filters are ANDed by podman and docker alike (the one key
+    whose filters are exclusive, not inclusive), and a bare key matches any value.
+    ⚑ With no *labels* nothing is filtered, so none is answered rather than every
+    container.
+    """
 
-    def container_states(self, prefix: str = CONTAINER_NAME_PREFIX, *,
-                         timeout: float | None = None) -> dict[str, str]:
-        """``{name: state}`` (``{{.State}}``: ``running``, ``exited``, ``removing``, …) for
-        every container, running or not, whose name starts with *prefix*.
+    def _names(filters: list[str]) -> set[str] | None:
+      cmd = [self.cmd, "ps", "-a", "--format", "{{.Names}}"]
+      for f in filters:
+        cmd += ["--filter", f"label={f}"]
+      try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+      except OSError as exc:
+        if check:
+          raise LabelQueryError(f"{self.cmd} ps did not run: {exc}") from exc
+        return None
+      if result.returncode != 0:
+        if check:
+          raise LabelQueryError(
+            f"{self.cmd} ps failed (exit {result.returncode}): {result.stderr.strip()}"
+          )
+        return None
+      # A name holds no whitespace: a line that does is not a name, and is skipped.
+      return {
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() and len(line.split()) == 1
+      }
 
-        ⚑ Read from ``ps -a``, never ``inspect``: a container stuck in ``removing`` has a
-        half-deleted layer, so ``inspect`` fails on it, yet it still holds its name and
-        ``ps -a`` still lists it.  A runtime that fails or cannot run answers none.  A
-        call that outlasts *timeout* seconds is killed and raises
-        :class:`subprocess.TimeoutExpired`.
-        """
-        try:
-            result = subprocess.run(
-                [self.cmd, "ps", "-a", "--filter", f"name={prefix}",
-                 "--format", "{{.Names}}\t{{.State}}"],
-                capture_output=True, text=True, timeout=timeout,
-            )
-        except OSError:
-            return {}
-        if result.returncode != 0:
-            return {}
-        states: dict[str, str] = {}
-        for line in result.stdout.splitlines():
-            found, sep, state = line.partition("\t")
-            if sep and found.startswith(prefix):
-                states[found] = state.strip().lower()
-        return states
+    if not labels:
+      return []
+    wanted = [k if v is None else f"{k}={v}" for k, v in sorted(labels.items())]
+    found = _names(wanted)
+    if not found:
+      return []
+    if without is not None:
+      # Fail closed: when the runtime cannot say which carry *without*, none is
+      # known not to, so none is answered.
+      excluded = _names([*wanted, without])
+      if excluded is None:
+        return []
+      found -= excluded
+    return sorted(found)
 
-    def container_state(self, name: str, *, timeout: float | None = None) -> str | None:
-        """Container *name*'s state (``running``, ``paused``, ``exited``, ``removing``, ...),
-        else None: the ONE state reader, from ``ps -a`` (see :meth:`container_states`).
+  def list_running(
+    self,
+    prefix: str = CONTAINER_NAME_PREFIX,
+    *,
+    include_stopped: bool = False,
+    check: bool = False,
+  ) -> list[tuple[str, str, str]]:
+    """Return containers matching *prefix* (anchored; ``-a`` if *include_stopped*); *check*
+    raises ``ContainerError`` when the runtime fails or prints a line it cannot parse."""
+    cmd = [self.cmd, "ps"]
+    if include_stopped:
+      cmd.append("-a")
+    cmd.extend(
+      [
+        "--filter",
+        f"name={prefix}",
+        "--format",
+        "{{.Names}}\t{{.Image}}\t{{.Status}}",
+      ]
+    )
+    try:
+      result = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError as exc:
+      if check:
+        raise ContainerError(f"{self.cmd} ps did not run: {exc}") from exc
+      raise
+    if check and result.returncode != 0:
+      raise ContainerError(
+        f"{self.cmd} ps exited {result.returncode}: {result.stderr.strip() or 'no message'}"
+      )
+    containers: list[tuple[str, str, str]] = []
+    for line in result.stdout.splitlines():
+      parts = line.split("\t", 2)
+      if len(parts) != 3:
+        if check and line.strip():
+          raise ContainerError(f"{self.cmd} ps printed a line it cannot parse: {line!r}")
+        continue
+      if not parts[0].startswith(prefix):
+        continue
+      containers.append((parts[0], parts[1], parts[2]))
+    return containers
 
-        ⚑ podman reads a PAUSED container as not running (``.State.Running`` false), so a
-        caller asking "is the box live" asks this too.  *timeout* as in
-        :meth:`container_states`.
-        """
-        return self.container_states(prefix=name, timeout=timeout).get(name)
+  # ------------------------------------------------------------------
+  # Digest
+  # ------------------------------------------------------------------
 
-    def is_running(self, name: str, *, timeout: float | None = None) -> bool:
-        """Check if a named container is currently running.
+  def get_local_digests(self, image: str) -> list[str]:
+    """Return ALL repo digests (``sha256:...``) for a local image; empty list on failure."""
+    try:
+      result = subprocess.run(
+        [self.cmd, "image", "inspect", image, "--format", "json"],
+        capture_output=True,
+        text=True,
+      )
+      if result.returncode != 0:
+        return []
+      import json
 
-        A call that outlasts *timeout* seconds is killed and raises
-        :class:`subprocess.TimeoutExpired`.
-        """
-        result = subprocess.run(
-            [self.cmd, "inspect", "--format", "{{.State.Running}}", name],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        return running_from_inspect(result)
+      data = json.loads(result.stdout)
+      # podman returns a list, docker returns an object
+      if isinstance(data, list):
+        data = data[0] if data else {}
+      digests = data.get("RepoDigests", []) or []
+      out: list[str] = []
+      for entry in digests:
+        # e.g. "ghcr.io/x/img@sha256:abc..." -> "sha256:abc..."
+        out.append(entry.split("@", 1)[1] if "@" in entry else entry)
+      return out
+    except Exception:
+      return []
 
-    def inspect_env(self, name: str, key: str) -> str | None:
-        """Return the value of env var *key* recorded on container *name*, or None."""
-        result = subprocess.run(
-            [self.cmd, "inspect", "--format", "{{json .Config.Env}}", name],
-            capture_output=True,
-            text=True,
-        )
-        return env_from_inspect(result, key)
+  def get_local_digest(self, image: str) -> str | None:
+    """Return the FIRST repo digest (``sha256:...``) for a local image, or None."""
+    digests = self.get_local_digests(image)
+    return digests[0] if digests else None
 
-    def container_image(self, name: str) -> str | None:
-        """Return the image reference container *name* was created from, or None."""
-        # ⚑ ``.ImageName`` is a PODMAN field, and docker REFUSES it rather than printing
-        # Go's ``<no value>``: docker/cli renders the template against the typed struct
-        # first, then retries against the raw JSON with ``missingkey=error``
-        # (``cli/command/inspect/inspector.go``), so an unknown TOP-LEVEL field exits 1 —
-        # pinned by moby's own ``TestInspectTemplateError`` (``{{.ThisDoesNotExist}}`` →
-        # "template parsing error").  READ FROM SOURCE, never measured: no docker here.
-        # ⚑ It was NOT always so — docker built with Go 1.4 (pre-1.12) printed
-        # ``<no value>`` at exit 0 (moby#15566) — which is why the rc check below is
-        # backed by :func:`image_ref_or_none` instead of trusted on its own.
-        result = subprocess.run(
-            [self.cmd, "inspect", "--format", "{{.ImageName}}", name],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return None
-        return image_ref_or_none(result.stdout)
+  def get_local_created(self, image: str) -> str | None:
+    """Return the local image build timestamp (``.Created``, RFC3339), or None."""
+    data = self.image_inspect(image)
+    if not data:
+      return None
+    created = data.get("Created")
+    return created if isinstance(created, str) and created else None
 
-    def find_labeled(self, labels: Mapping[str, str | None], *, without: str | None = None,
-                     check: bool = False) -> list[str]:
-        """The names of the containers, running or not, that carry every one of *labels*
-        (a ``None`` value: the key, with any value) and, when *without* is given, no label
-        of that key.  A runtime that fails or cannot run answers none (the caller falls
-        back to a container's name); with *check* it raises ``LabelQueryError`` instead,
-        so a destructive caller never reads a failed query as "no container".
+  def get_local_tags(self, image: str) -> list[str]:
+    """Return the local image's ``RepoTags`` (``repo:tag`` strings); empty on failure."""
+    data = self.image_inspect(image)
+    if not data:
+      return []
+    tags = data.get("RepoTags") or []
+    return [t for t in tags if isinstance(t, str)]
 
-        ⚑ Repeated ``label=`` filters are ANDed by podman and docker alike (the one key
-        whose filters are exclusive, not inclusive), and a bare key matches any value.
-        ⚑ With no *labels* nothing is filtered, so none is answered rather than every
-        container.
-        """
-        def _names(filters: list[str]) -> set[str] | None:
-            cmd = [self.cmd, "ps", "-a", "--format", "{{.Names}}"]
-            for f in filters:
-                cmd += ["--filter", f"label={f}"]
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True)
-            except OSError as exc:
-                if check:
-                    raise LabelQueryError(f"{self.cmd} ps did not run: {exc}") from exc
-                return None
-            if result.returncode != 0:
-                if check:
-                    raise LabelQueryError(
-                        f"{self.cmd} ps failed (exit {result.returncode}): "
-                        f"{result.stderr.strip()}")
-                return None
-            # A name holds no whitespace: a line that does is not a name, and is skipped.
-            return {line.strip() for line in result.stdout.splitlines()
-                    if line.strip() and len(line.split()) == 1}
+  def get_local_label(self, image: str, label: str) -> str | None:
+    """Return the value of *label* from the local image's config, or None."""
+    data = self.image_inspect(image)
+    if not data:
+      return None
+    config = data.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    if not isinstance(labels, dict):
+      labels = data.get("Labels")
+    if not isinstance(labels, dict):
+      return None
+    value = labels.get(label)
+    return value if isinstance(value, str) and value else None
 
-        if not labels:
-            return []
-        wanted = [k if v is None else f"{k}={v}" for k, v in sorted(labels.items())]
-        found = _names(wanted)
-        if not found:
-            return []
-        if without is not None:
-            # Fail closed: when the runtime cannot say which carry *without*, none is
-            # known not to, so none is answered.
-            excluded = _names([*wanted, without])
-            if excluded is None:
-                return []
-            found -= excluded
-        return sorted(found)
+  def get_local_platform(self, image: str) -> str | None:
+    """Return the local image platform as ``os/arch[/variant]``, or None."""
+    try:
+      result = subprocess.run(
+        [self.cmd, "image", "inspect", image, "--format", "json"],
+        capture_output=True,
+        text=True,
+      )
+      if result.returncode != 0:
+        return None
+      import json
 
-    def list_running(
-        self, prefix: str = CONTAINER_NAME_PREFIX,
-        *, include_stopped: bool = False, check: bool = False,
-    ) -> list[tuple[str, str, str]]:
-        """Return containers matching *prefix* (anchored; ``-a`` if *include_stopped*); *check*
-        raises ``ContainerError`` when the runtime fails or prints a line it cannot parse."""
-        cmd = [self.cmd, "ps"]
-        if include_stopped:
-            cmd.append("-a")
-        cmd.extend([
-            "--filter", f"name={prefix}",
-            "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
-        ])
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-        except OSError as exc:
-            if check:
-                raise ContainerError(f"{self.cmd} ps did not run: {exc}") from exc
-            raise
-        if check and result.returncode != 0:
-            raise ContainerError(f"{self.cmd} ps exited {result.returncode}: "
-                                 f"{result.stderr.strip() or 'no message'}")
-        containers: list[tuple[str, str, str]] = []
-        for line in result.stdout.splitlines():
-            parts = line.split("\t", 2)
-            if len(parts) != 3:
-                if check and line.strip():
-                    raise ContainerError(f"{self.cmd} ps printed a line it cannot parse: {line!r}")
-                continue
-            if not parts[0].startswith(prefix):
-                continue
-            containers.append((parts[0], parts[1], parts[2]))
-        return containers
+      data = json.loads(result.stdout)
+      if isinstance(data, list):
+        data = data[0] if data else {}
+      os_ = data.get("Os")
+      arch = data.get("Architecture")
+      if not os_ or not arch:
+        return None
+      platform = f"{os_}/{arch}"
+      variant = data.get("Variant")
+      if variant:
+        platform = f"{platform}/{variant}"
+      return platform
+    except Exception:
+      return None
 
-    # ------------------------------------------------------------------
-    # Digest
-    # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # Listing
+  # ------------------------------------------------------------------
 
-    def get_local_digests(self, image: str) -> list[str]:
-        """Return ALL repo digests (``sha256:...``) for a local image; empty list on failure."""
-        try:
-            result = subprocess.run(
-                [self.cmd, "image", "inspect", image, "--format", "json"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                return []
-            import json
-            data = json.loads(result.stdout)
-            # podman returns a list, docker returns an object
-            if isinstance(data, list):
-                data = data[0] if data else {}
-            digests = data.get("RepoDigests", []) or []
-            out: list[str] = []
-            for entry in digests:
-                # e.g. "ghcr.io/x/img@sha256:abc..." -> "sha256:abc..."
-                out.append(entry.split("@", 1)[1] if "@" in entry else entry)
-            return out
-        except Exception:
-            return []
-
-    def get_local_digest(self, image: str) -> str | None:
-        """Return the FIRST repo digest (``sha256:...``) for a local image, or None."""
-        digests = self.get_local_digests(image)
-        return digests[0] if digests else None
-
-    def get_local_created(self, image: str) -> str | None:
-        """Return the local image build timestamp (``.Created``, RFC3339), or None."""
-        data = self.image_inspect(image)
-        if not data:
-            return None
-        created = data.get("Created")
-        return created if isinstance(created, str) and created else None
-
-    def get_local_tags(self, image: str) -> list[str]:
-        """Return the local image's ``RepoTags`` (``repo:tag`` strings); empty on failure."""
-        data = self.image_inspect(image)
-        if not data:
-            return []
-        tags = data.get("RepoTags") or []
-        return [t for t in tags if isinstance(t, str)]
-
-    def get_local_label(self, image: str, label: str) -> str | None:
-        """Return the value of *label* from the local image's config, or None."""
-        data = self.image_inspect(image)
-        if not data:
-            return None
-        config = data.get("Config")
-        labels = config.get("Labels") if isinstance(config, dict) else None
-        if not isinstance(labels, dict):
-            labels = data.get("Labels")
-        if not isinstance(labels, dict):
-            return None
-        value = labels.get(label)
-        return value if isinstance(value, str) and value else None
-
-    def get_local_platform(self, image: str) -> str | None:
-        """Return the local image platform as ``os/arch[/variant]``, or None."""
-        try:
-            result = subprocess.run(
-                [self.cmd, "image", "inspect", image, "--format", "json"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                return None
-            import json
-            data = json.loads(result.stdout)
-            if isinstance(data, list):
-                data = data[0] if data else {}
-            os_ = data.get("Os")
-            arch = data.get("Architecture")
-            if not os_ or not arch:
-                return None
-            platform = f"{os_}/{arch}"
-            variant = data.get("Variant")
-            if variant:
-                platform = f"{platform}/{variant}"
-            return platform
-        except Exception:
-            return None
-
-    # ------------------------------------------------------------------
-    # Listing
-    # ------------------------------------------------------------------
-
-    def list_local_images(self) -> list[tuple[str, str]]:
-        """Return local kanibako images as (repo:tag, size) tuples."""
-        result = subprocess.run(
-            [self.cmd, "images", "--format", "{{.Repository}}:{{.Tag}}\t{{.Size}}"],
-            capture_output=True,
-            text=True,
-        )
-        images: list[tuple[str, str]] = []
-        for line in result.stdout.splitlines():
-            if "kanibako" in line.lower():
-                parts = line.split("\t", 1)
-                repo = parts[0]
-                size = parts[1] if len(parts) > 1 else ""
-                images.append((repo, size))
-        return images
+  def list_local_images(self) -> list[tuple[str, str]]:
+    """Return local kanibako images as (repo:tag, size) tuples."""
+    result = subprocess.run(
+      [self.cmd, "images", "--format", "{{.Repository}}:{{.Tag}}\t{{.Size}}"],
+      capture_output=True,
+      text=True,
+    )
+    images: list[tuple[str, str]] = []
+    for line in result.stdout.splitlines():
+      if "kanibako" in line.lower():
+        parts = line.split("\t", 1)
+        repo = parts[0]
+        size = parts[1] if len(parts) > 1 else ""
+        images.append((repo, size))
+    return images
 
 
 def remove_path(path: Path) -> bool:
-    """Remove *path*; a symlink loses only the link, never its target.  True when gone."""
-    if path.is_symlink():
-        path.unlink()
-        return True
-    if path.is_dir():
-        return remove_box_tree(path)
-    path.unlink(missing_ok=True)
+  """Remove *path*; a symlink loses only the link, never its target.  True when gone."""
+  if path.is_symlink():
+    path.unlink()
     return True
+  if path.is_dir():
+    return remove_box_tree(path)
+  path.unlink(missing_ok=True)
+  return True
 
 
 def remove_box_tree(target: Path) -> bool:
-    """Remove *target*, tolerating files a rootless container created — THE box-tree deleter.
+  """Remove *target*, tolerating files a rootless container created — THE box-tree deleter.
 
-    ⚑ EVERY verb deleting a box home or metadata tree must come through here; a bare
-    ``rmtree`` on those paths is a bug.  THREE ESCALATING ATTEMPTS — see the llm-doc.
-    A symlink *target* loses only the link, never anything it points at.
-    """
-    if target.is_symlink():
-        try:
-            target.unlink()
-        except OSError:
-            return False
-        return True
+  ⚑ EVERY verb deleting a box home or metadata tree must come through here; a bare
+  ``rmtree`` on those paths is a bug.  THREE ESCALATING ATTEMPTS — see the llm-doc.
+  A symlink *target* loses only the link, never anything it points at.
+  """
+  if target.is_symlink():
     try:
-        shutil.rmtree(target)
-        return True
+      target.unlink()
     except OSError:
-        pass
+      return False
+    return True
+  try:
+    shutil.rmtree(target)
+    return True
+  except OSError:
+    pass
 
-    # (2) Re-open the modes on directories WE own, then retry.  A dir owned by someone
-    # else simply fails the chmod and is skipped — that is attempt 3's job.
-    reopened = False
-    for root, dirs, _files in os.walk(target, topdown=True):
-        for d in (root, *(os.path.join(root, x) for x in dirs)):
-            try:
-                # ⚑ NEVER chmod THROUGH a symlink: ``os.chmod`` follows links and would
-                # re-open a TARGET outside the tree being deleted.  Deliberate, not
-                # incidental — do not drop this as redundant with the mode test below.
-                if os.path.islink(d):
-                    continue
-                mode = stat.S_IMODE(os.lstat(d).st_mode)
-                if not mode & stat.S_IWUSR:
-                    os.chmod(d, mode | stat.S_IRWXU)
-                    reopened = True
-            except OSError:
-                continue
-    if reopened:
-        try:
-            shutil.rmtree(target)
-            return True
-        except OSError:
-            pass
-
+  # (2) Re-open the modes on directories WE own, then retry.  A dir owned by someone
+  # else simply fails the chmod and is skipped — that is attempt 3's job.
+  reopened = False
+  for root, dirs, _files in os.walk(target, topdown=True):
+    for d in (root, *(os.path.join(root, x) for x in dirs)):
+      try:
+        # ⚑ NEVER chmod THROUGH a symlink: ``os.chmod`` follows links and would
+        # re-open a TARGET outside the tree being deleted.  Deliberate, not
+        # incidental — do not drop this as redundant with the mode test below.
+        if os.path.islink(d):
+          continue
+        mode = stat.S_IMODE(os.lstat(d).st_mode)
+        if not mode & stat.S_IWUSR:
+          os.chmod(d, mode | stat.S_IRWXU)
+          reopened = True
+      except OSError:
+        continue
+  if reopened:
     try:
-        if ContainerRuntime().unshare_rm(target):
-            return True
-    except ContainerError:
-        pass
-    return not target.exists()
+      shutil.rmtree(target)
+      return True
+    except OSError:
+      pass
+
+  try:
+    if ContainerRuntime().unshare_rm(target):
+      return True
+  except ContainerError:
+    pass
+  return not target.exists()
 
 
 # The MANAGED CANON region inside a box (J-7): box-create materializes these mountpoints.
@@ -935,9 +957,9 @@ _CANON_GUEST_PREFIX = f"{GUEST_HOME}/canon"
 
 
 def _is_managed_canon_dest(dest: str) -> bool:
-    """True for a bind dest the CANON SKELETON owns, which must not be stubbed."""
-    # ⚑ PATH-shaped, not key-shaped, deliberately: one uniform rule, not six per-key cases.
-    return dest == _CANON_GUEST_PREFIX or dest.startswith(f"{_CANON_GUEST_PREFIX}/")
+  """True for a bind dest the CANON SKELETON owns, which must not be stubbed."""
+  # ⚑ PATH-shaped, not key-shaped, deliberately: one uniform rule, not six per-key cases.
+  return dest == _CANON_GUEST_PREFIX or dest.startswith(f"{_CANON_GUEST_PREFIX}/")
 
 
 # The MANAGED CANON REGION, as guest-absolute prefixes — same set spec §2c forbids a template
@@ -945,359 +967,369 @@ def _is_managed_canon_dest(dest: str) -> bool:
 # absolute here.  ⚑ NARROWER than ``_CANON_GUEST_PREFIX`` above: it excludes
 # ``canon/{notebook,workbook}``, which stay genuinely seedable, so a bind there can still
 # shadow real user content and must keep reporting.
-_CANON_SEED_DENY_GUEST_PREFIXES = tuple(
-    f"{GUEST_HOME}/{rel}" for rel in CANON_SEED_DENY_PREFIXES
-)
+_CANON_SEED_DENY_GUEST_PREFIXES = tuple(f"{GUEST_HOME}/{rel}" for rel in CANON_SEED_DENY_PREFIXES)
 
 
 def _is_seed_denied_canon_dest(dest: str) -> bool:
-    """True for a bind dest under the seed-denied managed canon region (spec §2c).
+  """True for a bind dest under the seed-denied managed canon region (spec §2c).
 
-    Box-create's skeleton owns these dests and no seed may ever land under them, so a bind
-    here can never shadow user content — it is not a candidate for the shadow report at all.
-    """
-    rstripped = dest.rstrip("/")
-    return any(
-        rstripped == prefix or rstripped.startswith(f"{prefix}/")
-        for prefix in _CANON_SEED_DENY_GUEST_PREFIXES
-    )
+  Box-create's skeleton owns these dests and no seed may ever land under them, so a bind
+  here can never shadow user content — it is not a candidate for the shadow report at all.
+  """
+  rstripped = dest.rstrip("/")
+  return any(
+    rstripped == prefix or rstripped.startswith(f"{prefix}/")
+    for prefix in _CANON_SEED_DENY_GUEST_PREFIXES
+  )
 
 
 def _guest_dest_to_host(
-    dest: str,
-    shell_path: Path,
-    project_path: Path,
-    *,
-    map_home_root: bool = False,
+  dest: str,
+  shell_path: Path,
+  project_path: Path,
+  *,
+  map_home_root: bool = False,
 ) -> Path | None:
-    """Map a box-side guest DEST to its host stub path; None if not under home.
+  """Map a box-side guest DEST to its host stub path; None if not under home.
 
-    ⚑ THE SINGLE translator — stub/shadow scans here, seed/synced COPY appliers there.
-    *map_home_root* maps the bare home root: ``None`` (stubs) vs *shell_path* (copies).
-    """
-    if map_home_root and dest.rstrip("/") == GUEST_HOME:
-        return shell_path
-    # ⚑ BOTH prefixes keep their TRAILING SLASH: it is the separator guard the keyspec requires
-    # (``~/foobar`` is not inside ``~/foo``), and dropping it also strands the bare
-    # ``<guest workspace>`` dest on the workspace branch as ``project_path / ""``.
-    workspace = GUEST_WORKSPACE + "/"
-    agent_home = GUEST_HOME + "/"
-    if dest.startswith(workspace):
-        return project_path / dest[len(workspace):]
-    if dest.startswith(agent_home):
-        return shell_path / dest[len(agent_home):]
-    return None
+  ⚑ THE SINGLE translator — stub/shadow scans here, seed/synced COPY appliers there.
+  *map_home_root* maps the bare home root: ``None`` (stubs) vs *shell_path* (copies).
+  """
+  if map_home_root and dest.rstrip("/") == GUEST_HOME:
+    return shell_path
+  # ⚑ BOTH prefixes keep their TRAILING SLASH: it is the separator guard the keyspec requires
+  # (``~/foobar`` is not inside ``~/foo``), and dropping it also strands the bare
+  # ``<guest workspace>`` dest on the workspace branch as ``project_path / ""``.
+  workspace = GUEST_WORKSPACE + "/"
+  agent_home = GUEST_HOME + "/"
+  if dest.startswith(workspace):
+    return project_path / dest[len(workspace) :]
+  if dest.startswith(agent_home):
+    return shell_path / dest[len(agent_home) :]
+  return None
 
 
 def detect_shadowed_mounts(
-    shell_path: Path,
-    project_path: Path,
-    extra_mounts: list | None,
-    enable_vault: bool,
+  shell_path: Path,
+  project_path: Path,
+  extra_mounts: list | None,
+  enable_vault: bool,
 ) -> list[str]:
-    """Report box-dests whose pre-existing host content a bind will SHADOW.
+  """Report box-dests whose pre-existing host content a bind will SHADOW.
 
-    ⚑ PURE: probes only, no mkdir/touch/unlink/clear-symlink, and every ``OSError``
-    skips that dest rather than raising.  Do not add mutation here.
-    """
-    candidates: list[str] = []
-    if enable_vault:
-        candidates.append(GUEST_VAULT_RO)
-        candidates.append(GUEST_VAULT_RW)
-    for mount in extra_mounts or []:
-        candidates.append(mount.destination)
+  ⚑ PURE: probes only, no mkdir/touch/unlink/clear-symlink, and every ``OSError``
+  skips that dest rather than raising.  Do not add mutation here.
+  """
+  candidates: list[str] = []
+  if enable_vault:
+    candidates.append(GUEST_VAULT_RO)
+    candidates.append(GUEST_VAULT_RW)
+  for mount in extra_mounts or []:
+    candidates.append(mount.destination)
 
-    base_roots = {GUEST_HOME, GUEST_WORKSPACE}
-    shadowed: list[str] = []
-    seen_hosts: set[Path] = set()
-    for dest in candidates:
-        # Skip the base roots (their content IS the box, not shadowed).
-        if dest.rstrip("/") in base_roots:
-            continue
-        # Skip the seed-denied managed canon region (spec §2c): box-create's own skeleton
-        # owns these dests, so a bind here is guaranteed benign — reporting it would fire on
-        # EVERY box and could never indicate a real mistake (finding #7).
-        if _is_seed_denied_canon_dest(dest):
-            continue
-        host_path = _guest_dest_to_host(dest, shell_path, project_path)
-        if host_path is None:
-            continue
-        try:
-            resolved = host_path.resolve()
-        except OSError:
-            continue
-        if resolved in seen_hosts:
-            continue
-        seen_hosts.add(resolved)
-        try:
-            if host_path.is_symlink():
-                # A symlink stub is not user content; _precreate clears it.
-                continue
-            if host_path.is_dir():
-                if any(host_path.iterdir()):
-                    shadowed.append(dest)
-            elif host_path.is_file():
-                if host_path.stat().st_size > 0:
-                    shadowed.append(dest)
-            # else: missing / socket / fifo -> not shadowed.
-        except OSError:
-            continue  # best-effort; never raise.
-    return shadowed
+  base_roots = {GUEST_HOME, GUEST_WORKSPACE}
+  shadowed: list[str] = []
+  seen_hosts: set[Path] = set()
+  for dest in candidates:
+    # Skip the base roots (their content IS the box, not shadowed).
+    if dest.rstrip("/") in base_roots:
+      continue
+    # Skip the seed-denied managed canon region (spec §2c): box-create's own skeleton
+    # owns these dests, so a bind here is guaranteed benign — reporting it would fire on
+    # EVERY box and could never indicate a real mistake (finding #7).
+    if _is_seed_denied_canon_dest(dest):
+      continue
+    host_path = _guest_dest_to_host(dest, shell_path, project_path)
+    if host_path is None:
+      continue
+    try:
+      resolved = host_path.resolve()
+    except OSError:
+      continue
+    if resolved in seen_hosts:
+      continue
+    seen_hosts.add(resolved)
+    try:
+      if host_path.is_symlink():
+        # A symlink stub is not user content; _precreate clears it.
+        continue
+      if host_path.is_dir():
+        if any(host_path.iterdir()):
+          shadowed.append(dest)
+      elif host_path.is_file():
+        if host_path.stat().st_size > 0:
+          shadowed.append(dest)
+      # else: missing / socket / fifo -> not shadowed.
+    except OSError:
+      continue  # best-effort; never raise.
+  return shadowed
 
 
 def _precreate_mount_stubs(
-    shell_path: Path,
-    project_path: Path,
-    extra_mounts: list | None,
-    enable_vault: bool,
-    vault_ro_path: Path | None,
-    vault_rw_path: Path | None,
-    tmpfs_masks: list[str],
+  shell_path: Path,
+  project_path: Path,
+  extra_mounts: list | None,
+  enable_vault: bool,
+  vault_ro_path: Path | None,
+  vault_rw_path: Path | None,
+  tmpfs_masks: list[str],
 ) -> None:
-    """Pre-create mount destination stubs to avoid crun permission errors."""
-    def _clear_symlink(p: Path) -> None:
-        """Remove *p* if it is a symlink so a bind lands on a clean mountpoint."""
+  """Pre-create mount destination stubs to avoid crun permission errors."""
+
+  def _clear_symlink(p: Path) -> None:
+    """Remove *p* if it is a symlink so a bind lands on a clean mountpoint."""
+    try:
+      if p.is_symlink():
+        p.unlink()
+        logger.debug("stub cleared symlink: %s", p)
+    except OSError as exc:
+      logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
+
+  def _parents_within(stub: Path, root: Path) -> "Iterator[Path]":
+    """Yield *stub*'s parent dirs up to the first symlink or (excl.) *root*.
+
+    ⚑ Stops at *root* and at the first symlink — never walks above the box home,
+    and never walks THROUGH a link. The walk is by PATH POSITION, not by
+    ``resolve()``: resolving a component FOLLOWS a link further up, so a link
+    above the immediate parent would take the walk out of *root* before the
+    walk ever reached the link itself.
+    """
+    try:
+      # ⚑ POSITION, so a stub outside *root* costs no filesystem probe and the
+      # walk cannot climb past the root: ``relative_to`` succeeding is what
+      # bounds the number of steps.
+      steps = len(stub.relative_to(root).parts)
+    except ValueError:
+      logger.debug("stub walk skip (dest not under root): %s / %s", stub, root)
+      return
+    current = stub.parent
+    for _ in range(steps):
+      if current == root:
+        return
+      # ⚑ A parent we cannot probe is not evidence of a symlink —
+      # ``is_symlink`` re-raises EACCES — so the walk stops there.
+      try:
+        is_link = current.is_symlink()
+      except OSError as exc:
+        logger.debug("stub walk stop (parent unprobeable): %s (%s)", current, exc)
+        return
+      if is_link:
+        yield current
+        return
+      yield current
+      current = current.parent
+
+  def _refused_symlink(stub: Path, root: Path) -> tuple[Path, str] | None:
+    """The nearest symlinked parent of *stub* to refuse, and the reason it is.
+
+    ⚑ Refuses a link LEADING OUT of *root*, one that does not RESOLVE, and one
+    resolving to something that is not a DIRECTORY: a dangling link has nothing
+    to stub under, and a file is not a directory, so ``mkdir`` then fails on the
+    link itself, which the stub helpers log at debug and swallow, so the launch
+    goes on to fail naming neither. A link resolving to a directory INSIDE *root*
+    is stubbed.
+    """
+    try:
+      root_resolved = root.resolve()
+    except OSError:
+      return None
+    for current in _parents_within(stub, root):
+      if not current.is_symlink():
+        continue
+      try:
+        resolved = current.resolve(strict=True)
+      except (OSError, RuntimeError):
+        return current, "unresolvable"
+      if not resolved.is_dir():
+        return current, "unresolvable"
+      try:
+        resolved.relative_to(root_resolved)
+      except ValueError:
+        return current, "outside"
+      return None
+    return None
+
+  def _refuse_symlinked_parent(
+    dest: str,
+    stub: Path,
+    root: Path,
+    root_name: str,
+  ) -> None:
+    """Raise if a parent of *stub* is a symlink the bind must not be stubbed under."""
+    refused = _refused_symlink(stub, root)
+    if refused is None:
+      return
+    parent, reason = refused
+    try:
+      target = os.readlink(parent)
+    except OSError:
+      target = str(parent)
+    if reason == "unresolvable":
+      because = (
+        "which does not resolve to an existing directory, so no stub can "
+        "be made under it and the bind would have no mountpoint at the "
+        "declared destination"
+      )
+    else:
+      because = (
+        "which leads outside it, so a bind stubbed under it would be "
+        "created there and land there instead of at the declared "
+        "destination"
+      )
+    raise ContainerError(
+      f"refusing to mount {dest!r}: the {root_name} is {root}, and the "
+      f"dest's parent {parent} is a symlink to {target!r}, {because}. "
+      f"Replace the symlink with a real directory, or point the bind at a "
+      f"destination whose parents are real directories."
+    )
+
+  def _loosen_parents(stub: Path, root: Path) -> None:
+    """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
+
+    ⚑ This MUTATES user-visible modes in the box home, so its containment is
+    load-bearing and deliberately narrow — see the llm-doc before widening it.
+    """
+    try:
+      root_resolved = root.resolve()
+    except OSError as exc:
+      logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
+      return
+    for current in _parents_within(stub, root):
+      try:
+        if current.is_symlink():
+          logger.debug("loosen stop at symlink parent: %s", current)
+          break
+        # ⚑ The walk is by path position, so containment is re-asserted HERE,
+        # where the mutation is: a parent reached through a link higher up
+        # resolves outside *root*, and its mode is not ours to change.
         try:
-            if p.is_symlink():
-                p.unlink()
-                logger.debug("stub cleared symlink: %s", p)
-        except OSError as exc:
-            logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
+          current.resolve().relative_to(root_resolved)
+        except (OSError, ValueError):
+          logger.debug("loosen stop (parent outside root): %s", current)
+          break
+        perm = stat.S_IMODE(current.stat().st_mode)
+        if perm & 0o011 != 0o011:
+          new_perm = perm | 0o011
+          current.chmod(new_perm)
+          logger.info(
+            "loosened box-home dir for bind traversal: %s %04o -> %04o",
+            current,
+            perm,
+            new_perm,
+          )
+      except OSError as exc:
+        # Stop the walk: we cannot reason about ancestors we cannot probe.
+        logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
+        break
 
-    def _parents_within(stub: Path, root: Path) -> "Iterator[Path]":
-        """Yield *stub*'s parent dirs up to the first symlink or (excl.) *root*.
+  def _ensure_dir(p: Path, traverse_root: Path | None = None) -> None:
+    _clear_symlink(p)
+    try:
+      p.mkdir(parents=True, exist_ok=True)
+      logger.debug("stub mkdir: %s", p)
+    except OSError as exc:
+      logger.debug("stub mkdir FAILED: %s (%s)", p, exc)
+    # Loosen only home-side (shell_path) parents; project_path dests pass None.
+    if traverse_root is not None:
+      _loosen_parents(p, traverse_root)
 
-        ⚑ Stops at *root* and at the first symlink — never walks above the box home,
-        and never walks THROUGH a link. The walk is by PATH POSITION, not by
-        ``resolve()``: resolving a component FOLLOWS a link further up, so a link
-        above the immediate parent would take the walk out of *root* before the
-        walk ever reached the link itself.
-        """
-        try:
-            # ⚑ POSITION, so a stub outside *root* costs no filesystem probe and the
-            # walk cannot climb past the root: ``relative_to`` succeeding is what
-            # bounds the number of steps.
-            steps = len(stub.relative_to(root).parts)
-        except ValueError:
-            logger.debug("stub walk skip (dest not under root): %s / %s", stub, root)
-            return
-        current = stub.parent
-        for _ in range(steps):
-            if current == root:
-                return
-            # ⚑ A parent we cannot probe is not evidence of a symlink —
-            # ``is_symlink`` re-raises EACCES — so the walk stops there.
-            try:
-                is_link = current.is_symlink()
-            except OSError as exc:
-                logger.debug("stub walk stop (parent unprobeable): %s (%s)", current, exc)
-                return
-            if is_link:
-                yield current
-                return
-            yield current
-            current = current.parent
+  def _ensure_file(p: Path, traverse_root: Path | None = None) -> None:
+    _clear_symlink(p)
+    try:
+      p.parent.mkdir(parents=True, exist_ok=True)
+      if not p.exists():
+        p.touch()
+        logger.debug("stub touch: %s", p)
+      else:
+        logger.debug("stub exists: %s", p)
+    except OSError as exc:
+      logger.debug("stub touch FAILED: %s (%s)", p, exc)
+    # Loosen only home-side (shell_path) parents; project_path dests pass None.
+    if traverse_root is not None:
+      _loosen_parents(p, traverse_root)
 
-    def _refused_symlink(stub: Path, root: Path) -> tuple[Path, str] | None:
-        """The nearest symlinked parent of *stub* to refuse, and the reason it is.
+  # ⚑ Only HOME-side parents are loosened; workspace parents are the user's real tree
+  # and pass ``traverse_root=None``.
+  # ⚑ TRAILING SLASH, as in ``_guest_dest_to_host``: without it a ``~/workspacefoo`` mask would
+  # be read as workspace-side and silently lose its home-parent loosening.
+  workspace_prefix = GUEST_WORKSPACE + "/"
 
-        ⚑ Refuses a link LEADING OUT of *root*, one that does not RESOLVE, and one
-        resolving to something that is not a DIRECTORY: a dangling link has nothing
-        to stub under, and a file is not a directory, so ``mkdir`` then fails on the
-        link itself, which the stub helpers log at debug and swallow, so the launch
-        goes on to fail naming neither. A link resolving to a directory INSIDE *root*
-        is stubbed.
-        """
-        try:
-            root_resolved = root.resolve()
-        except OSError:
-            return None
-        for current in _parents_within(stub, root):
-            if not current.is_symlink():
-                continue
-            try:
-                resolved = current.resolve(strict=True)
-            except (OSError, RuntimeError):
-                return current, "unresolvable"
-            if not resolved.is_dir():
-                return current, "unresolvable"
-            try:
-                resolved.relative_to(root_resolved)
-            except ValueError:
-                return current, "outside"
-            return None
-        return None
+  def _home_root(dest: str) -> Path | None:
+    return None if dest.startswith(workspace_prefix) else shell_path
 
-    def _refuse_symlinked_parent(
-        dest: str, stub: Path, root: Path, root_name: str,
-    ) -> None:
-        """Raise if a parent of *stub* is a symlink the bind must not be stubbed under."""
-        refused = _refused_symlink(stub, root)
-        if refused is None:
-            return
-        parent, reason = refused
-        try:
-            target = os.readlink(parent)
-        except OSError:
-            target = str(parent)
-        if reason == "unresolvable":
-            because = (
-                "which does not resolve to an existing directory, so no stub can "
-                "be made under it and the bind would have no mountpoint at the "
-                "declared destination"
-            )
-        else:
-            because = (
-                "which leads outside it, so a bind stubbed under it would be "
-                "created there and land there instead of at the declared "
-                "destination"
-            )
-        raise ContainerError(
-            f"refusing to mount {dest!r}: the {root_name} is {root}, and the "
-            f"dest's parent {parent} is a symlink to {target!r}, {because}. "
-            f"Replace the symlink with a real directory, or point the bind at a "
-            f"destination whose parents are real directories."
-        )
+  def _root_of(dest: str) -> tuple[Path, str]:
+    """The root bounding *dest*'s stub walk, and the name to call that root by.
 
-    def _loosen_parents(stub: Path, root: Path) -> None:
-        """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
+    ⚑ The two roots are different nouns, and a refusal must not confuse them.
+    """
+    if _home_root(dest) is None:
+      return project_path, "project directory"
+    return shell_path, "box home"
 
-        ⚑ This MUTATES user-visible modes in the box home, so its containment is
-        load-bearing and deliberately narrow — see the llm-doc before widening it.
-        """
-        try:
-            root_resolved = root.resolve()
-        except OSError as exc:
-            logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
-            return
-        for current in _parents_within(stub, root):
-            try:
-                if current.is_symlink():
-                    logger.debug("loosen stop at symlink parent: %s", current)
-                    break
-                # ⚑ The walk is by path position, so containment is re-asserted HERE,
-                # where the mutation is: a parent reached through a link higher up
-                # resolves outside *root*, and its mode is not ours to change.
-                try:
-                    current.resolve().relative_to(root_resolved)
-                except (OSError, ValueError):
-                    logger.debug("loosen stop (parent outside root): %s", current)
-                    break
-                perm = stat.S_IMODE(current.stat().st_mode)
-                if perm & 0o011 != 0o011:
-                    new_perm = perm | 0o011
-                    current.chmod(new_perm)
-                    logger.info(
-                        "loosened box-home dir for bind traversal: %s %04o -> %04o",
-                        current, perm, new_perm,
-                    )
-            except OSError as exc:
-                # Stop the walk: we cannot reason about ancestors we cannot probe.
-                logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
-                break
+  # ⚑ THE PLAN IS BUILT BEFORE ANY STUB IS MADE, so a refusal creates nothing:
+  # ``mkdir(parents=True)`` under a symlinked parent raises FileExistsError on the
+  # LINK, which was logged at debug and swallowed, and the launch then failed with
+  # a podman error naming neither the link nor the destination.
+  plan: list[tuple[str, Path, bool]] = []  # (dest, host stub path, is_dir)
 
-    def _ensure_dir(p: Path, traverse_root: Path | None = None) -> None:
-        _clear_symlink(p)
-        try:
-            p.mkdir(parents=True, exist_ok=True)
-            logger.debug("stub mkdir: %s", p)
-        except OSError as exc:
-            logger.debug("stub mkdir FAILED: %s (%s)", p, exc)
-        # Loosen only home-side (shell_path) parents; project_path dests pass None.
-        if traverse_root is not None:
-            _loosen_parents(p, traverse_root)
+  def _plan_dir(dest: str, host_path: Path) -> None:
+    # ⚑ The workspace stub is made under the box home, so the box home bounds it too.
+    _refuse_symlinked_parent(dest, host_path, shell_path, "box home")
+    plan.append((dest, host_path, True))
 
-    def _ensure_file(p: Path, traverse_root: Path | None = None) -> None:
-        _clear_symlink(p)
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            if not p.exists():
-                p.touch()
-                logger.debug("stub touch: %s", p)
-            else:
-                logger.debug("stub exists: %s", p)
-        except OSError as exc:
-            logger.debug("stub touch FAILED: %s (%s)", p, exc)
-        # Loosen only home-side (shell_path) parents; project_path dests pass None.
-        if traverse_root is not None:
-            _loosen_parents(p, traverse_root)
+  _plan_dir(GUEST_WORKSPACE, shell_path / GUEST_WORKSPACE_RELPATH)
+  if enable_vault:
+    # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
+    _plan_dir(GUEST_VAULT_RO, shell_path / GUEST_VAULT_RO_RELPATH)
+    _plan_dir(GUEST_VAULT_RW, shell_path / GUEST_VAULT_RW_RELPATH)
+  # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
+  # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
+  for mask in tmpfs_masks:
+    host_path = _guest_dest_to_host(mask, shell_path, project_path)
+    if host_path is None:
+      logger.debug("mask stub skip (not under home): %s", mask)
+      continue
+    root, root_name = _root_of(mask)
+    _refuse_symlinked_parent(mask, host_path, root, root_name)
+    plan.append((mask, host_path, True))
 
-    # ⚑ Only HOME-side parents are loosened; workspace parents are the user's real tree
-    # and pass ``traverse_root=None``.
-    # ⚑ TRAILING SLASH, as in ``_guest_dest_to_host``: without it a ``~/workspacefoo`` mask would
-    # be read as workspace-side and silently lose its home-parent loosening.
-    workspace_prefix = GUEST_WORKSPACE + "/"
+  # Extra mounts: pre-create destination stubs.
+  for mount in extra_mounts or []:
+    dest = mount.destination
+    src = mount.source
+    host_path = _guest_dest_to_host(dest, shell_path, project_path)
+    # ⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE, and that is load-bearing: a
+    # skeleton-less box (pre-canon, or a degraded create) must FALL THROUGH and get
+    # its canon mountpoints stubbed, or crun fails the launch in LXC (exit 126).
+    if host_path is not None and _is_managed_canon_dest(dest):
+      if host_path.exists():
+        logger.debug("stub skip (canon skeleton owns it): %s → %s", src, dest)
+        continue
+      logger.debug(
+        "canon mountpoint absent (pre-R1b box?) — stubbing: %s → %s",
+        src,
+        dest,
+      )
+    if host_path is None:
+      logger.debug("stub skip (not under home): %s → %s", src, dest)
+      continue
 
-    def _home_root(dest: str) -> Path | None:
-        return None if dest.startswith(workspace_prefix) else shell_path
+    is_dir = src.is_dir()
+    if not is_dir:
+      logger.debug(
+        "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
+        src,
+        src.is_file(),
+        is_dir,
+        src.exists(),
+        host_path,
+      )
+    root, root_name = _root_of(dest)
+    _refuse_symlinked_parent(dest, host_path, root, root_name)
+    plan.append((dest, host_path, is_dir))
 
-    def _root_of(dest: str) -> tuple[Path, str]:
-        """The root bounding *dest*'s stub walk, and the name to call that root by.
-
-        ⚑ The two roots are different nouns, and a refusal must not confuse them.
-        """
-        if _home_root(dest) is None:
-            return project_path, "project directory"
-        return shell_path, "box home"
-
-    # ⚑ THE PLAN IS BUILT BEFORE ANY STUB IS MADE, so a refusal creates nothing:
-    # ``mkdir(parents=True)`` under a symlinked parent raises FileExistsError on the
-    # LINK, which was logged at debug and swallowed, and the launch then failed with
-    # a podman error naming neither the link nor the destination.
-    plan: list[tuple[str, Path, bool]] = []  # (dest, host stub path, is_dir)
-
-    def _plan_dir(dest: str, host_path: Path) -> None:
-        # ⚑ The workspace stub is made under the box home, so the box home bounds it too.
-        _refuse_symlinked_parent(dest, host_path, shell_path, "box home")
-        plan.append((dest, host_path, True))
-
-    _plan_dir(GUEST_WORKSPACE, shell_path / GUEST_WORKSPACE_RELPATH)
-    if enable_vault:
-        # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
-        _plan_dir(GUEST_VAULT_RO, shell_path / GUEST_VAULT_RO_RELPATH)
-        _plan_dir(GUEST_VAULT_RW, shell_path / GUEST_VAULT_RW_RELPATH)
-    # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
-    # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
-    for mask in tmpfs_masks:
-        host_path = _guest_dest_to_host(mask, shell_path, project_path)
-        if host_path is None:
-            logger.debug("mask stub skip (not under home): %s", mask)
-            continue
-        root, root_name = _root_of(mask)
-        _refuse_symlinked_parent(mask, host_path, root, root_name)
-        plan.append((mask, host_path, True))
-
-    # Extra mounts: pre-create destination stubs.
-    for mount in extra_mounts or []:
-        dest = mount.destination
-        src = mount.source
-        host_path = _guest_dest_to_host(dest, shell_path, project_path)
-        # ⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE, and that is load-bearing: a
-        # skeleton-less box (pre-canon, or a degraded create) must FALL THROUGH and get
-        # its canon mountpoints stubbed, or crun fails the launch in LXC (exit 126).
-        if host_path is not None and _is_managed_canon_dest(dest):
-            if host_path.exists():
-                logger.debug("stub skip (canon skeleton owns it): %s → %s", src, dest)
-                continue
-            logger.debug(
-                "canon mountpoint absent (pre-R1b box?) — stubbing: %s → %s", src, dest,
-            )
-        if host_path is None:
-            logger.debug("stub skip (not under home): %s → %s", src, dest)
-            continue
-
-        is_dir = src.is_dir()
-        if not is_dir:
-            logger.debug(
-                "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
-                src, src.is_file(), is_dir, src.exists(), host_path,
-            )
-        root, root_name = _root_of(dest)
-        _refuse_symlinked_parent(dest, host_path, root, root_name)
-        plan.append((dest, host_path, is_dir))
-
-    for dest, host_path, is_dir in plan:
-        if is_dir:
-            _ensure_dir(host_path, traverse_root=_home_root(dest))
-        else:
-            _ensure_file(host_path, traverse_root=_home_root(dest))
+  for dest, host_path, is_dir in plan:
+    if is_dir:
+      _ensure_dir(host_path, traverse_root=_home_root(dest))
+    else:
+      _ensure_file(host_path, traverse_root=_home_root(dest))

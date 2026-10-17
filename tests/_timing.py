@@ -51,117 +51,115 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    import pytest
+  import pytest
 
 
 def _log_path() -> str | None:
-    """Return the timing log path, or None when instrumentation is off.
+  """Return the timing log path, or None when instrumentation is off.
 
-    This is the single gate: a None return makes every hook a no-op.
-    """
-    path = os.environ.get("KANI_TIMING_LOG")
-    return path or None
+  This is the single gate: a None return makes every hook a no-op.
+  """
+  path = os.environ.get("KANI_TIMING_LOG")
+  return path or None
 
 
 def _emit(
-    log_path: str,
-    *,
-    phase: str,
-    category: str,
-    level: str,
-    label: str,
-    rc: int | None,
+  log_path: str,
+  *,
+  phase: str,
+  category: str,
+  level: str,
+  label: str,
+  rc: int | None,
 ) -> None:
-    """Append one JSONL span record (same schema as timed.sh)."""
-    record = {
-        "run_id": os.environ.get("KANI_RUN_ID") or "unknown",
-        "ts_wall": time.time(),
-        "phase": phase,
-        "category": category,
-        "level": level,
-        "label": label,
-        "rc": rc,
-    }
-    line = json.dumps(record, separators=(",", ":"))
-    # Best-effort append; never let instrumentation break a test run.
-    try:
-        with open(log_path, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-    except OSError:
-        pass
+  """Append one JSONL span record (same schema as timed.sh)."""
+  record = {
+    "run_id": os.environ.get("KANI_RUN_ID") or "unknown",
+    "ts_wall": time.time(),
+    "phase": phase,
+    "category": category,
+    "level": level,
+    "label": label,
+    "rc": rc,
+  }
+  line = json.dumps(record, separators=(",", ":"))
+  # Best-effort append; never let instrumentation break a test run.
+  try:
+    with open(log_path, "a", encoding="utf-8") as fh:
+      fh.write(line + "\n")
+  except OSError:
+    pass
 
 
 # Map a pytest phase -> (level, category) for the testing spans we record.
 # setup + teardown are fixture/env work (level=prep); call is the test itself.
 _PHASE_SPEC = {
-    "setup": ("prep", "testing"),
-    "call": ("test", "testing"),
-    "teardown": ("prep", "testing"),
+  "setup": ("prep", "testing"),
+  "call": ("test", "testing"),
+  "teardown": ("prep", "testing"),
 }
 
 
 def pytest_runtest_logstart(nodeid: str, location: object) -> None:
-    """Mark the very start of a test item (setup START)."""
-    log_path = _log_path()
-    if log_path is None:
-        return
-    # We emit the per-phase start/end in the makereport hook below; logstart is
-    # not phase-resolved, so we skip it to avoid an unpaired span.  Kept as an
-    # explicit early-return so the opt-in gate is obvious here too.
+  """Mark the very start of a test item (setup START)."""
+  log_path = _log_path()
+  if log_path is None:
     return
+  # We emit the per-phase start/end in the makereport hook below; logstart is
+  # not phase-resolved, so we skip it to avoid an unpaired span.  Kept as an
+  # explicit early-return so the opt-in gate is obvious here too.
+  return
 
 
 def pytest_runtest_makereport(item: "pytest.Item", call: "pytest.CallInfo") -> None:  # noqa: F821
-    """Emit a start/end span pair for each pytest phase (setup/call/teardown).
+  """Emit a start/end span pair for each pytest phase (setup/call/teardown).
 
-    ``call.start`` and ``call.stop`` are wall-clock unix timestamps (floats)
-    bracketing the phase, so we get a true start+end pair per phase for gap
-    math — without needing to hook each phase boundary separately.
-    """
-    log_path = _log_path()
-    if log_path is None:
-        return
-    spec = _PHASE_SPEC.get(call.when or "")
-    if spec is None:
-        return
-    level, category = spec
-    label = item.nodeid
-    rc = 0 if call.excinfo is None else 1
-    # Emit start at call.start, end at call.stop.  Both carry the same
-    # (category, level, label) so the analyzer pairs them by order.
-    start_ts = getattr(call, "start", None)
-    stop_ts = getattr(call, "stop", None)
-    if start_ts is None or stop_ts is None:
-        return
-    _emit_at(log_path, start_ts, phase="start", category=category,
-             level=level, label=label, rc=None)
-    _emit_at(log_path, stop_ts, phase="end", category=category,
-             level=level, label=label, rc=rc)
+  ``call.start`` and ``call.stop`` are wall-clock unix timestamps (floats)
+  bracketing the phase, so we get a true start+end pair per phase for gap
+  math — without needing to hook each phase boundary separately.
+  """
+  log_path = _log_path()
+  if log_path is None:
+    return
+  spec = _PHASE_SPEC.get(call.when or "")
+  if spec is None:
+    return
+  level, category = spec
+  label = item.nodeid
+  rc = 0 if call.excinfo is None else 1
+  # Emit start at call.start, end at call.stop.  Both carry the same
+  # (category, level, label) so the analyzer pairs them by order.
+  start_ts = getattr(call, "start", None)
+  stop_ts = getattr(call, "stop", None)
+  if start_ts is None or stop_ts is None:
+    return
+  _emit_at(log_path, start_ts, phase="start", category=category, level=level, label=label, rc=None)
+  _emit_at(log_path, stop_ts, phase="end", category=category, level=level, label=label, rc=rc)
 
 
 def _emit_at(
-    log_path: str,
-    ts_wall: float,
-    *,
-    phase: str,
-    category: str,
-    level: str,
-    label: str,
-    rc: int | None,
+  log_path: str,
+  ts_wall: float,
+  *,
+  phase: str,
+  category: str,
+  level: str,
+  label: str,
+  rc: int | None,
 ) -> None:
-    """Like _emit but with an explicit ts_wall (from pytest's CallInfo)."""
-    record = {
-        "run_id": os.environ.get("KANI_RUN_ID") or "unknown",
-        "ts_wall": ts_wall,
-        "phase": phase,
-        "category": category,
-        "level": level,
-        "label": label,
-        "rc": rc,
-    }
-    line = json.dumps(record, separators=(",", ":"))
-    try:
-        with open(log_path, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-    except OSError:
-        pass
+  """Like _emit but with an explicit ts_wall (from pytest's CallInfo)."""
+  record = {
+    "run_id": os.environ.get("KANI_RUN_ID") or "unknown",
+    "ts_wall": ts_wall,
+    "phase": phase,
+    "category": category,
+    "level": level,
+    "label": label,
+    "rc": rc,
+  }
+  line = json.dumps(record, separators=(",", ":"))
+  try:
+    with open(log_path, "a", encoding="utf-8") as fh:
+      fh.write(line + "\n")
+  except OSError:
+    pass

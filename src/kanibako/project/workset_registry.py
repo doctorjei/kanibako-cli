@@ -69,193 +69,202 @@ _SORTED_SECTIONS = (_BOXES_SECTION,)
 
 
 def _same_workspace(a: str, b: str) -> bool:
-    return literal_path(a) == literal_path(b)
+  return literal_path(a) == literal_path(b)
 
 
 def _refuse_retired_registry_sections(
-    registry_path: Path, full_doc: Mapping[str, Any],
+  registry_path: Path,
+  full_doc: Mapping[str, Any],
 ) -> None:
-    """RAISE when *full_doc* still carries a retired ``workset:`` or ``projects:`` section.
+  """RAISE when *full_doc* still carries a retired ``workset:`` or ``projects:`` section.
 
-    ⚑ DETECTED ONLY SO IT CAN BE DIAGNOSED.  v1.8.0 is a clean break: there is no compat
-    read and no auto-migration.  Reading past either section is a SILENT wrong answer —
-    the identity table is ignored (a workset is named by the global registry, not here)
-    and the ``projects:`` map holds a second copy of every member path that nothing
-    updates, so the two drift apart with nothing printed to say so.
-    """
-    if not isinstance(full_doc, Mapping):
-        return
-    present = [s for s in _RETIRED_SECTIONS if full_doc.get(s)]
-    if not present:
-        # Absent, null, or emptied-out stubs: nothing is recorded in the wrong place.
-        return
-    named = " and ".join(f"'{s}:'" for s in present)
-    plural = "sections are" if len(present) > 1 else "section is"
-    raise LegacyRegistryIdentityError(
-        f"{named} {plural} RETIRED from a workset registry and still the shape of "
-        f"{registry_path}.\n"
-        f"THE RULE: this file records MEMBERSHIP and nothing else — one flat `boxes:` "
-        f"entry per member, `name: path`, the path written EXACTLY ONCE. A workset's "
-        f"IDENTITY is not on disk under its root at all: it is the entry in the GLOBAL "
-        f"registry's `worksets:` section mapping the workset's name to this directory, "
-        f"which is what `kanibako workset list` reads. An unreleased 1.8.0 development "
-        f"build wrote an identity table into this file, and every member path a second "
-        f"time under `projects:`. Refusing rather than running: the two path copies "
-        f"drift — a disconnect dropped the `projects:` row and orphaned the `boxes:` "
-        f"one, which then refused to let that workspace be registered again under any "
-        f"name.\n"
-        f"  Fix, BY HAND:\n"
-        f"\n"
-        f"    1. Each `projects:` entry becomes a flat `boxes:` entry under the SAME "
-        f"name, with its `source_path` as the value. Where a name is in BOTH, keep the "
-        f"`boxes:` value — that is the path the box actually ran with. Then delete "
-        f"`projects:` outright:\n"
-        f"\n"
-        f"         boxes:\n"
-        f"           <box name>: <the path>\n"
-        f"\n"
-        f"    2. Delete the `workset:` table. NOTHING replaces it — this workset is "
-        f"already named by the global registry, and no file under its root records a "
-        f"name, a created stamp or anything else about the workset itself.\n"
-        f"\n"
-        f"  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic "
-        f"migration for this — see MIGRATION.md "
-        f"§ \"A workset root no longer carries an identity table; an un-migrated root refuses\"."
-    )
+  ⚑ DETECTED ONLY SO IT CAN BE DIAGNOSED.  v1.8.0 is a clean break: there is no compat
+  read and no auto-migration.  Reading past either section is a SILENT wrong answer —
+  the identity table is ignored (a workset is named by the global registry, not here)
+  and the ``projects:`` map holds a second copy of every member path that nothing
+  updates, so the two drift apart with nothing printed to say so.
+  """
+  if not isinstance(full_doc, Mapping):
+    return
+  present = [s for s in _RETIRED_SECTIONS if full_doc.get(s)]
+  if not present:
+    # Absent, null, or emptied-out stubs: nothing is recorded in the wrong place.
+    return
+  named = " and ".join(f"'{s}:'" for s in present)
+  plural = "sections are" if len(present) > 1 else "section is"
+  raise LegacyRegistryIdentityError(
+    f"{named} {plural} RETIRED from a workset registry and still the shape of "
+    f"{registry_path}.\n"
+    f"THE RULE: this file records MEMBERSHIP and nothing else — one flat `boxes:` "
+    f"entry per member, `name: path`, the path written EXACTLY ONCE. A workset's "
+    f"IDENTITY is not on disk under its root at all: it is the entry in the GLOBAL "
+    f"registry's `worksets:` section mapping the workset's name to this directory, "
+    f"which is what `kanibako workset list` reads. An unreleased 1.8.0 development "
+    f"build wrote an identity table into this file, and every member path a second "
+    f"time under `projects:`. Refusing rather than running: the two path copies "
+    f"drift — a disconnect dropped the `projects:` row and orphaned the `boxes:` "
+    f"one, which then refused to let that workspace be registered again under any "
+    f"name.\n"
+    f"  Fix, BY HAND:\n"
+    f"\n"
+    f"    1. Each `projects:` entry becomes a flat `boxes:` entry under the SAME "
+    f"name, with its `source_path` as the value. Where a name is in BOTH, keep the "
+    f"`boxes:` value — that is the path the box actually ran with. Then delete "
+    f"`projects:` outright:\n"
+    f"\n"
+    f"         boxes:\n"
+    f"           <box name>: <the path>\n"
+    f"\n"
+    f"    2. Delete the `workset:` table. NOTHING replaces it — this workset is "
+    f"already named by the global registry, and no file under its root records a "
+    f"name, a created stamp or anything else about the workset itself.\n"
+    f"\n"
+    f"  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic "
+    f"migration for this — see MIGRATION.md "
+    f'§ "A workset root no longer carries an identity table; an un-migrated root refuses".'
+  )
 
 
 def _load_raw(registry_path: Path) -> dict:
-    """Return the whole registry document for *registry_path* (absent file → ``{}``).
+  """Return the whole registry document for *registry_path* (absent file → ``{}``).
 
-    ⚑ THE ONE READ SEAM, so the retired-section refusal fires on EVERY read.
-    """
-    if not is_file_unless_gone(registry_path):
-        return {}
-    data = load_doc(registry_path)
-    _refuse_retired_registry_sections(registry_path, data)
-    return data
+  ⚑ THE ONE READ SEAM, so the retired-section refusal fires on EVERY read.
+  """
+  if not is_file_unless_gone(registry_path):
+    return {}
+  data = load_doc(registry_path)
+  _refuse_retired_registry_sections(registry_path, data)
+  return data
 
 
 def _section(full_doc: Mapping[str, Any], section: str) -> dict:
-    """Return *section* of *full_doc* as a dict (absent, null or non-mapping → ``{}``).
+  """Return *section* of *full_doc* as a dict (absent, null or non-mapping → ``{}``).
 
-    ⚑ The ``or {}`` is NOT a redundant default: yaml ``boxes:\\n`` yields a PRESENT
-    key whose value is ``None``, so ``get``'s default never applies.
-    """
-    table = full_doc.get(section, {}) or {}
-    return dict(table) if isinstance(table, Mapping) else {}
+  ⚑ The ``or {}`` is NOT a redundant default: yaml ``boxes:\\n`` yields a PRESENT
+  key whose value is ``None``, so ``get``'s default never applies.
+  """
+  table = full_doc.get(section, {}) or {}
+  return dict(table) if isinstance(table, Mapping) else {}
 
 
 def _write_doc(registry_path: Path, full_doc: dict) -> None:
-    """Atomically write *full_doc*'s ``boxes:``, sorted; any other section is dropped with a
-    warning (:func:`~kanibako.project.registry_store.write_registry_doc`)."""
-    write_registry_doc(registry_path, full_doc, _SECTIONS, _SORTED_SECTIONS)
+  """Atomically write *full_doc*'s ``boxes:``, sorted; any other section is dropped with a
+  warning (:func:`~kanibako.project.registry_store.write_registry_doc`)."""
+  write_registry_doc(registry_path, full_doc, _SECTIONS, _SORTED_SECTIONS)
 
 
 def _load_boxes_raw(registry_path: Path) -> tuple[dict, dict[str, str]]:
-    """Return ``(full_doc, boxes)`` for *registry_path* (absent file → empties)."""
-    data = _load_raw(registry_path)
-    return data, {k: str(v) for k, v in _section(data, _BOXES_SECTION).items()}
+  """Return ``(full_doc, boxes)`` for *registry_path* (absent file → empties)."""
+  data = _load_raw(registry_path)
+  return data, {k: str(v) for k, v in _section(data, _BOXES_SECTION).items()}
 
 
 def _write_boxes(registry_path: Path, full_doc: dict, boxes: dict[str, str]) -> None:
-    """Atomically write *boxes* into *full_doc*'s ``boxes:`` section."""
-    full_doc[_BOXES_SECTION] = boxes
-    _write_doc(registry_path, full_doc)
+  """Atomically write *boxes* into *full_doc*'s ``boxes:`` section."""
+  full_doc[_BOXES_SECTION] = boxes
+  _write_doc(registry_path, full_doc)
 
 
 def load_workset_boxes(registry_path: Path) -> dict[str, str]:
-    """Return the ``boxes:`` membership as ``{box_name: path_str}`` (absent → ``{}``)."""
-    _, boxes = _load_boxes_raw(registry_path)
-    return boxes
+  """Return the ``boxes:`` membership as ``{box_name: path_str}`` (absent → ``{}``)."""
+  _, boxes = _load_boxes_raw(registry_path)
+  return boxes
 
 
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None:
-    """Register (add or replace) *box_name* → *path* in the ``boxes:`` section."""
-    with rmw_lock(registry_path):
-        full_doc, boxes = _load_boxes_raw(registry_path)
-        path_str = str(path)
-        # ⚑ Workspace-path uniqueness (Bug A durable fix): one workspace, EXACTLY one
-        # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
-        # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
-        # name, new path) still overwrites below.
-        # ⚑ THE SELF TEST IS CASE-BLIND (spec §0, ⚑ NAMING RULES) AND THE WRITE BELOW IS
-        # WHAT MAKES THAT SAFE.  ``Foo`` against a stored ``foo`` is the SAME box, so it is
-        # self and not a second registration of one workspace; the case-variant row is then
-        # dropped rather than left BESIDE the new one, which is the two-rows-for-one-box
-        # outcome an exact self test used to prevent by refusing instead.
-        self_name = find_identifier(box_name, boxes)
-        for existing_name, existing_path in boxes.items():
-            if existing_name != self_name and _same_workspace(existing_path, path_str):
-                raise ProjectError(
-                    f"Workspace {path_str!r} is already registered in this workset "
-                    f"as box {existing_name!r}; refusing to register it a second "
-                    f"time as {box_name!r} (one box per workspace path)."
-                )
-        if self_name is not None and self_name != box_name:
-            del boxes[self_name]
-        boxes[box_name] = path_str
-        _write_boxes(registry_path, full_doc, boxes)
+  """Register (add or replace) *box_name* → *path* in the ``boxes:`` section."""
+  with rmw_lock(registry_path):
+    full_doc, boxes = _load_boxes_raw(registry_path)
+    path_str = str(path)
+    # ⚑ Workspace-path uniqueness (Bug A durable fix): one workspace, EXACTLY one
+    # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
+    # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
+    # name, new path) still overwrites below.
+    # ⚑ THE SELF TEST IS CASE-BLIND (spec §0, ⚑ NAMING RULES) AND THE WRITE BELOW IS
+    # WHAT MAKES THAT SAFE.  ``Foo`` against a stored ``foo`` is the SAME box, so it is
+    # self and not a second registration of one workspace; the case-variant row is then
+    # dropped rather than left BESIDE the new one, which is the two-rows-for-one-box
+    # outcome an exact self test used to prevent by refusing instead.
+    self_name = find_identifier(box_name, boxes)
+    for existing_name, existing_path in boxes.items():
+      if existing_name != self_name and _same_workspace(existing_path, path_str):
+        raise ProjectError(
+          f"Workspace {path_str!r} is already registered in this workset "
+          f"as box {existing_name!r}; refusing to register it a second "
+          f"time as {box_name!r} (one box per workspace path)."
+        )
+    if self_name is not None and self_name != box_name:
+      del boxes[self_name]
+    boxes[box_name] = path_str
+    _write_boxes(registry_path, full_doc, boxes)
 
 
 def unregister_workset_box(registry_path: Path, box_name: str) -> None:
-    """Remove *box_name* from the ``boxes:`` section; no write at all if absent."""
-    if not is_file_unless_gone(registry_path):
-        return
-    with rmw_lock(registry_path):
-        full_doc, boxes = _load_boxes_raw(registry_path)
-        # ⚑ Found case-blind, removed by the STORED spelling (§0).
-        stored = find_identifier(box_name, boxes)
-        if stored is None:
-            return
-        del boxes[stored]
-        _write_boxes(registry_path, full_doc, boxes)
+  """Remove *box_name* from the ``boxes:`` section; no write at all if absent."""
+  if not is_file_unless_gone(registry_path):
+    return
+  with rmw_lock(registry_path):
+    full_doc, boxes = _load_boxes_raw(registry_path)
+    # ⚑ Found case-blind, removed by the STORED spelling (§0).
+    stored = find_identifier(box_name, boxes)
+    if stored is None:
+      return
+    del boxes[stored]
+    _write_boxes(registry_path, full_doc, boxes)
 
 
 def workset_box_path(registry_path: Path, box_name: str) -> str | None:
-    """Return the registered path for *box_name*, or ``None`` if not a member.
+  """Return the registered path for *box_name*, or ``None`` if not a member.
 
-    ⚑ Membership compares case-blind (spec §0, ⚑ NAMING RULES); the table keeps the
-    spelling it was registered under.
-    """
-    boxes = load_workset_boxes(registry_path)
-    stored = find_identifier(box_name, boxes)
-    return None if stored is None else boxes[stored]
+  ⚑ Membership compares case-blind (spec §0, ⚑ NAMING RULES); the table keeps the
+  spelling it was registered under.
+  """
+  boxes = load_workset_boxes(registry_path)
+  stored = find_identifier(box_name, boxes)
+  return None if stored is None else boxes[stored]
 
 
 def reverse_lookup_workset_box(
-    registry_path: Path, workspace: Path | str,
+  registry_path: Path,
+  workspace: Path | str,
 ) -> str | None:
-    """Return the box name registered for *workspace* in ``boxes:``, or ``None``."""
-    workspace_str = str(workspace)
-    for name, path in load_workset_boxes(registry_path).items():
-        if _same_workspace(path, workspace_str):
-            return name
-    return None
+  """Return the box name registered for *workspace* in ``boxes:``, or ``None``."""
+  workspace_str = str(workspace)
+  for name, path in load_workset_boxes(registry_path).items():
+    if _same_workspace(path, workspace_str):
+      return name
+  return None
 
 
 def resolve_workset_registry_path(
-    workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope,
+  workset_root: Path,
+  workset_settings: Mapping[str, Any] | None,
+  *,
+  early: EarlyScope,
 ) -> Path:
-    """Return the resolved per-workset registry FILE path (pure; no global state).
+  """Return the resolved per-workset registry FILE path (pure; no global state).
 
-    A set ``workset.registry`` repoint wins (relative anchors under *workset_root*);
-    an UNSET one falls through to ``<workset_root>/registry.yaml``.
+  A set ``workset.registry`` repoint wins (relative anchors under *workset_root*);
+  an UNSET one falls through to ``<workset_root>/registry.yaml``.
 
-    ⚑ A NINTH FACE on the ONE no-snapshot route (``project/workset.py``): its spec
-    default is ``{meta.workset.path}/registry.yaml``, like the other faces', so it carries tokens
-    and must not expand them privately.
+  ⚑ A NINTH FACE on the ONE no-snapshot route (``project/workset.py``): its spec
+  default is ``{meta.workset.path}/registry.yaml``, like the other faces', so it carries tokens
+  and must not expand them privately.
 
-    🛑 A present ``null`` REFUSES, naming the key and the file: this file holds the
-    workset's MEMBERSHIP and its entry keys are the only source of box names, so the
-    default would read a file the user says is not there.
-    """
-    repoint, where = early_repoint(workset_root, workset_settings, "registry", early=early)
-    if repoint is None:
-        raise SettingsError(ERR_CONFIG_NULL_PATH % (where, "workset.registry"))
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _REGISTRY_FILE, key="registry", where=where, standalone=False,
-        workset_settings=workset_settings, early=early,
-    )
+  🛑 A present ``null`` REFUSES, naming the key and the file: this file holds the
+  workset's MEMBERSHIP and its entry keys are the only source of box names, so the
+  default would read a file the user says is not there.
+  """
+  repoint, where = early_repoint(workset_root, workset_settings, "registry", early=early)
+  if repoint is None:
+    raise SettingsError(ERR_CONFIG_NULL_PATH % (where, "workset.registry"))
+  return resolve_workset_dir_key(
+    workset_root,
+    repoint if isinstance(repoint, str) else None,
+    _REGISTRY_FILE,
+    key="registry",
+    where=where,
+    standalone=False,
+    workset_settings=workset_settings,
+    early=early,
+  )

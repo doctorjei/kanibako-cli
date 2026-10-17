@@ -40,36 +40,36 @@ from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
 from kanibako.settings.core_defaults import (
-    CANON_SEED_DENY_PREFIXES,
-    CANON_SKELETON_DIR_MODE,
-    CANON_SKELETON_FILE_MODE,
-    CHARTER_AGENT_CHAPTER,
-    HANDBOOK_CHAPTERS,
-    PLUGIN_CHAPTER_MARKER_REL,
-    ROM_CHARTER_CHAPTERS,
-    ROM_CHARTER_REL,
-    ROM_COLLECTION_REL,
-    ROM_CONTENTS_REL,
-    ROM_GUIDE_REL,
-    ROM_ROOT_PARTS,
-    UNSHARE_BOX_ROOT_GID,
-    UNSHARE_BOX_ROOT_UID,
+  CANON_SEED_DENY_PREFIXES,
+  CANON_SKELETON_DIR_MODE,
+  CANON_SKELETON_FILE_MODE,
+  CHARTER_AGENT_CHAPTER,
+  HANDBOOK_CHAPTERS,
+  PLUGIN_CHAPTER_MARKER_REL,
+  ROM_CHARTER_CHAPTERS,
+  ROM_CHARTER_REL,
+  ROM_COLLECTION_REL,
+  ROM_CONTENTS_REL,
+  ROM_GUIDE_REL,
+  ROM_ROOT_PARTS,
+  UNSHARE_BOX_ROOT_GID,
+  UNSHARE_BOX_ROOT_UID,
 )
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import (
-    GUEST_HOME,
-    ResolveCtx,
-    SettingsError,
-    normalize_bind_dest,
+  GUEST_HOME,
+  ResolveCtx,
+  SettingsError,
+  normalize_bind_dest,
 )
 from kanibako.targets import resolve_target
 from kanibako.targets.shell import ShellTarget
 from kanibako.launch.templates import (
-    _packaged_base_template,
-    install_packaged_templates,
-    packaged_box_home_template,
+  _packaged_base_template,
+  install_packaged_templates,
+  packaged_box_home_template,
 )
 
 _AGENTS = ("claude", "codex", "goose")
@@ -85,155 +85,155 @@ _ARM = "box.bindings.ro"
 # SOURCE.  ⚑ FIVE from the packaged rom + ONE gated plugin chapter; there is NO
 # whole-dir ``~/canon/charter`` bind any more (RETIRED by J-7).
 _CORE_DESTS = {
-    f"{GUEST_HOME}/canon/COLLECTION.md": ROM_COLLECTION_REL,
-    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md": ROM_CONTENTS_REL,
-    f"{GUEST_HOME}/canon/charter/general": f"{ROM_CHARTER_REL}/general",
-    f"{GUEST_HOME}/canon/charter/workset": f"{ROM_CHARTER_REL}/workset",
-    f"{GUEST_HOME}/canon/charter/box": f"{ROM_CHARTER_REL}/box",
+  f"{GUEST_HOME}/canon/COLLECTION.md": ROM_COLLECTION_REL,
+  f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md": ROM_CONTENTS_REL,
+  f"{GUEST_HOME}/canon/charter/general": f"{ROM_CHARTER_REL}/general",
+  f"{GUEST_HOME}/canon/charter/workset": f"{ROM_CHARTER_REL}/workset",
+  f"{GUEST_HOME}/canon/charter/box": f"{ROM_CHARTER_REL}/box",
 }
 # The two FILE binds (file-onto-file, over the skeleton's 0-byte mountpoints).
 _FILE_DESTS = {
-    f"{GUEST_HOME}/canon/COLLECTION.md",
-    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
+  f"{GUEST_HOME}/canon/COLLECTION.md",
+  f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
 }
 _CHARTER_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 
 def _ctx() -> ResolveCtx:
-    return ResolveCtx(
-        agent_name="claude",
-        workset_name=None,
-        host_home="/home/host",
-        xdg={"XDG_DATA_HOME": "/data"},
-    )
+  return ResolveCtx(
+    agent_name="claude",
+    workset_name=None,
+    host_home="/home/host",
+    xdg={"XDG_DATA_HOME": "/data"},
+  )
 
 
 def _packaged_rom_root() -> Path:
-    return Path(str(core_defaults.packaged_data_dir(*ROM_ROOT_PARTS)))
+  return Path(str(core_defaults.packaged_data_dir(*ROM_ROOT_PARTS)))
 
 
 def _merged_canon_cats(chapter: Path) -> dict:
-    """The five core canon binds PLUS the gated plugin chapter, merged.
+  """The five core canon binds PLUS the gated plugin chapter, merged.
 
-    ⚑ A plain ``dict.update`` of the two tables is now WRONG and silently so: both
-    return the SAME terminal arm key ``box.bindings.ro``, so the second would
-    replace all five core entries with the one chapter entry. That is H5 — the
-    clobber ``commands.start._merge_default_categories`` exists to prevent — in
-    miniature, and the reason this helper exists rather than an inline ``update``.
-    """
-    merged: dict = {}
-    for table in (
-        core_defaults.rom_default_categories(),
-        core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)),
-    ):
-        for arm, entries in table.items():
-            merged.setdefault(arm, {}).update(entries)
-    return merged
+  ⚑ A plain ``dict.update`` of the two tables is now WRONG and silently so: both
+  return the SAME terminal arm key ``box.bindings.ro``, so the second would
+  replace all five core entries with the one chapter entry. That is H5 — the
+  clobber ``commands.start._merge_default_categories`` exists to prevent — in
+  miniature, and the reason this helper exists rather than an inline ``update``.
+  """
+  merged: dict = {}
+  for table in (
+    core_defaults.rom_default_categories(),
+    core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)),
+  ):
+    for arm, entries in table.items():
+      merged.setdefault(arm, {}).update(entries)
+  return merged
 
 
 def _entries(cats: dict) -> list:
-    """Drive the real launch cascade over *cats* → its ``CategoryEntry`` list."""
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        default_categories=dict(cats),
-    )
-    return snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+  """Drive the real launch cascade over *cats* → its ``CategoryEntry`` list."""
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=_ctx(),
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories=dict(cats),
+  )
+  return snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
 
 
 def _winners(cats: dict) -> list:
-    """Drive the real launch cascade → the narrow seam's MOUNT winners over *cats*.
+  """Drive the real launch cascade → the narrow seam's MOUNT winners over *cats*.
 
-    ``narrow_table_winners`` is the live route for a resolve carrying ONE injected
-    table, which is exactly what these fixtures are: it filters to the table's own
-    dests and applies §0 there.
-    """
-    from tests.support.narrow_resolve import table_bind_dests
+  ``narrow_table_winners`` is the live route for a resolve carrying ONE injected
+  table, which is exactly what these fixtures are: it filters to the table's own
+  dests and applies §0 there.
+  """
+  from tests.support.narrow_resolve import table_bind_dests
 
-    return narrow_table_winners(_entries(cats), table_bind_dests(cats))
+  return narrow_table_winners(_entries(cats), table_bind_dests(cats))
 
 
 def _make_fake_rom(root: Path) -> Path:
-    """Build a COMPLETE, valid packaged-canon tree under *root*; return the rom root.
+  """Build a COMPLETE, valid packaged-canon tree under *root*; return the rom root.
 
-    ⚑ FLAT: ``rom/{COLLECTION.md, charter/**}`` with no ``canon/`` wrapper, and NO
-    ``charter/agent/`` — matching what the wheel actually ships under J-7.
+  ⚑ FLAT: ``rom/{COLLECTION.md, charter/**}`` with no ``canon/`` wrapper, and NO
+  ``charter/agent/`` — matching what the wheel actually ships under J-7.
 
-    ⚑ A chapter's entry file sits DIRECTLY in the chapter dir
-    (``charter/general/ROM_GENERAL.md``), not under a ``directives/`` level — the
-    layout the packaged tree flattened to, and what ``ROM_GUIDE_REL`` now spells.
-    """
-    rom = root / "rom"
-    (rom / ROM_CHARTER_REL).mkdir(parents=True)
-    (rom / ROM_COLLECTION_REL).write_text("# collection\n")
-    (rom / ROM_CONTENTS_REL).write_text("# contents\n")
-    for chapter in ROM_CHARTER_CHAPTERS:
-        d = rom / ROM_CHARTER_REL / chapter
-        d.mkdir(parents=True)
-        (d / f"ROM_{chapter.upper()}.md").write_text("x\n")
-    assert (rom / ROM_GUIDE_REL).is_file(), "fixture must satisfy the guide guard"
-    return rom
+  ⚑ A chapter's entry file sits DIRECTLY in the chapter dir
+  (``charter/general/ROM_GENERAL.md``), not under a ``directives/`` level — the
+  layout the packaged tree flattened to, and what ``ROM_GUIDE_REL`` now spells.
+  """
+  rom = root / "rom"
+  (rom / ROM_CHARTER_REL).mkdir(parents=True)
+  (rom / ROM_COLLECTION_REL).write_text("# collection\n")
+  (rom / ROM_CONTENTS_REL).write_text("# contents\n")
+  for chapter in ROM_CHARTER_CHAPTERS:
+    d = rom / ROM_CHARTER_REL / chapter
+    d.mkdir(parents=True)
+    (d / f"ROM_{chapter.upper()}.md").write_text("x\n")
+  assert (rom / ROM_GUIDE_REL).is_file(), "fixture must satisfy the guide guard"
+  return rom
 
 
 @pytest.fixture
 def fake_rom(tmp_path, monkeypatch):
-    """A complete fake packaged canon, substituted for the real rom root.
+  """A complete fake packaged canon, substituted for the real rom root.
 
-    Only the ROM ROOT lookup is redirected — ``templates.packaged_box_home_template``
-    asks for the TEMPLATES parts, which pass through, so the template tree stays
-    real (which is what keeps the disjointness check meaningful here).
-    """
-    rom = _make_fake_rom(tmp_path)
-    real = core_defaults.packaged_data_dir
+  Only the ROM ROOT lookup is redirected — ``templates.packaged_box_home_template``
+  asks for the TEMPLATES parts, which pass through, so the template tree stays
+  real (which is what keeps the disjointness check meaningful here).
+  """
+  rom = _make_fake_rom(tmp_path)
+  real = core_defaults.packaged_data_dir
 
-    def _fake(*parts: str):
-        if tuple(parts) == tuple(ROM_ROOT_PARTS):
-            return rom
-        return real(*parts)
+  def _fake(*parts: str):
+    if tuple(parts) == tuple(ROM_ROOT_PARTS):
+      return rom
+    return real(*parts)
 
-    monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
-    return rom
+  monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
+  return rom
 
 
 def _import_line(rel: str) -> str:
-    """The packaged index's IMPORT DIRECTIVE for a chapter-relative path *rel*.
+  """The packaged index's IMPORT DIRECTIVE for a chapter-relative path *rel*.
 
-    ⚑ THE FULL FORM, NEVER A BARE SUBSTRING. Every index carries prose naming its
-    chapters (the ``<!--[STOCK]-->`` header lists them), so ``rel in contents`` can be
-    satisfied by a file that imports nothing at all — a detector that cannot red.
-    """
-    return f'__IMPORTSECTION__("{rel}")'
+  ⚑ THE FULL FORM, NEVER A BARE SUBSTRING. Every index carries prose naming its
+  chapters (the ``<!--[STOCK]-->`` header lists them), so ``rel in contents`` can be
+  satisfied by a file that imports nothing at all — a detector that cannot red.
+  """
+  return f'__IMPORTSECTION__("{rel}")'
 
 
 def _plant_plugin_chapter(chapter: Path, body: str = "# harness chapter\n") -> Path:
-    """Plant a temp plugin's charter chapter at *chapter* (its ``data/rom`` root).
+  """Plant a temp plugin's charter chapter at *chapter* (its ``data/rom`` root).
 
-    ⚑ The marker path comes from ``PLUGIN_CHAPTER_MARKER_REL``, so a fixture meant to
-    SATISFY the emission gate can never drift from it — which is what silently turns a
-    gate-TRUE test into a gate-FALSE one that still passes its ``== {}`` assertion
-    somewhere else. The spelling itself is pinned separately, against what the packages
-    actually ship (``TestPluginChapterBind``).
-    """
-    marker = chapter / PLUGIN_CHAPTER_MARKER_REL
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(body)
-    return chapter
+  ⚑ The marker path comes from ``PLUGIN_CHAPTER_MARKER_REL``, so a fixture meant to
+  SATISFY the emission gate can never drift from it — which is what silently turns a
+  gate-TRUE test into a gate-FALSE one that still passes its ``== {}`` assertion
+  somewhere else. The spelling itself is pinned separately, against what the packages
+  actually ship (``TestPluginChapterBind``).
+  """
+  marker = chapter / PLUGIN_CHAPTER_MARKER_REL
+  marker.parent.mkdir(parents=True, exist_ok=True)
+  marker.write_text(body)
+  return chapter
 
 
 class _ChapterTarget:
-    """A minimal target whose ``rom_root`` points wherever the test says."""
+  """A minimal target whose ``rom_root`` points wherever the test says."""
 
-    name = "fakeharness"
+  name = "fakeharness"
 
-    def __init__(self, root: Path | None) -> None:
-        self._root = root
+  def __init__(self, root: Path | None) -> None:
+    self._root = root
 
-    def rom_root(self) -> Path | None:
-        return self._root
+  def rom_root(self) -> Path | None:
+    return self._root
 
 
 # ===========================================================================
@@ -242,124 +242,123 @@ class _ChapterTarget:
 
 
 class TestCanonBinds:
-    def test_emits_exactly_the_five_declared_siblings(self):
-        cats = core_defaults.rom_default_categories()
-        assert set(cats) == {_ARM}, cats
-        assert set(cats[_ARM]) == set(_CORE_DESTS), cats
-        assert all(opt == "ro" for _src, opt in cats[_ARM].values())
+  def test_emits_exactly_the_five_declared_siblings(self):
+    cats = core_defaults.rom_default_categories()
+    assert set(cats) == {_ARM}, cats
+    assert set(cats[_ARM]) == set(_CORE_DESTS), cats
+    assert all(opt == "ro" for _src, opt in cats[_ARM].values())
 
-    def test_keys_are_the_spec_names_and_emission_is_deterministic(self):
-        """Stable SPEC names — not the retired content-derived ``rom_<slug>_<hash>``
-        family, and not R1's retired whole-dir ``canon_bible`` (the name it shipped
-        under; see the module docstring)."""
-        first = core_defaults.rom_default_categories()
-        assert first == core_defaults.rom_default_categories()
-        # ⚑ Since R-10 there are no bind NAMES left to be stable, so what this
-        # pins moved to the DESTINATIONS: no whole-dir ``~/canon/charter`` entry
-        # (RETIRED by J-7), and no content-derived ``rom_<slug>_<hash>`` segment
-        # anywhere in a dest.
-        assert f"{GUEST_HOME}/canon/charter" not in first[_ARM], (
-            "the whole-dir charter bind is RETIRED (J-7) — not a bind at all"
-        )
-        assert not any("rom_" in d for d in first[_ARM]), first
+  def test_keys_are_the_spec_names_and_emission_is_deterministic(self):
+    """Stable SPEC names — not the retired content-derived ``rom_<slug>_<hash>``
+    family, and not R1's retired whole-dir ``canon_bible`` (the name it shipped
+    under; see the module docstring)."""
+    first = core_defaults.rom_default_categories()
+    assert first == core_defaults.rom_default_categories()
+    # ⚑ Since R-10 there are no bind NAMES left to be stable, so what this
+    # pins moved to the DESTINATIONS: no whole-dir ``~/canon/charter`` entry
+    # (RETIRED by J-7), and no content-derived ``rom_<slug>_<hash>`` segment
+    # anywhere in a dest.
+    assert f"{GUEST_HOME}/canon/charter" not in first[_ARM], (
+      "the whole-dir charter bind is RETIRED (J-7) — not a bind at all"
+    )
+    assert not any("rom_" in d for d in first[_ARM]), first
 
-    def test_each_key_lands_at_its_declared_dest(self):
-        cats = core_defaults.rom_default_categories()
-        rom = _packaged_rom_root()
-        for dest, rel in _CORE_DESTS.items():
-            # The dest IS the key, so "lands at its declared dest" is now the
-            # statement that the declared dest is PRESENT and carries the source
-            # declared for it — the two halves the retired name used to join.
-            assert dest in cats[_ARM], dest
-            assert Path(cats[_ARM][dest][0]) == rom / rel, dest
+  def test_each_key_lands_at_its_declared_dest(self):
+    cats = core_defaults.rom_default_categories()
+    rom = _packaged_rom_root()
+    for dest, rel in _CORE_DESTS.items():
+      # The dest IS the key, so "lands at its declared dest" is now the
+      # statement that the declared dest is PRESENT and carries the source
+      # declared for it — the two halves the retired name used to join.
+      assert dest in cats[_ARM], dest
+      assert Path(cats[_ARM][dest][0]) == rom / rel, dest
 
-    def test_file_binds_are_files_and_chapter_binds_are_directories(self):
-        """The shapes are load-bearing: a file bind mounts file-onto-file over the
-        skeleton's 0-byte mountpoint; a chapter bind replaces a whole directory."""
-        cats = core_defaults.rom_default_categories()
-        for dest, (src, _opt) in cats[_ARM].items():
-            if dest in _FILE_DESTS:
-                assert Path(src).is_file(), dest
-            else:
-                assert Path(src).is_dir(), dest
+  def test_file_binds_are_files_and_chapter_binds_are_directories(self):
+    """The shapes are load-bearing: a file bind mounts file-onto-file over the
+    skeleton's 0-byte mountpoint; a chapter bind replaces a whole directory."""
+    cats = core_defaults.rom_default_categories()
+    for dest, (src, _opt) in cats[_ARM].items():
+      if dest in _FILE_DESTS:
+        assert Path(src).is_file(), dest
+      else:
+        assert Path(src).is_dir(), dest
 
-    def test_neither_canon_root_nor_charter_root_is_ever_bound(self):
-        """⚑ THE SIBLING CONTRACT. ``~/canon`` must never be bound (it holds the
-        SEEDED notebook/workbook), and neither must ``~/canon/charter`` —
-        re-introducing that whole-dir bind is exactly the R1 model J-7 retired, and it
-        would put the agent chapter's mountpoint back inside a bind source."""
-        dests = set(core_defaults.rom_default_categories()[_ARM])
-        assert f"{GUEST_HOME}/canon" not in dests
-        assert f"{GUEST_HOME}/canon/charter" not in dests
-        assert GUEST_HOME not in dests
+  def test_neither_canon_root_nor_charter_root_is_ever_bound(self):
+    """⚑ THE SIBLING CONTRACT. ``~/canon`` must never be bound (it holds the
+    SEEDED notebook/workbook), and neither must ``~/canon/charter`` —
+    re-introducing that whole-dir bind is exactly the R1 model J-7 retired, and it
+    would put the agent chapter's mountpoint back inside a bind source."""
+    dests = set(core_defaults.rom_default_categories()[_ARM])
+    assert f"{GUEST_HOME}/canon" not in dests
+    assert f"{GUEST_HOME}/canon/charter" not in dests
+    assert GUEST_HOME not in dests
 
-    def test_sources_are_the_packaged_canon_never_a_copy(self):
-        cats = core_defaults.rom_default_categories()
-        rom = _packaged_rom_root()
-        for dest, rel in _CORE_DESTS.items():
-            assert Path(cats[_ARM][dest][0]) == rom / rel, dest
-        # The guide has NO bind of its own — it rides the ``general`` chapter's.
-        guide = rom / ROM_GUIDE_REL
-        assert guide.is_file()
-        general_src = cats[_ARM][f"{GUEST_HOME}/canon/charter/general"][0]
-        assert guide.is_relative_to(Path(general_src))
+  def test_sources_are_the_packaged_canon_never_a_copy(self):
+    cats = core_defaults.rom_default_categories()
+    rom = _packaged_rom_root()
+    for dest, rel in _CORE_DESTS.items():
+      assert Path(cats[_ARM][dest][0]) == rom / rel, dest
+    # The guide has NO bind of its own — it rides the ``general`` chapter's.
+    guide = rom / ROM_GUIDE_REL
+    assert guide.is_file()
+    general_src = cats[_ARM][f"{GUEST_HOME}/canon/charter/general"][0]
+    assert guide.is_relative_to(Path(general_src))
 
-    def test_resolves_to_ro_mounts_at_every_guest_slot(self):
-        cats = core_defaults.rom_default_categories()
-        by_dest = {m.box_dest: m for m in _winners(cats)}
-        for dest in _CORE_DESTS:
-            assert dest in by_dest, f"{dest} did not resolve"
-            m = by_dest[dest]
-            assert m.scope == "box"
-            assert m.category == "bindings.ro"
-            assert m.options == "ro"
+  def test_resolves_to_ro_mounts_at_every_guest_slot(self):
+    cats = core_defaults.rom_default_categories()
+    by_dest = {m.box_dest: m for m in _winners(cats)}
+    for dest in _CORE_DESTS:
+      assert dest in by_dest, f"{dest} did not resolve"
+      m = by_dest[dest]
+      assert m.scope == "box"
+      assert m.category == "bindings.ro"
+      assert m.options == "ro"
 
 
 class TestTheDestinationPolicySets:
-    """⚑ THE TWO SOURCE-DERIVED SETS the main emitter's missing-source policy is
-    built from (D3/D5).
+  """⚑ THE TWO SOURCE-DERIVED SETS the main emitter's missing-source policy is
+  built from (D3/D5).
 
-    ``_emit_category_mounts`` cannot tell a dest-spelled set that matches NOTHING
-    from an empty policy — both emit the same mounts — so a set that drifts from
-    what declares its binds is invisible at the emitter. These pin the SETS
-    themselves, against the row families they are derived from.
-    """
+  ``_emit_category_mounts`` cannot tell a dest-spelled set that matches NOTHING
+  from an empty policy — both emit the same mounts — so a set that drifts from
+  what declares its binds is invisible at the emitter. These pin the SETS
+  themselves, against the row families they are derived from.
+  """
 
-    def test_the_must_exist_set_is_the_five_core_sibling_dests(self):
-        assert core_defaults.rom_must_exist_dests() == {
-            normalize_bind_dest(dest) for dest in _CORE_DESTS
-        }
+  def test_the_must_exist_set_is_the_five_core_sibling_dests(self):
+    assert core_defaults.rom_must_exist_dests() == {
+      normalize_bind_dest(dest) for dest in _CORE_DESTS
+    }
 
-    def test_the_must_exist_set_is_CORE_ONLY(self):
-        """⚑ The plugin's chapter is OPTIONAL under the ratified rule (D5): it must
-        NOT be in the must-exist set, or a plugin whose chapter vanishes between
-        resolve and emit is refused instead of silently omitted."""
-        assert normalize_bind_dest(_CHARTER_AGENT_DEST) not in (
-            core_defaults.rom_must_exist_dests()
-        )
+  def test_the_must_exist_set_is_CORE_ONLY(self):
+    """⚑ The plugin's chapter is OPTIONAL under the ratified rule (D5): it must
+    NOT be in the must-exist set, or a plugin whose chapter vanishes between
+    resolve and emit is refused instead of silently omitted."""
+    assert normalize_bind_dest(_CHARTER_AGENT_DEST) not in (core_defaults.rom_must_exist_dests())
 
-    def test_the_silent_set_is_every_canon_row_but_SYS_CONTENTS_plus_the_chapter(self):
-        assert core_defaults.canon_silent_dests() == {
-            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
-            for chapter in HANDBOOK_CHAPTERS
-        } | {normalize_bind_dest(_CHARTER_AGENT_DEST)}
+  def test_the_silent_set_is_every_canon_row_but_SYS_CONTENTS_plus_the_chapter(self):
+    assert core_defaults.canon_silent_dests() == {
+      normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
+      for chapter in HANDBOOK_CHAPTERS
+    } | {normalize_bind_dest(_CHARTER_AGENT_DEST)}
 
-    def test_SYS_CONTENTS_is_in_NEITHER_set_so_it_still_warns(self):
-        """⚑⚑ D5, the one exception: the handbook's table of contents keeps L7's
-        warn-and-drop default. A box that loses it silently loses the one file
-        naming every chapter it has."""
-        contents = normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md")
-        assert contents not in core_defaults.canon_silent_dests()
-        assert contents not in core_defaults.rom_must_exist_dests()
+  def test_SYS_CONTENTS_is_in_NEITHER_set_so_it_still_warns(self):
+    """⚑⚑ D5, the one exception: the handbook's table of contents keeps L7's
+    warn-and-drop default. A box that loses it silently loses the one file
+    naming every chapter it has."""
+    contents = normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md")
+    assert contents not in core_defaults.canon_silent_dests()
+    assert contents not in core_defaults.rom_must_exist_dests()
 
-    def test_both_sets_are_NORMALIZED_dests_not_tilde_spellings(self):
-        """The emitter's map is keyed by ``normalize_bind_dest`` output, so a
-        ``~``-spelled member would match nothing — the ``critical_keys`` defect."""
-        for members in (
-            core_defaults.rom_must_exist_dests(), core_defaults.canon_silent_dests(),
-        ):
-            assert members
-            assert all(d.startswith("/") for d in members), sorted(members)
+  def test_both_sets_are_NORMALIZED_dests_not_tilde_spellings(self):
+    """The emitter's map is keyed by ``normalize_bind_dest`` output, so a
+    ``~``-spelled member would match nothing — the ``critical_keys`` defect."""
+    for members in (
+      core_defaults.rom_must_exist_dests(),
+      core_defaults.canon_silent_dests(),
+    ):
+      assert members
+      assert all(d.startswith("/") for d in members), sorted(members)
 
 
 # ===========================================================================
@@ -368,74 +367,75 @@ class TestTheDestinationPolicySets:
 
 
 class TestFailClosed:
-    def test_raises_when_guide_missing_from_walk(self, monkeypatch):
-        """A populated rom root whose walk omits the guide RAISES — never a silent
-        guide-less box (guards the over-broad-filter / wrong-root class)."""
-        def _no_guide(root: Path) -> list[tuple[str, Path]]:
-            return [("other.md", Path("/pkg/rom/other.md"))]
+  def test_raises_when_guide_missing_from_walk(self, monkeypatch):
+    """A populated rom root whose walk omits the guide RAISES — never a silent
+    guide-less box (guards the over-broad-filter / wrong-root class)."""
 
-        monkeypatch.setattr(templates, "walk_shipped_files", _no_guide)
-        with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
-            core_defaults.rom_default_categories()
+    def _no_guide(root: Path) -> list[tuple[str, Path]]:
+      return [("other.md", Path("/pkg/rom/other.md"))]
 
-    def test_raises_when_walk_returns_empty(self, monkeypatch):
-        """The empty-glob class: the guide is physically on disk but the walk yields
-        ZERO files — RAISE, never mistake an empty enumeration for a no-rom install."""
-        monkeypatch.setattr(templates, "walk_shipped_files", lambda root: [])
-        with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
-            core_defaults.rom_default_categories()
+    monkeypatch.setattr(templates, "walk_shipped_files", _no_guide)
+    with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
+      core_defaults.rom_default_categories()
 
-    def test_fake_rom_fixture_is_itself_valid(self, fake_rom):
-        """Guard the guard: the complete fake tree must PASS, or every removal case
-        below would pass vacuously."""
-        assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
+  def test_raises_when_walk_returns_empty(self, monkeypatch):
+    """The empty-glob class: the guide is physically on disk but the walk yields
+    ZERO files — RAISE, never mistake an empty enumeration for a no-rom install."""
+    monkeypatch.setattr(templates, "walk_shipped_files", lambda root: [])
+    with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
+      core_defaults.rom_default_categories()
 
-    @pytest.mark.parametrize("rel", sorted(set(_CORE_DESTS.values())))
-    def test_raises_when_any_emitted_source_is_missing(self, fake_rom, rel: str):
-        """⚑ EVERY emitted bind's source is a required member. A missing one would
-        otherwise be DROPPED by ``_emit_category_mounts`` with only a per-launch
-        warning — a box quietly short one chapter of its own directives."""
-        import shutil
+  def test_fake_rom_fixture_is_itself_valid(self, fake_rom):
+    """Guard the guard: the complete fake tree must PASS, or every removal case
+    below would pass vacuously."""
+    assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
-        target = fake_rom / rel
-        shutil.rmtree(target) if target.is_dir() else target.unlink()
-        with pytest.raises(PackagingError, match="canon .* is incomplete") as excinfo:
-            core_defaults.rom_default_categories()
-        # ⚑ The dead "no-rom" vocabulary is retired: the refusal speaks of the
-        # PACKAGING defect it is, in the house style of the kickoff loader's.
-        assert "no-rom" not in str(excinfo.value), str(excinfo.value)
+  @pytest.mark.parametrize("rel", sorted(set(_CORE_DESTS.values())))
+  def test_raises_when_any_emitted_source_is_missing(self, fake_rom, rel: str):
+    """⚑ EVERY emitted bind's source is a required member. A missing one would
+    otherwise be DROPPED by ``_emit_category_mounts`` with only a per-launch
+    warning — a box quietly short one chapter of its own directives."""
+    import shutil
 
-    def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
-        """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``charter/agent/``
-        directory as the nested bind's mountpoint (podman silently mkdir'd a missing
-        one into site-packages). J-7 removed the nesting, so that placeholder must NOT
-        ship — and its absence must NOT raise. The fixture never creates it."""
-        assert not (fake_rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
-        assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
+    target = fake_rom / rel
+    shutil.rmtree(target) if target.is_dir() else target.unlink()
+    with pytest.raises(PackagingError, match="canon .* is incomplete") as excinfo:
+      core_defaults.rom_default_categories()
+    # ⚑ The dead "no-rom" vocabulary is retired: the refusal speaks of the
+    # PACKAGING defect it is, in the house style of the kickoff loader's.
+    assert "no-rom" not in str(excinfo.value), str(excinfo.value)
 
-    def test_absent_rom_root_refuses_naming_the_packaged_path(self, tmp_path, monkeypatch):
-        real = core_defaults.packaged_data_dir
-        monkeypatch.setattr(
-            core_defaults, "packaged_data_dir",
-            lambda *p: (tmp_path / "nope") if tuple(p) == tuple(ROM_ROOT_PARTS)
-            else real(*p),
-        )
-        with pytest.raises(PackagingError, match=str(tmp_path / "nope")):
-            core_defaults.rom_default_categories()
+  def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
+    """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``charter/agent/``
+    directory as the nested bind's mountpoint (podman silently mkdir'd a missing
+    one into site-packages). J-7 removed the nesting, so that placeholder must NOT
+    ship — and its absence must NOT raise. The fixture never creates it."""
+    assert not (fake_rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
+    assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
-    def test_an_empty_rom_root_refuses(self, tmp_path, monkeypatch):
-        empty_rom = tmp_path / "empty_rom"
-        empty_rom.mkdir()
-        real = core_defaults.packaged_data_dir
+  def test_absent_rom_root_refuses_naming_the_packaged_path(self, tmp_path, monkeypatch):
+    real = core_defaults.packaged_data_dir
+    monkeypatch.setattr(
+      core_defaults,
+      "packaged_data_dir",
+      lambda *p: (tmp_path / "nope") if tuple(p) == tuple(ROM_ROOT_PARTS) else real(*p),
+    )
+    with pytest.raises(PackagingError, match=str(tmp_path / "nope")):
+      core_defaults.rom_default_categories()
 
-        def _fake(*p):
-            if tuple(p) == tuple(ROM_ROOT_PARTS):
-                return empty_rom
-            return real(*p)
+  def test_an_empty_rom_root_refuses(self, tmp_path, monkeypatch):
+    empty_rom = tmp_path / "empty_rom"
+    empty_rom.mkdir()
+    real = core_defaults.packaged_data_dir
 
-        monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
-        with pytest.raises(PackagingError, match="empty"):
-            core_defaults.rom_default_categories()
+    def _fake(*p):
+      if tuple(p) == tuple(ROM_ROOT_PARTS):
+        return empty_rom
+      return real(*p)
+
+    monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
+    with pytest.raises(PackagingError, match="empty"):
+      core_defaults.rom_default_categories()
 
 
 # ===========================================================================
@@ -444,91 +444,93 @@ class TestFailClosed:
 
 
 class TestDisjointness:
-    def test_prefix_containment_not_set_intersection(self):
-        """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
-        path to be refused. The message pins the PRIMARY reason (spec §2c): the
-        region is root-owned at create, so the copy fails with EACCES."""
-        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
-            core_defaults.assert_canon_bind_seed_disjoint(
-                {"canon/charter"}, {"canon/charter/general/ROM_GENERAL.md"},
-            )
+  def test_prefix_containment_not_set_intersection(self):
+    """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
+    path to be refused. The message pins the PRIMARY reason (spec §2c): the
+    region is root-owned at create, so the copy fails with EACCES."""
+    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+      core_defaults.assert_canon_bind_seed_disjoint(
+        {"canon/charter"},
+        {"canon/charter/general/ROM_GENERAL.md"},
+      )
 
-    def test_exact_collision_raises(self):
-        with pytest.raises(PackagingError, match="managed canon path"):
-            core_defaults.assert_canon_bind_seed_disjoint(
-                {"canon/COLLECTION.md"}, {"canon/COLLECTION.md"},
-            )
+  def test_exact_collision_raises(self):
+    with pytest.raises(PackagingError, match="managed canon path"):
+      core_defaults.assert_canon_bind_seed_disjoint(
+        {"canon/COLLECTION.md"},
+        {"canon/COLLECTION.md"},
+      )
 
-    def test_seed_into_the_agent_chapter_still_raises(self):
-        """⚑ THE J-7 WIDENING. Under sibling binds ``canon/charter`` is no longer
-        itself a bind dest — only its chapters are — so a guard built from the LITERAL
-        dests would silently start allowing a seed at ``canon/charter/agent/…``. Spec
-        §2c forbids seeding anywhere under ``canon/charter/``, and under J-7 that path
-        is a root-owned 555 mountpoint, so the copy fails with EACCES at create rather
-        than merely being shadowed at launch. RED if someone narrows the deny list back
-        to the dests.
-        """
-        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
-            core_defaults.assert_canon_bind_seed_disjoint(
-                CANON_SEED_DENY_PREFIXES,
-                {"canon/charter/agent/ROM_AGENT.md"},
-            )
+  def test_seed_into_the_agent_chapter_still_raises(self):
+    """⚑ THE J-7 WIDENING. Under sibling binds ``canon/charter`` is no longer
+    itself a bind dest — only its chapters are — so a guard built from the LITERAL
+    dests would silently start allowing a seed at ``canon/charter/agent/…``. Spec
+    §2c forbids seeding anywhere under ``canon/charter/``, and under J-7 that path
+    is a root-owned 555 mountpoint, so the copy fails with EACCES at create rather
+    than merely being shadowed at launch. RED if someone narrows the deny list back
+    to the dests.
+    """
+    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+      core_defaults.assert_canon_bind_seed_disjoint(
+        CANON_SEED_DENY_PREFIXES,
+        {"canon/charter/agent/ROM_AGENT.md"},
+      )
 
-    def test_deny_list_covers_the_whole_charter_not_just_its_chapters(self):
-        assert "canon/charter" in CANON_SEED_DENY_PREFIXES
-        assert "canon/COLLECTION.md" in CANON_SEED_DENY_PREFIXES
+  def test_deny_list_covers_the_whole_charter_not_just_its_chapters(self):
+    assert "canon/charter" in CANON_SEED_DENY_PREFIXES
+    assert "canon/COLLECTION.md" in CANON_SEED_DENY_PREFIXES
 
-    def test_sibling_and_prefix_lookalike_seeds_are_allowed(self):
-        """``canon/notebook`` and ``canon/charters-of-mine`` are NOT under
-        ``canon/charter`` — a naive ``startswith`` without the separator would
-        wrongly reject the second."""
-        core_defaults.assert_canon_bind_seed_disjoint(
-            CANON_SEED_DENY_PREFIXES,
-            {
-                "canon/notebook/LOCAL_CONTENTS.md",
-                "canon/workbook/state/devnotes.md",
-                "canon/charters-of-mine/x.md",
-                "canon/COLLECTION.md.bak",
-                "workspace/README.md",
-            },
-        )
+  def test_sibling_and_prefix_lookalike_seeds_are_allowed(self):
+    """``canon/notebook`` and ``canon/charters-of-mine`` are NOT under
+    ``canon/charter`` — a naive ``startswith`` without the separator would
+    wrongly reject the second."""
+    core_defaults.assert_canon_bind_seed_disjoint(
+      CANON_SEED_DENY_PREFIXES,
+      {
+        "canon/notebook/LOCAL_CONTENTS.md",
+        "canon/workbook/state/devnotes.md",
+        "canon/charters-of-mine/x.md",
+        "canon/COLLECTION.md.bak",
+        "workspace/README.md",
+      },
+    )
 
-    def test_shipped_template_tree_is_disjoint_from_the_canon(self):
-        """The REAL packaged trees: the writable seed must not touch ~/canon."""
-        home_root = packaged_box_home_template()
-        assert home_root is not None
-        core_defaults.assert_canon_bind_seed_disjoint(
-            CANON_SEED_DENY_PREFIXES,
-            (rel for rel, _ in templates.walk_shipped_files(home_root)),
-        )
+  def test_shipped_template_tree_is_disjoint_from_the_canon(self):
+    """The REAL packaged trees: the writable seed must not touch ~/canon."""
+    home_root = packaged_box_home_template()
+    assert home_root is not None
+    core_defaults.assert_canon_bind_seed_disjoint(
+      CANON_SEED_DENY_PREFIXES,
+      (rel for rel, _ in templates.walk_shipped_files(home_root)),
+    )
 
-    def test_guard_is_anchored_at_the_home_relative_root(self):
-        """⚑ REGRESSION on the guard itself. Both sides must be HOME-relative or the
-        prefix comparison means nothing. The packaged TEMPLATE ROOT is no longer the
-        home-relative root (it yields ``box/home/...``), so a guard fed the root walk
-        would run, pass, and check NOTHING — this pins the seam that must not slip
-        back one level."""
-        home_root = packaged_box_home_template()
-        base = _packaged_base_template()
-        assert home_root is not None and base is not None
-        assert home_root != base
-        rels = {rel for rel, _ in templates.walk_shipped_files(home_root)}
-        # Home-relative: the notebook the seed deposits at ~/canon/notebook.
-        assert "canon/notebook/LOCAL_CONTENTS.md" in rels, rels
+  def test_guard_is_anchored_at_the_home_relative_root(self):
+    """⚑ REGRESSION on the guard itself. Both sides must be HOME-relative or the
+    prefix comparison means nothing. The packaged TEMPLATE ROOT is no longer the
+    home-relative root (it yields ``box/home/...``), so a guard fed the root walk
+    would run, pass, and check NOTHING — this pins the seam that must not slip
+    back one level."""
+    home_root = packaged_box_home_template()
+    base = _packaged_base_template()
+    assert home_root is not None and base is not None
+    assert home_root != base
+    rels = {rel for rel, _ in templates.walk_shipped_files(home_root)}
+    # Home-relative: the notebook the seed deposits at ~/canon/notebook.
+    assert "canon/notebook/LOCAL_CONTENTS.md" in rels, rels
 
-    def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
-        """Driven through the real emitter: a template seed under ``canon/charter``
-        aborts rather than being carried to a create that would EACCES."""
-        real_walk = templates.walk_shipped_files
+  def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
+    """Driven through the real emitter: a template seed under ``canon/charter``
+    aborts rather than being carried to a create that would EACCES."""
+    real_walk = templates.walk_shipped_files
 
-        def _walk(root: Path) -> list[tuple[str, Path]]:
-            if root == packaged_box_home_template():
-                return [("canon/charter/general/ROM_GENERAL.md", root / "x")]
-            return real_walk(root)
+    def _walk(root: Path) -> list[tuple[str, Path]]:
+      if root == packaged_box_home_template():
+        return [("canon/charter/general/ROM_GENERAL.md", root / "x")]
+      return real_walk(root)
 
-        monkeypatch.setattr(templates, "walk_shipped_files", _walk)
-        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
-            core_defaults.rom_default_categories()
+    monkeypatch.setattr(templates, "walk_shipped_files", _walk)
+    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+      core_defaults.rom_default_categories()
 
 
 # ===========================================================================
@@ -537,67 +539,67 @@ class TestDisjointness:
 
 
 class TestPackagedCanonTree:
-    def test_layout_is_flat_with_no_canon_wrapper(self):
-        """J-7 samples: the packaged rom is ``rom/{COLLECTION.md, charter/**}``.
-        The old ``rom/canon/**`` level is gone, so a rom-relative path is no longer
-        its own ``~``-dest — every dest goes through ``_canon_dest``.
+  def test_layout_is_flat_with_no_canon_wrapper(self):
+    """J-7 samples: the packaged rom is ``rom/{COLLECTION.md, charter/**}``.
+    The old ``rom/canon/**`` level is gone, so a rom-relative path is no longer
+    its own ``~``-dest — every dest goes through ``_canon_dest``.
 
-        ⚑ The literals are deliberate: this is the OUTSIDE oracle on the shipped
-        layout, so it must not be re-derived from the constants it is checking."""
-        rom = _packaged_rom_root()
-        assert (rom / "COLLECTION.md").is_file()
-        assert (rom / "charter").is_dir()
-        assert not (rom / "canon").exists()
+    ⚑ The literals are deliberate: this is the OUTSIDE oracle on the shipped
+    layout, so it must not be re-derived from the constants it is checking."""
+    rom = _packaged_rom_root()
+    assert (rom / "COLLECTION.md").is_file()
+    assert (rom / "charter").is_dir()
+    assert not (rom / "canon").exists()
 
-    def test_ships_every_packaged_chapter_entry_file(self):
-        """⚑ A wheel has no empty directories, so "the chapter ships" IS "its entry
-        file ships" — and since the packaged tree flattened, that file sits directly
-        in the chapter dir rather than under a ``directives/`` level. Asserting the
-        FILE rather than the dir is what keeps this from passing on a chapter that
-        shipped an empty shell."""
-        rom = _packaged_rom_root()
-        missing = [
-            c for c in ROM_CHARTER_CHAPTERS
-            if not (rom / ROM_CHARTER_REL / c / f"ROM_{c.upper()}.md").is_file()
-        ]
-        assert not missing, f"packaged charter is missing chapter entries: {missing}"
+  def test_ships_every_packaged_chapter_entry_file(self):
+    """⚑ A wheel has no empty directories, so "the chapter ships" IS "its entry
+    file ships" — and since the packaged tree flattened, that file sits directly
+    in the chapter dir rather than under a ``directives/`` level. Asserting the
+    FILE rather than the dir is what keeps this from passing on a chapter that
+    shipped an empty shell."""
+    rom = _packaged_rom_root()
+    missing = [
+      c
+      for c in ROM_CHARTER_CHAPTERS
+      if not (rom / ROM_CHARTER_REL / c / f"ROM_{c.upper()}.md").is_file()
+    ]
+    assert not missing, f"packaged charter is missing chapter entries: {missing}"
 
-    def test_agent_chapter_does_NOT_ship_in_the_package(self):
-        """⚑ J-7 KILLED THE WHEEL MOUNTPOINT. R1 shipped a 0-byte
-        ``charter/agent/directives/ROM_AGENT.md`` purely to make that directory exist
-        in git and in the wheel, because a NESTED bind's mountpoint had to live inside
-        its parent's SOURCE. With siblings the mountpoint lives in the box home
-        instead, so the package must carry nothing here — a stray empty chapter would
-        bind over the plugin's, or be mistaken for content."""
-        rom = _packaged_rom_root()
-        assert not (rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
+  def test_agent_chapter_does_NOT_ship_in_the_package(self):
+    """⚑ J-7 KILLED THE WHEEL MOUNTPOINT. R1 shipped a 0-byte
+    ``charter/agent/directives/ROM_AGENT.md`` purely to make that directory exist
+    in git and in the wheel, because a NESTED bind's mountpoint had to live inside
+    its parent's SOURCE. With siblings the mountpoint lives in the box home
+    instead, so the package must carry nothing here — a stray empty chapter would
+    bind over the plugin's, or be mistaken for content."""
+    rom = _packaged_rom_root()
+    assert not (rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
 
-    def test_index_and_contents_ship(self):
-        rom = _packaged_rom_root()
-        assert (rom / ROM_COLLECTION_REL).is_file()
-        assert (rom / ROM_CONTENTS_REL).is_file()
-        assert (rom / ROM_GUIDE_REL).is_file()
+  def test_index_and_contents_ship(self):
+    rom = _packaged_rom_root()
+    assert (rom / ROM_COLLECTION_REL).is_file()
+    assert (rom / ROM_CONTENTS_REL).is_file()
+    assert (rom / ROM_GUIDE_REL).is_file()
 
-    def test_no_bytecode_or_python_under_the_packaged_charter(self):
-        """A directory bind exposes whatever is physically in the packaged dir at
-        runtime — the per-file walk's ``_is_shipped_content`` filter no longer stands
-        between a dev checkout's ``__pycache__`` and the box."""
-        rom = _packaged_rom_root()
-        junk = [
-            str(p.relative_to(rom)) for p in (rom / ROM_CHARTER_REL).rglob("*")
-            if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
-        ]
-        assert not junk, f"packaged charter carries non-content files: {junk}"
+  def test_no_bytecode_or_python_under_the_packaged_charter(self):
+    """A directory bind exposes whatever is physically in the packaged dir at
+    runtime — the per-file walk's ``_is_shipped_content`` filter no longer stands
+    between a dev checkout's ``__pycache__`` and the box."""
+    rom = _packaged_rom_root()
+    junk = [
+      str(p.relative_to(rom))
+      for p in (rom / ROM_CHARTER_REL).rglob("*")
+      if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
+    ]
+    assert not junk, f"packaged charter carries non-content files: {junk}"
 
-    def test_flattener_ships_in_the_package_not_the_canon(self):
-        """P-2: ``import-directives.py`` is MACHINERY. It reaches the box through the
-        existing unconditional ``kani_pkg`` bind, so the canon holds only text."""
-        import importlib.resources
+  def test_flattener_ships_in_the_package_not_the_canon(self):
+    """P-2: ``import-directives.py`` is MACHINERY. It reaches the box through the
+    existing unconditional ``kani_pkg`` bind, so the canon holds only text."""
+    import importlib.resources
 
-        ref = importlib.resources.files("kanibako.scripts").joinpath(
-            "import-directives.py"
-        )
-        assert Path(str(ref)).is_file()
+    ref = importlib.resources.files("kanibako.scripts").joinpath("import-directives.py")
+    assert Path(str(ref)).is_file()
 
 
 # ===========================================================================
@@ -606,192 +608,190 @@ class TestPackagedCanonTree:
 
 
 class TestPluginChapterBind:
-    @pytest.mark.parametrize("agent", _AGENTS)
-    def test_rom_root_resolves_for_every_first_party_harness(self, agent: str):
-        """The base ``Target.rom_root`` derives the package from ``__package__``, so
-        it works whether the Target class lives in ``target.py`` or ``__init__.py``."""
-        root = resolve_target(agent).rom_root()
-        assert root is not None, f"{agent}: rom_root did not resolve"
-        assert root.is_dir()
-        assert root.name == "rom" and root.parent.name == "data"
+  @pytest.mark.parametrize("agent", _AGENTS)
+  def test_rom_root_resolves_for_every_first_party_harness(self, agent: str):
+    """The base ``Target.rom_root`` derives the package from ``__package__``, so
+    it works whether the Target class lives in ``target.py`` or ``__init__.py``."""
+    root = resolve_target(agent).rom_root()
+    assert root is not None, f"{agent}: rom_root did not resolve"
+    assert root.is_dir()
+    assert root.name == "rom" and root.parent.name == "data"
 
-    @pytest.mark.parametrize("agent", _AGENTS)
-    def test_every_first_party_harness_ships_a_chapter_so_the_gate_is_positive(
-        self, agent: str,
-    ):
-        """⚑ THE R2 FLIP. Each plugin now ships its chapter entry at its ``data/rom``
-        root, so the gate is TRUE for all three and the charter's agent chapter is a
-        REAL bind on every first-party box.
+  @pytest.mark.parametrize("agent", _AGENTS)
+  def test_every_first_party_harness_ships_a_chapter_so_the_gate_is_positive(
+    self,
+    agent: str,
+  ):
+    """⚑ THE R2 FLIP. Each plugin now ships its chapter entry at its ``data/rom``
+    root, so the gate is TRUE for all three and the charter's agent chapter is a
+    REAL bind on every first-party box.
 
-        ⚑ THE PLUGIN CHAPTER IS FLAT, LIKE THE CORE ONES. ``data/rom`` IS the chapter
-        and is bound whole at ``~/canon/charter/agent``, so an entry file at its root
-        is what makes the charter's ``ROM_CONTENTS.md`` import resolve instead of
-        dangling.
+    ⚑ THE PLUGIN CHAPTER IS FLAT, LIKE THE CORE ONES. ``data/rom`` IS the chapter
+    and is bound whole at ``~/canon/charter/agent``, so an entry file at its root
+    is what makes the charter's ``ROM_CONTENTS.md`` import resolve instead of
+    dangling.
 
-        ⚑ THIS ASSERTION CHECKS THE SHIPPED POSITION ONLY — it never opens
-        ``ROM_CONTENTS.md``. The index's agreement with that position is pinned
-        separately by
-        ``test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it``.
-        Neither check alone makes the import safe; both together do.
+    ⚑ THIS ASSERTION CHECKS THE SHIPPED POSITION ONLY — it never opens
+    ``ROM_CONTENTS.md``. The index's agreement with that position is pinned
+    separately by
+    ``test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it``.
+    Neither check alone makes the import safe; both together do.
 
-        Gate-FALSE is not left uncovered: it is exercised by the two temp-plugin tests
-        below (bare ``data/rom`` with no marker, and no ``rom_root`` at all), which is
-        where it belongs now that no shipped plugin can demonstrate it."""
-        target = resolve_target(agent)
-        root = target.rom_root()
-        assert root is not None
-        assert (root / PLUGIN_CHAPTER_MARKER_REL).is_file(), (
-            f"{agent}: the plugin must ship its charter chapter at "
-            f"data/rom/{PLUGIN_CHAPTER_MARKER_REL}"
-        )
+    Gate-FALSE is not left uncovered: it is exercised by the two temp-plugin tests
+    below (bare ``data/rom`` with no marker, and no ``rom_root`` at all), which is
+    where it belongs now that no shipped plugin can demonstrate it."""
+    target = resolve_target(agent)
+    root = target.rom_root()
+    assert root is not None
+    assert (root / PLUGIN_CHAPTER_MARKER_REL).is_file(), (
+      f"{agent}: the plugin must ship its charter chapter at data/rom/{PLUGIN_CHAPTER_MARKER_REL}"
+    )
 
-        cats = core_defaults.rom_agent_default_categories(target)
-        assert set(cats) == {_ARM}, cats
-        assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}, cats
-        src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
-        assert Path(src) == root, "the plugin's data/rom IS the chapter root (D3)"
-        assert opts == "ro"
+    cats = core_defaults.rom_agent_default_categories(target)
+    assert set(cats) == {_ARM}, cats
+    assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}, cats
+    src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
+    assert Path(src) == root, "the plugin's data/rom IS the chapter root (D3)"
+    assert opts == "ro"
 
-    def test_the_three_shipped_chapters_are_byte_identical(self):
-        """One authored chapter, delivered per HARNESS. Per-harness customization is a
-        later, deliberate edit — until then a drifting copy is a mistake, not a
-        variant, and this is where it surfaces."""
-        digests = {
-            agent: (
-                resolve_target(agent).rom_root() / PLUGIN_CHAPTER_MARKER_REL
-            ).read_bytes()
-            for agent in _AGENTS
-        }
-        assert len(set(digests.values())) == 1, {
-            a: len(b) for a, b in digests.items()
-        }
+  def test_the_three_shipped_chapters_are_byte_identical(self):
+    """One authored chapter, delivered per HARNESS. Per-harness customization is a
+    later, deliberate edit — until then a drifting copy is a mistake, not a
+    variant, and this is where it surfaces."""
+    digests = {
+      agent: (resolve_target(agent).rom_root() / PLUGIN_CHAPTER_MARKER_REL).read_bytes()
+      for agent in _AGENTS
+    }
+    assert len(set(digests.values())) == 1, {a: len(b) for a, b in digests.items()}
 
-    @pytest.mark.parametrize("agent", _AGENTS)
-    def test_no_bytecode_or_python_under_a_packaged_plugin_chapter(self, agent: str):
-        """R1's N3 handoff — the CORE-side twin of
-        ``TestPackagedCanonTree::test_no_bytecode_or_python_under_the_packaged_charter``.
+  @pytest.mark.parametrize("agent", _AGENTS)
+  def test_no_bytecode_or_python_under_a_packaged_plugin_chapter(self, agent: str):
+    """R1's N3 handoff — the CORE-side twin of
+    ``TestPackagedCanonTree::test_no_bytecode_or_python_under_the_packaged_charter``.
 
-        The plugin's ``data/rom`` is now a REAL whole-directory bind source, and a
-        whole-dir bind exposes whatever is physically in the packaged dir: the
-        per-file walk's ``_is_shipped_content`` filter no longer stands between a dev
-        checkout's ``__pycache__`` and the box. A plugin chapter is TEXT only."""
-        root = resolve_target(agent).rom_root()
-        assert root is not None
-        junk = [
-            str(p.relative_to(root)) for p in root.rglob("*")
-            if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
-        ]
-        assert not junk, f"{agent}: packaged plugin chapter carries non-content: {junk}"
+    The plugin's ``data/rom`` is now a REAL whole-directory bind source, and a
+    whole-dir bind exposes whatever is physically in the packaged dir: the
+    per-file walk's ``_is_shipped_content`` filter no longer stands between a dev
+    checkout's ``__pycache__`` and the box. A plugin chapter is TEXT only."""
+    root = resolve_target(agent).rom_root()
+    assert root is not None
+    junk = [
+      str(p.relative_to(root))
+      for p in root.rglob("*")
+      if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
+    ]
+    assert not junk, f"{agent}: packaged plugin chapter carries non-content: {junk}"
 
-    def test_emits_one_bind_when_the_plugin_ships_a_chapter(self, tmp_path):
-        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom")
+  def test_emits_one_bind_when_the_plugin_ships_a_chapter(self, tmp_path):
+    chapter = _plant_plugin_chapter(tmp_path / "data" / "rom")
 
-        cats = core_defaults.rom_agent_default_categories(_ChapterTarget(chapter))
-        assert set(cats) == {_ARM}
-        # ⚑ The dest carries NO agent segment — asserted as the arm's ONLY key,
-        # which is stronger than the retired ``dest ==`` check: under dest-keying
-        # a wrong dest cannot hide behind a right name.
-        assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}
-        src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
-        assert Path(src) == chapter, "the plugin's data/rom IS the chapter root"
-        assert opts == "ro"
+    cats = core_defaults.rom_agent_default_categories(_ChapterTarget(chapter))
+    assert set(cats) == {_ARM}
+    # ⚑ The dest carries NO agent segment — asserted as the arm's ONLY key,
+    # which is stronger than the retired ``dest ==`` check: under dest-keying
+    # a wrong dest cannot hide behind a right name.
+    assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}
+    src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
+    assert Path(src) == chapter, "the plugin's data/rom IS the chapter root"
+    assert opts == "ro"
 
-    def test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it(self):
-        """⚑⚑ THE CHARTER-SIDE TWIN of
-        ``TestCanonSkeleton::test_the_fallback_names_match_what_SYS_CONTENTS_imports``
-        — and the gap that let this arc ship a dangling import unnoticed.
+  def test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it(self):
+    """⚑⚑ THE CHARTER-SIDE TWIN of
+    ``TestCanonSkeleton::test_the_fallback_names_match_what_SYS_CONTENTS_imports``
+    — and the gap that let this arc ship a dangling import unnoticed.
 
-        The gate above proves a plugin SHIPS an entry file; nothing proved the
-        charter's own index IMPORTS it at the position the bind delivers it to. Move
-        ``PLUGIN_CHAPTER_MARKER_REL`` and the three packages together and every other
-        test in this module stays green while ``agent/ROM_AGENT.md`` dangles on every
-        first-party box — the silent failure MIGRATION.md warns plugin authors about.
+    The gate above proves a plugin SHIPS an entry file; nothing proved the
+    charter's own index IMPORTS it at the position the bind delivers it to. Move
+    ``PLUGIN_CHAPTER_MARKER_REL`` and the three packages together and every other
+    test in this module stays green while ``agent/ROM_AGENT.md`` dangles on every
+    first-party box — the silent failure MIGRATION.md warns plugin authors about.
 
-        ⚑ THE TWO SIDES ARE DERIVED INDEPENDENTLY: the path from the constants that
-        decide WHERE the bind puts the file (the chapter dest leaf + the marker rel),
-        the import from the packaged ``ROM_CONTENTS.md`` itself. Restating one
-        spelling on both sides would make them agree by construction.
-        """
-        contents = (_packaged_rom_root() / ROM_CONTENTS_REL).read_text()
-        imported = f"{CHARTER_AGENT_CHAPTER}/{PLUGIN_CHAPTER_MARKER_REL}"
-        assert _import_line(imported) in contents, (
-            f"{ROM_CONTENTS_REL} does not import {imported!r}, which is where the "
-            "plugin chapter bind delivers the file; the import would dangle on every "
-            "box of every first-party harness"
-        )
+    ⚑ THE TWO SIDES ARE DERIVED INDEPENDENTLY: the path from the constants that
+    decide WHERE the bind puts the file (the chapter dest leaf + the marker rel),
+    the import from the packaged ``ROM_CONTENTS.md`` itself. Restating one
+    spelling on both sides would make them agree by construction.
+    """
+    contents = (_packaged_rom_root() / ROM_CONTENTS_REL).read_text()
+    imported = f"{CHARTER_AGENT_CHAPTER}/{PLUGIN_CHAPTER_MARKER_REL}"
+    assert _import_line(imported) in contents, (
+      f"{ROM_CONTENTS_REL} does not import {imported!r}, which is where the "
+      "plugin chapter bind delivers the file; the import would dangle on every "
+      "box of every first-party harness"
+    )
 
-    def test_no_bind_when_the_chapter_marker_is_absent(self, tmp_path):
-        chapter = tmp_path / "data" / "rom"
-        chapter.mkdir(parents=True)
-        (chapter / "_bundled_future_use_").write_text("")
-        assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
+  def test_no_bind_when_the_chapter_marker_is_absent(self, tmp_path):
+    chapter = tmp_path / "data" / "rom"
+    chapter.mkdir(parents=True)
+    (chapter / "_bundled_future_use_").write_text("")
+    assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
 
-    def test_no_bind_when_the_entry_file_is_at_the_RETIRED_nested_position(
-        self, tmp_path,
-    ):
-        """⚑ THE UNMIGRATED PLUGIN — the shape a real author actually ships, and the
-        case the flattening turned from working into refused.
+  def test_no_bind_when_the_entry_file_is_at_the_RETIRED_nested_position(
+    self,
+    tmp_path,
+  ):
+    """⚑ THE UNMIGRATED PLUGIN — the shape a real author actually ships, and the
+    case the flattening turned from working into refused.
 
-        ``data/rom/directives/ROM_AGENT.md`` WAS the marker. It is now one level below
-        what the charter's index imports, so binding it would deliver a chapter whose
-        entry file nothing reaches. Refusing is the honest answer: the author sees no
-        agent chapter at all rather than a chapter that silently resolves to nothing.
+    ``data/rom/directives/ROM_AGENT.md`` WAS the marker. It is now one level below
+    what the charter's index imports, so binding it would deliver a chapter whose
+    entry file nothing reaches. Refusing is the honest answer: the author sees no
+    agent chapter at all rather than a chapter that silently resolves to nothing.
 
-        ⚑ THE RETIRED PATH IS SPELLED LITERALLY HERE, deliberately — deriving it from
-        ``PLUGIN_CHAPTER_MARKER_REL`` would make this test follow the constant and
-        stop describing the shape it exists to refuse.
-        """
-        chapter = tmp_path / "data" / "rom"
-        (chapter / "directives").mkdir(parents=True)
-        (chapter / "directives" / "ROM_AGENT.md").write_text("# unmigrated plugin\n")
-        assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
+    ⚑ THE RETIRED PATH IS SPELLED LITERALLY HERE, deliberately — deriving it from
+    ``PLUGIN_CHAPTER_MARKER_REL`` would make this test follow the constant and
+    stop describing the shape it exists to refuse.
+    """
+    chapter = tmp_path / "data" / "rom"
+    (chapter / "directives").mkdir(parents=True)
+    (chapter / "directives" / "ROM_AGENT.md").write_text("# unmigrated plugin\n")
+    assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
 
-    def test_no_bind_when_the_target_has_no_rom_root(self):
-        """A target whose ``rom_root`` is None gets no bind — the right answer, not an error."""
-        assert core_defaults.rom_agent_default_categories(_ChapterTarget(None)) == {}
+  def test_no_bind_when_the_target_has_no_rom_root(self):
+    """A target whose ``rom_root`` is None gets no bind — the right answer, not an error."""
+    assert core_defaults.rom_agent_default_categories(_ChapterTarget(None)) == {}
 
 
 class TestSiblingAssembly:
-    """⚑ REPLACES R1's ``TestNestingOrder``, which pinned the SHADOW mechanism (the
-    plugin chapter mounting INSIDE ``canon_bible`` and the ascending depth-sort that
-    made it land last). J-7 retired nesting outright, so the invariant to pin is the
-    opposite one — and keeping a "nesting works" test after nesting was removed would
-    read as precedent for re-introducing it.
+  """⚑ REPLACES R1's ``TestNestingOrder``, which pinned the SHADOW mechanism (the
+  plugin chapter mounting INSIDE ``canon_bible`` and the ascending depth-sort that
+  made it land last). J-7 retired nesting outright, so the invariant to pin is the
+  opposite one — and keeping a "nesting works" test after nesting was removed would
+  read as precedent for re-introducing it.
+  """
+
+  def test_no_canon_dest_is_a_prefix_of_another(self, tmp_path):
+    chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
+
+    cats = _merged_canon_cats(chapter)
+    assert len(cats[_ARM]) == 6
+
+    dests = sorted(cats[_ARM])
+    for a in dests:
+      for b in dests:
+        assert a == b or not b.startswith(f"{a}/"), (
+          f"{b!r} nests inside {a!r} — J-7 retired nested canon binds"
+        )
+
+  def test_all_six_resolve_without_collision_warnings(self, tmp_path):
+    """⚑ RETARGETED at cutover 5-1c, and the claim got STRICTER, not weaker.
+
+    The warning used to be read off a second route's ``warnings`` field; that
+    field is gone and the per-scope ``store_shape`` producer is the sole builder
+    — which is also what a user hears. The producer folds each scope ALONE, so it
+    applies none of the cross-scope silences that route applied: a canon set that
+    is quiet HERE is quiet on the launch path.
     """
+    from kanibako.settings.store_shape import build_store_shape_set
+    from tests.support.narrow_resolve import table_bind_dests
 
-    def test_no_canon_dest_is_a_prefix_of_another(self, tmp_path):
-        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
+    chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
 
-        cats = _merged_canon_cats(chapter)
-        assert len(cats[_ARM]) == 6
-
-        dests = sorted(cats[_ARM])
-        for a in dests:
-            for b in dests:
-                assert a == b or not b.startswith(f"{a}/"), (
-                    f"{b!r} nests inside {a!r} — J-7 retired nested canon binds"
-                )
-
-    def test_all_six_resolve_without_collision_warnings(self, tmp_path):
-        """⚑ RETARGETED at cutover 5-1c, and the claim got STRICTER, not weaker.
-
-        The warning used to be read off a second route's ``warnings`` field; that
-        field is gone and the per-scope ``store_shape`` producer is the sole builder
-        — which is also what a user hears. The producer folds each scope ALONE, so it
-        applies none of the cross-scope silences that route applied: a canon set that
-        is quiet HERE is quiet on the launch path.
-        """
-        from kanibako.settings.store_shape import build_store_shape_set
-        from tests.support.narrow_resolve import table_bind_dests
-
-        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
-
-        cats = _merged_canon_cats(chapter)
-        entries = _entries(cats)
-        produced = build_store_shape_set(entries)
-        assert not produced.warnings, produced.warnings
-        winners = narrow_table_winners(entries, table_bind_dests(cats))
-        assert f"{GUEST_HOME}/canon/charter/agent" in {m.box_dest for m in winners}
+    cats = _merged_canon_cats(chapter)
+    entries = _entries(cats)
+    produced = build_store_shape_set(entries)
+    assert not produced.warnings, produced.warnings
+    winners = narrow_table_winners(entries, table_bind_dests(cats))
+    assert f"{GUEST_HOME}/canon/charter/agent" in {m.box_dest for m in winners}
 
 
 # ===========================================================================
@@ -800,515 +800,584 @@ class TestSiblingAssembly:
 
 
 class _WiringTarget(ShellTarget):
-    """A REAL ``Target`` for the live ``_resolve_launch_snapshot`` seam, with only
-    ``rom_root`` overridden.
+  """A REAL ``Target`` for the live ``_resolve_launch_snapshot`` seam, with only
+  ``rom_root`` overridden.
 
-    Subclassing the built-in fallback (rather than duck-typing) means every other
-    hook that seam reads — ``default_common``, ``default_seeds``,
-    ``default_category_binds``, ``setting_descriptors``, … — comes from the real
-    ABC, so this cannot pass by accident when the seam grows a new call.
-    """
+  Subclassing the built-in fallback (rather than duck-typing) means every other
+  hook that seam reads — ``default_common``, ``default_seeds``,
+  ``default_category_binds``, ``setting_descriptors``, … — comes from the real
+  ABC, so this cannot pass by accident when the seam grows a new call.
+  """
 
-    def __init__(self, rom_root: Path | None = None) -> None:
-        self._rom_root = rom_root
+  def __init__(self, rom_root: Path | None = None) -> None:
+    self._rom_root = rom_root
 
-    def rom_root(self) -> Path | None:
-        return self._rom_root
+  def rom_root(self) -> Path | None:
+    return self._rom_root
 
 
 class TestLaunchWiring:
-    """⚑ THE CALL SITES THEMSELVES. Every other test in this module enters at
-    ``build_launch_snapshot`` with a hand-built category table, which proves the
-    emitters are CORRECT but not that anything CALLS them — deleting both
-    ``default_categories.update(...)`` lines from ``start._resolve_launch_snapshot``
-    left the entire suite green (mutation-proved, 2026-07-31). These tests close
-    that gap by driving the REAL launch seam with real ``std``/``proj`` objects.
+  """⚑ THE CALL SITES THEMSELVES. Every other test in this module enters at
+  ``build_launch_snapshot`` with a hand-built category table, which proves the
+  emitters are CORRECT but not that anything CALLS them — deleting both
+  ``default_categories.update(...)`` lines from ``start._resolve_launch_snapshot``
+  left the entire suite green (mutation-proved, 2026-07-31). These tests close
+  that gap by driving the REAL launch seam with real ``std``/``proj`` objects.
+  """
+
+  def _launch_resolve(self, std, proj, target):
+    from kanibako.commands.start import _resolve_launch_snapshot
+
+    return _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=target,
+      deliver_creds=True,
+      cli_level=None,
+    )
+
+  def _launch_entries(self, std, proj, target):
+    """The DECLARATIONS a real launch resolve produced.
+
+    Re-adapted from the resolved snapshot by the SAME call the seam makes.
     """
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
-    def _launch_resolve(self, std, proj, target):
-        from kanibako.commands.start import _resolve_launch_snapshot
+    snapshot, _deliveries = self._launch_resolve(std, proj, target)
+    ctx = resolve_inputs(
+      subject=ResolveSubject.BOX,
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_path=std.settings,
+    ).ctx
+    return snapshot_category_entries(
+      snapshot,
+      active_agent="claude",
+      box_ctx=ctx,
+    )
 
-        return _resolve_launch_snapshot(
-            std=std,
-            proj=proj,
-            agent_name="claude",
-            system_settings_path=None,
-            agent_cfg_path=None,
-            desc=None,
-            install=None,
-            target=target,
-            deliver_creds=True,
-            cli_level=None,
+  def _main_source_policy(self, deliveries):
+    """The MAIN emit's missing-source policy, spelled as ``commands/start.py``
+    spells it, as the ``(must_exist, skip_if_absent)`` pair it hands over.
+
+    ⚑ THE SPELLING IS THE POINT (N3): ``_emit_category_mounts`` cannot tell a
+    set that matches nothing from an empty one, so a differently-spelled copy
+    here would test the harness rather than the launch.
+    ⚑ ``_launch_resolve`` passes ``desc=None`` and ``install=None`` here, so the
+    AGENT_CRITICAL arm is the EMPTY set by the call site's OWN guard — the same
+    value ``start.py`` computes for this launch.
+    """
+    critical_dests: frozenset[str] = frozenset()
+    must_exist = critical_dests | core_defaults.rom_must_exist_dests()
+    return must_exist, (
+      core_defaults.canon_silent_dests() | (deliveries.agent_dests - critical_dests)
+    ) - must_exist
+
+  def _launch_mounts(self, std, proj, target) -> dict:
+    from kanibako.commands.start import (
+      _emit_category_mounts,
+      _launch_bind_map,
+    )
+
+    snapshot, deliveries = self._launch_resolve(std, proj, target)
+    must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    mounts = _emit_category_mounts(
+      _launch_bind_map(snapshot),
+      label="canon-wiring",
+      must_exist=must_exist,
+      skip_if_absent=skip_if_absent,
+    )
+    return {m.destination: m for m in mounts}
+
+  def test_all_five_core_canon_binds_reach_a_real_launch(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """RED if ``core_defaults.rom_default_categories()`` stops being unioned
+    into the launch snapshot: every canon mount vanishes from the emitted set."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    by_dest = self._launch_mounts(std, proj, _WiringTarget())
+
+    for dest in _CORE_DESTS:
+      assert dest in by_dest, sorted(by_dest)
+      assert by_dest[dest].options == "ro"
+    # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
+    # and ~/canon/charter is the retired whole-dir bind.
+    assert f"{GUEST_HOME}/canon" not in by_dest
+    assert f"{GUEST_HOME}/canon/charter" not in by_dest
+
+  def _write_box_settings(self, proj, box_table: dict) -> Path:
+    """Write *box_table* as the box file's ``box:`` table; return the file."""
+    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    box_path, _ = box_workset_settings_paths(proj)
+    doc = load_doc(box_path) if box_path.exists() else {}
+    doc.setdefault("box", {}).update(box_table)
+    dump_doc(box_path, doc)
+    return box_path
+
+  def test_a_fresh_box_launch_snapshot_carries_every_box_scalar(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """Spec §0/§2b: every declared box scalar resolves in the MAIN launch snapshot,
+    ``box.shell``'s ``<None>`` as a PRESENT ``None`` (keyspec §0 "it must RESOLVE").
+    RED if ``build_launch_snapshot`` stops folding
+    ``config.box_scalar_defaults_floor``."""
+    from kanibako.settings.config import box_scalar_defaults_floor
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
+    floor = box_scalar_defaults_floor()
+    assert set(floor) == {
+      "box.image",
+      "box.share_images",
+      "box.enable_vault",
+      "box.shell",
+    }
+    for key, value in floor.items():
+      assert snapshot_leaf(snapshot, key) is not __MISSING__, key
+      assert snapshot_leaf(snapshot, key) == value, key
+    assert snapshot_leaf(snapshot, "box.shell") is None
+
+  def test_an_embedded_ref_to_the_floored_box_shell_drops_the_box_canon_bind(
+    self,
+    std,
+    config,
+    project_dir,
+    caplog,
+  ):
+    """``box.canon={box.shell}/sub`` on a box with no ``box.shell`` set: the floored
+    present ``None`` makes the whole value ``None`` (embedded ref), so the box's
+    handbook bind is skipped and the warning names the file that set ``box.canon``.
+    Before the floor, ``box.shell`` was ABSENT and the source rendered ``/sub``."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    dest = f"{GUEST_HOME}/canon/handbook/box"
+    assert dest in {e.box_dest for e in self._launch_entries(std, proj, _WiringTarget())}
+    box_path = self._write_box_settings(proj, {"canon": "{box.shell}/sub"})
+
+    with caplog.at_level(logging.WARNING, logger="kanibako"):
+      entries = self._launch_entries(std, proj, _WiringTarget())
+    assert dest not in {e.box_dest for e in entries}
+    assert not any(str(e.host_src).startswith("/sub") for e in entries)
+    assert f"references box.canon (in {box_path})" in caplog.text
+
+  def test_a_user_set_box_shell_still_beats_the_floor(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """A box file's ``box.shell`` / ``box.image`` outrank the floor by merge level,
+    and the embedded ref then renders the user's value."""
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    self._write_box_settings(
+      proj,
+      {
+        "shell": "/bin/zsh",
+        "image": "example.org/rig:1",
+        "canon": "{box.shell}/sub",
+      },
+    )
+    snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
+    assert snapshot_leaf(snapshot, "box.shell") == "/bin/zsh"
+    assert snapshot_leaf(snapshot, "box.image") == "example.org/rig:1"
+    by_dest = {e.box_dest: e for e in self._launch_entries(std, proj, _WiringTarget())}
+    assert by_dest[f"{GUEST_HOME}/canon/handbook/box"].host_src == ("/bin/zsh/sub/handbook")
+
+  def test_plugin_chapter_bind_reaches_a_real_launch(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+  ):
+    """RED if ``core_defaults.rom_agent_default_categories(target)`` stops being
+    unioned in: the chapter mount vanishes."""
+    chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
+
+    agent_dest = f"{GUEST_HOME}/canon/charter/agent"
+    assert agent_dest in by_dest, sorted(by_dest)
+    assert by_dest[agent_dest].options == "ro"
+    assert Path(by_dest[agent_dest].source) == chapter
+
+  @pytest.mark.parametrize("arm", [None, {}], ids=["null", "empty"])
+  def test_a_reset_user_ro_arm_keeps_every_internal_bind(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+    arm,
+  ):
+    """Spec §2c: the INTERNAL binds are not user keys, so a user's
+    ``box.bindings.ro: null`` / ``{}`` still delivers every one — kanibako's own
+    CLI included. RED before the post-merge re-impose: a null arm dropped them all."""
+    chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    self._write_box_settings(proj, {"bindings": {"ro": arm}})
+
+    by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
+    internal = {
+      dest for arm_key, dest in core_defaults.internal_bind_keys() if arm_key == "box.bindings.ro"
+    }
+    # storage.conf rides the conditional IMAGE resolve, not the main one.
+    internal.discard(f"{GUEST_HOME}/.config/containers/storage.conf")
+    assert {"/opt/kanibako/kanibako", f"{GUEST_HOME}/.local/bin/kanibako"} <= internal
+    for dest in internal:
+      assert dest in by_dest, (dest, sorted(by_dest))
+      assert by_dest[dest].options == "ro"
+
+  def test_a_user_ro_entry_merges_beside_the_internal_binds(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+  ):
+    """A user entry at its OWN dest merges beside the internal binds."""
+    import kanibako
+
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    self._write_box_settings(proj, {"bindings": {"ro": {"~/mine": [str(mine)]}}})
+
+    by_dest = self._launch_mounts(std, proj, _WiringTarget())
+    assert Path(by_dest[f"{GUEST_HOME}/mine"].source) == mine
+    assert Path(by_dest["/opt/kanibako/kanibako"].source) == (Path(kanibako.__file__).parent)
+    assert f"{GUEST_HOME}/.local/bin/kanibako" in by_dest
+
+  @pytest.mark.parametrize(
+    ("box_table", "label"),
+    [
+      (
+        {"bindings": {"ro": {"/opt/kanibako/kanibako": ["/evil"]}}},
+        "box.bindings.ro[/opt/kanibako/kanibako]",
+      ),
+      (
+        {"bindings": {"ro": {"~/.local/bin/kanibako": None}}},
+        f"box.bindings.ro[{GUEST_HOME}/.local/bin/kanibako]",
+      ),
+      (
+        {"bindings": {"rw": {"/opt/kanibako/kanibako/": ["/evil"]}}},
+        "box.bindings.rw[/opt/kanibako/kanibako]",
+      ),
+      (
+        {"masks": {"~/.config/kanibako/kickoff.md": True}},
+        f"box.masks[{GUEST_HOME}/.config/kanibako/kickoff.md]",
+      ),
+    ],
+    ids=["ro-list", "ro-null", "rw-trailing-slash", "masks"],
+  )
+  def test_a_user_entry_at_an_internal_dest_refuses_naming_it_and_its_file(
+    self,
+    std,
+    config,
+    project_dir,
+    box_table,
+    label,
+  ):
+    """Spec §2c: an internal bind is not repointable, so a settings entry at its
+    dest — a source or a null, in any dest-keyed category — REFUSES, naming the
+    entry and its file. RED before the refusal: the re-impose overrode it silently
+    (and rc2 let it repoint kanibako's own CLI)."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    box_path = self._write_box_settings(proj, box_table)
+
+    with pytest.raises(SettingsError) as excinfo:
+      self._launch_resolve(std, proj, _WiringTarget())
+    message = str(excinfo.value)
+    assert f"{label} in {box_path} is at the destination of an internal kanibako bind" in message
+    assert "not repointable; remove the entry" in message
+
+  def test_gate_negative_yields_no_mount_but_the_skeleton_still_pre_created_it(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+  ):
+    """⚑ THE GATE-FALSE SHAPE J-7 SPECIFIES: no bind, but the mountpoint EXISTS in
+    the box home as an empty root-owned directory. The dangling ``@agent/`` import
+    warning from the flattener is the honest signal — not a missing directory."""
+    bare = tmp_path / "plugin-pkg" / "data" / "rom"
+    bare.mkdir(parents=True)
+    (bare / "_bundled_future_use_").write_text("")
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
+    assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
+
+    with patch("kanibako.runtime.container.ContainerRuntime"):
+      core_defaults.materialize_canon_skeleton(proj.shell_path)
+    chapter_dir = proj.shell_path / "canon" / "charter" / "agent"
+    assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
+    assert not any(chapter_dir.iterdir()), "and it must be EMPTY"
+
+  def test_core_canon_binds_land_even_without_an_agent(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """A no-agent (plain shell) box still gets the canon: the five core binds are
+    emitted OUTSIDE the ``target is not None`` block, only the plugin chapter is
+    inside it."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    by_dest = self._launch_mounts(std, proj, None)
+
+    for dest in _CORE_DESTS:
+      assert dest in by_dest
+    assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
+
+  def test_an_absent_chapter_is_SKIPPED_SILENTLY_at_a_real_launch(
+    self,
+    std,
+    config,
+    project_dir,
+    caplog,
+  ):
+    """⚑⚑ THE SILENT SET AT THE REAL LAUNCH SEAM.
+
+    A box with no workset/box/agent handbook chapter is almost every box, so a
+    warning here is the noise that trains users to ignore warnings.
+
+    The loop is over every HANDBOOK chapter the silent set holds — all four,
+    ``general`` included — so the set cannot quietly shrink past a chapter.  The
+    plugin's chapter is out of scope here: this fixture ships no ``rom_root``, so
+    the arm is never emitted and there is nothing to drop;
+    ``test_a_plugin_chapter_source_vanished_before_emit_is_SILENT`` plants a real
+    one to cover it.
+
+    RED if ``skip_if_absent`` stops reaching ``_emit_category_mounts``, or
+    reaches it KEY-spelled: a key-spelled set matches no destination, the debug
+    omission disappears and the chapters start warning on every launch —
+    the silent degradation ``critical_keys`` already paid for once.
+    """
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    silent = core_defaults.canon_silent_dests()
+    chapters = {d for d in silent if d.startswith(f"{GUEST_HOME}/canon/handbook/")}
+    assert chapters == {
+      normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{c}") for c in HANDBOOK_CHAPTERS
+    }, sorted(chapters)
+
+    with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+      by_dest = self._launch_mounts(std, proj, _WiringTarget())
+
+    omitted = [r.getMessage() for r in caplog.records if "bind omitted" in r.getMessage()]
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    for dest in chapters:
+      assert dest not in by_dest, "the fixture must have no chapter to bind"
+      assert any(dest in m for m in omitted), (dest, omitted)
+      assert not any(dest in m for m in warned), (dest, warned)
+
+  def test_a_missing_core_rom_source_at_emit_raises_BindingSourceError(
+    self,
+    std,
+    config,
+    project_dir,
+    fake_rom,
+  ):
+    """⚑⚑ D3, THE EMIT HALF, at the real launch seam.
+
+    ``rom_default_categories()`` already RAISES at RESOLVE time on a broken
+    packaged install, which is the same guarantee ``TestFailClosed`` pins. That
+    cannot see the narrower race this pins: a source that resolved fine and
+    then VANISHED before the bind map was emitted. Warn-and-drop would answer it
+    with a per-launch warning and a box quietly short one chapter of its own
+    directives — the exact loss the resolve-time guard exists to prevent.
+    """
+    import shutil
+
+    from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+    from kanibako.targets.assembly import BindingSourceError
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+    # Resolve SUCCEEDED — the fake rom is complete — and only then does one
+    # emitted source go missing.
+    shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
+
+    must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    with pytest.raises(BindingSourceError) as excinfo:
+      _emit_category_mounts(
+        _launch_bind_map(snapshot),
+        label="canon-wiring",
+        must_exist=must_exist,
+        skip_if_absent=skip_if_absent,
+      )
+    assert f"{GUEST_HOME}/canon/charter/box" in str(excinfo.value)
+
+  def test_an_absent_general_chapter_is_SILENT_and_SYS_CONTENTS_still_warns(
+    self,
+    std,
+    config,
+    project_dir,
+    caplog,
+  ):
+    """⚑⚑ D5, THE ONE SPLIT IN THE ``canon:`` TABLE, on the real launch seam.
+
+    Every handbook ``canon:`` destination except ``SYS_CONTENTS.md`` is silent,
+    the chapter CONTENT, whose absence is the normal case for most boxes. The
+    table of contents keeps L7's warn-and-drop default, because a box that
+    loses it silently loses the one file naming every chapter it has.
+
+    ⚑ RED before this change on the ``general`` half alone: it carries no
+    ``optional: true`` flag, so it fell to warn-and-drop and warned on every
+    launch of every box whose system canon has no ``handbook/general``.
+    """
+    from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+    bind_map = _launch_bind_map(snapshot)
+
+    general = f"{GUEST_HOME}/canon/handbook/general"
+    contents = f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md"
+    general_src = Path(bind_map[general].src)
+    contents_src = Path(bind_map[contents].src)
+    assert not general_src.exists(), "the fixture must have no general chapter"
+    assert not contents_src.exists(), "nor a system handbook table of contents"
+
+    must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+      by_dest = {
+        m.destination: m
+        for m in _emit_category_mounts(
+          bind_map,
+          label="canon-wiring",
+          must_exist=must_exist,
+          skip_if_absent=skip_if_absent,
         )
-
-    def _launch_entries(self, std, proj, target):
-        """The DECLARATIONS a real launch resolve produced.
-
-        Re-adapted from the resolved snapshot by the SAME call the seam makes.
-        """
-        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
-
-        snapshot, _deliveries = self._launch_resolve(std, proj, target)
-        ctx = resolve_inputs(
-            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
-            system_path=std.settings,
-        ).ctx
-        return snapshot_category_entries(
-            snapshot, active_agent="claude", box_ctx=ctx,
-        )
-
-    def _main_source_policy(self, deliveries):
-        """The MAIN emit's missing-source policy, spelled as ``commands/start.py``
-        spells it, as the ``(must_exist, skip_if_absent)`` pair it hands over.
-
-        ⚑ THE SPELLING IS THE POINT (N3): ``_emit_category_mounts`` cannot tell a
-        set that matches nothing from an empty one, so a differently-spelled copy
-        here would test the harness rather than the launch.
-        ⚑ ``_launch_resolve`` passes ``desc=None`` and ``install=None`` here, so the
-        AGENT_CRITICAL arm is the EMPTY set by the call site's OWN guard — the same
-        value ``start.py`` computes for this launch.
-        """
-        critical_dests: frozenset[str] = frozenset()
-        must_exist = critical_dests | core_defaults.rom_must_exist_dests()
-        return must_exist, (
-            core_defaults.canon_silent_dests() | (deliveries.agent_dests - critical_dests)
-        ) - must_exist
-
-    def _launch_mounts(self, std, proj, target) -> dict:
-        from kanibako.commands.start import (
-            _emit_category_mounts,
-            _launch_bind_map,
-        )
-
-        snapshot, deliveries = self._launch_resolve(std, proj, target)
-        must_exist, skip_if_absent = self._main_source_policy(deliveries)
-        mounts = _emit_category_mounts(
-            _launch_bind_map(snapshot), label="canon-wiring",
-            must_exist=must_exist,
-            skip_if_absent=skip_if_absent,
-        )
-        return {m.destination: m for m in mounts}
-
-    def test_all_five_core_canon_binds_reach_a_real_launch(
-        self, std, config, project_dir,
-    ):
-        """RED if ``core_defaults.rom_default_categories()`` stops being unioned
-        into the launch snapshot: every canon mount vanishes from the emitted set."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        by_dest = self._launch_mounts(std, proj, _WiringTarget())
-
-        for dest in _CORE_DESTS:
-            assert dest in by_dest, sorted(by_dest)
-            assert by_dest[dest].options == "ro"
-        # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
-        # and ~/canon/charter is the retired whole-dir bind.
-        assert f"{GUEST_HOME}/canon" not in by_dest
-        assert f"{GUEST_HOME}/canon/charter" not in by_dest
-
-    def _write_box_settings(self, proj, box_table: dict) -> Path:
-        """Write *box_table* as the box file's ``box:`` table; return the file."""
-        from kanibako.settings.config_io import dump_doc, load_doc
-        from kanibako.settings.paths import box_workset_settings_paths
-
-        box_path, _ = box_workset_settings_paths(proj)
-        doc = load_doc(box_path) if box_path.exists() else {}
-        doc.setdefault("box", {}).update(box_table)
-        dump_doc(box_path, doc)
-        return box_path
-
-    def test_a_fresh_box_launch_snapshot_carries_every_box_scalar(
-        self, std, config, project_dir,
-    ):
-        """Spec §0/§2b: every declared box scalar resolves in the MAIN launch snapshot,
-        ``box.shell``'s ``<None>`` as a PRESENT ``None`` (keyspec §0 "it must RESOLVE").
-        RED if ``build_launch_snapshot`` stops folding
-        ``config.box_scalar_defaults_floor``."""
-        from kanibako.settings.config import box_scalar_defaults_floor
-        from kanibako.settings.kb_store import __MISSING__
-        from kanibako.settings.settings_launch import snapshot_leaf
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
-        floor = box_scalar_defaults_floor()
-        assert set(floor) == {
-            "box.image", "box.share_images", "box.enable_vault", "box.shell",
-        }
-        for key, value in floor.items():
-            assert snapshot_leaf(snapshot, key) is not __MISSING__, key
-            assert snapshot_leaf(snapshot, key) == value, key
-        assert snapshot_leaf(snapshot, "box.shell") is None
-
-    def test_an_embedded_ref_to_the_floored_box_shell_drops_the_box_canon_bind(
-        self, std, config, project_dir, caplog,
-    ):
-        """``box.canon={box.shell}/sub`` on a box with no ``box.shell`` set: the floored
-        present ``None`` makes the whole value ``None`` (embedded ref), so the box's
-        handbook bind is skipped and the warning names the file that set ``box.canon``.
-        Before the floor, ``box.shell`` was ABSENT and the source rendered ``/sub``."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        dest = f"{GUEST_HOME}/canon/handbook/box"
-        assert dest in {e.box_dest for e in self._launch_entries(
-            std, proj, _WiringTarget())}
-        box_path = self._write_box_settings(proj, {"canon": "{box.shell}/sub"})
-
-        with caplog.at_level(logging.WARNING, logger="kanibako"):
-            entries = self._launch_entries(std, proj, _WiringTarget())
-        assert dest not in {e.box_dest for e in entries}
-        assert not any(str(e.host_src).startswith("/sub") for e in entries)
-        assert f"references box.canon (in {box_path})" in caplog.text
-
-    def test_a_user_set_box_shell_still_beats_the_floor(
-        self, std, config, project_dir,
-    ):
-        """A box file's ``box.shell`` / ``box.image`` outrank the floor by merge level,
-        and the embedded ref then renders the user's value."""
-        from kanibako.settings.settings_launch import snapshot_leaf
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        self._write_box_settings(proj, {
-            "shell": "/bin/zsh", "image": "example.org/rig:1",
-            "canon": "{box.shell}/sub",
-        })
-        snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
-        assert snapshot_leaf(snapshot, "box.shell") == "/bin/zsh"
-        assert snapshot_leaf(snapshot, "box.image") == "example.org/rig:1"
-        by_dest = {e.box_dest: e for e in self._launch_entries(
-            std, proj, _WiringTarget())}
-        assert by_dest[f"{GUEST_HOME}/canon/handbook/box"].host_src == (
-            "/bin/zsh/sub/handbook"
-        )
-
-    def test_plugin_chapter_bind_reaches_a_real_launch(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """RED if ``core_defaults.rom_agent_default_categories(target)`` stops being
-        unioned in: the chapter mount vanishes."""
-        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
-
-        agent_dest = f"{GUEST_HOME}/canon/charter/agent"
-        assert agent_dest in by_dest, sorted(by_dest)
-        assert by_dest[agent_dest].options == "ro"
-        assert Path(by_dest[agent_dest].source) == chapter
-
-    @pytest.mark.parametrize("arm", [None, {}], ids=["null", "empty"])
-    def test_a_reset_user_ro_arm_keeps_every_internal_bind(
-        self, std, config, project_dir, tmp_path, arm,
-    ):
-        """Spec §2c: the INTERNAL binds are not user keys, so a user's
-        ``box.bindings.ro: null`` / ``{}`` still delivers every one — kanibako's own
-        CLI included. RED before the post-merge re-impose: a null arm dropped them all."""
-        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        self._write_box_settings(proj, {"bindings": {"ro": arm}})
-
-        by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
-        internal = {
-            dest for arm_key, dest in core_defaults.internal_bind_keys()
-            if arm_key == "box.bindings.ro"
-        }
-        # storage.conf rides the conditional IMAGE resolve, not the main one.
-        internal.discard(f"{GUEST_HOME}/.config/containers/storage.conf")
-        assert {"/opt/kanibako/kanibako", f"{GUEST_HOME}/.local/bin/kanibako"} <= internal
-        for dest in internal:
-            assert dest in by_dest, (dest, sorted(by_dest))
-            assert by_dest[dest].options == "ro"
-
-    def test_a_user_ro_entry_merges_beside_the_internal_binds(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """A user entry at its OWN dest merges beside the internal binds."""
-        import kanibako
-
-        mine = tmp_path / "mine"
-        mine.mkdir()
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        self._write_box_settings(proj, {"bindings": {"ro": {"~/mine": [str(mine)]}}})
-
-        by_dest = self._launch_mounts(std, proj, _WiringTarget())
-        assert Path(by_dest[f"{GUEST_HOME}/mine"].source) == mine
-        assert Path(by_dest["/opt/kanibako/kanibako"].source) == (
-            Path(kanibako.__file__).parent
-        )
-        assert f"{GUEST_HOME}/.local/bin/kanibako" in by_dest
-
-    @pytest.mark.parametrize(("box_table", "label"), [
-        (
-            {"bindings": {"ro": {"/opt/kanibako/kanibako": ["/evil"]}}},
-            "box.bindings.ro[/opt/kanibako/kanibako]",
-        ),
-        (
-            {"bindings": {"ro": {"~/.local/bin/kanibako": None}}},
-            f"box.bindings.ro[{GUEST_HOME}/.local/bin/kanibako]",
-        ),
-        (
-            {"bindings": {"rw": {"/opt/kanibako/kanibako/": ["/evil"]}}},
-            "box.bindings.rw[/opt/kanibako/kanibako]",
-        ),
-        (
-            {"masks": {"~/.config/kanibako/kickoff.md": True}},
-            f"box.masks[{GUEST_HOME}/.config/kanibako/kickoff.md]",
-        ),
-    ], ids=["ro-list", "ro-null", "rw-trailing-slash", "masks"])
-    def test_a_user_entry_at_an_internal_dest_refuses_naming_it_and_its_file(
-        self, std, config, project_dir, box_table, label,
-    ):
-        """Spec §2c: an internal bind is not repointable, so a settings entry at its
-        dest — a source or a null, in any dest-keyed category — REFUSES, naming the
-        entry and its file. RED before the refusal: the re-impose overrode it silently
-        (and rc2 let it repoint kanibako's own CLI)."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        box_path = self._write_box_settings(proj, box_table)
-
-        with pytest.raises(SettingsError) as excinfo:
-            self._launch_resolve(std, proj, _WiringTarget())
-        message = str(excinfo.value)
-        assert f"{label} in {box_path} is at the destination of an internal kanibako bind" in message
-        assert "not repointable; remove the entry" in message
-
-    def test_gate_negative_yields_no_mount_but_the_skeleton_still_pre_created_it(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """⚑ THE GATE-FALSE SHAPE J-7 SPECIFIES: no bind, but the mountpoint EXISTS in
-        the box home as an empty root-owned directory. The dangling ``@agent/`` import
-        warning from the flattener is the honest signal — not a missing directory."""
-        bare = tmp_path / "plugin-pkg" / "data" / "rom"
-        bare.mkdir(parents=True)
-        (bare / "_bundled_future_use_").write_text("")
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
-        assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
-
-        with patch("kanibako.runtime.container.ContainerRuntime"):
-            core_defaults.materialize_canon_skeleton(proj.shell_path)
-        chapter_dir = proj.shell_path / "canon" / "charter" / "agent"
-        assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
-        assert not any(chapter_dir.iterdir()), "and it must be EMPTY"
-
-    def test_core_canon_binds_land_even_without_an_agent(
-        self, std, config, project_dir,
-    ):
-        """A no-agent (plain shell) box still gets the canon: the five core binds are
-        emitted OUTSIDE the ``target is not None`` block, only the plugin chapter is
-        inside it."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        by_dest = self._launch_mounts(std, proj, None)
-
-        for dest in _CORE_DESTS:
-            assert dest in by_dest
-        assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
-
-    def test_an_absent_chapter_is_SKIPPED_SILENTLY_at_a_real_launch(
-        self, std, config, project_dir, caplog,
-    ):
-        """⚑⚑ THE SILENT SET AT THE REAL LAUNCH SEAM.
-
-        A box with no workset/box/agent handbook chapter is almost every box, so a
-        warning here is the noise that trains users to ignore warnings.
-
-        The loop is over every HANDBOOK chapter the silent set holds — all four,
-        ``general`` included — so the set cannot quietly shrink past a chapter.  The
-        plugin's chapter is out of scope here: this fixture ships no ``rom_root``, so
-        the arm is never emitted and there is nothing to drop;
-        ``test_a_plugin_chapter_source_vanished_before_emit_is_SILENT`` plants a real
-        one to cover it.
-
-        RED if ``skip_if_absent`` stops reaching ``_emit_category_mounts``, or
-        reaches it KEY-spelled: a key-spelled set matches no destination, the debug
-        omission disappears and the chapters start warning on every launch —
-        the silent degradation ``critical_keys`` already paid for once.
-        """
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        silent = core_defaults.canon_silent_dests()
-        chapters = {
-            d for d in silent if d.startswith(f"{GUEST_HOME}/canon/handbook/")
-        }
-        assert chapters == {
-            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{c}")
-            for c in HANDBOOK_CHAPTERS
-        }, sorted(chapters)
-
-        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
-            by_dest = self._launch_mounts(std, proj, _WiringTarget())
-
-        omitted = [r.getMessage() for r in caplog.records if "bind omitted" in r.getMessage()]
-        warned = [
-            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
-        ]
-        for dest in chapters:
-            assert dest not in by_dest, "the fixture must have no chapter to bind"
-            assert any(dest in m for m in omitted), (dest, omitted)
-            assert not any(dest in m for m in warned), (dest, warned)
-
-    def test_a_missing_core_rom_source_at_emit_raises_BindingSourceError(
-        self, std, config, project_dir, fake_rom,
-    ):
-        """⚑⚑ D3, THE EMIT HALF, at the real launch seam.
-
-        ``rom_default_categories()`` already RAISES at RESOLVE time on a broken
-        packaged install, which is the same guarantee ``TestFailClosed`` pins. That
-        cannot see the narrower race this pins: a source that resolved fine and
-        then VANISHED before the bind map was emitted. Warn-and-drop would answer it
-        with a per-launch warning and a box quietly short one chapter of its own
-        directives — the exact loss the resolve-time guard exists to prevent.
-        """
-        import shutil
-
-        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
-        from kanibako.targets.assembly import BindingSourceError
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
-        # Resolve SUCCEEDED — the fake rom is complete — and only then does one
-        # emitted source go missing.
-        shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
-
-        must_exist, skip_if_absent = self._main_source_policy(deliveries)
-        with pytest.raises(BindingSourceError) as excinfo:
-            _emit_category_mounts(
-                _launch_bind_map(snapshot), label="canon-wiring",
-                must_exist=must_exist, skip_if_absent=skip_if_absent,
-            )
-        assert f"{GUEST_HOME}/canon/charter/box" in str(excinfo.value)
-
-    def test_an_absent_general_chapter_is_SILENT_and_SYS_CONTENTS_still_warns(
-        self, std, config, project_dir, caplog,
-    ):
-        """⚑⚑ D5, THE ONE SPLIT IN THE ``canon:`` TABLE, on the real launch seam.
-
-        Every handbook ``canon:`` destination except ``SYS_CONTENTS.md`` is silent,
-        the chapter CONTENT, whose absence is the normal case for most boxes. The
-        table of contents keeps L7's warn-and-drop default, because a box that
-        loses it silently loses the one file naming every chapter it has.
-
-        ⚑ RED before this change on the ``general`` half alone: it carries no
-        ``optional: true`` flag, so it fell to warn-and-drop and warned on every
-        launch of every box whose system canon has no ``handbook/general``.
-        """
-        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
-        bind_map = _launch_bind_map(snapshot)
-
-        general = f"{GUEST_HOME}/canon/handbook/general"
-        contents = f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md"
-        general_src = Path(bind_map[general].src)
-        contents_src = Path(bind_map[contents].src)
-        assert not general_src.exists(), "the fixture must have no general chapter"
-        assert not contents_src.exists(), "nor a system handbook table of contents"
-
-        must_exist, skip_if_absent = self._main_source_policy(deliveries)
-        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
-            by_dest = {
-                m.destination: m for m in _emit_category_mounts(
-                    bind_map, label="canon-wiring",
-                    must_exist=must_exist, skip_if_absent=skip_if_absent,
-                )
-            }
-
-        assert general not in by_dest
-        assert contents not in by_dest
-        warned = [
-            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
-        ]
-        assert not any(general in m for m in warned), warned
-        sys_warnings = [m for m in warned if "SYS_CONTENTS.md" in m]
-        assert len(sys_warnings) == 1, warned
-        # ⚑ AND the drop happened BEFORE the rw guarantee-create: an absent source
-        # at a silent dest is not manufactured into an empty directory, which would
-        # make a box LOOK as though it had the chapter.
-        assert not general_src.exists()
-        assert not contents_src.exists()
-
-    def test_a_plugin_chapter_source_vanished_before_emit_is_SILENT(
-        self, std, config, project_dir, tmp_path, caplog,
-    ):
-        """⚑⚑ D5, THE PLUGIN CHAPTER. ``_rom_agent_chapter_dest()`` is in the SILENT
-        set and NOT in the must-exist set, so a chapter source that disappears
-        between resolve and emit is omitted silently — not refused, not warned.
-
-        A gate-false plugin (no ``ROM_AGENT.md``) emits no bind at all, so this is
-        the ONLY way the chapter dest can reach the emitter with a missing source.
-        RED before this change: the dest took L7's warn-and-drop default, so every
-        plugin that momentarily lost its chapter warned on that launch.
-        """
-        import shutil
-
-        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
-
-        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget(chapter))
-        agent_dest = f"{GUEST_HOME}/canon/charter/agent"
-        assert agent_dest in _launch_bind_map(snapshot), "the gate must be TRUE here"
-
-        shutil.rmtree(chapter)  # vanishes AFTER the resolve emitted its bind
-
-        must_exist, skip_if_absent = self._main_source_policy(deliveries)
-        assert agent_dest in skip_if_absent
-        assert agent_dest not in must_exist
-        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
-            mounts = _emit_category_mounts(
-                _launch_bind_map(snapshot), label="canon-wiring",
-                must_exist=must_exist, skip_if_absent=skip_if_absent,
-            )
-
-        assert agent_dest not in {m.destination for m in mounts}
-        warned = [
-            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
-        ]
-        assert not any(agent_dest in m for m in warned), warned
-
-    def test_a_dest_in_BOTH_policy_sets_RAISES_rather_than_being_skipped(
-        self, std, config, project_dir, fake_rom,
-    ):
-        """🛑 THE OVERLAP, CONSTRUCTED, WITH ITS OUTCOME SHOWN.
-
-        The shipped ``rom_must_exist_dests()`` and ``canon_silent_dests()`` are
-        DISJOINT (asserted above), so the overlap the main emit's ``-
-        must_exist`` exists to prevent cannot be reached from the shipped rows.
-        This builds one: a core rom destination is added to the SILENT set, which is
-        exactly what a future ``canon:`` row at a core rom destination — or a plugin
-        declaring one — would produce.
-
-        The outcome is a RAISE, and that is the point in both directions. Left
-        unsplit the emitter would STILL raise, because it consults ``must_exist``
-        first: the overlap is therefore invisible at the emitter and only the
-        call-site set arithmetic proves the subtraction is there. This test pins the
-        BEHAVIOR half so a future reordering of the emitter's two policy checks
-        cannot silently turn an overlapped dest into a silent skip.
-        """
-        import shutil
-
-        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
-        from kanibako.targets.assembly import BindingSourceError
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
-        bind_map = _launch_bind_map(snapshot)
-
-        planted = f"{GUEST_HOME}/canon/charter/box"
-        must_exist = core_defaults.rom_must_exist_dests()
-        silent_plus = core_defaults.canon_silent_dests() | {planted}
-        assert planted in must_exist & silent_plus, "the overlap must be real"
-
-        shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
-        with pytest.raises(BindingSourceError):
-            _emit_category_mounts(
-                bind_map, label="canon-wiring",
-                must_exist=must_exist, skip_if_absent=silent_plus,
-            )
-
-        # ⚑ AND the SUBTRACTED policy the call site actually builds has no overlap,
-        # which is what makes the raise above a decided outcome rather than an
-        # accident of the emitter's check order.
-        built_must, built_skip = self._main_source_policy(deliveries)
-        assert not (built_must & built_skip), sorted(built_must & built_skip)
-        assert built_must, "and the must-exist half is not empty"
+      }
+
+    assert general not in by_dest
+    assert contents not in by_dest
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not any(general in m for m in warned), warned
+    sys_warnings = [m for m in warned if "SYS_CONTENTS.md" in m]
+    assert len(sys_warnings) == 1, warned
+    # ⚑ AND the drop happened BEFORE the rw guarantee-create: an absent source
+    # at a silent dest is not manufactured into an empty directory, which would
+    # make a box LOOK as though it had the chapter.
+    assert not general_src.exists()
+    assert not contents_src.exists()
+
+  def test_a_plugin_chapter_source_vanished_before_emit_is_SILENT(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+    caplog,
+  ):
+    """⚑⚑ D5, THE PLUGIN CHAPTER. ``_rom_agent_chapter_dest()`` is in the SILENT
+    set and NOT in the must-exist set, so a chapter source that disappears
+    between resolve and emit is omitted silently — not refused, not warned.
+
+    A gate-false plugin (no ``ROM_AGENT.md``) emits no bind at all, so this is
+    the ONLY way the chapter dest can reach the emitter with a missing source.
+    RED before this change: the dest took L7's warn-and-drop default, so every
+    plugin that momentarily lost its chapter warned on that launch.
+    """
+    import shutil
+
+    from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+
+    chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget(chapter))
+    agent_dest = f"{GUEST_HOME}/canon/charter/agent"
+    assert agent_dest in _launch_bind_map(snapshot), "the gate must be TRUE here"
+
+    shutil.rmtree(chapter)  # vanishes AFTER the resolve emitted its bind
+
+    must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    assert agent_dest in skip_if_absent
+    assert agent_dest not in must_exist
+    with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+      mounts = _emit_category_mounts(
+        _launch_bind_map(snapshot),
+        label="canon-wiring",
+        must_exist=must_exist,
+        skip_if_absent=skip_if_absent,
+      )
+
+    assert agent_dest not in {m.destination for m in mounts}
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not any(agent_dest in m for m in warned), warned
+
+  def test_a_dest_in_BOTH_policy_sets_RAISES_rather_than_being_skipped(
+    self,
+    std,
+    config,
+    project_dir,
+    fake_rom,
+  ):
+    """🛑 THE OVERLAP, CONSTRUCTED, WITH ITS OUTCOME SHOWN.
+
+    The shipped ``rom_must_exist_dests()`` and ``canon_silent_dests()`` are
+    DISJOINT (asserted above), so the overlap the main emit's ``-
+    must_exist`` exists to prevent cannot be reached from the shipped rows.
+    This builds one: a core rom destination is added to the SILENT set, which is
+    exactly what a future ``canon:`` row at a core rom destination — or a plugin
+    declaring one — would produce.
+
+    The outcome is a RAISE, and that is the point in both directions. Left
+    unsplit the emitter would STILL raise, because it consults ``must_exist``
+    first: the overlap is therefore invisible at the emitter and only the
+    call-site set arithmetic proves the subtraction is there. This test pins the
+    BEHAVIOR half so a future reordering of the emitter's two policy checks
+    cannot silently turn an overlapped dest into a silent skip.
+    """
+    import shutil
+
+    from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+    from kanibako.targets.assembly import BindingSourceError
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+    bind_map = _launch_bind_map(snapshot)
+
+    planted = f"{GUEST_HOME}/canon/charter/box"
+    must_exist = core_defaults.rom_must_exist_dests()
+    silent_plus = core_defaults.canon_silent_dests() | {planted}
+    assert planted in must_exist & silent_plus, "the overlap must be real"
+
+    shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
+    with pytest.raises(BindingSourceError):
+      _emit_category_mounts(
+        bind_map,
+        label="canon-wiring",
+        must_exist=must_exist,
+        skip_if_absent=silent_plus,
+      )
+
+    # ⚑ AND the SUBTRACTED policy the call site actually builds has no overlap,
+    # which is what makes the raise above a decided outcome rather than an
+    # accident of the emitter's check order.
+    built_must, built_skip = self._main_source_policy(deliveries)
+    assert not (built_must & built_skip), sorted(built_must & built_skip)
+    assert built_must, "and the must-exist half is not empty"
 
 
 # ===========================================================================
@@ -1317,408 +1386,437 @@ class TestLaunchWiring:
 
 
 class TestInternalBindEntryRefusal:
-    """``settings_launch._refuse_internal_bind_entries``, per written level (spec §2c)."""
+  """``settings_launch._refuse_internal_bind_entries``, per written level (spec §2c)."""
 
-    @staticmethod
-    def _refuse(written):
-        from kanibako.settings.settings_launch import _refuse_internal_bind_entries
+  @staticmethod
+  def _refuse(written):
+    from kanibako.settings.settings_launch import _refuse_internal_bind_entries
 
-        _refuse_internal_bind_entries(written)
+    _refuse_internal_bind_entries(written)
 
-    @staticmethod
-    def _level(arms: dict):
-        from kanibako.settings.settings_assemble import dotted_partial
+  @staticmethod
+  def _level(arms: dict):
+    from kanibako.settings.settings_assemble import dotted_partial
 
-        return dotted_partial(arms)
+    return dotted_partial(arms)
 
-    def test_the_folded_floor_s_own_internal_bind_is_not_the_file_s(self, tmp_path):
-        """The ``base`` level carries the floor folded in; an entry still equal to the
-        floor's is kanibako's own bind, and refusing it would blame a file for it."""
-        floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
-        self._refuse([(self._level(floor), tmp_path / "base.yaml", self._level(floor))])
+  def test_the_folded_floor_s_own_internal_bind_is_not_the_file_s(self, tmp_path):
+    """The ``base`` level carries the floor folded in; an entry still equal to the
+    floor's is kanibako's own bind, and refusing it would blame a file for it."""
+    floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
+    self._refuse([(self._level(floor), tmp_path / "base.yaml", self._level(floor))])
 
-    def test_a_base_file_entry_that_differs_from_the_floor_refuses(self, tmp_path):
-        floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
-        site = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/evil",)}}
-        with pytest.raises(SettingsError, match=r"base\.yaml is at the destination"):
-            self._refuse([(self._level(site), tmp_path / "base.yaml", self._level(floor))])
+  def test_a_base_file_entry_that_differs_from_the_floor_refuses(self, tmp_path):
+    floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
+    site = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/evil",)}}
+    with pytest.raises(SettingsError, match=r"base\.yaml is at the destination"):
+      self._refuse([(self._level(site), tmp_path / "base.yaml", self._level(floor))])
 
-    def test_every_offender_in_every_level_is_named_with_its_file(self, tmp_path):
-        """Any dest-keyed category, any scope: one edit per launch would turn N
-        offenders into N launches."""
-        system = {"agent.claude.common": {"/opt/kanibako/kanibako": ("/evil",)}}
-        box = {
-            "box.caches": {f"{GUEST_HOME}/.config/kanibako/kickoff.md": ("/evil",)},
-            "box.bindings.ro": {f"{GUEST_HOME}/mine": ("/mine",)},
-        }
-        with pytest.raises(SettingsError) as excinfo:
-            self._refuse([
-                (self._level(box), tmp_path / "box.yaml", None),
-                (self._level(system), tmp_path / "system.yaml", None),
-            ])
-        message = str(excinfo.value)
-        assert f"box.caches[{GUEST_HOME}/.config/kanibako/kickoff.md] in {tmp_path / 'box.yaml'}" in message
-        assert f"agent.claude.common[/opt/kanibako/kanibako] in {tmp_path / 'system.yaml'}" in message
-        assert f"{GUEST_HOME}/mine" not in message
+  def test_every_offender_in_every_level_is_named_with_its_file(self, tmp_path):
+    """Any dest-keyed category, any scope: one edit per launch would turn N
+    offenders into N launches."""
+    system = {"agent.claude.common": {"/opt/kanibako/kanibako": ("/evil",)}}
+    box = {
+      "box.caches": {f"{GUEST_HOME}/.config/kanibako/kickoff.md": ("/evil",)},
+      "box.bindings.ro": {f"{GUEST_HOME}/mine": ("/mine",)},
+    }
+    with pytest.raises(SettingsError) as excinfo:
+      self._refuse(
+        [
+          (self._level(box), tmp_path / "box.yaml", None),
+          (self._level(system), tmp_path / "system.yaml", None),
+        ]
+      )
+    message = str(excinfo.value)
+    assert (
+      f"box.caches[{GUEST_HOME}/.config/kanibako/kickoff.md] in {tmp_path / 'box.yaml'}" in message
+    )
+    assert f"agent.claude.common[/opt/kanibako/kanibako] in {tmp_path / 'system.yaml'}" in message
+    assert f"{GUEST_HOME}/mine" not in message
 
-    def test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove(
-        self, tmp_path,
-    ):
-        """A present mask at an ANCESTOR swallows the internal bind in the collapse."""
-        box = {"box.masks": {"/opt/kanibako/": True}}
-        with pytest.raises(SettingsError) as excinfo:
-            self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
-        assert (
-            f"box.masks[/opt/kanibako] in {tmp_path / 'box.yaml'} would remove the internal "
-            "kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not suppressible; "
-            "mask a narrower path."
-        ) in str(excinfo.value)
+  def test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove(
+    self,
+    tmp_path,
+  ):
+    """A present mask at an ANCESTOR swallows the internal bind in the collapse."""
+    box = {"box.masks": {"/opt/kanibako/": True}}
+    with pytest.raises(SettingsError) as excinfo:
+      self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
+    assert (
+      f"box.masks[/opt/kanibako] in {tmp_path / 'box.yaml'} would remove the internal "
+      "kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not suppressible; "
+      "mask a narrower path."
+    ) in str(excinfo.value)
 
-    def test_what_cannot_remove_an_internal_bind_is_not_refused(self, tmp_path):
-        """An UNMASK (``None``) above one, a prefix that is not a parent, a mask inside an
-        internal dir, and a mount or copy at a parent (folded parent-first, so the internal
-        bind still mounts on top) all pass."""
-        box = {
-            "box.masks": {
-                f"{GUEST_HOME}/canon": None,
-                "/opt/kanibako2": True,
-                f"{GUEST_HOME}/canon/charter/box/sub": True,
-            },
-            "box.bindings.rw": {"/opt/kanibako": ("/h/p",)},
-            "box.caches": {f"{GUEST_HOME}/canon": ("/h/c",)},
-            "box.seeded": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
-            "box.synced": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
-        }
-        self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
+  def test_what_cannot_remove_an_internal_bind_is_not_refused(self, tmp_path):
+    """An UNMASK (``None``) above one, a prefix that is not a parent, a mask inside an
+    internal dir, and a mount or copy at a parent (folded parent-first, so the internal
+    bind still mounts on top) all pass."""
+    box = {
+      "box.masks": {
+        f"{GUEST_HOME}/canon": None,
+        "/opt/kanibako2": True,
+        f"{GUEST_HOME}/canon/charter/box/sub": True,
+      },
+      "box.bindings.rw": {"/opt/kanibako": ("/h/p",)},
+      "box.caches": {f"{GUEST_HOME}/canon": ("/h/c",)},
+      "box.seeded": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
+      "box.synced": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
+    }
+    self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
 
-    @pytest.mark.parametrize("arm", [
-        '  bindings:\n    rw:\n      "{box.canon}/kanibako": [/tmp/evil]\n',
-        '  caches:\n    "{box.canon}/kanibako": [/tmp/evil]\n',
-    ], ids=["rw", "caches"])
-    def test_an_at_ref_dest_meets_a_collision_that_keeps_the_internal_bind(
-        self, tmp_path, arm,
-    ):
-        """A ``{key}``-ref dest is compared unexpanded, so it passes the written-dest refusal
-        and collides after expand; the collision's remedy must not offer to null the
-        internal bind (spec §2c), which the resolve would then refuse."""
-        from kanibako.errors import CategoryCollisionError
-        from kanibako.settings.kb_store import BindEntry
-        from kanibako.settings.store_collapse import collapse_store_shapes
-        from kanibako.settings.store_shape import build_store_shape_set
+  @pytest.mark.parametrize(
+    "arm",
+    [
+      '  bindings:\n    rw:\n      "{box.canon}/kanibako": [/tmp/evil]\n',
+      '  caches:\n    "{box.canon}/kanibako": [/tmp/evil]\n',
+    ],
+    ids=["rw", "caches"],
+  )
+  def test_an_at_ref_dest_meets_a_collision_that_keeps_the_internal_bind(
+    self,
+    tmp_path,
+    arm,
+  ):
+    """A ``{key}``-ref dest is compared unexpanded, so it passes the written-dest refusal
+    and collides after expand; the collision's remedy must not offer to null the
+    internal bind (spec §2c), which the resolve would then refuse."""
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.store_collapse import collapse_store_shapes
+    from kanibako.settings.store_shape import build_store_shape_set
 
-        box = tmp_path / "box.yaml"
-        box.write_text("box:\n  canon: /opt/kanibako\n" + arm)
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-            workset_path=None, box_path=box,
-            default_categories={"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}},
-        )
-        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        with pytest.raises(CategoryCollisionError) as excinfo:
-            collapse_store_shapes(
-                build_store_shape_set(entries), BindEntry("/h", "Z,U"), entries,
-            )
-        message = " ".join(str(excinfo.value).split())
-        assert (
-            "'/opt/kanibako/kanibako' is an internal kanibako bind (spec §2c), not "
-            "repointable and not suppressible: keep it, and change the other declaration."
-        ) in message
-        assert "suppresses" not in message and ": null" not in message
+    box = tmp_path / "box.yaml"
+    box.write_text("box:\n  canon: /opt/kanibako\n" + arm)
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box,
+      default_categories={"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}},
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    with pytest.raises(CategoryCollisionError) as excinfo:
+      collapse_store_shapes(
+        build_store_shape_set(entries),
+        BindEntry("/h", "Z,U"),
+        entries,
+      )
+    message = " ".join(str(excinfo.value).split())
+    assert (
+      "'/opt/kanibako/kanibako' is an internal kanibako bind (spec §2c), not "
+      "repointable and not suppressible: keep it, and change the other declaration."
+    ) in message
+    assert "suppresses" not in message and ": null" not in message
 
-    def test_the_rule_reads_the_one_internal_list(self):
-        """P13: every ``internal_bind_keys`` dest refuses — the pin is the rule's own list."""
-        for _arm, dest in sorted(core_defaults.internal_bind_keys()):
-            with pytest.raises(SettingsError):
-                self._refuse([(self._level({"box.bindings.rw": {dest: None}}), None, None)])
+  def test_the_rule_reads_the_one_internal_list(self):
+    """P13: every ``internal_bind_keys`` dest refuses — the pin is the rule's own list."""
+    for _arm, dest in sorted(core_defaults.internal_bind_keys()):
+      with pytest.raises(SettingsError):
+        self._refuse([(self._level({"box.bindings.rw": {dest: None}}), None, None)])
 
 
 @pytest.fixture
 def fake_runtime():
-    """Patch ``ContainerRuntime`` at its definition module (the import inside
-    ``_protect_canon_skeleton`` is deferred, so this is the attribute it reads)."""
-    with patch("kanibako.runtime.container.ContainerRuntime") as rt:
-        rt.return_value.unshare_chown.return_value = True
-        rt.return_value.unshare_chmod.return_value = True
-        yield rt
+  """Patch ``ContainerRuntime`` at its definition module (the import inside
+  ``_protect_canon_skeleton`` is deferred, so this is the attribute it reads)."""
+  with patch("kanibako.runtime.container.ContainerRuntime") as rt:
+    rt.return_value.unshare_chown.return_value = True
+    rt.return_value.unshare_chmod.return_value = True
+    yield rt
 
 
 class TestCanonSkeleton:
-    def test_materializes_the_full_declared_set(self, tmp_path, fake_runtime):
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
+  def test_materializes_the_full_declared_set(self, tmp_path, fake_runtime):
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
 
-        for rel, is_dir in core_defaults.canon_skeleton_rels():
-            p = home / rel
-            assert p.exists(), rel
-            assert p.is_dir() == is_dir, rel
+    for rel, is_dir in core_defaults.canon_skeleton_rels():
+      p = home / rel
+      assert p.exists(), rel
+      assert p.is_dir() == is_dir, rel
 
-    def test_the_three_file_mountpoints_are_zero_byte_files(self, tmp_path, fake_runtime):
-        """A FILE bind mounts file-onto-file, so each needs a real (empty) file to
-        land on — not a directory, and not nothing."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
+  def test_the_three_file_mountpoints_are_zero_byte_files(self, tmp_path, fake_runtime):
+    """A FILE bind mounts file-onto-file, so each needs a real (empty) file to
+    land on — not a directory, and not nothing."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
 
-        for rel in (
-            "canon/COLLECTION.md",
-            "canon/charter/ROM_CONTENTS.md",
-            "canon/handbook/SYS_CONTENTS.md",
-        ):
-            p = home / rel
-            assert p.is_file(), rel
-            assert p.stat().st_size == 0, rel
-
-    def test_skeleton_mirrors_the_bind_dests_exactly(self, tmp_path, fake_runtime):
-        """⚑ THE MOUNTPOINT CONTRACT. Every canon bind dest must have a mountpoint in
-        the skeleton. A dest with none is a mountpoint podman creates itself — which
-        under the retired nested model meant mkdir-ing into site-packages, the exact
-        failure J-7 exists to remove."""
-        cats = core_defaults.rom_default_categories()
-        dests = set(cats[_ARM]) | {_CHARTER_AGENT_DEST}
-        skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
-        for dest in dests:
-            assert dest.removeprefix(f"{GUEST_HOME}/") in skeleton, dest
-
-    def test_creates_the_handbook_mountpoints_too(self, tmp_path, fake_runtime):
-        """⚑ The handbook BINDS are the seeds half's (they need ``<scope>.canon``
-        resolution, which does not exist yet) but their MOUNTPOINTS are part of THIS
-        one closed set. J-7 specifies the skeleton as a single set, an absent chapter
-        must show as an empty root-owned dir, and creating them later would mean
-        mkdir-ing into an already-555 tree."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
-
-        assert (home / "canon" / "handbook" / "SYS_CONTENTS.md").is_file()
-        for chapter in HANDBOOK_CHAPTERS:
-            assert (home / "canon" / "handbook" / chapter).is_dir(), chapter
-
-    def test_creates_the_import_fallback_entry_files(self, tmp_path, fake_runtime):
-        """⚑⚑ F1: the three 0-byte IMPORT-FALLBACK files INSIDE the chapter dirs.
-
-        ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and
-        skip-if-absent governs the BIND, not the INDEX — so without these, every box
-        with no workset chapter (i.e. every primary box) printed ``unresolved import
-        workset/SYS_WORKSET.md`` on EVERY launch. With them, an unbound chapter
-        RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the mount,
-        so the store's real file shadows the fallback.
-
-        ⚑ The entry file sits DIRECTLY in the chapter dir. A ``directives/`` level
-        would still materialize a 0-byte file — and still warn on every launch,
-        because nothing imports that path.
-        """
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
-
-        hb = home / "canon" / "handbook"
-        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            fallback = hb / chapter / entry
-            assert fallback.is_file(), fallback
-            assert fallback.read_bytes() == b"", "the fallback must be 0-byte"
-
-    def test_general_gets_no_import_fallback(self, tmp_path, fake_runtime):
-        """⚑ DELIBERATE ASYMMETRY. The system store ALWAYS supplies ``general``, so a
-        fallback there would mask a genuinely missing system handbook — which is
-        precisely what ``canon_hb_general`` being NON-optional exists to surface.
-
-        ⚑ The MOUNTPOINT must still exist (it is bound non-optionally); what must not
-        exist is anything INSIDE it. Asserting emptiness rather than one filename
-        catches a fallback planted under any spelling."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
-
-        general = home / "canon" / "handbook" / "general"
-        assert general.is_dir(), "the general chapter mountpoint is still skeleton-owned"
-        assert not list(general.iterdir()), sorted(general.iterdir())
-
-    def test_the_fallback_names_match_what_SYS_CONTENTS_imports(self):
-        """The fallback paths are only useful if they are the ones the packaged index
-        actually imports — spelled in a different file, so drift is silent.
-
-        ⚑⚑ THE EXPECTATION IS DERIVED FROM THE SKELETON, NEVER RESTATED HERE. The
-        import path is read back out of ``canon_skeleton_rels()`` — the function that
-        PLACES the file — so if the skeleton ever re-introduces a level below the
-        chapter, the derived path stops matching what ``SYS_CONTENTS.md`` imports and
-        this REDS. Spelling the flat form on both sides would make the two agree by
-        construction and detect nothing.
-        """
-        contents = (
-            templates._packaged_base_template()
-            / templates.PACKAGED_HANDBOOK / "SYS_CONTENTS.md"
-        ).read_text()
-        book = f"{core_defaults.CANON_GUEST_ROOT}/{core_defaults.HANDBOOK_REL}"
-        skeleton_files = [
-            rel for rel, is_dir in core_defaults.canon_skeleton_rels() if not is_dir
-        ]
-        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            placed = [
-                rel for rel in skeleton_files
-                if rel.startswith(f"{book}/{chapter}/") and rel.endswith(f"/{entry}")
-            ]
-            assert len(placed) == 1, (chapter, entry, placed)
-            imported = placed[0].removeprefix(f"{book}/")
-            assert _import_line(imported) in contents, (
-                f"SYS_CONTENTS.md does not import {imported!r} (where the skeleton "
-                "puts the fallback); the import-fallback would resolve nothing"
-            )
-
-    def test_fallbacks_are_protected_like_the_rest_of_the_skeleton(
-        self, tmp_path, fake_runtime,
+    for rel in (
+      "canon/COLLECTION.md",
+      "canon/charter/ROM_CONTENTS.md",
+      "canon/handbook/SYS_CONTENTS.md",
     ):
-        """They are MACHINERY, not content: root-owned and unwritable like every
-        other skeleton entry, so the agent cannot edit its own 'empty chapter'.
+      p = home / rel
+      assert p.is_file(), rel
+      assert p.stat().st_size == 0, rel
 
-        ⚑ The chapter dir is covered too — it is the fallback's parent, and it is
-        already a skeleton entry in its own right as that chapter's MOUNTPOINT."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
+  def test_skeleton_mirrors_the_bind_dests_exactly(self, tmp_path, fake_runtime):
+    """⚑ THE MOUNTPOINT CONTRACT. Every canon bind dest must have a mountpoint in
+    the skeleton. A dest with none is a mountpoint podman creates itself — which
+    under the retired nested model meant mkdir-ing into site-packages, the exact
+    failure J-7 exists to remove."""
+    cats = core_defaults.rom_default_categories()
+    dests = set(cats[_ARM]) | {_CHARTER_AGENT_DEST}
+    skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
+    for dest in dests:
+      assert dest.removeprefix(f"{GUEST_HOME}/") in skeleton, dest
 
-        chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
-        covered = {str(p) for p in chown_paths}
-        hb = home / "canon" / "handbook"
-        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            assert str(hb / chapter / entry) in covered
-            assert str(hb / chapter) in covered
+  def test_creates_the_handbook_mountpoints_too(self, tmp_path, fake_runtime):
+    """⚑ The handbook BINDS are the seeds half's (they need ``<scope>.canon``
+    resolution, which does not exist yet) but their MOUNTPOINTS are part of THIS
+    one closed set. J-7 specifies the skeleton as a single set, an absent chapter
+    must show as an empty root-owned dir, and creating them later would mean
+    mkdir-ing into an already-555 tree."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
 
-    def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
-        """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
-        undeletable only because their parent is 555 — intended, per J-7."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
-        assert not (home / "canon" / "notebook").exists()
-        assert not (home / "canon" / "workbook").exists()
+    assert (home / "canon" / "handbook" / "SYS_CONTENTS.md").is_file()
+    for chapter in HANDBOOK_CHAPTERS:
+      assert (home / "canon" / "handbook" / chapter).is_dir(), chapter
 
-    def test_is_idempotent(self, tmp_path, fake_runtime):
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
-        (home / "canon" / "notebook").mkdir()
-        (home / "canon" / "notebook" / "keep.md").write_text("mine\n")
+  def test_creates_the_import_fallback_entry_files(self, tmp_path, fake_runtime):
+    """⚑⚑ F1: the three 0-byte IMPORT-FALLBACK files INSIDE the chapter dirs.
 
-        core_defaults.materialize_canon_skeleton(home)  # must not raise or clobber
-        assert (home / "canon" / "notebook" / "keep.md").read_text() == "mine\n"
+    ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and
+    skip-if-absent governs the BIND, not the INDEX — so without these, every box
+    with no workset chapter (i.e. every primary box) printed ``unresolved import
+    workset/SYS_WORKSET.md`` on EVERY launch. With them, an unbound chapter
+    RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the mount,
+    so the store's real file shadows the fallback.
 
-    def test_chown_covers_everything_with_the_container_root_uid(
-        self, tmp_path, fake_runtime,
+    ⚑ The entry file sits DIRECTLY in the chapter dir. A ``directives/`` level
+    would still materialize a 0-byte file — and still warn on every launch,
+    because nothing imports that path.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+
+    hb = home / "canon" / "handbook"
+    for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+      fallback = hb / chapter / entry
+      assert fallback.is_file(), fallback
+      assert fallback.read_bytes() == b"", "the fallback must be 0-byte"
+
+  def test_general_gets_no_import_fallback(self, tmp_path, fake_runtime):
+    """⚑ DELIBERATE ASYMMETRY. The system store ALWAYS supplies ``general``, so a
+    fallback there would mask a genuinely missing system handbook — which is
+    precisely what ``canon_hb_general`` being NON-optional exists to surface.
+
+    ⚑ The MOUNTPOINT must still exist (it is bound non-optionally); what must not
+    exist is anything INSIDE it. Asserting emptiness rather than one filename
+    catches a fallback planted under any spelling."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+
+    general = home / "canon" / "handbook" / "general"
+    assert general.is_dir(), "the general chapter mountpoint is still skeleton-owned"
+    assert not list(general.iterdir()), sorted(general.iterdir())
+
+  def test_the_fallback_names_match_what_SYS_CONTENTS_imports(self):
+    """The fallback paths are only useful if they are the ones the packaged index
+    actually imports — spelled in a different file, so drift is silent.
+
+    ⚑⚑ THE EXPECTATION IS DERIVED FROM THE SKELETON, NEVER RESTATED HERE. The
+    import path is read back out of ``canon_skeleton_rels()`` — the function that
+    PLACES the file — so if the skeleton ever re-introduces a level below the
+    chapter, the derived path stops matching what ``SYS_CONTENTS.md`` imports and
+    this REDS. Spelling the flat form on both sides would make the two agree by
+    construction and detect nothing.
+    """
+    contents = (
+      templates._packaged_base_template() / templates.PACKAGED_HANDBOOK / "SYS_CONTENTS.md"
+    ).read_text()
+    book = f"{core_defaults.CANON_GUEST_ROOT}/{core_defaults.HANDBOOK_REL}"
+    skeleton_files = [rel for rel, is_dir in core_defaults.canon_skeleton_rels() if not is_dir]
+    for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+      placed = [
+        rel
+        for rel in skeleton_files
+        if rel.startswith(f"{book}/{chapter}/") and rel.endswith(f"/{entry}")
+      ]
+      assert len(placed) == 1, (chapter, entry, placed)
+      imported = placed[0].removeprefix(f"{book}/")
+      assert _import_line(imported) in contents, (
+        f"SYS_CONTENTS.md does not import {imported!r} (where the skeleton "
+        "puts the fallback); the import-fallback would resolve nothing"
+      )
+
+  def test_fallbacks_are_protected_like_the_rest_of_the_skeleton(
+    self,
+    tmp_path,
+    fake_runtime,
+  ):
+    """They are MACHINERY, not content: root-owned and unwritable like every
+    other skeleton entry, so the agent cannot edit its own 'empty chapter'.
+
+    ⚑ The chapter dir is covered too — it is the fallback's parent, and it is
+    already a skeleton entry in its own right as that chapter's MOUNTPOINT."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+
+    chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
+    covered = {str(p) for p in chown_paths}
+    hb = home / "canon" / "handbook"
+    for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+      assert str(hb / chapter / entry) in covered
+      assert str(hb / chapter) in covered
+
+  def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
+    """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
+    undeletable only because their parent is 555 — intended, per J-7."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+    assert not (home / "canon" / "notebook").exists()
+    assert not (home / "canon" / "workbook").exists()
+
+  def test_is_idempotent(self, tmp_path, fake_runtime):
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+    (home / "canon" / "notebook").mkdir()
+    (home / "canon" / "notebook" / "keep.md").write_text("mine\n")
+
+    core_defaults.materialize_canon_skeleton(home)  # must not raise or clobber
+    assert (home / "canon" / "notebook" / "keep.md").read_text() == "mine\n"
+
+  def test_chown_covers_everything_with_the_container_root_uid(
+    self,
+    tmp_path,
+    fake_runtime,
+  ):
+    """⚑ THE UID ORACLE. ``chown 0:0`` inside ``podman unshare`` is the REAL host
+    user, whom ``keep-id:uid=1000`` maps to the in-box AGENT — so 0 would leave the
+    books agent-owned, the opposite of the intent. Pin the constant."""
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+
+    chown_paths, uid, gid = fake_runtime.return_value.unshare_chown.call_args.args
+    assert (uid, gid) == (UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID)
+    assert uid != 0, "0 inside podman unshare is the host user = the in-box agent"
+    # ONE chown over the WHOLE skeleton — ownership is uniform, only modes split.
+    expected = [home / rel for rel, _ in core_defaults.canon_skeleton_rels()]
+    assert sorted(chown_paths) == sorted(expected)
+
+  def test_chmod_splits_dirs_555_from_file_mountpoints_444(
+    self,
+    tmp_path,
+    fake_runtime,
+  ):
+    """⚑ TWO MODES, TWO CALLS (spec J-7 banner, amended 2026-07-31).
+
+    The split is not cosmetic on the directory side: 555 keeps the SEARCH bit, and
+    a 444 directory would make crun's openat2 walk fail on every canon bind. On the
+    file side 555 would mark a 0-byte ``.md`` executable for no reason.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    core_defaults.materialize_canon_skeleton(home)
+
+    calls = {
+      mode: paths
+      for (paths, mode) in (c.args for c in fake_runtime.return_value.unshare_chmod.call_args_list)
+    }
+    assert set(calls) == {CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE}
+    assert (CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE) == ("555", "444")
+
+    rels = core_defaults.canon_skeleton_rels()
+    assert sorted(calls["555"]) == sorted(home / r for r, d in rels if d)
+    assert sorted(calls["444"]) == sorted(home / r for r, d in rels if not d)
+
+  def test_ownership_never_recurses_over_the_seeded_books(self, tmp_path, fake_runtime):
+    """A ``-R`` sweep of ``canon/`` would take the agent's own notebook/workbook
+    with it. The path list must be the enumerated skeleton, nothing more."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "canon" / "notebook").mkdir(parents=True)
+    core_defaults.materialize_canon_skeleton(home)
+
+    chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
+    assert home / "canon" / "notebook" not in chown_paths
+
+  def test_falls_back_with_a_warning_when_no_runtime(self, tmp_path, caplog):
+    """DEGRADED BUT FUNCTIONAL: box create must not hard-fail without podman —
+    creating a box works today with no runtime installed — and the skeleton is
+    what makes the binds land, so the box is fully usable, just not litter-proof.
+    """
+    from kanibako.runtime.container import ContainerError
+
+    home = tmp_path / "home"
+    home.mkdir()
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime", side_effect=ContainerError("no podman")
+      ),
+      caplog.at_level(logging.WARNING),
     ):
-        """⚑ THE UID ORACLE. ``chown 0:0`` inside ``podman unshare`` is the REAL host
-        user, whom ``keep-id:uid=1000`` maps to the in-box AGENT — so 0 would leave the
-        books agent-owned, the opposite of the intent. Pin the constant."""
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
+      core_defaults.materialize_canon_skeleton(home)
 
-        chown_paths, uid, gid = fake_runtime.return_value.unshare_chown.call_args.args
-        assert (uid, gid) == (UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID)
-        assert uid != 0, "0 inside podman unshare is the host user = the in-box agent"
-        # ONE chown over the WHOLE skeleton — ownership is uniform, only modes split.
-        expected = [home / rel for rel, _ in core_defaults.canon_skeleton_rels()]
-        assert sorted(chown_paths) == sorted(expected)
+    assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
+    # One sentence: the error's own text follows a colon, its full stop not doubled.
+    assert any(
+      "left writable from inside the box: no podman. The box works" in r.message
+      for r in caplog.records
+    ), caplog.text
 
-    def test_chmod_splits_dirs_555_from_file_mountpoints_444(
-        self, tmp_path, fake_runtime,
+  @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
+  def test_falls_back_with_a_warning_when_unshare_fails(
+    self,
+    tmp_path,
+    caplog,
+    failing: str,
+  ):
+    """docker (no ``unshare``) or a failing call — same degraded shape."""
+    home = tmp_path / "home"
+    home.mkdir()
+    rt = MagicMock()
+    rt.unshare_chown.return_value = True
+    rt.unshare_chmod.return_value = True
+    getattr(rt, failing).return_value = False
+    with (
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=rt),
+      caplog.at_level(logging.WARNING),
     ):
-        """⚑ TWO MODES, TWO CALLS (spec J-7 banner, amended 2026-07-31).
+      core_defaults.materialize_canon_skeleton(home)
 
-        The split is not cosmetic on the directory side: 555 keeps the SEARCH bit, and
-        a 444 directory would make crun's openat2 walk fail on every canon bind. On the
-        file side 555 would mark a 0-byte ``.md`` executable for no reason.
-        """
-        home = tmp_path / "home"
-        home.mkdir()
-        core_defaults.materialize_canon_skeleton(home)
+    assert (home / "canon" / "COLLECTION.md").is_file()
+    # ⚑ The two arms say DIFFERENT things and must not be conflated: a failed
+    # CHOWN leaves the tree agent-owned and writable; a failed CHMOD leaves it
+    # root-owned at default modes, where the agent still cannot write.
+    warning = " ".join(r.message for r in caplog.records)
+    if failing == "unshare_chown":
+      assert "left writable" in warning, caplog.text
+    else:
+      assert "root-owned but keep their default modes" in warning, caplog.text
+      assert "left writable" not in warning, caplog.text
 
-        calls = {
-            mode: paths
-            for (paths, mode) in (
-                c.args for c in fake_runtime.return_value.unshare_chmod.call_args_list
-            )
-        }
-        assert set(calls) == {CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE}
-        assert (CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE) == ("555", "444")
+  def test_create_runs_the_skeleton_after_the_seed(self):
+    """⚑ ORDER IS LOAD-BEARING. The seeds half seeds ``canon/{notebook,workbook}``
+    UNDER the root this step makes 555; protect first and those copies die with
+    EACCES. Asserted on the SOURCE so it cannot rot silently.
+    """
+    import inspect
 
-        rels = core_defaults.canon_skeleton_rels()
-        assert sorted(calls["555"]) == sorted(home / r for r, d in rels if d)
-        assert sorted(calls["444"]) == sorted(home / r for r, d in rels if not d)
+    from kanibako.commands.box import _parser
 
-    def test_ownership_never_recurses_over_the_seeded_books(self, tmp_path, fake_runtime):
-        """A ``-R`` sweep of ``canon/`` would take the agent's own notebook/workbook
-        with it. The path list must be the enumerated skeleton, nothing more."""
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "canon" / "notebook").mkdir(parents=True)
-        core_defaults.materialize_canon_skeleton(home)
-
-        chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
-        assert home / "canon" / "notebook" not in chown_paths
-
-    def test_falls_back_with_a_warning_when_no_runtime(self, tmp_path, caplog):
-        """DEGRADED BUT FUNCTIONAL: box create must not hard-fail without podman —
-        creating a box works today with no runtime installed — and the skeleton is
-        what makes the binds land, so the box is fully usable, just not litter-proof.
-        """
-        from kanibako.runtime.container import ContainerError
-
-        home = tmp_path / "home"
-        home.mkdir()
-        with patch("kanibako.runtime.container.ContainerRuntime",
-                   side_effect=ContainerError("no podman")), \
-                caplog.at_level(logging.WARNING):
-            core_defaults.materialize_canon_skeleton(home)
-
-        assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
-        # One sentence: the error's own text follows a colon, its full stop not doubled.
-        assert any("left writable from inside the box: no podman. The box works" in r.message
-                   for r in caplog.records), caplog.text
-
-    @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
-    def test_falls_back_with_a_warning_when_unshare_fails(
-        self, tmp_path, caplog, failing: str,
-    ):
-        """docker (no ``unshare``) or a failing call — same degraded shape."""
-        home = tmp_path / "home"
-        home.mkdir()
-        rt = MagicMock()
-        rt.unshare_chown.return_value = True
-        rt.unshare_chmod.return_value = True
-        getattr(rt, failing).return_value = False
-        with patch("kanibako.runtime.container.ContainerRuntime", return_value=rt), \
-                caplog.at_level(logging.WARNING):
-            core_defaults.materialize_canon_skeleton(home)
-
-        assert (home / "canon" / "COLLECTION.md").is_file()
-        # ⚑ The two arms say DIFFERENT things and must not be conflated: a failed
-        # CHOWN leaves the tree agent-owned and writable; a failed CHMOD leaves it
-        # root-owned at default modes, where the agent still cannot write.
-        warning = " ".join(r.message for r in caplog.records)
-        if failing == "unshare_chown":
-            assert "left writable" in warning, caplog.text
-        else:
-            assert "root-owned but keep their default modes" in warning, caplog.text
-            assert "left writable" not in warning, caplog.text
-
-    def test_create_runs_the_skeleton_after_the_seed(self):
-        """⚑ ORDER IS LOAD-BEARING. The seeds half seeds ``canon/{notebook,workbook}``
-        UNDER the root this step makes 555; protect first and those copies die with
-        EACCES. Asserted on the SOURCE so it cannot rot silently.
-        """
-        import inspect
-
-        from kanibako.commands.box import _parser
-
-        src = inspect.getsource(_parser.run_create)
-        seed = src.index("seed_new_box(std, config, proj")
-        skeleton = src.index("materialize_canon_skeleton(proj.shell_path)")
-        clear = src.index("_clear_create_entry(std, proj)")
-        assert seed < skeleton, "the skeleton must be materialized AFTER the seed"
-        assert skeleton < clear, (
-            "and INSIDE the create-journal window, so an interrupted create replays it"
-        )
+    src = inspect.getsource(_parser.run_create)
+    seed = src.index("seed_new_box(std, config, proj")
+    skeleton = src.index("materialize_canon_skeleton(proj.shell_path)")
+    clear = src.index("_clear_create_entry(std, proj)")
+    assert seed < skeleton, "the skeleton must be materialized AFTER the seed"
+    assert skeleton < clear, (
+      "and INSIDE the create-journal window, so an interrupted create replays it"
+    )
 
 
 # ===========================================================================
@@ -1727,72 +1825,60 @@ class TestCanonSkeleton:
 
 
 class TestBaseTemplateSeedsTheNotebook:
-    """The box-home seed source (``data/templates/box/home``) after the canon
-    restructure: it carries the NOTEBOOK + WORKBOOK (the box's own, agent-writable
-    books) and seeds them into the box home create-if-absent. ⚑ The retired
-    ``playbook/`` tree is gone — its content became the canon HANDBOOK, which is
-    BOUND from a host store, never seeded (M-10)."""
+  """The box-home seed source (``data/templates/box/home``) after the canon
+  restructure: it carries the NOTEBOOK + WORKBOOK (the box's own, agent-writable
+  books) and seeds them into the box home create-if-absent. ⚑ The retired
+  ``playbook/`` tree is gone — its content became the canon HANDBOOK, which is
+  BOUND from a host store, never seeded (M-10)."""
 
-    def test_packaged_source_carries_the_notebook(self):
-        home_root = packaged_box_home_template()
-        assert home_root is not None
-        assert (home_root / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home_root / "canon" / "workbook" / "state" / "devnotes.md").is_file()
-        assert (home_root / "canon" / "workbook" / "state" / "status.md").is_file()
-        assert (home_root / "canon" / "workbook" / "tasks" / "main.md").is_file()
-        assert (home_root / "canon" / "workbook" / "tasks" / "product.md").is_file()
-        # The retired roots are GONE from the package.
-        base = _packaged_base_template()
-        assert not (base / "playbook").exists()
-        assert not (base / "notebook").exists()
-        assert not (base / "workbook").exists()
+  def test_packaged_source_carries_the_notebook(self):
+    home_root = packaged_box_home_template()
+    assert home_root is not None
+    assert (home_root / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home_root / "canon" / "workbook" / "state" / "devnotes.md").is_file()
+    assert (home_root / "canon" / "workbook" / "state" / "status.md").is_file()
+    assert (home_root / "canon" / "workbook" / "tasks" / "main.md").is_file()
+    assert (home_root / "canon" / "workbook" / "tasks" / "product.md").is_file()
+    # The retired roots are GONE from the package.
+    base = _packaged_base_template()
+    assert not (base / "playbook").exists()
+    assert not (base / "notebook").exists()
+    assert not (base / "workbook").exists()
 
-    def test_install_stages_the_box_mold(self, std):
-        install_packaged_templates(std, ["claude"])
-        assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
+  def test_install_stages_the_box_mold(self, std):
+    install_packaged_templates(std, ["claude"])
+    assert (std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
-    def test_seed_lands_the_notebook_at_home(self, std, config, project_dir):
-        """End-to-end: the base layer seeds ``~/canon/notebook/LOCAL_CONTENTS.md`` at
-        box create through the single keystore-routed seed (create-if-absent)."""
-        from kanibako.commands.start import _apply_init_seeds
+  def test_seed_lands_the_notebook_at_home(self, std, config, project_dir):
+    """End-to-end: the base layer seeds ``~/canon/notebook/LOCAL_CONTENTS.md`` at
+    box create through the single keystore-routed seed (create-if-absent)."""
+    from kanibako.commands.start import _apply_init_seeds
 
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        install_packaged_templates(std, ["claude"])
-        _apply_init_seeds(
-            std=std,
-            proj=proj,
-            agent_name="claude",
-            target=_FakeTarget(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "claude"),
-            logger=logging.getLogger("test-canon-seed"),
-            deliver_creds=True,
-            selection_level=AgentSelection(node="claude", source="settings").selection_level,
-        )
-        assert (
-            proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
-        assert (
-            proj.shell_path / "canon" / "workbook" / "state" / "devnotes.md"
-        ).is_file()
-        assert (
-            proj.shell_path / "canon" / "workbook" / "state" / "status.md"
-        ).is_file()
-        assert (
-            proj.shell_path / "canon" / "workbook" / "tasks" / "main.md"
-        ).is_file()
-        assert (
-            proj.shell_path / "canon" / "workbook" / "tasks" / "product.md"
-        ).is_file()
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    install_packaged_templates(std, ["claude"])
+    _apply_init_seeds(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      target=_FakeTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "claude"),
+      logger=logging.getLogger("test-canon-seed"),
+      deliver_creds=True,
+      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+    )
+    assert (proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (proj.shell_path / "canon" / "workbook" / "state" / "devnotes.md").is_file()
+    assert (proj.shell_path / "canon" / "workbook" / "state" / "status.md").is_file()
+    assert (proj.shell_path / "canon" / "workbook" / "tasks" / "main.md").is_file()
+    assert (proj.shell_path / "canon" / "workbook" / "tasks" / "product.md").is_file()
 
 
 class _FakeTarget:
-    """Minimal resolved-agent stand-in for the seed seam (mirrors test_templates):
-    only ``.name`` + empty ``default_seeds()`` are read for a non-descriptor target."""
+  """Minimal resolved-agent stand-in for the seed seam (mirrors test_templates):
+  only ``.name`` + empty ``default_seeds()`` are read for a non-descriptor target."""
 
-    name = "claude"
+  name = "claude"
 
-    def default_seeds(self):
-        return {}
+  def default_seeds(self):
+    return {}

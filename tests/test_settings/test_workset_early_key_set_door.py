@@ -21,7 +21,9 @@ from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
-  WORKSET_EARLY_KEYS, EarlyScope, resolve_workset_dir_key,
+  WORKSET_EARLY_KEYS,
+  EarlyScope,
+  resolve_workset_dir_key,
 )
 from tests.support.filenames import CONFIG_FILENAME
 from tests.support.early import early_record
@@ -60,18 +62,27 @@ def ws(tmp_path, std):
 
 def _workset_set(key: str, value: str, ws, std, tmp_path: Path) -> str:
   return set_config_value(
-    key, value, config_path=ws.root / WORKSET_META_FILE,
-    cascade_system_path=tmp_path / "settings.yaml", command_scope=ConfigLevel.workset,
-    std=std, ws=ws,
+    key,
+    value,
+    config_path=ws.root / WORKSET_META_FILE,
+    cascade_system_path=tmp_path / "settings.yaml",
+    command_scope=ConfigLevel.workset,
+    std=std,
+    ws=ws,
   )
 
 
 def _system_set(key: str, value: str, std, tmp_path: Path) -> str:
   settings = tmp_path / "settings.yaml"
   return set_config_value(
-    key, value, config_path=tmp_path / CONFIG_FILENAME, system_settings_path=settings,
-    cascade_system_path=settings, command_scope=ConfigLevel.system,
-    agents_root=tmp_path / "agents", std=std,
+    key,
+    value,
+    config_path=tmp_path / CONFIG_FILENAME,
+    system_settings_path=settings,
+    cascade_system_path=settings,
+    command_scope=ConfigLevel.system,
+    agents_root=tmp_path / "agents",
+    std=std,
   )
 
 
@@ -89,7 +100,12 @@ class TestTheTableIsTheMembership:
 class TestTheWorksetDoorAgreesWithTheReader:
   @pytest.mark.parametrize("value", _REFUSED)
   def test_a_value_the_reader_refuses_is_refused_and_not_written(
-    self, key, value, ws, std, tmp_path,
+    self,
+    key,
+    value,
+    ws,
+    std,
+    tmp_path,
   ):
     assert _reader_refuses(key, value, _early_scope(std, BoxMode.named, ws.name))
     message = _workset_set(key, value, ws, std, tmp_path)
@@ -208,9 +224,15 @@ def door_probe(monkeypatch):
 def _std_system_set(key: str, value: str, std, *, target_error: str | None = None) -> str:
   """``system set`` as ``system_cmd`` runs it: the system file is ``std``'s own."""
   return set_config_value(
-    key, value, config_path=std.config_file, system_settings_path=std.settings,
-    cascade_system_path=std.settings, command_scope=ConfigLevel.system,
-    agents_root=std.agents, std=None if target_error else std, target_error=target_error,
+    key,
+    value,
+    config_path=std.config_file,
+    system_settings_path=std.settings,
+    cascade_system_path=std.settings,
+    command_scope=ConfigLevel.system,
+    agents_root=std.agents,
+    std=None if target_error else std,
+    target_error=target_error,
   )
 
 
@@ -301,20 +323,26 @@ def test_the_door_opens_no_file_twice(door, std, ws, tmp_path, door_probe):
 _MAILBOXES = "workset.channels.mailboxes"
 
 
-@pytest.mark.parametrize("value", [
-  "{system.channels.mailboxes}/{meta.workset.name}",
-  "/srv/mb/{meta.workset.name}",
-])
+@pytest.mark.parametrize(
+  "value",
+  [
+    "{system.channels.mailboxes}/{meta.workset.name}",
+    "/srv/mb/{meta.workset.name}",
+  ],
+)
 def test_the_system_door_takes_the_spec_mailboxes_default_and_the_case_3_cure(value, std):
   message = _std_system_set(_MAILBOXES, value, std)
   assert not message.startswith("Error:"), message
   assert value in std.settings.read_text()
 
 
-@pytest.mark.parametrize(("value", "cure"), [
-  ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
-  ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
-])
+@pytest.mark.parametrize(
+  ("value", "cure"),
+  [
+    ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
+    ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
+  ],
+)
 def test_the_system_door_refuses_the_old_spelling_naming_the_braced_one(value, cure, std):
   """The one-release guard (keyspec "References"): nothing is written."""
   message = _std_system_set(_MAILBOXES, value, std)
@@ -323,9 +351,12 @@ def test_the_system_door_refuses_the_old_spelling_naming_the_braced_one(value, c
   assert not std.settings.exists() or value not in std.settings.read_text()
 
 
-@pytest.mark.parametrize("value", [
-  "{system.channels.mailboxes}/{meta.workset.name}",
-])
+@pytest.mark.parametrize(
+  "value",
+  [
+    "{system.channels.mailboxes}/{meta.workset.name}",
+  ],
+)
 def test_a_failed_std_refuses_a_system_ref_naming_the_failure(value, std):
   message = _std_system_set(_MAILBOXES, value, std, target_error="std boom")
   assert message.startswith("Error: nothing was written"), message

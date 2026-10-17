@@ -24,103 +24,103 @@ TRANSFORM_NAME: Final[str] = "tweakcc"
 
 @dataclass
 class TweakccConfig:
-    """Resolved tweakcc configuration for a launch.
+  """Resolved tweakcc configuration for a launch.
 
-    Produced by merging agent-level defaults, an optional external config
-    file, and per-project inline overrides.
-    """
+  Produced by merging agent-level defaults, an optional external config
+  file, and per-project inline overrides.
+  """
 
-    enabled: bool = False
-    config_path: str | None = None  # path to external tweakcc config.json
-    overrides: dict = field(default_factory=dict)  # inline [tweakcc] overrides
+  enabled: bool = False
+  config_path: str | None = None  # path to external tweakcc config.json
+  overrides: dict = field(default_factory=dict)  # inline [tweakcc] overrides
 
 
 def resolve_tweakcc_config(
-    agent_tweakcc: dict,
-    project_tweakcc: dict | None = None,
+  agent_tweakcc: dict,
+  project_tweakcc: dict | None = None,
 ) -> TweakccConfig:
-    """Merge agent and project tweakcc sections into a resolved config.
+  """Merge agent and project tweakcc sections into a resolved config.
 
-    Resolution order (highest wins):
-      1. Project ``[tweakcc]`` overrides
-      2. Agent ``[tweakcc]`` defaults
+  Resolution order (highest wins):
+    1. Project ``[tweakcc]`` overrides
+    2. Agent ``[tweakcc]`` defaults
 
-    The ``enabled`` and ``config`` keys are extracted; everything else is
-    treated as inline overrides passed through to tweakcc.
-    """
-    merged = dict(agent_tweakcc)
-    if project_tweakcc:
-        merged.update(project_tweakcc)
+  The ``enabled`` and ``config`` keys are extracted; everything else is
+  treated as inline overrides passed through to tweakcc.
+  """
+  merged = dict(agent_tweakcc)
+  if project_tweakcc:
+    merged.update(project_tweakcc)
 
-    enabled = bool(merged.pop("enabled", False))
-    config_path = merged.pop("config", None)
-    if config_path is not None:
-        config_path = str(config_path)
+  enabled = bool(merged.pop("enabled", False))
+  config_path = merged.pop("config", None)
+  if config_path is not None:
+    config_path = str(config_path)
 
-    return TweakccConfig(
-        enabled=enabled,
-        config_path=config_path,
-        overrides=merged,
-    )
+  return TweakccConfig(
+    enabled=enabled,
+    config_path=config_path,
+    overrides=merged,
+  )
 
 
 def load_external_config(config_path: str | None) -> dict:
-    """Load an external tweakcc config.json file.
+  """Load an external tweakcc config.json file.
 
-    Returns empty dict if *config_path* is None or the file doesn't exist.
-    """
-    if not config_path:
-        return {}
+  Returns empty dict if *config_path* is None or the file doesn't exist.
+  """
+  if not config_path:
+    return {}
 
-    path = Path(config_path).expanduser()
-    if not path.is_file():
-        logger.debug("External tweakcc config not found: %s", path)
-        return {}
+  path = Path(config_path).expanduser()
+  if not path.is_file():
+    logger.debug("External tweakcc config not found: %s", path)
+    return {}
 
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        logger.debug("Loaded external tweakcc config: %s", path)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning("Failed to load tweakcc config %s: %s", path, e)
-        return {}
+  try:
+    with open(path) as f:
+      data = json.load(f)
+    logger.debug("Loaded external tweakcc config: %s", path)
+    return data if isinstance(data, dict) else {}
+  except (json.JSONDecodeError, OSError) as e:
+    logger.warning("Failed to load tweakcc config %s: %s", path, e)
+    return {}
 
 
 def build_merged_config(
-    tweakcc_cfg: TweakccConfig,
-    kanibako_defaults: dict | None = None,
+  tweakcc_cfg: TweakccConfig,
+  kanibako_defaults: dict | None = None,
 ) -> dict:
-    """Build the final tweakcc config dict for ``tweakcc --apply``.
+  """Build the final tweakcc config dict for ``tweakcc --apply``.
 
-    Merge order (highest wins):
-      1. Inline overrides from ``tweakcc_cfg.overrides``
-      2. External config file (``tweakcc_cfg.config_path``)
-      3. Kanibako's own defaults (``kanibako_defaults``)
+  Merge order (highest wins):
+    1. Inline overrides from ``tweakcc_cfg.overrides``
+    2. External config file (``tweakcc_cfg.config_path``)
+    3. Kanibako's own defaults (``kanibako_defaults``)
 
-    Returns a dict ready to be serialized as config.json.
-    """
-    result: dict = {}
+  Returns a dict ready to be serialized as config.json.
+  """
+  result: dict = {}
 
-    # Layer 1: kanibako defaults (lowest priority)
-    if kanibako_defaults:
-        result = deep_merge(result, kanibako_defaults)
+  # Layer 1: kanibako defaults (lowest priority)
+  if kanibako_defaults:
+    result = deep_merge(result, kanibako_defaults)
 
-    # Layer 2: external config file
-    external = load_external_config(tweakcc_cfg.config_path)
-    if external:
-        result = deep_merge(result, external)
+  # Layer 2: external config file
+  external = load_external_config(tweakcc_cfg.config_path)
+  if external:
+    result = deep_merge(result, external)
 
-    # Layer 3: inline overrides (highest priority)
-    if tweakcc_cfg.overrides:
-        result = deep_merge(result, tweakcc_cfg.overrides)
+  # Layer 3: inline overrides (highest priority)
+  if tweakcc_cfg.overrides:
+    result = deep_merge(result, tweakcc_cfg.overrides)
 
-    return result
+  return result
 
 
 def write_merged_config(config: dict, output_path: Path) -> None:
-    """Write the merged tweakcc config to a JSON file."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
-        json.dump(config, f, indent=2)
-    logger.debug("Wrote merged tweakcc config: %s", output_path)
+  """Write the merged tweakcc config to a JSON file."""
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  with open(output_path, "w") as f:
+    json.dump(config, f, indent=2)
+  logger.debug("Wrote merged tweakcc config: %s", output_path)

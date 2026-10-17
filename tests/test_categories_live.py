@@ -29,7 +29,7 @@ from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
-    ResolveCtx,
+  ResolveCtx,
 )
 from tests.support.filenames import CONFIG_FILENAME
 from tests.support.narrow_resolve import table_bind_dests
@@ -40,20 +40,21 @@ GUEST_HOME = "/home/agent"
 
 
 def make_ctx(
-    *,
-    agent_name: str | None = "claude",
-    workset_name: str | None = "myws",
-    host_home: str = HOST_HOME,
-    xdg: dict[str, str] | None = None,
-    config: dict[str, str] | None = None,
+  *,
+  agent_name: str | None = "claude",
+  workset_name: str | None = "myws",
+  host_home: str = HOST_HOME,
+  xdg: dict[str, str] | None = None,
+  config: dict[str, str] | None = None,
 ) -> ResolveCtx:
-    return ResolveCtx(
-        agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=host_home,
-        xdg=xdg if xdg is not None else {"XDG_DATA_HOME": "/data"},
-        config=config or {},
-    )
+  return ResolveCtx(
+    agent_name=agent_name,
+    workset_name=workset_name,
+    host_home=host_home,
+    xdg=xdg if xdg is not None else {"XDG_DATA_HOME": "/data"},
+    config=config or {},
+  )
+
 
 # ---------------------------------------------------------------------------
 # B2b: per-mode BYTE-IDENTITY of the {key}-ref-routed home/vault binds (the
@@ -62,284 +63,325 @@ def make_ctx(
 
 
 def _resolve_home_vault(floor, *, mode, config=None):
-    """Resolve home/vault through the LIVE build_launch_snapshot pipeline (the
-    single route the launch uses) → ``(box_home, {box_dest: host_src})``.
+  """Resolve home/vault through the LIVE build_launch_snapshot pipeline (the
+  single route the launch uses) → ``(box_home, {box_dest: host_src})``.
 
-    ⚑ HOME COMES BACK SEPARATELY, and that split IS cutover 6-H. Home does not route
-    through ``bindings.rw`` (spec ``:1015``): it is the RO DERIVED ``meta.box.home``,
-    read straight off the resolved snapshot, and the assembly seam pairs it with the
-    seam's options to make the pid-0 foundation. So the byte-identity bar for home is a
-    bar on the KEY's resolved value; the vault half stays a bar on the MOUNT WINNERS
-    the injected floor's own dests resolve to (``narrow_table_winners``, the live
-    narrow-resolve seam — this harness injects one table and nothing else).
+  ⚑ HOME COMES BACK SEPARATELY, and that split IS cutover 6-H. Home does not route
+  through ``bindings.rw`` (spec ``:1015``): it is the RO DERIVED ``meta.box.home``,
+  read straight off the resolved snapshot, and the assembly seam pairs it with the
+  seam's options to make the pid-0 foundation. So the byte-identity bar for home is a
+  bar on the KEY's resolved value; the vault half stays a bar on the MOUNT WINNERS
+  the injected floor's own dests resolve to (``narrow_table_winners``, the live
+  narrow-resolve seam — this harness injects one table and nothing else).
 
-    *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
-    ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
-    ``{config.primary_workset}`` reference for that mode (spec §1A).
-    """
-    from kanibako.settings.settings_launch import (
-        build_launch_snapshot,
-        snapshot_category_entries,
-    )
+  *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
+  ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
+  ``{config.primary_workset}`` reference for that mode (spec §1A).
+  """
+  from kanibako.settings.settings_launch import (
+    build_launch_snapshot,
+    snapshot_category_entries,
+  )
 
-    ctx = make_ctx(workset_name=None, config=config)
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=ctx,
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories=floor,
-    )
-    winners = narrow_table_winners(
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
-        table_bind_dests(floor),
-    )
-    return snap.meta.box.home, {m.box_dest: m.host_src for m in winners}
+  ctx = make_ctx(workset_name=None, config=config)
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories=floor,
+  )
+  winners = narrow_table_winners(
+    snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+    table_bind_dests(floor),
+  )
+  return snap.meta.box.home, {m.box_dest: m.host_src for m in winners}
 
 
 class TestB2bHomeVaultByteIdentity:
-    """The equivalence bar: a DEFAULT box's resolved home/vault sources are
-    byte-identical to the pre-B2b proj-attr literals, per mode."""
+  """The equivalence bar: a DEFAULT box's resolved home/vault sources are
+  byte-identical to the pre-B2b proj-attr literals, per mode."""
 
-    def test_primary_named_home_vault_resolve_to_proj_literals(self):
-        # PRIMARY/NAMED: home is the ONE mode-independent {meta.box.home} KEY (no
-        # bindings.rw row — 6-H); vault routes {workset.vault_*}/{meta.box.name}.  Both
-        # resolve to the SAME literal proj.shell_path / proj.vault_*_path the old
-        # injection used.
-        # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
-        # the floor SPELLINGS moved.  That is the point of the phase.
-        from kanibako.settings.settings_launch import (
-            meta_identity_floor,
-            meta_runtime_floor,
-            workset_anchor_floor,
-        )
+  def test_primary_named_home_vault_resolve_to_proj_literals(self):
+    # PRIMARY/NAMED: home is the ONE mode-independent {meta.box.home} KEY (no
+    # bindings.rw row — 6-H); vault routes {workset.vault_*}/{meta.box.name}.  Both
+    # resolve to the SAME literal proj.shell_path / proj.vault_*_path the old
+    # injection used.
+    # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
+    # the floor SPELLINGS moved.  That is the point of the phase.
+    from kanibako.settings.settings_launch import (
+      meta_identity_floor,
+      meta_runtime_floor,
+      workset_anchor_floor,
+    )
 
-        # ⚑ DEST-KEYED (R-3/R-5/R-11): one terminal arm key per mode, whose value
-        # is ``{box_dest: (src[, options])}`` with the dest already absolutized.
-        # ⚑ NO ``/home/agent`` ENTRY — a default box declares none, and one here would
-        # be a second bind at the foundation's point.
-        floor = {
-            "box.bindings.rw": {
-                "/home/agent/vault/rw": (
-                    "{workset.vault_rw}/{meta.box.name}", "Z,U",
-                ),
-            },
-            "box.bindings.ro": {
-                "/home/agent/vault/ro": (
-                    "{workset.vault_ro}/{meta.box.name}", "ro",
-                ),
-            },
-        }
-        # The anchors are {key}-ref FORMULAS rooted at meta.workset.path, so the workset
-        # root is what pins the resolved values (= {config.primary_workset} at launch).
-        floor.update(meta_runtime_floor(
-            mode="primary", ws_name="__PRIMARY__",
-        ))
-        floor.update(workset_anchor_floor(
-            mode="primary",
-        ))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        box_home, by_dest = _resolve_home_vault(
-            floor, mode="primary", config={"config.primary_workset": "/data/pw"},
-        )
-        # Byte-identical to proj.shell_path = boxes/<name>/home, vault/{ro,rw}/<name>.
-        assert box_home == "/data/pw/boxes/mybox/home"
-        assert "/home/agent" not in by_dest
-        assert by_dest["/home/agent/vault/ro"] == "/data/pw/vault/ro/mybox"
-        assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
+    # ⚑ DEST-KEYED (R-3/R-5/R-11): one terminal arm key per mode, whose value
+    # is ``{box_dest: (src[, options])}`` with the dest already absolutized.
+    # ⚑ NO ``/home/agent`` ENTRY — a default box declares none, and one here would
+    # be a second bind at the foundation's point.
+    floor = {
+      "box.bindings.rw": {
+        "/home/agent/vault/rw": (
+          "{workset.vault_rw}/{meta.box.name}",
+          "Z,U",
+        ),
+      },
+      "box.bindings.ro": {
+        "/home/agent/vault/ro": (
+          "{workset.vault_ro}/{meta.box.name}",
+          "ro",
+        ),
+      },
+    }
+    # The anchors are {key}-ref FORMULAS rooted at meta.workset.path, so the workset
+    # root is what pins the resolved values (= {config.primary_workset} at launch).
+    floor.update(
+      meta_runtime_floor(
+        mode="primary",
+        ws_name="__PRIMARY__",
+      )
+    )
+    floor.update(
+      workset_anchor_floor(
+        mode="primary",
+      )
+    )
+    floor.update(
+      meta_identity_floor(
+        box_name="mybox",
+        project_path="/code/x",
+        inbox="/i",
+        share_global="/sg",
+        share_workset="/sw",
+      )
+    )
+    box_home, by_dest = _resolve_home_vault(
+      floor,
+      mode="primary",
+      config={"config.primary_workset": "/data/pw"},
+    )
+    # Byte-identical to proj.shell_path = boxes/<name>/home, vault/{ro,rw}/<name>.
+    assert box_home == "/data/pw/boxes/mybox/home"
+    assert "/home/agent" not in by_dest
+    assert by_dest["/home/agent/vault/ro"] == "/data/pw/vault/ro/mybox"
+    assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
 
-    def test_standalone_home_vault_resolve_to_proj_literals(self):
-        # STANDALONE: home is the SAME {meta.box.home} key as primary/named (the
-        # per-mode variation lives in meta.box.path = the EMPTY LEAF {workset.boxes});
-        # vault routes the bare {workset.vault_*} (a lone box has no per-box vault
-        # subdir).  meta.workset.path = the project ROOT, so these resolve to
-        # <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
-        # proj.vault_{ro,rw}_path — byte-identical to before the anchor collapse.
-        from kanibako.settings.settings_launch import (
-            meta_identity_floor,
-            meta_runtime_floor,
-            workset_anchor_floor,
-        )
+  def test_standalone_home_vault_resolve_to_proj_literals(self):
+    # STANDALONE: home is the SAME {meta.box.home} key as primary/named (the
+    # per-mode variation lives in meta.box.path = the EMPTY LEAF {workset.boxes});
+    # vault routes the bare {workset.vault_*} (a lone box has no per-box vault
+    # subdir).  meta.workset.path = the project ROOT, so these resolve to
+    # <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
+    # proj.vault_{ro,rw}_path — byte-identical to before the anchor collapse.
+    from kanibako.settings.settings_launch import (
+      meta_identity_floor,
+      meta_runtime_floor,
+      workset_anchor_floor,
+    )
 
-        floor = {
-            "box.bindings.rw": {
-                "/home/agent/vault/rw": ("{workset.vault_rw}", "Z,U"),
-            },
-            "box.bindings.ro": {
-                "/home/agent/vault/ro": ("{workset.vault_ro}", "ro"),
-            },
-        }
-        # meta.workset.path = {meta.runtime.ws_root} = <root> (the standalone launch
-        # passes str(proj.metadata_path) = the project ROOT as ws_root_literal).
-        floor.update(meta_runtime_floor(
-            mode="standalone", ws_name="__STANDALONE__", ws_root_literal="/proj",
-        ))
-        floor.update(workset_anchor_floor(
-            mode="standalone",
-        ))
-        floor.update(meta_identity_floor(
-            box_name="sb", project_path="/proj/workspace", inbox="/i",
-            share_global="/sg", share_workset=None,
-        ))
-        box_home, by_dest = _resolve_home_vault(floor, mode="standalone")
-        # <root>=/proj: home = /proj/box_data/home, vault = /proj/vault/{ro,rw}.
-        assert box_home == "/proj/box_data/home"
-        assert "/home/agent" not in by_dest
-        assert by_dest["/home/agent/vault/ro"] == "/proj/vault/ro"
-        assert by_dest["/home/agent/vault/rw"] == "/proj/vault/rw"
+    floor = {
+      "box.bindings.rw": {
+        "/home/agent/vault/rw": ("{workset.vault_rw}", "Z,U"),
+      },
+      "box.bindings.ro": {
+        "/home/agent/vault/ro": ("{workset.vault_ro}", "ro"),
+      },
+    }
+    # meta.workset.path = {meta.runtime.ws_root} = <root> (the standalone launch
+    # passes str(proj.metadata_path) = the project ROOT as ws_root_literal).
+    floor.update(
+      meta_runtime_floor(
+        mode="standalone",
+        ws_name="__STANDALONE__",
+        ws_root_literal="/proj",
+      )
+    )
+    floor.update(
+      workset_anchor_floor(
+        mode="standalone",
+      )
+    )
+    floor.update(
+      meta_identity_floor(
+        box_name="sb",
+        project_path="/proj/workspace",
+        inbox="/i",
+        share_global="/sg",
+        share_workset=None,
+      )
+    )
+    box_home, by_dest = _resolve_home_vault(floor, mode="standalone")
+    # <root>=/proj: home = /proj/box_data/home, vault = /proj/vault/{ro,rw}.
+    assert box_home == "/proj/box_data/home"
+    assert "/home/agent" not in by_dest
+    assert by_dest["/home/agent/vault/ro"] == "/proj/vault/ro"
+    assert by_dest["/home/agent/vault/rw"] == "/proj/vault/rw"
 
-    def test_box_bindings_home_repoint_is_REFUSED(self):
-        """🛑 INVERTED AT CUTOVER 6-H — MIGRATION.md § "You can no longer repoint a
-        box's home with a binding". This asserted the OPPOSITE.
+  def test_box_bindings_home_repoint_is_REFUSED(self):
+    """🛑 INVERTED AT CUTOVER 6-H — MIGRATION.md § "You can no longer repoint a
+    box's home with a binding". This asserted the OPPOSITE.
 
-        It used to pin "Option A": a ``box.bindings.rw`` entry at ``~`` in a box
-        settings FILE cascaded over the spec-derived core default and WON, and that was
-        the documented mechanism for a custom home (it replaced the dropped
-        ``meta["shell"]`` override). There is no core default at ``~`` any more — home
-        left ``bindings.rw`` (spec ``:1015``) and is the pid-0 FOUNDATION the assembly
-        seam builds from ``meta.box.home`` — so the file entry is not an override of
-        anything: it is a SECOND bind at the foundation's point, and the collapse
-        refuses it by name against the seeded home.
+    It used to pin "Option A": a ``box.bindings.rw`` entry at ``~`` in a box
+    settings FILE cascaded over the spec-derived core default and WON, and that was
+    the documented mechanism for a custom home (it replaced the dropped
+    ``meta["shell"]`` override). There is no core default at ``~`` any more — home
+    left ``bindings.rw`` (spec ``:1015``) and is the pid-0 FOUNDATION the assembly
+    seam builds from ``meta.box.home`` — so the file entry is not an override of
+    anything: it is a SECOND bind at the foundation's point, and the collapse
+    refuses it by name against the seeded home.
 
-        ⚑ THE CASCADE STILL WORKS EXACTLY AS IT DID. Nothing about scope precedence
-        changed; what changed is that there is no longer a declaration at this dest to
-        beat. The cure for a custom box home is ``workset.boxes``, which relocates the
-        box store the home is derived from.
-        """
-        from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            meta_runtime_floor,
-            snapshot_category_entries,
-            workset_anchor_floor,
-        )
-        from kanibako.settings.settings_resolve import SettingsError
+    ⚑ THE CASCADE STILL WORKS EXACTLY AS IT DID. Nothing about scope precedence
+    changed; what changed is that there is no longer a declaration at this dest to
+    beat. The cure for a custom box home is ``workset.boxes``, which relocates the
+    box store the home is derived from.
+    """
+    from kanibako.commands.start import _install_assembly_collapse
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      meta_runtime_floor,
+      snapshot_category_entries,
+      workset_anchor_floor,
+    )
+    from kanibako.settings.settings_resolve import SettingsError
 
-        floor: dict = {}
-        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
-        floor.update(workset_anchor_floor(
-            mode="primary",
-        ))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        ctx = make_ctx(
-            workset_name=None, config={"config.primary_workset": "/data/pw"},
-        )
-        # A box settings FILE repointing the box home to a custom host path — spelled
-        # ``~``, which R-11 canonicalizes to ``/home/agent``: pid 0's own point.
-        box_overrides = {
-            "box": {"bindings": {"rw": {"~": ["/custom/home"]}}},
-        }
-        import yaml
-        import tempfile
-        import os
-        fd, path = tempfile.mkstemp(suffix=".yaml")
-        os.write(fd, yaml.safe_dump(box_overrides).encode())
-        os.close(fd)
-        try:
-            from pathlib import Path
-            snap = build_launch_snapshot(
-                agent_name="claude", ctx=ctx,
-                system_path=None, agent_path=None, workset_path=None,
-                box_path=Path(path),
-                default_categories=floor,
-            )
-            entries = snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=ctx,
-            )
-            # ⚑ THE DECLARATION RESOLVES — it is one row at one dest, which no
-            # per-scope layer has any reason to refuse. The refusal is the COLLAPSE's,
-            # which is the only layer holding the foundation to compare against.
-            assert {
-                e.box_dest for e in entries if e.category.startswith("bindings")
-            } == {"/home/agent"}
+    floor: dict = {}
+    floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+    floor.update(
+      workset_anchor_floor(
+        mode="primary",
+      )
+    )
+    floor.update(
+      meta_identity_floor(
+        box_name="mybox",
+        project_path="/code/x",
+        inbox="/i",
+        share_global="/sg",
+        share_workset="/sw",
+      )
+    )
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.primary_workset": "/data/pw"},
+    )
+    # A box settings FILE repointing the box home to a custom host path — spelled
+    # ``~``, which R-11 canonicalizes to ``/home/agent``: pid 0's own point.
+    box_overrides = {
+      "box": {"bindings": {"rw": {"~": ["/custom/home"]}}},
+    }
+    import yaml
+    import tempfile
+    import os
 
-            with pytest.raises(SettingsError) as e:
-                _install_assembly_collapse(snap, entries, whole_box=True)
-            assert "/home/agent" in str(e.value), str(e.value)
-            assert "/custom/home" in str(e.value), str(e.value)
-        finally:
-            os.unlink(path)
+    fd, path = tempfile.mkstemp(suffix=".yaml")
+    os.write(fd, yaml.safe_dump(box_overrides).encode())
+    os.close(fd)
+    try:
+      from pathlib import Path
+
+      snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=ctx,
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=Path(path),
+        default_categories=floor,
+      )
+      entries = snapshot_category_entries(
+        snap,
+        active_agent="claude",
+        box_ctx=ctx,
+      )
+      # ⚑ THE DECLARATION RESOLVES — it is one row at one dest, which no
+      # per-scope layer has any reason to refuse. The refusal is the COLLAPSE's,
+      # which is the only layer holding the foundation to compare against.
+      assert {e.box_dest for e in entries if e.category.startswith("bindings")} == {"/home/agent"}
+
+      with pytest.raises(SettingsError) as e:
+        _install_assembly_collapse(snap, entries, whole_box=True)
+      assert "/home/agent" in str(e.value), str(e.value)
+      assert "/custom/home" in str(e.value), str(e.value)
+    finally:
+      os.unlink(path)
 
 
 class TestB2bWorksetAnchors:
-    """Layout-anchor materialization: the workset roots + the RO box root."""
+  """Layout-anchor materialization: the workset roots + the RO box root."""
 
-    def test_primary_named_anchors_present(self):
-        from kanibako.settings.settings_launch import workset_anchor_floor
+  def test_primary_named_anchors_present(self):
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
-        floor = workset_anchor_floor(
-            mode="named",
-            workset_channels={"common": "/ws/ch/common", "chat": "/ws/ch/chat",
-                              "share": "/ws/ch/share"},
-        )
-        # Every anchor is the spec's self-resolving {key}-ref FORMULA (spec §2c).
-        assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
-        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
-        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
-        assert floor["workset.logs"] == "{meta.workset.path}/logs"
-        # The RO box root: primary/named carry the per-box name leaf.
-        assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
-        assert floor["workset.channels.common"] == "/ws/ch/common"
-        # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
-        # retired ``meta.box.helper_log`` was the last one; the helper-log bind
-        # now spells itself ``{workset.logs}/{meta.box.name}.jsonl`` (PHASE R).
-        assert "meta.box.helper_log" not in floor
-        assert all(
-            not isinstance(v, str) or v.startswith("{")
-            for k, v in floor.items()
-            if k.startswith("meta.box.") or k.startswith("workset.vault")
-        ), floor
+    floor = workset_anchor_floor(
+      mode="named",
+      workset_channels={"common": "/ws/ch/common", "chat": "/ws/ch/chat", "share": "/ws/ch/share"},
+    )
+    # Every anchor is the spec's self-resolving {key}-ref FORMULA (spec §2c).
+    assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
+    assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+    assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
+    assert floor["workset.logs"] == "{meta.workset.path}/logs"
+    # The RO box root: primary/named carry the per-box name leaf.
+    assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
+    assert floor["workset.channels.common"] == "/ws/ch/common"
+    # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
+    # retired ``meta.box.helper_log`` was the last one; the helper-log bind
+    # now spells itself ``{workset.logs}/{meta.box.name}.jsonl`` (PHASE R).
+    assert "meta.box.helper_log" not in floor
+    assert all(
+      not isinstance(v, str) or v.startswith("{")
+      for k, v in floor.items()
+      if k.startswith("meta.box.") or k.startswith("workset.vault")
+    ), floor
 
-    def test_standalone_anchors(self):
-        """Standalone's anchors carry REAL values (they used to be ``None``).
+  def test_standalone_anchors(self):
+    """Standalone's anchors carry REAL values (they used to be ``None``).
 
-        ⚑ DELIBERATE INVERSION of the retired ``test_standalone_anchors_are_none``.
-        The spec states the new values outright — ``workset.boxes =
-        {meta.workset.path}/box_data`` (§2c STANDALONE), ``workset.logs =
-        {meta.box.path}``, and ``workset.vault_{ro,rw}`` uniform in ALL PROJECTS — so
-        the old "these are None" assertion is what the spec changed, not something
-        this test may keep asserting.
+    ⚑ DELIBERATE INVERSION of the retired ``test_standalone_anchors_are_none``.
+    The spec states the new values outright — ``workset.boxes =
+    {meta.workset.path}/box_data`` (§2c STANDALONE), ``workset.logs =
+    {meta.box.path}``, and ``workset.vault_{ro,rw}`` uniform in ALL PROJECTS — so
+    the old "these are None" assertion is what the spec changed, not something
+    this test may keep asserting.
 
-        What BACKSTOPS the inversion is NOT this test: it is the byte-identity gate
-        over the RESOLVED ABSOLUTE PATHS (home / vault ro / vault rw / helper_log ×
-        3 modes), captured from the unmodified tree before the change and re-run
-        after. No edit to this file can influence that comparison. See also
-        ``TestP1BoxRootAnchor`` below, which asserts the resolved paths directly.
-        """
-        from kanibako.settings.settings_launch import workset_anchor_floor
+    What BACKSTOPS the inversion is NOT this test: it is the byte-identity gate
+    over the RESOLVED ABSOLUTE PATHS (home / vault ro / vault rw / helper_log ×
+    3 modes), captured from the unmodified tree before the change and re-run
+    after. No edit to this file can influence that comparison. See also
+    ``TestP1BoxRootAnchor`` below, which asserts the resolved paths directly.
+    """
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
-        floor = workset_anchor_floor(
-            mode="standalone",
-        )
-        # Standalone roots its degenerate workset at the project dir: the box store
-        # is the box_data/ marker dir, and the logs live inside the box root itself.
-        assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
-        assert floor["workset.logs"] == "{workset.boxes}"
-        # The vault roots are UNIFORM with primary/named (only the BIND differs).
-        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
-        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
-        # The EMPTY LEAF: a BARE whole-value ref — workset.boxes IS the box root, so
-        # there is no join, hence no trailing separator and no empty path segment.
-        assert floor["meta.box.path"] == "{workset.boxes}"
-        assert not floor["meta.box.path"].endswith("/")
-        # No invented resolved-literal anchors remain — not for home/vault, and
-        # (since PHASE R made the spec's spelling expressible) not for the log
-        # either: the bind is ``{workset.logs}/{meta.box.name}.jsonl``, and
-        # ``workset.logs = {workset.boxes}`` above is what makes it standalone.
-        assert "meta.box.home_src" not in floor
-        assert "meta.box.helper_log" not in floor
-        assert "meta.box.vault_ro_src" not in floor
-        assert "meta.box.vault_rw_src" not in floor
-        # No workset-local channels for standalone: the leaf carries §2c's ``<None>``,
-        # SUPPLIED as a present ``None`` rather than omitted (keyspec §0
-        # "it must RESOLVE").
-        assert "workset.channels.common" in floor
-        assert floor["workset.channels.common"] is None
+    floor = workset_anchor_floor(
+      mode="standalone",
+    )
+    # Standalone roots its degenerate workset at the project dir: the box store
+    # is the box_data/ marker dir, and the logs live inside the box root itself.
+    assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
+    assert floor["workset.logs"] == "{workset.boxes}"
+    # The vault roots are UNIFORM with primary/named (only the BIND differs).
+    assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+    assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
+    # The EMPTY LEAF: a BARE whole-value ref — workset.boxes IS the box root, so
+    # there is no join, hence no trailing separator and no empty path segment.
+    assert floor["meta.box.path"] == "{workset.boxes}"
+    assert not floor["meta.box.path"].endswith("/")
+    # No invented resolved-literal anchors remain — not for home/vault, and
+    # (since PHASE R made the spec's spelling expressible) not for the log
+    # either: the bind is ``{workset.logs}/{meta.box.name}.jsonl``, and
+    # ``workset.logs = {workset.boxes}`` above is what makes it standalone.
+    assert "meta.box.home_src" not in floor
+    assert "meta.box.helper_log" not in floor
+    assert "meta.box.vault_ro_src" not in floor
+    assert "meta.box.vault_rw_src" not in floor
+    # No workset-local channels for standalone: the leaf carries §2c's ``<None>``,
+    # SUPPLIED as a present ``None`` rather than omitted (keyspec §0
+    # "it must RESOLVE").
+    assert "workset.channels.common" in floor
+    assert floor["workset.channels.common"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -355,1431 +397,1619 @@ class TestB2bWorksetAnchors:
 
 
 class _ProbeProj:
-    """ProjectPaths stand-in carrying the per-mode layout the real helpers build."""
+  """ProjectPaths stand-in carrying the per-mode layout the real helpers build."""
 
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
+  def __init__(self, **kw):
+    self.__dict__.update(kw)
 
 
 class _ProbeStd:
-    """StandardPaths stand-in: only the PRIMARY vault roots are consumed here."""
+  """StandardPaths stand-in: only the PRIMARY vault roots are consumed here."""
 
-    def __init__(self, pw):
-        self.primary_vault_ro = pw / "vault" / "ro"
-        self.primary_vault_rw = pw / "vault" / "rw"
+  def __init__(self, pw):
+    self.primary_vault_ro = pw / "vault" / "ro"
+    self.primary_vault_rw = pw / "vault" / "rw"
 
 
 def _probe_cases(tmp_path):
-    """(mode, proj, ws_root, helper_log) for each of the three box modes.
+  """(mode, proj, ws_root, helper_log) for each of the three box modes.
 
-    The per-mode layouts come from the REAL path helpers, so a change to the
-    on-disk layout shows up here rather than being re-asserted by hand.
-    """
-    from kanibako.settings.paths import (
-        _primary_box_paths,
-        _standalone_box_paths,
-        _workset_box_paths,
-    )
+  The per-mode layouts come from the REAL path helpers, so a change to the
+  on-disk layout shows up here rather than being re-asserted by hand.
+  """
+  from kanibako.settings.paths import (
+    _primary_box_paths,
+    _standalone_box_paths,
+    _workset_box_paths,
+  )
 
-    pw = tmp_path / "pw"
-    md = pw / "boxes" / "mybox"
-    sh, vro, vrw = _primary_box_paths(_ProbeStd(pw), md, "mybox")
-    yield (
-        "primary",
-        _ProbeProj(name="mybox", metadata_path=md, shell_path=sh,
-                   project_path=tmp_path / "code" / "x",
-                   vault_ro_path=vro, vault_rw_path=vrw),
-        str(pw), pw / "logs" / "mybox.jsonl",
-    )
+  pw = tmp_path / "pw"
+  md = pw / "boxes" / "mybox"
+  sh, vro, vrw = _primary_box_paths(_ProbeStd(pw), md, "mybox")
+  yield (
+    "primary",
+    _ProbeProj(
+      name="mybox",
+      metadata_path=md,
+      shell_path=sh,
+      project_path=tmp_path / "code" / "x",
+      vault_ro_path=vro,
+      vault_rw_path=vrw,
+    ),
+    str(pw),
+    pw / "logs" / "mybox.jsonl",
+  )
 
-    ws = tmp_path / "ws"
-    md = ws / "boxes" / "nbox"
-    sh, vro, vrw = _workset_box_paths(md, ws / "vault" / "ro", ws / "vault" / "rw", "nbox")
-    yield (
-        "named",
-        _ProbeProj(name="nbox", metadata_path=md, shell_path=sh,
-                   project_path=ws / "workspaces" / "nbox",
-                   vault_ro_path=vro, vault_rw_path=vrw),
-        str(ws), ws / "logs" / "nbox.jsonl",
-    )
+  ws = tmp_path / "ws"
+  md = ws / "boxes" / "nbox"
+  sh, vro, vrw = _workset_box_paths(md, ws / "vault" / "ro", ws / "vault" / "rw", "nbox")
+  yield (
+    "named",
+    _ProbeProj(
+      name="nbox",
+      metadata_path=md,
+      shell_path=sh,
+      project_path=ws / "workspaces" / "nbox",
+      vault_ro_path=vro,
+      vault_rw_path=vrw,
+    ),
+    str(ws),
+    ws / "logs" / "nbox.jsonl",
+  )
 
-    root = tmp_path / "proj"
-    sh, vro, vrw = _standalone_box_paths(root, early=early_record(tmp_path, mode=BoxMode.standalone))
-    yield (
-        "standalone",
-        _ProbeProj(name="ab12c_proj", metadata_path=root, shell_path=sh,
-                   project_path=root / "workspace",
-                   vault_ro_path=vro, vault_rw_path=vrw),
-        str(root), root / "box_data" / "ab12c_proj.jsonl",
-    )
+  root = tmp_path / "proj"
+  sh, vro, vrw = _standalone_box_paths(root, early=early_record(tmp_path, mode=BoxMode.standalone))
+  yield (
+    "standalone",
+    _ProbeProj(
+      name="ab12c_proj",
+      metadata_path=root,
+      shell_path=sh,
+      project_path=root / "workspace",
+      vault_ro_path=vro,
+      vault_rw_path=vrw,
+    ),
+    str(root),
+    root / "box_data" / "ab12c_proj.jsonl",
+  )
 
 
 def _merge_floor(floor: dict, table) -> None:
-    """Fold ONE producer's ``default_categories`` *table* into *floor*, H5-safely.
+  """Fold ONE producer's ``default_categories`` *table* into *floor*, H5-safely.
 
-    ⚑ A plain ``dict.update`` is WRONG here, and silently so. A bindings arm is
-    TERMINAL and DEST-KEYED (R-5/R-3), so every producer that binds anything
-    returns the SAME key — ``box.bindings.ro`` / ``box.bindings.rw`` — holding the
-    WHOLE map, and a second ``update`` replaces the first producer's entire arm
-    with nothing downstream able to notice. That is H5, the highest-risk breakage
-    in the disk-store arc, in miniature inside a test fixture: the probe below
-    folds ``core_default_categories`` (home + workspace + vault) and then
-    ``helper_default_categories`` (the helper socket), and BOTH contribute to
-    ``box.bindings.rw`` — so the ``update`` this replaces deleted the home and
-    workspace binds outright, and the P1 gate failed with a bare ``KeyError``.
+  ⚑ A plain ``dict.update`` is WRONG here, and silently so. A bindings arm is
+  TERMINAL and DEST-KEYED (R-5/R-3), so every producer that binds anything
+  returns the SAME key — ``box.bindings.ro`` / ``box.bindings.rw`` — holding the
+  WHOLE map, and a second ``update`` replaces the first producer's entire arm
+  with nothing downstream able to notice. That is H5, the highest-risk breakage
+  in the disk-store arc, in miniature inside a test fixture: the probe below
+  folds ``core_default_categories`` (home + workspace + vault) and then
+  ``helper_default_categories`` (the helper socket), and BOTH contribute to
+  ``box.bindings.rw`` — so the ``update`` this replaces deleted the home and
+  workspace binds outright, and the P1 gate failed with a bare ``KeyError``.
 
-    Bindings arms merge ENTRY BY ENTRY; every other key is last-wins, matching
-    ``commands.start._merge_default_categories``. Precedent in this tree:
-    ``_merged_canon_cats`` in ``tests/test_canon_delivery.py``.
-    """
-    for key, value in table.items():
-        if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(value, dict):
-            floor.setdefault(key, {}).update(value)
-        else:
-            floor[key] = value
+  Bindings arms merge ENTRY BY ENTRY; every other key is last-wins, matching
+  ``commands.start._merge_default_categories``. Precedent in this tree:
+  ``_merged_canon_cats`` in ``tests/test_canon_delivery.py``.
+  """
+  for key, value in table.items():
+    if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(value, dict):
+      floor.setdefault(key, {}).update(value)
+    else:
+      floor[key] = value
 
 
 def _probe_snapshot(mode, proj, ws_root, helper_log, budget=None):
-    """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
-    from kanibako.settings import core_defaults
-    from kanibako.settings.settings_launch import (
-        build_launch_snapshot,
-        meta_identity_floor,
-        meta_runtime_floor,
-        workset_anchor_floor,
-    )
+  """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
+  from kanibako.settings import core_defaults
+  from kanibako.settings.settings_launch import (
+    build_launch_snapshot,
+    meta_identity_floor,
+    meta_runtime_floor,
+    workset_anchor_floor,
+  )
 
-    helper_log.parent.mkdir(parents=True, exist_ok=True)
-    helper_log.touch()
-    ctx = make_ctx(
-        workset_name=None,
-        xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
-        config={"config.primary_workset": ws_root},
-    )
-    floor: dict = {}
-    _merge_floor(floor, core_defaults.core_default_categories(
-        None, proj, enable_vault=True, mode=mode,
-    ))
-    _merge_floor(floor, core_defaults.helper_default_categories(
-        socket_path=helper_log,  # any existing path; the socket bind is not asserted
-        log_path=helper_log,
-        budget_path=budget,
-    ))
-    _merge_floor(floor, meta_runtime_floor(
-        mode=mode, ws_name="__X__",
-        ws_root_literal=None if mode == "primary" else ws_root,
-    ))
-    _merge_floor(floor, meta_identity_floor(
-        box_name=proj.name, project_path=str(proj.project_path),
-        inbox="/i", share_global="/sg", share_workset=None,
-    ))
-    _merge_floor(floor, workset_anchor_floor(mode=mode))
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-        workset_path=None, box_path=None, default_categories=floor,
-    )
-    return snap, ctx
+  helper_log.parent.mkdir(parents=True, exist_ok=True)
+  helper_log.touch()
+  ctx = make_ctx(
+    workset_name=None,
+    xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
+    config={"config.primary_workset": ws_root},
+  )
+  floor: dict = {}
+  _merge_floor(
+    floor,
+    core_defaults.core_default_categories(
+      None,
+      proj,
+      enable_vault=True,
+      mode=mode,
+    ),
+  )
+  _merge_floor(
+    floor,
+    core_defaults.helper_default_categories(
+      socket_path=helper_log,  # any existing path; the socket bind is not asserted
+      log_path=helper_log,
+      budget_path=budget,
+    ),
+  )
+  _merge_floor(
+    floor,
+    meta_runtime_floor(
+      mode=mode,
+      ws_name="__X__",
+      ws_root_literal=None if mode == "primary" else ws_root,
+    ),
+  )
+  _merge_floor(
+    floor,
+    meta_identity_floor(
+      box_name=proj.name,
+      project_path=str(proj.project_path),
+      inbox="/i",
+      share_global="/sg",
+      share_workset=None,
+    ),
+  )
+  _merge_floor(floor, workset_anchor_floor(mode=mode))
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories=floor,
+  )
+  return snap, ctx
 
 
 def _probe_mounts(mode, proj, ws_root, helper_log, budget=None):
-    from kanibako.settings.settings_launch import snapshot_category_entries
+  from kanibako.settings.settings_launch import snapshot_category_entries
 
-    snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log, budget)
-    # ⚑ READ OFF THE ENTRIES. What these cases probe is the ANCHOR CHAIN — that a
-    # declared source RESOLVES to the right absolute path — and that is settled by
-    # ``build_launch_snapshot`` + the adapter, before any delivery seam. Going
-    # through one would add an arbitration these fixtures declare no collision for.
-    return {
-        e.box_dest: e.host_src
-        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        if e.delivery == "MOUNT"
-    }
+  snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log, budget)
+  # ⚑ READ OFF THE ENTRIES. What these cases probe is the ANCHOR CHAIN — that a
+  # declared source RESOLVES to the right absolute path — and that is settled by
+  # ``build_launch_snapshot`` + the adapter, before any delivery seam. Going
+  # through one would add an arbitration these fixtures declare no collision for.
+  return {
+    e.box_dest: e.host_src
+    for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    if e.delivery == "MOUNT"
+  }
 
 
 class TestP1BoxRootAnchor:
-    """The RO box root and the one-declaration binds rooted against it."""
+  """The RO box root and the one-declaration binds rooted against it."""
 
-    def test_home_resolves_identically_in_all_three_modes(self, tmp_path):
-        """The ONE ``meta.box.home`` key lands on ``proj.shell_path``.
+  def test_home_resolves_identically_in_all_three_modes(self, tmp_path):
+    """The ONE ``meta.box.home`` key lands on ``proj.shell_path``.
 
-        This is the standing form of the P1 gate: whatever the mode, the resolved
-        home SOURCE is byte-identical to the host home dir the launch has always
-        used. A regression in the anchor chain shows up HERE as a wrong absolute
-        path, not as a changed spelling.
+    This is the standing form of the P1 gate: whatever the mode, the resolved
+    home SOURCE is byte-identical to the host home dir the launch has always
+    used. A regression in the anchor chain shows up HERE as a wrong absolute
+    path, not as a changed spelling.
 
-        🛑 READ OFF THE KEY, NOT THE MOUNT SET, since cutover 6-H: home does not route
-        through ``bindings.rw`` (spec ``:1015``), so it is in no scope's declarations
-        and the resolved mount set does not carry it. The assembly seam builds the pid-0
-        foundation from this very value — which is what makes asserting the key the
-        same gate it always was, and its ABSENCE from the mount set part of the claim.
-        """
-        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            snap, _ctx = _probe_snapshot(mode, proj, ws_root, hl)
-            assert snap.meta.box.home == str(proj.shell_path), mode
-            assert "/home/agent" not in _probe_mounts(mode, proj, ws_root, hl), mode
+    🛑 READ OFF THE KEY, NOT THE MOUNT SET, since cutover 6-H: home does not route
+    through ``bindings.rw`` (spec ``:1015``), so it is in no scope's declarations
+    and the resolved mount set does not carry it. The assembly seam builds the pid-0
+    foundation from this very value — which is what makes asserting the key the
+    same gate it always was, and its ABSENCE from the mount set part of the claim.
+    """
+    for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+      snap, _ctx = _probe_snapshot(mode, proj, ws_root, hl)
+      assert snap.meta.box.home == str(proj.shell_path), mode
+      assert "/home/agent" not in _probe_mounts(mode, proj, ws_root, hl), mode
 
-    def test_vault_and_logs_resolve_identically_in_all_three_modes(self, tmp_path):
-        """The vault + helper-log mounts are unmoved by the anchor collapse."""
-        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            by_dest = _probe_mounts(mode, proj, ws_root, hl)
-            assert by_dest["/home/agent/vault/ro"] == str(proj.vault_ro_path), mode
-            assert by_dest["/home/agent/vault/rw"] == str(proj.vault_rw_path), mode
-            log_dest = "/home/agent/.kanibako/state/helpers.jsonl"
-            assert by_dest[log_dest] == str(hl), mode
+  def test_vault_and_logs_resolve_identically_in_all_three_modes(self, tmp_path):
+    """The vault + helper-log mounts are unmoved by the anchor collapse."""
+    for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+      by_dest = _probe_mounts(mode, proj, ws_root, hl)
+      assert by_dest["/home/agent/vault/ro"] == str(proj.vault_ro_path), mode
+      assert by_dest["/home/agent/vault/rw"] == str(proj.vault_rw_path), mode
+      log_dest = "/home/agent/.kanibako/state/helpers.jsonl"
+      assert by_dest[log_dest] == str(hl), mode
 
-    def test_budget_bind_resolves_beside_the_home_in_all_three_modes(self, tmp_path):
-        """``{meta.box.path}/spawn.yaml`` lands where the start writes it: the box root,
-        ``proj.shell_path.parent`` — the probed path and the formula agree per mode."""
-        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            budget = proj.shell_path.parent / "spawn.yaml"
-            budget.parent.mkdir(parents=True, exist_ok=True)
-            budget.touch()
-            by_dest = _probe_mounts(mode, proj, ws_root, hl, budget)
-            assert by_dest["/home/agent/spawn.yaml"] == str(budget), mode
+  def test_budget_bind_resolves_beside_the_home_in_all_three_modes(self, tmp_path):
+    """``{meta.box.path}/spawn.yaml`` lands where the start writes it: the box root,
+    ``proj.shell_path.parent`` — the probed path and the formula agree per mode."""
+    for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+      budget = proj.shell_path.parent / "spawn.yaml"
+      budget.parent.mkdir(parents=True, exist_ok=True)
+      budget.touch()
+      by_dest = _probe_mounts(mode, proj, ws_root, hl, budget)
+      assert by_dest["/home/agent/spawn.yaml"] == str(budget), mode
 
-    def test_home_bind_declaration_is_mode_independent(self):
-        """The DUPLICATION is retired at the source, not merely at resolution.
+  def test_home_bind_declaration_is_mode_independent(self):
+    """The DUPLICATION is retired at the source, not merely at resolution.
 
-        ``core-defaults.yaml`` used to carry a 3-arm per-mode map for the home
-        host_src, then ONE row naming ``{meta.box.home}``. At cutover 6-H it carries NO
-        home row at all: home is pid 0 and does not route through ``bindings.rw``
-        (spec ``:1015``). Mode-independence therefore has nowhere left to break in this
-        arm, and what stops a per-mode home from creeping back is asserting that no
-        mode emits a home entry AT ALL — the strictly stronger form of the old claim.
-        The mode-independence of the arm that REMAINS is still asserted below.
+    ``core-defaults.yaml`` used to carry a 3-arm per-mode map for the home
+    host_src, then ONE row naming ``{meta.box.home}``. At cutover 6-H it carries NO
+    home row at all: home is pid 0 and does not route through ``bindings.rw``
+    (spec ``:1015``). Mode-independence therefore has nowhere left to break in this
+    arm, and what stops a per-mode home from creeping back is asserting that no
+    mode emits a home entry AT ALL — the strictly stronger form of the old claim.
+    The mode-independence of the arm that REMAINS is still asserted below.
 
-        ⚑ Re-derived for dest-keying (R-3/R-5/R-11). The arm is ONE terminal key whose
-        value is ``{box_dest: (host_src[, options])}``, so the box DESTINATION is the
-        map key; the dest reads ``/home/agent`` rather than the file's ``~`` because
-        R-11 absolutizes a destination at the producer.
-        """
-        from kanibako.settings import core_defaults
+    ⚑ Re-derived for dest-keying (R-3/R-5/R-11). The arm is ONE terminal key whose
+    value is ``{box_dest: (host_src[, options])}``, so the box DESTINATION is the
+    map key; the dest reads ``/home/agent`` rather than the file's ``~`` because
+    R-11 absolutizes a destination at the producer.
+    """
+    from kanibako.settings import core_defaults
 
-        class _P:
-            shell_path = Path("/h/home")
-            project_path = Path("/h/proj")
-            vault_ro_path = Path("/h/vro")
-            vault_rw_path = Path("/h/vrw")
+    class _P:
+      shell_path = Path("/h/home")
+      project_path = Path("/h/proj")
+      vault_ro_path = Path("/h/vro")
+      vault_rw_path = Path("/h/vrw")
 
-        arms = {
-            mode: core_defaults.core_default_categories(
-                None, _P(), enable_vault=False, mode=mode,
-            )["box.bindings.rw"]
-            for mode in ("primary", "named", "standalone")
-        }
-        for mode, arm in arms.items():
-            assert "/home/agent" not in arm, mode
-        # The WHOLE arm is mode-invariant, not just the home entry — a per-mode
-        # dest would now be a per-mode map KEY, which comparing tuples alone
-        # would no longer catch.
-        assert len({tuple(sorted(a.items())) for a in arms.values()}) == 1, arms
+    arms = {
+      mode: core_defaults.core_default_categories(
+        None,
+        _P(),
+        enable_vault=False,
+        mode=mode,
+      )["box.bindings.rw"]
+      for mode in ("primary", "named", "standalone")
+    }
+    for mode, arm in arms.items():
+      assert "/home/agent" not in arm, mode
+    # The WHOLE arm is mode-invariant, not just the home entry — a per-mode
+    # dest would now be a per-mode map KEY, which comparing tuples alone
+    # would no longer catch.
+    assert len({tuple(sorted(a.items())) for a in arms.values()}) == 1, arms
 
-    def test_helper_log_bind_is_the_spec_formula_and_mode_independent(self, tmp_path):
-        """The helper-log host_src IS the spec's row, spelled once for all modes.
+  def test_helper_log_bind_is_the_spec_formula_and_mode_independent(self, tmp_path):
+    """The helper-log host_src IS the spec's row, spelled once for all modes.
 
-        PHASE R. ``test_vault_and_logs_resolve_identically_in_all_three_modes``
-        proves the chain RESOLVES to the right absolute path; this proves it is
-        spelled the way the spec says (§2c ALL PROJECTS,
-        ``{workset.logs}/{meta.box.name}.jsonl``) rather than resolving correctly
-        by some other route. Two things it stops from creeping back:
+    PHASE R. ``test_vault_and_logs_resolve_identically_in_all_three_modes``
+    proves the chain RESOLVES to the right absolute path; this proves it is
+    spelled the way the spec says (§2c ALL PROJECTS,
+    ``{workset.logs}/{meta.box.name}.jsonl``) rather than resolving correctly
+    by some other route. Two things it stops from creeping back:
 
-        * the retired ``@meta.box.helper_log`` construct-time literal, which
-          existed ONLY because the braced form did not parse — a second spelling
-          for one bind, and an undeclared key besides;
-        * a per-mode arm, the duplication ``workset.logs`` exists to absorb.
+    * the retired ``@meta.box.helper_log`` construct-time literal, which
+      existed ONLY because the braced form did not parse — a second spelling
+      for one bind, and an undeclared key besides;
+    * a per-mode arm, the duplication ``workset.logs`` exists to absorb.
 
-        ⚑ The BRACES are the load-bearing part: bare ``@meta.box.name.jsonl``
-        parses as one greedy dotted name, resolves absent, and coerces to "" —
-        losing both the box name and the extension. That failure is silent at
-        every layer, which is why the spelling is pinned and not just the result.
-        """
-        from kanibako.settings import core_defaults
+    ⚑ The BRACES are the load-bearing part: bare ``@meta.box.name.jsonl``
+    parses as one greedy dotted name, resolves absent, and coerces to "" —
+    losing both the box name and the extension. That failure is silent at
+    every layer, which is why the spelling is pinned and not just the result.
+    """
+    from kanibako.settings import core_defaults
 
-        log = tmp_path / "b.jsonl"
-        log.touch()
-        emitted = core_defaults.helper_default_categories(
-            socket_path=log,  # any existing path; only the log row is asserted.
-            log_path=log,
-        )["box.bindings.ro"]
-        # ⚑ Re-derived for dest-keying: the destination is the map KEY now, so
-        # asserting the WHOLE ``ro`` arm pins the same two facts the old 3-tuple
-        # did — the spec's braced formula as the host_src, at exactly that dest —
-        # and additionally that the helper contributes nothing else to the arm.
-        assert emitted == {
-            "/home/agent/.kanibako/state/helpers.jsonl": (
-                "{workset.logs}/{meta.box.name}.jsonl",
-                "ro",
-            ),
-        }
-        # ONE ROW FOR ALL MODES is structural, not a coincidence of three equal
-        # arms: the builder takes no ``mode`` at all, so there is nowhere for a
-        # per-mode arm to live. ``workset.logs`` carries the whole variation.
-        import inspect
+    log = tmp_path / "b.jsonl"
+    log.touch()
+    emitted = core_defaults.helper_default_categories(
+      socket_path=log,  # any existing path; only the log row is asserted.
+      log_path=log,
+    )["box.bindings.ro"]
+    # ⚑ Re-derived for dest-keying: the destination is the map KEY now, so
+    # asserting the WHOLE ``ro`` arm pins the same two facts the old 3-tuple
+    # did — the spec's braced formula as the host_src, at exactly that dest —
+    # and additionally that the helper contributes nothing else to the arm.
+    assert emitted == {
+      "/home/agent/.kanibako/state/helpers.jsonl": (
+        "{workset.logs}/{meta.box.name}.jsonl",
+        "ro",
+      ),
+    }
+    # ONE ROW FOR ALL MODES is structural, not a coincidence of three equal
+    # arms: the builder takes no ``mode`` at all, so there is nowhere for a
+    # per-mode arm to live. ``workset.logs`` carries the whole variation.
+    import inspect
 
-        assert "mode" not in inspect.signature(
-            core_defaults.helper_default_categories
-        ).parameters
+    assert "mode" not in inspect.signature(core_defaults.helper_default_categories).parameters
 
-    def test_meta_box_path_is_the_box_root_per_mode(self, tmp_path):
-        """The anchor means what its name says: the host-side BOX ROOT.
+  def test_meta_box_path_is_the_box_root_per_mode(self, tmp_path):
+    """The anchor means what its name says: the host-side BOX ROOT.
 
-        ``proj.shell_path`` always ends in ``home/``, so its parent IS the box dir
-        that contains it — ``boxes/<name>`` for primary/named, ``<root>/box_data``
-        for standalone (the EMPTY-LEAF case, where the box root IS
-        ``workset.boxes``).
-        """
-        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            snap, _ = _probe_snapshot(mode, proj, ws_root, hl)
-            assert snap.meta.box.path == str(proj.shell_path.parent), mode
+    ``proj.shell_path`` always ends in ``home/``, so its parent IS the box dir
+    that contains it — ``boxes/<name>`` for primary/named, ``<root>/box_data``
+    for standalone (the EMPTY-LEAF case, where the box root IS
+    ``workset.boxes``).
+    """
+    for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+      snap, _ = _probe_snapshot(mode, proj, ws_root, hl)
+      assert snap.meta.box.path == str(proj.shell_path.parent), mode
 
-    def test_box_root_has_no_trailing_separator_in_any_mode(self, tmp_path):
-        """No mode leaves a dangling separator or a doubled slash in the box root.
+  def test_box_root_has_no_trailing_separator_in_any_mode(self, tmp_path):
+    """No mode leaves a dangling separator or a doubled slash in the box root.
 
-        Standalone is the interesting one — its ``meta.box.path`` is a BARE
-        whole-value ref, so the resolver inherits ``{workset.boxes}`` verbatim rather
-        than joining an empty leaf onto it — but the property is asserted for ALL
-        THREE modes, because primary/named can produce the same artifact by a
-        different route: an empty ``meta.box.name`` makes
-        ``{workset.boxes}/{meta.box.name}`` resolve to ``<…>/boxes/``, which is the
-        SHARED box store rather than this box (guarded in
-        ``settings_launch._assert_box_root_resolved``, pinned in
-        ``tests/test_settings_launch.py``).
-        """
-        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            snap, _ = _probe_snapshot(mode, proj, ws_root, hl)
-            root = snap.meta.box.path
-            assert not root.endswith("/"), mode
-            assert "//" not in root, mode
-        # The EMPTY LEAF specifically: for standalone the box store IS the box root.
-        cases = {m: (p, w, h) for m, p, w, h in _probe_cases(tmp_path)}
-        proj, ws_root, hl = cases["standalone"]
-        snap, _ = _probe_snapshot("standalone", proj, ws_root, hl)
-        assert snap.meta.box.path == snap.workset.boxes
+    Standalone is the interesting one — its ``meta.box.path`` is a BARE
+    whole-value ref, so the resolver inherits ``{workset.boxes}`` verbatim rather
+    than joining an empty leaf onto it — but the property is asserted for ALL
+    THREE modes, because primary/named can produce the same artifact by a
+    different route: an empty ``meta.box.name`` makes
+    ``{workset.boxes}/{meta.box.name}`` resolve to ``<…>/boxes/``, which is the
+    SHARED box store rather than this box (guarded in
+    ``settings_launch._assert_box_root_resolved``, pinned in
+    ``tests/test_settings_launch.py``).
+    """
+    for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+      snap, _ = _probe_snapshot(mode, proj, ws_root, hl)
+      root = snap.meta.box.path
+      assert not root.endswith("/"), mode
+      assert "//" not in root, mode
+    # The EMPTY LEAF specifically: for standalone the box store IS the box root.
+    cases = {m: (p, w, h) for m, p, w, h in _probe_cases(tmp_path)}
+    proj, ws_root, hl = cases["standalone"]
+    snap, _ = _probe_snapshot("standalone", proj, ws_root, hl)
+    assert snap.meta.box.path == snap.workset.boxes
 
 
 class TestB3ImagesStoreKey:
-    """B3 — the image-store bind routes through the USER KEY ``box.images_store``.
+  """B3 — the image-store bind routes through the USER KEY ``box.images_store``.
 
-    Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
-    runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
-    the {key}-ref ``{box.images_store}``, and a cascade-tier repoint of the key MOVES
-    the mount.  The B3 rider — that the bind row and the scalar key must not share
-    a name — is now carried STRUCTURALLY: under dest-keying (R-5) a bind row has no
-    name at all, so what is pinned below is that the arm is TERMINAL and the one
-    ``images_store`` left in the table is the SCALAR key.
+  Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
+  runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
+  the {key}-ref ``{box.images_store}``, and a cascade-tier repoint of the key MOVES
+  the mount.  The B3 rider — that the bind row and the scalar key must not share
+  a name — is now carried STRUCTURALLY: under dest-keying (R-5) a bind row has no
+  name at all, so what is pinned below is that the arm is TERMINAL and the one
+  ``images_store`` left in the table is the SCALAR key.
+  """
+
+  def test_images_bind_is_the_at_ref_and_the_probe_is_the_key_default(self):
+    """The emitted table = the {key}-ref bind + the probed-default scalar.
+
+    Spelled, not just resolved (helper_log precedent): the host_src IS
+    ``{box.images_store}``, so the mount follows the KEY rather than a probed
+    literal that happens to match.  The probe enters the keyspace in the SAME
+    table, as the key's floor-scalar default.
+
+    ⚑ Re-derived for dest-keying (R-3/R-5/R-11): the bind's destination is the
+    map KEY of the terminal ``box.bindings.ro`` arm, not the tuple's 2nd slot,
+    and ``~/.config/containers/storage.conf`` is stored absolutized. The B3
+    rider is re-derived rather than dropped — the old
+    ``box.bindings.ro.images_store`` spelling cannot come back because NO
+    ``box.bindings.ro.<name>`` key can, so the assertion that pins the rider is
+    now that the arm is terminal and ``images_store`` survives only as the
+    scalar.
     """
+    from kanibako.settings import core_defaults
 
-    def test_images_bind_is_the_at_ref_and_the_probe_is_the_key_default(self):
-        """The emitted table = the {key}-ref bind + the probed-default scalar.
+    emitted = core_defaults.image_default_categories(
+      graph_root=Path("/host/graph"),
+      storage_conf_path=Path("/host/staging/storage.conf"),
+    )
+    arm = emitted["box.bindings.ro"]
+    assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
+    # The probed graphroot IS the user key's default, entering here.
+    assert emitted["box.images_store"] == "/host/graph"
+    # The rider, structurally: the arm is TERMINAL (no per-name key survives),
+    # and the only ``images_store`` in the table is the scalar key.
+    assert not [k for k in emitted if k.startswith("box.bindings.ro.")]
+    assert [k for k in emitted if "images_store" in k] == ["box.images_store"]
+    # images_conf stays an INTERNAL bind (NOT a key); its identity is its dest.
+    assert arm["/home/agent/.config/containers/storage.conf"] == (
+      "/host/staging/storage.conf",
+      "ro",
+    )
 
-        Spelled, not just resolved (helper_log precedent): the host_src IS
-        ``{box.images_store}``, so the mount follows the KEY rather than a probed
-        literal that happens to match.  The probe enters the keyspace in the SAME
-        table, as the key's floor-scalar default.
+  @staticmethod
+  def _resolve_images_mounts(tmp_path, box_yaml: str | None, *, probed_ok=True):
+    """Resolve the CONDITIONAL image table through the LIVE pipeline.
 
-        ⚑ Re-derived for dest-keying (R-3/R-5/R-11): the bind's destination is the
-        map KEY of the terminal ``box.bindings.ro`` arm, not the tuple's 2nd slot,
-        and ``~/.config/containers/storage.conf`` is stored absolutized. The B3
-        rider is re-derived rather than dropped — the old
-        ``box.bindings.ro.images_store`` spelling cannot come back because NO
-        ``box.bindings.ro.<name>`` key can, so the assertion that pins the rider is
-        now that the arm is terminal and ``images_store`` survives only as the
-        scalar.
-        """
-        from kanibako.settings import core_defaults
+    Mirrors the launch's narrow image resolve: ONLY the image table as the
+    floor (``include_base_families=False`` shape), plus an optional box
+    settings FILE — the tier a user's ``box: images_store:`` repoint lives
+    in.  All host sources are real dirs/files so the resolve keeps them.
 
-        emitted = core_defaults.image_default_categories(
-            graph_root=Path("/host/graph"),
-            storage_conf_path=Path("/host/staging/storage.conf"),
-        )
-        arm = emitted["box.bindings.ro"]
-        assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
-        # The probed graphroot IS the user key's default, entering here.
-        assert emitted["box.images_store"] == "/host/graph"
-        # The rider, structurally: the arm is TERMINAL (no per-name key survives),
-        # and the only ``images_store`` in the table is the scalar key.
-        assert not [k for k in emitted if k.startswith("box.bindings.ro.")]
-        assert [k for k in emitted if "images_store" in k] == ["box.images_store"]
-        # images_conf stays an INTERNAL bind (NOT a key); its identity is its dest.
-        assert arm["/home/agent/.config/containers/storage.conf"] == (
-            "/host/staging/storage.conf",
-            "ro",
-        )
+    *probed_ok* False is the FAILED PROBE [Jei:2026-08-02]: ``graph_root=None``,
+    so the table carries no floor scalar for ``box.images_store`` and only a
+    set tier value can resolve the bind.
+    """
+    from kanibako.settings import core_defaults
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      snapshot_category_entries,
+    )
 
-    @staticmethod
-    def _resolve_images_mounts(tmp_path, box_yaml: str | None, *, probed_ok=True):
-        """Resolve the CONDITIONAL image table through the LIVE pipeline.
+    probed = tmp_path / "probed-graph"
+    probed.mkdir()
+    conf = tmp_path / "storage.conf"
+    conf.write_text("[storage]\n")
+    box_path = None
+    if box_yaml is not None:
+      box_path = tmp_path / "box-settings.yaml"
+      box_path.write_text(box_yaml)
 
-        Mirrors the launch's narrow image resolve: ONLY the image table as the
-        floor (``include_base_families=False`` shape), plus an optional box
-        settings FILE — the tier a user's ``box: images_store:`` repoint lives
-        in.  All host sources are real dirs/files so the resolve keeps them.
+    ctx = make_ctx()
+    floor = dict(
+      core_defaults.image_default_categories(
+        graph_root=probed if probed_ok else None,
+        storage_conf_path=conf,
+      )
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_path,
+      default_categories=floor,
+    )
+    winners = narrow_table_winners(
+      snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+      table_bind_dests(floor),
+    )
+    return probed, {m.box_dest: m.host_src for m in winners}
 
-        *probed_ok* False is the FAILED PROBE [Jei:2026-08-02]: ``graph_root=None``,
-        so the table carries no floor scalar for ``box.images_store`` and only a
-        set tier value can resolve the bind.
-        """
-        from kanibako.settings import core_defaults
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            snapshot_category_entries,
-        )
+  def test_default_resolves_to_the_probed_graphroot(self, tmp_path):
+    """Out of the box, ``{box.images_store}`` resolves to the probe.
 
-        probed = tmp_path / "probed-graph"
-        probed.mkdir()
-        conf = tmp_path / "storage.conf"
-        conf.write_text("[storage]\n")
-        box_path = None
-        if box_yaml is not None:
-            box_path = tmp_path / "box-settings.yaml"
-            box_path.write_text(box_yaml)
+    No file sets the key, so the floor default (the probed graphroot) wins
+    and the store mount is byte-identical to the pre-B3 hardwired source.
+    """
+    probed, by_dest = self._resolve_images_mounts(tmp_path, box_yaml=None)
+    assert by_dest["/var/lib/shared-images"] == str(probed)
 
-        ctx = make_ctx()
-        floor = dict(core_defaults.image_default_categories(
-            graph_root=probed if probed_ok else None, storage_conf_path=conf,
-        ))
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=box_path, default_categories=floor,
-        )
-        winners = narrow_table_winners(
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
-            table_bind_dests(floor),
-        )
-        return probed, {m.box_dest: m.host_src for m in winners}
+  def test_images_bind_follows_a_repointed_images_store(self, tmp_path):
+    """A box-file ``box.images_store`` repoint MOVES the store mount.
 
-    def test_default_resolves_to_the_probed_graphroot(self, tmp_path):
-        """Out of the box, ``{box.images_store}`` resolves to the probe.
+    THE key decision of B3 ([Jei:2026-08-01]): the key is consulted — a cascade value
+    beats the probed default by name, and the bind lands on the user's
+    store, not the probe's.
+    """
+    custom = tmp_path / "custom-store"
+    custom.mkdir()
+    probed, by_dest = self._resolve_images_mounts(
+      tmp_path,
+      box_yaml=f"box:\n  images_store: {custom}\n",
+    )
+    assert by_dest["/var/lib/shared-images"] == str(custom)
+    assert by_dest["/var/lib/shared-images"] != str(probed)
 
-        No file sets the key, so the floor default (the probed graphroot) wins
-        and the store mount is byte-identical to the pre-B3 hardwired source.
-        """
-        probed, by_dest = self._resolve_images_mounts(tmp_path, box_yaml=None)
-        assert by_dest["/var/lib/shared-images"] == str(probed)
+  def test_a_null_ro_arm_keeps_the_internal_storage_conf(self, tmp_path):
+    """``box.bindings.ro: null`` omits the STANDARD store bind but not the INTERNAL
+    generated storage.conf (spec §2c: not a key, so no user arm may drop it)."""
+    _probed, by_dest = self._resolve_images_mounts(
+      tmp_path,
+      box_yaml="box:\n  bindings:\n    ro: null\n",
+    )
+    assert "/var/lib/shared-images" not in by_dest
+    assert by_dest["/home/agent/.config/containers/storage.conf"] == str(tmp_path / "storage.conf")
 
-    def test_images_bind_follows_a_repointed_images_store(self, tmp_path):
-        """A box-file ``box.images_store`` repoint MOVES the store mount.
+  def test_probe_fail_emits_no_floor_scalar(self):
+    """[Jei:2026-08-02]: a FAILED probe contributes no ``box.images_store`` default.
 
-        THE key decision of B3 ([Jei:2026-08-01]): the key is consulted — a cascade value
-        beats the probed default by name, and the bind lands on the user's
-        store, not the probe's.
-        """
-        custom = tmp_path / "custom-store"
-        custom.mkdir()
-        probed, by_dest = self._resolve_images_mounts(
-            tmp_path, box_yaml=f"box:\n  images_store: {custom}\n",
-        )
-        assert by_dest["/var/lib/shared-images"] == str(custom)
-        assert by_dest["/var/lib/shared-images"] != str(probed)
+    The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
+    key unset in the table — the bind is still spelled as the {key}-ref (nothing
+    falls back to a probed literal) and the INTERNAL conf bind is unaffected.
 
-    def test_a_null_ro_arm_keeps_the_internal_storage_conf(self, tmp_path):
-        """``box.bindings.ro: null`` omits the STANDARD store bind but not the INTERNAL
-        generated storage.conf (spec §2c: not a key, so no user arm may drop it)."""
-        _probed, by_dest = self._resolve_images_mounts(
-            tmp_path, box_yaml="box:\n  bindings:\n    ro: null\n",
-        )
-        assert "/var/lib/shared-images" not in by_dest
-        assert by_dest["/home/agent/.config/containers/storage.conf"] == str(
-            tmp_path / "storage.conf"
-        )
+    ⚑ Re-derived for dest-keying: both binds are entries of the terminal
+    ``box.bindings.ro`` arm, keyed by their R-11-absolutized destinations.
+    """
+    from kanibako.settings import core_defaults
 
-    def test_probe_fail_emits_no_floor_scalar(self):
-        """[Jei:2026-08-02]: a FAILED probe contributes no ``box.images_store`` default.
+    emitted = core_defaults.image_default_categories(
+      graph_root=None,
+      storage_conf_path=Path("/host/staging/storage.conf"),
+    )
+    assert "box.images_store" not in emitted
+    arm = emitted["box.bindings.ro"]
+    assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
+    assert arm["/home/agent/.config/containers/storage.conf"] == (
+      "/host/staging/storage.conf",
+      "ro",
+    )
 
-        The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
-        key unset in the table — the bind is still spelled as the {key}-ref (nothing
-        falls back to a probed literal) and the INTERNAL conf bind is unaffected.
+  def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
+    """Probe fail + no set key: ``{box.images_store}`` propagates ABSENT.
 
-        ⚑ Re-derived for dest-keying: both binds are entries of the terminal
-        ``box.bindings.ro`` arm, keyed by their R-11-absolutized destinations.
-        """
-        from kanibako.settings import core_defaults
+    The whole-value {key}-ref to an unset key drops the bind (spec §0), so the store
+    mount simply is not there — the launch seam reads the same resolved key
+    and warns rather than mounting half of the pair.
+    """
+    _probed, by_dest = self._resolve_images_mounts(
+      tmp_path,
+      box_yaml=None,
+      probed_ok=False,
+    )
+    assert "/var/lib/shared-images" not in by_dest
 
-        emitted = core_defaults.image_default_categories(
-            graph_root=None,
-            storage_conf_path=Path("/host/staging/storage.conf"),
-        )
-        assert "box.images_store" not in emitted
-        arm = emitted["box.bindings.ro"]
-        assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
-        assert arm["/home/agent/.config/containers/storage.conf"] == (
-            "/host/staging/storage.conf",
-            "ro",
-        )
+  def test_probe_fail_still_follows_a_set_images_store(self, tmp_path):
+    """Probe fail + a SET key: the bind resolves from the SET value.
 
-    def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
-        """Probe fail + no set key: ``{box.images_store}`` propagates ABSENT.
-
-        The whole-value {key}-ref to an unset key drops the bind (spec §0), so the store
-        mount simply is not there — the launch seam reads the same resolved key
-        and warns rather than mounting half of the pair.
-        """
-        _probed, by_dest = self._resolve_images_mounts(
-            tmp_path, box_yaml=None, probed_ok=False,
-        )
-        assert "/var/lib/shared-images" not in by_dest
-
-    def test_probe_fail_still_follows_a_set_images_store(self, tmp_path):
-        """Probe fail + a SET key: the bind resolves from the SET value.
-
-        THE 11a case — the probe's only job was the default, so losing it costs
-        nothing once the user (or a cascade tier) has named the store.
-        """
-        custom = tmp_path / "custom-store"
-        custom.mkdir()
-        _probed, by_dest = self._resolve_images_mounts(
-            tmp_path, box_yaml=f"box:\n  images_store: {custom}\n",
-            probed_ok=False,
-        )
-        assert by_dest["/var/lib/shared-images"] == str(custom)
+    THE 11a case — the probe's only job was the default, so losing it costs
+    nothing once the user (or a cascade tier) has named the store.
+    """
+    custom = tmp_path / "custom-store"
+    custom.mkdir()
+    _probed, by_dest = self._resolve_images_mounts(
+      tmp_path,
+      box_yaml=f"box:\n  images_store: {custom}\n",
+      probed_ok=False,
+    )
+    assert by_dest["/var/lib/shared-images"] == str(custom)
 
 
 class TestDeclarationRoots:
-    """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a).
+  """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a).
 
-    The rule, driven through the REAL pipeline (build → snapshot → adapt):
-    a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
-    self-resolving source (absolute / ``~`` / ``{$VAR}`` / ``{key}``-ref) is NOT rooted.
-    There is no assembly-time prepend left to compensate for either way.
+  The rule, driven through the REAL pipeline (build → snapshot → adapt):
+  a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
+  self-resolving source (absolute / ``~`` / ``{$VAR}`` / ``{key}``-ref) is NOT rooted.
+  There is no assembly-time prepend left to compensate for either way.
+  """
+
+  @staticmethod
+  def _resolve(entries: dict[str, object], *, agent: str = "claude"):
+    """Resolve a floor of agent-scope category entries into ``{dest: src}``."""
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      snapshot_category_entries,
+    )
+
+    ctx = make_ctx(
+      workset_name=None,
+      xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
+      config={"config.data": "/data", "config.agents": "/data/agents"},
+    )
+    floor: dict[str, object] = {"system.cache": "{$XDG_CACHE_HOME}/kanibako"}
+    floor.update(
+      meta_identity_floor(
+        box_name="b",
+        project_path="/p",
+        inbox="/i",
+        share_global="/sg",
+        share_workset=None,
+        agent_name=agent,
+      )
+    )
+    floor.update(entries)
+    snap = build_launch_snapshot(
+      agent_name=agent,
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=floor,
+    )
+    # ⚑ READ OFF THE ENTRIES. Rooting happens at DECLARATION and is settled by
+    # ``expand`` + the adapter; no delivery seam touches a ``host_src``. MOUNTs and
+    # COPYs together — ``seeded`` is a COPY, so a mounts-only view would silently
+    # skip the one abstract category that is not a mount.
+    return {
+      e.box_dest: e.host_src
+      for e in snapshot_category_entries(
+        snap,
+        active_agent=agent,
+        box_ctx=ctx,
+      )
+      if e.delivery != "ENV"
+    }
+
+  def test_absolute_and_ref_sources_are_not_rooted(self):
+    """T4 — an IDENTITY mount whose source is rooted at ``{system.cache}``.
+
+    A rule that prefixed a self-resolving source would break §2a's own
+    reversal of the "absolute source is a category mismatch" ruling.
+
+    ⚑ RE-SPELLED for dest-keying (2026-08-08c): ``caches`` is a TERMINAL key
+    whose value is ``{box_dest: (host_src[, options])}``, so the retired
+    ``agent.claude.caches.transform`` entry name is gone and the destination
+    is the map key.  The dest here is a ``{key}``-ref FORMULA — a USER-written
+    identity mount, still accepted (no refusal) though the shipped entry's dest
+    is ``~/.kanibako/cache/tweakcc``; it is resolved by the emitter.
+
+    ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
+    It injects the entry straight into the floor, which is where a STORED value
+    already sits — so it never runs ``root_relative_source`` and stays GREEN if
+    that function drops its prefix test (verified by running that mutation).
+    What it pins is the OTHER half: that nothing DOWNSTREAM of the declaration
+    re-roots a self-resolving source. The declaration-time rule is instrumented
+    by ``tests/test_agent_defaults.py`` (``test_self_resolving_source_is_stored
+    _verbatim`` + ``TestLayoutSingleSource::test_prefix_rule``), which drive the
+    real loader, and — for a user's own settings FILE at all four scopes — by
+    ``tests/test_settings/test_declaration_roots.py``.  ⚑ The SOURCE is
+    deliberately NOT the agent store — the second assertion below has nothing to
+    bite on if it is.
     """
+    by_dest = self._resolve(
+      {
+        "agent.claude.caches": {
+          "{system.cache}/tweakcc": ("{system.cache}/tweakcc",),
+        },
+      }
+    )
+    # No ``common/``, no ``caches/``, no agent-store prefix ANYWHERE.
+    assert by_dest["/xcache/kanibako/tweakcc"] == "/xcache/kanibako/tweakcc"
+    assert not any("agents/claude" in src for src in by_dest.values())
 
-    @staticmethod
-    def _resolve(entries: dict[str, object], *, agent: str = "claude"):
-        """Resolve a floor of agent-scope category entries into ``{dest: src}``."""
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            snapshot_category_entries,
-        )
+  def test_self_resolving_shapes_pass_through_untouched(self):
+    # ⚑ ONE terminal key holding all four entries, keyed by DESTINATION: the
+    # dest left the value tuple when it became the map key, so each value is
+    # the 1-element ``(host_src,)``.
+    by_dest = self._resolve(
+      {
+        "agent.claude.common": {
+          "/g/a": ("/abs/dir",),
+          "/g/b": ("~/tdir",),
+          "/g/c": ("{$XDG_DATA_HOME}/x",),
+          "/g/d": ("{meta.agent.claude.path}/own",),
+        },
+      }
+    )
+    assert by_dest["/g/a"] == "/abs/dir"
+    assert by_dest["/g/b"] == f"{HOST_HOME}/tdir"
+    assert by_dest["/g/c"] == "/data/x"
+    assert by_dest["/g/d"] == "/data/agents/claude/own"
 
-        ctx = make_ctx(
-            workset_name=None,
-            xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
-            config={"config.data": "/data", "config.agents": "/data/agents"},
-        )
-        floor: dict[str, object] = {"system.cache": "{$XDG_CACHE_HOME}/kanibako"}
-        floor.update(meta_identity_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, agent_name=agent,
-        ))
-        floor.update(entries)
-        snap = build_launch_snapshot(
-            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=floor,
-        )
-        # ⚑ READ OFF THE ENTRIES. Rooting happens at DECLARATION and is settled by
-        # ``expand`` + the adapter; no delivery seam touches a ``host_src``. MOUNTs and
-        # COPYs together — ``seeded`` is a COPY, so a mounts-only view would silently
-        # skip the one abstract category that is not a mount.
-        return {
-            e.box_dest: e.host_src
-            for e in snapshot_category_entries(
-                snap, active_agent=agent, box_ctx=ctx,
-            )
-            if e.delivery != "ENV"
-        }
+  def test_bare_relative_leaf_is_rooted_under_its_category_dir(self):
+    """T5 — the POSITIVE case, per abstract category.
 
-    def test_absolute_and_ref_sources_are_not_rooted(self):
-        """T4 — an IDENTITY mount whose source is rooted at ``{system.cache}``.
+    The rooting happens at DECLARATION, so what the pipeline sees is already
+    the full ref; this pins that the ref a declaration loader BUILDS resolves
+    to ``<store>/<category>/<leaf>``.
+    """
+    from kanibako.settings.agent_config import agent_category_root_ref, root_relative_source
 
-        A rule that prefixed a self-resolving source would break §2a's own
-        reversal of the "absolute source is a category mismatch" ruling.
+    entries = {
+      f"agent.claude.{cat}": {
+        f"/g/{cat}": (
+          root_relative_source(
+            "leaf",
+            agent_category_root_ref("claude", cat),
+          ),
+        ),
+      }
+      for cat in ("common", "caches", "seeded")
+    }
+    by_dest = self._resolve(entries)
+    assert by_dest["/g/common"] == "/data/agents/claude/common/leaf"
+    assert by_dest["/g/caches"] == "/data/agents/claude/caches/leaf"
+    # ``seeded`` is a COPY, not a MOUNT — but it roots identically.
+    assert by_dest["/g/seeded"] == "/data/agents/claude/seeded/leaf"
 
-        ⚑ RE-SPELLED for dest-keying (2026-08-08c): ``caches`` is a TERMINAL key
-        whose value is ``{box_dest: (host_src[, options])}``, so the retired
-        ``agent.claude.caches.transform`` entry name is gone and the destination
-        is the map key.  The dest here is a ``{key}``-ref FORMULA — a USER-written
-        identity mount, still accepted (no refusal) though the shipped entry's dest
-        is ``~/.kanibako/cache/tweakcc``; it is resolved by the emitter.
+  def test_claude_commons_resolve_under_common_dir(self):
+    """T11 — the PERMANENT form of the gate's one intended change (M-3).
 
-        ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
-        It injects the entry straight into the floor, which is where a STORED value
-        already sits — so it never runs ``root_relative_source`` and stays GREEN if
-        that function drops its prefix test (verified by running that mutation).
-        What it pins is the OTHER half: that nothing DOWNSTREAM of the declaration
-        re-roots a self-resolving source. The declaration-time rule is instrumented
-        by ``tests/test_agent_defaults.py`` (``test_self_resolving_source_is_stored
-        _verbatim`` + ``TestLayoutSingleSource::test_prefix_rule``), which drive the
-        real loader, and — for a user's own settings FILE at all four scopes — by
-        ``tests/test_settings/test_declaration_roots.py``.  ⚑ The SOURCE is
-        deliberately NOT the agent store — the second assertion below has nothing to
-        bite on if it is.
-        """
-        by_dest = self._resolve({
-            "agent.claude.caches": {
-                "{system.cache}/tweakcc": ("{system.cache}/tweakcc",),
-            },
-        })
-        # No ``common/``, no ``caches/``, no agent-store prefix ANYWHERE.
-        assert by_dest["/xcache/kanibako/tweakcc"] == "/xcache/kanibako/tweakcc"
-        assert not any("agents/claude" in src for src in by_dest.values())
+    The REAL ``default_common()`` through the REAL pipeline lands at
+    ``<data>/agents/claude/common/{plugins,cache}``.  This is the standing
+    replacement for the one-off before/after gate diff.
+    """
+    from kanibako.plugins.claude import ClaudeTarget
 
-    def test_self_resolving_shapes_pass_through_untouched(self):
-        # ⚑ ONE terminal key holding all four entries, keyed by DESTINATION: the
-        # dest left the value tuple when it became the map key, so each value is
-        # the 1-element ``(host_src,)``.
-        by_dest = self._resolve({
-            "agent.claude.common": {
-                "/g/a": ("/abs/dir",),
-                "/g/b": ("~/tdir",),
-                "/g/c": ("{$XDG_DATA_HOME}/x",),
-                "/g/d": ("{meta.agent.claude.path}/own",),
-            },
-        })
-        assert by_dest["/g/a"] == "/abs/dir"
-        assert by_dest["/g/b"] == f"{HOST_HOME}/tdir"
-        assert by_dest["/g/c"] == "/data/x"
-        assert by_dest["/g/d"] == "/data/agents/claude/own"
-
-    def test_bare_relative_leaf_is_rooted_under_its_category_dir(self):
-        """T5 — the POSITIVE case, per abstract category.
-
-        The rooting happens at DECLARATION, so what the pipeline sees is already
-        the full ref; this pins that the ref a declaration loader BUILDS resolves
-        to ``<store>/<category>/<leaf>``.
-        """
-        from kanibako.settings.agent_config import agent_category_root_ref, root_relative_source
-
-        entries = {
-            f"agent.claude.{cat}": {
-                f"/g/{cat}": (
-                    root_relative_source(
-                        "leaf", agent_category_root_ref("claude", cat),
-                    ),
-                ),
-            }
-            for cat in ("common", "caches", "seeded")
-        }
-        by_dest = self._resolve(entries)
-        assert by_dest["/g/common"] == "/data/agents/claude/common/leaf"
-        assert by_dest["/g/caches"] == "/data/agents/claude/caches/leaf"
-        # ``seeded`` is a COPY, not a MOUNT — but it roots identically.
-        assert by_dest["/g/seeded"] == "/data/agents/claude/seeded/leaf"
-
-    def test_claude_commons_resolve_under_common_dir(self):
-        """T11 — the PERMANENT form of the gate's one intended change (M-3).
-
-        The REAL ``default_common()`` through the REAL pipeline lands at
-        ``<data>/agents/claude/common/{plugins,cache}``.  This is the standing
-        replacement for the one-off before/after gate diff.
-        """
-        from kanibako.plugins.claude import ClaudeTarget
-
-        by_dest = self._resolve(dict(ClaudeTarget().default_common()))
-        assert by_dest["/home/agent/.claude/plugins"] == (
-            "/data/agents/claude/common/plugins"
-        )
-        assert by_dest["/home/agent/.claude/cache"] == (
-            "/data/agents/claude/common/cache"
-        )
+    by_dest = self._resolve(dict(ClaudeTarget().default_common()))
+    assert by_dest["/home/agent/.claude/plugins"] == ("/data/agents/claude/common/plugins")
+    assert by_dest["/home/agent/.claude/cache"] == ("/data/agents/claude/common/cache")
 
 
 class TestDeclarationKeyIsDiscriminated:
-    """Every entry carries the DISCRIMINATED key it was declared under (§0).
+  """Every entry carries the DISCRIMINATED key it was declared under (§0).
 
-    ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
-    ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
-    ``agent.default``. A bare ``agent.<category>.<dest>`` is not a key at all, so
-    a collision message or a ``binding_derivations.*`` entry spelled that way
-    would point a reader at something the keyspace forbids them to write.
+  ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
+  ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
+  ``agent.default``. A bare ``agent.<category>.<dest>`` is not a key at all, so
+  a collision message or a ``binding_derivations.*`` entry spelled that way
+  would point a reader at something the keyspace forbids them to write.
 
-    ⚑ The agent tier is the ONLY place the two can differ, because
-    ``_agent_pick_node`` collapses ``agent.default`` and ``agent.<active>`` into
-    one effective node BEFORE emission. Both arms are asserted: a DESTINATION the
-    active slot sets, and one only ``agent.default`` sets.
+  ⚑ The agent tier is the ONLY place the two can differ, because
+  ``_agent_pick_node`` collapses ``agent.default`` and ``agent.<active>`` into
+  one effective node BEFORE emission. Both arms are asserted: a DESTINATION the
+  active slot sets, and one only ``agent.default`` sets.
 
-    ⚑ Re-derived for dest-keying (2026-08-08c): under a TERMINAL dest-keyed
-    category the per-entry unit the overlay resolves — and the unit
-    ``CategoryEntry.name`` carries — is the box DESTINATION, not an entry name.
-    That is exactly R-10's "the destination IS the identity", read at the emitter.
-    """
+  ⚑ Re-derived for dest-keying (2026-08-08c): under a TERMINAL dest-keyed
+  category the per-entry unit the overlay resolves — and the unit
+  ``CategoryEntry.name`` carries — is the box DESTINATION, not an entry name.
+  That is exactly R-10's "the destination IS the identity", read at the emitter.
+  """
 
-    @staticmethod
-    def _entries(floor, *, agent="claude"):
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            snapshot_category_entries,
-        )
+  @staticmethod
+  def _entries(floor, *, agent="claude"):
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      snapshot_category_entries,
+    )
 
-        ctx = make_ctx(
-            workset_name=None,
-            config={"config.data": "/data", "config.agents": "/data/agents"},
-        )
-        base: dict[str, object] = dict(meta_identity_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, agent_name=agent,
-        ))
-        base.update(floor)
-        snap = build_launch_snapshot(
-            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=base,
-        )
-        return {
-            e.name: e
-            for e in snapshot_category_entries(
-                snap, active_agent=agent, box_ctx=ctx,
-            )
-        }
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.data": "/data", "config.agents": "/data/agents"},
+    )
+    base: dict[str, object] = dict(
+      meta_identity_floor(
+        box_name="b",
+        project_path="/p",
+        inbox="/i",
+        share_global="/sg",
+        share_workset=None,
+        agent_name=agent,
+      )
+    )
+    base.update(floor)
+    snap = build_launch_snapshot(
+      agent_name=agent,
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=base,
+    )
+    return {
+      e.name: e
+      for e in snapshot_category_entries(
+        snap,
+        active_agent=agent,
+        box_ctx=ctx,
+      )
+    }
 
-    def test_active_slot_and_default_tier_keys_are_told_apart(self):
-        by_name = self._entries({
-            "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
-            "agent.default.common": {"/g/shared": ("/store/shared",)},
-        })
-        assert by_name["/g/plugins"].key == "agent.claude.common./g/plugins"
-        assert by_name["/g/shared"].key == "agent.default.common./g/shared"
-        # The PRECEDENCE token stays bare for both — they are different facts.
-        assert by_name["/g/plugins"].scope == "agent"
-        assert by_name["/g/shared"].scope == "agent"
+  def test_active_slot_and_default_tier_keys_are_told_apart(self):
+    by_name = self._entries(
+      {
+        "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
+        "agent.default.common": {"/g/shared": ("/store/shared",)},
+      }
+    )
+    assert by_name["/g/plugins"].key == "agent.claude.common./g/plugins"
+    assert by_name["/g/shared"].key == "agent.default.common./g/shared"
+    # The PRECEDENCE token stays bare for both — they are different facts.
+    assert by_name["/g/plugins"].scope == "agent"
+    assert by_name["/g/shared"].scope == "agent"
 
-    def test_the_active_slot_wins_a_dest_the_default_tier_also_sets(self):
-        by_name = self._entries({
-            "agent.default.caches": {"/g/build": ("/default/build",)},
-            "agent.claude.caches": {"/g/build": ("/active/build",)},
-        })
-        assert by_name["/g/build"].host_src == "/active/build"
-        assert by_name["/g/build"].key == "agent.claude.caches./g/build"
+  def test_the_active_slot_wins_a_dest_the_default_tier_also_sets(self):
+    by_name = self._entries(
+      {
+        "agent.default.caches": {"/g/build": ("/default/build",)},
+        "agent.claude.caches": {"/g/build": ("/active/build",)},
+      }
+    )
+    assert by_name["/g/build"].host_src == "/active/build"
+    assert by_name["/g/build"].key == "agent.claude.caches./g/build"
 
-    def test_no_emitted_key_uses_the_bare_agent_form(self):
-        # ⚑ ALL SIX bind-shaped categories are dest-keyed now (R-3/R-5), so every
-        # category entry below is ONE terminal key holding ``{box_dest:
-        # (host_src,)}``. ``box.bindings.rw`` remains the non-agent CONTROL — what
-        # it must keep contributing is a box-scope entry.
-        for entry in self._entries({
-            "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
-            "agent.default.seeded": {"~": ("/store/tpl",)},
-            "agent.claude.env.FOO": "bar",
-            "agent.claude.secret_path.TOK": "/secrets/tok",
-            "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
-        }).values():
-            assert not entry.key.startswith("agent.common")
-            assert not entry.key.startswith("agent.seeded")
-            assert not entry.key.startswith("agent.env")
-            assert not entry.key.startswith("agent.secret_path")
-        # And the non-agent scopes are spelled with their bare token, as always.
-        # ⚑ Re-derived: a dest-keyed arm makes the entry's NAME the box
-        # DESTINATION, so the fact still pinned is the SCOPE token — bare ``box``,
-        # never discriminated — not the retired ``…bindings.rw.home`` leaf.
-        by_name = self._entries({
-            "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
-        })
-        entry = by_name["/home/agent"]
-        assert entry.scope == "box"
-        assert entry.key.startswith("box.bindings.rw.")
+  def test_no_emitted_key_uses_the_bare_agent_form(self):
+    # ⚑ ALL SIX bind-shaped categories are dest-keyed now (R-3/R-5), so every
+    # category entry below is ONE terminal key holding ``{box_dest:
+    # (host_src,)}``. ``box.bindings.rw`` remains the non-agent CONTROL — what
+    # it must keep contributing is a box-scope entry.
+    for entry in self._entries(
+      {
+        "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
+        "agent.default.seeded": {"~": ("/store/tpl",)},
+        "agent.claude.env.FOO": "bar",
+        "agent.claude.secret_path.TOK": "/secrets/tok",
+        "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
+      }
+    ).values():
+      assert not entry.key.startswith("agent.common")
+      assert not entry.key.startswith("agent.seeded")
+      assert not entry.key.startswith("agent.env")
+      assert not entry.key.startswith("agent.secret_path")
+    # And the non-agent scopes are spelled with their bare token, as always.
+    # ⚑ Re-derived: a dest-keyed arm makes the entry's NAME the box
+    # DESTINATION, so the fact still pinned is the SCOPE token — bare ``box``,
+    # never discriminated — not the retired ``…bindings.rw.home`` leaf.
+    by_name = self._entries(
+      {
+        "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
+      }
+    )
+    entry = by_name["/home/agent"]
+    assert entry.scope == "box"
+    assert entry.key.startswith("box.bindings.rw.")
 
 
 class TestAVarNamedByBothScalarFamiliesRefusesTheLaunch:
-    """Keyspec §2a: ``env.<VAR>`` and ``secret_path.<VAR>`` on one VAR REFUSE.
+  """Keyspec §2a: ``env.<VAR>`` and ``secret_path.<VAR>`` on one VAR REFUSE.
 
-    📖 THE CLAUSE: *"A VAR named by BOTH families REFUSES the launch, naming both
-    keys … NO precedence between the families is defined, and none may be inferred
-    from delivery order."*
+  📖 THE CLAUSE: *"A VAR named by BOTH families REFUSES the launch, naming both
+  keys … NO precedence between the families is defined, and none may be inferred
+  from delivery order."*
 
-    ⚑ WHAT IT REPLACED, and why "it raises" is not enough to pin: the two families
-    share one delivery target, and before this refusal the box-side export shim
-    (``commands.start._secret_export_shim``, which runs ``export <VAR>=...`` at
-    agent start) simply overwrote what podman's ``-e`` had already put there. The
-    secret won every time — by an ORDERING ACCIDENT, silently, with no key
-    mentioned. So the assertions below are about the two KEY NAMES reaching the
-    user, not about the exception type.
-    """
+  ⚑ WHAT IT REPLACED, and why "it raises" is not enough to pin: the two families
+  share one delivery target, and before this refusal the box-side export shim
+  (``commands.start._secret_export_shim``, which runs ``export <VAR>=...`` at
+  agent start) simply overwrote what podman's ``-e`` had already put there. The
+  secret won every time — by an ORDERING ACCIDENT, silently, with no key
+  mentioned. So the assertions below are about the two KEY NAMES reaching the
+  user, not about the exception type.
+  """
 
-    @staticmethod
-    def _deliveries(floor, *, agent="claude"):
-        """Drive the live pipeline to the launch seam's carrier (the single route)."""
-        from kanibako.settings.settings_categories import launch_deliveries
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            snapshot_category_entries,
-        )
+  @staticmethod
+  def _deliveries(floor, *, agent="claude"):
+    """Drive the live pipeline to the launch seam's carrier (the single route)."""
+    from kanibako.settings.settings_categories import launch_deliveries
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      snapshot_category_entries,
+    )
 
-        ctx = make_ctx(
-            workset_name=None,
-            config={"config.data": "/data", "config.agents": "/data/agents"},
-        )
-        base: dict[str, object] = dict(meta_identity_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, agent_name=agent,
-        ))
-        base.update(floor)
-        snap = build_launch_snapshot(
-            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=base,
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent=agent, box_ctx=ctx,
-        )
-        return launch_deliveries(entries, agent_dests=frozenset())
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.data": "/data", "config.agents": "/data/agents"},
+    )
+    base: dict[str, object] = dict(
+      meta_identity_floor(
+        box_name="b",
+        project_path="/p",
+        inbox="/i",
+        share_global="/sg",
+        share_workset=None,
+        agent_name=agent,
+      )
+    )
+    base.update(floor)
+    snap = build_launch_snapshot(
+      agent_name=agent,
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=base,
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent=agent,
+      box_ctx=ctx,
+    )
+    return launch_deliveries(entries, agent_dests=frozenset())
 
-    def test_the_refusal_NAMES_BOTH_KEYS(self):
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_the_refusal_NAMES_BOTH_KEYS(self):
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError) as excinfo:
-            self._deliveries({
-                "box.env.TOK": "inline-value",
-                "agent.claude.secret_path.TOK": "/secrets/tok",
-            })
-        message = str(excinfo.value)
-        # BOTH, always: a refusal naming one key sends the user to delete the half
-        # they can see and leaves the collision standing.
-        assert "'box.env.TOK'" in message
-        assert "'agent.claude.secret_path.TOK'" in message
-        assert "'TOK'" in message
+    with pytest.raises(SettingsError) as excinfo:
+      self._deliveries(
+        {
+          "box.env.TOK": "inline-value",
+          "agent.claude.secret_path.TOK": "/secrets/tok",
+        }
+      )
+    message = str(excinfo.value)
+    # BOTH, always: a refusal naming one key sends the user to delete the half
+    # they can see and leaves the collision standing.
+    assert "'box.env.TOK'" in message
+    assert "'agent.claude.secret_path.TOK'" in message
+    assert "'TOK'" in message
 
-    def test_it_states_that_NO_PRECEDENCE_exists(self):
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_it_states_that_NO_PRECEDENCE_exists(self):
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError) as excinfo:
-            self._deliveries({
-                "box.env.TOK": "inline-value",
-                "box.secret_path.TOK": "/secrets/tok",
-            })
-        message = str(excinfo.value)
-        assert "NO precedence between them is defined" in message
-        # ⚑ And the CURE is removal of one, not an override: there is no nearer
-        # file to write, because the two are different KEYS.
-        assert "Keep exactly ONE and remove the other" in message
+    with pytest.raises(SettingsError) as excinfo:
+      self._deliveries(
+        {
+          "box.env.TOK": "inline-value",
+          "box.secret_path.TOK": "/secrets/tok",
+        }
+      )
+    message = str(excinfo.value)
+    assert "NO precedence between them is defined" in message
+    # ⚑ And the CURE is removal of one, not an override: there is no nearer
+    # file to write, because the two are different KEYS.
+    assert "Keep exactly ONE and remove the other" in message
 
-    @pytest.mark.parametrize("floor", [
-        # SAME scope.
-        {"box.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
-        # env NEARER than the secret.
-        {"box.env.TOK": "v", "system.secret_path.TOK": "/s/tok"},
-        # secret NEARER than the env.
-        {"system.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
-        # ACROSS the agent tier, either way round.
-        {"agent.claude.env.TOK": "v", "workset.secret_path.TOK": "/s/tok"},
-        {"workset.env.TOK": "v", "agent.claude.secret_path.TOK": "/s/tok"},
-    ])
-    def test_EVERY_scope_pairing_refuses_alike(self, floor):
-        # ⚑⚑ THIS IS WHAT "NO PRECEDENCE" MEANS OPERATIONALLY: the answer must not
-        # move when the nearer scope changes hands. A rule that refused only one
-        # arrangement would BE a precedence, spelled as a refusal.
-        from kanibako.settings.settings_resolve import SettingsError
+  @pytest.mark.parametrize(
+    "floor",
+    [
+      # SAME scope.
+      {"box.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
+      # env NEARER than the secret.
+      {"box.env.TOK": "v", "system.secret_path.TOK": "/s/tok"},
+      # secret NEARER than the env.
+      {"system.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
+      # ACROSS the agent tier, either way round.
+      {"agent.claude.env.TOK": "v", "workset.secret_path.TOK": "/s/tok"},
+      {"workset.env.TOK": "v", "agent.claude.secret_path.TOK": "/s/tok"},
+    ],
+  )
+  def test_EVERY_scope_pairing_refuses_alike(self, floor):
+    # ⚑⚑ THIS IS WHAT "NO PRECEDENCE" MEANS OPERATIONALLY: the answer must not
+    # move when the nearer scope changes hands. A rule that refused only one
+    # arrangement would BE a precedence, spelled as a refusal.
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with pytest.raises(SettingsError, match="named by BOTH scalar families"):
-            self._deliveries(floor)
+    with pytest.raises(SettingsError, match="named by BOTH scalar families"):
+      self._deliveries(floor)
 
-    def test_the_two_families_on_DIFFERENT_vars_still_launch(self):
-        # The control. The refusal is keyed on the VAR, so the families remain
-        # freely usable side by side — this is not a ban on holding both.
-        deliveries = self._deliveries({
-            "box.env.PLAIN": "value",
-            "box.secret_path.TOK": "/secrets/tok",
-        })
-        assert [e.key for e in deliveries.secrets] == ["box.secret_path.TOK"]
+  def test_the_two_families_on_DIFFERENT_vars_still_launch(self):
+    # The control. The refusal is keyed on the VAR, so the families remain
+    # freely usable side by side — this is not a ban on holding both.
+    deliveries = self._deliveries(
+      {
+        "box.env.PLAIN": "value",
+        "box.secret_path.TOK": "/secrets/tok",
+      }
+    )
+    assert [e.key for e in deliveries.secrets] == ["box.secret_path.TOK"]
 
-    def test_a_reset_secret_pointer_leaves_no_twin_to_refuse(self):
-        # A present-null ``secret_path`` declares "this endpoint needs no token"
-        # (§2a's three-valued rule) and carries no source, so it names no VAR to
-        # export and cannot contend for one. ⚑ Pinned because the opposite —
-        # refusing on the KEY's presence — would break the documented way to turn
-        # a token off.
-        deliveries = self._deliveries({
-            "box.env.TOK": "value",
-            "box.secret_path.TOK": None,
-        })
-        assert deliveries.secrets == []
+  def test_a_reset_secret_pointer_leaves_no_twin_to_refuse(self):
+    # A present-null ``secret_path`` declares "this endpoint needs no token"
+    # (§2a's three-valued rule) and carries no source, so it names no VAR to
+    # export and cannot contend for one. ⚑ Pinned because the opposite —
+    # refusing on the KEY's presence — would break the documented way to turn
+    # a token off.
+    deliveries = self._deliveries(
+      {
+        "box.env.TOK": "value",
+        "box.secret_path.TOK": None,
+      }
+    )
+    assert deliveries.secrets == []
 
 
 class TestANullWorkspaceNeverBecomesTheWordNone:
-    """``ProjectPaths.project_path`` is ``None`` for a standalone box whose root nulls
-    ``workset.workspaces`` (Q106). ``str()`` of it is the WORD ``"None"``, and a bind
-    carrying that word would mount a path nobody chose.
+  """``ProjectPaths.project_path`` is ``None`` for a standalone box whose root nulls
+  ``workset.workspaces`` (Q106). ``str()`` of it is the WORD ``"None"``, and a bind
+  carrying that word would mount a path nobody chose.
 
-    ⚑ No shipped core entry reads the symbolic ``project_path`` source — each supplies
-    ``meta_ref``/``mode_meta_ref`` — so the defect was LATENT, not live. These pins hold
-    the line for the entry that eventually does name it.
-    """
+  ⚑ No shipped core entry reads the symbolic ``project_path`` source — each supplies
+  ``meta_ref``/``mode_meta_ref`` — so the defect was LATENT, not live. These pins hold
+  the line for the entry that eventually does name it.
+  """
 
-    class _P:
-        enable_vault = True
+  class _P:
+    enable_vault = True
 
-        def __init__(self, root):
-            self.shell_path = root / "box_data" / "home"
-            self.project_path = None
-            self.vault_ro_path = root / "vault" / "ro"
-            self.vault_rw_path = root / "vault" / "rw"
+    def __init__(self, root):
+      self.shell_path = root / "box_data" / "home"
+      self.project_path = None
+      self.vault_ro_path = root / "vault" / "ro"
+      self.vault_rw_path = root / "vault" / "rw"
 
-    def test_no_emitted_bind_sources_the_word_none(self, tmp_path):
-        from kanibako.settings import core_defaults
+  def test_no_emitted_bind_sources_the_word_none(self, tmp_path):
+    from kanibako.settings import core_defaults
 
-        binds = core_defaults.core_default_categories(
-            None, self._P(tmp_path), enable_vault=True, mode="standalone",
-            guarantee_create=False,
-        )
-        for arm_key, arms in binds.items():
-            for dest, arm in arms.items():
-                assert arm[0] != "None", f"{arm_key} at {dest} sources the word 'None'"
+    binds = core_defaults.core_default_categories(
+      None,
+      self._P(tmp_path),
+      enable_vault=True,
+      mode="standalone",
+      guarantee_create=False,
+    )
+    for arm_key, arms in binds.items():
+      for dest, arm in arms.items():
+        assert arm[0] != "None", f"{arm_key} at {dest} sources the word 'None'"
 
-    def test_an_entry_naming_an_unprobed_source_is_refused(self, tmp_path, monkeypatch):
-        """A core entry that names a source this box has no value for STOPS."""
-        from kanibako.settings import core_defaults
+  def test_an_entry_naming_an_unprobed_source_is_refused(self, tmp_path, monkeypatch):
+    """A core entry that names a source this box has no value for STOPS."""
+    from kanibako.settings import core_defaults
 
-        monkeypatch.setattr(core_defaults, "_load_doc", lambda: {"core": [{
-            "key": "workspace", "category": "bindings.rw",
-            "source": "project_path", "box_dest": "~/workspace", "options": "Z,U",
-        }]})
-        with pytest.raises(PackagingError, match="no value for that source"):
-            core_defaults.core_default_categories(
-                None, self._P(tmp_path), enable_vault=True, mode="standalone",
-                guarantee_create=False,
-            )
+    monkeypatch.setattr(
+      core_defaults,
+      "_load_doc",
+      lambda: {
+        "core": [
+          {
+            "key": "workspace",
+            "category": "bindings.rw",
+            "source": "project_path",
+            "box_dest": "~/workspace",
+            "options": "Z,U",
+          }
+        ]
+      },
+    )
+    with pytest.raises(PackagingError, match="no value for that source"):
+      core_defaults.core_default_categories(
+        None,
+        self._P(tmp_path),
+        enable_vault=True,
+        mode="standalone",
+        guarantee_create=False,
+      )
 
 
 class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
-    """A DISPLAY verb must not write to disk.
+  """A DISPLAY verb must not write to disk.
 
-    ``box config show --effective`` resolves the SAME core table a launch does,
-    and that table create-if-missings the vault source dirs so the bind is always
-    emitted. Rendering a box must not make that true on disk — so the read path
-    passes ``guarantee_create=False``, which suppresses ONLY the mkdir. The binds
-    are emitted identically either way, which is what makes the display honest
-    rather than merely quiet.
+  ``box config show --effective`` resolves the SAME core table a launch does,
+  and that table create-if-missings the vault source dirs so the bind is always
+  emitted. Rendering a box must not make that true on disk — so the read path
+  passes ``guarantee_create=False``, which suppresses ONLY the mkdir. The binds
+  are emitted identically either way, which is what makes the display honest
+  rather than merely quiet.
+  """
+
+  class _P:
+    enable_vault = True
+
+    def __init__(self, root):
+      self.shell_path = root / "box_data" / "home"
+      self.project_path = root / "workspace"
+      self.vault_ro_path = root / "vault" / "ro"
+      self.vault_rw_path = root / "vault" / "rw"
+
+  def test_launch_creates_the_vault_sources(self, tmp_path):
+    from kanibako.settings import core_defaults
+
+    proj = self._P(tmp_path)
+    core_defaults.core_default_categories(
+      None,
+      proj,
+      enable_vault=True,
+      mode="standalone",
+    )
+    assert proj.vault_ro_path.is_dir()
+    assert proj.vault_rw_path.is_dir()
+
+  def test_a_read_only_resolve_creates_nothing(self, tmp_path):
+    from kanibako.settings import core_defaults
+
+    proj = self._P(tmp_path)
+    core_defaults.core_default_categories(
+      None,
+      proj,
+      enable_vault=True,
+      mode="standalone",
+      guarantee_create=False,
+    )
+    assert not proj.vault_ro_path.exists()
+    assert not proj.vault_rw_path.exists()
+
+  def test_the_emitted_binds_are_identical_either_way(self, tmp_path):
+    """The flag gates the SIDE EFFECT, not the result — otherwise the
+    display would be showing a different box than the launch mounts.
+
+    ⚑ Re-derived for dest-keying (R-3/R-5): the builder returns terminal ARM
+    keys whose values are ``{box_dest: (host_src[, options])}``, so the
+    comparison walks one level deeper. The destination — which used to ride in
+    the tuple and be covered by ``v[1:]`` — is now the inner map KEY, and is
+    compared as such; ``v[1:]`` is left comparing the OPTIONS. Between them the
+    two assertions still cover everything except slot 0, the host source, which
+    is the only thing the differing tmp root may move.
     """
+    from kanibako.settings import core_defaults
 
-    class _P:
-        enable_vault = True
+    read = core_defaults.core_default_categories(
+      None,
+      self._P(tmp_path / "r"),
+      enable_vault=True,
+      mode="standalone",
+      guarantee_create=False,
+    )
+    launch = core_defaults.core_default_categories(
+      None,
+      self._P(tmp_path / "l"),
+      enable_vault=True,
+      mode="standalone",
+    )
+    # Same arms, same DESTINATIONS, same options; only the sources differ.
+    assert set(read) == set(launch)
+    for arm in read:
+      assert list(read[arm]) == list(launch[arm]), arm
+      assert [v[1:] for v in read[arm].values()] == [v[1:] for v in launch[arm].values()], arm
 
-        def __init__(self, root):
-            self.shell_path = root / "box_data" / "home"
-            self.project_path = root / "workspace"
-            self.vault_ro_path = root / "vault" / "ro"
-            self.vault_rw_path = root / "vault" / "rw"
+  @pytest.mark.parametrize("guarantee_create", [True, False])
+  @pytest.mark.parametrize("kind", ["dangling", "file"])
+  @pytest.mark.parametrize("arm", ["rw", "ro"])
+  def test_an_unusable_vault_leaf_gets_no_bind_and_is_untouched(
+    self,
+    tmp_path,
+    arm,
+    kind,
+    guarantee_create,
+  ):
+    """A dangling link or a file at a vault arm: no bind for THAT arm (so the box
+    really launches without it, as the warning says), the other arm intact, and
+    nothing at the leaf changed. RED before: the launch ``mkdir`` raised
+    ``FileExistsError``, and the display still listed the bind."""
+    import os
 
-    def test_launch_creates_the_vault_sources(self, tmp_path):
-        from kanibako.settings import core_defaults
+    from kanibako.settings import core_defaults
 
-        proj = self._P(tmp_path)
-        core_defaults.core_default_categories(
-            None, proj, enable_vault=True, mode="standalone",
-        )
-        assert proj.vault_ro_path.is_dir()
-        assert proj.vault_rw_path.is_dir()
+    proj = self._P(tmp_path)
+    leaf = proj.vault_rw_path if arm == "rw" else proj.vault_ro_path
+    leaf.parent.mkdir(parents=True)
+    if kind == "dangling":
+      leaf.symlink_to(tmp_path / "gone")
+    else:
+      leaf.write_text("x")
 
-    def test_a_read_only_resolve_creates_nothing(self, tmp_path):
-        from kanibako.settings import core_defaults
+    binds = core_defaults.core_default_categories(
+      None,
+      proj,
+      enable_vault=True,
+      mode="standalone",
+      guarantee_create=guarantee_create,
+    )
 
-        proj = self._P(tmp_path)
-        core_defaults.core_default_categories(
-            None, proj, enable_vault=True, mode="standalone",
-            guarantee_create=False,
-        )
-        assert not proj.vault_ro_path.exists()
-        assert not proj.vault_rw_path.exists()
-
-    def test_the_emitted_binds_are_identical_either_way(self, tmp_path):
-        """The flag gates the SIDE EFFECT, not the result — otherwise the
-        display would be showing a different box than the launch mounts.
-
-        ⚑ Re-derived for dest-keying (R-3/R-5): the builder returns terminal ARM
-        keys whose values are ``{box_dest: (host_src[, options])}``, so the
-        comparison walks one level deeper. The destination — which used to ride in
-        the tuple and be covered by ``v[1:]`` — is now the inner map KEY, and is
-        compared as such; ``v[1:]`` is left comparing the OPTIONS. Between them the
-        two assertions still cover everything except slot 0, the host source, which
-        is the only thing the differing tmp root may move.
-        """
-        from kanibako.settings import core_defaults
-
-        read = core_defaults.core_default_categories(
-            None, self._P(tmp_path / "r"), enable_vault=True,
-            mode="standalone", guarantee_create=False,
-        )
-        launch = core_defaults.core_default_categories(
-            None, self._P(tmp_path / "l"), enable_vault=True,
-            mode="standalone",
-        )
-        # Same arms, same DESTINATIONS, same options; only the sources differ.
-        assert set(read) == set(launch)
-        for arm in read:
-            assert list(read[arm]) == list(launch[arm]), arm
-            assert [v[1:] for v in read[arm].values()] == [
-                v[1:] for v in launch[arm].values()
-            ], arm
-
-    @pytest.mark.parametrize("guarantee_create", [True, False])
-    @pytest.mark.parametrize("kind", ["dangling", "file"])
-    @pytest.mark.parametrize("arm", ["rw", "ro"])
-    def test_an_unusable_vault_leaf_gets_no_bind_and_is_untouched(
-        self, tmp_path, arm, kind, guarantee_create,
-    ):
-        """A dangling link or a file at a vault arm: no bind for THAT arm (so the box
-        really launches without it, as the warning says), the other arm intact, and
-        nothing at the leaf changed. RED before: the launch ``mkdir`` raised
-        ``FileExistsError``, and the display still listed the bind."""
-        import os
-
-        from kanibako.settings import core_defaults
-
-        proj = self._P(tmp_path)
-        leaf = proj.vault_rw_path if arm == "rw" else proj.vault_ro_path
-        leaf.parent.mkdir(parents=True)
-        if kind == "dangling":
-            leaf.symlink_to(tmp_path / "gone")
-        else:
-            leaf.write_text("x")
-
-        binds = core_defaults.core_default_categories(
-            None, proj, enable_vault=True, mode="standalone",
-            guarantee_create=guarantee_create,
-        )
-
-        dests = {dest for arm_map in binds.values() for dest in arm_map}
-        other = "ro" if arm == "rw" else "rw"
-        assert f"{GUEST_HOME}/vault/{arm}" not in dests
-        assert f"{GUEST_HOME}/vault/{other}" in dests
-        if kind == "dangling":
-            assert os.readlink(leaf) == str(tmp_path / "gone")
-        else:
-            assert leaf.read_text() == "x"
+    dests = {dest for arm_map in binds.values() for dest in arm_map}
+    other = "ro" if arm == "rw" else "rw"
+    assert f"{GUEST_HOME}/vault/{arm}" not in dests
+    assert f"{GUEST_HOME}/vault/{other}" in dests
+    if kind == "dangling":
+      assert os.readlink(leaf) == str(tmp_path / "gone")
+    else:
+      assert leaf.read_text() == "x"
 
 
 class TestEffectiveBlockAgainstARealAgentPlugin:
-    """N1 — the declaration/derivation pairing, driven by a REAL ``ClaudeTarget``.
+  """N1 — the declaration/derivation pairing, driven by a REAL ``ClaudeTarget``.
 
-    Every other test of the ``--effective`` block builds its snapshot by hand, so
-    the pairing is only ever proven against declarations a test wrote. This one
-    takes the SHIPPED claude plugin's own ``default_common()`` /
-    ``default_category_binds()`` tables through the REAL
-    ``build_launch_snapshot → snapshot_category_entries → derive_binding_keys``
-    chain and renders THAT — so a plugin whose declarations do not survive the
-    derivation, or whose keys come out undiscriminated, fails here.
+  Every other test of the ``--effective`` block builds its snapshot by hand, so
+  the pairing is only ever proven against declarations a test wrote. This one
+  takes the SHIPPED claude plugin's own ``default_common()`` /
+  ``default_category_binds()`` tables through the REAL
+  ``build_launch_snapshot → snapshot_category_entries → derive_binding_keys``
+  chain and renders THAT — so a plugin whose declarations do not survive the
+  derivation, or whose keys come out undiscriminated, fails here.
+  """
+
+  @staticmethod
+  def _snapshot():
+    from kanibako.commands.start import _install_derived_bindings
+    from kanibako.settings.settings_categories import derive_binding_keys
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_agent_path_floor,
+      meta_identity_floor,
+      snapshot_category_entries,
+    )
+    from kanibako.plugins.claude import ClaudeTarget
+
+    target = ClaudeTarget()
+    ctx = make_ctx(
+      workset_name=None,
+      xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
+      config={"config.data": "/data", "config.agents": "/data/agents"},
+    )
+    floor: dict[str, object] = {"system.cache": "/xcache/kanibako"}
+    floor.update(
+      meta_identity_floor(
+        box_name="b",
+        project_path="/p",
+        inbox="/i",
+        share_global="/sg",
+        share_workset=None,
+        agent_name=target.name,
+      )
+    )
+    floor.update(meta_agent_path_floor(target.name))
+    floor.update(target.default_common())
+    floor.update(target.default_seeds())
+    floor.update(target.default_category_binds())
+    snap = build_launch_snapshot(
+      agent_name=target.name,
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent=target.name,
+      box_ctx=ctx,
+    )
+    _install_derived_bindings(snap, derive_binding_keys(entries))
+    return snap, entries, ctx
+
+  def test_the_plugins_own_declarations_derive_discriminated_keys(self):
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_views import derived_bindings
+
+    snap, entries, _ctx = self._snapshot()
+    abstract = [e for e in entries if e.category in ("common", "caches", "seeded")]
+    assert abstract, "the claude plugin declares no abstract category"
+
+    node = dict.get(snap, "binding_derivations")
+    assert isinstance(node, KeyStore)
+    derived = derived_bindings(node)
+    # One derivation per abstract declaration, keyed by the DISCRIMINATED
+    # declaration key — never the bare ``agent.<category>`` form (§0).
+    assert set(derived) == {e.key for e in abstract}
+    for key in derived:
+      assert key.startswith(("agent.claude.", "agent.default.", "system.", "workset.", "box."))
+    # And the derivation carries the RESOLVED guest dest, not the raw one.
+    for entry in abstract:
+      assert derived[entry.key].box == entry.box_dest
+
+    # ⚑⚑ THE TREE SHAPE, not just the flattened key. The lens rejoins
+    # segments with ``.``, so it reports the SAME string whether the dest is
+    # one node or shattered across several — which is precisely how a real
+    # shipped declaration (``/home/agent/.claude/plugins``, dots and all) sat
+    # here mis-nested with every assertion above green. Walk the segments and
+    # require the Bind to be AT the last one.
+    assert any("." in e.key_segments[-1] for e in abstract), (
+      "no abstract dest carries a dot — this assertion proves nothing"
+    )
+    for entry in abstract:
+      walk = node
+      for seg in entry.key_segments[:-1]:
+        walk = dict.__getitem__(walk, seg)
+        assert isinstance(walk, KeyStore), (entry.key, seg)
+      assert dict.__getitem__(walk, entry.key_segments[-1]) is derived[entry.key]
+
+  def test_the_block_renders_the_pair_for_a_real_declaration(self):
+    """The pairing rendered against the SHIPPED claude plugin's own declarations.
+
+    ⚑ UN-SKIPPED when the pairing landed.  It was parked while
+    ``effective_bindings_and_template_sources`` was a deliberate stub, on the
+    stated understanding that it would be REWRITTEN against that function
+    rather than deleted — the property it pins (a REAL plugin's declarations
+    survive the derivation and come out DISCRIMINATED) has no other
+    renderer-side test.
+
+    ⚑ The plugin's declarations are all WINNERS on this floor, so every row
+    renders its mount; the LOSING shapes are pinned on hand-built floors in
+    ``TestADeclarationThatLosesIsNotShownAsAMount``, which is where a loss can
+    be constructed without depending on what the plugin happens to ship.
     """
+    import io
 
-    @staticmethod
-    def _snapshot():
-        from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_categories import derive_binding_keys
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_agent_path_floor,
-            meta_identity_floor,
-            snapshot_category_entries,
-        )
-        from kanibako.plugins.claude import ClaudeTarget
+    from kanibako.commands.start import _install_assembly_collapse
+    from kanibako.settings.config_display import _print_category_block
 
-        target = ClaudeTarget()
-        ctx = make_ctx(
-            workset_name=None,
-            xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
-            config={"config.data": "/data", "config.agents": "/data/agents"},
-        )
-        floor: dict[str, object] = {"system.cache": "/xcache/kanibako"}
-        floor.update(meta_identity_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, agent_name=target.name,
-        ))
-        floor.update(meta_agent_path_floor(target.name))
-        floor.update(target.default_common())
-        floor.update(target.default_seeds())
-        floor.update(target.default_category_binds())
-        snap = build_launch_snapshot(
-            agent_name=target.name, ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=floor,
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent=target.name, box_ctx=ctx,
-        )
-        _install_derived_bindings(snap, derive_binding_keys(entries))
-        return snap, entries, ctx
+    snap, entries, ctx = self._snapshot()
+    snap.insert_segments(("meta", "box", "home"), "/host/box/home")
+    _install_assembly_collapse(snap, entries, whole_box=True)
+    buf = io.StringIO()
+    _print_category_block(snap, None, buf, ctx)
+    text = buf.getvalue()
+    for entry in entries:
+      if entry.category not in ("common", "caches", "seeded"):
+        continue
+      assert f"  {entry.label} = " in text, entry.label
+      assert f"    binding_derivations.{entry.label} = " in text, entry.label
+    # The bare agent form never appears (it is not a key).
+    assert "agent.common" not in text
+    assert "agent.caches" not in text
+    # ⚑ And the disabled notice is GONE — a renderer that still short-circuits
+    # would satisfy every assertion above by printing nothing per declaration.
+    assert "temporarily unavailable" not in text
 
-    def test_the_plugins_own_declarations_derive_discriminated_keys(self):
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_views import derived_bindings
+  def test_the_declared_caches_entry_resolves_store_sourced_and_writer_agrees(self):
+    """The shipped ``agent.claude.caches`` entry, end to end (spec §2d).
 
-        snap, entries, _ctx = self._snapshot()
-        abstract = [
-            e for e in entries
-            if e.category in ("common", "caches", "seeded")
-        ]
-        assert abstract, "the claude plugin declares no abstract category"
+    GUEST dest is the standard in-box cache dir ``~/.kanibako/cache/tweakcc``,
+    never the HOST cache root ``system.cache`` (spec §2g/§2d).  The helpers get
+    the SAME emitted mount, so their path is the director's.  HOST source is the
+    agent store ``agents/claude/caches/tweakcc`` and it is NOT the dest (the spec
+    forbids the identity mount here).
 
-        node = dict.get(snap, "binding_derivations")
-        assert isinstance(node, KeyStore)
-        derived = derived_bindings(node)
-        # One derivation per abstract declaration, keyed by the DISCRIMINATED
-        # declaration key — never the bare ``agent.<category>`` form (§0).
-        assert set(derived) == {e.key for e in abstract}
-        for key in derived:
-            assert key.startswith(("agent.claude.", "agent.default.",
-                                   "system.", "workset.", "box."))
-        # And the derivation carries the RESOLVED guest dest, not the raw one.
-        for entry in abstract:
-            assert derived[entry.key].box == entry.box_dest
+    WRITER/MOUNT AGREEMENT, the half the declaration alone cannot close:
+    :func:`commands.start._tweakcc_cache_dir` — the dir the patcher writes —
+    names the same path the pipeline emits, so the launch's source-matched
+    helper selection cannot silently miss.  A drift between the YAML leaf
+    and the writer is RED here, not a helper that quietly loses its cache.
+    """
+    from kanibako.commands.start import _tweakcc_cache_dir
+    from kanibako.settings.settings_launch import snapshot_category_entries
 
-        # ⚑⚑ THE TREE SHAPE, not just the flattened key. The lens rejoins
-        # segments with ``.``, so it reports the SAME string whether the dest is
-        # one node or shattered across several — which is precisely how a real
-        # shipped declaration (``/home/agent/.claude/plugins``, dots and all) sat
-        # here mis-nested with every assertion above green. Walk the segments and
-        # require the Bind to be AT the last one.
-        assert any("." in e.key_segments[-1] for e in abstract), (
-            "no abstract dest carries a dot — this assertion proves nothing"
-        )
-        for entry in abstract:
-            walk = node
-            for seg in entry.key_segments[:-1]:
-                walk = dict.__getitem__(walk, seg)
-                assert isinstance(walk, KeyStore), (entry.key, seg)
-            assert dict.__getitem__(walk, entry.key_segments[-1]) is derived[
-                entry.key
-            ]
+    snap, entries, ctx = self._snapshot()
+    by_dest = {
+      e.box_dest: e.host_src
+      for e in snapshot_category_entries(
+        snap,
+        active_agent="claude",
+        box_ctx=ctx,
+      )
+      if e.delivery != "ENV"
+    }
+    assert by_dest["/home/agent/.kanibako/cache/tweakcc"] == ("/data/agents/claude/caches/tweakcc")
+    assert by_dest["/home/agent/.kanibako/cache/tweakcc"] != (
+      "/home/agent/.kanibako/cache/tweakcc"
+    )
+    # The HOST cache root names no mount point in the box.
+    assert not any(d.startswith("/xcache/") for d in by_dest)
 
-    def test_the_block_renders_the_pair_for_a_real_declaration(self):
-        """The pairing rendered against the SHIPPED claude plugin's own declarations.
+    class _Std:
+      agents = "/data/agents"
 
-        ⚑ UN-SKIPPED when the pairing landed.  It was parked while
-        ``effective_bindings_and_template_sources`` was a deliberate stub, on the
-        stated understanding that it would be REWRITTEN against that function
-        rather than deleted — the property it pins (a REAL plugin's declarations
-        survive the derivation and come out DISCRIMINATED) has no other
-        renderer-side test.
-
-        ⚑ The plugin's declarations are all WINNERS on this floor, so every row
-        renders its mount; the LOSING shapes are pinned on hand-built floors in
-        ``TestADeclarationThatLosesIsNotShownAsAMount``, which is where a loss can
-        be constructed without depending on what the plugin happens to ship.
-        """
-        import io
-
-        from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.config_display import _print_category_block
-
-        snap, entries, ctx = self._snapshot()
-        snap.insert_segments(("meta", "box", "home"), "/host/box/home")
-        _install_assembly_collapse(snap, entries, whole_box=True)
-        buf = io.StringIO()
-        _print_category_block(snap, None, buf, ctx)
-        text = buf.getvalue()
-        for entry in entries:
-            if entry.category not in ("common", "caches", "seeded"):
-                continue
-            assert f"  {entry.label} = " in text, entry.label
-            assert f"    binding_derivations.{entry.label} = " in text, entry.label
-        # The bare agent form never appears (it is not a key).
-        assert "agent.common" not in text
-        assert "agent.caches" not in text
-        # ⚑ And the disabled notice is GONE — a renderer that still short-circuits
-        # would satisfy every assertion above by printing nothing per declaration.
-        assert "temporarily unavailable" not in text
-
-    def test_the_declared_caches_entry_resolves_store_sourced_and_writer_agrees(self):
-        """The shipped ``agent.claude.caches`` entry, end to end (spec §2d).
-
-        GUEST dest is the standard in-box cache dir ``~/.kanibako/cache/tweakcc``,
-        never the HOST cache root ``system.cache`` (spec §2g/§2d).  The helpers get
-        the SAME emitted mount, so their path is the director's.  HOST source is the
-        agent store ``agents/claude/caches/tweakcc`` and it is NOT the dest (the spec
-        forbids the identity mount here).
-
-        WRITER/MOUNT AGREEMENT, the half the declaration alone cannot close:
-        :func:`commands.start._tweakcc_cache_dir` — the dir the patcher writes —
-        names the same path the pipeline emits, so the launch's source-matched
-        helper selection cannot silently miss.  A drift between the YAML leaf
-        and the writer is RED here, not a helper that quietly loses its cache.
-        """
-        from kanibako.commands.start import _tweakcc_cache_dir
-        from kanibako.settings.settings_launch import snapshot_category_entries
-
-        snap, entries, ctx = self._snapshot()
-        by_dest = {
-            e.box_dest: e.host_src for e in snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=ctx,
-            ) if e.delivery != "ENV"
-        }
-        assert by_dest["/home/agent/.kanibako/cache/tweakcc"] == (
-            "/data/agents/claude/caches/tweakcc"
-        )
-        assert by_dest["/home/agent/.kanibako/cache/tweakcc"] != (
-            "/home/agent/.kanibako/cache/tweakcc"
-        )
-        # The HOST cache root names no mount point in the box.
-        assert not any(d.startswith("/xcache/") for d in by_dest)
-
-        class _Std:
-            agents = "/data/agents"
-
-        assert str(_tweakcc_cache_dir(_Std(), "claude")) == (
-            by_dest["/home/agent/.kanibako/cache/tweakcc"]
-        )
+    assert (
+      str(_tweakcc_cache_dir(_Std(), "claude")) == (by_dest["/home/agent/.kanibako/cache/tweakcc"])
+    )
 
 
 class TestTheEffectiveBlockShowsThePidZeroFoundation:
-    """⚑⚑ CUTOVER 6-H — ``box show --effective`` must not lose the box's own home.
+  """⚑⚑ CUTOVER 6-H — ``box show --effective`` must not lose the box's own home.
 
-    The block walks ``<scope>.bindings.{ro,rw}`` and renders what it finds there. Home
-    left that arm (spec ``:1015``), so without a line of its own the ONE mount every
-    box has would silently vanish from the view whose entire purpose is telling a user
-    what their box gets. It is rendered from the SAME key the assembly seam reads.
+  The block walks ``<scope>.bindings.{ro,rw}`` and renders what it finds there. Home
+  left that arm (spec ``:1015``), so without a line of its own the ONE mount every
+  box has would silently vanish from the view whose entire purpose is telling a user
+  what their box gets. It is rendered from the SAME key the assembly seam reads.
+  """
+
+  @staticmethod
+  def _snapshot():
+    """⚑ THE COLLAPSE IS INSTALLED, because the display never sees a snapshot without one.
+
+    ``box show --effective`` resolves through ``commands.start
+    ._resolve_launch_snapshot`` with ``include_base_families`` left at its default,
+    so ``_install_assembly_collapse`` always runs with ``whole_box=True`` and
+    ``meta.assembly.bindings`` is always present.  This fixture used to stop at
+    ``build_launch_snapshot``, which is a NARROW resolve's shape — and once the
+    concrete rows started being paired against the arbitrated map, that fixture
+    made the block report "no collapsed binding map" for a row the production path
+    arbitrates fine.  The fixture was the thing out of step, not the renderer.
     """
+    from kanibako.commands.start import _install_assembly_collapse
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      meta_runtime_floor,
+      snapshot_category_entries,
+      workset_anchor_floor,
+    )
 
-    @staticmethod
-    def _snapshot():
-        """⚑ THE COLLAPSE IS INSTALLED, because the display never sees a snapshot without one.
+    floor: dict = {
+      "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
+    }
+    floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+    floor.update(workset_anchor_floor(mode="primary"))
+    floor.update(
+      meta_identity_floor(
+        box_name="mybox",
+        project_path="/code/x",
+        inbox="/i",
+        share_global="/sg",
+        share_workset="/sw",
+      )
+    )
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.primary_workset": "/data/pw"},
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    _install_assembly_collapse(snap, entries, whole_box=True)
+    return snap, ctx
 
-        ``box show --effective`` resolves through ``commands.start
-        ._resolve_launch_snapshot`` with ``include_base_families`` left at its default,
-        so ``_install_assembly_collapse`` always runs with ``whole_box=True`` and
-        ``meta.assembly.bindings`` is always present.  This fixture used to stop at
-        ``build_launch_snapshot``, which is a NARROW resolve's shape — and once the
-        concrete rows started being paired against the arbitrated map, that fixture
-        made the block report "no collapsed binding map" for a row the production path
-        arbitrates fine.  The fixture was the thing out of step, not the renderer.
-        """
-        from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            meta_runtime_floor,
-            snapshot_category_entries,
-            workset_anchor_floor,
-        )
+  def test_the_foundation_is_rendered_and_labeled_as_one(self):
+    """MUTATION ANCHOR: drop the foundation line and this fails — the box home is
+    then absent from the whole block, exactly as it silently was mid-6-H."""
+    import io
 
-        floor: dict = {
-            "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
-        }
-        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
-        floor.update(workset_anchor_floor(mode="primary"))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        ctx = make_ctx(
-            workset_name=None, config={"config.primary_workset": "/data/pw"},
-        )
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=floor,
-        )
-        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        _install_assembly_collapse(snap, entries, whole_box=True)
-        return snap, ctx
+    from kanibako.settings.config_display import _print_category_block
 
-    def test_the_foundation_is_rendered_and_labeled_as_one(self):
-        """MUTATION ANCHOR: drop the foundation line and this fails — the box home is
-        then absent from the whole block, exactly as it silently was mid-6-H."""
-        import io
+    buf = io.StringIO()
+    snap, ctx = self._snapshot()
+    _print_category_block(snap, None, buf, ctx)
+    text = buf.getvalue()
 
-        from kanibako.settings.config_display import _print_category_block
+    assert "(foundation) meta.box.home = /data/pw/boxes/mybox/home -> /home/agent" in text, text
+    # The ordinary scope declaration still renders beneath it, unchanged.
+    assert "box.bindings.rw[/home/agent/workspace] = /code/x -> " in text, text
 
-        buf = io.StringIO()
-        snap, ctx = self._snapshot()
-        _print_category_block(snap, None, buf, ctx)
-        text = buf.getvalue()
+  def test_the_foundation_is_not_spelled_as_a_settable_binding_key(self):
+    """It is NOT ``box.bindings.rw[~]`` and must never read as one: that key does
+    not exist, and a user copying it into a settings file would declare a second
+    bind at pid 0's point — which the collapse refuses."""
+    import io
 
-        assert "(foundation) meta.box.home = /data/pw/boxes/mybox/home -> /home/agent" \
-            in text, text
-        # The ordinary scope declaration still renders beneath it, unchanged.
-        assert "box.bindings.rw[/home/agent/workspace] = /code/x -> " in text, text
+    from kanibako.settings.config_display import _print_category_block
 
-    def test_the_foundation_is_not_spelled_as_a_settable_binding_key(self):
-        """It is NOT ``box.bindings.rw[~]`` and must never read as one: that key does
-        not exist, and a user copying it into a settings file would declare a second
-        bind at pid 0's point — which the collapse refuses."""
-        import io
+    buf = io.StringIO()
+    snap, ctx = self._snapshot()
+    _print_category_block(snap, None, buf, ctx)
+    text = buf.getvalue()
 
-        from kanibako.settings.config_display import _print_category_block
-
-        buf = io.StringIO()
-        snap, ctx = self._snapshot()
-        _print_category_block(snap, None, buf, ctx)
-        text = buf.getvalue()
-
-        assert "bindings.rw[/home/agent] =" not in text, text
-        assert "bindings.rw[~]" not in text, text
+    assert "bindings.rw[/home/agent] =" not in text, text
+    assert "bindings.rw[~]" not in text, text
 
 
 class TestForgedDerivationsTableNeverEntersTheMerge:
-    """B4 Editor fix — spec §0 fault class for the RESERVED node (R-8).
+  """B4 Editor fix — spec §0 fault class for the RESERVED node (R-8).
 
-    INVERTS the pre-fix repro: a box settings file carrying a hand-forged
-    top-level ``binding_derivations:`` table used to ride into the snapshot
-    (the old ``meta.derived`` spelling was shielded by the ``meta:`` drop; the
-    root-level rename lost the shield). The forged table planted (i) an entry
-    COLLIDING with a real declaration key and (ii) a non-``Bind`` junk leaf —
-    and the junk leaf crashed the ``derived_bindings`` lens, and with it the
-    ``--effective`` display route, with ``ViewError`` (user-reachable via
-    ``config show --effective``). Post-fix the table is DROPPED at assembly
-    with a warning, so the node holds EXACTLY what the launch seam
-    (``_install_derived_bindings``) wrote.
+  INVERTS the pre-fix repro: a box settings file carrying a hand-forged
+  top-level ``binding_derivations:`` table used to ride into the snapshot
+  (the old ``meta.derived`` spelling was shielded by the ``meta:`` drop; the
+  root-level rename lost the shield). The forged table planted (i) an entry
+  COLLIDING with a real declaration key and (ii) a non-``Bind`` junk leaf —
+  and the junk leaf crashed the ``derived_bindings`` lens, and with it the
+  ``--effective`` display route, with ``ViewError`` (user-reachable via
+  ``config show --effective``). Post-fix the table is DROPPED at assembly
+  with a warning, so the node holds EXACTLY what the launch seam
+  (``_install_derived_bindings``) wrote.
+  """
+
+  # The REAL declaration the forged table collides with.
+  #
+  # ⚑ Re-spelled for dest-keying (2026-08-08c): a declaration key now ENDS in
+  # its box DESTINATION, so this is ``<scope>.<category>.<dest>``. The dest is
+  # DOT-FREE so that the forged YAML below can MIRROR the node path and collide:
+  # a dest is ONE node now (``derive_binding_keys`` keys by segments and
+  # ``insert_segments`` splits nothing), and a dotted dest would be one YAML map
+  # key rather than the nesting a hand-written table can express as clearly.
+  _DECL_KEY = "agent.claude.common./home/agent/claude-plugins"
+
+  @staticmethod
+  def _snapshot(tmp_path, *, install_derivations: bool = True):
+    """Assemble the snapshot from the forged box file.
+
+    *install_derivations* gates the LAUNCH SEAM's write only — set it False
+    to see the assembly result ALONE, which is where the drop happens and so
+    the only place "the forged table never entered the merge" can be read
+    without the seam's own write sitting on top of the answer.
     """
+    import yaml
 
-    # The REAL declaration the forged table collides with.
-    #
-    # ⚑ Re-spelled for dest-keying (2026-08-08c): a declaration key now ENDS in
-    # its box DESTINATION, so this is ``<scope>.<category>.<dest>``. The dest is
-    # DOT-FREE so that the forged YAML below can MIRROR the node path and collide:
-    # a dest is ONE node now (``derive_binding_keys`` keys by segments and
-    # ``insert_segments`` splits nothing), and a dotted dest would be one YAML map
-    # key rather than the nesting a hand-written table can express as clearly.
-    _DECL_KEY = "agent.claude.common./home/agent/claude-plugins"
+    from kanibako.commands.start import _install_derived_bindings
+    from kanibako.settings.settings_categories import derive_binding_keys
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_identity_floor,
+      meta_runtime_floor,
+      snapshot_category_entries,
+      workset_anchor_floor,
+    )
 
-    @staticmethod
-    def _snapshot(tmp_path, *, install_derivations: bool = True):
-        """Assemble the snapshot from the forged box file.
-
-        *install_derivations* gates the LAUNCH SEAM's write only — set it False
-        to see the assembly result ALONE, which is where the drop happens and so
-        the only place "the forged table never entered the merge" can be read
-        without the seam's own write sitting on top of the answer.
-        """
-        import yaml
-
-        from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_categories import derive_binding_keys
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            meta_runtime_floor,
-            snapshot_category_entries,
-            workset_anchor_floor,
-        )
-
-        box_file = tmp_path / "box.yaml"
-        box_file.write_text(yaml.safe_dump({
-            "box": {"enable_vault": False},
-            "binding_derivations": {
-                # (i) collides with the REAL declaration key below — which under
-                # dest-keying ENDS in the resolved box DESTINATION.
-                "agent": {"claude": {"common": {
-                    "/home/agent/claude-plugins": ["/forged/src", "~/forged"],
-                }}},
-                # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
-                "junk": "zebra-not-a-bind",
+    box_file = tmp_path / "box.yaml"
+    box_file.write_text(
+      yaml.safe_dump(
+        {
+          "box": {"enable_vault": False},
+          "binding_derivations": {
+            # (i) collides with the REAL declaration key below — which under
+            # dest-keying ENDS in the resolved box DESTINATION.
+            "agent": {
+              "claude": {
+                "common": {
+                  "/home/agent/claude-plugins": ["/forged/src", "~/forged"],
+                }
+              }
             },
-        }))
-
-        # ONE terminal dest-keyed key; the dest is the map KEY and ``Z`` is the
-        # options element that used to sit third behind it.
-        floor: dict[str, object] = {
-            "agent.claude.common": {"~/claude-plugins": ("/store/plugins", "Z")},
+            # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
+            "junk": "zebra-not-a-bind",
+          },
         }
-        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
-        floor.update(workset_anchor_floor(mode="primary"))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw", agent_name="claude",
-        ))
-        ctx = make_ctx(
-            workset_name=None, config={"config.primary_workset": "/data/pw"},
+      )
+    )
+
+    # ONE terminal dest-keyed key; the dest is the map KEY and ``Z`` is the
+    # options element that used to sit third behind it.
+    floor: dict[str, object] = {
+      "agent.claude.common": {"~/claude-plugins": ("/store/plugins", "Z")},
+    }
+    floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+    floor.update(workset_anchor_floor(mode="primary"))
+    floor.update(
+      meta_identity_floor(
+        box_name="mybox",
+        project_path="/code/x",
+        inbox="/i",
+        share_global="/sg",
+        share_workset="/sw",
+        agent_name="claude",
+      )
+    )
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.primary_workset": "/data/pw"},
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_file,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent="claude",
+      box_ctx=ctx,
+    )
+    if install_derivations:
+      _install_derived_bindings(snap, derive_binding_keys(entries))
+    return snap, box_file
+
+  @staticmethod
+  def _leaves(node, prefix=""):
+    """Every leaf of *node* as ``(dotted_key, value)`` — RAW, no lens.
+
+    Deliberately NOT ``derived_bindings``: that lens turns a non-``Bind``
+    leaf into a ``ViewError``, so through it a forged leaf can only ever be
+    seen as an exception. This walk SEES the leaf, whatever it is.
+    """
+    from kanibako.settings.keystore import KeyStore
+
+    for key in dict.keys(node):
+      value = dict.__getitem__(node, key)
+      dotted = f"{prefix}.{key}" if prefix else str(key)
+      if isinstance(value, KeyStore):
+        yield from TestForgedDerivationsTableNeverEntersTheMerge._leaves(
+          value,
+          dotted,
         )
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=box_file, default_categories=floor,
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=ctx,
-        )
-        if install_derivations:
-            _install_derived_bindings(snap, derive_binding_keys(entries))
-        return snap, box_file
+      else:
+        yield dotted, value
 
-    @staticmethod
-    def _leaves(node, prefix=""):
-        """Every leaf of *node* as ``(dotted_key, value)`` — RAW, no lens.
+  def test_lens_returns_exactly_the_real_derivations(self, tmp_path, caplog):
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_views import derived_bindings
 
-        Deliberately NOT ``derived_bindings``: that lens turns a non-``Bind``
-        leaf into a ``ViewError``, so through it a forged leaf can only ever be
-        seen as an exception. This walk SEES the leaf, whatever it is.
-        """
-        from kanibako.settings.keystore import KeyStore
+    with caplog.at_level("WARNING"):
+      snap, box_file = self._snapshot(tmp_path)
+    # The drop announced itself, naming the box file and the token.
+    assert [
+      r.getMessage()
+      for r in caplog.records
+      if r.levelname == "WARNING"
+      and "binding_derivations" in r.getMessage()
+      and str(box_file) in r.getMessage()
+    ]
+    node = dict.get(snap, "binding_derivations")
+    assert isinstance(node, KeyStore)
+    # EXACTLY the real derivations: the launch seam's write, nothing forged.
+    derived = derived_bindings(node)  # pre-fix: ViewError on the junk leaf
+    assert set(derived) == {self._DECL_KEY}
+    # The colliding key carries the REAL host source, not the forged one.
+    assert derived[self._DECL_KEY].host == "/store/plugins"
 
-        for key in dict.keys(node):
-            value = dict.__getitem__(node, key)
-            dotted = f"{prefix}.{key}" if prefix else str(key)
-            if isinstance(value, KeyStore):
-                yield from TestForgedDerivationsTableNeverEntersTheMerge._leaves(
-                    value, dotted,
-                )
-            else:
-                yield dotted, value
+  def test_the_forged_table_never_enters_the_assembled_snapshot(self, tmp_path):
+    """R-8 REGRESSION TRIPWIRE — read off the SNAPSHOT, not the display.
 
-    def test_lens_returns_exactly_the_real_derivations(self, tmp_path, caplog):
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_views import derived_bindings
+    Was ``test_effective_display_renders_without_viewerror``. The PROPERTY
+    is the one this class is named for: a file-borne forged
+    ``binding_derivations:`` table is DROPPED at assembly
+    (``settings_assemble._drop_upward_scopes``) and never enters the merge.
+    "``--effective`` renders without ``ViewError``" was only the VEHICLE for
+    observing it, and that vehicle is out of service while
+    ``settings_categories.effective_bindings_and_template_sources`` is a
+    deliberate stub — so the property is asserted DIRECTLY and the tripwire
+    keeps firing. It is NOT restored to the display when the stub lands: a
+    renderer is a downstream witness, and this guard should not depend on
+    one.
 
-        with caplog.at_level("WARNING"):
-            snap, box_file = self._snapshot(tmp_path)
-        # The drop announced itself, naming the box file and the token.
-        assert [
-            r.getMessage() for r in caplog.records
-            if r.levelname == "WARNING"
-            and "binding_derivations" in r.getMessage()
-            and str(box_file) in r.getMessage()
-        ]
-        node = dict.get(snap, "binding_derivations")
-        assert isinstance(node, KeyStore)
-        # EXACTLY the real derivations: the launch seam's write, nothing forged.
-        derived = derived_bindings(node)  # pre-fix: ViewError on the junk leaf
-        assert set(derived) == {self._DECL_KEY}
-        # The colliding key carries the REAL host source, not the forged one.
-        assert derived[self._DECL_KEY].host == "/store/plugins"
+    Complements ``test_lens_returns_exactly_the_real_derivations``, which
+    reads through ``derived_bindings``: that LENS converts a forged non-Bind
+    leaf into a ``ViewError``, so through it the fault is only ever visible
+    as an exception, and only inside the one node. This walks the RAW node —
+    where a forged leaf is simply THERE — and then sweeps the WHOLE
+    snapshot, because "never enters the merge" is a claim about the snapshot,
+    not about one subtree of it.
+    """
+    from kanibako.settings.kb_store import Bind
+    from kanibako.settings.keystore import KeyStore
 
-    def test_the_forged_table_never_enters_the_assembled_snapshot(self, tmp_path):
-        """R-8 REGRESSION TRIPWIRE — read off the SNAPSHOT, not the display.
+    # 1. The ASSEMBLY result alone, with the launch seam's write withheld:
+    #    the reserved node is ABSENT. Nothing but the seam may create it, so
+    #    a surviving forged table has nowhere to hide behind a real one.
+    pre_seam, box_file = self._snapshot(tmp_path, install_derivations=False)
+    assert dict.get(pre_seam, "binding_derivations") is None, (
+      "the forged table SURVIVED assembly — the R-8 drop is not firing"
+    )
+    assert box_file.exists()  # the forged file really was read
 
-        Was ``test_effective_display_renders_without_viewerror``. The PROPERTY
-        is the one this class is named for: a file-borne forged
-        ``binding_derivations:`` table is DROPPED at assembly
-        (``settings_assemble._drop_upward_scopes``) and never enters the merge.
-        "``--effective`` renders without ``ViewError``" was only the VEHICLE for
-        observing it, and that vehicle is out of service while
-        ``settings_categories.effective_bindings_and_template_sources`` is a
-        deliberate stub — so the property is asserted DIRECTLY and the tripwire
-        keeps firing. It is NOT restored to the display when the stub lands: a
-        renderer is a downstream witness, and this guard should not depend on
-        one.
+    # 2. With the seam's write, the node holds EXACTLY that write. The RAW
+    #    walk (not the lens) is what makes the junk leaf assertable.
+    snap, _ = self._snapshot(tmp_path)
+    node = dict.get(snap, "binding_derivations")
+    assert isinstance(node, KeyStore)
+    raw = dict(self._leaves(node))
+    assert set(raw) == {self._DECL_KEY}, (
+      f"forged leaves reached the derivations node: {sorted(set(raw) - {self._DECL_KEY})}"
+    )
+    bind = raw[self._DECL_KEY]
+    assert isinstance(bind, Bind)
+    # The colliding key is the SEAM's Bind, not the forged pair: the REAL
+    # host source, and the RESOLVED guest dest the seam materializes (the
+    # forged pair was ``/forged/src`` -> ``~/forged``).
+    assert bind.host == "/store/plugins"
+    assert bind.box == "/home/agent/claude-plugins"
 
-        Complements ``test_lens_returns_exactly_the_real_derivations``, which
-        reads through ``derived_bindings``: that LENS converts a forged non-Bind
-        leaf into a ``ViewError``, so through it the fault is only ever visible
-        as an exception, and only inside the one node. This walks the RAW node —
-        where a forged leaf is simply THERE — and then sweeps the WHOLE
-        snapshot, because "never enters the merge" is a claim about the snapshot,
-        not about one subtree of it.
-        """
-        from kanibako.settings.kb_store import Bind
-        from kanibako.settings.keystore import KeyStore
-
-        # 1. The ASSEMBLY result alone, with the launch seam's write withheld:
-        #    the reserved node is ABSENT. Nothing but the seam may create it, so
-        #    a surviving forged table has nowhere to hide behind a real one.
-        pre_seam, box_file = self._snapshot(tmp_path, install_derivations=False)
-        assert dict.get(pre_seam, "binding_derivations") is None, (
-            "the forged table SURVIVED assembly — the R-8 drop is not firing"
-        )
-        assert box_file.exists()  # the forged file really was read
-
-        # 2. With the seam's write, the node holds EXACTLY that write. The RAW
-        #    walk (not the lens) is what makes the junk leaf assertable.
-        snap, _ = self._snapshot(tmp_path)
-        node = dict.get(snap, "binding_derivations")
-        assert isinstance(node, KeyStore)
-        raw = dict(self._leaves(node))
-        assert set(raw) == {self._DECL_KEY}, (
-            f"forged leaves reached the derivations node: "
-            f"{sorted(set(raw) - {self._DECL_KEY})}"
-        )
-        bind = raw[self._DECL_KEY]
-        assert isinstance(bind, Bind)
-        # The colliding key is the SEAM's Bind, not the forged pair: the REAL
-        # host source, and the RESOLVED guest dest the seam materializes (the
-        # forged pair was ``/forged/src`` -> ``~/forged``).
-        assert bind.host == "/store/plugins"
-        assert bind.box == "/home/agent/claude-plugins"
-
-        # 3. And nothing forged landed ANYWHERE ELSE in the snapshot either —
-        #    the drop is at assembly, before the merge, so no scope table may
-        #    carry the table's contents under some other prefix.
-        strays = [
-            (key, value) for key, value in self._leaves(snap)
-            if "forged" in repr(value) or "zebra-not-a-bind" in repr(value)
-            or "junk" in key
-        ]
-        assert not strays, f"forged content reached the snapshot: {strays}"
+    # 3. And nothing forged landed ANYWHERE ELSE in the snapshot either —
+    #    the drop is at assembly, before the merge, so no scope table may
+    #    carry the table's contents under some other prefix.
+    strays = [
+      (key, value)
+      for key, value in self._leaves(snap)
+      if "forged" in repr(value) or "zebra-not-a-bind" in repr(value) or "junk" in key
+    ]
+    assert not strays, f"forged content reached the snapshot: {strays}"
 
 
 # ---------------------------------------------------------------------------
@@ -1788,779 +2018,838 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
 
 
 def _assembled(categories: dict):
-    """The snapshot half of :func:`_assembled_pair`, for a caller that needs no keys."""
-    return _assembled_pair(categories)[0]
+  """The snapshot half of :func:`_assembled_pair`, for a caller that needs no keys."""
+  return _assembled_pair(categories)[0]
 
 
 def _assembled_pair(categories: dict):
-    """A snapshot carried through the WHOLE chain a launch takes, and its entries.
+  """A snapshot carried through the WHOLE chain a launch takes, and its entries.
 
-    floor -> ``build_launch_snapshot`` -> ``snapshot_category_entries`` ->
-    ``_install_derived_bindings`` -> ``_install_assembly_collapse``.  Both halves
-    the pairing reads are therefore produced by the seams that produce them at
-    launch: ``binding_derivations`` (PRE-arbitration, by design) and
-    ``meta.assembly.bindings`` (the arbitrated result the box receives).
+  floor -> ``build_launch_snapshot`` -> ``snapshot_category_entries`` ->
+  ``_install_derived_bindings`` -> ``_install_assembly_collapse``.  Both halves
+  the pairing reads are therefore produced by the seams that produce them at
+  launch: ``binding_derivations`` (PRE-arbitration, by design) and
+  ``meta.assembly.bindings`` (the arbitrated result the box receives).
 
-    ``meta.box.home`` is written directly because it is a DERIVED key the floor
-    below does not materialize; the assembly seam refuses without it.
+  ``meta.box.home`` is written directly because it is a DERIVED key the floor
+  below does not materialize; the assembly seam refuses without it.
 
-    Returns ``(snapshot, declared_by)``.  ⚑ THE SECOND HALF IS THE SEAM'S OWN RETURN
-    VALUE, not a leaf and not a second fold: at launch it rides out on
-    ``LaunchDeliveries.declared_by``, and taking it from the same call the leaves come
-    from is what makes a display's key and its mount ONE fold's answer.
-    """
-    from kanibako.commands.start import (
-        _install_assembly_collapse,
-        _install_derived_bindings,
+  Returns ``(snapshot, declared_by)``.  ⚑ THE SECOND HALF IS THE SEAM'S OWN RETURN
+  VALUE, not a leaf and not a second fold: at launch it rides out on
+  ``LaunchDeliveries.declared_by``, and taking it from the same call the leaves come
+  from is what makes a display's key and its mount ONE fold's answer.
+  """
+  from kanibako.commands.start import (
+    _install_assembly_collapse,
+    _install_derived_bindings,
+  )
+  from kanibako.settings.settings_categories import derive_binding_keys
+  from kanibako.settings.settings_launch import (
+    build_launch_snapshot,
+    meta_agent_path_floor,
+    meta_identity_floor,
+    snapshot_category_entries,
+  )
+
+  ctx = make_ctx()
+  floor: dict = {}
+  floor.update(
+    meta_identity_floor(
+      box_name="b",
+      project_path="/p",
+      inbox="/i",
+      share_global="/sg",
+      share_workset=None,
+      agent_name="claude",
     )
-    from kanibako.settings.settings_categories import derive_binding_keys
-    from kanibako.settings.settings_launch import (
-        build_launch_snapshot,
-        meta_agent_path_floor,
-        meta_identity_floor,
-        snapshot_category_entries,
-    )
-
-    ctx = make_ctx()
-    floor: dict = {}
-    floor.update(meta_identity_floor(
-        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, agent_name="claude",
-    ))
-    floor.update(meta_agent_path_floor("claude"))
-    floor.update(categories)
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-        workset_path=None, box_path=None, default_categories=floor,
-    )
-    snap.insert_segments(("meta", "box", "home"), "/host/box/home")
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-    _install_derived_bindings(snap, derive_binding_keys(entries))
-    declared_by = _install_assembly_collapse(snap, entries, whole_box=True)
-    return snap, declared_by
+  )
+  floor.update(meta_agent_path_floor("claude"))
+  floor.update(categories)
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    default_categories=floor,
+  )
+  snap.insert_segments(("meta", "box", "home"), "/host/box/home")
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+  _install_derived_bindings(snap, derive_binding_keys(entries))
+  declared_by = _install_assembly_collapse(snap, entries, whole_box=True)
+  return snap, declared_by
 
 
 def _paired(snap) -> dict:
-    """``{declaration key: Derivation}`` off the ONE function that owns the answer."""
-    from kanibako.settings.settings_categories import (
-        effective_bindings_and_template_sources,
-    )
+  """``{declaration key: Derivation}`` off the ONE function that owns the answer."""
+  from kanibako.settings.settings_categories import (
+    effective_bindings_and_template_sources,
+  )
 
-    return {
-        d.declaration.key: d
-        for d in effective_bindings_and_template_sources(snap)
-    }
+  return {d.declaration.key: d for d in effective_bindings_and_template_sources(snap)}
 
 
 class TestTheNaiveReadIsWrong:
-    """🛑 WHY ``binding_derivations`` ALONE MAY NEVER BE THE DISPLAY'S SOURCE.
+  """🛑 WHY ``binding_derivations`` ALONE MAY NEVER BE THE DISPLAY'S SOURCE.
 
-    The node is populated BEFORE arbitration and that is DELIBERATE (§0 / R-8: a
-    derived binding is a property of the DECLARATION, and ``derive_binding_keys``
-    materializes one for WINNERS AND LOSERS ALIKE, because a loser's derivation is
-    what explains the warning that names it).
+  The node is populated BEFORE arbitration and that is DELIBERATE (§0 / R-8: a
+  derived binding is a property of the DECLARATION, and ``derive_binding_keys``
+  materializes one for WINNERS AND LOSERS ALIKE, because a loser's derivation is
+  what explains the warning that names it).
 
-    So the node says "this declaration derives a mount at this dest" for a
-    declaration the box then receives NOTHING for.  A renderer reading it alone
-    prints a mount that does not exist — and the mask case prints NO mask, which
-    is the silent half.  This test states that disagreement as a FACT so a future
-    rewrite cannot re-derive the display from the node and pass.
-    """
+  So the node says "this declaration derives a mount at this dest" for a
+  declaration the box then receives NOTHING for.  A renderer reading it alone
+  prints a mount that does not exist — and the mask case prints NO mask, which
+  is the silent half.  This test states that disagreement as a FACT so a future
+  rewrite cannot re-derive the display from the node and pass.
+  """
 
-    def test_the_reserved_node_and_the_assembly_DISAGREE_under_a_mask(self):
-        from kanibako.settings.kb_store import Bind
-        from kanibako.settings.store_collapse import MASK
+  def test_the_reserved_node_and_the_assembly_DISAGREE_under_a_mask(self):
+    from kanibako.settings.kb_store import Bind
+    from kanibako.settings.store_collapse import MASK
 
-        snap = _assembled({
-            "agent.claude.common": {"~/x": ("/h/agent",)},
-            "box.masks": ["~/x"],
-        })
-        derived = _leaf(snap, "binding_derivations", "agent", "claude",
-                        "common", "/home/agent/x")
-        # The PRE-arbitration half reads as an ordinary mount...
-        assert derived == Bind(host="/h/agent", box="/home/agent/x", opts="Z,U")
-        assert isinstance(derived, Bind)
-        # ...and the box receives a MASK at that destination: no mount at all.
-        assert _leaf(snap, "meta", "assembly", "bindings")["/home/agent/x"] == MASK
+    snap = _assembled(
+      {
+        "agent.claude.common": {"~/x": ("/h/agent",)},
+        "box.masks": ["~/x"],
+      }
+    )
+    derived = _leaf(snap, "binding_derivations", "agent", "claude", "common", "/home/agent/x")
+    # The PRE-arbitration half reads as an ordinary mount...
+    assert derived == Bind(host="/h/agent", box="/home/agent/x", opts="Z,U")
+    assert isinstance(derived, Bind)
+    # ...and the box receives a MASK at that destination: no mount at all.
+    assert _leaf(snap, "meta", "assembly", "bindings")["/home/agent/x"] == MASK
 
 
 def _leaf(node, *segments):
-    """Walk *segments* under *node* with unbound ``dict`` ops (S3)."""
-    for segment in segments:
-        node = dict.get(node, segment)
-    return node
+  """Walk *segments* under *node* with unbound ``dict`` ops (S3)."""
+  for segment in segments:
+    node = dict.get(node, segment)
+  return node
 
 
 class TestADeclarationThatLosesIsNotShownAsAMount:
-    """Keyspec ``:88`` — ``--effective`` must pair a declaration with what the box GETS.
+  """Keyspec ``:88`` — ``--effective`` must pair a declaration with what the box GETS.
 
-    ⚑⚑ THE THREE LOSING SHAPES, each measured on the chain above.  A declaration
-    can lose without any refusal being raised, and every one of these was reported
-    as a live mount by the read this pairing replaces:
+  ⚑⚑ THE THREE LOSING SHAPES, each measured on the chain above.  A declaration
+  can lose without any refusal being raised, and every one of these was reported
+  as a live mount by the read this pairing replaces:
 
-      * a MASK at the declaration's own destination (the silent one — the naive
-        read printed ``(mount)`` and printed no mask at all);
-      * a MASK ABOVE the declaration, which SWEEPS it: the declaration's dest is
-        not in the collapsed map at ALL, so a lookup by dest finds nothing and a
-        renderer that treats "absent" as "fine" says nothing;
-      * a §0 row-5 same-scope ambiguity, whose LOSER is dropped by the producer but
-        still carries a derivation in the reserved node.
+    * a MASK at the declaration's own destination (the silent one — the naive
+      read printed ``(mount)`` and printed no mask at all);
+    * a MASK ABOVE the declaration, which SWEEPS it: the declaration's dest is
+      not in the collapsed map at ALL, so a lookup by dest finds nothing and a
+      renderer that treats "absent" as "fine" says nothing;
+    * a §0 row-5 same-scope ambiguity, whose LOSER is dropped by the producer but
+      still carries a derivation in the reserved node.
+  """
+
+  def test_a_mask_at_the_declarations_own_dest_is_reported_as_masked(self):
+    from kanibako.settings.store_collapse import DERIVED_MASKED
+
+    paired = _paired(
+      _assembled(
+        {
+          "agent.claude.common": {"~/x": ("/h/agent",)},
+          "box.masks": ["~/x"],
+        }
+      )
+    )
+    got = paired["agent.claude.common[/home/agent/x]"]
+    assert got.outcome == DERIVED_MASKED
+    assert got.at == "/home/agent/x"
+    assert got.bind is not None and got.bind.src is None
+
+  def test_a_mask_ABOVE_the_declaration_sweeps_it_and_is_NAMED(self):
+    from kanibako.settings.store_collapse import DERIVED_MASKED
+
+    snap = _assembled(
+      {
+        "agent.claude.common": {"~/x/y": ("/h/agent",)},
+        "box.masks": ["~/x"],
+      }
+    )
+    # The swept dest is not in the collapsed map at all — the whole point.
+    assert "/home/agent/x/y" not in _leaf(snap, "meta", "assembly", "bindings")
+    got = _paired(snap)["agent.claude.common[/home/agent/x/y]"]
+    assert got.outcome == DERIVED_MASKED
+    # ⚑ NAMED: the dest that actually swallowed it, not the declaration's own.
+    assert got.at == "/home/agent/x"
+
+  def test_a_row_5_loser_is_superseded_and_the_winner_is_the_mount(self):
+    from kanibako.settings.store_collapse import (
+      DERIVED_MOUNT,
+      DERIVED_SUPERSEDED,
+    )
+
+    paired = _paired(
+      _assembled(
+        {
+          "box.common": {"~/x": ("/h/common",)},
+          "box.caches": {"~/x": ("/h/caches",)},
+        }
+      )
+    )
+    loser = paired["box.caches[/home/agent/x]"]
+    winner = paired["box.common[/home/agent/x]"]
+    assert loser.outcome == DERIVED_SUPERSEDED
+    assert winner.outcome == DERIVED_MOUNT
+    # The loser is paired with the binding that OCCUPIES its dest — the
+    # winner's source, never its own.
+    assert loser.bind is not None and loser.bind.src == "/h/common"
+
+  def test_a_surviving_declaration_IS_the_mount_it_derives(self):
+    """The positive control: without it, "always superseded" would pass above."""
+    from kanibako.settings.store_collapse import DERIVED_MOUNT
+
+    got = _paired(
+      _assembled(
+        {
+          "agent.claude.common": {"~/x": ("/h/agent",)},
+        }
+      )
+    )["agent.claude.common[/home/agent/x]"]
+    assert got.outcome == DERIVED_MOUNT
+    assert got.at == "/home/agent/x"
+    assert got.bind is not None and got.bind.src == "/h/agent"
+    # The MODE-folded options, read off the assembly — not the declaration's.
+    assert got.bind.opts == "Z,U,rw"
+
+  def test_a_seeded_declaration_pairs_with_its_COPY_row_not_a_mount(self):
+    """``seeded`` derives a COPY (§0), and a copy is arbitrated at no dest."""
+    from kanibako.settings.store_collapse import DERIVED_COPY
+
+    got = _paired(
+      _assembled(
+        {
+          "box.seeded": {"~/s": ("/h/s",)},
+        }
+      )
+    )["box.seeded[/home/agent/s]"]
+    assert got.outcome == DERIVED_COPY
+    assert got.copy is not None
+    assert (got.copy.src, got.copy.dest) == ("/h/s", "/home/agent/s")
+
+  def test_two_row_5_declarations_SHARING_a_source_are_called_ambiguous(self):
+    """⚑ The one tie the pre-arbitration node can produce — and it is SAID, not guessed.
+
+    Two same-scope abstractions at one dest whose sources are EQUAL: §0 row 5
+    drops one, but the collapsed map records only a source, so it cannot say
+    WHICH of the two the surviving mount came from.  Reporting both as the
+    mount would be a confident answer to a question the data cannot settle.
     """
+    from kanibako.settings.store_collapse import DERIVED_AMBIGUOUS
 
-    def test_a_mask_at_the_declarations_own_dest_is_reported_as_masked(self):
-        from kanibako.settings.store_collapse import DERIVED_MASKED
+    paired = _paired(
+      _assembled(
+        {
+          "box.common": {"~/x": ("/h/same",)},
+          "box.caches": {"~/x": ("/h/same",)},
+        }
+      )
+    )
+    assert paired["box.common[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
+    assert paired["box.caches[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
 
-        paired = _paired(_assembled({
-            "agent.claude.common": {"~/x": ("/h/agent",)},
-            "box.masks": ["~/x"],
-        }))
-        got = paired["agent.claude.common[/home/agent/x]"]
-        assert got.outcome == DERIVED_MASKED
-        assert got.at == "/home/agent/x"
-        assert got.bind is not None and got.bind.src is None
+  def test_an_absent_assembly_is_reported_as_UNCOVERED_not_as_no_mount(self):
+    """A NARROW resolve writes no bindings leaf; "no map" is not "no mount"."""
+    from kanibako.settings.store_collapse import DERIVED_UNCOVERED
 
-    def test_a_mask_ABOVE_the_declaration_sweeps_it_and_is_NAMED(self):
-        from kanibako.settings.store_collapse import DERIVED_MASKED
-
-        snap = _assembled({
-            "agent.claude.common": {"~/x/y": ("/h/agent",)},
-            "box.masks": ["~/x"],
-        })
-        # The swept dest is not in the collapsed map at all — the whole point.
-        assert "/home/agent/x/y" not in _leaf(snap, "meta", "assembly", "bindings")
-        got = _paired(snap)["agent.claude.common[/home/agent/x/y]"]
-        assert got.outcome == DERIVED_MASKED
-        # ⚑ NAMED: the dest that actually swallowed it, not the declaration's own.
-        assert got.at == "/home/agent/x"
-
-    def test_a_row_5_loser_is_superseded_and_the_winner_is_the_mount(self):
-        from kanibako.settings.store_collapse import (
-            DERIVED_MOUNT,
-            DERIVED_SUPERSEDED,
-        )
-
-        paired = _paired(_assembled({
-            "box.common": {"~/x": ("/h/common",)},
-            "box.caches": {"~/x": ("/h/caches",)},
-        }))
-        loser = paired["box.caches[/home/agent/x]"]
-        winner = paired["box.common[/home/agent/x]"]
-        assert loser.outcome == DERIVED_SUPERSEDED
-        assert winner.outcome == DERIVED_MOUNT
-        # The loser is paired with the binding that OCCUPIES its dest — the
-        # winner's source, never its own.
-        assert loser.bind is not None and loser.bind.src == "/h/common"
-
-    def test_a_surviving_declaration_IS_the_mount_it_derives(self):
-        """The positive control: without it, "always superseded" would pass above."""
-        from kanibako.settings.store_collapse import DERIVED_MOUNT
-
-        got = _paired(_assembled({
-            "agent.claude.common": {"~/x": ("/h/agent",)},
-        }))["agent.claude.common[/home/agent/x]"]
-        assert got.outcome == DERIVED_MOUNT
-        assert got.at == "/home/agent/x"
-        assert got.bind is not None and got.bind.src == "/h/agent"
-        # The MODE-folded options, read off the assembly — not the declaration's.
-        assert got.bind.opts == "Z,U,rw"
-
-    def test_a_seeded_declaration_pairs_with_its_COPY_row_not_a_mount(self):
-        """``seeded`` derives a COPY (§0), and a copy is arbitrated at no dest."""
-        from kanibako.settings.store_collapse import DERIVED_COPY
-
-        got = _paired(_assembled({
-            "box.seeded": {"~/s": ("/h/s",)},
-        }))["box.seeded[/home/agent/s]"]
-        assert got.outcome == DERIVED_COPY
-        assert got.copy is not None
-        assert (got.copy.src, got.copy.dest) == ("/h/s", "/home/agent/s")
-
-    def test_two_row_5_declarations_SHARING_a_source_are_called_ambiguous(self):
-        """⚑ The one tie the pre-arbitration node can produce — and it is SAID, not guessed.
-
-        Two same-scope abstractions at one dest whose sources are EQUAL: §0 row 5
-        drops one, but the collapsed map records only a source, so it cannot say
-        WHICH of the two the surviving mount came from.  Reporting both as the
-        mount would be a confident answer to a question the data cannot settle.
-        """
-        from kanibako.settings.store_collapse import DERIVED_AMBIGUOUS
-
-        paired = _paired(_assembled({
-            "box.common": {"~/x": ("/h/same",)},
-            "box.caches": {"~/x": ("/h/same",)},
-        }))
-        assert paired["box.common[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
-        assert paired["box.caches[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
-
-    def test_an_absent_assembly_is_reported_as_UNCOVERED_not_as_no_mount(self):
-        """A NARROW resolve writes no bindings leaf; "no map" is not "no mount"."""
-        from kanibako.settings.store_collapse import DERIVED_UNCOVERED
-
-        snap = _assembled({"agent.claude.common": {"~/x": ("/h/agent",)}})
-        # Drop the arbitrated half, keep the declarations: the narrow-resolve shape.
-        dict.pop(dict.__getitem__(snap, "meta"), "assembly")
-        assert dict.get(snap, "binding_derivations") is not None, (
-            "the declarations half went too — this would prove nothing"
-        )
-        got = _paired(snap)["agent.claude.common[/home/agent/x]"]
-        assert got.outcome == DERIVED_UNCOVERED
-        assert got.at is None and got.bind is None
+    snap = _assembled({"agent.claude.common": {"~/x": ("/h/agent",)}})
+    # Drop the arbitrated half, keep the declarations: the narrow-resolve shape.
+    dict.pop(dict.__getitem__(snap, "meta"), "assembly")
+    assert dict.get(snap, "binding_derivations") is not None, (
+      "the declarations half went too — this would prove nothing"
+    )
+    got = _paired(snap)["agent.claude.common[/home/agent/x]"]
+    assert got.outcome == DERIVED_UNCOVERED
+    assert got.at is None and got.bind is None
 
 
 def _block(categories: dict) -> str:
-    """``_print_category_block`` over a snapshot the WHOLE launch chain produced.
+  """``_print_category_block`` over a snapshot the WHOLE launch chain produced.
 
-    ⚑ ``make_ctx()`` is the SAME ctx ``_assembled`` resolved the snapshot with — the
-    launch hands the display its own, and a display given a different one would spell
-    a ``$XDG_*`` destination differently from the map it is pairing against.
+  ⚑ ``make_ctx()`` is the SAME ctx ``_assembled`` resolved the snapshot with — the
+  launch hands the display its own, and a display given a different one would spell
+  a ``$XDG_*`` destination differently from the map it is pairing against.
 
-    ⚑ AND THE SAME FOLD'S ``declared_by``, for the same reason: the launch seam hands
-    the display the map it just folded, so a key printed here is the key of the mount
-    that actually survived rather than one re-derived from the finished map.
+  ⚑ AND THE SAME FOLD'S ``declared_by``, for the same reason: the launch seam hands
+  the display the map it just folded, so a key printed here is the key of the mount
+  that actually survived rather than one re-derived from the finished map.
+  """
+  import io
+
+  from kanibako.settings.config_display import _print_category_block
+
+  buf = io.StringIO()
+  snapshot, declared_by = _assembled_pair(categories)
+  _print_category_block(snapshot, None, buf, make_ctx(), declared_by)
+  return buf.getvalue()
+
+
+def _collapsed(categories: dict) -> dict:
+  """The ARBITRATED bind map (``meta.assembly.bindings``) as a plain dict."""
+  return dict(_leaf(_assembled(categories), "meta", "assembly", "bindings"))
+
+
+class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
+  """Keyspec ``:88`` for the CONCRETE half — the same obligation the abstract half meets.
+
+  ``TestADeclarationThatLosesIsNotShownAsAMount`` above pins the ABSTRACT
+  declarations, which are paired through
+  ``effective_bindings_and_template_sources``.  The concrete
+  ``<scope>.bindings.{ro,rw}`` rows were rendered straight off the arm with no
+  pairing at all, so a binding the collapse swallowed printed with a delivery
+  arrow — a mount the box does not receive, at rc 0, with the mask that took it
+  printed nowhere.
+
+  ⚑⚑ THE PREMISE OF EVERY CASE HERE IS READ OFF THE COLLAPSED MAP, NEVER OFF THE
+  DECLARATIONS.  Bind-versus-mask at one destination is SUPERSESSION (spec
+  ``:146``): whichever arrives against the already-collapsed state deletes the
+  other, and NEITHER is inherently the winner.  So "there is a mask at this dest"
+  proves nothing — ``CollapsedBind(src=None)`` is the mask sentinel and is the only
+  thing that says the box sees nothing there.  A test that asserted from the
+  declarations would turn the LEGITIMATE case below (a binding that supersedes a
+  mask) into a reported defect.
+  """
+
+  #: The opening of ``derivation_result``'s MASKED phrase.  ⚑ ARRIVAL ORDER IS WHAT
+  #: DECIDES THESE CASES: entries collapse in ``(scope, category, dest)`` order and
+  #: ``"bindings.ro"`` sorts before ``"masks"``, so a SAME-scope mask always arrives
+  #: second and takes the point, while a LOWER-scope mask arrives first and loses it.
+  #: Both directions are pinned below; neither is the inherent winner.
+  #:
+  #: ⚑ IT NAMES THE MASK'S KEY. The phrase is keyed whenever the display was handed
+  #: the fold's ``declared_by``, and ``_block`` hands it the one the same fold
+  #: returned — the arrangement a launch makes. The key is the thing a user goes and
+  #: edits; the destination alone is not, and for a mask ABOVE the declaration it is
+  #: not even a path their own key spells.
+  _MASK_PHRASE = "no mount — the mask declared by "
+
+  def test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as_a_mount(self):
+    """Same scope, same destination: the mask arrives second and deletes the bind."""
+    categories = {
+      "box.bindings.ro": {"/opt/arb": ("/src",)},
+      "box.masks": ["/opt/arb"],
+    }
+    # PREMISE, off the arbitrated map: the box receives the MASK here.
+    assert _collapsed(categories)["/opt/arb"].src is None
+
+    text = _block(categories)
+    assert "/src -> /opt/arb" not in text, (
+      "the binding is printed with the delivery arrow, so the block claims a "
+      "mount at a destination the box sees nothing at"
+    )
+    assert "box.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
+    assert (
+      f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination" in text
+    ), text
+
+  def test_a_mask_that_SWEPT_a_binding_from_a_parent_is_named(self):
+    """The mask is the PARENT and arrives second, so it deletes the child bind.
+
+    ⚑ THE CASE A DEST-KEYED LOOKUP CANNOT ANSWER: ``/opt/arb/inner`` is not in
+    the collapsed map at ALL after the sweep, so a renderer reading "absent" as
+    "fine" says nothing.  The mask's OWN destination is the whole diagnosis and
+    is not a path the user's binding key names.
+
+    ⚑ NOT the refused geometry.  A bind arriving against an ALREADY-collapsed
+    parent mask is refused outright (spec ``:134``) and never reaches a display;
+    that needs the mask at a LOWER scope, which is a different input from this one.
+    """
+    categories = {
+      "box.masks": ["/opt/arb"],
+      "box.bindings.ro": {"/opt/arb/inner": ("/src",)},
+    }
+    collapsed = _collapsed(categories)
+    assert "/opt/arb/inner" not in collapsed, (
+      "the swept dest is still in the map — this proves nothing"
+    )
+    assert collapsed["/opt/arb"].src is None
+
+    text = _block(categories)
+    assert "/src -> /opt/arb/inner" not in text, text
+    assert (
+      f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination" in text
+    ), text
+
+  def test_a_LOWER_scopes_binding_a_box_mask_swallowed_is_named_too(self):
+    """The losing row need not be the box's own — the walk covers every scope."""
+    categories = {
+      "system.bindings.ro": {"/opt/arb": ("/src",)},
+      "box.masks": ["/opt/arb"],
+    }
+    assert _collapsed(categories)["/opt/arb"].src is None
+
+    text = _block(categories)
+    assert "/src -> /opt/arb" not in text, text
+    assert "system.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
+    assert (
+      f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination" in text
+    ), text
+
+  def test_a_binding_that_SUPERSEDES_a_mask_still_prints_as_a_mount(self):
+    """🛑 THE CASE A FIX MUST NOT BREAK — supersession runs BOTH WAYS (spec ``:146``).
+
+    A lower-scope mask, a box binding at the same exact point: the binding
+    arrives second and deletes the mask, so the box DOES receive this mount and
+    printing it is correct.  A renderer that reported "there is a mask at this
+    destination" would turn working output into a false loss.
+    """
+    categories = {
+      "system.masks": ["/opt/arb"],
+      "box.bindings.ro": {"/opt/arb": ("/src",)},
+    }
+    assert _collapsed(categories)["/opt/arb"].src == "/src"
+
+    text = _block(categories)
+    assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
+    assert "no mount" not in text, text
+
+  def test_a_binding_nested_inside_another_binding_still_prints_as_a_mount(self):
+    """A bind may be a CHILD of a bind (spec ``:148``) — both are live mounts.
+
+    The guard against a fix that reads every containment as a loss.
+    """
+    categories = {
+      "box.bindings.ro": {"/opt/n": ("/src",), "/opt/n/in": ("/src2",)},
+    }
+    text = _block(categories)
+    assert "box.bindings.ro[/opt/n] = /src -> /opt/n" in text, text
+    assert "box.bindings.ro[/opt/n/in] = /src2 -> /opt/n/in" in text, text
+    assert "no mount" not in text, text
+
+  def test_a_binding_whose_CHILD_is_a_mask_still_prints_as_a_mount(self):
+    """A mask may be the CHILD of a bind (spec ``:148``) — the bind keeps its point.
+
+    ⚑ Masks are the INVERSE of binds, not their mirror, and this is the half that
+    inverts: a mask INSIDE a bind takes only its own point.
+    """
+    categories = {
+      "box.bindings.ro": {"/opt/arb": ("/src",)},
+      "box.masks": ["/opt/arb/inner"],
+    }
+    assert _collapsed(categories)["/opt/arb"].src == "/src"
+
+    text = _block(categories)
+    assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
+    assert "no mount" not in text, text
+
+  def test_a_dest_spelled_with_an_XDG_var_arbitrates_like_any_other(self):
+    """⚑⚑ A ``$XDG_*`` DESTINATION IS AN ORDINARY ROW — no carve-out [Jei:2026-08-27].
+
+    Binds are resolved on the HOST, so a ``box_dest``'s env vars derive from the
+    host and every consumer receives an absolute guest path (keyspec ``:344-347``).
+    The arm KEY still holds ``{$XDG_DATA_HOME}/z``, because the eager build defers the
+    token; the arbitrated map holds ``/data/z``.  The display resolves the arm's
+    spelling through the SAME ``resolve_box_dest`` the collapse was fed from, so the
+    two meet.
+
+    This row is a live mount, and it must be reported as one BY ARBITRATION rather
+    than by being skipped — the masked twin below is what proves the difference.
+    """
+    categories = {"box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)}}
+    # PREMISE, off the arbitrated map: the box receives this mount.
+    assert _collapsed(categories)["/data/z"].src == "/src"
+
+    text = _block(categories)
+    assert "box.bindings.ro[{$XDG_DATA_HOME}/z] = /src -> /data/z" in text, text
+    assert "no mount" not in text, text
+
+  def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
+    """🛑 THE CASE THE OLD ``$``-SKIP HID, and the whole reason it is gone.
+
+    Same geometry as ``test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as
+    _a_mount``, with the destination spelled through a variable.  A predicate that
+    withholds arbitration from a ``$``-bearing row prints a delivery arrow here, at
+    rc 0, for a destination the box sees nothing at — the exact silent half the
+    pairing exists to close.
+    """
+    categories = {
+      "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
+      "box.masks": ["{$XDG_DATA_HOME}/z"],
+    }
+    # PREMISE, off the arbitrated map: the box receives the MASK here.
+    assert _collapsed(categories)["/data/z"].src is None
+
+    text = _block(categories)
+    assert "/src -> {$XDG_DATA_HOME}/z" not in text, (
+      "the binding is printed with the delivery arrow, so the block claims a "
+      "mount at a destination the box sees nothing at"
+    )
+    assert "box.bindings.ro[{$XDG_DATA_HOME}/z] = /data/z  (declared: /src)" in text, text
+    # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
+    # RESOLVED one, on the row and in the reason — the key is the half they can go
+    # and edit.
+    assert (
+      f"{self._MASK_PHRASE}'box.masks[{{$XDG_DATA_HOME}}/z]' at /data/z covers this "
+      "destination" in text
+    ), text
+
+  def test_a_masked_XDG_dest_is_caught_by_a_mask_spelled_the_OTHER_WAY(self):
+    """The two spellings are ONE destination, and arbitration is where that lands.
+
+    The bind names the variable, the mask names the resolved path.  Both resolve
+    through ``resolve_box_dest`` before anything is compared — *"the ``$var`` should
+    be resolved before any binding or comparison"* [Jei:2026-08-27] — so the mask
+    takes the point exactly as it would had both been spelled alike.
+    """
+    categories = {
+      "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
+      "box.masks": ["/data/z"],
+    }
+    assert _collapsed(categories)["/data/z"].src is None
+
+    text = _block(categories)
+    assert "/src -> {$XDG_DATA_HOME}/z" not in text, text
+    assert f"{self._MASK_PHRASE}'box.masks[/data/z]' at /data/z covers this destination" in text, (
+      text
+    )
+
+  def test_a_literal_dollar_is_text_and_pairs_as_one(self):
+    """⚑ ``$`` IS AN ORDINARY CHARACTER, and a dest holding one survives the round trip.
+
+    ``$KB_LITERAL`` names no known variable, so it is text (keyspec "References"):
+    the eager build carries ``$KB_LITERAL/z`` through and ``resolve_box_dest`` keeps it,
+    a path whose first component is a literal ``$KB_LITERAL``. The collapsed map is
+    keyed by that same text, so the display pairs it like any other row. The old
+    ``"$" not in dest`` predicate caught this spelling too and withheld its diagnosis.
+    """
+    categories = {
+      "box.bindings.ro": {"$KB_LITERAL/z": ("/src",)},
+      "box.masks": ["$KB_LITERAL/z"],
+    }
+    collapsed = _collapsed(categories)
+    assert "$KB_LITERAL/z" in collapsed
+    assert collapsed["$KB_LITERAL/z"].src is None
+
+    text = _block(categories)
+    assert "/src -> $KB_LITERAL/z" not in text, text
+    assert (
+      f"{self._MASK_PHRASE}'box.masks[$KB_LITERAL/z]' at $KB_LITERAL/z "
+      "covers this destination" in text
+    ), text
+
+  def test_the_containment_test_is_SEPARATOR_GUARDED(self):
+    """``/opt/arb-x`` is not inside ``/opt/arb`` — a prefix is not a parent.
+
+    The display's answer now comes from ``covering_bind``, so its guard is this
+    block's guard too: without it a mask would be reported as swallowing every
+    sibling whose path merely starts with the same characters.
+    """
+    text = _block(
+      {
+        "box.masks": ["/opt/arb"],
+        "box.bindings.ro": {"/opt/arb-x": ("/src",)},
+      }
+    )
+    assert "box.bindings.ro[/opt/arb-x] = /src -> /opt/arb-x" in text, text
+    assert "no mount" not in text, text
+
+
+class TestAConcreteRowPrintsTheResolvedGuestPath:
+  """A concrete row's destination prints as the guest path the mount lands on.
+
+  The arm key is the box-side residue: a user's ``\\~`` stays escaped in it, and a
+  ``{key}``-ref's referent arrives as a literal. Neither spelling is where the box sees
+  the mount; ``resolve_box_dest`` is.
+  """
+
+  def test_an_escaped_literal_prints_unescaped(self):
+    text = _block({"box.bindings.ro": {"/opt/lit$b\\~c": ("/src",)}})
+    assert "/src -> /opt/lit$b~c\n" in text, text
+
+  def test_a_referent_dollar_prints_as_text(self):
+    text = _block(
+      {
+        "box.env.ODD": "/e@v$q",
+        "box.bindings.ro": {"{box.env.ODD}/t": ("/src",)},
+      }
+    )
+    assert "/src -> /e@v$q/t\n" in text, text
+
+  def test_a_lost_row_prints_the_resolved_path_in_declaration_form(self):
+    text = _block(
+      {
+        "box.bindings.ro": {"/opt/lit$b": ("/src",)},
+        "box.masks": ["/opt/lit$b"],
+      }
+    )
+    assert "= /opt/lit$b  (declared: /src)" in text, text
+
+
+class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
+  """A ``pref`` request keeps its ``{key}``-refs; the arm it lands in is keyed by their
+  expansion. The block looks each request up under the key ``expand`` recorded for it
+  and prints the result's resolved guest path, as a concrete row does.
+  """
+
+  def _pref_block(self, tmp_path, ro: dict, agent: str = "claude") -> str:
+    """The ``show --effective`` text for a box file holding *ro* as a ``pref`` arm."""
+    import io
+
+    import yaml
+
+    from kanibako.settings.config_interface import show_config
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      meta_agent_path_floor,
+    )
+
+    box = tmp_path / "box.yaml"
+    box.write_text(
+      yaml.safe_dump(
+        {
+          "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
+          "box": {"env": {"ODD": "/e@v$q"}},
+        }
+      )
+    )
+    ctx = make_ctx(agent_name=agent)
+    dest_keys: dict = {}
+    snap = build_launch_snapshot(
+      agent_name=agent,
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box,
+      default_categories=meta_agent_path_floor(agent),
+      agent_behavior_floor={"canon": "/cn"},
+      dest_keys=dest_keys,
+    )
+    buf = io.StringIO()
+    show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / "g.yaml",
+      config_path=tmp_path / "s.yaml",
+      effective=True,
+      category_snapshot=snap,
+      category_ctx=ctx,
+      category_dest_keys=dest_keys,
+      file=buf,
+    )
+    return buf.getvalue()
+
+  def test_an_at_ref_destination_is_found_and_prints_resolved(self, tmp_path):
+    text = self._pref_block(tmp_path, {"{box.env.ODD}/p": ["/src"]})
+    assert "-> agent.claude.bindings.ro[{box.env.ODD}/p] = /src -> /e@v$q/p\n" in text, text
+    assert "suppressed" not in text, text
+
+  @pytest.mark.parametrize(
+    ("dest", "shown"),
+    [
+      ("{$XDG_DATA_HOME}/x", "/data/x"),
+      ("/opt/lit$b\\~c", "/opt/lit$b~c"),
+    ],
+  )
+  def test_a_deferred_destination_prints_resolved(self, tmp_path, dest, shown):
+    text = self._pref_block(tmp_path, {dest: ["/src"]})
+    assert f"-> agent.claude.bindings.ro[{dest}] = /src -> {shown}\n" in text, text
+
+  def test_a_ref_to_a_key_added_after_expansion_reads_what_the_launch_filed(
+    self,
+    tmp_path,
+  ):
+    """``meta.box.agent.*`` is mirrored AFTER ``expand``, but ``expand`` derives a
+    reference to it from the agent key the mirror copies, so the launch files this
+    entry under ``/cn/q``; were the reference read as absent it would print ``/q``."""
+    text = self._pref_block(tmp_path, {"{meta.box.agent.canon}/q": ["/src"]}, "shell")
+    assert "-> agent.shell.bindings.ro[{meta.box.agent.canon}/q] = /src -> /cn/q\n" in text, text
+
+  def test_a_suppressed_at_ref_entry_is_still_reported_suppressed(self, tmp_path):
+    text = self._pref_block(tmp_path, {"{box.env.ODD}/gone": None})
+    assert "-> agent.claude.bindings.ro[{box.env.ODD}/gone] = (omitted" in text, text
+
+
+class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
+  """``box show --effective`` prints the KEY behind whatever beat a declaration.
+
+  ⚑⚑ THE ASYMMETRY THIS CLOSES: ``workset share list --effective`` has passed the
+  fold's ``declared_by`` into ``store_collapse.derivation_result`` since it started
+  arbitrating; this display called the same function with the key argument omitted,
+  so it printed a loss naming a PATH and no key.  For a mask that is the acute case —
+  a mask has no host source, so the row named nothing a reader could match to
+  anything they had written, and where the mask sits ABOVE the declaration the
+  destination is not even a path their own key spells.
+
+  ⚑ THE MAP IS THE SAME FOLD'S, never a second one.  ``box show --effective`` builds
+  its snapshot in process, per command, and the seam that writes ``meta.assembly.*``
+  RETURNS the record beside them (``LaunchDeliveries.declared_by``).  It cannot be
+  re-derived from the finished map — a sweep drops a mask's row together with the
+  mount it named, so two scopes' keys can name one dest with only one the occupant —
+  and it may not become a fourth ``meta.assembly`` leaf, which would be a
+  closed-keyspace addition.
+
+  🛑 EVERY CASE HERE IS A LOSS THE COLLAPSE ACTUALLY DECIDED, read off the arbitrated
+  map first.  A test written from the declarations would pass on a display that
+  merely spotted a mask among them, which is the wrong answer in both directions.
+  """
+
+  def test_an_ABSTRACT_declaration_a_mask_swallowed_names_the_masks_key(self):
+    """The abstract half — the ``binding_derivations`` line, not the arm row."""
+    categories = {
+      "agent.claude.common": {"~/x": ("/h/agent",)},
+      "box.masks": ["~/x"],
+    }
+    assert _collapsed(categories)["/home/agent/x"].src is None
+
+    text = _block(categories)
+    assert (
+      "binding_derivations.agent.claude.common[/home/agent/x] = (no mount — the "
+      "mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this destination"
+      in text
+    ), text
+
+  def test_a_mask_ABOVE_a_declaration_names_the_key_of_the_mask_that_SWEPT_it(self):
+    """🛑 THE CASE THE BARE PHRASE SERVED WORST: neither half was the user's own.
+
+    ``/home/agent/x`` is the mask's destination, and the declaration spells
+    ``~/x/y``; the swept dest is not in the collapsed map at all.  Without the key
+    the line gave a path the user's own key does not name and nothing else.
+    """
+    categories = {
+      "agent.claude.common": {"~/x/y": ("/h/agent",)},
+      "box.masks": ["~/x"],
+    }
+    assert "/home/agent/x/y" not in _collapsed(categories)
+
+    text = _block(categories)
+    assert (
+      "the mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this "
+      "destination" in text
+    ), text
+
+  def test_a_row_5_LOSER_names_the_declaration_that_took_its_destination(self):
+    """The §0 row-5 pair: the loser's line names the WINNER'S key, not its own.
+
+    ⚑ THE SUPERSEDED PHRASE TAKES THE KEY TOO.  It is the less acute case — the
+    line already carried the winner's host source — but a display that keyed the
+    mask and not this one would be the odd one out, and the source is not what a
+    user edits.
+    """
+    categories = {
+      "box.common": {"~/x": ("/h/common",)},
+      "box.caches": {"~/x": ("/h/caches",)},
+    }
+    assert _collapsed(categories)["/home/agent/x"].src == "/h/common"
+
+    text = _block(categories)
+    assert (
+      "binding_derivations.box.caches[/home/agent/x] = (no mount — the binding "
+      "declared by 'box.common[/home/agent/x]' of /h/common at /home/agent/x "
+      "occupies this destination)" in text
+    ), text
+    # The positive control: the WINNER is still printed as the mount it is.
+    assert (
+      "binding_derivations.box.common[/home/agent/x] = /h/common -> "
+      "/home/agent/x  [Z,U,rw]  (mount)" in text
+    ), text
+
+  def test_the_key_comes_from_the_FOLD_and_a_display_without_it_says_nothing_new(self):
+    """🛑 THE MUTATION GUARD — the keys are HANDED IN, never found in the snapshot.
+
+    Passing no map is the pre-change call, and it must degrade to the bare phrase
+    rather than to a wrong key: a display that could recover the key from
+    ``meta.assembly.bindings`` alone would mean the leaf carries provenance it is
+    spec-normatively not allowed to carry.
     """
     import io
 
     from kanibako.settings.config_display import _print_category_block
 
-    buf = io.StringIO()
+    categories = {
+      "box.bindings.ro": {"/opt/arb": ("/src",)},
+      "box.masks": ["/opt/arb"],
+    }
     snapshot, declared_by = _assembled_pair(categories)
-    _print_category_block(snapshot, None, buf, make_ctx(), declared_by)
-    return buf.getvalue()
-
-
-def _collapsed(categories: dict) -> dict:
-    """The ARBITRATED bind map (``meta.assembly.bindings``) as a plain dict."""
-    return dict(_leaf(_assembled(categories), "meta", "assembly", "bindings"))
-
-
-class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
-    """Keyspec ``:88`` for the CONCRETE half — the same obligation the abstract half meets.
-
-    ``TestADeclarationThatLosesIsNotShownAsAMount`` above pins the ABSTRACT
-    declarations, which are paired through
-    ``effective_bindings_and_template_sources``.  The concrete
-    ``<scope>.bindings.{ro,rw}`` rows were rendered straight off the arm with no
-    pairing at all, so a binding the collapse swallowed printed with a delivery
-    arrow — a mount the box does not receive, at rc 0, with the mask that took it
-    printed nowhere.
-
-    ⚑⚑ THE PREMISE OF EVERY CASE HERE IS READ OFF THE COLLAPSED MAP, NEVER OFF THE
-    DECLARATIONS.  Bind-versus-mask at one destination is SUPERSESSION (spec
-    ``:146``): whichever arrives against the already-collapsed state deletes the
-    other, and NEITHER is inherently the winner.  So "there is a mask at this dest"
-    proves nothing — ``CollapsedBind(src=None)`` is the mask sentinel and is the only
-    thing that says the box sees nothing there.  A test that asserted from the
-    declarations would turn the LEGITIMATE case below (a binding that supersedes a
-    mask) into a reported defect.
-    """
-
-    #: The opening of ``derivation_result``'s MASKED phrase.  ⚑ ARRIVAL ORDER IS WHAT
-    #: DECIDES THESE CASES: entries collapse in ``(scope, category, dest)`` order and
-    #: ``"bindings.ro"`` sorts before ``"masks"``, so a SAME-scope mask always arrives
-    #: second and takes the point, while a LOWER-scope mask arrives first and loses it.
-    #: Both directions are pinned below; neither is the inherent winner.
-    #:
-    #: ⚑ IT NAMES THE MASK'S KEY. The phrase is keyed whenever the display was handed
-    #: the fold's ``declared_by``, and ``_block`` hands it the one the same fold
-    #: returned — the arrangement a launch makes. The key is the thing a user goes and
-    #: edits; the destination alone is not, and for a mask ABOVE the declaration it is
-    #: not even a path their own key spells.
-    _MASK_PHRASE = "no mount — the mask declared by "
-
-    def test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as_a_mount(self):
-        """Same scope, same destination: the mask arrives second and deletes the bind."""
-        categories = {
-            "box.bindings.ro": {"/opt/arb": ("/src",)},
-            "box.masks": ["/opt/arb"],
-        }
-        # PREMISE, off the arbitrated map: the box receives the MASK here.
-        assert _collapsed(categories)["/opt/arb"].src is None
-
-        text = _block(categories)
-        assert "/src -> /opt/arb" not in text, (
-            "the binding is printed with the delivery arrow, so the block claims a "
-            "mount at a destination the box sees nothing at"
-        )
-        assert "box.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
-            in text
-        ), text
-
-    def test_a_mask_that_SWEPT_a_binding_from_a_parent_is_named(self):
-        """The mask is the PARENT and arrives second, so it deletes the child bind.
-
-        ⚑ THE CASE A DEST-KEYED LOOKUP CANNOT ANSWER: ``/opt/arb/inner`` is not in
-        the collapsed map at ALL after the sweep, so a renderer reading "absent" as
-        "fine" says nothing.  The mask's OWN destination is the whole diagnosis and
-        is not a path the user's binding key names.
-
-        ⚑ NOT the refused geometry.  A bind arriving against an ALREADY-collapsed
-        parent mask is refused outright (spec ``:134``) and never reaches a display;
-        that needs the mask at a LOWER scope, which is a different input from this one.
-        """
-        categories = {
-            "box.masks": ["/opt/arb"],
-            "box.bindings.ro": {"/opt/arb/inner": ("/src",)},
-        }
-        collapsed = _collapsed(categories)
-        assert "/opt/arb/inner" not in collapsed, (
-            "the swept dest is still in the map — this proves nothing"
-        )
-        assert collapsed["/opt/arb"].src is None
-
-        text = _block(categories)
-        assert "/src -> /opt/arb/inner" not in text, text
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
-            in text
-        ), text
-
-    def test_a_LOWER_scopes_binding_a_box_mask_swallowed_is_named_too(self):
-        """The losing row need not be the box's own — the walk covers every scope."""
-        categories = {
-            "system.bindings.ro": {"/opt/arb": ("/src",)},
-            "box.masks": ["/opt/arb"],
-        }
-        assert _collapsed(categories)["/opt/arb"].src is None
-
-        text = _block(categories)
-        assert "/src -> /opt/arb" not in text, text
-        assert "system.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
-            in text
-        ), text
-
-    def test_a_binding_that_SUPERSEDES_a_mask_still_prints_as_a_mount(self):
-        """🛑 THE CASE A FIX MUST NOT BREAK — supersession runs BOTH WAYS (spec ``:146``).
-
-        A lower-scope mask, a box binding at the same exact point: the binding
-        arrives second and deletes the mask, so the box DOES receive this mount and
-        printing it is correct.  A renderer that reported "there is a mask at this
-        destination" would turn working output into a false loss.
-        """
-        categories = {
-            "system.masks": ["/opt/arb"],
-            "box.bindings.ro": {"/opt/arb": ("/src",)},
-        }
-        assert _collapsed(categories)["/opt/arb"].src == "/src"
-
-        text = _block(categories)
-        assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
-        assert "no mount" not in text, text
-
-    def test_a_binding_nested_inside_another_binding_still_prints_as_a_mount(self):
-        """A bind may be a CHILD of a bind (spec ``:148``) — both are live mounts.
-
-        The guard against a fix that reads every containment as a loss.
-        """
-        categories = {
-            "box.bindings.ro": {"/opt/n": ("/src",), "/opt/n/in": ("/src2",)},
-        }
-        text = _block(categories)
-        assert "box.bindings.ro[/opt/n] = /src -> /opt/n" in text, text
-        assert "box.bindings.ro[/opt/n/in] = /src2 -> /opt/n/in" in text, text
-        assert "no mount" not in text, text
-
-    def test_a_binding_whose_CHILD_is_a_mask_still_prints_as_a_mount(self):
-        """A mask may be the CHILD of a bind (spec ``:148``) — the bind keeps its point.
-
-        ⚑ Masks are the INVERSE of binds, not their mirror, and this is the half that
-        inverts: a mask INSIDE a bind takes only its own point.
-        """
-        categories = {
-            "box.bindings.ro": {"/opt/arb": ("/src",)},
-            "box.masks": ["/opt/arb/inner"],
-        }
-        assert _collapsed(categories)["/opt/arb"].src == "/src"
-
-        text = _block(categories)
-        assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
-        assert "no mount" not in text, text
-
-    def test_a_dest_spelled_with_an_XDG_var_arbitrates_like_any_other(self):
-        """⚑⚑ A ``$XDG_*`` DESTINATION IS AN ORDINARY ROW — no carve-out [Jei:2026-08-27].
-
-        Binds are resolved on the HOST, so a ``box_dest``'s env vars derive from the
-        host and every consumer receives an absolute guest path (keyspec ``:344-347``).
-        The arm KEY still holds ``{$XDG_DATA_HOME}/z``, because the eager build defers the
-        token; the arbitrated map holds ``/data/z``.  The display resolves the arm's
-        spelling through the SAME ``resolve_box_dest`` the collapse was fed from, so the
-        two meet.
-
-        This row is a live mount, and it must be reported as one BY ARBITRATION rather
-        than by being skipped — the masked twin below is what proves the difference.
-        """
-        categories = {"box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)}}
-        # PREMISE, off the arbitrated map: the box receives this mount.
-        assert _collapsed(categories)["/data/z"].src == "/src"
-
-        text = _block(categories)
-        assert "box.bindings.ro[{$XDG_DATA_HOME}/z] = /src -> /data/z" in text, text
-        assert "no mount" not in text, text
-
-    def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
-        """🛑 THE CASE THE OLD ``$``-SKIP HID, and the whole reason it is gone.
-
-        Same geometry as ``test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as
-        _a_mount``, with the destination spelled through a variable.  A predicate that
-        withholds arbitration from a ``$``-bearing row prints a delivery arrow here, at
-        rc 0, for a destination the box sees nothing at — the exact silent half the
-        pairing exists to close.
-        """
-        categories = {
-            "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
-            "box.masks": ["{$XDG_DATA_HOME}/z"],
-        }
-        # PREMISE, off the arbitrated map: the box receives the MASK here.
-        assert _collapsed(categories)["/data/z"].src is None
-
-        text = _block(categories)
-        assert "/src -> {$XDG_DATA_HOME}/z" not in text, (
-            "the binding is printed with the delivery arrow, so the block claims a "
-            "mount at a destination the box sees nothing at"
-        )
-        assert (
-            "box.bindings.ro[{$XDG_DATA_HOME}/z] = /data/z  (declared: /src)"
-            in text
-        ), text
-        # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
-        # RESOLVED one, on the row and in the reason — the key is the half they can go
-        # and edit.
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[{{$XDG_DATA_HOME}}/z]' at /data/z covers this "
-            "destination" in text
-        ), text
-
-    def test_a_masked_XDG_dest_is_caught_by_a_mask_spelled_the_OTHER_WAY(self):
-        """The two spellings are ONE destination, and arbitration is where that lands.
-
-        The bind names the variable, the mask names the resolved path.  Both resolve
-        through ``resolve_box_dest`` before anything is compared — *"the ``$var`` should
-        be resolved before any binding or comparison"* [Jei:2026-08-27] — so the mask
-        takes the point exactly as it would had both been spelled alike.
-        """
-        categories = {
-            "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
-            "box.masks": ["/data/z"],
-        }
-        assert _collapsed(categories)["/data/z"].src is None
-
-        text = _block(categories)
-        assert "/src -> {$XDG_DATA_HOME}/z" not in text, text
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[/data/z]' at /data/z covers this destination"
-            in text
-        ), text
-
-    def test_a_literal_dollar_is_text_and_pairs_as_one(self):
-        """⚑ ``$`` IS AN ORDINARY CHARACTER, and a dest holding one survives the round trip.
-
-        ``$KB_LITERAL`` names no known variable, so it is text (keyspec "References"):
-        the eager build carries ``$KB_LITERAL/z`` through and ``resolve_box_dest`` keeps it,
-        a path whose first component is a literal ``$KB_LITERAL``. The collapsed map is
-        keyed by that same text, so the display pairs it like any other row. The old
-        ``"$" not in dest`` predicate caught this spelling too and withheld its diagnosis.
-        """
-        categories = {
-            "box.bindings.ro": {"$KB_LITERAL/z": ("/src",)},
-            "box.masks": ["$KB_LITERAL/z"],
-        }
-        collapsed = _collapsed(categories)
-        assert "$KB_LITERAL/z" in collapsed
-        assert collapsed["$KB_LITERAL/z"].src is None
-
-        text = _block(categories)
-        assert "/src -> $KB_LITERAL/z" not in text, text
-        assert (
-            f"{self._MASK_PHRASE}'box.masks[$KB_LITERAL/z]' at $KB_LITERAL/z "
-            "covers this destination" in text
-        ), text
-
-    def test_the_containment_test_is_SEPARATOR_GUARDED(self):
-        """``/opt/arb-x`` is not inside ``/opt/arb`` — a prefix is not a parent.
-
-        The display's answer now comes from ``covering_bind``, so its guard is this
-        block's guard too: without it a mask would be reported as swallowing every
-        sibling whose path merely starts with the same characters.
-        """
-        text = _block({
-            "box.masks": ["/opt/arb"],
-            "box.bindings.ro": {"/opt/arb-x": ("/src",)},
-        })
-        assert "box.bindings.ro[/opt/arb-x] = /src -> /opt/arb-x" in text, text
-        assert "no mount" not in text, text
-
-
-class TestAConcreteRowPrintsTheResolvedGuestPath:
-    """A concrete row's destination prints as the guest path the mount lands on.
-
-    The arm key is the box-side residue: a user's ``\\~`` stays escaped in it, and a
-    ``{key}``-ref's referent arrives as a literal. Neither spelling is where the box sees
-    the mount; ``resolve_box_dest`` is.
-    """
-
-    def test_an_escaped_literal_prints_unescaped(self):
-        text = _block({"box.bindings.ro": {"/opt/lit$b\\~c": ("/src",)}})
-        assert "/src -> /opt/lit$b~c\n" in text, text
-
-    def test_a_referent_dollar_prints_as_text(self):
-        text = _block({
-            "box.env.ODD": "/e@v$q",
-            "box.bindings.ro": {"{box.env.ODD}/t": ("/src",)},
-        })
-        assert "/src -> /e@v$q/t\n" in text, text
-
-    def test_a_lost_row_prints_the_resolved_path_in_declaration_form(self):
-        text = _block({
-            "box.bindings.ro": {"/opt/lit$b": ("/src",)},
-            "box.masks": ["/opt/lit$b"],
-        })
-        assert "= /opt/lit$b  (declared: /src)" in text, text
-
-
-class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
-    """A ``pref`` request keeps its ``{key}``-refs; the arm it lands in is keyed by their
-    expansion. The block looks each request up under the key ``expand`` recorded for it
-    and prints the result's resolved guest path, as a concrete row does.
-    """
-
-    def _pref_block(self, tmp_path, ro: dict, agent: str = "claude") -> str:
-        """The ``show --effective`` text for a box file holding *ro* as a ``pref`` arm."""
-        import io
-
-        import yaml
-
-        from kanibako.settings.config_interface import show_config
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            meta_agent_path_floor,
-        )
-
-        box = tmp_path / "box.yaml"
-        box.write_text(yaml.safe_dump({
-            "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
-            "box": {"env": {"ODD": "/e@v$q"}},
-        }))
-        ctx = make_ctx(agent_name=agent)
-        dest_keys: dict = {}
-        snap = build_launch_snapshot(
-            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=box,
-            default_categories=meta_agent_path_floor(agent),
-            agent_behavior_floor={"canon": "/cn"}, dest_keys=dest_keys,
-        )
-        buf = io.StringIO()
-        show_config(
-            command_scope=ConfigLevel.box, global_config_path=tmp_path / "g.yaml",
-            config_path=tmp_path / "s.yaml", effective=True,
-            category_snapshot=snap, category_ctx=ctx, category_dest_keys=dest_keys,
-            file=buf,
-        )
-        return buf.getvalue()
-
-    def test_an_at_ref_destination_is_found_and_prints_resolved(self, tmp_path):
-        text = self._pref_block(tmp_path, {"{box.env.ODD}/p": ["/src"]})
-        assert "-> agent.claude.bindings.ro[{box.env.ODD}/p] = /src -> /e@v$q/p\n" in text, text
-        assert "suppressed" not in text, text
-
-    @pytest.mark.parametrize(("dest", "shown"), [
-        ("{$XDG_DATA_HOME}/x", "/data/x"),
-        ("/opt/lit$b\\~c", "/opt/lit$b~c"),
-    ])
-    def test_a_deferred_destination_prints_resolved(self, tmp_path, dest, shown):
-        text = self._pref_block(tmp_path, {dest: ["/src"]})
-        assert f"-> agent.claude.bindings.ro[{dest}] = /src -> {shown}\n" in text, text
-
-    def test_a_ref_to_a_key_added_after_expansion_reads_what_the_launch_filed(
-        self, tmp_path,
-    ):
-        """``meta.box.agent.*`` is mirrored AFTER ``expand``, but ``expand`` derives a
-        reference to it from the agent key the mirror copies, so the launch files this
-        entry under ``/cn/q``; were the reference read as absent it would print ``/q``."""
-        text = self._pref_block(tmp_path, {"{meta.box.agent.canon}/q": ["/src"]}, "shell")
-        assert "-> agent.shell.bindings.ro[{meta.box.agent.canon}/q] = /src -> /cn/q\n" in text, text
-
-    def test_a_suppressed_at_ref_entry_is_still_reported_suppressed(self, tmp_path):
-        text = self._pref_block(tmp_path, {"{box.env.ODD}/gone": None})
-        assert "-> agent.claude.bindings.ro[{box.env.ODD}/gone] = (omitted" in text, text
-
-
-class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
-    """``box show --effective`` prints the KEY behind whatever beat a declaration.
-
-    ⚑⚑ THE ASYMMETRY THIS CLOSES: ``workset share list --effective`` has passed the
-    fold's ``declared_by`` into ``store_collapse.derivation_result`` since it started
-    arbitrating; this display called the same function with the key argument omitted,
-    so it printed a loss naming a PATH and no key.  For a mask that is the acute case —
-    a mask has no host source, so the row named nothing a reader could match to
-    anything they had written, and where the mask sits ABOVE the declaration the
-    destination is not even a path their own key spells.
-
-    ⚑ THE MAP IS THE SAME FOLD'S, never a second one.  ``box show --effective`` builds
-    its snapshot in process, per command, and the seam that writes ``meta.assembly.*``
-    RETURNS the record beside them (``LaunchDeliveries.declared_by``).  It cannot be
-    re-derived from the finished map — a sweep drops a mask's row together with the
-    mount it named, so two scopes' keys can name one dest with only one the occupant —
-    and it may not become a fourth ``meta.assembly`` leaf, which would be a
-    closed-keyspace addition.
-
-    🛑 EVERY CASE HERE IS A LOSS THE COLLAPSE ACTUALLY DECIDED, read off the arbitrated
-    map first.  A test written from the declarations would pass on a display that
-    merely spotted a mask among them, which is the wrong answer in both directions.
-    """
-
-    def test_an_ABSTRACT_declaration_a_mask_swallowed_names_the_masks_key(self):
-        """The abstract half — the ``binding_derivations`` line, not the arm row."""
-        categories = {
-            "agent.claude.common": {"~/x": ("/h/agent",)},
-            "box.masks": ["~/x"],
-        }
-        assert _collapsed(categories)["/home/agent/x"].src is None
-
-        text = _block(categories)
-        assert (
-            "binding_derivations.agent.claude.common[/home/agent/x] = (no mount — the "
-            "mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this destination"
-            in text
-        ), text
-
-    def test_a_mask_ABOVE_a_declaration_names_the_key_of_the_mask_that_SWEPT_it(self):
-        """🛑 THE CASE THE BARE PHRASE SERVED WORST: neither half was the user's own.
-
-        ``/home/agent/x`` is the mask's destination, and the declaration spells
-        ``~/x/y``; the swept dest is not in the collapsed map at all.  Without the key
-        the line gave a path the user's own key does not name and nothing else.
-        """
-        categories = {
-            "agent.claude.common": {"~/x/y": ("/h/agent",)},
-            "box.masks": ["~/x"],
-        }
-        assert "/home/agent/x/y" not in _collapsed(categories)
-
-        text = _block(categories)
-        assert (
-            "the mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this "
-            "destination" in text
-        ), text
-
-    def test_a_row_5_LOSER_names_the_declaration_that_took_its_destination(self):
-        """The §0 row-5 pair: the loser's line names the WINNER'S key, not its own.
-
-        ⚑ THE SUPERSEDED PHRASE TAKES THE KEY TOO.  It is the less acute case — the
-        line already carried the winner's host source — but a display that keyed the
-        mask and not this one would be the odd one out, and the source is not what a
-        user edits.
-        """
-        categories = {
-            "box.common": {"~/x": ("/h/common",)},
-            "box.caches": {"~/x": ("/h/caches",)},
-        }
-        assert _collapsed(categories)["/home/agent/x"].src == "/h/common"
-
-        text = _block(categories)
-        assert (
-            "binding_derivations.box.caches[/home/agent/x] = (no mount — the binding "
-            "declared by 'box.common[/home/agent/x]' of /h/common at /home/agent/x "
-            "occupies this destination)" in text
-        ), text
-        # The positive control: the WINNER is still printed as the mount it is.
-        assert (
-            "binding_derivations.box.common[/home/agent/x] = /h/common -> "
-            "/home/agent/x  [Z,U,rw]  (mount)" in text
-        ), text
-
-    def test_the_key_comes_from_the_FOLD_and_a_display_without_it_says_nothing_new(self):
-        """🛑 THE MUTATION GUARD — the keys are HANDED IN, never found in the snapshot.
-
-        Passing no map is the pre-change call, and it must degrade to the bare phrase
-        rather than to a wrong key: a display that could recover the key from
-        ``meta.assembly.bindings`` alone would mean the leaf carries provenance it is
-        spec-normatively not allowed to carry.
-        """
-        import io
-
-        from kanibako.settings.config_display import _print_category_block
-
-        categories = {
-            "box.bindings.ro": {"/opt/arb": ("/src",)},
-            "box.masks": ["/opt/arb"],
-        }
-        snapshot, declared_by = _assembled_pair(categories)
-        assert declared_by["/opt/arb"] == "box.masks[/opt/arb]", declared_by
-
-        buf = io.StringIO()
-        _print_category_block(snapshot, None, buf, make_ctx())
-        text = buf.getvalue()
-        assert "no mount — the mask at /opt/arb covers this destination" in text, text
-        assert "declared by" not in text, text
+    assert declared_by["/opt/arb"] == "box.masks[/opt/arb]", declared_by
+
+    buf = io.StringIO()
+    _print_category_block(snapshot, None, buf, make_ctx())
+    text = buf.getvalue()
+    assert "no mount — the mask at /opt/arb covers this destination" in text, text
+    assert "declared by" not in text, text
 
 
 class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
-    """The two hops between the fold and the printed line, each proved on its own.
+  """The two hops between the fold and the printed line, each proved on its own.
 
-    ⚑ The block-level cases above hand ``_print_category_block`` the map directly.
-    These pin the WIRE: the launch resolve must RETURN the keys, and ``show_config``
-    must forward them.  Neither is visible to a test that calls the block itself, and
-    a break in either one degrades SILENTLY — the phrase simply loses its key.
+  ⚑ The block-level cases above hand ``_print_category_block`` the map directly.
+  These pin the WIRE: the launch resolve must RETURN the keys, and ``show_config``
+  must forward them.  Neither is visible to a test that calls the block itself, and
+  a break in either one degrades SILENTLY — the phrase simply loses its key.
+  """
+
+  def test_the_real_launch_resolve_RETURNS_the_declaring_keys_on_its_carrier(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+  ):
+    """``LaunchDeliveries.declared_by`` off the REAL seam — what the display reads.
+
+    🛑 The map may not be a snapshot leaf, so this carrier is the only route out of
+    the resolve.  A seam that folded and dropped it would leave every consumer
+    looking at an empty map and reading it as "nothing declared anything".
     """
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.paths import resolve_project
+    from kanibako.targets.shell import ShellTarget
 
-    def test_the_real_launch_resolve_RETURNS_the_declaring_keys_on_its_carrier(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """``LaunchDeliveries.declared_by`` off the REAL seam — what the display reads.
+    src = tmp_path / "masked"
+    src.mkdir()
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    _snapshot, deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=ShellTarget(),
+      deliver_creds=True,
+      guarantee_create=False,
+      extra_default_categories={
+        "box.bindings.ro": {"/opt/arb": (str(src),)},
+        "box.masks": ["/opt/arb"],
+      },
+      cli_level=None,
+    )
+    assert deliveries.declared_by["/opt/arb"] == "box.masks[/opt/arb]", deliveries.declared_by
 
-        🛑 The map may not be a snapshot leaf, so this carrier is the only route out of
-        the resolve.  A seam that folded and dropped it would leave every consumer
-        looking at an empty map and reading it as "nothing declared anything".
-        """
-        from kanibako.commands.start import _resolve_launch_snapshot
-        from kanibako.settings.paths import resolve_project
-        from kanibako.targets.shell import ShellTarget
+  def test_show_config_FORWARDS_the_keys_into_the_category_block(self, tmp_path):
+    """``category_declared_by`` reaches the block, or the loss prints bare."""
+    import io
 
-        src = tmp_path / "masked"
-        src.mkdir()
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, deliveries = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name="claude",
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=ShellTarget(),
-            deliver_creds=True, guarantee_create=False,
-            extra_default_categories={
-                "box.bindings.ro": {"/opt/arb": (str(src),)},
-                "box.masks": ["/opt/arb"],
-            },
-            cli_level=None,
-        )
-        assert deliveries.declared_by["/opt/arb"] == "box.masks[/opt/arb]", (
-            deliveries.declared_by
-        )
+    from kanibako.settings.config_interface import show_config
 
-    def test_show_config_FORWARDS_the_keys_into_the_category_block(self, tmp_path):
-        """``category_declared_by`` reaches the block, or the loss prints bare."""
-        import io
-
-        from kanibako.settings.config_interface import show_config
-
-        snapshot, declared_by = _assembled_pair({
-            "box.bindings.ro": {"/opt/arb": ("/src",)},
-            "box.masks": ["/opt/arb"],
-        })
-        buf = io.StringIO()
-        rc = show_config(
-            command_scope=ConfigLevel.box,
-            global_config_path=tmp_path / CONFIG_FILENAME,
-            effective=True, file=buf,
-            category_snapshot=snapshot, category_ctx=make_ctx(),
-            category_declared_by=declared_by,
-        )
-        text = buf.getvalue()
-        assert rc == 0, text
-        assert (
-            "no mount — the mask declared by 'box.masks[/opt/arb]' at /opt/arb "
-            "covers this destination" in text
-        ), text
+    snapshot, declared_by = _assembled_pair(
+      {
+        "box.bindings.ro": {"/opt/arb": ("/src",)},
+        "box.masks": ["/opt/arb"],
+      }
+    )
+    buf = io.StringIO()
+    rc = show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / CONFIG_FILENAME,
+      effective=True,
+      file=buf,
+      category_snapshot=snapshot,
+      category_ctx=make_ctx(),
+      category_declared_by=declared_by,
+    )
+    text = buf.getvalue()
+    assert rc == 0, text
+    assert (
+      "no mount — the mask declared by 'box.masks[/opt/arb]' at /opt/arb "
+      "covers this destination" in text
+    ), text
 
 
 # ---------------------------------------------------------------------------
@@ -2569,228 +2858,263 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
 
 
 class _NullArmProj:
-    """ProjectPaths stand-in whose vault arms are whatever the case sets."""
+  """ProjectPaths stand-in whose vault arms are whatever the case sets."""
 
-    def __init__(self, tmp_path, **arms):
-        self.mode = BoxMode.primary
-        self.name = "b1"
-        self.group = None
-        self.project_path = tmp_path / "code" / "x"
-        self.metadata_path = tmp_path / "boxes" / "b1"
-        self.shell_path = tmp_path / "boxes" / "b1" / "home"
-        self.vault_ro_path = arms.get("vault_ro_path", tmp_path / "vault" / "ro")
-        self.vault_rw_path = arms.get("vault_rw_path", tmp_path / "vault" / "rw")
+  def __init__(self, tmp_path, **arms):
+    self.mode = BoxMode.primary
+    self.name = "b1"
+    self.group = None
+    self.project_path = tmp_path / "code" / "x"
+    self.metadata_path = tmp_path / "boxes" / "b1"
+    self.shell_path = tmp_path / "boxes" / "b1" / "home"
+    self.vault_ro_path = arms.get("vault_ro_path", tmp_path / "vault" / "ro")
+    self.vault_rw_path = arms.get("vault_rw_path", tmp_path / "vault" / "rw")
 
 
 def _launch_over_nulled_key(tmp_path, caplog, workset_yaml, table):
-    """Resolve a real launch over a workset file that nulls a key; report the warnings.
+  """Resolve a real launch over a workset file that nulls a key; report the warnings.
 
-    ⚑ The floor comes from the SHIPPED producer, so the entry under test is the one a
-    launch really emits — a hand-written floor would not carry it at all.
-    """
-    from kanibako.settings.settings_launch import (
-        build_launch_snapshot,
-        reset_none_warnings,
-        snapshot_category_entries,
-    )
+  ⚑ The floor comes from the SHIPPED producer, so the entry under test is the one a
+  launch really emits — a hand-written floor would not carry it at all.
+  """
+  from kanibako.settings.settings_launch import (
+    build_launch_snapshot,
+    reset_none_warnings,
+    snapshot_category_entries,
+  )
 
-    reset_none_warnings()  # one warning per process, not per resolve
-    ws_path = tmp_path / "workset.yaml"
-    ws_path.write_text(workset_yaml)
-    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-    ctx = make_ctx(
-        workset_name=None,
-        xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
-        config={"config.primary_workset": str(tmp_path)},
+  reset_none_warnings()  # one warning per process, not per resolve
+  ws_path = tmp_path / "workset.yaml"
+  ws_path.write_text(workset_yaml)
+  caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+  ctx = make_ctx(
+    workset_name=None,
+    xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
+    config={"config.primary_workset": str(tmp_path)},
+  )
+  floor: dict = {}
+  _merge_floor(floor, table)
+  snap = build_launch_snapshot(
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=ws_path,
+    box_path=None,
+    default_categories=floor,
+  )
+  mounted = {
+    e.box_dest
+    for e in snapshot_category_entries(
+      snap,
+      active_agent="claude",
+      box_ctx=ctx,
     )
-    floor: dict = {}
-    _merge_floor(floor, table)
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-        workset_path=ws_path, box_path=None, default_categories=floor,
-    )
-    mounted = {
-        e.box_dest for e in snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=ctx,
-        )
-        if e.category.startswith("bindings")
-    }
-    return mounted, [
-        r.getMessage() for r in caplog.records
-        if r.name == "kanibako.settings.settings_launch"
-    ]
+    if e.category.startswith("bindings")
+  }
+  return mounted, [
+    r.getMessage() for r in caplog.records if r.name == "kanibako.settings.settings_launch"
+  ]
 
 
 class TestNulledVaultArmOmitsItsBindAndWarns:
-    """A nulled vault key omits its bind — and the launch NAMES the key that did it.
+  """A nulled vault key omits its bind — and the launch NAMES the key that did it.
 
-    ⚑ The bind is omitted by the COLLAPSE, off the ``@workset.<key>`` ref its floor
-    entry names; the FLOOR ENTRY ITSELF must still be emitted or the warning that
-    reports the omission has nothing to report.
-    """
+  ⚑ The bind is omitted by the COLLAPSE, off the ``@workset.<key>`` ref its floor
+  entry names; the FLOOR ENTRY ITSELF must still be emitted or the warning that
+  reports the omission has nothing to report.
+  """
 
-    _RO = f"{GUEST_HOME}/vault/ro"
-    _RW = f"{GUEST_HOME}/vault/rw"
+  _RO = f"{GUEST_HOME}/vault/ro"
+  _RW = f"{GUEST_HOME}/vault/rw"
 
-    def _core(self, tmp_path, **arms):
-        from kanibako.settings import core_defaults
+  def _core(self, tmp_path, **arms):
+    from kanibako.settings import core_defaults
 
-        return core_defaults.core_default_categories(
-            None, _NullArmProj(tmp_path, **arms),
-            enable_vault=True, mode="primary", guarantee_create=False,
-        )
+    return core_defaults.core_default_categories(
+      None,
+      _NullArmProj(tmp_path, **arms),
+      enable_vault=True,
+      mode="primary",
+      guarantee_create=False,
+    )
 
-    def test_a_null_vault_ro_omits_the_ro_bind_and_warns(self, tmp_path, caplog):
-        mounted, warnings = _launch_over_nulled_key(
-            tmp_path, caplog, "workset:\n  vault_ro: null\n",
-            self._core(tmp_path, vault_ro_path=None),
-        )
-        assert self._RO not in mounted
-        assert self._RW in mounted  # the other arm is untouched
-        assert [w for w in warnings if "workset.vault_ro" in w and self._RO in w], warnings
+  def test_a_null_vault_ro_omits_the_ro_bind_and_warns(self, tmp_path, caplog):
+    mounted, warnings = _launch_over_nulled_key(
+      tmp_path,
+      caplog,
+      "workset:\n  vault_ro: null\n",
+      self._core(tmp_path, vault_ro_path=None),
+    )
+    assert self._RO not in mounted
+    assert self._RW in mounted  # the other arm is untouched
+    assert [w for w in warnings if "workset.vault_ro" in w and self._RO in w], warnings
 
-    def test_a_null_vault_rw_omits_the_rw_bind_and_warns(self, tmp_path, caplog):
-        mounted, warnings = _launch_over_nulled_key(
-            tmp_path, caplog, "workset:\n  vault_rw: null\n",
-            self._core(tmp_path, vault_rw_path=None),
-        )
-        assert self._RW not in mounted
-        assert self._RO in mounted
-        assert [w for w in warnings if "workset.vault_rw" in w and self._RW in w], warnings
+  def test_a_null_vault_rw_omits_the_rw_bind_and_warns(self, tmp_path, caplog):
+    mounted, warnings = _launch_over_nulled_key(
+      tmp_path,
+      caplog,
+      "workset:\n  vault_rw: null\n",
+      self._core(tmp_path, vault_rw_path=None),
+    )
+    assert self._RW not in mounted
+    assert self._RO in mounted
+    assert [w for w in warnings if "workset.vault_rw" in w and self._RW in w], warnings
 
-    def test_no_nulled_arm_warns(self, tmp_path, caplog):
-        """The control: the same launch over an unrepointed workset is silent."""
-        _, warnings = _launch_over_nulled_key(
-            tmp_path, caplog, "workset:\n  logs: /l\n", self._core(tmp_path),
-        )
-        assert warnings == [], warnings
+  def test_no_nulled_arm_warns(self, tmp_path, caplog):
+    """The control: the same launch over an unrepointed workset is silent."""
+    _, warnings = _launch_over_nulled_key(
+      tmp_path,
+      caplog,
+      "workset:\n  logs: /l\n",
+      self._core(tmp_path),
+    )
+    assert warnings == [], warnings
 
 
 class TestTheEffectiveBlockOmitsBindsOfConvenience:
-    """``[R149]``: a bind whose only purpose is to bridge another mechanism is not shown.
+  """``[R149]``: a bind whose only purpose is to bridge another mechanism is not shown.
 
-    The floor is the REAL kani, kickoff, helper, and image tables, so every bind of
-    convenience carries the packaged default source a launch gives it.  A row is
-    omitted only while its source is that default
-    (``settings_launch.convenience_bind_sources``, the map the resolve hands the
-    display); a user's own bind at one of those dests is shown.
-    """
+  The floor is the REAL kani, kickoff, helper, and image tables, so every bind of
+  convenience carries the packaged default source a launch gives it.  A row is
+  omitted only while its source is that default
+  (``settings_launch.convenience_bind_sources``, the map the resolve hands the
+  display); a user's own bind at one of those dests is shown.
+  """
 
-    @staticmethod
-    def _render(tmp_path, box_binds=None) -> str:
-        """Render the block; *box_binds* is the user's ``box.bindings`` table, if any."""
-        import io
+  @staticmethod
+  def _render(tmp_path, box_binds=None) -> str:
+    """Render the block; *box_binds* is the user's ``box.bindings`` table, if any."""
+    import io
 
-        import yaml
+    import yaml
 
-        from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings import core_defaults
-        from kanibako.settings.config_display import _print_category_block
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            convenience_bind_sources,
-            meta_identity_floor,
-            meta_runtime_floor,
-            snapshot_category_entries,
-            workset_anchor_floor,
-        )
+    from kanibako.commands.start import _install_assembly_collapse
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config_display import _print_category_block
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      convenience_bind_sources,
+      meta_identity_floor,
+      meta_runtime_floor,
+      snapshot_category_entries,
+      workset_anchor_floor,
+    )
 
-        floor: dict = {
-            "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
-            "box.bindings.ro": {"/home/agent/mine": ("/code/mine", "ro")},
-        }
-        # The helper table binds only sources that exist, as a start writes them first.
-        for name in ("hub.sock", "helpers.jsonl", "spawn.yaml"):
-            (tmp_path / name).touch()
-        for table in (
-            core_defaults.kani_default_categories(),
-            core_defaults.kickoff_default_categories(),
-            core_defaults.helper_default_categories(
-                socket_path=tmp_path / "hub.sock",
-                log_path=tmp_path / "helpers.jsonl",
-                budget_path=tmp_path / "spawn.yaml",
-            ),
-            core_defaults.image_default_categories(
-                graph_root=tmp_path / "graph",
-                storage_conf_path=tmp_path / "storage.conf",
-            ),
-        ):
-            _merge_floor(floor, table)
-        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
-        floor.update(workset_anchor_floor(mode="primary"))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        box_path = None
-        if box_binds:
-            box_path = tmp_path / "box.yaml"
-            box_path.write_text(yaml.safe_dump({"box": {"bindings": box_binds}}))
-        ctx = make_ctx(
-            workset_name=None, config={"config.primary_workset": "/data/pw"},
-        )
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=box_path, default_categories=floor,
-        )
-        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        _install_assembly_collapse(snap, entries, whole_box=True)
-        buf = io.StringIO()
-        _print_category_block(
-            snap, None, buf, ctx,
-            convenience_sources=convenience_bind_sources(floor, snap, ctx),
-        )
-        return buf.getvalue()
+    floor: dict = {
+      "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
+      "box.bindings.ro": {"/home/agent/mine": ("/code/mine", "ro")},
+    }
+    # The helper table binds only sources that exist, as a start writes them first.
+    for name in ("hub.sock", "helpers.jsonl", "spawn.yaml"):
+      (tmp_path / name).touch()
+    for table in (
+      core_defaults.kani_default_categories(),
+      core_defaults.kickoff_default_categories(),
+      core_defaults.helper_default_categories(
+        socket_path=tmp_path / "hub.sock",
+        log_path=tmp_path / "helpers.jsonl",
+        budget_path=tmp_path / "spawn.yaml",
+      ),
+      core_defaults.image_default_categories(
+        graph_root=tmp_path / "graph",
+        storage_conf_path=tmp_path / "storage.conf",
+      ),
+    ):
+      _merge_floor(floor, table)
+    floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+    floor.update(workset_anchor_floor(mode="primary"))
+    floor.update(
+      meta_identity_floor(
+        box_name="mybox",
+        project_path="/code/x",
+        inbox="/i",
+        share_global="/sg",
+        share_workset="/sw",
+      )
+    )
+    box_path = None
+    if box_binds:
+      box_path = tmp_path / "box.yaml"
+      box_path.write_text(yaml.safe_dump({"box": {"bindings": box_binds}}))
+    ctx = make_ctx(
+      workset_name=None,
+      config={"config.primary_workset": "/data/pw"},
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_path,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    _install_assembly_collapse(snap, entries, whole_box=True)
+    buf = io.StringIO()
+    _print_category_block(
+      snap,
+      None,
+      buf,
+      ctx,
+      convenience_sources=convenience_bind_sources(floor, snap, ctx),
+    )
+    return buf.getvalue()
 
-    @pytest.mark.parametrize("dest", [
-        "/etc/profile.d/kanibako-secrets.sh",
-        "/home/agent/.config/kanibako/kickoff.md",
-        "/home/agent/.kanibako/state/hub",
-        "/home/agent/spawn.yaml",
-        "/home/agent/.config/containers/storage.conf",
-    ])
-    def test_a_bind_of_convenience_is_not_shown(self, tmp_path, dest):
-        """MUTATION ANCHOR: drop the skip and every case fails."""
-        text = self._render(tmp_path)
-        assert dest not in text, text
+  @pytest.mark.parametrize(
+    "dest",
+    [
+      "/etc/profile.d/kanibako-secrets.sh",
+      "/home/agent/.config/kanibako/kickoff.md",
+      "/home/agent/.kanibako/state/hub",
+      "/home/agent/spawn.yaml",
+      "/home/agent/.config/containers/storage.conf",
+    ],
+  )
+  def test_a_bind_of_convenience_is_not_shown(self, tmp_path, dest):
+    """MUTATION ANCHOR: drop the skip and every case fails."""
+    text = self._render(tmp_path)
+    assert dest not in text, text
 
-    def test_user_binds_and_delivered_content_stay_shown(self, tmp_path):
-        """``[R149]`` is not a license to hide: a user bind, the kanibako CLI, the image
-        store, and the helper log are not bridges, and still print."""
-        text = self._render(tmp_path)
-        for dest in (
-            "/home/agent/mine",
-            "/home/agent/workspace",
-            "/opt/kanibako/kanibako",
-            "/home/agent/.local/bin/kanibako",
-            "/var/lib/shared-images",
-            "/home/agent/.kanibako/state/helpers.jsonl",
-        ):
-            assert f"-> {dest}" in text, (dest, text)
+  def test_user_binds_and_delivered_content_stay_shown(self, tmp_path):
+    """``[R149]`` is not a license to hide: a user bind, the kanibako CLI, the image
+    store, and the helper log are not bridges, and still print."""
+    text = self._render(tmp_path)
+    for dest in (
+      "/home/agent/mine",
+      "/home/agent/workspace",
+      "/opt/kanibako/kanibako",
+      "/home/agent/.local/bin/kanibako",
+      "/var/lib/shared-images",
+      "/home/agent/.kanibako/state/helpers.jsonl",
+    ):
+      assert f"-> {dest}" in text, (dest, text)
 
-    def test_a_users_own_spawn_yaml_bind_is_shown(self, tmp_path):
-        """``~/spawn.yaml`` is a user key: the user's bind replaces the default there."""
-        text = self._render(
-            tmp_path, box_binds={"ro": {"~/spawn.yaml": ["/mine/spawn.yaml", "ro"]}},
-        )
-        assert "= /mine/spawn.yaml -> /home/agent/spawn.yaml" in text, text
+  def test_a_users_own_spawn_yaml_bind_is_shown(self, tmp_path):
+    """``~/spawn.yaml`` is a user key: the user's bind replaces the default there."""
+    text = self._render(
+      tmp_path,
+      box_binds={"ro": {"~/spawn.yaml": ["/mine/spawn.yaml", "ro"]}},
+    )
+    assert "= /mine/spawn.yaml -> /home/agent/spawn.yaml" in text, text
 
-    def test_a_users_own_helper_sock_bind_is_shown(self, tmp_path):
-        """``helper.sock`` is a user key (owner ``box``): the user's bind is shown."""
-        text = self._render(
-            tmp_path,
-            box_binds={"rw": {"~/.kanibako/state/hub": ["/mine/hub.sock", ""]}},
-        )
-        assert "= /mine/hub.sock -> /home/agent/.kanibako/state/hub" in text, text
+  def test_a_users_own_helper_sock_bind_is_shown(self, tmp_path):
+    """``helper.sock`` is a user key (owner ``box``): the user's bind is shown."""
+    text = self._render(
+      tmp_path,
+      box_binds={"rw": {"~/.kanibako/state/hub": ["/mine/hub.sock", ""]}},
+    )
+    assert "= /mine/hub.sock -> /home/agent/.kanibako/state/hub" in text, text
 
-    def test_the_rule_is_the_five_declared_rows(self):
-        """The ONE list, read from the rows that declare the binds."""
-        from kanibako.settings import core_defaults
+  def test_the_rule_is_the_five_declared_rows(self):
+    """The ONE list, read from the rows that declare the binds."""
+    from kanibako.settings import core_defaults
 
-        assert core_defaults.convenience_bind_dests() == {
-            "/etc/profile.d/kanibako-secrets.sh",
-            "/home/agent/.config/kanibako/kickoff.md",
-            "/home/agent/.kanibako/state/hub",
-            "/home/agent/spawn.yaml",
-            "/home/agent/.config/containers/storage.conf",
-        }
+    assert core_defaults.convenience_bind_dests() == {
+      "/etc/profile.d/kanibako-secrets.sh",
+      "/home/agent/.config/kanibako/kickoff.md",
+      "/home/agent/.kanibako/state/hub",
+      "/home/agent/spawn.yaml",
+      "/home/agent/.config/containers/storage.conf",
+    }

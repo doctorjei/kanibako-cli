@@ -11,126 +11,127 @@ from unittest.mock import patch
 
 
 class TestSystemInfo:
-    def test_shows_version(self, tmp_home, capsys):
-        from kanibako.commands.system_cmd import run_info
+  def test_shows_version(self, tmp_home, capsys):
+    from kanibako.commands.system_cmd import run_info
 
-        args = argparse.Namespace()
-        rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        from kanibako import __version__
-        assert __version__ in out
+    args = argparse.Namespace()
+    rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    from kanibako import __version__
 
-    def test_shows_python_version(self, tmp_home, capsys):
-        from kanibako.commands.system_cmd import run_info
+    assert __version__ in out
 
-        args = argparse.Namespace()
-        run_info(args)
-        out = capsys.readouterr().out
-        assert "Python:" in out
+  def test_shows_python_version(self, tmp_home, capsys):
+    from kanibako.commands.system_cmd import run_info
 
-    def test_shows_config_path(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_info
+    args = argparse.Namespace()
+    run_info(args)
+    out = capsys.readouterr().out
+    assert "Python:" in out
 
-        args = argparse.Namespace()
-        run_info(args)
-        out = capsys.readouterr().out
-        assert "Config:" in out
+  def test_shows_config_path(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_info
 
-    def test_shows_data_path_when_configured(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_info
+    args = argparse.Namespace()
+    run_info(args)
+    out = capsys.readouterr().out
+    assert "Config:" in out
 
-        args = argparse.Namespace()
-        run_info(args)
-        out = capsys.readouterr().out
-        assert "Data:" in out
-        assert "(not configured)" not in out
+  def test_shows_data_path_when_configured(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_info
 
-    def test_shows_not_initialized_without_config(self, tmp_home, capsys):
-        from kanibako.commands.system_cmd import run_info
+    args = argparse.Namespace()
+    run_info(args)
+    out = capsys.readouterr().out
+    assert "Data:" in out
+    assert "(not configured)" not in out
 
-        args = argparse.Namespace()
-        run_info(args)
-        out = capsys.readouterr().out
-        assert "not initialized" in out
+  def test_shows_not_initialized_without_config(self, tmp_home, capsys):
+    from kanibako.commands.system_cmd import run_info
 
-    def test_shows_runtime_not_found(self, tmp_home, capsys):
-        from kanibako.commands.system_cmd import run_info
+    args = argparse.Namespace()
+    run_info(args)
+    out = capsys.readouterr().out
+    assert "not initialized" in out
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=Exception("no runtime"),
-        ):
-            args = argparse.Namespace()
-            run_info(args)
-        out = capsys.readouterr().out
-        assert "not found" in out
+  def test_shows_runtime_not_found(self, tmp_home, capsys):
+    from kanibako.commands.system_cmd import run_info
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=Exception("no runtime"),
+    ):
+      args = argparse.Namespace()
+      run_info(args)
+    out = capsys.readouterr().out
+    assert "not found" in out
 
 
 class TestSystemConfig:
-    def test_show_no_overrides(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_show
+  def test_show_no_overrides(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_show
 
-        args = argparse.Namespace(effective=False)
-        rc = run_show(args)
-        assert rc == 0
+    args = argparse.Namespace(effective=False)
+    rc = run_show(args)
+    assert rc == 0
 
-    def test_show_effective(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_show
+  def test_show_effective(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_show
 
-        args = argparse.Namespace(effective=True)
-        rc = run_show(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "box_image" in out
+    args = argparse.Namespace(effective=True)
+    rc = run_show(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "box_image" in out
 
-    def test_get_known_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_get
+  def test_get_known_key(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_get
 
-        args = argparse.Namespace(key="box.image")
-        rc = run_get(args)
-        assert rc == 0
+    args = argparse.Namespace(key="box.image")
+    rc = run_get(args)
+    assert rc == 0
 
-    def test_get_unknown_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_get
+  def test_get_unknown_key(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_get
 
-        args = argparse.Namespace(key="nonexistent_key_xyz")
-        rc = run_get(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        # ⚑ The §0 refusal, NOT the "unknown config key" wording that stood here until
-        # 2026-08-28: ``system get`` carried an ``is_known_key`` pre-gate that refused
-        # seven DECLARED keys, and it is gone. Pinned on what §0 demands — the offending
-        # key NAMED — never on the whole string, which ``key_validity`` words.
-        assert "nonexistent_key_xyz" in err
-        assert "is not a declared namespace" in err
+    args = argparse.Namespace(key="nonexistent_key_xyz")
+    rc = run_get(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    # ⚑ The §0 refusal, NOT the "unknown config key" wording that stood here until
+    # 2026-08-28: ``system get`` carried an ``is_known_key`` pre-gate that refused
+    # seven DECLARED keys, and it is gone. Pinned on what §0 demands — the offending
+    # key NAMED — never on the whole string, which ``key_validity`` words.
+    assert "nonexistent_key_xyz" in err
+    assert "is not a declared namespace" in err
 
-    def test_set_value(self, tmp_home, config_file, std, capsys):
-        # Scope-direction guard, CONTAINMENT form (spec §0/§2a repaired
-        # 2026-07-02): system CONTAINS box, so a SYSTEM-scope ``set`` of the
-        # box-scope ``box.image`` is a legal DOWNWARD write — ACCEPTED (rc 0)
-        # and stored in the system SETTINGS file (``{config.settings}``) with
-        # the ``box:`` scope token kept, an overridable default for every box.
-        # The Layer-1 kanibako.cfg is NOT touched (spec §1: settings
-        # keys never live in the bootstrap config file).
-        from kanibako.commands.system_cmd import run_set
-        from kanibako.settings.config_io import load_doc
+  def test_set_value(self, tmp_home, config_file, std, capsys):
+    # Scope-direction guard, CONTAINMENT form (spec §0/§2a repaired
+    # 2026-07-02): system CONTAINS box, so a SYSTEM-scope ``set`` of the
+    # box-scope ``box.image`` is a legal DOWNWARD write — ACCEPTED (rc 0)
+    # and stored in the system SETTINGS file (``{config.settings}``) with
+    # the ``box:`` scope token kept, an overridable default for every box.
+    # The Layer-1 kanibako.cfg is NOT touched (spec §1: settings
+    # keys never live in the bootstrap config file).
+    from kanibako.commands.system_cmd import run_set
+    from kanibako.settings.config_io import load_doc
 
-        cf_before = config_file.read_bytes()
-        args = argparse.Namespace(key_value="box.image=custom:v2", force=False)
-        rc = run_set(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "custom:v2" in out
-        assert load_doc(std.settings)["box"]["image"] == "custom:v2"
-        # The bootstrap config file is byte-identical (no box-table remap).
-        assert config_file.read_bytes() == cf_before
+    cf_before = config_file.read_bytes()
+    args = argparse.Namespace(key_value="box.image=custom:v2", force=False)
+    rc = run_set(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "custom:v2" in out
+    assert load_doc(std.settings)["box"]["image"] == "custom:v2"
+    # The bootstrap config file is byte-identical (no box-table remap).
+    assert config_file.read_bytes() == cf_before
 
-    def test_reset_requires_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_reset
+  def test_reset_requires_key(self, tmp_home, config_file, capsys):
+    from kanibako.commands.system_cmd import run_reset
 
-        args = argparse.Namespace(key=None, all_keys=False, force=False)
-        rc = run_reset(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "requires a key" in err
+    args = argparse.Namespace(key=None, all_keys=False, force=False)
+    rc = run_reset(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "requires a key" in err

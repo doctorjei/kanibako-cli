@@ -83,14 +83,22 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   budget = tmp_path / "spawn.yaml"
   budget.touch()
   ctx = ResolveCtx(
-    agent_name="claude", workset_name=None, host_home=str(tmp_path),
+    agent_name="claude",
+    workset_name=None,
+    host_home=str(tmp_path),
     xdg={"XDG_DATA_HOME": str(tmp_path / "data")},
   )
   snap = build_launch_snapshot(
-    agent_name="claude", ctx=ctx,
-    system_path=None, agent_path=None, workset_path=None, box_path=None,
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
     default_categories=core_defaults.helper_default_categories(
-      socket_path=sock, log_path=log, budget_path=budget,
+      socket_path=sock,
+      log_path=log,
+      budget_path=budget,
     ),
   )
   entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -114,7 +122,8 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   # And the value survives DELIVERY: the falsy-drop in ``Mount.to_volume_arg``
   # yields the 2-field form, because ``src:dst:`` is rejected outright by podman.
   by_dest = {
-    m.destination: m for m in _emit_category_mounts(
+    m.destination: m
+    for m in _emit_category_mounts(
       _narrow_bind_map(entries, core_defaults.helper_bind_dests()),
       label="options-fidelity",
     )
@@ -142,19 +151,26 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
   # not declared, it is CONSTRUCTED and handed to the collapse below, exactly as
   # ``commands.start._install_assembly_collapse`` does it. A ``~`` row here would be
   # a SECOND bind at the foundation's point and the collapse would refuse it.
-  bindings["rw"] = parse_bind_map({
-    "~/ws": [str(tmp_path / "ws")],                 # 1 element -> ABSENT opts
-    "~/sock": [str(tmp_path / "s"), ""],            # explicit "" -> the socket
-    "~/cache": [str(tmp_path / "c"), "z"],          # authored opts
-  }, category="bindings.rw")
+  bindings["rw"] = parse_bind_map(
+    {
+      "~/ws": [str(tmp_path / "ws")],  # 1 element -> ABSENT opts
+      "~/sock": [str(tmp_path / "s"), ""],  # explicit "" -> the socket
+      "~/cache": [str(tmp_path / "c"), "z"],  # authored opts
+    },
+    category="bindings.rw",
+  )
   bindings["ro"] = parse_bind_map(
-    {"~/ref": [str(tmp_path / "ref")]}, category="bindings.ro",
+    {"~/ref": [str(tmp_path / "ref")]},
+    category="bindings.ro",
   )
   box["bindings"] = bindings
   snap["box"] = box
 
   ctx = ResolveCtx(
-    agent_name="claude", workset_name=None, host_home=str(tmp_path), xdg={},
+    agent_name="claude",
+    workset_name=None,
+    host_home=str(tmp_path),
+    xdg={},
   )
   entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
   # The FOUNDATION, as the seam builds it: the box home source paired with the seam's
@@ -163,7 +179,8 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
   opts = {
     dest: bind.opts
     for dest, bind in collapse_store_shapes(
-      build_store_shape_set(entries), home,
+      build_store_shape_set(entries),
+      home,
     ).bindings.items()
   }
 

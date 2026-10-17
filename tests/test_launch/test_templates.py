@@ -13,23 +13,23 @@ import yaml
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings.paths import (
-    WorksetSpec,
-    resolve_project,
-    resolve_standalone_project,
-    resolve_workset_project,
+  WorksetSpec,
+  resolve_project,
+  resolve_standalone_project,
+  resolve_workset_project,
 )
 from kanibako.launch.templates import (
-    PACKAGED_HANDBOOK,
-    _packaged_base_template,
-    _packaged_manifest_entries,
-    copy_resource_tree_if_absent,
-    handbook_layer_source_keys,
-    install_box_handbook_template,
-    install_packaged_templates,
-    packaged_templates_digest,
-    plan_template_refresh,
-    stage_layers,
-    template_seed_defaults,
+  PACKAGED_HANDBOOK,
+  _packaged_base_template,
+  _packaged_manifest_entries,
+  copy_resource_tree_if_absent,
+  handbook_layer_source_keys,
+  install_box_handbook_template,
+  install_packaged_templates,
+  packaged_templates_digest,
+  plan_template_refresh,
+  stage_layers,
+  template_seed_defaults,
 )
 from kanibako.settings.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
 from kanibako.channels.channels import WS_TOKEN_STANDALONE
@@ -37,165 +37,182 @@ from kanibako.project.workset import add_project, create_workset
 
 
 class TestStageLayers:
-    """The staging primitive: per-file last-wins merged in a temp dir, then
-    seeded into the dest with create-if-absent (never clobbers an existing file);
-    an absent-dir layer is skipped."""
+  """The staging primitive: per-file last-wins merged in a temp dir, then
+  seeded into the dest with create-if-absent (never clobbers an existing file);
+  an absent-dir layer is skipped."""
 
-    def _layer(self, root, name, files):
-        d = root / name
-        d.mkdir(parents=True)
-        for rel, content in files.items():
-            p = d / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
-        return d
+  def _layer(self, root, name, files):
+    d = root / name
+    d.mkdir(parents=True)
+    for rel, content in files.items():
+      p = d / rel
+      p.parent.mkdir(parents=True, exist_ok=True)
+      p.write_text(content)
+    return d
 
-    def test_ordered_workset_wins_per_file(self, tmp_path):
-        """base -> agent -> workset staged in order; highest layer wins per-file."""
-        home = tmp_path / "home"
-        home.mkdir()
-        base = self._layer(tmp_path, "base", {
-            "base-only.txt": "base",
-            "shared.txt": "base version",
-            "two.txt": "base two",
-        })
-        agent = self._layer(tmp_path, "agent", {
-            "agent-only.txt": "agent",
-            "shared.txt": "agent version",
-            "two.txt": "agent two",
-        })
-        workset = self._layer(tmp_path, "workset", {
-            "workset-only.txt": "workset",
-            "shared.txt": "workset version",
-        })
-
-        stage_layers(home, [base, agent, workset])
-
-        # Each layer's unique files all land.
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "agent-only.txt").read_text() == "agent"
-        assert (home / "workset-only.txt").read_text() == "workset"
-        # Highest layer to set a file wins (workset > agent > base).
-        assert (home / "shared.txt").read_text() == "workset version"
-        # agent overlays base where workset is silent.
-        assert (home / "two.txt").read_text() == "agent two"
-
-    def test_upper_bytes_win_over_an_equivalent_lower_file(self, tmp_path):
-        """Last-wins is BYTES: an upper YAML that parses equal to the lower one still
-        replaces it (``copy_tree``'s overwrite arm would keep the lower bytes)."""
-        lower = self._layer(tmp_path, "lower", {"cfg.yaml": "a: 1  # lower\n"})
-        upper = self._layer(tmp_path, "upper", {"cfg.yaml": "a: 1  # upper\n"})
-        home = tmp_path / "home"
-        home.mkdir()
-        stage_layers(home, [lower, upper])
-        assert (home / "cfg.yaml").read_text() == "a: 1  # upper\n"
-
-    @pytest.mark.parametrize(
-        ("lower_files", "upper_files", "expected"),
-        [
-            # lower DIRECTORY, upper FILE at the same path
-            ({"x/a": "lo"}, {"x": "hi"}, {"x": "hi"}),
-            ({"x/y/z": "lo", "k": "keep"}, {"x/y": "hi"}, {"x/y": "hi", "k": "keep"}),
-            # lower FILE, upper DIRECTORY at the same path
-            ({"x": "lo"}, {"x/a": "hi"}, {"x/a": "hi"}),
-            ({"x/y": "lo", "k": "keep"}, {"x/y/z": "hi"}, {"x/y/z": "hi", "k": "keep"}),
-        ],
-        ids=["dir-under-file", "nested-dir-under-file", "file-under-dir", "nested-file-under-dir"],
+  def test_ordered_workset_wins_per_file(self, tmp_path):
+    """base -> agent -> workset staged in order; highest layer wins per-file."""
+    home = tmp_path / "home"
+    home.mkdir()
+    base = self._layer(
+      tmp_path,
+      "base",
+      {
+        "base-only.txt": "base",
+        "shared.txt": "base version",
+        "two.txt": "base two",
+      },
     )
-    def test_a_file_dir_clash_resolves_to_the_upper_layer(
-        self, tmp_path, lower_files, upper_files, expected,
-    ):
-        """Last-wins holds when one layer has a FILE where another has a DIRECTORY:
-        the upper layer's shape and bytes land, and nothing raises."""
-        lower = self._layer(tmp_path, "lower", lower_files)
-        upper = self._layer(tmp_path, "upper", upper_files)
-        home = tmp_path / "home"
-        home.mkdir()
-        stage_layers(home, [lower, upper])
-        landed = {
-            str(p.relative_to(home)): p.read_text()
-            for p in home.rglob("*") if p.is_file()
-        }
-        assert landed == expected
+    agent = self._layer(
+      tmp_path,
+      "agent",
+      {
+        "agent-only.txt": "agent",
+        "shared.txt": "agent version",
+        "two.txt": "agent two",
+      },
+    )
+    workset = self._layer(
+      tmp_path,
+      "workset",
+      {
+        "workset-only.txt": "workset",
+        "shared.txt": "workset version",
+      },
+    )
 
-    def test_existing_home_file_survives_reseed(self, tmp_path):
-        """THE CLOBBER REGRESSION: a pre-existing home file survives a re-seed.
+    stage_layers(home, [base, agent, workset])
 
-        A layer shipping the same relative path must NOT overwrite the user's
-        content (create-if-absent seed).  This is the load-bearing data-loss guard.
-        """
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "shared.txt").write_text("user changes")
-        base = self._layer(tmp_path, "base", {
-            "shared.txt": "base version",
-            "base-only.txt": "base",
-        })
+    # Each layer's unique files all land.
+    assert (home / "base-only.txt").read_text() == "base"
+    assert (home / "agent-only.txt").read_text() == "agent"
+    assert (home / "workset-only.txt").read_text() == "workset"
+    # Highest layer to set a file wins (workset > agent > base).
+    assert (home / "shared.txt").read_text() == "workset version"
+    # agent overlays base where workset is silent.
+    assert (home / "two.txt").read_text() == "agent two"
 
-        stage_layers(home, [base])
+  def test_upper_bytes_win_over_an_equivalent_lower_file(self, tmp_path):
+    """Last-wins is BYTES: an upper YAML that parses equal to the lower one still
+    replaces it (``copy_tree``'s overwrite arm would keep the lower bytes)."""
+    lower = self._layer(tmp_path, "lower", {"cfg.yaml": "a: 1  # lower\n"})
+    upper = self._layer(tmp_path, "upper", {"cfg.yaml": "a: 1  # upper\n"})
+    home = tmp_path / "home"
+    home.mkdir()
+    stage_layers(home, [lower, upper])
+    assert (home / "cfg.yaml").read_text() == "a: 1  # upper\n"
 
-        # Pre-existing file preserved (NOT clobbered by the layer's same-path file).
-        assert (home / "shared.txt").read_text() == "user changes"
-        # New file from the layer still lands.
-        assert (home / "base-only.txt").read_text() == "base"
+  @pytest.mark.parametrize(
+    ("lower_files", "upper_files", "expected"),
+    [
+      # lower DIRECTORY, upper FILE at the same path
+      ({"x/a": "lo"}, {"x": "hi"}, {"x": "hi"}),
+      ({"x/y/z": "lo", "k": "keep"}, {"x/y": "hi"}, {"x/y": "hi", "k": "keep"}),
+      # lower FILE, upper DIRECTORY at the same path
+      ({"x": "lo"}, {"x/a": "hi"}, {"x/a": "hi"}),
+      ({"x/y": "lo", "k": "keep"}, {"x/y/z": "hi"}, {"x/y/z": "hi", "k": "keep"}),
+    ],
+    ids=["dir-under-file", "nested-dir-under-file", "file-under-dir", "nested-file-under-dir"],
+  )
+  def test_a_file_dir_clash_resolves_to_the_upper_layer(
+    self,
+    tmp_path,
+    lower_files,
+    upper_files,
+    expected,
+  ):
+    """Last-wins holds when one layer has a FILE where another has a DIRECTORY:
+    the upper layer's shape and bytes land, and nothing raises."""
+    lower = self._layer(tmp_path, "lower", lower_files)
+    upper = self._layer(tmp_path, "upper", upper_files)
+    home = tmp_path / "home"
+    home.mkdir()
+    stage_layers(home, [lower, upper])
+    landed = {str(p.relative_to(home)): p.read_text() for p in home.rglob("*") if p.is_file()}
+    assert landed == expected
 
-    def test_existing_nested_file_not_clobbered(self, tmp_path):
-        """A pre-existing file in a nested home subdir survives a re-seed."""
-        home = tmp_path / "home"
-        nested = home / ".claude"
-        nested.mkdir(parents=True)
-        (nested / "settings.json").write_text("user settings")
-        agent = self._layer(tmp_path, "agent", {".claude/settings.json": "shipped"})
+  def test_existing_home_file_survives_reseed(self, tmp_path):
+    """THE CLOBBER REGRESSION: a pre-existing home file survives a re-seed.
 
-        stage_layers(home, [agent])
+    A layer shipping the same relative path must NOT overwrite the user's
+    content (create-if-absent seed).  This is the load-bearing data-loss guard.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "shared.txt").write_text("user changes")
+    base = self._layer(
+      tmp_path,
+      "base",
+      {
+        "shared.txt": "base version",
+        "base-only.txt": "base",
+      },
+    )
 
-        assert (home / ".claude" / "settings.json").read_text() == "user settings"
+    stage_layers(home, [base])
 
-    def test_nested_directories(self, tmp_path):
-        """Layers with nested directory structure are seeded correctly."""
-        home = tmp_path / "home"
-        home.mkdir()
-        agent = tmp_path / "agent"
-        nested = agent / ".claude"
-        nested.mkdir(parents=True)
-        (nested / "CLAUDE.md").write_text("# Instructions")
+    # Pre-existing file preserved (NOT clobbered by the layer's same-path file).
+    assert (home / "shared.txt").read_text() == "user changes"
+    # New file from the layer still lands.
+    assert (home / "base-only.txt").read_text() == "base"
 
-        stage_layers(home, [agent])
+  def test_existing_nested_file_not_clobbered(self, tmp_path):
+    """A pre-existing file in a nested home subdir survives a re-seed."""
+    home = tmp_path / "home"
+    nested = home / ".claude"
+    nested.mkdir(parents=True)
+    (nested / "settings.json").write_text("user settings")
+    agent = self._layer(tmp_path, "agent", {".claude/settings.json": "shipped"})
 
-        assert (home / ".claude" / "CLAUDE.md").read_text() == "# Instructions"
+    stage_layers(home, [agent])
 
-    def test_no_layers_is_noop(self, tmp_path):
-        """No layers -> dest is untouched."""
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "existing.txt").write_text("untouched")
+    assert (home / ".claude" / "settings.json").read_text() == "user settings"
 
-        stage_layers(home, [])
+  def test_nested_directories(self, tmp_path):
+    """Layers with nested directory structure are seeded correctly."""
+    home = tmp_path / "home"
+    home.mkdir()
+    agent = tmp_path / "agent"
+    nested = agent / ".claude"
+    nested.mkdir(parents=True)
+    (nested / "CLAUDE.md").write_text("# Instructions")
 
-        assert (home / "existing.txt").read_text() == "untouched"
-        assert sorted(p.name for p in home.iterdir()) == ["existing.txt"]
+    stage_layers(home, [agent])
 
-    def test_absent_layer_dir_skipped(self, tmp_path):
-        """A layer whose source dir does not exist is silently skipped (skip-if-
-        absent, spec §2a) — the remaining present layers still seed."""
-        home = tmp_path / "home"
-        home.mkdir()
-        base = self._layer(tmp_path, "base", {"base-only.txt": "base"})
-        missing = tmp_path / "nope"  # never created
+    assert (home / ".claude" / "CLAUDE.md").read_text() == "# Instructions"
 
-        stage_layers(home, [base, missing])
+  def test_no_layers_is_noop(self, tmp_path):
+    """No layers -> dest is untouched."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "existing.txt").write_text("untouched")
 
-        assert (home / "base-only.txt").read_text() == "base"
+    stage_layers(home, [])
 
-    def test_all_layers_absent_is_noop(self, tmp_path):
-        """Every layer absent -> nothing staged, dest untouched (no temp dir churn)."""
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "keep.txt").write_text("keep")
+    assert (home / "existing.txt").read_text() == "untouched"
+    assert sorted(p.name for p in home.iterdir()) == ["existing.txt"]
 
-        stage_layers(home, [tmp_path / "a", tmp_path / "b"])
+  def test_absent_layer_dir_skipped(self, tmp_path):
+    """A layer whose source dir does not exist is silently skipped (skip-if-
+    absent, spec §2a) — the remaining present layers still seed."""
+    home = tmp_path / "home"
+    home.mkdir()
+    base = self._layer(tmp_path, "base", {"base-only.txt": "base"})
+    missing = tmp_path / "nope"  # never created
 
-        assert sorted(p.name for p in home.iterdir()) == ["keep.txt"]
+    stage_layers(home, [base, missing])
+
+    assert (home / "base-only.txt").read_text() == "base"
+
+  def test_all_layers_absent_is_noop(self, tmp_path):
+    """Every layer absent -> nothing staged, dest untouched (no temp dir churn)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "keep.txt").write_text("keep")
+
+    stage_layers(home, [tmp_path / "a", tmp_path / "b"])
+
+    assert sorted(p.name for p in home.iterdir()) == ["keep.txt"]
 
 
 # ---------------------------------------------------------------------------
@@ -205,903 +222,1025 @@ class TestStageLayers:
 # gone — the destination is the identity.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def primary_proj(std, config, project_dir):
-    return resolve_project(std, config, str(project_dir), initialize=True)
+  return resolve_project(std, config, str(project_dir), initialize=True)
 
 
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-    ws_root = tmp_home / "worksets" / "my_set"
-    ws = create_workset("my_set", ws_root, std)
-    source = tmp_home / "original-project"
-    source.mkdir()
-    add_project(ws, "cool_app", source)
-    return resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
-    )
+  ws_root = tmp_home / "worksets" / "my_set"
+  ws = create_workset("my_set", ws_root, std)
+  source = tmp_home / "original-project"
+  source.mkdir()
+  add_project(ws, "cool_app", source)
+  return resolve_workset_project(
+    WorksetSpec.from_workset(ws),
+    "cool_app",
+    std,
+    config,
+    initialize=True,
+  )
 
 
 @pytest.fixture
 def standalone_proj(std, config, project_dir, credentials_dir):
-    return resolve_standalone_project(
-        std, config, str(project_dir), initialize=True,
-    )
+  return resolve_standalone_project(
+    std,
+    config,
+    str(project_dir),
+    initialize=True,
+  )
 
 
 class TestTemplateSeedDefaults:
-    """``template_seed_defaults`` declares the THREE §2a layers as ordinary keystore
-    ``seeded`` keys (+ their ``{key}``-ref SOURCE keys), gated per mode / agent."""
+  """``template_seed_defaults`` declares the THREE §2a layers as ordinary keystore
+  ``seeded`` keys (+ their ``{key}``-ref SOURCE keys), gated per mode / agent."""
 
-    # ⚑ Layers 1 and 3's ENTRIES and the LAYER KEY SET (a fourth layer, or one dropped
-    # in any single mode) are compared with the manifest by the ``system-seeded-layer``,
-    # ``workset-seeded-layer`` and ``seed-layer-keys`` kinemata views (2026-09-27), one
-    # view per mode: the bare name for NAMED, ``-primary`` for PRIMARY, and
-    # ``seed-layer-keys-standalone`` for STANDALONE.
+  # ⚑ Layers 1 and 3's ENTRIES and the LAYER KEY SET (a fourth layer, or one dropped
+  # in any single mode) are compared with the manifest by the ``system-seeded-layer``,
+  # ``workset-seeded-layer`` and ``seed-layer-keys`` kinemata views (2026-09-27), one
+  # view per mode: the bare name for NAMED, ``-primary`` for PRIMARY, and
+  # ``seed-layer-keys-standalone`` for STANDALONE.
 
-    def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
-        """⚑ THE H2 PIN, RESPELLED. Every declared seed dest is the GUEST home
-        ``~/`` and NOTHING targets ``{box.canon}/handbook`` any more.
+  def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
+    """⚑ THE H2 PIN, RESPELLED. Every declared seed dest is the GUEST home
+    ``~/`` and NOTHING targets ``{box.canon}/handbook`` any more.
 
-        The handbook layers left the category on 2026-08-07g (HOST templates, not
-        GUEST templates), so no declared ``seeded`` entry names the handbook dest any
-        more.  Asserted as an EQUALITY on the whole dest set rather than as a ``not
-        in``: a bare absence assertion would stay green if the layers came back under
-        any other name — and, since the dests are now the map KEYS, the same equality
-        also catches a fourth layer added at a dest of its own.
+    The handbook layers left the category on 2026-08-07g (HOST templates, not
+    GUEST templates), so no declared ``seeded`` entry names the handbook dest any
+    more.  Asserted as an EQUALITY on the whole dest set rather than as a ``not
+    in``: a bare absence assertion would stay green if the layers came back under
+    any other name — and, since the dests are now the map KEYS, the same equality
+    also catches a fourth layer added at a dest of its own.
 
-        ⚑ It ALSO pins the 2026-08-08c RESPELL: the dest used to be the absolute
-        HOST path ``@meta.box.path/home``, which needed a per-entry space
-        discriminator to stop the guest translator re-rooting it (see
-        ``settings_categories.CategoryEntry``). A host-spelled dest coming back
-        makes this RED, which is the point — the discriminator that made one safe
-        is gone.
-        """
-        defs = template_seed_defaults(primary_proj, "claude")
-        dests = [
-            dest for key, value in defs.items() if key.endswith(".seeded")
-            for dest in value
-        ]
-        assert dests, defs
-        assert set(dests) == {"~/"}, dests
+    ⚑ It ALSO pins the 2026-08-08c RESPELL: the dest used to be the absolute
+    HOST path ``@meta.box.path/home``, which needed a per-entry space
+    discriminator to stop the guest translator re-rooting it (see
+    ``settings_categories.CategoryEntry``). A host-spelled dest coming back
+    makes this RED, which is the point — the discriminator that made one safe
+    is gone.
+    """
+    defs = template_seed_defaults(primary_proj, "claude")
+    dests = [dest for key, value in defs.items() if key.endswith(".seeded") for dest in value]
+    assert dests, defs
+    assert set(dests) == {"~/"}, dests
 
-    # ⚑ Layer 2's SOURCE and ENTRY — ``agent.<node>.template`` rooted at the node's OWN
-    # store, and ``agent.<node>.seeded`` reading it — are compared with the manifest by
-    # the ``seed-table-template`` (persona) and ``agent-seeded-layer`` / ``-bare``
-    # kinemata views (2026-09-25).  The persona is the load-bearing node: for ``claude``
-    # the node-rooted and harness-rooted spellings are ONE string, so only a persona
-    # separates them ([Jei:2026-08-27]: the key roots at the ACTIVE NODE, never
-    # ``harness_of``).
+  # ⚑ Layer 2's SOURCE and ENTRY — ``agent.<node>.template`` rooted at the node's OWN
+  # store, and ``agent.<node>.seeded`` reading it — are compared with the manifest by
+  # the ``seed-table-template`` (persona) and ``agent-seeded-layer`` / ``-bare``
+  # kinemata views (2026-09-25).  The persona is the load-bearing node: for ``claude``
+  # the node-rooted and harness-rooted spellings are ONE string, so only a persona
+  # separates them ([Jei:2026-08-27]: the key roots at the ACTIVE NODE, never
+  # ``harness_of``).
 
-    def test_landing_path_equals_layer_2_source(self, primary_proj):
-        """⚑⚑ THE MUST-FIX, pinned: layer 2's SOURCE ref resolves to exactly the
-        STORE-RELATIVE path the seed reads, and both sides are DERIVED from the same
-        constants, so they cannot drift.
+  def test_landing_path_equals_layer_2_source(self, primary_proj):
+    """⚑⚑ THE MUST-FIX, pinned: layer 2's SOURCE ref resolves to exactly the
+    STORE-RELATIVE path the seed reads, and both sides are DERIVED from the same
+    constants, so they cannot drift.
 
-        The ``template/`` prefix is the half that is easy to drop: a store-relative
-        landing of just ``box/home`` puts the content at ``agents/<name>/box/home/**``,
-        which NOTHING reads — the stamp runs, reports nothing, and the box still comes
-        up with no agent config. That is what a plugin's ``data/base`` payload has to
-        be spelled against.
+    The ``template/`` prefix is the half that is easy to drop: a store-relative
+    landing of just ``box/home`` puts the content at ``agents/<name>/box/home/**``,
+    which NOTHING reads — the stamp runs, reports nothing, and the box still comes
+    up with no agent config. That is what a plugin's ``data/base`` payload has to
+    be spelled against.
 
-        ⚑ It arrived here with the legacy plugin-payload arm's removal (2026-08-26);
-        the property it pins was never about legacy payloads.
-        """
-        from kanibako.launch.templates import (
-            AGENT_TEMPLATE_STORE_REL,
-            _SEED_SRC_HOME,
-        )
+    ⚑ It arrived here with the legacy plugin-payload arm's removal (2026-08-26);
+    the property it pins was never about legacy payloads.
+    """
+    from kanibako.launch.templates import (
+      AGENT_TEMPLATE_STORE_REL,
+      _SEED_SRC_HOME,
+    )
 
-        defs = template_seed_defaults(primary_proj, "claude")
-        # Layer 2's SOURCE, with its {key}-ref head resolved the way the cascade does:
-        #   {agent.claude.template} -> {agent.default.template}
-        #   -> {config.agents}/claude/<store rel>   (R1: core seeds at agent.default)
-        source = defs["agent.default.seeded"]["~/"][0]
-        assert defs["agent.claude.template"] == "{agent.default.template}"
-        store_ref = defs["agent.default.template"]
-        assert source.startswith("{agent.claude.template}/")
-        resolved = source.replace("{agent.claude.template}", store_ref, 1)
-        store_relative = resolved.split("{config.agents}/claude/", 1)[1]
-        assert store_relative == f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}", (
-            "the seeded payload lands where NOTHING reads it"
-        )
+    defs = template_seed_defaults(primary_proj, "claude")
+    # Layer 2's SOURCE, with its {key}-ref head resolved the way the cascade does:
+    #   {agent.claude.template} -> {agent.default.template}
+    #   -> {config.agents}/claude/<store rel>   (R1: core seeds at agent.default)
+    source = defs["agent.default.seeded"]["~/"][0]
+    assert defs["agent.claude.template"] == "{agent.default.template}"
+    store_ref = defs["agent.default.template"]
+    assert source.startswith("{agent.claude.template}/")
+    resolved = source.replace("{agent.claude.template}", store_ref, 1)
+    store_relative = resolved.split("{config.agents}/claude/", 1)[1]
+    assert store_relative == f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}", (
+      "the seeded payload lands where NOTHING reads it"
+    )
 
-    def test_shell_omits_agent_layer(self, primary_proj):
-        defs = template_seed_defaults(primary_proj, None)
-        assert not any(k.startswith("agent.") for k in defs)
-        # system + workset layers still declared.
-        assert "system.seeded" in defs
-        assert "workset.seeded" in defs
+  def test_shell_omits_agent_layer(self, primary_proj):
+    defs = template_seed_defaults(primary_proj, None)
+    assert not any(k.startswith("agent.") for k in defs)
+    # system + workset layers still declared.
+    assert "system.seeded" in defs
+    assert "workset.seeded" in defs
 
-    def test_the_shell_node_arm_is_a_present_none_over_a_declared_layer(
-        self, primary_proj,
-    ):
-        """The PRODUCTION shell box: node ``shell`` (``agent_ref.GENERAL_SLOT``), not blank.
+  def test_the_shell_node_arm_is_a_present_none_over_a_declared_layer(
+    self,
+    primary_proj,
+  ):
+    """The PRODUCTION shell box: node ``shell`` (``agent_ref.GENERAL_SLOT``), not blank.
 
-        Keyspec §2d's shell fence declares ``agent.shell.template | <None>``, and §2b says
-        the pseudo-agent installs NO layer-2 template.  So the node arm is a PRESENT
-        ``None`` — a supplied value, which shadows the ``agent.default.template`` the
-        shell otherwise inherits (keyspec §2d "Pseudo-agent(s)").  The layer is core's
-        ``agent.default.seeded`` as for every agent (§2d *Default settings*): the
-        ``None`` source SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds
-        through it (``TestLayeredHomeSeed`` pins both).
-        (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
-        ``{agent.default.template}``; OMIT the key instead and it goes RED on the
-        missing ``None``; gate the layer on the default's VALUE and it goes RED on the
-        missing layer.)
-        """
-        from kanibako.launch.templates import agent_template_defaults
+    Keyspec §2d's shell fence declares ``agent.shell.template | <None>``, and §2b says
+    the pseudo-agent installs NO layer-2 template.  So the node arm is a PRESENT
+    ``None`` — a supplied value, which shadows the ``agent.default.template`` the
+    shell otherwise inherits (keyspec §2d "Pseudo-agent(s)").  The layer is core's
+    ``agent.default.seeded`` as for every agent (§2d *Default settings*): the
+    ``None`` source SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds
+    through it (``TestLayeredHomeSeed`` pins both).
+    (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
+    ``{agent.default.template}``; OMIT the key instead and it goes RED on the
+    missing ``None``; gate the layer on the default's VALUE and it goes RED on the
+    missing layer.)
+    """
+    from kanibako.launch.templates import agent_template_defaults
 
-        assert agent_template_defaults("shell") == {
-            "agent.default.template": "{config.agents}/shell/template",
-            "agent.shell.template": None,
-        }
-        defs = template_seed_defaults(primary_proj, "shell")
-        assert "agent.shell.template" in defs
-        assert defs["agent.shell.template"] is None
-        assert defs["agent.default.seeded"] == {
-            "~/": ("{agent.shell.template}/box/home",),
-        }
-        assert "agent.shell.seeded" not in defs
+    assert agent_template_defaults("shell") == {
+      "agent.default.template": "{config.agents}/shell/template",
+      "agent.shell.template": None,
+    }
+    defs = template_seed_defaults(primary_proj, "shell")
+    assert "agent.shell.template" in defs
+    assert defs["agent.shell.template"] is None
+    assert defs["agent.default.seeded"] == {
+      "~/": ("{agent.shell.template}/box/home",),
+    }
+    assert "agent.shell.seeded" not in defs
 
-    def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
-        """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
-        table only ``@``-REFERENCES ``{workset.template}``; ``settings_launch
-        .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
-        spelled only here answered for a box being CREATED and for no box that already
-        existed — this table's one consumer is the create-time seed resolve.
+  def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
+    """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
+    table only ``@``-REFERENCES ``{workset.template}``; ``settings_launch
+    .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
+    spelled only here answered for a box being CREATED and for no box that already
+    existed — this table's one consumer is the create-time seed resolve.
 
-        The other half, the layer's ``~/`` entry, is the ``workset-seeded-layer``
-        kinemata view's, and the floor's ``{meta.workset.path}/template`` value is
-        ``workset-anchor-floor``'s.
-        """
-        defs = template_seed_defaults(primary_proj, "claude")
-        assert "workset.template" not in defs
+    The other half, the layer's ``~/`` entry, is the ``workset-seeded-layer``
+    kinemata view's, and the floor's ``{meta.workset.path}/template`` value is
+    ``workset-anchor-floor``'s.
+    """
+    defs = template_seed_defaults(primary_proj, "claude")
+    assert "workset.template" not in defs
 
-    def test_standalone_omits_workset_layer(self, standalone_proj):
-        """STANDALONE has no workset tier -> no workset.template source/layer
-        (spec §2c workset.template <None>).
+  def test_standalone_omits_workset_layer(self, standalone_proj):
+    """STANDALONE has no workset tier -> no workset.template source/layer
+    (spec §2c workset.template <None>).
 
-        The standalone LAYER KEY SET (no ``workset.seeded``) is the
-        ``seed-layer-keys-standalone`` kinemata view's.
-        """
-        defs = template_seed_defaults(standalone_proj, "claude")
-        assert "workset.template" not in defs
-        # base + agent layers still present.
-        assert "system.seeded" in defs
-        assert "agent.default.seeded" in defs
+    The standalone LAYER KEY SET (no ``workset.seeded``) is the
+    ``seed-layer-keys-standalone`` kinemata view's.
+    """
+    defs = template_seed_defaults(standalone_proj, "claude")
+    assert "workset.template" not in defs
+    # base + agent layers still present.
+    assert "system.seeded" in defs
+    assert "agent.default.seeded" in defs
 
 
 # ---------------------------------------------------------------------------
 # End-to-end layered home-seed through the keystore (_apply_init_seeds).
 # ---------------------------------------------------------------------------
 
+
 class _FakeTarget:
-    """Minimal resolved-agent stand-in: only ``.name`` + ``default_seeds()``
-    (empty) are read by the seed seam for a non-descriptor test target."""
+  """Minimal resolved-agent stand-in: only ``.name`` + ``default_seeds()``
+  (empty) are read by the seed seam for a non-descriptor test target."""
 
-    name = "claude"
+  name = "claude"
 
-    def default_seeds(self):
-        return {}
+  def default_seeds(self):
+    return {}
 
 
 def _write_system_settings(std, doc):
-    """Merge *doc*'s tables into the SYSTEM settings file (``std.settings``)."""
-    cur = (
-        yaml.safe_load(std.settings.read_text()) if std.settings.exists() else {}
-    ) or {}
-    for scope, table in doc.items():
-        for tier, keys in table.items():
-            cur.setdefault(scope, {}).setdefault(tier, {}).update(keys)
-    std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text(yaml.safe_dump(cur))
+  """Merge *doc*'s tables into the SYSTEM settings file (``std.settings``)."""
+  cur = (yaml.safe_load(std.settings.read_text()) if std.settings.exists() else {}) or {}
+  for scope, table in doc.items():
+    for tier, keys in table.items():
+      cur.setdefault(scope, {}).setdefault(tier, {}).update(keys)
+  std.settings.parent.mkdir(parents=True, exist_ok=True)
+  std.settings.write_text(yaml.safe_dump(cur))
 
 
 def _cli_set_agent_key(std, verb, node, key, value):
-    """Write ``agent.<node>.<key>`` through the CLI verb *verb*; ``None`` means ``--null``."""
-    from kanibako.settings.agent_config import AgentConfig
-    from kanibako.settings.agent_file import save
+  """Write ``agent.<node>.<key>`` through the CLI verb *verb*; ``None`` means ``--null``."""
+  from kanibako.settings.agent_config import AgentConfig
+  from kanibako.settings.agent_file import save
 
-    # ``agent set`` refuses an agent with no file, so that verb gets one first, as
-    # ``setup`` leaves it (empty).  ``system set`` must work without one: fresh install.
-    agent_file = agent_settings_path(std.agents, node)
-    if verb == "agent set" and not agent_file.exists():
-        agent_file.parent.mkdir(parents=True, exist_ok=True)
-        save(agent_file, AgentConfig())
-    if verb == "system set":
-        from kanibako.commands.system_cmd import run_set
+  # ``agent set`` refuses an agent with no file, so that verb gets one first, as
+  # ``setup`` leaves it (empty).  ``system set`` must work without one: fresh install.
+  agent_file = agent_settings_path(std.agents, node)
+  if verb == "agent set" and not agent_file.exists():
+    agent_file.parent.mkdir(parents=True, exist_ok=True)
+    save(agent_file, AgentConfig())
+  if verb == "system set":
+    from kanibako.commands.system_cmd import run_set
 
-        spelled = f"agent.{node}.{key}"
-        args = argparse.Namespace(
-            key_value=spelled if value is None else f"{spelled}={value}",
-            null=value is None, force=False,
-        )
-    else:
-        from kanibako.commands.agent_cmd import run_set
+    spelled = f"agent.{node}.{key}"
+    args = argparse.Namespace(
+      key_value=spelled if value is None else f"{spelled}={value}",
+      null=value is None,
+      force=False,
+    )
+  else:
+    from kanibako.commands.agent_cmd import run_set
 
-        args = argparse.Namespace(
-            agent_id=node, key_value=key if value is None else f"{key}={value}",
-            null=value is None,
-        )
-    assert run_set(args) == 0
+    args = argparse.Namespace(
+      agent_id=node,
+      key_value=key if value is None else f"{key}={value}",
+      null=value is None,
+    )
+  assert run_set(args) == 0
 
 
 def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None):
-    """Drive the one-time home seed (the unified keystore-routed route); return the
-    snapshot it resolved, which carries the collapsed seed list."""
-    from kanibako.commands.start import _apply_init_seeds
+  """Drive the one-time home seed (the unified keystore-routed route); return the
+  snapshot it resolved, which carries the collapsed seed list."""
+  from kanibako.commands.start import _apply_init_seeds
 
-    return _apply_init_seeds(
-        std=std,
-        proj=proj,
-        agent_name=agent,
-        target=_FakeTarget() if agent else None,
-        global_config_path=std.settings,
-        agent_config_path=(
-            agent_cfg_path if agent_cfg_path is not None
-            else agent_settings_path(std.agents, "claude")
-        ),
-        logger=logging.getLogger("test-seed"),
-        deliver_creds=deliver_creds,
-        selection_level=AgentSelection(node=agent, source="settings").selection_level,
-    )
+  return _apply_init_seeds(
+    std=std,
+    proj=proj,
+    agent_name=agent,
+    target=_FakeTarget() if agent else None,
+    global_config_path=std.settings,
+    agent_config_path=(
+      agent_cfg_path if agent_cfg_path is not None else agent_settings_path(std.agents, "claude")
+    ),
+    logger=logging.getLogger("test-seed"),
+    deliver_creds=deliver_creds,
+    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+  )
 
 
 class TestLayeredHomeSeed:
-    """The template trio seeded through the SINGLE keystore ``seeded`` route
-    (``_apply_init_seeds``) — base -> agent -> workset, per-file last-wins,
-    create-if-absent, skip-if-absent, credential-gate-exempt."""
+  """The template trio seeded through the SINGLE keystore ``seeded`` route
+  (``_apply_init_seeds``) — base -> agent -> workset, per-file last-wins,
+  create-if-absent, skip-if-absent, credential-gate-exempt."""
 
-    def _populate(self, std, primary_proj):
-        install_packaged_templates(std, ["claude"])
-        base_home = std.template / "box" / "home"
-        base_home.mkdir(parents=True, exist_ok=True)
-        (base_home / "base-only.txt").write_text("base")
-        (base_home / "shared.txt").write_text("base")
-        agent_home = std.agents / "claude" / "template" / "box" / "home"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        (agent_home / "agent-only.txt").write_text("agent")
-        (agent_home / "shared.txt").write_text("agent")
-        ws_home = std.primary_workset / "template" / "box" / "home"
-        ws_home.mkdir(parents=True, exist_ok=True)
-        (ws_home / "workset-only.txt").write_text("workset")
-        (ws_home / "shared.txt").write_text("workset")
-        return ws_home
+  def _populate(self, std, primary_proj):
+    install_packaged_templates(std, ["claude"])
+    base_home = std.template / "box" / "home"
+    base_home.mkdir(parents=True, exist_ok=True)
+    (base_home / "base-only.txt").write_text("base")
+    (base_home / "shared.txt").write_text("base")
+    agent_home = std.agents / "claude" / "template" / "box" / "home"
+    agent_home.mkdir(parents=True, exist_ok=True)
+    (agent_home / "agent-only.txt").write_text("agent")
+    (agent_home / "shared.txt").write_text("agent")
+    ws_home = std.primary_workset / "template" / "box" / "home"
+    ws_home.mkdir(parents=True, exist_ok=True)
+    (ws_home / "workset-only.txt").write_text("workset")
+    (ws_home / "shared.txt").write_text("workset")
+    return ws_home
 
-    def test_all_three_layers_seed_every_file(self, std, config, primary_proj):
-        """Q4: every file present in EACH layer dir is seeded — base + agent +
-        workset, packaged content included (not an enumerated subset)."""
-        self._populate(std, primary_proj)
-        _seed(std, primary_proj)
-        home = primary_proj.shell_path
-        # Base layer — the packaged notebook AND the custom marker.
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home / "canon" / "workbook" / "state" / "devnotes.md").is_file()
-        assert (home / "canon" / "workbook" / "state" / "status.md").is_file()
-        assert (home / "canon" / "workbook" / "tasks" / "main.md").is_file()
-        assert (home / "canon" / "workbook" / "tasks" / "product.md").is_file()
-        assert (home / "base-only.txt").read_text() == "base"
-        # Agent layer — the packaged .claude.json/settings AND the custom marker.
-        assert (home / ".claude.json").is_file()
-        assert (home / ".claude" / "settings.json").is_file()
-        assert (home / "agent-only.txt").read_text() == "agent"
-        # Workset layer.
-        assert (home / "workset-only.txt").read_text() == "workset"
+  def test_all_three_layers_seed_every_file(self, std, config, primary_proj):
+    """Q4: every file present in EACH layer dir is seeded — base + agent +
+    workset, packaged content included (not an enumerated subset)."""
+    self._populate(std, primary_proj)
+    _seed(std, primary_proj)
+    home = primary_proj.shell_path
+    # Base layer — the packaged notebook AND the custom marker.
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home / "canon" / "workbook" / "state" / "devnotes.md").is_file()
+    assert (home / "canon" / "workbook" / "state" / "status.md").is_file()
+    assert (home / "canon" / "workbook" / "tasks" / "main.md").is_file()
+    assert (home / "canon" / "workbook" / "tasks" / "product.md").is_file()
+    assert (home / "base-only.txt").read_text() == "base"
+    # Agent layer — the packaged .claude.json/settings AND the custom marker.
+    assert (home / ".claude.json").is_file()
+    assert (home / ".claude" / "settings.json").is_file()
+    assert (home / "agent-only.txt").read_text() == "agent"
+    # Workset layer.
+    assert (home / "workset-only.txt").read_text() == "workset"
 
-    def test_the_seed_route_no_longer_writes_the_handbook_chapter(
-        self, std, config, primary_proj,
-    ):
-        """⚑⚑ THE H2 CUT, end to end. ``_apply_init_seeds`` ALONE must leave
-        ``{box.canon}/handbook`` untouched: the three handbook layers left the
-        ``seeded`` category (2026-08-07g), so the only route that fills the chapter
-        is step 3's host-side copy.
+  def test_the_seed_route_no_longer_writes_the_handbook_chapter(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """⚑⚑ THE H2 CUT, end to end. ``_apply_init_seeds`` ALONE must leave
+    ``{box.canon}/handbook`` untouched: the three handbook layers left the
+    ``seeded`` category (2026-08-07g), so the only route that fills the chapter
+    is step 3's host-side copy.
 
-        MUTATION-PROVED, and it had to be: this is a negative about a route, and the
-        packaged system template really does ship ``box/canon/handbook/SYS_BOX.md``,
-        so the source exists and the assertion discriminates.  Putting
-        the handbook entry back into ``templates._layer()`` makes it FAIL.
-        ``TestBoxHandbookHostCopyThroughTheSeam`` pins that the chapter still
-        ARRIVES, so this is not proving delivery was dropped."""
-        install_packaged_templates(std, ["claude"])
-        # The source the retired layer 4 read is really shipped and really there.
-        assert (
-            std.template / "box" / "canon" / "handbook" / "SYS_BOX.md"
-        ).is_file()
-        _seed(std, primary_proj)
-        box_root = primary_proj.shell_path.parent
-        assert not (box_root / "canon" / "handbook").exists(), sorted(
-            box_root.rglob("*"),
+    MUTATION-PROVED, and it had to be: this is a negative about a route, and the
+    packaged system template really does ship ``box/canon/handbook/SYS_BOX.md``,
+    so the source exists and the assertion discriminates.  Putting
+    the handbook entry back into ``templates._layer()`` makes it FAIL.
+    ``TestBoxHandbookHostCopyThroughTheSeam`` pins that the chapter still
+    ARRIVES, so this is not proving delivery was dropped."""
+    install_packaged_templates(std, ["claude"])
+    # The source the retired layer 4 read is really shipped and really there.
+    assert (std.template / "box" / "canon" / "handbook" / "SYS_BOX.md").is_file()
+    _seed(std, primary_proj)
+    box_root = primary_proj.shell_path.parent
+    assert not (box_root / "canon" / "handbook").exists(), sorted(
+      box_root.rglob("*"),
+    )
+    # ...and nothing leaked into the box HOME either.
+    assert not list(primary_proj.shell_path.rglob("SYS_BOX.md"))
+
+  def test_layer_order_last_wins_per_file(self, std, config, primary_proj):
+    """base -> agent -> workset: the highest layer to ship a file wins."""
+    self._populate(std, primary_proj)
+    _seed(std, primary_proj)
+    assert (primary_proj.shell_path / "shared.txt").read_text() == "workset"
+
+  def test_agent_overlays_base_when_workset_silent(self, std, config, primary_proj):
+    """A file shipped by base + agent (not workset) resolves to the AGENT
+    version (later layer overlays earlier) — the create-if-absent-per-seed
+    FIRST-wins bug this route replaced would have kept the base version."""
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "two.txt").write_text("base two")
+    agent_home = std.agents / "claude" / "template" / "box" / "home"
+    agent_home.mkdir(parents=True, exist_ok=True)
+    (agent_home / "two.txt").write_text("agent two")
+    _seed(std, primary_proj)
+    assert (primary_proj.shell_path / "two.txt").read_text() == "agent two"
+
+  def test_existing_home_file_never_clobbered(self, std, config, primary_proj):
+    """A user-owned home file survives the layered seed (create-if-absent)."""
+    self._populate(std, primary_proj)
+    home = primary_proj.shell_path
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "shared.txt").write_text("USER OWNED")
+    _seed(std, primary_proj)
+    assert (home / "shared.txt").read_text() == "USER OWNED"
+
+  def test_absent_workset_template_skipped(self, std, config, primary_proj):
+    """No {workset.template} dir on disk -> the layer is skipped (skip-if-
+    absent) and base + agent still seed (no crash)."""
+    install_packaged_templates(std, ["claude"])
+    # Deliberately do NOT create std.primary_workset/template.
+    _seed(std, primary_proj)
+    home = primary_proj.shell_path
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home / ".claude.json").is_file()
+
+  def test_standalone_has_no_workset_layer(self, std, config, standalone_proj):
+    """STANDALONE seeds base + agent only (no workset tier)."""
+    install_packaged_templates(std, ["claude"])
+    _seed(std, standalone_proj)
+    home = standalone_proj.shell_path
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home / ".claude.json").is_file()
+
+  def test_a_standalone_launch_carries_its_none_workset_leaves(
+    self,
+    std,
+    config,
+    standalone_proj,
+  ):
+    """The MAIN launch resolve of a standalone box carries every §2c STANDALONE
+    ``<None>`` the anchor floor answers as a present ``None``: ``workset.template``,
+    ``workset.registry``, ``workset.channelroot`` and the four workset-LOCAL
+    ``workset.channels.*`` leaves.
+
+    A declared ``<None>`` is a SUPPLIED value (keyspec §0 "it must RESOLVE").  The floor
+    used to OMIT them, which is a different thing: an absent referent renders ``""``
+    inside an embedded ``{key}``-ref without triggering the seeded-layer skip.
+    ``workset.channels.common`` is the one the MERGE also dropped — it ends in the
+    ``common`` category token.
+    """
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.kb_store import __MISSING__
+
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=standalone_proj,
+      agent_name="claude",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=None,
+      deliver_creds=True,
+      cli_level=None,
+    )
+    workset = dict.get(snapshot, "workset")
+    for leaf in ("template", "registry", "channelroot"):
+      assert dict.get(workset, leaf, __MISSING__) is None, (leaf, workset)
+    channels = dict.get(workset, "channels")
+    for leaf in ("common", "chat", "broadcast", "share"):
+      assert dict.get(channels, leaf, __MISSING__) is None, (leaf, channels)
+
+  def test_a_primary_launch_carries_workspaces_as_a_present_none(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """PRIMARY ``workset.workspaces`` is ``<None>`` (spec §2c), SUPPLIED present (Q82).
+
+    The floor used to OMIT it at primary, so ``{workset.workspaces}`` dangled there.
+    """
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.kb_store import __MISSING__
+
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=primary_proj,
+      agent_name="claude",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=None,
+      deliver_creds=True,
+      cli_level=None,
+    )
+    workset = dict.get(snapshot, "workset")
+    assert dict.get(workset, "workspaces", __MISSING__) is None, workset
+
+  def test_a_primary_workspaces_the_user_sets_is_honored(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """A value the user sets in the primary ``workset.yaml`` wins over the floor's
+    ``None`` (spec §2c, Q82) — the settings cascade outranks the floor."""
+    from kanibako.commands.start import _resolve_launch_snapshot
+
+    wsf = std.primary_workset / "workset.yaml"
+    wsf.parent.mkdir(parents=True, exist_ok=True)
+    wsf.write_text("workset:\n  workspaces: /srv/pods\n")
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=primary_proj,
+      agent_name="claude",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=None,
+      deliver_creds=True,
+      cli_level=None,
+    )
+    assert dict.get(dict.get(snapshot, "workset"), "workspaces") == "/srv/pods"
+
+  def test_a_standalone_seed_entry_naming_workset_template_takes_no_host_path(
+    self,
+    std,
+    config,
+    standalone_proj,
+  ):
+    """A user's ``seeded`` entry ``{workset.template}/box/home`` in a STANDALONE box is
+    SKIPPED — spec §2a: a layer whose source is ``<None>`` is skipped, and §2c declares
+    ``workset.template`` ``<None>`` for standalone.  With the key OMITTED the embedded
+    ref rendered ``""`` and the entry seeded from the HOST path ``/box/home``.  The seed
+    list is the observable; the base-layer file is the positive control.
+    """
+    from kanibako.commands.start import _launch_seed_list
+
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    _write_system_settings(
+      std,
+      {"system": {"seeded": {"~/from-workset/": ["{workset.template}/box/home"]}}},
+    )
+
+    snapshot = _seed(std, standalone_proj)
+    seeds = _launch_seed_list(snapshot)
+    srcs = [seed.src for seed in seeds]
+    assert "/box/home" not in srcs, srcs
+    assert not any(seed.dest.rstrip("/").endswith("/from-workset") for seed in seeds), [
+      seed.dest for seed in seeds
+    ]
+    assert (standalone_proj.shell_path / "base-only.txt").read_text() == "base"
+
+  def test_shell_box_seeds_base_only(self, std, config, primary_proj):
+    """A NO-AGENT box seeds the base layer but NOT the agent layer."""
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    _seed(std, primary_proj, agent="")
+    home = primary_proj.shell_path
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home / "base-only.txt").is_file()
+    # No agent template layer.
+    assert not (home / ".claude.json").exists()
+
+  def test_a_shell_node_box_takes_no_seed_from_the_shell_store(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """The PRODUCTION shell create: node ``shell`` with the built-in ``ShellTarget``.
+
+    ``install_packaged_templates`` creates ``agents/shell/template/box/home``, so a
+    user file placed there used to seed into every shell box.  §2d declares
+    ``agent.shell.template | <None>``: the layer is skipped.  The base-layer file is
+    the positive control — the seed ran, and took everything but the shell store.
+    The seed LIST is the discriminating observable for the skip: an unskipped
+    ``None`` source renders as the host path ``/box/home``, which no test host has.
+    """
+    from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+    from kanibako.targets.shell import ShellTarget
+
+    install_packaged_templates(std, ["claude", "shell"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    planted = std.agents / "shell" / "template" / "box" / "home"
+    assert planted.is_dir()
+    (planted / "planted.txt").write_text("shell store")
+    default_home = std.agents / "default" / "template" / "box" / "home"
+    default_home.mkdir(parents=True, exist_ok=True)
+    (default_home / "default-arm.txt").write_text("default store")
+
+    snapshot = _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name="shell",
+      target=ShellTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "shell"),
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+    )
+    srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+    assert "/box/home" not in srcs, srcs
+    assert not any("/agents/" in src for src in srcs), srcs
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert not (home / "planted.txt").exists()
+    # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, which
+    # shadows the ``agent.default.template`` the shell otherwise inherits (§2d).
+    assert not (home / "default-arm.txt").exists()
+
+  def test_a_shell_node_launch_floors_a_present_none_shell_template(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """The MAIN launch resolve for a shell box floors ``agent.shell.template: None``.
+
+    The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
+    which shadows the ``agent.default.template`` it otherwise inherits (keyspec §2d
+    "Pseudo-agent(s)"); omitting the key would let the pick read the default arm
+    back into ``meta.box.agent.template``.  ``agent.default.template`` still
+    answers — the shell's own store, as for every node — so the ``None`` is the
+    shell arm's alone, not a missing agent tier.
+    """
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.targets.shell import ShellTarget
+
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=primary_proj,
+      agent_name="shell",
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=ShellTarget(),
+      deliver_creds=True,
+      cli_level=None,
+    )
+    agent = dict.get(snapshot, "agent")
+    shell = dict.get(agent, "shell", {})
+    assert dict.get(shell, "template", __MISSING__) is None, shell
+    default = dict.get(agent, "default")
+    assert str(dict.get(default, "template")).endswith("/agents/shell/template")
+    box_agent = dict.get(dict.get(dict.get(snapshot, "meta"), "box"), "agent")
+    assert dict.get(box_agent, "template", __MISSING__) is None, box_agent
+
+  @pytest.mark.parametrize("spelling", ["store_ref", "plain_path"])
+  def test_a_user_set_shell_template_seeds_its_files_at_create(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+    spelling,
+  ):
+    """The fence's ``<None>`` is a DEFAULT, and a user may supply a value over it.
+
+    ``store_ref`` is the route MIGRATION.md gives a user whose v1.7.2 plain-shell
+    template lived in ``agents/general/template``: move the files to
+    ``<data>/agents/shell/template/box/home`` and set ``agent.shell.template`` to
+    ``{config.agents}/shell/template`` in the system settings file
+    (``<data>/global/settings.yaml``).  ``plain_path`` names any other directory.
+    Either way the layer must seed: a table that gated ``agent.shell.seeded`` on
+    the DEFAULT's value dropped a user's value here.
+    """
+    from kanibako.commands.start import _apply_init_seeds
+    from kanibako.targets.shell import ShellTarget
+
+    install_packaged_templates(std, ["shell"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    if spelling == "store_ref":
+      root = std.agents / "shell" / "template"
+      value = "{config.agents}/shell/template"
+    else:
+      root = tmp_path / "custom-tpl"
+      value = str(root)
+    (root / "box" / "home").mkdir(parents=True, exist_ok=True)
+    (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+    _write_system_settings(std, {"agent": {"shell": {"template": value}}})
+    agent_file = agent_settings_path(std.agents, "shell")
+
+    _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name="shell",
+      target=ShellTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_file,
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+    )
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert (home / "CUSTOM.txt").read_text() == "custom"
+
+  @pytest.mark.parametrize(
+    ("node", "verb"),
+    [
+      ("shell", "system set"),
+      ("claude", "system set"),
+      ("claude", "agent set"),
+    ],
+  )
+  def test_a_cli_set_agent_template_seeds_its_files_at_create(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+    capsys,
+    node,
+    verb,
+  ):
+    """A CLI-set ``agent.<a>.template`` seeds at create, like a settings-file one.
+
+    The key is ``set: cli+file``.  ``agent set`` writes the node's own file
+    (``agents/<a>/agent.yaml``, the ``agent.<active>`` cascade level); ``system set``
+    writes the system settings file's ``agent: <a>:`` table (keyspec §2a), a lower
+    cascade level the create resolve must still see.  §2a: create builds the launch snapshot to resolve the seed sources, so the
+    create resolve must read that file's scalars as the launch does.  It used to
+    read only the file's category tables, and the value did nothing.  For
+    ``claude`` the store file is the discriminator: the user's value REPLACES
+    the store default, so the store file must not seed.
+    (``agent set shell`` is refused as a reserved name; ``system set`` is the
+    CLI route for the shell node.)
+    """
+    from kanibako.commands.start import _apply_init_seeds
+    from kanibako.settings.config_io import load_doc
+    from kanibako.targets.shell import ShellTarget
+
+    install_packaged_templates(std, [node])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    store_home = std.agents / node / "template" / "box" / "home"
+    store_home.mkdir(parents=True, exist_ok=True)
+    (store_home / "store-only.txt").write_text("store")
+    root = tmp_path / "cli-tpl"
+    (root / "box" / "home").mkdir(parents=True)
+    (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+
+    _cli_set_agent_key(std, verb, node, "template", str(root))
+    agent_file = agent_settings_path(std.agents, node)
+    node_doc = load_doc(agent_file) if agent_file.exists() else {}
+    if verb == "agent set":
+      assert node_doc["self"]["template"] == str(root)
+    else:
+      assert load_doc(std.settings)["agent"][node]["template"] == str(root)
+      assert "template" not in (node_doc.get("self") or {}), node_doc
+
+    _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name=node,
+      target=ShellTarget() if node == "shell" else _FakeTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_file,
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node=node, source="settings").selection_level,
+    )
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert (home / "CUSTOM.txt").read_text() == "custom"
+    assert not (home / "store-only.txt").exists()
+
+  @pytest.mark.parametrize("own", [False, True])
+  def test_a_users_agent_default_template_seeds_a_true_agent_at_create(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+    capsys,
+    own,
+  ):
+    """R1 (keyspec §2d *Default settings*): core seeds ``agent.default`` first, so a
+    user's ``agent.default.template`` replaces the node store at create — and the
+    agent's own ``agent.claude.template`` (``own``) still beats it."""
+    from kanibako.commands.start import _apply_init_seeds
+
+    install_packaged_templates(std, ["claude"])
+    store_home = std.agents / "claude" / "template" / "box" / "home"
+    store_home.mkdir(parents=True, exist_ok=True)
+    (store_home / "store-only.txt").write_text("store")
+    roots = {}
+    for name in ("default", "claude"):
+      roots[name] = tmp_path / f"{name}-tpl"
+      (roots[name] / "box" / "home").mkdir(parents=True)
+      (roots[name] / "box" / "home" / f"{name}.txt").write_text(name)
+    from kanibako.commands.system_cmd import run_set
+
+    # The any-agent tier's CLI spelling is the BARE key (``agent.default.*`` is refused).
+    assert (
+      run_set(
+        argparse.Namespace(
+          key_value=f"template={roots['default']}",
+          null=False,
+          force=False,
         )
-        # ...and nothing leaked into the box HOME either.
-        assert not list(primary_proj.shell_path.rglob("SYS_BOX.md"))
-
-    def test_layer_order_last_wins_per_file(self, std, config, primary_proj):
-        """base -> agent -> workset: the highest layer to ship a file wins."""
-        self._populate(std, primary_proj)
-        _seed(std, primary_proj)
-        assert (primary_proj.shell_path / "shared.txt").read_text() == "workset"
-
-    def test_agent_overlays_base_when_workset_silent(self, std, config, primary_proj):
-        """A file shipped by base + agent (not workset) resolves to the AGENT
-        version (later layer overlays earlier) — the create-if-absent-per-seed
-        FIRST-wins bug this route replaced would have kept the base version."""
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "two.txt").write_text("base two")
-        agent_home = std.agents / "claude" / "template" / "box" / "home"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        (agent_home / "two.txt").write_text("agent two")
-        _seed(std, primary_proj)
-        assert (primary_proj.shell_path / "two.txt").read_text() == "agent two"
-
-    def test_existing_home_file_never_clobbered(self, std, config, primary_proj):
-        """A user-owned home file survives the layered seed (create-if-absent)."""
-        self._populate(std, primary_proj)
-        home = primary_proj.shell_path
-        home.mkdir(parents=True, exist_ok=True)
-        (home / "shared.txt").write_text("USER OWNED")
-        _seed(std, primary_proj)
-        assert (home / "shared.txt").read_text() == "USER OWNED"
-
-    def test_absent_workset_template_skipped(self, std, config, primary_proj):
-        """No {workset.template} dir on disk -> the layer is skipped (skip-if-
-        absent) and base + agent still seed (no crash)."""
-        install_packaged_templates(std, ["claude"])
-        # Deliberately do NOT create std.primary_workset/template.
-        _seed(std, primary_proj)
-        home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home / ".claude.json").is_file()
-
-    def test_standalone_has_no_workset_layer(self, std, config, standalone_proj):
-        """STANDALONE seeds base + agent only (no workset tier)."""
-        install_packaged_templates(std, ["claude"])
-        _seed(std, standalone_proj)
-        home = standalone_proj.shell_path
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home / ".claude.json").is_file()
-
-    def test_a_standalone_launch_carries_its_none_workset_leaves(
-        self, std, config, standalone_proj,
-    ):
-        """The MAIN launch resolve of a standalone box carries every §2c STANDALONE
-        ``<None>`` the anchor floor answers as a present ``None``: ``workset.template``,
-        ``workset.registry``, ``workset.channelroot`` and the four workset-LOCAL
-        ``workset.channels.*`` leaves.
-
-        A declared ``<None>`` is a SUPPLIED value (keyspec §0 "it must RESOLVE").  The floor
-        used to OMIT them, which is a different thing: an absent referent renders ``""``
-        inside an embedded ``{key}``-ref without triggering the seeded-layer skip.
-        ``workset.channels.common`` is the one the MERGE also dropped — it ends in the
-        ``common`` category token.
-        """
-        from kanibako.commands.start import _resolve_launch_snapshot
-        from kanibako.settings.kb_store import __MISSING__
-
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=standalone_proj, agent_name="claude",
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None,
-            deliver_creds=True,
-            cli_level=None,
-        )
-        workset = dict.get(snapshot, "workset")
-        for leaf in ("template", "registry", "channelroot"):
-            assert dict.get(workset, leaf, __MISSING__) is None, (leaf, workset)
-        channels = dict.get(workset, "channels")
-        for leaf in ("common", "chat", "broadcast", "share"):
-            assert dict.get(channels, leaf, __MISSING__) is None, (leaf, channels)
-
-    def test_a_primary_launch_carries_workspaces_as_a_present_none(
-        self, std, config, primary_proj,
-    ):
-        """PRIMARY ``workset.workspaces`` is ``<None>`` (spec §2c), SUPPLIED present (Q82).
-
-        The floor used to OMIT it at primary, so ``{workset.workspaces}`` dangled there.
-        """
-        from kanibako.commands.start import _resolve_launch_snapshot
-        from kanibako.settings.kb_store import __MISSING__
-
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=primary_proj, agent_name="claude",
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None,
-            deliver_creds=True,
-            cli_level=None,
-        )
-        workset = dict.get(snapshot, "workset")
-        assert dict.get(workset, "workspaces", __MISSING__) is None, workset
-
-    def test_a_primary_workspaces_the_user_sets_is_honored(
-        self, std, config, primary_proj,
-    ):
-        """A value the user sets in the primary ``workset.yaml`` wins over the floor's
-        ``None`` (spec §2c, Q82) — the settings cascade outranks the floor."""
-        from kanibako.commands.start import _resolve_launch_snapshot
-
-        wsf = std.primary_workset / "workset.yaml"
-        wsf.parent.mkdir(parents=True, exist_ok=True)
-        wsf.write_text("workset:\n  workspaces: /srv/pods\n")
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=primary_proj, agent_name="claude",
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None,
-            deliver_creds=True,
-            cli_level=None,
-        )
-        assert dict.get(dict.get(snapshot, "workset"), "workspaces") == "/srv/pods"
-
-    def test_a_standalone_seed_entry_naming_workset_template_takes_no_host_path(
-        self, std, config, standalone_proj,
-    ):
-        """A user's ``seeded`` entry ``{workset.template}/box/home`` in a STANDALONE box is
-        SKIPPED — spec §2a: a layer whose source is ``<None>`` is skipped, and §2c declares
-        ``workset.template`` ``<None>`` for standalone.  With the key OMITTED the embedded
-        ref rendered ``""`` and the entry seeded from the HOST path ``/box/home``.  The seed
-        list is the observable; the base-layer file is the positive control.
-        """
-        from kanibako.commands.start import _launch_seed_list
-
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        _write_system_settings(
-            std, {"system": {"seeded": {"~/from-workset/": ["{workset.template}/box/home"]}}},
-        )
-
-        snapshot = _seed(std, standalone_proj)
-        seeds = _launch_seed_list(snapshot)
-        srcs = [seed.src for seed in seeds]
-        assert "/box/home" not in srcs, srcs
-        assert not any(
-            seed.dest.rstrip("/").endswith("/from-workset") for seed in seeds
-        ), [seed.dest for seed in seeds]
-        assert (standalone_proj.shell_path / "base-only.txt").read_text() == "base"
-
-    def test_shell_box_seeds_base_only(self, std, config, primary_proj):
-        """A NO-AGENT box seeds the base layer but NOT the agent layer."""
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        _seed(std, primary_proj, agent="")
-        home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home / "base-only.txt").is_file()
-        # No agent template layer.
-        assert not (home / ".claude.json").exists()
-
-    def test_a_shell_node_box_takes_no_seed_from_the_shell_store(
-        self, std, config, primary_proj,
-    ):
-        """The PRODUCTION shell create: node ``shell`` with the built-in ``ShellTarget``.
-
-        ``install_packaged_templates`` creates ``agents/shell/template/box/home``, so a
-        user file placed there used to seed into every shell box.  §2d declares
-        ``agent.shell.template | <None>``: the layer is skipped.  The base-layer file is
-        the positive control — the seed ran, and took everything but the shell store.
-        The seed LIST is the discriminating observable for the skip: an unskipped
-        ``None`` source renders as the host path ``/box/home``, which no test host has.
-        """
-        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
-        from kanibako.targets.shell import ShellTarget
-
-        install_packaged_templates(std, ["claude", "shell"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        planted = std.agents / "shell" / "template" / "box" / "home"
-        assert planted.is_dir()
-        (planted / "planted.txt").write_text("shell store")
-        default_home = std.agents / "default" / "template" / "box" / "home"
-        default_home.mkdir(parents=True, exist_ok=True)
-        (default_home / "default-arm.txt").write_text("default store")
-
-        snapshot = _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "shell"),
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node="shell", source="settings").selection_level,
-        )
-        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert "/box/home" not in srcs, srcs
-        assert not any("/agents/" in src for src in srcs), srcs
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert not (home / "planted.txt").exists()
-        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, which
-        # shadows the ``agent.default.template`` the shell otherwise inherits (§2d).
-        assert not (home / "default-arm.txt").exists()
-
-    def test_a_shell_node_launch_floors_a_present_none_shell_template(
-        self, std, config, primary_proj,
-    ):
-        """The MAIN launch resolve for a shell box floors ``agent.shell.template: None``.
-
-        The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
-        which shadows the ``agent.default.template`` it otherwise inherits (keyspec §2d
-        "Pseudo-agent(s)"); omitting the key would let the pick read the default arm
-        back into ``meta.box.agent.template``.  ``agent.default.template`` still
-        answers — the shell's own store, as for every node — so the ``None`` is the
-        shell arm's alone, not a missing agent tier.
-        """
-        from kanibako.commands.start import _resolve_launch_snapshot
-        from kanibako.settings.kb_store import __MISSING__
-        from kanibako.targets.shell import ShellTarget
-
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=primary_proj, agent_name="shell",
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=ShellTarget(),
-            deliver_creds=True,
-            cli_level=None,
-        )
-        agent = dict.get(snapshot, "agent")
-        shell = dict.get(agent, "shell", {})
-        assert dict.get(shell, "template", __MISSING__) is None, shell
-        default = dict.get(agent, "default")
-        assert str(dict.get(default, "template")).endswith("/agents/shell/template")
-        box_agent = dict.get(dict.get(dict.get(snapshot, "meta"), "box"), "agent")
-        assert dict.get(box_agent, "template", __MISSING__) is None, box_agent
-
-    @pytest.mark.parametrize("spelling", ["store_ref", "plain_path"])
-    def test_a_user_set_shell_template_seeds_its_files_at_create(
-        self, std, config, primary_proj, tmp_path, spelling,
-    ):
-        """The fence's ``<None>`` is a DEFAULT, and a user may supply a value over it.
-
-        ``store_ref`` is the route MIGRATION.md gives a user whose v1.7.2 plain-shell
-        template lived in ``agents/general/template``: move the files to
-        ``<data>/agents/shell/template/box/home`` and set ``agent.shell.template`` to
-        ``{config.agents}/shell/template`` in the system settings file
-        (``<data>/global/settings.yaml``).  ``plain_path`` names any other directory.
-        Either way the layer must seed: a table that gated ``agent.shell.seeded`` on
-        the DEFAULT's value dropped a user's value here.
-        """
-        from kanibako.commands.start import _apply_init_seeds
-        from kanibako.targets.shell import ShellTarget
-
-        install_packaged_templates(std, ["shell"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        if spelling == "store_ref":
-            root = std.agents / "shell" / "template"
-            value = "{config.agents}/shell/template"
-        else:
-            root = tmp_path / "custom-tpl"
-            value = str(root)
-        (root / "box" / "home").mkdir(parents=True, exist_ok=True)
-        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
-        _write_system_settings(std, {"agent": {"shell": {"template": value}}})
-        agent_file = agent_settings_path(std.agents, "shell")
-
-        _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
-            global_config_path=std.settings, agent_config_path=agent_file,
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node="shell", source="settings").selection_level,
-        )
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "CUSTOM.txt").read_text() == "custom"
-
-    @pytest.mark.parametrize(("node", "verb"), [
-        ("shell", "system set"),
-        ("claude", "system set"),
-        ("claude", "agent set"),
-    ])
-    def test_a_cli_set_agent_template_seeds_its_files_at_create(
-        self, std, config, primary_proj, tmp_path, capsys, node, verb,
-    ):
-        """A CLI-set ``agent.<a>.template`` seeds at create, like a settings-file one.
-
-        The key is ``set: cli+file``.  ``agent set`` writes the node's own file
-        (``agents/<a>/agent.yaml``, the ``agent.<active>`` cascade level); ``system set``
-        writes the system settings file's ``agent: <a>:`` table (keyspec §2a), a lower
-        cascade level the create resolve must still see.  §2a: create builds the launch snapshot to resolve the seed sources, so the
-        create resolve must read that file's scalars as the launch does.  It used to
-        read only the file's category tables, and the value did nothing.  For
-        ``claude`` the store file is the discriminator: the user's value REPLACES
-        the store default, so the store file must not seed.
-        (``agent set shell`` is refused as a reserved name; ``system set`` is the
-        CLI route for the shell node.)
-        """
-        from kanibako.commands.start import _apply_init_seeds
-        from kanibako.settings.config_io import load_doc
-        from kanibako.targets.shell import ShellTarget
-
-        install_packaged_templates(std, [node])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        store_home = std.agents / node / "template" / "box" / "home"
-        store_home.mkdir(parents=True, exist_ok=True)
-        (store_home / "store-only.txt").write_text("store")
-        root = tmp_path / "cli-tpl"
-        (root / "box" / "home").mkdir(parents=True)
-        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
-
-        _cli_set_agent_key(std, verb, node, "template", str(root))
-        agent_file = agent_settings_path(std.agents, node)
-        node_doc = load_doc(agent_file) if agent_file.exists() else {}
-        if verb == "agent set":
-            assert node_doc["self"]["template"] == str(root)
-        else:
-            assert load_doc(std.settings)["agent"][node]["template"] == str(root)
-            assert "template" not in (node_doc.get("self") or {}), node_doc
-
-        _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name=node,
-            target=ShellTarget() if node == "shell" else _FakeTarget(),
-            global_config_path=std.settings, agent_config_path=agent_file,
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node=node, source="settings").selection_level,
-        )
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "CUSTOM.txt").read_text() == "custom"
-        assert not (home / "store-only.txt").exists()
-
-    @pytest.mark.parametrize("own", [False, True])
-    def test_a_users_agent_default_template_seeds_a_true_agent_at_create(
-        self, std, config, primary_proj, tmp_path, capsys, own,
-    ):
-        """R1 (keyspec §2d *Default settings*): core seeds ``agent.default`` first, so a
-        user's ``agent.default.template`` replaces the node store at create — and the
-        agent's own ``agent.claude.template`` (``own``) still beats it."""
-        from kanibako.commands.start import _apply_init_seeds
-
-        install_packaged_templates(std, ["claude"])
-        store_home = std.agents / "claude" / "template" / "box" / "home"
-        store_home.mkdir(parents=True, exist_ok=True)
-        (store_home / "store-only.txt").write_text("store")
-        roots = {}
-        for name in ("default", "claude"):
-            roots[name] = tmp_path / f"{name}-tpl"
-            (roots[name] / "box" / "home").mkdir(parents=True)
-            (roots[name] / "box" / "home" / f"{name}.txt").write_text(name)
-        from kanibako.commands.system_cmd import run_set
-
-        # The any-agent tier's CLI spelling is the BARE key (``agent.default.*`` is refused).
-        assert run_set(argparse.Namespace(
-            key_value=f"template={roots['default']}", null=False, force=False,
-        )) == 0
-        if own:
-            _cli_set_agent_key(std, "system set", "claude", "template", str(roots["claude"]))
-
-        _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="claude", target=_FakeTarget(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "claude"),
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node="claude", source="settings").selection_level,
-        )
-        home = primary_proj.shell_path
-        assert not (home / "store-only.txt").exists()
-        assert (home / "default.txt").exists() is not own
-        assert (home / "claude.txt").exists() is own
-
-    def test_a_cli_null_agent_template_skips_the_layer_at_create(
-        self, std, config, primary_proj, capsys,
-    ):
-        """``system set --null agent.claude.template`` SKIPS layer 2 at create (§2a).
-
-        The verb writes ``template: null`` to the system file.  A create resolve that
-        ignores the file keeps the floor's store path, and the store file seeds.
-        (``agent set --null`` is refused at agent scope; ``agent reset`` is its verb.)
-        """
-        from kanibako.commands.start import _launch_seed_list
-
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        agent_home = std.agents / "claude" / "template" / "box" / "home"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        (agent_home / "agent-only.txt").write_text("agent")
-
-        _cli_set_agent_key(std, "system set", "claude", "template", None)
-
-        snapshot = _seed(std, primary_proj)
-        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert "/box/home" not in srcs, srcs
-        assert not any("/agents/claude/" in src for src in srcs), srcs
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert not (home / "agent-only.txt").exists()
-
-    @pytest.mark.parametrize("node", ["shell", "claude"])
-    def test_seed_new_box_seeds_a_cli_set_agent_template(
-        self, std, config, primary_proj, tmp_path, capsys, node,
-    ):
-        """The PRODUCTION create entry, ``seed_new_box``, honors a CLI-set template.
-
-        The tests above hand ``agent_config_path`` to ``_apply_init_seeds`` themselves,
-        so a broken wiring in ``seed_new_box`` would leave them green.  This drives the
-        entry ``box create`` calls, which picks the agent file on its own.
-        """
-        from kanibako.commands.start import seed_new_box
-
-        install_packaged_templates(std, [node])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        store_home = std.agents / node / "template" / "box" / "home"
-        store_home.mkdir(parents=True, exist_ok=True)
-        (store_home / "store-only.txt").write_text("store")
-        root = tmp_path / "cli-tpl"
-        (root / "box" / "home").mkdir(parents=True)
-        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
-
-        _cli_set_agent_key(std, "system set", node, "template", str(root))
-        seed_new_box(std, config, primary_proj, explicit_agent=node)
-
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "CUSTOM.txt").read_text() == "custom"
-        assert not (home / "store-only.txt").exists()
-
-    def test_seed_new_box_skips_a_cli_null_agent_template(
-        self, std, config, primary_proj, capsys,
-    ):
-        """``system set --null agent.claude.template`` skips layer 2 through ``seed_new_box``."""
-        from kanibako.commands.start import seed_new_box
-
-        install_packaged_templates(std, ["claude"])
-        agent_home = std.agents / "claude" / "template" / "box" / "home"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        (agent_home / "agent-only.txt").write_text("agent")
-
-        _cli_set_agent_key(std, "system set", "claude", "template", None)
-        seed_new_box(std, config, primary_proj, explicit_agent="claude")
-
-        assert not (primary_proj.shell_path / "agent-only.txt").exists()
-
-    def test_a_null_agent_template_skips_the_layer_not_the_host_path(
-        self, std, config, primary_proj,
-    ):
-        """``agent.claude.template: null`` in the system settings file SKIPS layer 2 —
-        spec §2a: a layer whose source is ``<None>`` is skipped.  The layer source ``{agent.claude.template}/box/home`` EMBEDS the
-        ref, and the embedded rule renders a ``None`` as ``""``: unskipped, the
-        layer read the HOST path ``/box/home``.  The seed list is the observable —
-        on a host without ``/box/home`` the copy would skip it silently either way.
-        """
-        from kanibako.commands.start import _launch_seed_list
-
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        agent_home = std.agents / "claude" / "template" / "box" / "home"
-        agent_home.mkdir(parents=True, exist_ok=True)
-        (agent_home / "agent-only.txt").write_text("agent")
-        _write_system_settings(std, {"agent": {"claude": {"template": None}}})
-
-        snapshot = _seed(std, primary_proj)
-        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert "/box/home" not in srcs, srcs
-        assert all(src.endswith("/template/box/home") for src in srcs), srcs
-        assert not any("/agents/claude/" in src for src in srcs), srcs
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert not (home / "agent-only.txt").exists()
-
-    def test_a_null_workset_template_skips_the_layer_not_the_host_path(
-        self, std, config, primary_proj,
-    ):
-        """``workset.template: null`` in the workset file SKIPS layer 3 — the same
-        §2a rule as layer 2, for the same embedded-``None`` reason.  Unskipped, the
-        layer read ``/box/home``."""
-        from kanibako.commands.start import _launch_seed_list
-
-        self._populate(std, primary_proj)
-        wsf = std.primary_workset / "workset.yaml"
-        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
-        doc.setdefault("workset", {})["template"] = None
-        wsf.write_text(yaml.safe_dump(doc))
-
-        snapshot = _seed(std, primary_proj)
-        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert "/box/home" not in srcs, srcs
-        assert all(src.endswith("/template/box/home") for src in srcs), srcs
-        home = primary_proj.shell_path
-        assert (home / "agent-only.txt").read_text() == "agent"
-        assert not (home / "workset-only.txt").exists()
-
-    def test_a_user_agent_default_seed_reaches_a_shell_box(
-        self, std, config, primary_proj, tmp_path,
-    ):
-        """A user's ``agent.default.seeded: {"~/": [dir]}`` seeds a shell box.
-
-        The shell inherits ``agent.default`` from core and the settings files (keyspec
-        §2d "Pseudo-agent(s)"), so the user's ``~/`` entry replaces core's at the same
-        destination and seeds the box.  The base-layer file is the positive control.
-        """
-        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
-        from kanibako.targets.shell import ShellTarget
-
-        install_packaged_templates(std, ["shell"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        user_home = tmp_path / "user-default" / "box" / "home"
-        user_home.mkdir(parents=True)
-        (user_home / "DEFAULT.txt").write_text("default arm")
-        _write_system_settings(
-            std, {"agent": {"default": {"seeded": {"~/": [str(user_home)]}}}},
-        )
-
-        snapshot = _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "shell"),
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node="shell", source="settings").selection_level,
-        )
-        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert str(user_home) in srcs, srcs
-        home = primary_proj.shell_path
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "DEFAULT.txt").read_text() == "default arm"
-
-    def test_a_whole_value_seed_source_naming_a_present_none_is_skipped(
-        self, std, config, primary_proj,
-    ):
-        """A ``seeded`` entry whose WHOLE-VALUE source ref resolves to a present
-        ``None`` is SKIPPED, not refused — spec §2a: a layer whose source is
-        ``<None>`` is skipped.  ``{agent.shell.template}`` is the shell fence's
-        ``<None>``; the entry used to reach the collapse as ``None`` and raise
-        ``SettingsError … is NoneType``.  The base layer still seeds.
-        """
-        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
-        from kanibako.targets.shell import ShellTarget
-
-        install_packaged_templates(std, ["shell"])
-        (std.template / "box" / "home" / "base-only.txt").write_text("base")
-        _write_system_settings(
-            std, {"system": {"seeded": {"~/x": ["{agent.shell.template}"]}}},
-        )
-
-        snapshot = _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "shell"),
-            logger=logging.getLogger("test-seed"),
-            selection_level=AgentSelection(node="shell", source="settings").selection_level,
-        )
-        dests = [seed.dest for seed in _launch_seed_list(snapshot)]
-        assert not any(dest.rstrip("/").endswith("/x") for dest in dests), dests
-        assert (primary_proj.shell_path / "base-only.txt").read_text() == "base"
-
-    def test_private_box_keeps_template_layers(self, std, config, primary_proj):
-        """deliver_creds=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
-        template layers are non-credential and STILL seed (D-M4 gate exemption)."""
-        self._populate(std, primary_proj)
-        _seed(std, primary_proj, deliver_creds=False)
-        home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
-        assert (home / ".claude.json").is_file()
-        assert (home / "workset-only.txt").is_file()
-
-    def test_workset_template_repoint_reroutes_seed(self, std, config, primary_proj, tmp_path):
-        """MUTATION PROOF (settable source): setting ``workset.template`` in the
-        workset settings file reroutes the layer-3 seed to the new dir — the seed
-        reads the KEY, not a hardcoded path."""
-        install_packaged_templates(std, ["claude"])
-        custom = tmp_path / "custom-tpl" / "box" / "home"
-        custom.mkdir(parents=True)
-        (custom / "CUSTOM.txt").write_text("custom")
-        # Default dir populated too — to prove the OVERRIDE wins over the default.
-        ws_default = std.primary_workset / "template" / "box" / "home"
-        ws_default.mkdir(parents=True, exist_ok=True)
-        (ws_default / "DEFAULT.txt").write_text("default")
-
-        wsf = std.primary_workset / "workset.yaml"
-        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
-        doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
-        wsf.write_text(yaml.safe_dump(doc))
-
-        _seed(std, primary_proj)
-        home = primary_proj.shell_path
-        assert (home / "CUSTOM.txt").read_text() == "custom"
-        # The default workset dir is NOT used once the key is repointed.
-        assert not (home / "DEFAULT.txt").exists()
-
-    # ⚑ The escaping-HOST-dest refusal (§2a enforcement point 2) was pinned here
-    # against a ``box.canon`` repointed out of the box store, back when the handbook
-    # trio made ``box.canon`` a seed dest.  It no longer is, and its deletion was
-    # FORCED rather than hygienic: with no handbook seed dest NOTHING escapes, so no
-    # warning is emitted and its ``assert any("outside the box store" in r.message
-    # ...)`` would FAIL outright.  Only its FIRST assertion (that the escaped dir was
-    # not written) would have gone vacuous.  The live pins are
-    # ``TestBoxHandbookHostCopyThroughTheSeam.test_an_escaping_box_canon_is_skipped
-    # _with_a_warning`` (the same claim, on the route that now owns the dest) and
-    # ``test_seed_hostdest.TestHostCopyDest`` (the containment check itself).
+      )
+      == 0
+    )
+    if own:
+      _cli_set_agent_key(std, "system set", "claude", "template", str(roots["claude"]))
+
+    _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name="claude",
+      target=_FakeTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "claude"),
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+    )
+    home = primary_proj.shell_path
+    assert not (home / "store-only.txt").exists()
+    assert (home / "default.txt").exists() is not own
+    assert (home / "claude.txt").exists() is own
+
+  def test_a_cli_null_agent_template_skips_the_layer_at_create(
+    self,
+    std,
+    config,
+    primary_proj,
+    capsys,
+  ):
+    """``system set --null agent.claude.template`` SKIPS layer 2 at create (§2a).
+
+    The verb writes ``template: null`` to the system file.  A create resolve that
+    ignores the file keeps the floor's store path, and the store file seeds.
+    (``agent set --null`` is refused at agent scope; ``agent reset`` is its verb.)
+    """
+    from kanibako.commands.start import _launch_seed_list
+
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    agent_home = std.agents / "claude" / "template" / "box" / "home"
+    agent_home.mkdir(parents=True, exist_ok=True)
+    (agent_home / "agent-only.txt").write_text("agent")
+
+    _cli_set_agent_key(std, "system set", "claude", "template", None)
+
+    snapshot = _seed(std, primary_proj)
+    srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+    assert "/box/home" not in srcs, srcs
+    assert not any("/agents/claude/" in src for src in srcs), srcs
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert not (home / "agent-only.txt").exists()
+
+  @pytest.mark.parametrize("node", ["shell", "claude"])
+  def test_seed_new_box_seeds_a_cli_set_agent_template(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+    capsys,
+    node,
+  ):
+    """The PRODUCTION create entry, ``seed_new_box``, honors a CLI-set template.
+
+    The tests above hand ``agent_config_path`` to ``_apply_init_seeds`` themselves,
+    so a broken wiring in ``seed_new_box`` would leave them green.  This drives the
+    entry ``box create`` calls, which picks the agent file on its own.
+    """
+    from kanibako.commands.start import seed_new_box
+
+    install_packaged_templates(std, [node])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    store_home = std.agents / node / "template" / "box" / "home"
+    store_home.mkdir(parents=True, exist_ok=True)
+    (store_home / "store-only.txt").write_text("store")
+    root = tmp_path / "cli-tpl"
+    (root / "box" / "home").mkdir(parents=True)
+    (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+
+    _cli_set_agent_key(std, "system set", node, "template", str(root))
+    seed_new_box(std, config, primary_proj, explicit_agent=node)
+
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert (home / "CUSTOM.txt").read_text() == "custom"
+    assert not (home / "store-only.txt").exists()
+
+  def test_seed_new_box_skips_a_cli_null_agent_template(
+    self,
+    std,
+    config,
+    primary_proj,
+    capsys,
+  ):
+    """``system set --null agent.claude.template`` skips layer 2 through ``seed_new_box``."""
+    from kanibako.commands.start import seed_new_box
+
+    install_packaged_templates(std, ["claude"])
+    agent_home = std.agents / "claude" / "template" / "box" / "home"
+    agent_home.mkdir(parents=True, exist_ok=True)
+    (agent_home / "agent-only.txt").write_text("agent")
+
+    _cli_set_agent_key(std, "system set", "claude", "template", None)
+    seed_new_box(std, config, primary_proj, explicit_agent="claude")
+
+    assert not (primary_proj.shell_path / "agent-only.txt").exists()
+
+  def test_a_null_agent_template_skips_the_layer_not_the_host_path(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """``agent.claude.template: null`` in the system settings file SKIPS layer 2 —
+    spec §2a: a layer whose source is ``<None>`` is skipped.  The layer source ``{agent.claude.template}/box/home`` EMBEDS the
+    ref, and the embedded rule renders a ``None`` as ``""``: unskipped, the
+    layer read the HOST path ``/box/home``.  The seed list is the observable —
+    on a host without ``/box/home`` the copy would skip it silently either way.
+    """
+    from kanibako.commands.start import _launch_seed_list
+
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    agent_home = std.agents / "claude" / "template" / "box" / "home"
+    agent_home.mkdir(parents=True, exist_ok=True)
+    (agent_home / "agent-only.txt").write_text("agent")
+    _write_system_settings(std, {"agent": {"claude": {"template": None}}})
+
+    snapshot = _seed(std, primary_proj)
+    srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+    assert "/box/home" not in srcs, srcs
+    assert all(src.endswith("/template/box/home") for src in srcs), srcs
+    assert not any("/agents/claude/" in src for src in srcs), srcs
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert not (home / "agent-only.txt").exists()
+
+  def test_a_null_workset_template_skips_the_layer_not_the_host_path(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """``workset.template: null`` in the workset file SKIPS layer 3 — the same
+    §2a rule as layer 2, for the same embedded-``None`` reason.  Unskipped, the
+    layer read ``/box/home``."""
+    from kanibako.commands.start import _launch_seed_list
+
+    self._populate(std, primary_proj)
+    wsf = std.primary_workset / "workset.yaml"
+    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc.setdefault("workset", {})["template"] = None
+    wsf.write_text(yaml.safe_dump(doc))
+
+    snapshot = _seed(std, primary_proj)
+    srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+    assert "/box/home" not in srcs, srcs
+    assert all(src.endswith("/template/box/home") for src in srcs), srcs
+    home = primary_proj.shell_path
+    assert (home / "agent-only.txt").read_text() == "agent"
+    assert not (home / "workset-only.txt").exists()
+
+  def test_a_user_agent_default_seed_reaches_a_shell_box(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+  ):
+    """A user's ``agent.default.seeded: {"~/": [dir]}`` seeds a shell box.
+
+    The shell inherits ``agent.default`` from core and the settings files (keyspec
+    §2d "Pseudo-agent(s)"), so the user's ``~/`` entry replaces core's at the same
+    destination and seeds the box.  The base-layer file is the positive control.
+    """
+    from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+    from kanibako.targets.shell import ShellTarget
+
+    install_packaged_templates(std, ["shell"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    user_home = tmp_path / "user-default" / "box" / "home"
+    user_home.mkdir(parents=True)
+    (user_home / "DEFAULT.txt").write_text("default arm")
+    _write_system_settings(
+      std,
+      {"agent": {"default": {"seeded": {"~/": [str(user_home)]}}}},
+    )
+
+    snapshot = _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name="shell",
+      target=ShellTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "shell"),
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+    )
+    srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+    assert str(user_home) in srcs, srcs
+    home = primary_proj.shell_path
+    assert (home / "base-only.txt").read_text() == "base"
+    assert (home / "DEFAULT.txt").read_text() == "default arm"
+
+  def test_a_whole_value_seed_source_naming_a_present_none_is_skipped(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """A ``seeded`` entry whose WHOLE-VALUE source ref resolves to a present
+    ``None`` is SKIPPED, not refused — spec §2a: a layer whose source is
+    ``<None>`` is skipped.  ``{agent.shell.template}`` is the shell fence's
+    ``<None>``; the entry used to reach the collapse as ``None`` and raise
+    ``SettingsError … is NoneType``.  The base layer still seeds.
+    """
+    from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+    from kanibako.targets.shell import ShellTarget
+
+    install_packaged_templates(std, ["shell"])
+    (std.template / "box" / "home" / "base-only.txt").write_text("base")
+    _write_system_settings(
+      std,
+      {"system": {"seeded": {"~/x": ["{agent.shell.template}"]}}},
+    )
+
+    snapshot = _apply_init_seeds(
+      std=std,
+      proj=primary_proj,
+      agent_name="shell",
+      target=ShellTarget(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "shell"),
+      logger=logging.getLogger("test-seed"),
+      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+    )
+    dests = [seed.dest for seed in _launch_seed_list(snapshot)]
+    assert not any(dest.rstrip("/").endswith("/x") for dest in dests), dests
+    assert (primary_proj.shell_path / "base-only.txt").read_text() == "base"
+
+  def test_private_box_keeps_template_layers(self, std, config, primary_proj):
+    """deliver_creds=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
+    template layers are non-credential and STILL seed (D-M4 gate exemption)."""
+    self._populate(std, primary_proj)
+    _seed(std, primary_proj, deliver_creds=False)
+    home = primary_proj.shell_path
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (home / ".claude.json").is_file()
+    assert (home / "workset-only.txt").is_file()
+
+  def test_workset_template_repoint_reroutes_seed(self, std, config, primary_proj, tmp_path):
+    """MUTATION PROOF (settable source): setting ``workset.template`` in the
+    workset settings file reroutes the layer-3 seed to the new dir — the seed
+    reads the KEY, not a hardcoded path."""
+    install_packaged_templates(std, ["claude"])
+    custom = tmp_path / "custom-tpl" / "box" / "home"
+    custom.mkdir(parents=True)
+    (custom / "CUSTOM.txt").write_text("custom")
+    # Default dir populated too — to prove the OVERRIDE wins over the default.
+    ws_default = std.primary_workset / "template" / "box" / "home"
+    ws_default.mkdir(parents=True, exist_ok=True)
+    (ws_default / "DEFAULT.txt").write_text("default")
+
+    wsf = std.primary_workset / "workset.yaml"
+    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
+    wsf.write_text(yaml.safe_dump(doc))
+
+    _seed(std, primary_proj)
+    home = primary_proj.shell_path
+    assert (home / "CUSTOM.txt").read_text() == "custom"
+    # The default workset dir is NOT used once the key is repointed.
+    assert not (home / "DEFAULT.txt").exists()
+
+  # ⚑ The escaping-HOST-dest refusal (§2a enforcement point 2) was pinned here
+  # against a ``box.canon`` repointed out of the box store, back when the handbook
+  # trio made ``box.canon`` a seed dest.  It no longer is, and its deletion was
+  # FORCED rather than hygienic: with no handbook seed dest NOTHING escapes, so no
+  # warning is emitted and its ``assert any("outside the box store" in r.message
+  # ...)`` would FAIL outright.  Only its FIRST assertion (that the escaped dir was
+  # not written) would have gone vacuous.  The live pins are
+  # ``TestBoxHandbookHostCopyThroughTheSeam.test_an_escaping_box_canon_is_skipped
+  # _with_a_warning`` (the same claim, on the route that now owns the dest) and
+  # ``test_seed_hostdest.TestHostCopyDest`` (the containment check itself).
 
 
 # ---------------------------------------------------------------------------
@@ -1117,1730 +1256,1773 @@ class TestLayeredHomeSeed:
 # ``TestLayeredHomeSeed.test_the_seed_route_no_longer_writes_the_handbook_chapter``.
 # ---------------------------------------------------------------------------
 
+
 def _handbook_dir(proj):
-    """``{box.canon}/handbook`` at its DEFAULT resolution — a sibling of the home."""
-    return proj.shell_path.parent / "canon" / "handbook"
+  """``{box.canon}/handbook`` at its DEFAULT resolution — a sibling of the home."""
+  return proj.shell_path.parent / "canon" / "handbook"
 
 
 def _tree(root):
-    """``{relative path: bytes}`` for every file under *root* (missing -> ``{}``)."""
-    if not root.is_dir():
-        return {}
-    return {
-        str(p.relative_to(root)): p.read_bytes()
-        for p in sorted(root.rglob("*")) if p.is_file()
-    }
+  """``{relative path: bytes}`` for every file under *root* (missing -> ``{}``)."""
+  if not root.is_dir():
+    return {}
+  return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
 
 
 def _seed_snapshot(std, proj, *, agent="claude"):
-    """Run step 2 (the real seed) and return the snapshot it built — which is what
-    ``_install_box_handbook`` reads its dest and layer roots off.
+  """Run step 2 (the real seed) and return the snapshot it built — which is what
+  ``_install_box_handbook`` reads its dest and layer roots off.
 
-    No wipe is needed: since H2 the ``seeded`` route writes nothing at
-    ``{box.canon}/handbook``, so anything the caller then observes there came from
-    step 3."""
-    from kanibako.commands.start import _apply_init_seeds
+  No wipe is needed: since H2 the ``seeded`` route writes nothing at
+  ``{box.canon}/handbook``, so anything the caller then observes there came from
+  step 3."""
+  from kanibako.commands.start import _apply_init_seeds
 
-    return _apply_init_seeds(
-        std=std,
-        proj=proj,
-        agent_name=agent,
-        target=_FakeTarget() if agent else None,
-        global_config_path=std.settings,
-        # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
-        # (``+`` store dirname included); an agent-less call falls back to ``claude``.
-        agent_config_path=agent_settings_path(std.agents, agent or "claude"),
-        logger=logging.getLogger("test-seed"),
-        selection_level=AgentSelection(node=agent, source="settings").selection_level,
-    )
+  return _apply_init_seeds(
+    std=std,
+    proj=proj,
+    agent_name=agent,
+    target=_FakeTarget() if agent else None,
+    global_config_path=std.settings,
+    # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
+    # (``+`` store dirname included); an agent-less call falls back to ``claude``.
+    agent_config_path=agent_settings_path(std.agents, agent or "claude"),
+    logger=logging.getLogger("test-seed"),
+    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+  )
 
 
 def _install_handbook(std, proj, *, agent="claude", logger=None):
-    """Drive step 3 alone, off the snapshot the seed resolve built."""
-    from kanibako.commands.start import _install_box_handbook
+  """Drive step 3 alone, off the snapshot the seed resolve built."""
+  from kanibako.commands.start import _install_box_handbook
 
-    snapshot = _seed_snapshot(std, proj, agent=agent)
-    _install_box_handbook(
-        proj=proj, snapshot=snapshot, agent_id=agent,
-        logger=logger or logging.getLogger("test-handbook"),
-    )
+  snapshot = _seed_snapshot(std, proj, agent=agent)
+  _install_box_handbook(
+    proj=proj,
+    snapshot=snapshot,
+    agent_id=agent,
+    logger=logger or logging.getLogger("test-handbook"),
+  )
 
 
 def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
-    """Drive the WHOLE create-time seed — all three ordered steps of the real
-    ``_seed_box_home``, which is what ``box create`` calls."""
-    from types import SimpleNamespace
+  """Drive the WHOLE create-time seed — all three ordered steps of the real
+  ``_seed_box_home``, which is what ``box create`` calls."""
+  from types import SimpleNamespace
 
-    from kanibako.commands.start import _seed_box_home
+  from kanibako.commands.start import _seed_box_home
 
-    _seed_box_home(
-        std=std,
-        proj=proj,
-        target=_FakeTarget() if agent else None,
-        desc=None,
-        agent_id=agent,
-        # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
-        # (``+`` store dirname included); an agent-less call falls back to ``claude``.
-        agent_cfg_path=agent_settings_path(std.agents, agent or "claude"),
-        system_settings_path=std.settings,
-        auth_src=SimpleNamespace(creds_shared=deliver_creds),
-        logger=logging.getLogger("test-seed"),
-        selection_level=AgentSelection(node=agent, source="settings").selection_level,
-    )
+  _seed_box_home(
+    std=std,
+    proj=proj,
+    target=_FakeTarget() if agent else None,
+    desc=None,
+    agent_id=agent,
+    # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
+    # (``+`` store dirname included); an agent-less call falls back to ``claude``.
+    agent_cfg_path=agent_settings_path(std.agents, agent or "claude"),
+    system_settings_path=std.settings,
+    auth_src=SimpleNamespace(creds_shared=deliver_creds),
+    logger=logging.getLogger("test-seed"),
+    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+  )
 
 
 class TestPersonaTemplateLayerThroughTheLink:
-    """⚑⚑ [Jei:2026-08-27], END TO END — a persona's layer 2 is NODE-ROOTED and
-    the harness's CONTENT arrives through the SYMLINK SHIM.
+  """⚑⚑ [Jei:2026-08-27], END TO END — a persona's layer 2 is NODE-ROOTED and
+  the harness's CONTENT arrives through the SYMLINK SHIM.
 
-    Two halves that must both hold, because either alone is satisfiable by the wrong
-    implementation:
+  Two halves that must both hold, because either alone is satisfiable by the wrong
+  implementation:
 
-    * the SOURCE is ``{config.agents}/<node>/template`` (pinned in
-      ``TestTemplateSeedDefaults``), and
-    * ``commands.start.ensure_persona_share_symlinks`` links that path at the
-      harness's store, so the source RESOLVES TO CONTENT.
+  * the SOURCE is ``{config.agents}/<node>/template`` (pinned in
+    ``TestTemplateSeedDefaults``), and
+  * ``commands.start.ensure_persona_share_symlinks`` links that path at the
+    harness's store, so the source RESOLVES TO CONTENT.
 
-    Drop the link and the persona box seeds with layer 2 EMPTY — which is why the
-    control case below is here rather than only the happy path.  ⚑ ``template`` is a
-    COPY source, not a bind, so "shared" means the copier reads THROUGH the link and
-    lands BYTES; the seeded file must not itself be a symlink.
+  Drop the link and the persona box seeds with layer 2 EMPTY — which is why the
+  control case below is here rather than only the happy path.  ⚑ ``template`` is a
+  COPY source, not a bind, so "shared" means the copier reads THROUGH the link and
+  lands BYTES; the seeded file must not itself be a symlink.
+  """
+
+  _HARNESS = "claude"
+  _NODE = "navigator℘claude"
+
+  def _shim_target(self):
+    """A stub declaring EVERY category hook the shim reads, each ``{}``.
+
+    ⚑ TYPED LIKE THE REAL COLLABORATOR: `Target` gives all three hooks concrete
+    ``{}`` defaults, so a real target always answers them and only a hand-built
+    stub can omit one — an omission that reads as a shim bug rather than as the
+    stub lying. Empty tables isolate the TEMPLATE half, so nothing here depends
+    on which categories the claude plugin declares.
     """
+    from types import SimpleNamespace
 
-    _HARNESS = "claude"
-    _NODE = "navigator℘claude"
+    return SimpleNamespace(
+      name=self._HARNESS,
+      default_common=lambda: {},
+      default_seeds=lambda: {},
+      default_category_binds=lambda: {},
+    )
 
-    def _shim_target(self):
-        """A stub declaring EVERY category hook the shim reads, each ``{}``.
+  def _node_store(self, std):
+    """The node's store dir, from the production helper — the link, the key and
+    this test must all name ONE directory or the store silently splits."""
+    from kanibako.settings.agent_config import store_dirname
 
-        ⚑ TYPED LIKE THE REAL COLLABORATOR: `Target` gives all three hooks concrete
-        ``{}`` defaults, so a real target always answers them and only a hand-built
-        stub can omit one — an omission that reads as a shim bug rather than as the
-        stub lying. Empty tables isolate the TEMPLATE half, so nothing here depends
-        on which categories the claude plugin declares.
-        """
-        from types import SimpleNamespace
+    return std.agents / store_dirname(self._NODE)
 
-        return SimpleNamespace(
-            name=self._HARNESS,
-            default_common=lambda: {},
-            default_seeds=lambda: {},
-            default_category_binds=lambda: {},
-        )
+  def _harness_marker(self, std):
+    home = std.agents / self._HARNESS / "template" / "box" / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "persona-layer2.txt").write_text("from the harness template")
+    return home
 
-    def _node_store(self, std):
-        """The node's store dir, from the production helper — the link, the key and
-        this test must all name ONE directory or the store silently splits."""
-        from kanibako.settings.agent_config import store_dirname
+  def _seed_node(self, std, proj):
+    _seed(
+      std,
+      proj,
+      agent=self._NODE,
+      agent_cfg_path=agent_settings_path(std.agents, self._NODE),
+    )
 
-        return std.agents / store_dirname(self._NODE)
+  def test_persona_seeds_the_harness_template_through_the_link(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    from kanibako.commands.start import ensure_persona_share_symlinks
 
-    def _harness_marker(self, std):
-        home = std.agents / self._HARNESS / "template" / "box" / "home"
-        home.mkdir(parents=True, exist_ok=True)
-        (home / "persona-layer2.txt").write_text("from the harness template")
-        return home
+    install_packaged_templates(std, [self._HARNESS])
+    self._harness_marker(std)
+    ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
+    self._seed_node(std, primary_proj)
 
-    def _seed_node(self, std, proj):
-        _seed(
-            std, proj, agent=self._NODE,
-            agent_cfg_path=agent_settings_path(std.agents, self._NODE),
-        )
+    # ⚑ THE SPLIT-STORE GUARD, and it is LITERAL on purpose.  The link and the
+    # ``agent.<node>.template`` key are composed by DIFFERENT code; leave either
+    # one on the ``℘`` spelling and they name different dirs, the guarantee-create
+    # makes the missing one, and the seed reads an empty half-store with no error
+    # raised anywhere.  Both halves are asserted, so either direction reds.
+    assert (std.agents / "navigator+claude" / "template").is_symlink()
+    assert not (std.agents / "navigator℘claude").exists()
 
-    def test_persona_seeds_the_harness_template_through_the_link(
-        self, std, config, primary_proj,
-    ):
-        from kanibako.commands.start import ensure_persona_share_symlinks
+    landed = primary_proj.shell_path / "persona-layer2.txt"
+    assert landed.is_file(), sorted(primary_proj.shell_path.rglob("*"))
+    assert not landed.is_symlink(), "seeded BY VALUE, never as a link"
+    assert landed.read_text() == "from the harness template"
+    # The packaged claude payload rides the same layer.
+    assert (primary_proj.shell_path / ".claude.json").is_file()
 
-        install_packaged_templates(std, [self._HARNESS])
-        self._harness_marker(std)
-        ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
-        self._seed_node(std, primary_proj)
+  def test_without_the_link_layer_2_is_EMPTY_not_the_harness_store(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """THE CONTROL — and the reason this file needs one.
 
-        # ⚑ THE SPLIT-STORE GUARD, and it is LITERAL on purpose.  The link and the
-        # ``agent.<node>.template`` key are composed by DIFFERENT code; leave either
-        # one on the ``℘`` spelling and they name different dirs, the guarantee-create
-        # makes the missing one, and the seed reads an empty half-store with no error
-        # raised anywhere.  Both halves are asserted, so either direction reds.
-        assert (std.agents / "navigator+claude" / "template").is_symlink()
-        assert not (std.agents / "navigator℘claude").exists()
+    If the emitter still rooted layer 2 at the harness, the previous test would
+    pass with no shim at all.  Skipping ``ensure_persona_share_symlinks``
+    therefore has to leave the box home WITHOUT the harness marker: that is what
+    proves the content came through the LINK rather than through a
+    harness-rooted key.  ⚑ The BASE layer still seeds — an absent layer 2 is
+    skip-if-absent, not a failed create.
+    """
+    install_packaged_templates(std, [self._HARNESS])
+    self._harness_marker(std)
+    # NO ensure_persona_share_symlinks call.
+    self._seed_node(std, primary_proj)
 
-        landed = primary_proj.shell_path / "persona-layer2.txt"
-        assert landed.is_file(), sorted(primary_proj.shell_path.rglob("*"))
-        assert not landed.is_symlink(), "seeded BY VALUE, never as a link"
-        assert landed.read_text() == "from the harness template"
-        # The packaged claude payload rides the same layer.
-        assert (primary_proj.shell_path / ".claude.json").is_file()
+    home = primary_proj.shell_path
+    assert not (home / "persona-layer2.txt").exists()
+    assert not (home / ".claude.json").exists()
+    # ...and the create still succeeded: layer 1 landed.
+    assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
-    def test_without_the_link_layer_2_is_EMPTY_not_the_harness_store(
-        self, std, config, primary_proj,
-    ):
-        """THE CONTROL — and the reason this file needs one.
+  def test_a_persona_owned_template_dir_beats_the_link(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """THE ESCAPE HATCH, end to end: *"the user can always remove the symlink if
+    they want to create a separate template for the persona-based agent"*
+    [Jei:2026-08-27].  A real ``agents/<node>/template`` is never replaced by
+    the shim, and the seed reads it instead of the harness's.
+    """
+    from kanibako.commands.start import ensure_persona_share_symlinks
 
-        If the emitter still rooted layer 2 at the harness, the previous test would
-        pass with no shim at all.  Skipping ``ensure_persona_share_symlinks``
-        therefore has to leave the box home WITHOUT the harness marker: that is what
-        proves the content came through the LINK rather than through a
-        harness-rooted key.  ⚑ The BASE layer still seeds — an absent layer 2 is
-        skip-if-absent, not a failed create.
-        """
-        install_packaged_templates(std, [self._HARNESS])
-        self._harness_marker(std)
-        # NO ensure_persona_share_symlinks call.
-        self._seed_node(std, primary_proj)
+    install_packaged_templates(std, [self._HARNESS])
+    self._harness_marker(std)
+    own = self._node_store(std) / "template" / "box" / "home"
+    own.mkdir(parents=True)
+    (own / "persona-only.txt").write_text("mine")
+    ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
 
-        home = primary_proj.shell_path
-        assert not (home / "persona-layer2.txt").exists()
-        assert not (home / ".claude.json").exists()
-        # ...and the create still succeeded: layer 1 landed.
-        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    node_template = self._node_store(std) / "template"
+    assert node_template.is_dir() and not node_template.is_symlink()
+    self._seed_node(std, primary_proj)
 
-    def test_a_persona_owned_template_dir_beats_the_link(
-        self, std, config, primary_proj,
-    ):
-        """THE ESCAPE HATCH, end to end: *"the user can always remove the symlink if
-        they want to create a separate template for the persona-based agent"*
-        [Jei:2026-08-27].  A real ``agents/<node>/template`` is never replaced by
-        the shim, and the seed reads it instead of the harness's.
-        """
-        from kanibako.commands.start import ensure_persona_share_symlinks
+    home = primary_proj.shell_path
+    assert (home / "persona-only.txt").read_text() == "mine"
+    assert not (home / "persona-layer2.txt").exists()
 
-        install_packaged_templates(std, [self._HARNESS])
-        self._harness_marker(std)
-        own = self._node_store(std) / "template" / "box" / "home"
-        own.mkdir(parents=True)
-        (own / "persona-only.txt").write_text("mine")
-        ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
-
-        node_template = self._node_store(std) / "template"
-        assert node_template.is_dir() and not node_template.is_symlink()
-        self._seed_node(std, primary_proj)
-
-        home = primary_proj.shell_path
-        assert (home / "persona-only.txt").read_text() == "mine"
-        assert not (home / "persona-layer2.txt").exists()
-
-    def test_bare_agent_seed_is_unchanged(self, std, config, primary_proj):
-        """THE NO-CHANGE CONTROL.  For a bare agent the node-rooted and
-        harness-rooted spellings are ONE STRING, so the ruling must be invisible
-        here — no shim runs, and layer 2 seeds exactly as it always did."""
-        install_packaged_templates(std, [self._HARNESS])
-        self._harness_marker(std)
-        _seed(std, primary_proj, agent=self._HARNESS)
-        assert (
-            primary_proj.shell_path / "persona-layer2.txt"
-        ).read_text() == "from the harness template"
-        assert not (std.agents / self._HARNESS / "template").is_symlink()
+  def test_bare_agent_seed_is_unchanged(self, std, config, primary_proj):
+    """THE NO-CHANGE CONTROL.  For a bare agent the node-rooted and
+    harness-rooted spellings are ONE STRING, so the ruling must be invisible
+    here — no shim runs, and layer 2 seeds exactly as it always did."""
+    install_packaged_templates(std, [self._HARNESS])
+    self._harness_marker(std)
+    _seed(std, primary_proj, agent=self._HARNESS)
+    assert (
+      primary_proj.shell_path / "persona-layer2.txt"
+    ).read_text() == "from the harness template"
+    assert not (std.agents / self._HARNESS / "template").is_symlink()
 
 
 class TestHandbookLayerSourceKeys:
-    """``handbook_layer_source_keys`` names the ORDERED source KEYS — derived from
-    ``template_seed_defaults`` so the layer gate cannot drift between the two."""
+  """``handbook_layer_source_keys`` names the ORDERED source KEYS — derived from
+  ``template_seed_defaults`` so the layer gate cannot drift between the two."""
 
-    def test_three_keys_in_apply_order(self, primary_proj):
-        assert handbook_layer_source_keys(primary_proj, "claude") == (
-            "system.template", "agent.claude.template", "workset.template",
-        )
+  def test_three_keys_in_apply_order(self, primary_proj):
+    assert handbook_layer_source_keys(primary_proj, "claude") == (
+      "system.template",
+      "agent.claude.template",
+      "workset.template",
+    )
 
-    def test_shell_omits_the_agent_layer(self, primary_proj):
-        assert handbook_layer_source_keys(primary_proj, None) == (
-            "system.template", "workset.template",
-        )
+  def test_shell_omits_the_agent_layer(self, primary_proj):
+    assert handbook_layer_source_keys(primary_proj, None) == (
+      "system.template",
+      "workset.template",
+    )
 
-    def test_the_shell_node_names_its_agent_layer_key(self, primary_proj):
-        """The production spelling of a shell box is node ``shell``, and it declares the
-        agent layer like every node: the KEY is named, and its §2d ``<None>`` value is
-        what skips the layer at the seam
-        (``TestBoxHandbookHostCopyThroughTheSeam.test_a_shell_node_box_skips_the_agent
-        _layer_quietly``)."""
-        assert handbook_layer_source_keys(primary_proj, "shell") == (
-            "system.template", "agent.shell.template", "workset.template",
-        )
+  def test_the_shell_node_names_its_agent_layer_key(self, primary_proj):
+    """The production spelling of a shell box is node ``shell``, and it declares the
+    agent layer like every node: the KEY is named, and its §2d ``<None>`` value is
+    what skips the layer at the seam
+    (``TestBoxHandbookHostCopyThroughTheSeam.test_a_shell_node_box_skips_the_agent
+    _layer_quietly``)."""
+    assert handbook_layer_source_keys(primary_proj, "shell") == (
+      "system.template",
+      "agent.shell.template",
+      "workset.template",
+    )
 
-    def test_standalone_omits_the_workset_layer(self, standalone_proj):
-        assert handbook_layer_source_keys(standalone_proj, "claude") == (
-            "system.template", "agent.claude.template",
-        )
+  def test_standalone_omits_the_workset_layer(self, standalone_proj):
+    assert handbook_layer_source_keys(standalone_proj, "claude") == (
+      "system.template",
+      "agent.claude.template",
+    )
 
-    def test_every_key_is_a_declared_source_scalar_somewhere(self, primary_proj):
-        """THE DRIFT PIN.  Every key names a SOURCE scalar SOME artifact declares —
-        never a path this module invented.
+  def test_every_key_is_a_declared_source_scalar_somewhere(self, primary_proj):
+    """THE DRIFT PIN.  Every key names a SOURCE scalar SOME artifact declares —
+    never a path this module invented.
 
-        ⚑ THREE KEYS, THREE CARRIERS, and naming each is the point:
+    ⚑ THREE KEYS, THREE CARRIERS, and naming each is the point:
 
-        * ``system.template`` — floor-materialized as a ``system.*`` settings-tier path,
-          so it is in neither table below;
-        * ``agent.<node>.template`` — ``launch.templates.agent_template_defaults``, which
-          ``template_seed_defaults`` composes;
-        * ``workset.template`` — ``settings_launch.workset_anchor_floor`` since
-          2026-08-29, which is why this case no longer requires the seed table to carry
-          every key.  Requiring that WOULD be the drift it is guarding against, in
-          reverse: it would forbid the fix that made the key answer for an existing box.
+    * ``system.template`` — floor-materialized as a ``system.*`` settings-tier path,
+      so it is in neither table below;
+    * ``agent.<node>.template`` — ``launch.templates.agent_template_defaults``, which
+      ``template_seed_defaults`` composes;
+    * ``workset.template`` — ``settings_launch.workset_anchor_floor`` since
+      2026-08-29, which is why this case no longer requires the seed table to carry
+      every key.  Requiring that WOULD be the drift it is guarding against, in
+      reverse: it would forbid the fix that made the key answer for an existing box.
 
-        Each value is asserted to be a ``{key}``-ref STRING, not a seeded ``(src,)`` tuple —
-        that is the half of the pin the carrier split does not touch.
-        """
-        from kanibako.settings.settings_launch import workset_anchor_floor
+    Each value is asserted to be a ``{key}``-ref STRING, not a seeded ``(src,)`` tuple —
+    that is the half of the pin the carrier split does not touch.
+    """
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
-        defs = template_seed_defaults(primary_proj, "claude")
-        floor = workset_anchor_floor(mode="primary")
-        keys = handbook_layer_source_keys(primary_proj, "claude")
-        assert keys[0] == "system.template"
-        assert "system.template" not in defs and "system.template" not in floor
-        for key in keys[1:]:
-            carrier = defs if key in defs else floor
-            assert key in carrier, key
-            # A SOURCE scalar (a ``{key}``-ref string), NOT a seeded (src, dest) tuple.
-            assert isinstance(carrier[key], str)
-        # ...and the split is the one described above, spelled out so a key silently
-        # changing carrier reds here rather than passing the loop either way.
-        assert "agent.claude.template" in defs
-        assert "workset.template" in floor and "workset.template" not in defs
+    defs = template_seed_defaults(primary_proj, "claude")
+    floor = workset_anchor_floor(mode="primary")
+    keys = handbook_layer_source_keys(primary_proj, "claude")
+    assert keys[0] == "system.template"
+    assert "system.template" not in defs and "system.template" not in floor
+    for key in keys[1:]:
+      carrier = defs if key in defs else floor
+      assert key in carrier, key
+      # A SOURCE scalar (a ``{key}``-ref string), NOT a seeded (src, dest) tuple.
+      assert isinstance(carrier[key], str)
+    # ...and the split is the one described above, spelled out so a key silently
+    # changing carrier reds here rather than passing the loop either way.
+    assert "agent.claude.template" in defs
+    assert "workset.template" in floor and "workset.template" not in defs
 
 
 class TestInstallBoxHandbookTemplate:
-    """The copier itself, driven directly: three ordered layers, create-if-absent,
-    skip-if-absent, guarantee-create — and NO dest whitelist of its own."""
+  """The copier itself, driven directly: three ordered layers, create-if-absent,
+  skip-if-absent, guarantee-create — and NO dest whitelist of its own."""
 
-    def _roots(self, tmp_path, spec):
-        """Build ``<root>/box/canon/handbook/<rel>`` trees; ``None`` = no dir."""
-        roots = []
-        for name, files in spec:
-            root = tmp_path / name
-            roots.append(root)
-            if files is None:
-                continue
-            d = root / "box" / "canon" / "handbook"
-            d.mkdir(parents=True)
-            for rel, content in files.items():
-                p = d / rel
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(content)
-        return roots
+  def _roots(self, tmp_path, spec):
+    """Build ``<root>/box/canon/handbook/<rel>`` trees; ``None`` = no dir."""
+    roots = []
+    for name, files in spec:
+      root = tmp_path / name
+      roots.append(root)
+      if files is None:
+        continue
+      d = root / "box" / "canon" / "handbook"
+      d.mkdir(parents=True)
+      for rel, content in files.items():
+        p = d / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+    return roots
 
-    def _box(self, tmp_path):
-        """The DEST alone — ``{box.canon}/handbook`` at its default resolution.
+  def _box(self, tmp_path):
+    """The DEST alone — ``{box.canon}/handbook`` at its default resolution.
 
-        The copier takes no box root: there is ONE dest policy on this path and it
-        lives at the caller (``start._host_copy_dest``).  See
-        ``install_box_handbook_template``'s "NO DEST WHITELIST HERE".
-        """
-        box_root = tmp_path / "boxes" / "mybox"
-        (box_root / "home").mkdir(parents=True)
-        return box_root / "canon" / "handbook"
+    The copier takes no box root: there is ONE dest policy on this path and it
+    lives at the caller (``start._host_copy_dest``).  See
+    ``install_box_handbook_template``'s "NO DEST WHITELIST HERE".
+    """
+    box_root = tmp_path / "boxes" / "mybox"
+    (box_root / "home").mkdir(parents=True)
+    return box_root / "canon" / "handbook"
 
-    def test_all_three_layers_land(self, tmp_path):
-        dest = self._box(tmp_path)
-        roots = self._roots(tmp_path, [
-            ("sys", {"a.md": "sys", "shared.md": "sys"}),
-            ("agent", {"b.md": "agent", "shared.md": "agent"}),
-            ("ws", {"c/deep.md": "ws", "shared.md": "ws"}),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "a.md").read_text() == "sys"
-        assert (dest / "b.md").read_text() == "agent"
-        assert (dest / "c" / "deep.md").read_text() == "ws"
+  def test_all_three_layers_land(self, tmp_path):
+    dest = self._box(tmp_path)
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"a.md": "sys", "shared.md": "sys"}),
+        ("agent", {"b.md": "agent", "shared.md": "agent"}),
+        ("ws", {"c/deep.md": "ws", "shared.md": "ws"}),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "a.md").read_text() == "sys"
+    assert (dest / "b.md").read_text() == "agent"
+    assert (dest / "c" / "deep.md").read_text() == "ws"
 
-    def test_order_last_wins_per_file(self, tmp_path):
-        dest = self._box(tmp_path)
-        roots = self._roots(tmp_path, [
-            ("sys", {"shared.md": "sys"}),
-            ("agent", {"shared.md": "agent"}),
-            ("ws", {"shared.md": "ws"}),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "shared.md").read_text() == "ws"
+  def test_order_last_wins_per_file(self, tmp_path):
+    dest = self._box(tmp_path)
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"shared.md": "sys"}),
+        ("agent", {"shared.md": "agent"}),
+        ("ws", {"shared.md": "ws"}),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "shared.md").read_text() == "ws"
 
-    def test_agent_overlays_system_when_workset_is_silent(self, tmp_path):
-        dest = self._box(tmp_path)
-        roots = self._roots(tmp_path, [
-            ("sys", {"shared.md": "sys"}),
-            ("agent", {"shared.md": "agent"}),
-            ("ws", {}),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "shared.md").read_text() == "agent"
+  def test_agent_overlays_system_when_workset_is_silent(self, tmp_path):
+    dest = self._box(tmp_path)
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"shared.md": "sys"}),
+        ("agent", {"shared.md": "agent"}),
+        ("ws", {}),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "shared.md").read_text() == "agent"
 
-    def test_absent_layer_dir_is_skipped(self, tmp_path):
-        """An unpopulated ``{workset.template}`` is the NORMAL case — the layer is
-        skipped and the others still land (no crash, no empty-dir sentinel)."""
-        dest = self._box(tmp_path)
-        roots = self._roots(tmp_path, [
-            ("sys", {"a.md": "sys"}),
-            ("agent", None),
-            ("ws", None),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "a.md").read_text() == "sys"
-        assert sorted(p.name for p in dest.rglob("*")) == ["a.md"]
+  def test_absent_layer_dir_is_skipped(self, tmp_path):
+    """An unpopulated ``{workset.template}`` is the NORMAL case — the layer is
+    skipped and the others still land (no crash, no empty-dir sentinel)."""
+    dest = self._box(tmp_path)
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"a.md": "sys"}),
+        ("agent", None),
+        ("ws", None),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "a.md").read_text() == "sys"
+    assert sorted(p.name for p in dest.rglob("*")) == ["a.md"]
 
-    def test_all_layers_absent_still_guarantee_creates_the_dest(self, tmp_path):
-        """GUARANTEE-CREATE, and the consequence is intended: because the dir always
-        exists after create, the RO box-chapter bind ``canon_hb_box`` ALWAYS
-        mounts — a user who has emptied all three template subtrees gets an EMPTY
-        read-only mount where the bind used to be omitted.
-        ``install_workset_template`` guarantee-creates its chapter the same way."""
-        dest = self._box(tmp_path)
-        roots = self._roots(tmp_path, [("sys", None), ("agent", None)])
-        install_box_handbook_template(dest, roots)
-        assert dest.is_dir()
-        assert list(dest.rglob("*")) == []
+  def test_all_layers_absent_still_guarantee_creates_the_dest(self, tmp_path):
+    """GUARANTEE-CREATE, and the consequence is intended: because the dir always
+    exists after create, the RO box-chapter bind ``canon_hb_box`` ALWAYS
+    mounts — a user who has emptied all three template subtrees gets an EMPTY
+    read-only mount where the bind used to be omitted.
+    ``install_workset_template`` guarantee-creates its chapter the same way."""
+    dest = self._box(tmp_path)
+    roots = self._roots(tmp_path, [("sys", None), ("agent", None)])
+    install_box_handbook_template(dest, roots)
+    assert dest.is_dir()
+    assert list(dest.rglob("*")) == []
 
-    def test_existing_dest_file_is_never_clobbered(self, tmp_path):
-        """CREATE-IF-ABSENT, the failsafe against the shipped re-seed data-loss bug:
-        a chapter file the user has edited survives a re-create into a leftover box
-        store, even when EVERY layer ships that same file."""
-        dest = self._box(tmp_path)
-        dest.mkdir(parents=True)
-        (dest / "shared.md").write_text("USER OWNED")
-        roots = self._roots(tmp_path, [
-            ("sys", {"shared.md": "sys", "new.md": "sys"}),
-            ("agent", {"shared.md": "agent"}),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "shared.md").read_text() == "USER OWNED"
-        # ...and the copy is still ADDITIVE around it.
-        assert (dest / "new.md").read_text() == "sys"
+  def test_existing_dest_file_is_never_clobbered(self, tmp_path):
+    """CREATE-IF-ABSENT, the failsafe against the shipped re-seed data-loss bug:
+    a chapter file the user has edited survives a re-create into a leftover box
+    store, even when EVERY layer ships that same file."""
+    dest = self._box(tmp_path)
+    dest.mkdir(parents=True)
+    (dest / "shared.md").write_text("USER OWNED")
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"shared.md": "sys", "new.md": "sys"}),
+        ("agent", {"shared.md": "agent"}),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "shared.md").read_text() == "USER OWNED"
+    # ...and the copy is still ADDITIVE around it.
+    assert (dest / "new.md").read_text() == "sys"
 
-    def test_the_copier_applies_no_dest_whitelist_of_its_own(self, tmp_path):
-        """⚑ THE ANTI-RESTORATION PIN.  There is ONE dest policy on this path —
-        ``start._host_copy_dest``'s warn-and-skip at the caller — and the copier
-        deliberately adds no ``scope="box"`` :data:`SCOPE_WHITELISTS` check of its
-        own.  A dest inside the box store but OUTSIDE ``canon/handbook`` is COPIED,
-        not refused: the whitelist could only ever fire on the dest (which is
-        key-fixed, and already checked with the opposite severity), never on layer
-        CONTENT, because ``stage_layers`` builds its relative paths by ``rglob``
-        under the staged tree.  Two spellings of one condition (CONVENTIONS §0).
-        If this test starts failing, a whitelist has been "restored" — read the
-        function docstring before changing it back."""
-        box_root = tmp_path / "boxes" / "mybox"
-        (box_root / "home").mkdir(parents=True)
-        roots = self._roots(tmp_path, [("sys", {"a.md": "sys"})])
-        repointed = box_root / "canon2" / "handbook"  # NOT ``canon/handbook``.
-        install_box_handbook_template(repointed, roots)
-        assert (repointed / "a.md").read_text() == "sys"
+  def test_the_copier_applies_no_dest_whitelist_of_its_own(self, tmp_path):
+    """⚑ THE ANTI-RESTORATION PIN.  There is ONE dest policy on this path —
+    ``start._host_copy_dest``'s warn-and-skip at the caller — and the copier
+    deliberately adds no ``scope="box"`` :data:`SCOPE_WHITELISTS` check of its
+    own.  A dest inside the box store but OUTSIDE ``canon/handbook`` is COPIED,
+    not refused: the whitelist could only ever fire on the dest (which is
+    key-fixed, and already checked with the opposite severity), never on layer
+    CONTENT, because ``stage_layers`` builds its relative paths by ``rglob``
+    under the staged tree.  Two spellings of one condition (CONVENTIONS §0).
+    If this test starts failing, a whitelist has been "restored" — read the
+    function docstring before changing it back."""
+    box_root = tmp_path / "boxes" / "mybox"
+    (box_root / "home").mkdir(parents=True)
+    roots = self._roots(tmp_path, [("sys", {"a.md": "sys"})])
+    repointed = box_root / "canon2" / "handbook"  # NOT ``canon/handbook``.
+    install_box_handbook_template(repointed, roots)
+    assert (repointed / "a.md").read_text() == "sys"
 
-    def test_layer_content_cannot_escape_the_dest_subtree(self, tmp_path):
-        """And the reason no content whitelist is owed: ``stage_layers`` relativizes
-        every entry UNDER each layer root, so a layer that ships a top-level name the
-        box whitelist would deny (``box.yaml``, ``registry.yaml``) still lands
-        INSIDE the dest — it cannot reach a sibling entry of the box store."""
-        dest = self._box(tmp_path)
-        box_root = dest.parent.parent
-        roots = self._roots(tmp_path, [
-            ("sys", {"box.yaml": "x", "registry.yaml": "y"}),
-        ])
-        install_box_handbook_template(dest, roots)
-        assert (dest / "box.yaml").read_text() == "x"
-        assert not (box_root / "box.yaml").exists()
-        assert not (box_root / "registry.yaml").exists()
+  def test_layer_content_cannot_escape_the_dest_subtree(self, tmp_path):
+    """And the reason no content whitelist is owed: ``stage_layers`` relativizes
+    every entry UNDER each layer root, so a layer that ships a top-level name the
+    box whitelist would deny (``box.yaml``, ``registry.yaml``) still lands
+    INSIDE the dest — it cannot reach a sibling entry of the box store."""
+    dest = self._box(tmp_path)
+    box_root = dest.parent.parent
+    roots = self._roots(
+      tmp_path,
+      [
+        ("sys", {"box.yaml": "x", "registry.yaml": "y"}),
+      ],
+    )
+    install_box_handbook_template(dest, roots)
+    assert (dest / "box.yaml").read_text() == "x"
+    assert not (box_root / "box.yaml").exists()
+    assert not (box_root / "registry.yaml").exists()
 
 
 class TestBoxHandbookHostCopyThroughTheSeam:
-    """The ``_seed_box_home`` step-3 seam: KEYS in, resolved paths out."""
+  """The ``_seed_box_home`` step-3 seam: KEYS in, resolved paths out."""
 
-    def _populate(self, std):
-        install_packaged_templates(std, ["claude"])
-        for root, marker in (
-            (std.template, "sys"),
-            (std.agents / "claude" / "template", "agent"),
-            (std.primary_workset / "template", "workset"),
-        ):
-            d = root / "box" / "canon" / "handbook"
-            d.mkdir(parents=True, exist_ok=True)
-            (d / f"{marker}-only.md").write_text(marker)
-            (d / "shared.md").write_text(marker)
-
-    def test_the_copy_fills_box_canon_handbook_from_all_three_layers(
-        self, std, config, primary_proj,
+  def _populate(self, std):
+    install_packaged_templates(std, ["claude"])
+    for root, marker in (
+      (std.template, "sys"),
+      (std.agents / "claude" / "template", "agent"),
+      (std.primary_workset / "template", "workset"),
     ):
-        self._populate(std)
-        _install_handbook(std, primary_proj)
-        hb = _handbook_dir(primary_proj)
-        assert (hb / "sys-only.md").read_text() == "sys"
-        assert (hb / "agent-only.md").read_text() == "agent"
-        assert (hb / "workset-only.md").read_text() == "workset"
-        assert (hb / "shared.md").read_text() == "workset"
-        # The packaged box chapter rides the system layer.
-        assert (hb / "SYS_BOX.md").is_file()
+      d = root / "box" / "canon" / "handbook"
+      d.mkdir(parents=True, exist_ok=True)
+      (d / f"{marker}-only.md").write_text(marker)
+      (d / "shared.md").write_text(marker)
 
-    def test_it_lands_on_the_host_store_and_never_in_the_box_home(
-        self, std, config, primary_proj,
-    ):
-        """It is a HOST template: nothing it writes may appear under the box home,
-        which is the directory the guest actually sees at ``~``."""
-        self._populate(std)
-        _install_handbook(std, primary_proj)
-        assert _handbook_dir(primary_proj).parent != primary_proj.shell_path
-        assert not list(primary_proj.shell_path.rglob("sys-only.md"))
+  def test_the_copy_fills_box_canon_handbook_from_all_three_layers(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    self._populate(std)
+    _install_handbook(std, primary_proj)
+    hb = _handbook_dir(primary_proj)
+    assert (hb / "sys-only.md").read_text() == "sys"
+    assert (hb / "agent-only.md").read_text() == "agent"
+    assert (hb / "workset-only.md").read_text() == "workset"
+    assert (hb / "shared.md").read_text() == "workset"
+    # The packaged box chapter rides the system layer.
+    assert (hb / "SYS_BOX.md").is_file()
 
-    def test_a_shell_box_gets_system_and_workset_only(
-        self, std, config, primary_proj,
-    ):
-        """⚑ END-TO-END CONFIRMATION, NOT THE PIN.  ``agent-only.md`` is absent here
-        for TWO independent reasons (the key list omits the agent layer, AND the
-        no-agent snapshot never declares ``agent.<a>.template`` for it to resolve),
-        so this negative does not discriminate on its own — it survives a mutation
-        that puts the agent key back.  The DISCRIMINATING pin is
-        ``TestHandbookLayerSourceKeys.test_shell_omits_the_agent_layer``."""
-        self._populate(std)
-        _install_handbook(std, primary_proj, agent="")
-        hb = _handbook_dir(primary_proj)
-        assert (hb / "sys-only.md").is_file()
-        assert (hb / "workset-only.md").is_file()
-        assert not (hb / "agent-only.md").exists()
-        assert (hb / "shared.md").read_text() == "workset"
+  def test_it_lands_on_the_host_store_and_never_in_the_box_home(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """It is a HOST template: nothing it writes may appear under the box home,
+    which is the directory the guest actually sees at ``~``."""
+    self._populate(std)
+    _install_handbook(std, primary_proj)
+    assert _handbook_dir(primary_proj).parent != primary_proj.shell_path
+    assert not list(primary_proj.shell_path.rglob("sys-only.md"))
 
-    def _plant_shell_store(self, std):
-        d = std.agents / "shell" / "template" / "box" / "canon" / "handbook"
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "agent-only.md").write_text("shell store")
+  def test_a_shell_box_gets_system_and_workset_only(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """⚑ END-TO-END CONFIRMATION, NOT THE PIN.  ``agent-only.md`` is absent here
+    for TWO independent reasons (the key list omits the agent layer, AND the
+    no-agent snapshot never declares ``agent.<a>.template`` for it to resolve),
+    so this negative does not discriminate on its own — it survives a mutation
+    that puts the agent key back.  The DISCRIMINATING pin is
+    ``TestHandbookLayerSourceKeys.test_shell_omits_the_agent_layer``."""
+    self._populate(std)
+    _install_handbook(std, primary_proj, agent="")
+    hb = _handbook_dir(primary_proj)
+    assert (hb / "sys-only.md").is_file()
+    assert (hb / "workset-only.md").is_file()
+    assert not (hb / "agent-only.md").exists()
+    assert (hb / "shared.md").read_text() == "workset"
 
-    def test_a_shell_node_box_skips_the_agent_layer_quietly(
-        self, std, config, primary_proj, caplog,
-    ):
-        """Node ``shell``: the §2d fence's ``agent.shell.template: <None>`` is a
-        SUPPLIED value, so the agent layer is skipped — and skipped QUIETLY, because a
-        ``<None>`` source is not a key that failed to resolve.  A warning here would
-        print on every plain-shell create."""
-        self._populate(std)
-        self._plant_shell_store(std)
-        with caplog.at_level(logging.WARNING):
-            _install_handbook(std, primary_proj, agent="shell")
-        hb = _handbook_dir(primary_proj)
-        assert (hb / "sys-only.md").is_file()
-        assert (hb / "workset-only.md").is_file()
-        assert not (hb / "agent-only.md").exists()
-        assert not [r for r in caplog.records if "did not resolve" in r.getMessage()]
+  def _plant_shell_store(self, std):
+    d = std.agents / "shell" / "template" / "box" / "canon" / "handbook"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "agent-only.md").write_text("shell store")
 
-    def test_a_user_set_shell_template_reaches_the_handbook_copy(
-        self, std, config, primary_proj,
-    ):
-        """A user-set ``agent.shell.template`` feeds the handbook's agent layer, the
-        same source the home seed reads."""
-        self._populate(std)
-        self._plant_shell_store(std)
-        _write_system_settings(
-            std, {"agent": {"shell": {"template": "{config.agents}/shell/template"}}},
-        )
-        _install_handbook(std, primary_proj, agent="shell")
-        assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
-            "shell store"
-        )
+  def test_a_shell_node_box_skips_the_agent_layer_quietly(
+    self,
+    std,
+    config,
+    primary_proj,
+    caplog,
+  ):
+    """Node ``shell``: the §2d fence's ``agent.shell.template: <None>`` is a
+    SUPPLIED value, so the agent layer is skipped — and skipped QUIETLY, because a
+    ``<None>`` source is not a key that failed to resolve.  A warning here would
+    print on every plain-shell create."""
+    self._populate(std)
+    self._plant_shell_store(std)
+    with caplog.at_level(logging.WARNING):
+      _install_handbook(std, primary_proj, agent="shell")
+    hb = _handbook_dir(primary_proj)
+    assert (hb / "sys-only.md").is_file()
+    assert (hb / "workset-only.md").is_file()
+    assert not (hb / "agent-only.md").exists()
+    assert not [r for r in caplog.records if "did not resolve" in r.getMessage()]
 
-    def test_a_cli_set_shell_template_reaches_the_handbook_copy(
-        self, std, config, primary_proj, capsys,
-    ):
-        """``system set agent.shell.template=…`` feeds the handbook's agent layer too.
+  def test_a_user_set_shell_template_reaches_the_handbook_copy(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """A user-set ``agent.shell.template`` feeds the handbook's agent layer, the
+    same source the home seed reads."""
+    self._populate(std)
+    self._plant_shell_store(std)
+    _write_system_settings(
+      std,
+      {"agent": {"shell": {"template": "{config.agents}/shell/template"}}},
+    )
+    _install_handbook(std, primary_proj, agent="shell")
+    assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == ("shell store")
 
-        The verb writes the system settings file, and the handbook copy reads the
-        snapshot the create seed resolve built, so that resolve must read the file.
-        """
-        self._populate(std)
-        self._plant_shell_store(std)
-        _cli_set_agent_key(
-            std, "system set", "shell", "template", "{config.agents}/shell/template",
-        )
-        _install_handbook(std, primary_proj, agent="shell")
-        assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
-            "shell store"
-        )
+  def test_a_cli_set_shell_template_reaches_the_handbook_copy(
+    self,
+    std,
+    config,
+    primary_proj,
+    capsys,
+  ):
+    """``system set agent.shell.template=…`` feeds the handbook's agent layer too.
 
-    def test_workset_template_repoint_reroutes_the_copy(
-        self, std, config, primary_proj, tmp_path,
-    ):
-        """MUTATION PROOF that the sources are KEYS: setting ``workset.template`` in
-        the workset settings file reroutes layer 3.  Nothing here reads a path this
-        module chose."""
-        self._populate(std)
-        custom = tmp_path / "custom-tpl" / "box" / "canon" / "handbook"
-        custom.mkdir(parents=True)
-        (custom / "CUSTOM.md").write_text("custom")
+    The verb writes the system settings file, and the handbook copy reads the
+    snapshot the create seed resolve built, so that resolve must read the file.
+    """
+    self._populate(std)
+    self._plant_shell_store(std)
+    _cli_set_agent_key(
+      std,
+      "system set",
+      "shell",
+      "template",
+      "{config.agents}/shell/template",
+    )
+    _install_handbook(std, primary_proj, agent="shell")
+    assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == ("shell store")
 
-        wsf = std.primary_workset / "workset.yaml"
-        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
-        doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
-        wsf.write_text(yaml.safe_dump(doc))
+  def test_workset_template_repoint_reroutes_the_copy(
+    self,
+    std,
+    config,
+    primary_proj,
+    tmp_path,
+  ):
+    """MUTATION PROOF that the sources are KEYS: setting ``workset.template`` in
+    the workset settings file reroutes layer 3.  Nothing here reads a path this
+    module chose."""
+    self._populate(std)
+    custom = tmp_path / "custom-tpl" / "box" / "canon" / "handbook"
+    custom.mkdir(parents=True)
+    (custom / "CUSTOM.md").write_text("custom")
 
-        _install_handbook(std, primary_proj)
-        hb = _handbook_dir(primary_proj)
-        assert (hb / "CUSTOM.md").read_text() == "custom"
-        # The DEFAULT workset template dir is no longer read.
-        assert not (hb / "workset-only.md").exists()
+    wsf = std.primary_workset / "workset.yaml"
+    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
+    wsf.write_text(yaml.safe_dump(doc))
 
-    def _set_box_canon(self, proj, value):
-        """Repoint ``box.canon`` in the box's own settings file (keyspec §0: an absolute
-        per-owner path is the box's to set, not one a containing scope may share)."""
-        from kanibako.settings.paths import box_workset_settings_paths
+    _install_handbook(std, primary_proj)
+    hb = _handbook_dir(primary_proj)
+    assert (hb / "CUSTOM.md").read_text() == "custom"
+    # The DEFAULT workset template dir is no longer read.
+    assert not (hb / "workset-only.md").exists()
 
-        wsf, _ = box_workset_settings_paths(proj)
-        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
-        doc.setdefault("box", {})["canon"] = str(value)
-        wsf.write_text(yaml.safe_dump(doc))
+  def _set_box_canon(self, proj, value):
+    """Repoint ``box.canon`` in the box's own settings file (keyspec §0: an absolute
+    per-owner path is the box's to set, not one a containing scope may share)."""
+    from kanibako.settings.paths import box_workset_settings_paths
 
-    def test_an_escaping_box_canon_is_skipped_with_a_warning(
-        self, std, config, primary_proj, caplog, tmp_path,
-    ):
-        """§2a enforcement point 2, and the ONE dest policy on this path: a
-        ``box.canon`` outside the box store is refused by SKIPPING with a warning,
-        not by raising — a mis-declared key must not cost the user the box.
+    wsf, _ = box_workset_settings_paths(proj)
+    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc.setdefault("box", {})["canon"] = str(value)
+    wsf.write_text(yaml.safe_dump(doc))
 
-        ⚑ Driven through the WHOLE ``_seed_box_home``, not step 3 alone, because
-        "does not cost the user the box" is the claim: create must still complete and
-        the box's other seeds must still be on disk afterwards."""
-        self._populate(std)
-        escape = tmp_path / "ESCAPED"
-        self._set_box_canon(primary_proj, escape)
-        with caplog.at_level(logging.WARNING):
-            _seed_box(std, primary_proj)     # steps 1-3, as ``box create`` runs
-        # Nothing was written outside the box store...
-        assert not escape.exists()
-        assert not (escape / "handbook").exists()
-        # ...the skip was LOUD...
-        assert any(
-            "handbook template" in r.getMessage()
-            and "outside the box store" in r.getMessage()
-            for r in caplog.records
-        )
-        # ...and the create still succeeded: the box HOME seed landed regardless.
-        assert (
-            primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
+  def test_an_escaping_box_canon_is_skipped_with_a_warning(
+    self,
+    std,
+    config,
+    primary_proj,
+    caplog,
+    tmp_path,
+  ):
+    """§2a enforcement point 2, and the ONE dest policy on this path: a
+    ``box.canon`` outside the box store is refused by SKIPPING with a warning,
+    not by raising — a mis-declared key must not cost the user the box.
 
-    def test_a_box_canon_repointed_inside_the_box_store_still_creates(
-        self, std, config, primary_proj,
-    ):
-        """⚑ THE REGRESSION THIS FIX EXISTS TO PREVENT.  ``box.canon`` repointed to
-        another entry INSIDE the box store is a legal, accepted configuration: the
-        one dest policy (``_host_copy_dest``) checks CONTAINMENT only, so ``box
-        create`` SUCCEEDS and the chapter lands at the repointed dest.
+    ⚑ Driven through the WHOLE ``_seed_box_home``, not step 3 alone, because
+    "does not cost the user the box" is the claim: create must still complete and
+    the box's other seeds must still be on disk afterwards."""
+    self._populate(std)
+    escape = tmp_path / "ESCAPED"
+    self._set_box_canon(primary_proj, escape)
+    with caplog.at_level(logging.WARNING):
+      _seed_box(std, primary_proj)  # steps 1-3, as ``box create`` runs
+    # Nothing was written outside the box store...
+    assert not escape.exists()
+    assert not (escape / "handbook").exists()
+    # ...the skip was LOUD...
+    assert any(
+      "handbook template" in r.getMessage() and "outside the box store" in r.getMessage()
+      for r in caplog.records
+    )
+    # ...and the create still succeeded: the box HOME seed landed regardless.
+    assert (primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
-        A ``scope="box"`` whitelist on the copier would have RAISED here —
-        ``canon2`` is not in ``SCOPE_WHITELISTS["box"]`` — killing a create the
-        retired ``seeded`` route always allowed.  That is why there is only one
-        check.
+  def test_a_box_canon_repointed_inside_the_box_store_still_creates(
+    self,
+    std,
+    config,
+    primary_proj,
+  ):
+    """⚑ THE REGRESSION THIS FIX EXISTS TO PREVENT.  ``box.canon`` repointed to
+    another entry INSIDE the box store is a legal, accepted configuration: the
+    one dest policy (``_host_copy_dest``) checks CONTAINMENT only, so ``box
+    create`` SUCCEEDS and the chapter lands at the repointed dest.
 
-        TWO passes, and they claim different things: the first is the WHOLE
-        ``_seed_box_home`` ("create succeeds and the chapter lands"), the second
-        wipes the dest and drives step 3 alone (so what REFILLS it is unambiguously
-        this route, not an artifact of an earlier step)."""
-        from kanibako.commands.start import _install_box_handbook
+    A ``scope="box"`` whitelist on the copier would have RAISED here —
+    ``canon2`` is not in ``SCOPE_WHITELISTS["box"]`` — killing a create the
+    retired ``seeded`` route always allowed.  That is why there is only one
+    check.
 
-        self._populate(std)
-        box_root = primary_proj.shell_path.parent
-        self._set_box_canon(primary_proj, box_root / "canon2")
-        hb = box_root / "canon2" / "handbook"
+    TWO passes, and they claim different things: the first is the WHOLE
+    ``_seed_box_home`` ("create succeeds and the chapter lands"), the second
+    wipes the dest and drives step 3 alone (so what REFILLS it is unambiguously
+    this route, not an artifact of an earlier step)."""
+    from kanibako.commands.start import _install_box_handbook
 
-        _seed_box(std, primary_proj)         # steps 1-3; must NOT raise
-        assert (hb / "sys-only.md").read_text() == "sys"
-        assert (hb / "workset-only.md").read_text() == "workset"
-        # The create completed: the box home seed landed too.
-        assert (
-            primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
+    self._populate(std)
+    box_root = primary_proj.shell_path.parent
+    self._set_box_canon(primary_proj, box_root / "canon2")
+    hb = box_root / "canon2" / "handbook"
 
-        # Step 3 ALONE also accepts the repointed dest.
-        snapshot = _seed_snapshot(std, primary_proj)
-        shutil.rmtree(hb, ignore_errors=True)
-        _install_box_handbook(
-            proj=primary_proj, snapshot=snapshot, agent_id="claude",
-            logger=logging.getLogger("test-handbook"),
-        )
-        assert (hb / "sys-only.md").read_text() == "sys"
+    _seed_box(std, primary_proj)  # steps 1-3; must NOT raise
+    assert (hb / "sys-only.md").read_text() == "sys"
+    assert (hb / "workset-only.md").read_text() == "workset"
+    # The create completed: the box home seed landed too.
+    assert (primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
-    def test_box_create_still_delivers_the_whole_chapter_by_this_route_alone(
-        self, std, config, tmp_home,
-    ):
-        """⚑⚑ THE H2 DELIVERY CHECK, and the point of the phase: with the ``seeded``
-        handbook layers GONE, a box created the way ``box create`` creates one still
-        has its full three-layer ``{box.canon}/handbook`` — delivered by this route
-        alone.
+    # Step 3 ALONE also accepts the repointed dest.
+    snapshot = _seed_snapshot(std, primary_proj)
+    shutil.rmtree(hb, ignore_errors=True)
+    _install_box_handbook(
+      proj=primary_proj,
+      snapshot=snapshot,
+      agent_id="claude",
+      logger=logging.getLogger("test-handbook"),
+    )
+    assert (hb / "sys-only.md").read_text() == "sys"
 
-        Both halves are asserted against the SAME populated store, so neither is
-        vacuous: step 2 alone leaves the dest ABSENT, and the whole
-        ``_seed_box_home`` fills it with every layer's marker plus the packaged box
-        chapter.  A one-sided check would pass if the copy silently stopped running
-        (nothing would be there to compare) or if a twin route came back."""
-        self._populate(std)
-        one = tmp_home / "proj-seed-only"
-        one.mkdir()
-        two = tmp_home / "proj-real-create"
-        two.mkdir()
-        seed_only = resolve_project(std, config, str(one), initialize=True)
-        created = resolve_project(std, config, str(two), initialize=True)
+  def test_box_create_still_delivers_the_whole_chapter_by_this_route_alone(
+    self,
+    std,
+    config,
+    tmp_home,
+  ):
+    """⚑⚑ THE H2 DELIVERY CHECK, and the point of the phase: with the ``seeded``
+    handbook layers GONE, a box created the way ``box create`` creates one still
+    has its full three-layer ``{box.canon}/handbook`` — delivered by this route
+    alone.
 
-        _seed(std, seed_only)          # step 2 alone (the ``seeded`` route)
-        _seed_box(std, created)        # steps 1-3, exactly as ``box create`` runs
+    Both halves are asserted against the SAME populated store, so neither is
+    vacuous: step 2 alone leaves the dest ABSENT, and the whole
+    ``_seed_box_home`` fills it with every layer's marker plus the packaged box
+    chapter.  A one-sided check would pass if the copy silently stopped running
+    (nothing would be there to compare) or if a twin route came back."""
+    self._populate(std)
+    one = tmp_home / "proj-seed-only"
+    one.mkdir()
+    two = tmp_home / "proj-real-create"
+    two.mkdir()
+    seed_only = resolve_project(std, config, str(one), initialize=True)
+    created = resolve_project(std, config, str(two), initialize=True)
 
-        # The retired route delivers NOTHING to the chapter...
-        assert _tree(_handbook_dir(seed_only)) == {}
-        # ...and the real create delivers ALL THREE layers, last-wins per file.
-        after = _tree(_handbook_dir(created))
-        assert after.get("sys-only.md") == b"sys"
-        assert after.get("agent-only.md") == b"agent"
-        assert after.get("workset-only.md") == b"workset"
-        assert after.get("shared.md") == b"workset"
-        assert "SYS_BOX.md" in after, sorted(after)
+    _seed(std, seed_only)  # step 2 alone (the ``seeded`` route)
+    _seed_box(std, created)  # steps 1-3, exactly as ``box create`` runs
+
+    # The retired route delivers NOTHING to the chapter...
+    assert _tree(_handbook_dir(seed_only)) == {}
+    # ...and the real create delivers ALL THREE layers, last-wins per file.
+    after = _tree(_handbook_dir(created))
+    assert after.get("sys-only.md") == b"sys"
+    assert after.get("agent-only.md") == b"agent"
+    assert after.get("workset-only.md") == b"workset"
+    assert after.get("shared.md") == b"workset"
+    assert "SYS_BOX.md" in after, sorted(after)
 
 
 # ---------------------------------------------------------------------------
 # Packaged curated-template install (Phase 9c) — the packaged->runtime copy.
 # ---------------------------------------------------------------------------
 
+
 class TestANullSystemCanonInstallsNoChapter:
-    """A null ``system.canon`` has no ROOT, so nothing is created into it.
+  """A null ``system.canon`` has no ROOT, so nothing is created into it.
 
-    ``system.canon`` is a standard bind's SOURCE key, so ``StandardPaths.canon`` admits
-    ``None`` — the value a user who set the key to ``<None>`` gets.  The handbook copy
-    is create-if-absent into ``std.canon / handbook``, so the dest is the one expression
-    in the installer that divides a possibly-null path, and both the installer and the
-    refresh preview reach it.
-    """
+  ``system.canon`` is a standard bind's SOURCE key, so ``StandardPaths.canon`` admits
+  ``None`` — the value a user who set the key to ``<None>`` gets.  The handbook copy
+  is create-if-absent into ``std.canon / handbook``, so the dest is the one expression
+  in the installer that divides a possibly-null path, and both the installer and the
+  refresh preview reach it.
+  """
 
-    @staticmethod
-    def _nulled_canon(std):
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.paths import load_std_paths
+  @staticmethod
+  def _nulled_canon(std):
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.paths import load_std_paths
 
-        write_nested_key(std.settings, ("system",), "canon", None)
-        nulled = load_std_paths()
-        assert nulled.canon is None
-        return nulled
+    write_nested_key(std.settings, ("system",), "canon", None)
+    nulled = load_std_paths()
+    assert nulled.canon is None
+    return nulled
 
-    def test_install_creates_nothing_and_does_not_raise(self, std, tmp_home):
-        nulled = self._nulled_canon(std)
-        install_packaged_templates(nulled, ["claude"])
-        # ⚑ NO DIRECTORY NAMED ``None``: a crash-avoiding fallback that wrote the four
-        # characters would satisfy "did not raise" on its own.
-        assert sorted(p for p in tmp_home.rglob("None")) == []
+  def test_install_creates_nothing_and_does_not_raise(self, std, tmp_home):
+    nulled = self._nulled_canon(std)
+    install_packaged_templates(nulled, ["claude"])
+    # ⚑ NO DIRECTORY NAMED ``None``: a crash-avoiding fallback that wrote the four
+    # characters would satisfy "did not raise" on its own.
+    assert sorted(p for p in tmp_home.rglob("None")) == []
 
-    def test_the_sibling_stores_still_install(self, std):
-        """The control: a null canon suppresses ONE dest, not the whole install."""
-        nulled = self._nulled_canon(std)
-        install_packaged_templates(nulled, ["claude"])
-        assert (nulled.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
-        assert (nulled.template / "box" / "home" / "canon" / "notebook").is_dir()
+  def test_the_sibling_stores_still_install(self, std):
+    """The control: a null canon suppresses ONE dest, not the whole install."""
+    nulled = self._nulled_canon(std)
+    install_packaged_templates(nulled, ["claude"])
+    assert (nulled.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
+    assert (nulled.template / "box" / "home" / "canon" / "notebook").is_dir()
 
-    def test_the_refresh_preview_classifies_without_the_chapter(self, std):
-        """``plan_template_refresh`` is a PURE classification, and the same dest is
-        reached from its own ``_walk`` — a second site with the same division."""
-        nulled = self._nulled_canon(std)
-        added, overwritten, kept = plan_template_refresh(nulled, ["claude"])
-        reported = [*added, *overwritten, *kept]
-        assert not [p for p in reported if p is None]
-        assert any(p.parent.name == "handbook" for p in reported), (
-            "the preview classified nothing at all, so this would pass on a null canon "
-            "for the wrong reason"
-        )
+  def test_the_refresh_preview_classifies_without_the_chapter(self, std):
+    """``plan_template_refresh`` is a PURE classification, and the same dest is
+    reached from its own ``_walk`` — a second site with the same division."""
+    nulled = self._nulled_canon(std)
+    added, overwritten, kept = plan_template_refresh(nulled, ["claude"])
+    reported = [*added, *overwritten, *kept]
+    assert not [p for p in reported if p is None]
+    assert any(p.parent.name == "handbook" for p in reported), (
+      "the preview classified nothing at all, so this would pass on a null canon "
+      "for the wrong reason"
+    )
 
 
 class TestInstallPackagedTemplates:
-    """The ENUMERATED install (P-S2): four (packaged subtree → host dest) pairs, each
-    with its own owner and therefore its own copy rule."""
+  """The ENUMERATED install (P-S2): four (packaged subtree → host dest) pairs, each
+  with its own owner and therefore its own copy rule."""
 
-    def test_box_and_workset_molds_staged(self, std):
-        """``template/{box,workset}`` → ``{system.template}/{box,workset}`` (STAGING)."""
-        install_packaged_templates(std, ["claude", "goose", "codex"])
-        assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
-        assert (
-            std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
-        ).is_file()
-        assert (
-            std.template / "box" / "home" / "canon" / "workbook" / "state" / "status.md"
-        ).is_file()
-        assert (
-            std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "main.md"
-        ).is_file()
-        assert (
-            std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "product.md"
-        ).is_file()
-        assert (
-            std.template / "box" / "canon" / "handbook" / "SYS_BOX.md"
-        ).is_file()
-        assert (
-            std.template / "workset" / "canon" / "handbook" / "SYS_WORKSET.md"
-        ).is_file()
+  def test_box_and_workset_molds_staged(self, std):
+    """``template/{box,workset}`` → ``{system.template}/{box,workset}`` (STAGING)."""
+    install_packaged_templates(std, ["claude", "goose", "codex"])
+    assert (std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (
+      std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
+    ).is_file()
+    assert (std.template / "box" / "home" / "canon" / "workbook" / "state" / "status.md").is_file()
+    assert (std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "main.md").is_file()
+    assert (
+      std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "product.md"
+    ).is_file()
+    assert (std.template / "box" / "canon" / "handbook" / "SYS_BOX.md").is_file()
+    assert (std.template / "workset" / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
 
-    def test_handbook_goes_straight_to_system_canon(self, std):
-        """P-S2: the packaged handbook installs DIRECTLY to ``{system.canon}/handbook``
-        — never staged under ``{system.template}``, which would leave a second,
-        never-read copy (the duplicated-shared-data defect)."""
-        install_packaged_templates(std, ["claude"])
-        assert (std.canon / "handbook" / "SYS_CONTENTS.md").is_file()
-        assert (
-            std.canon / "handbook" / "general" / "SYS_GENERAL.md"
-        ).is_file()
-        assert not (std.template / PACKAGED_HANDBOOK).exists()
-        assert not (std.template / "system").exists()
+  def test_handbook_goes_straight_to_system_canon(self, std):
+    """P-S2: the packaged handbook installs DIRECTLY to ``{system.canon}/handbook``
+    — never staged under ``{system.template}``, which would leave a second,
+    never-read copy (the duplicated-shared-data defect)."""
+    install_packaged_templates(std, ["claude"])
+    assert (std.canon / "handbook" / "SYS_CONTENTS.md").is_file()
+    assert (std.canon / "handbook" / "general" / "SYS_GENERAL.md").is_file()
+    assert not (std.template / PACKAGED_HANDBOOK).exists()
+    assert not (std.template / "system").exists()
 
-    def test_system_handbook_ships_no_scope_chapter_stubs(self, std):
-        """The D2 cut: the system store supplies SYS_CONTENTS.md + ``general`` ONLY.
-        An absent scope chapter shows an empty root-owned mountpoint, not the
-        system's copy — there is deliberately no system-supplied fallback."""
-        install_packaged_templates(std, ["claude"])
-        hb = std.canon / "handbook"
-        assert not (hb / "agent").exists()
-        assert not (hb / "workset").exists()
-        assert not (hb / "box").exists()
+  def test_system_handbook_ships_no_scope_chapter_stubs(self, std):
+    """The D2 cut: the system store supplies SYS_CONTENTS.md + ``general`` ONLY.
+    An absent scope chapter shows an empty root-owned mountpoint, not the
+    system's copy — there is deliberately no system-supplied fallback."""
+    install_packaged_templates(std, ["claude"])
+    hb = std.canon / "handbook"
+    assert not (hb / "agent").exists()
+    assert not (hb / "workset").exists()
+    assert not (hb / "box").exists()
 
-    def test_agent_mold_dir_is_guarantee_created_empty(self, std):
-        """J-5/D5: the agent MOLD ships EMPTY (a wheel cannot ship an empty dir), so
-        the host dir is guarantee-created by the install action (D7)."""
-        install_packaged_templates(std, ["claude"])
-        mold = std.template / "agent"
-        assert mold.is_dir()
-        assert list(mold.rglob("*")) == []
+  def test_agent_mold_dir_is_guarantee_created_empty(self, std):
+    """J-5/D5: the agent MOLD ships EMPTY (a wheel cannot ship an empty dir), so
+    the host dir is guarantee-created by the install action (D7)."""
+    install_packaged_templates(std, ["claude"])
+    mold = std.template / "agent"
+    assert mold.is_dir()
+    assert list(mold.rglob("*")) == []
 
-    def test_agent_default_store_stamped_from_the_package(self, std):
-        """``agents/default`` gets the packaged ``templates/agent`` DIRECTLY from the
-        package — no host staging, because one default agent means a staged copy
-        would be read once and never again."""
-        install_packaged_templates(std, ["claude"])
-        assert (
-            std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
-        ).is_file()
+  def test_agent_default_store_stamped_from_the_package(self, std):
+    """``agents/default`` gets the packaged ``templates/agent`` DIRECTLY from the
+    package — no host staging, because one default agent means a staged copy
+    would be read once and never again."""
+    install_packaged_templates(std, ["claude"])
+    assert (std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
 
-    def test_claude_store_landed(self, std):
-        """The claude plugin's ``data/base`` payload is stamped into its STORE:
-        the box-home template AND the plugin's own handbook chapter."""
-        install_packaged_templates(std, ["claude"])
-        store = std.agents / "claude"
-        assert (store / "template" / "box" / "home" / ".claude.json").is_file()
-        assert (
-            store / "template" / "box" / "home" / ".claude" / "settings.json"
-        ).is_file()
-        assert (store / "canon" / "handbook" / "SYS_AGENT.md").is_file()
-        import json
-        data = json.loads(
-            (store / "template" / "box" / "home" / ".claude.json").read_text()
-        )
-        assert data.get("hasCompletedOnboarding") is True
+  def test_claude_store_landed(self, std):
+    """The claude plugin's ``data/base`` payload is stamped into its STORE:
+    the box-home template AND the plugin's own handbook chapter."""
+    install_packaged_templates(std, ["claude"])
+    store = std.agents / "claude"
+    assert (store / "template" / "box" / "home" / ".claude.json").is_file()
+    assert (store / "template" / "box" / "home" / ".claude" / "settings.json").is_file()
+    assert (store / "canon" / "handbook" / "SYS_AGENT.md").is_file()
+    import json
 
-    def test_goose_and_codex_stores_landed(self, std):
-        install_packaged_templates(std, ["goose", "codex"])
-        assert (
-            std.agents / "goose" / "template" / "box" / "home" / ".config" / "goose"
-            / "config.yaml"
-        ).is_file()
-        assert (
-            std.agents / "codex" / "template" / "box" / "home" / ".codex"
-            / "config.toml"
-        ).is_file()
+    data = json.loads((store / "template" / "box" / "home" / ".claude.json").read_text())
+    assert data.get("hasCompletedOnboarding") is True
 
-    def test_unknown_agent_gets_a_store_but_no_payload(self, std):
-        """An agent with no packaged payload (e.g. shell) still gets its store
-        skeleton (the mold stamp + D7 dirs) and core's agent chapter, but no payload
-        of its own: its ``canon/`` is exactly core's (``agents/default/canon``)."""
-        install_packaged_templates(std, ["shell"])
-        store = std.agents / "shell"
-        assert (store / "template" / "box" / "home").is_dir()
-        core = std.agents / "default" / "canon"
-        assert sorted(
-            p.relative_to(store / "canon") for p in (store / "canon").rglob("*")
-        ) == sorted(p.relative_to(core) for p in core.rglob("*"))
+  def test_goose_and_codex_stores_landed(self, std):
+    install_packaged_templates(std, ["goose", "codex"])
+    assert (
+      std.agents / "goose" / "template" / "box" / "home" / ".config" / "goose" / "config.yaml"
+    ).is_file()
+    assert (
+      std.agents / "codex" / "template" / "box" / "home" / ".codex" / "config.toml"
+    ).is_file()
 
-    def test_create_if_absent_does_not_clobber(self, std):
-        """A user-edited template file survives a re-install (create-if-absent)."""
-        install_packaged_templates(std, ["claude"])
-        mine = std.template / "box" / "home" / "MINE.md"
-        mine.write_text("MY EDITS")
-        install_packaged_templates(std, ["claude"])
-        assert mine.read_text() == "MY EDITS"
+  def test_unknown_agent_gets_a_store_but_no_payload(self, std):
+    """An agent with no packaged payload (e.g. shell) still gets its store
+    skeleton (the mold stamp + D7 dirs) and core's agent chapter, but no payload
+    of its own: its ``canon/`` is exactly core's (``agents/default/canon``)."""
+    install_packaged_templates(std, ["shell"])
+    store = std.agents / "shell"
+    assert (store / "template" / "box" / "home").is_dir()
+    core = std.agents / "default" / "canon"
+    assert sorted(p.relative_to(store / "canon") for p in (store / "canon").rglob("*")) == sorted(
+      p.relative_to(core) for p in core.rglob("*")
+    )
 
-    def test_kanibako_md_not_installed_to_host(self, std):
-        """The box guide is delivered live (RO bundle + launch-flatten), NOT
-        flat-copied to a host runtime path by the template install (the retired
-        ``{system.instructions}`` vestige)."""
-        install_packaged_templates(std, ["claude"])
-        assert not (std.data / "global" / "KANIBAKO.md").exists()
+  def test_create_if_absent_does_not_clobber(self, std):
+    """A user-edited template file survives a re-install (create-if-absent)."""
+    install_packaged_templates(std, ["claude"])
+    mine = std.template / "box" / "home" / "MINE.md"
+    mine.write_text("MY EDITS")
+    install_packaged_templates(std, ["claude"])
+    assert mine.read_text() == "MY EDITS"
+
+  def test_kanibako_md_not_installed_to_host(self, std):
+    """The box guide is delivered live (RO bundle + launch-flatten), NOT
+    flat-copied to a host runtime path by the template install (the retired
+    ``{system.instructions}`` vestige)."""
+    install_packaged_templates(std, ["claude"])
+    assert not (std.data / "global" / "KANIBAKO.md").exists()
 
 
 class TestEnsureAgentStores:
-    """J-6's A-action: ONE stamp implementation behind two triggers."""
+  """J-6's A-action: ONE stamp implementation behind two triggers."""
 
-    def test_idempotent_and_self_healing(self, std):
-        from kanibako.launch.templates import ensure_agent_stores
+  def test_idempotent_and_self_healing(self, std):
+    from kanibako.launch.templates import ensure_agent_stores
 
-        install_packaged_templates(std, ["claude"])
-        chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
-        chapter.unlink()
-        ensure_agent_stores(std, ["claude"])
-        assert chapter.is_file(), "a partial store must complete at the next trigger"
+    install_packaged_templates(std, ["claude"])
+    chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
+    chapter.unlink()
+    ensure_agent_stores(std, ["claude"])
+    assert chapter.is_file(), "a partial store must complete at the next trigger"
 
-    def test_user_edit_survives_a_restamp(self, std):
-        from kanibako.launch.templates import ensure_agent_stores
+  def test_user_edit_survives_a_restamp(self, std):
+    from kanibako.launch.templates import ensure_agent_stores
 
-        install_packaged_templates(std, ["claude"])
-        chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
-        chapter.write_text("MY CHAPTER")
-        ensure_agent_stores(std, ["claude"])
-        assert chapter.read_text() == "MY CHAPTER"
+    install_packaged_templates(std, ["claude"])
+    chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
+    chapter.write_text("MY CHAPTER")
+    ensure_agent_stores(std, ["claude"])
+    assert chapter.read_text() == "MY CHAPTER"
 
-    def test_a_plugin_without_a_canon_gets_cores_agent_chapter(self, std, monkeypatch):
-        """``agent.default.canon`` is the node's OWN store (§2d), so core's shipped
-        chapter must land IN that store when the plugin ships no ``canon/`` — the
-        replacement for the retired shared ``agents/default/canon`` route."""
-        from kanibako.launch import templates
+  def test_a_plugin_without_a_canon_gets_cores_agent_chapter(self, std, monkeypatch):
+    """``agent.default.canon`` is the node's OWN store (§2d), so core's shipped
+    chapter must land IN that store when the plugin ships no ``canon/`` — the
+    replacement for the retired shared ``agents/default/canon`` route."""
+    from kanibako.launch import templates
 
-        install_packaged_templates(std, [])
-        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
-        templates.ensure_agent_stores(std, ["thirdparty"])
-        core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
-        stamped = std.agents / "thirdparty" / "canon" / "handbook" / "SYS_AGENT.md"
-        assert stamped.read_text() == core.read_text()
-        stamped.write_text("MY CHAPTER")
-        templates.ensure_agent_stores(std, ["thirdparty"])
-        assert stamped.read_text() == "MY CHAPTER", "never re-seeded over a user's file"
+    install_packaged_templates(std, [])
+    monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+    templates.ensure_agent_stores(std, ["thirdparty"])
+    core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
+    stamped = std.agents / "thirdparty" / "canon" / "handbook" / "SYS_AGENT.md"
+    assert stamped.read_text() == core.read_text()
+    stamped.write_text("MY CHAPTER")
+    templates.ensure_agent_stores(std, ["thirdparty"])
+    assert stamped.read_text() == "MY CHAPTER", "never re-seeded over a user's file"
 
-    def test_a_store_canon_is_never_merged_into(self, std, monkeypatch):
-        """OVERRIDE, not additive: a store that already has a ``canon/`` — a plugin's,
-        or a user's — gets no core file added to it."""
-        from kanibako.launch import templates
+  def test_a_store_canon_is_never_merged_into(self, std, monkeypatch):
+    """OVERRIDE, not additive: a store that already has a ``canon/`` — a plugin's,
+    or a user's — gets no core file added to it."""
+    from kanibako.launch import templates
 
-        install_packaged_templates(std, [])
-        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
-        own = std.agents / "thirdparty" / "canon" / "handbook"
-        own.mkdir(parents=True)
-        (own / "MINE.md").write_text("mine")
-        templates.ensure_agent_stores(std, ["thirdparty"])
-        assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
+    install_packaged_templates(std, [])
+    monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+    own = std.agents / "thirdparty" / "canon" / "handbook"
+    own.mkdir(parents=True)
+    (own / "MINE.md").write_text("mine")
+    templates.ensure_agent_stores(std, ["thirdparty"])
+    assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
 
-    def test_a_fresh_setup_stamps_cores_chapter_into_the_shell_store(self, std):
-        """The ``shell`` pseudo-agent's chapter is its own store's (§2d ``agent.default
-        .canon = {meta.self.path}/canon``), so setup stamps core's chapter there too."""
-        install_packaged_templates(std, ["shell"])
-        core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
-        stamped = std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md"
-        assert stamped.read_text() == core.read_text()
+  def test_a_fresh_setup_stamps_cores_chapter_into_the_shell_store(self, std):
+    """The ``shell`` pseudo-agent's chapter is its own store's (§2d ``agent.default
+    .canon = {meta.self.path}/canon``), so setup stamps core's chapter there too."""
+    install_packaged_templates(std, ["shell"])
+    core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
+    stamped = std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md"
+    assert stamped.read_text() == core.read_text()
 
-    def test_an_existing_shell_store_canon_is_untouched(self, std):
-        """Absent-only: a shell store that already has a ``canon/`` gets no core file."""
-        own = std.agents / "shell" / "canon" / "handbook"
-        own.mkdir(parents=True)
-        (own / "MINE.md").write_text("mine")
-        install_packaged_templates(std, ["shell"])
-        assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
-        assert (own / "MINE.md").read_text() == "mine"
+  def test_an_existing_shell_store_canon_is_untouched(self, std):
+    """Absent-only: a shell store that already has a ``canon/`` gets no core file."""
+    own = std.agents / "shell" / "canon" / "handbook"
+    own.mkdir(parents=True)
+    (own / "MINE.md").write_text("mine")
+    install_packaged_templates(std, ["shell"])
+    assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
+    assert (own / "MINE.md").read_text() == "mine"
 
-    def test_host_mold_reaches_every_store(self, std):
-        """The mold is read AS IT STANDS at action time, so a user's customization
-        reaches FUTURE stores (and this one, on its next self-heal)."""
-        from kanibako.launch.templates import ensure_agent_stores
+  def test_host_mold_reaches_every_store(self, std):
+    """The mold is read AS IT STANDS at action time, so a user's customization
+    reaches FUTURE stores (and this one, on its next self-heal)."""
+    from kanibako.launch.templates import ensure_agent_stores
 
-        install_packaged_templates(std, ["claude"])
-        mold_file = std.template / "agent" / "common" / "MOLD.md"
-        mold_file.parent.mkdir(parents=True, exist_ok=True)
-        mold_file.write_text("from the mold")
-        ensure_agent_stores(std, ["claude"])
-        assert (
-            std.agents / "claude" / "common" / "MOLD.md"
-        ).read_text() == "from the mold"
+    install_packaged_templates(std, ["claude"])
+    mold_file = std.template / "agent" / "common" / "MOLD.md"
+    mold_file.parent.mkdir(parents=True, exist_ok=True)
+    mold_file.write_text("from the mold")
+    ensure_agent_stores(std, ["claude"])
+    assert (std.agents / "claude" / "common" / "MOLD.md").read_text() == "from the mold"
 
-    def test_mold_content_outside_the_whitelist_is_refused(self, std):
-        """Deny-by-default at AGENT scope: a mold that would plant
-        ``agent.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import ensure_agent_stores
+  def test_mold_content_outside_the_whitelist_is_refused(self, std):
+    """Deny-by-default at AGENT scope: a mold that would plant
+    ``agent.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import ensure_agent_stores
 
-        install_packaged_templates(std, ["claude"])
-        (std.template / "agent" / "agent.yaml").write_text("agent: {}\n")
-        with pytest.raises(TemplateScopeError) as exc:
-            ensure_agent_stores(std, ["claude"])
-        assert "AGENT" in str(exc.value)
-        assert "agent.yaml" in str(exc.value)
+    install_packaged_templates(std, ["claude"])
+    (std.template / "agent" / "agent.yaml").write_text("agent: {}\n")
+    with pytest.raises(TemplateScopeError) as exc:
+      ensure_agent_stores(std, ["claude"])
+    assert "AGENT" in str(exc.value)
+    assert "agent.yaml" in str(exc.value)
 
 
 class TestInstallWorksetTemplate:
-    def test_stamps_the_workset_mold(self, std, tmp_path):
-        from kanibako.launch.templates import install_workset_template
+  def test_stamps_the_workset_mold(self, std, tmp_path):
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        install_workset_template(std, ws, workset_name=ws.name)
-        assert (
-            ws / "canon" / "handbook" / "SYS_WORKSET.md"
-        ).is_file()
-        assert (ws / "template" / "box" / "home").is_dir()
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    install_workset_template(std, ws, workset_name=ws.name)
+    assert (ws / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    assert (ws / "template" / "box" / "home").is_dir()
 
-    def test_stamps_the_canon_chapter_beside_the_mold_content(self, std, tmp_path):
-        """The control: an unrepointed root gets BOTH halves of the canon layer."""
-        from kanibako.launch.templates import install_workset_template
+  def test_stamps_the_canon_chapter_beside_the_mold_content(self, std, tmp_path):
+    """The control: an unrepointed root gets BOTH halves of the canon layer."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        install_workset_template(std, ws, workset_name=ws.name)
-        assert (ws / "canon" / "handbook").is_dir()
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    install_workset_template(std, ws, workset_name=ws.name)
+    assert (ws / "canon" / "handbook").is_dir()
 
-    def test_a_null_canon_skips_the_whole_canon_layer(self, std, tmp_path):
-        """``workset.canon: null`` SKIPS the layer: nothing copied, nothing refused.
+  def test_a_null_canon_skips_the_whole_canon_layer(self, std, tmp_path):
+    """``workset.canon: null`` SKIPS the layer: nothing copied, nothing refused.
 
-        ⚑ With the REAL mold installed, so the copy has something to refuse: the
-        mold's ``canon/handbook`` has no destination left, and a whitelist entry that
-        respells nothing would raise on it. Both halves of the stamp must narrow the
-        same way, so the PRE-FLIGHT is exercised here too — it runs first and writes
-        nothing.
-        """
-        from kanibako.launch.templates import (
-            check_workset_template,
-            install_workset_template,
-        )
+    ⚑ With the REAL mold installed, so the copy has something to refuse: the
+    mold's ``canon/handbook`` has no destination left, and a whitelist entry that
+    respells nothing would raise on it. Both halves of the stamp must narrow the
+    same way, so the PRE-FLIGHT is exercised here too — it runs first and writes
+    nothing.
+    """
+    from kanibako.launch.templates import (
+      check_workset_template,
+      install_workset_template,
+    )
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
 
-        check_workset_template(std, ws, workset_name=ws.name)          # PRE-FLIGHT: must not raise
-        install_workset_template(std, ws, workset_name=ws.name)
-        assert not (ws / "canon").exists()
-        assert not (ws / "handbook").exists()
-        # The template half is a different key, so it still lands.
-        assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+    check_workset_template(std, ws, workset_name=ws.name)  # PRE-FLIGHT: must not raise
+    install_workset_template(std, ws, workset_name=ws.name)
+    assert not (ws / "canon").exists()
+    assert not (ws / "handbook").exists()
+    # The template half is a different key, so it still lands.
+    assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
 
-    def test_a_null_canon_skips_the_standalone_half_too(self, std, tmp_path):
-        """The STANDALONE stamp reads the mold's canon ROOT, so it skips the same way."""
-        from kanibako.launch.templates import (
-            check_workset_template,
-            install_workset_template,
-        )
+  def test_a_null_canon_skips_the_standalone_half_too(self, std, tmp_path):
+    """The STANDALONE stamp reads the mold's canon ROOT, so it skips the same way."""
+    from kanibako.launch.templates import (
+      check_workset_template,
+      install_workset_template,
+    )
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
 
-        check_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        install_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert not (ws / "canon").exists()
-        assert not (ws / "handbook").exists()
+    check_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    install_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert not (ws / "canon").exists()
+    assert not (ws / "handbook").exists()
 
-    def test_refuses_a_registry_planted_by_the_mold(self, std, tmp_path):
-        """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
-        AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a
-        STANDALONE ``<workset_path>`` is a directory the USER already had, which
-        nothing here is entitled to clean up after a refusal."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_refuses_a_registry_planted_by_the_mold(self, std, tmp_path):
+    """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
+    AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a
+    STANDALONE ``<workset_path>`` is a directory the USER already had, which
+    nothing here is entitled to clean up after a refusal."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        (std.template / "workset" / "registry.yaml").write_text("boxes: {}\n")
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, ws, workset_name=ws.name)
-        assert "WORKSET" in str(exc.value)
-        assert not (ws / "registry.yaml").exists()
+    install_packaged_templates(std, ["claude"])
+    (std.template / "workset" / "registry.yaml").write_text("boxes: {}\n")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, ws, workset_name=ws.name)
+    assert "WORKSET" in str(exc.value)
+    assert not (ws / "registry.yaml").exists()
 
 
 class TestWorksetStampSplit:
-    """The stamp is TWO halves, and a STANDALONE root gets only the CANON one.
+  """The stamp is TWO halves, and a STANDALONE root gets only the CANON one.
 
-    ⚑ Both halves are spec-backed and the reasons differ. ``workset.canon`` is
-    *"UNIFORM IN EVERY MODE — deliberately NOT a per-mode key"* (spec ``:962``), so a
-    lone box has that tier. ``workset.template`` is <None> for standalone (spec
-    ``:936``) — a workset template seeds FUTURE boxes and a standalone root will never
-    have one — so stamping ``template/`` there would be structure for a key the mode
-    does not have.
-    """
+  ⚑ Both halves are spec-backed and the reasons differ. ``workset.canon`` is
+  *"UNIFORM IN EVERY MODE — deliberately NOT a per-mode key"* (spec ``:962``), so a
+  lone box has that tier. ``workset.template`` is <None> for standalone (spec
+  ``:936``) — a workset template seeds FUTURE boxes and a standalone root will never
+  have one — so stamping ``template/`` there would be structure for a key the mode
+  does not have.
+  """
 
-    def _fresh_root(self, tmp_home, name):
-        root = tmp_home / name
-        root.mkdir()
-        return root
+  def _fresh_root(self, tmp_home, name):
+    root = tmp_home / name
+    root.mkdir()
+    return root
 
-    def test_named_workset_create_stamps_both_halves(self, std, config_file, tmp_home):
-        """⚑ Driven through ``workset create``, the PRODUCT path — not the stamp in
-        isolation, which is the shape ~200 existing fixtures build and the product
-        never produces."""
-        from kanibako.commands.workset_cmd import run_create
+  def test_named_workset_create_stamps_both_halves(self, std, config_file, tmp_home):
+    """⚑ Driven through ``workset create``, the PRODUCT path — not the stamp in
+    isolation, which is the shape ~200 existing fixtures build and the product
+    never produces."""
+    from kanibako.commands.workset_cmd import run_create
 
-        install_packaged_templates(std, ["claude"])
-        ws_root = tmp_home / "named-ws"
-        rc = run_create(argparse.Namespace(
-            path=str(ws_root), name=None, standalone=False, image=None, no_vault=False,
-        ))
-        assert rc == 0
-        assert (ws_root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
-        assert (ws_root / "template" / "box" / "home" / "canon" / "notebook").is_dir()
-        assert (ws_root / "template" / "box" / "canon" / "handbook").is_dir()
+    install_packaged_templates(std, ["claude"])
+    ws_root = tmp_home / "named-ws"
+    rc = run_create(
+      argparse.Namespace(
+        path=str(ws_root),
+        name=None,
+        standalone=False,
+        image=None,
+        no_vault=False,
+      )
+    )
+    assert rc == 0
+    assert (ws_root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    assert (ws_root / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+    assert (ws_root / "template" / "box" / "canon" / "handbook").is_dir()
 
-    def test_standalone_init_stamps_canon_and_never_template(self, std, config, tmp_home):
-        """First-time standalone init gets the canon tier and NOT the template half."""
-        install_packaged_templates(std, ["claude"])
-        root = self._fresh_root(tmp_home, "solo")
-        resolve_standalone_project(std, config, str(root), initialize=True)
-        assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
-        # ⚑ THE POINT OF THE SPLIT.
-        assert not (root / "template").exists()
-        # A second resolve is the recovery pass; it must not grow the template half.
-        resolve_standalone_project(std, config, str(root), initialize=True)
-        assert not (root / "template").exists()
+  def test_standalone_init_stamps_canon_and_never_template(self, std, config, tmp_home):
+    """First-time standalone init gets the canon tier and NOT the template half."""
+    install_packaged_templates(std, ["claude"])
+    root = self._fresh_root(tmp_home, "solo")
+    resolve_standalone_project(std, config, str(root), initialize=True)
+    assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    # ⚑ THE POINT OF THE SPLIT.
+    assert not (root / "template").exists()
+    # A second resolve is the recovery pass; it must not grow the template half.
+    resolve_standalone_project(std, config, str(root), initialize=True)
+    assert not (root / "template").exists()
 
-    def test_canon_only_stamp_is_idempotent_and_clobbers_nothing(self, std, tmp_home):
-        """Create-if-absent, so a re-run adds only what is missing — and the
-        destination is the user's own tree, so a clobber here is DATA LOSS."""
-        from kanibako.launch.templates import install_workset_template
+  def test_canon_only_stamp_is_idempotent_and_clobbers_nothing(self, std, tmp_home):
+    """Create-if-absent, so a re-run adds only what is missing — and the
+    destination is the user's own tree, so a clobber here is DATA LOSS."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        root = self._fresh_root(tmp_home, "solo-idem")
-        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
-        stamped.write_text("MINE\n")
-        theirs = root / "canon" / "handbook" / "notes.md"
-        theirs.write_text("keep me\n")
-        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert stamped.read_text() == "MINE\n"
-        assert theirs.read_text() == "keep me\n"
-        assert not (root / "template").exists()
+    install_packaged_templates(std, ["claude"])
+    root = self._fresh_root(tmp_home, "solo-idem")
+    install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
+    stamped.write_text("MINE\n")
+    theirs = root / "canon" / "handbook" / "notes.md"
+    theirs.write_text("keep me\n")
+    install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert stamped.read_text() == "MINE\n"
+    assert theirs.read_text() == "keep me\n"
+    assert not (root / "template").exists()
 
-    def test_canon_only_still_refuses_an_out_of_scope_entry(self, std, tmp_home):
-        """⚑ Narrowing the COPY to ``canon/`` must not narrow the WHITELIST'S FRAME:
-        ``dest_root`` stays the store root, so ``canon/notebook/…`` is still judged as
-        the store-relative path it is and DENIED (only ``canon/handbook`` is allowed)."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_canon_only_still_refuses_an_out_of_scope_entry(self, std, tmp_home):
+    """⚑ Narrowing the COPY to ``canon/`` must not narrow the WHITELIST'S FRAME:
+    ``dest_root`` stays the store root, so ``canon/notebook/…`` is still judged as
+    the store-relative path it is and DENIED (only ``canon/handbook`` is allowed)."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text("nope\n")
-        root = self._fresh_root(tmp_home, "solo-deny")
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert "WORKSET" in str(exc.value)
-        assert not (root / "canon" / "notebook").exists()
+    install_packaged_templates(std, ["claude"])
+    bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("nope\n")
+    root = self._fresh_root(tmp_home, "solo-deny")
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert "WORKSET" in str(exc.value)
+    assert not (root / "canon" / "notebook").exists()
 
-    def test_canon_only_preflight_refuses_before_the_first_byte(self, std, tmp_home):
-        """⚑ The ordering the standalone create depends on: the pre-flight writes
-        NOTHING, so a doomed stamp leaves no litter in a directory kanibako may never
-        delete."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import check_workset_template
+  def test_canon_only_preflight_refuses_before_the_first_byte(self, std, tmp_home):
+    """⚑ The ordering the standalone create depends on: the pre-flight writes
+    NOTHING, so a doomed stamp leaves no litter in a directory kanibako may never
+    delete."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import check_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text("nope\n")
-        root = self._fresh_root(tmp_home, "solo-preflight")
-        with pytest.raises(TemplateScopeError):
-            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert not (root / "canon").exists()
+    install_packaged_templates(std, ["claude"])
+    bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("nope\n")
+    root = self._fresh_root(tmp_home, "solo-preflight")
+    with pytest.raises(TemplateScopeError):
+      check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert not (root / "canon").exists()
 
-    def test_standalone_create_refuses_whole_and_leaves_nothing(self, std, config, tmp_home):
-        """⚑⚑ The SEAM property, and the reason the stamp is the create's FIRST write:
-        a refusal aborts before ``box_data/`` exists, so the create guard is still true
-        and a corrected re-run does the whole create. There is no unwind — and there
-        must not be one: the root is the user's own directory."""
-        from kanibako.errors import TemplateScopeError
+  def test_standalone_create_refuses_whole_and_leaves_nothing(self, std, config, tmp_home):
+    """⚑⚑ The SEAM property, and the reason the stamp is the create's FIRST write:
+    a refusal aborts before ``box_data/`` exists, so the create guard is still true
+    and a corrected re-run does the whole create. There is no unwind — and there
+    must not be one: the root is the user's own directory."""
+    from kanibako.errors import TemplateScopeError
 
-        install_packaged_templates(std, ["claude"])
-        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text("nope\n")
-        root = self._fresh_root(tmp_home, "solo-abort")
-        with pytest.raises(TemplateScopeError):
-            resolve_standalone_project(std, config, str(root), initialize=True)
-        assert not (root / "box_data").exists()
-        assert not (root / "canon").exists()
-        assert root.is_dir()
+    install_packaged_templates(std, ["claude"])
+    bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("nope\n")
+    root = self._fresh_root(tmp_home, "solo-abort")
+    with pytest.raises(TemplateScopeError):
+      resolve_standalone_project(std, config, str(root), initialize=True)
+    assert not (root / "box_data").exists()
+    assert not (root / "canon").exists()
+    assert root.is_dir()
 
 
 class TestWorksetStampFollowsTheKeys:
-    """The stamp's two leaves are ``workset.canon`` and ``workset.template``, and BOTH
-    are declared repointable (spec ``:962`` / ``:936``) — so the stamp must land where
-    the KEY says, not where the literal used to.
+  """The stamp's two leaves are ``workset.canon`` and ``workset.template``, and BOTH
+  are declared repointable (spec ``:962`` / ``:936``) — so the stamp must land where
+  the KEY says, not where the literal used to.
 
-    ⚑ THE REACHABLE CASE IS THE STANDALONE ONE, and only that one. ``workset create``
-    refuses a root that already exists and writes no ``workset.yaml`` of its own, so a
-    repoint can never be on disk when the named stamp runs (``create_workset``'s own
-    comment). The STANDALONE stamp's destination is a directory the user ALREADY HAD,
-    which may already carry a ``workset.yaml`` — that is where a repoint is real.
-    """
+  ⚑ THE REACHABLE CASE IS THE STANDALONE ONE, and only that one. ``workset create``
+  refuses a root that already exists and writes no ``workset.yaml`` of its own, so a
+  repoint can never be on disk when the named stamp runs (``create_workset``'s own
+  comment). The STANDALONE stamp's destination is a directory the user ALREADY HAD,
+  which may already carry a ``workset.yaml`` — that is where a repoint is real.
+  """
 
-    def _root_with_repoint(self, tmp_home, name, **repoints):
-        root = tmp_home / name
-        root.mkdir()
-        if repoints:
-            (root / "workset.yaml").write_text(
-                yaml.safe_dump({"workset": dict(repoints)})
-            )
-        return root
+  def _root_with_repoint(self, tmp_home, name, **repoints):
+    root = tmp_home / name
+    root.mkdir()
+    if repoints:
+      (root / "workset.yaml").write_text(yaml.safe_dump({"workset": dict(repoints)}))
+    return root
 
-    def test_standalone_init_honors_a_workset_canon_repoint(
-        self, std, config, tmp_home
-    ):
-        """⚑⚑ THE ORACLE, on the PRODUCT path: a standalone create into a root whose
-        own ``workset.yaml`` repoints ``workset.canon``. The chapter and the stamped
-        file must land under the repointed root and NOWHERE else — a stamp at the
-        literal ``canon/`` is a tier the box's own key resolution will never read."""
-        install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="{meta.workset.path}/my_canon")
-        resolve_standalone_project(std, config, str(root), initialize=True)
-        assert (
-            root / "my_canon" / "handbook" / "SYS_WORKSET.md"
-        ).is_file()
-        assert (root / "my_canon" / "handbook").is_dir()
-        assert not (root / "canon").exists()
+  def test_standalone_init_honors_a_workset_canon_repoint(self, std, config, tmp_home):
+    """⚑⚑ THE ORACLE, on the PRODUCT path: a standalone create into a root whose
+    own ``workset.yaml`` repoints ``workset.canon``. The chapter and the stamped
+    file must land under the repointed root and NOWHERE else — a stamp at the
+    literal ``canon/`` is a tier the box's own key resolution will never read."""
+    install_packaged_templates(std, ["claude"])
+    root = self._root_with_repoint(tmp_home, "solo-repoint", canon="{meta.workset.path}/my_canon")
+    resolve_standalone_project(std, config, str(root), initialize=True)
+    assert (root / "my_canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    assert (root / "my_canon" / "handbook").is_dir()
+    assert not (root / "canon").exists()
 
-    def test_canon_only_stamp_honors_a_workset_canon_repoint(self, std, tmp_home):
-        """The same thing at the seam, so a failure names the stamp and not the create."""
-        from kanibako.launch.templates import install_workset_template
+  def test_canon_only_stamp_honors_a_workset_canon_repoint(self, std, tmp_home):
+    """The same thing at the seam, so a failure names the stamp and not the create."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-seam", canon="{meta.workset.path}/elsewhere/canon")
-        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert (
-            root / "elsewhere" / "canon" / "handbook" / "SYS_WORKSET.md"
-        ).is_file()
-        assert not (root / "canon").exists()
+    install_packaged_templates(std, ["claude"])
+    root = self._root_with_repoint(
+      tmp_home, "solo-seam", canon="{meta.workset.path}/elsewhere/canon"
+    )
+    install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert (root / "elsewhere" / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    assert not (root / "canon").exists()
 
-    def test_the_preflight_narrows_to_the_SAME_repointed_dest(self, std, tmp_home):
-        """⚑ Pre-flight and stamp share ``_workset_stamp_copy`` precisely so they
-        cannot judge different destinations. A pre-flight that still looked at the
-        literal ``canon/`` would clear a copy it never examined."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import check_workset_template
+  def test_the_preflight_narrows_to_the_SAME_repointed_dest(self, std, tmp_home):
+    """⚑ Pre-flight and stamp share ``_workset_stamp_copy`` precisely so they
+    cannot judge different destinations. A pre-flight that still looked at the
+    literal ``canon/`` would clear a copy it never examined."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import check_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-pre", canon="{meta.workset.path}/my_canon")
-        with pytest.raises(TemplateScopeError):
-            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert not (root / "my_canon").exists()
+    install_packaged_templates(std, ["claude"])
+    bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("nope\n")
+    root = self._root_with_repoint(tmp_home, "solo-pre", canon="{meta.workset.path}/my_canon")
+    with pytest.raises(TemplateScopeError):
+      check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert not (root / "my_canon").exists()
 
-    def test_a_repointed_canon_is_still_whitelisted_to_handbook_only(
-        self, std, tmp_home
-    ):
-        """⚑ A repoint MOVES the canon tier; it does not widen it. ``notebook/`` under
-        the repointed root is denied exactly as it is under the literal one."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_a_repointed_canon_is_still_whitelisted_to_handbook_only(self, std, tmp_home):
+    """⚑ A repoint MOVES the canon tier; it does not widen it. ``notebook/`` under
+    the repointed root is denied exactly as it is under the literal one."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="{meta.workset.path}/my_canon")
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert "WORKSET" in str(exc.value)
-        assert not (root / "my_canon" / "notebook").exists()
+    install_packaged_templates(std, ["claude"])
+    bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("nope\n")
+    root = self._root_with_repoint(
+      tmp_home, "solo-deny-repoint", canon="{meta.workset.path}/my_canon"
+    )
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert "WORKSET" in str(exc.value)
+    assert not (root / "my_canon" / "notebook").exists()
 
-    def test_template_skeleton_honors_a_workset_template_repoint(
-        self, std, tmp_path
-    ):
-        """⚑ NOT REACHABLE THROUGH TODAY'S PRODUCT CALLERS — it pins the resolver.
-        ``workset create`` cannot present a root that already carries a
-        ``workset.yaml``, so this drives the seam directly. It is here because the
-        skeleton's leaf IS ``workset.template`` and a future caller with an existing
-        root would otherwise stamp structure into a dir the key does not name."""
-        from kanibako.launch.templates import install_workset_template
+  def test_template_skeleton_honors_a_workset_template_repoint(self, std, tmp_path):
+    """⚑ NOT REACHABLE THROUGH TODAY'S PRODUCT CALLERS — it pins the resolver.
+    ``workset create`` cannot present a root that already carries a
+    ``workset.yaml``, so this drives the seam directly. It is here because the
+    skeleton's leaf IS ``workset.template`` and a future caller with an existing
+    root would otherwise stamp structure into a dir the key does not name."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws-template-repoint"
-        ws.mkdir()
-        (ws / "workset.yaml").write_text(
-            yaml.safe_dump({"workset": {"template": "{meta.workset.path}/molds"}})
-        )
-        install_workset_template(std, ws, workset_name=ws.name)
-        assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
-        assert (ws / "molds" / "box" / "home" / "canon" / "workbook").is_dir()
-        assert (ws / "molds" / "box" / "canon" / "handbook").is_dir()
-        assert not (ws / "template").exists()
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws-template-repoint"
+    ws.mkdir()
+    (ws / "workset.yaml").write_text(
+      yaml.safe_dump({"workset": {"template": "{meta.workset.path}/molds"}})
+    )
+    install_workset_template(std, ws, workset_name=ws.name)
+    assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
+    assert (ws / "molds" / "box" / "home" / "canon" / "workbook").is_dir()
+    assert (ws / "molds" / "box" / "canon" / "handbook").is_dir()
+    assert not (ws / "template").exists()
 
-    def test_the_respelling_degenerates_to_the_declared_table(self, tmp_path):
-        """⚑ ONE CARRIER FOR THE DEFAULT SPELLING. An unrepointed root must produce
-        ``SCOPE_WHITELISTS["workset"]`` EXACTLY — if the respelling ever drifted from
-        the declared table, every unrepointed stamp would be judged against a set the
-        table does not contain, and the drift would be invisible in a green suite."""
-        from kanibako.launch.templates import (
-            SCOPE_WHITELISTS, _workset_scope_allowed,
-        )
+  def test_the_respelling_degenerates_to_the_declared_table(self, tmp_path):
+    """⚑ ONE CARRIER FOR THE DEFAULT SPELLING. An unrepointed root must produce
+    ``SCOPE_WHITELISTS["workset"]`` EXACTLY — if the respelling ever drifted from
+    the declared table, every unrepointed stamp would be judged against a set the
+    table does not contain, and the drift would be invisible in a green suite."""
+    from kanibako.launch.templates import (
+      SCOPE_WHITELISTS,
+      _workset_scope_allowed,
+    )
 
-        root = tmp_path / "ws"
-        assert _workset_scope_allowed(
-            root, root / "canon", root / "template"
-        ) == SCOPE_WHITELISTS["workset"]
+    root = tmp_path / "ws"
+    assert (
+      _workset_scope_allowed(root, root / "canon", root / "template")
+      == SCOPE_WHITELISTS["workset"]
+    )
 
-    def test_a_leaf_outside_the_root_keeps_the_declared_entry(self, tmp_path):
-        """A repoint that leaves the store root has NO store-relative path to
-        whitelist, so the declared entry stands — the only spelling that cannot widen
-        the scope. ⚑ THIS ARM IS NOW A FAILSAFE, NOT THE LIVE ANSWER: the stamp refuses
-        an out-of-root leaf in ``_workset_stamp_dirs`` before this function is reached
-        (see ``test_an_out_of_root_canon_repoint_names_the_key_file_and_value``), so
-        what is pinned here is that the respelling still says nothing dangerous if it
-        ever is."""
-        from kanibako.launch.templates import (
-            SCOPE_WHITELISTS, _workset_scope_allowed,
-        )
+  def test_a_leaf_outside_the_root_keeps_the_declared_entry(self, tmp_path):
+    """A repoint that leaves the store root has NO store-relative path to
+    whitelist, so the declared entry stands — the only spelling that cannot widen
+    the scope. ⚑ THIS ARM IS NOW A FAILSAFE, NOT THE LIVE ANSWER: the stamp refuses
+    an out-of-root leaf in ``_workset_stamp_dirs`` before this function is reached
+    (see ``test_an_out_of_root_canon_repoint_names_the_key_file_and_value``), so
+    what is pinned here is that the respelling still says nothing dangerous if it
+    ever is."""
+    from kanibako.launch.templates import (
+      SCOPE_WHITELISTS,
+      _workset_scope_allowed,
+    )
 
-        root = tmp_path / "ws"
-        assert _workset_scope_allowed(
-            root, tmp_path / "elsewhere", root / "template"
-        ) == SCOPE_WHITELISTS["workset"]
+    root = tmp_path / "ws"
+    assert (
+      _workset_scope_allowed(root, tmp_path / "elsewhere", root / "template")
+      == SCOPE_WHITELISTS["workset"]
+    )
 
-    def test_a_dotdot_leaf_does_not_widen_the_allow_list(self, tmp_path):
-        """⚑⚑ RESPELLS, NEVER WIDENS — and ``relative_to`` alone does not enforce it.
-        ``<root>/../up`` IS lexically relative to the root, so the respelling used to
-        emit the allow-list ENTRY ``../up/handbook``: a standing permission to write
-        outside the store, produced by the function whose whole contract is that it
-        cannot. Containment has to be resolved, not string-matched."""
-        from kanibako.launch.templates import (
-            SCOPE_WHITELISTS, _workset_scope_allowed,
-        )
+  def test_a_dotdot_leaf_does_not_widen_the_allow_list(self, tmp_path):
+    """⚑⚑ RESPELLS, NEVER WIDENS — and ``relative_to`` alone does not enforce it.
+    ``<root>/../up`` IS lexically relative to the root, so the respelling used to
+    emit the allow-list ENTRY ``../up/handbook``: a standing permission to write
+    outside the store, produced by the function whose whole contract is that it
+    cannot. Containment has to be resolved, not string-matched."""
+    from kanibako.launch.templates import (
+      SCOPE_WHITELISTS,
+      _workset_scope_allowed,
+    )
 
-        root = tmp_path / "ws"
-        root.mkdir()
-        allowed = _workset_scope_allowed(
-            root, root / ".." / "up", root / ".." / "molds",
-        )
-        assert allowed == SCOPE_WHITELISTS["workset"]
-        assert not any(".." in entry for entry in allowed)
+    root = tmp_path / "ws"
+    root.mkdir()
+    allowed = _workset_scope_allowed(
+      root,
+      root / ".." / "up",
+      root / ".." / "molds",
+    )
+    assert allowed == SCOPE_WHITELISTS["workset"]
+    assert not any(".." in entry for entry in allowed)
 
-    def test_no_repoint_lands_exactly_where_it_always_did(self, std, tmp_path):
-        """The unrepointed default is the literal leaf, unchanged — the resolvers
-        degenerate to ``<root>/<leaf>`` when there is no ``workset.yaml`` to read."""
-        from kanibako.launch.templates import install_workset_template
+  def test_no_repoint_lands_exactly_where_it_always_did(self, std, tmp_path):
+    """The unrepointed default is the literal leaf, unchanged — the resolvers
+    degenerate to ``<root>/<leaf>`` when there is no ``workset.yaml`` to read."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        ws = tmp_path / "ws-plain"
-        ws.mkdir()
-        install_workset_template(std, ws, workset_name=ws.name)
-        assert (
-            ws / "canon" / "handbook" / "SYS_WORKSET.md"
-        ).is_file()
-        assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
-        assert (ws / "template" / "box" / "canon" / "handbook").is_dir()
+    install_packaged_templates(std, ["claude"])
+    ws = tmp_path / "ws-plain"
+    ws.mkdir()
+    install_workset_template(std, ws, workset_name=ws.name)
+    assert (ws / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+    assert (ws / "template" / "box" / "canon" / "handbook").is_dir()
 
 
 class TestTheRespellingCannotWiden:
-    """⚑⚑ ENFORCED, NOT DOCUMENTED. ``copy_tree``/``_check_whitelist`` used to take a
-    finished ``allowed`` tuple, so *a repoint MOVES an entry, it never ADDS one* was
-    held by a docstring and by there being exactly one well-behaved caller. The
-    parameter now takes the PATHS the respelling is derived from
-    (``WorksetStampScope``), so every entry the copier can ever see is
-    ``SCOPE_WHITELISTS``' own — a widened workset scope is unrepresentable."""
+  """⚑⚑ ENFORCED, NOT DOCUMENTED. ``copy_tree``/``_check_whitelist`` used to take a
+  finished ``allowed`` tuple, so *a repoint MOVES an entry, it never ADDS one* was
+  held by a docstring and by there being exactly one well-behaved caller. The
+  parameter now takes the PATHS the respelling is derived from
+  (``WorksetStampScope``), so every entry the copier can ever see is
+  ``SCOPE_WHITELISTS``' own — a widened workset scope is unrepresentable."""
 
-    def test_no_route_accepts_an_allow_list(self, tmp_path):
-        """THE MUTATION THE OLD SIGNATURE PERMITTED, constructed and refused: there is
-        no parameter left through which entries can arrive."""
-        import inspect
+  def test_no_route_accepts_an_allow_list(self, tmp_path):
+    """THE MUTATION THE OLD SIGNATURE PERMITTED, constructed and refused: there is
+    no parameter left through which entries can arrive."""
+    import inspect
 
-        from kanibako.launch.templates import copy_tree
+    from kanibako.launch.templates import copy_tree
 
-        assert "allowed" not in inspect.signature(copy_tree).parameters
-        with pytest.raises(TypeError):
-            copy_tree(
-                tmp_path / "src", tmp_path / "dest",
-                scope="workset", allowed=("anything", "at", "all"),
-            )
+    assert "allowed" not in inspect.signature(copy_tree).parameters
+    with pytest.raises(TypeError):
+      copy_tree(
+        tmp_path / "src",
+        tmp_path / "dest",
+        scope="workset",
+        allowed=("anything", "at", "all"),
+      )
 
-    def test_the_scope_object_carries_paths_and_nothing_else(self):
-        """⚑ Its FIELDS are the three roots. Were an entries field ever added, the
-        respelling would stop being derived and this class would become a second
-        carrier of the declared table."""
-        import dataclasses
+  def test_the_scope_object_carries_paths_and_nothing_else(self):
+    """⚑ Its FIELDS are the three roots. Were an entries field ever added, the
+    respelling would stop being derived and this class would become a second
+    carrier of the declared table."""
+    import dataclasses
 
-        from kanibako.launch.templates import WorksetStampScope
+    from kanibako.launch.templates import WorksetStampScope
 
-        assert [f.name for f in dataclasses.fields(WorksetStampScope)] == [
-            "workset_path", "canon_root", "template_root",
-        ]
-        assert WorksetStampScope.name == "workset"
+    assert [f.name for f in dataclasses.fields(WorksetStampScope)] == [
+      "workset_path",
+      "canon_root",
+      "template_root",
+    ]
+    assert WorksetStampScope.name == "workset"
 
-    def test_every_respelling_keeps_the_declared_cardinality_and_shape(self, tmp_path):
-        """⚑ CARDINALITY AND SHAPE, pinned across every repoint shape a root can have:
-        the declared number of entries, ``canon/`` seedable at ``handbook`` and nowhere
-        else, and never an absolute or ``..`` entry."""
-        from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
+  def test_every_respelling_keeps_the_declared_cardinality_and_shape(self, tmp_path):
+    """⚑ CARDINALITY AND SHAPE, pinned across every repoint shape a root can have:
+    the declared number of entries, ``canon/`` seedable at ``handbook`` and nowhere
+    else, and never an absolute or ``..`` entry."""
+    from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
 
-        root = tmp_path / "ws"
-        root.mkdir()
-        declared = SCOPE_WHITELISTS["workset"]
-        cases = [
-            (root / "canon", root / "template"),          # unrepointed
-            (root / "my_canon", root / "molds"),         # both moved, in-root
-            (root / "deep" / "canon", root / "template"),  # nested
-            (tmp_path / "far", root / "template"),        # canon out of root
-            (root / ".." / "up", root / ".." / "away"),   # lexical escape
-        ]
-        for canon_root, template_root in cases:
-            allowed = WorksetStampScope(root, canon_root, template_root).allowed()
-            assert len(allowed) == len(declared), (canon_root, allowed)
-            assert allowed[1].split("/")[-1] == "handbook", allowed
-            assert not any(
-                entry.startswith("/") or ".." in entry.split("/") for entry in allowed
-            ), allowed
+    root = tmp_path / "ws"
+    root.mkdir()
+    declared = SCOPE_WHITELISTS["workset"]
+    cases = [
+      (root / "canon", root / "template"),  # unrepointed
+      (root / "my_canon", root / "molds"),  # both moved, in-root
+      (root / "deep" / "canon", root / "template"),  # nested
+      (tmp_path / "far", root / "template"),  # canon out of root
+      (root / ".." / "up", root / ".." / "away"),  # lexical escape
+    ]
+    for canon_root, template_root in cases:
+      allowed = WorksetStampScope(root, canon_root, template_root).allowed()
+      assert len(allowed) == len(declared), (canon_root, allowed)
+      assert allowed[1].split("/")[-1] == "handbook", allowed
+      assert not any(entry.startswith("/") or ".." in entry.split("/") for entry in allowed), (
+        allowed
+      )
 
-    def test_an_unrepointed_root_still_yields_the_declared_table(self, tmp_path):
-        """The degeneracy property of ``test_the_respelling_degenerates_to_the_declared_table``,
-        restated through the type that is now the only route to it."""
-        from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
+  def test_an_unrepointed_root_still_yields_the_declared_table(self, tmp_path):
+    """The degeneracy property of ``test_the_respelling_degenerates_to_the_declared_table``,
+    restated through the type that is now the only route to it."""
+    from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
 
-        root = tmp_path / "ws"
-        scope = WorksetStampScope(root, root / "canon", root / "template")
-        assert scope.allowed() == SCOPE_WHITELISTS["workset"]
+    root = tmp_path / "ws"
+    scope = WorksetStampScope(root, root / "canon", root / "template")
+    assert scope.allowed() == SCOPE_WHITELISTS["workset"]
 
 
 class TestWorksetStampRefusesAnEscapingLeaf:
-    """Both stamp leaves are REPOINTABLE, so both can name a directory outside the
-    workset root — and the stamp writes only inside the root it is stamping.
+  """Both stamp leaves are REPOINTABLE, so both can name a directory outside the
+  workset root — and the stamp writes only inside the root it is stamping.
 
-    ⚑⚑ TWO SEPARATE GUARDS, and the tests below keep them separable. The LEAF check
-    (``_assert_stamp_leaf_in_root``) judges the resolved ``workset.{canon,template}``
-    and refuses NAMING THE KEY; the two guarantee-create ``mkdir``\\ s are additionally
-    ``_assert_contained``-checked, which is what catches a SYMLINKED INTERMEDIATE under
-    a leaf that is itself perfectly in-root.
+  ⚑⚑ TWO SEPARATE GUARDS, and the tests below keep them separable. The LEAF check
+  (``_assert_stamp_leaf_in_root``) judges the resolved ``workset.{canon,template}``
+  and refuses NAMING THE KEY; the two guarantee-create ``mkdir``\\ s are additionally
+  ``_assert_contained``-checked, which is what catches a SYMLINKED INTERMEDIATE under
+  a leaf that is itself perfectly in-root.
 
-    ⚑ These ``mkdir``\\ s run AFTER ``copy_tree`` and reach none of its guards, so
-    before this they were refused only INCIDENTALLY — by a copy that happened to share
-    the destination. Take the mold's content away and the escape was silent.
-    """
+  ⚑ These ``mkdir``\\ s run AFTER ``copy_tree`` and reach none of its guards, so
+  before this they were refused only INCIDENTALLY — by a copy that happened to share
+  the destination. Take the mold's content away and the escape was silent.
+  """
 
-    def _root(self, tmp_path, name, **repoints):
-        root = tmp_path / name
-        root.mkdir()
-        if repoints:
-            (root / "workset.yaml").write_text(
-                yaml.safe_dump({"workset": dict(repoints)})
-            )
-        return root
+  def _root(self, tmp_path, name, **repoints):
+    root = tmp_path / name
+    root.mkdir()
+    if repoints:
+      (root / "workset.yaml").write_text(yaml.safe_dump({"workset": dict(repoints)}))
+    return root
 
-    def test_an_out_of_root_canon_repoint_names_the_key_file_and_value(
-        self, std, tmp_path
-    ):
-        """⚑⚑ THE MESSAGE IS THE POINT. A refusal the user cannot act on is the defect:
-        the old text said only that some path was ``OUTSIDE the destination subtree``
-        and named neither ``workset.canon``, nor the file it was read from, nor the
-        value to change. The bar is ``workset_dirkeys``' unresolvable-repoint refusal —
-        key, file, offending token, reason, remedy."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_an_out_of_root_canon_repoint_names_the_key_file_and_value(self, std, tmp_path):
+    """⚑⚑ THE MESSAGE IS THE POINT. A refusal the user cannot act on is the defect:
+    the old text said only that some path was ``OUTSIDE the destination subtree``
+    and named neither ``workset.canon``, nor the file it was read from, nor the
+    value to change. The bar is ``workset_dirkeys``' unresolvable-repoint refusal —
+    key, file, offending token, reason, remedy."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        outside = tmp_path / "elsewhere" / "canon"
-        root = self._root(tmp_path, "solo-out", canon=str(outside))
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        text = str(exc.value)
-        assert "workset.canon" in text                       # the KEY
-        assert str(root / "workset.yaml") in text             # the FILE
-        assert str(outside) in text                           # the OFFENDING TOKEN
-        assert "OUTSIDE the workset root" in text             # the REASON
-        assert "Repoint workset.canon" in text                # the REMEDY
-        assert not outside.exists()
+    install_packaged_templates(std, ["claude"])
+    outside = tmp_path / "elsewhere" / "canon"
+    root = self._root(tmp_path, "solo-out", canon=str(outside))
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    text = str(exc.value)
+    assert "workset.canon" in text  # the KEY
+    assert str(root / "workset.yaml") in text  # the FILE
+    assert str(outside) in text  # the OFFENDING TOKEN
+    assert "OUTSIDE the workset root" in text  # the REASON
+    assert "Repoint workset.canon" in text  # the REMEDY
+    assert not outside.exists()
 
-    def test_the_preflight_refuses_with_the_same_named_message(self, std, tmp_path):
-        """⚑ BEFORE THE FIRST BYTE. ``check_workset_template`` exists so a destination
-        kanibako may not clean up is never half-written; the leaf check runs inside the
-        shared ``_workset_stamp_dirs``, so pre-flight and stamp cannot disagree."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import check_workset_template
+  def test_the_preflight_refuses_with_the_same_named_message(self, std, tmp_path):
+    """⚑ BEFORE THE FIRST BYTE. ``check_workset_template`` exists so a destination
+    kanibako may not clean up is never half-written; the leaf check runs inside the
+    shared ``_workset_stamp_dirs``, so pre-flight and stamp cannot disagree."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import check_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        outside = tmp_path / "elsewhere-pre" / "canon"
-        root = self._root(tmp_path, "solo-out-pre", canon=str(outside))
-        with pytest.raises(TemplateScopeError) as exc:
-            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert "workset.canon" in str(exc.value)
-        assert str(outside) in str(exc.value)
-        assert not outside.exists()
+    install_packaged_templates(std, ["claude"])
+    outside = tmp_path / "elsewhere-pre" / "canon"
+    root = self._root(tmp_path, "solo-out-pre", canon=str(outside))
+    with pytest.raises(TemplateScopeError) as exc:
+      check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert "workset.canon" in str(exc.value)
+    assert str(outside) in str(exc.value)
+    assert not outside.exists()
 
-    def test_an_out_of_root_template_repoint_plants_no_skeleton_outside(
-        self, std, tmp_path
-    ):
-        """MEASURED BEFORE THE FIX: an escaping ``workset.template`` created all three
-        skeleton dirs (seven directories in all) outside the workset root, and nothing
-        refused — the skeleton loop never reached a guard.
+  def test_an_out_of_root_template_repoint_plants_no_skeleton_outside(self, std, tmp_path):
+    """MEASURED BEFORE THE FIX: an escaping ``workset.template`` created all three
+    skeleton dirs (seven directories in all) outside the workset root, and nothing
+    refused — the skeleton loop never reached a guard.
 
-        ⚑ Rooted at ``meta.workset.path`` since keyspec §2a "A path key's stored value";
-        it read ``../escaped`` when it was written.  The escape is unchanged — it is the
-        ANCHOR that now has to be stated, and stating it is what lets this case still
-        reach the scope guard instead of dying earlier on an ambiguous value."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+    ⚑ Rooted at ``meta.workset.path`` since keyspec §2a "A path key's stored value";
+    it read ``../escaped`` when it was written.  The escape is unchanged — it is the
+    ANCHOR that now has to be stated, and stating it is what lets this case still
+    reach the scope guard instead of dying earlier on an ambiguous value."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "ws-escape", template="{meta.workset.path}/../escaped")
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, workset_name=root.name)
-        assert "workset.template" in str(exc.value)
-        assert not (tmp_path / "escaped").exists()
+    install_packaged_templates(std, ["claude"])
+    root = self._root(tmp_path, "ws-escape", template="{meta.workset.path}/../escaped")
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, root, workset_name=root.name)
+    assert "workset.template" in str(exc.value)
+    assert not (tmp_path / "escaped").exists()
 
-    def test_a_standalone_canon_escape_is_refused_with_an_EMPTY_mold(
-        self, std, tmp_path
-    ):
-        """⚑⚑ THE REACHABLE ONE, and the reason the incidental refusal was not enough.
-        With the mold's ``canon/`` half absent ``copy_tree`` returns on its first line,
-        so its ``_assert_contained`` never runs — and the chapter ``mkdir`` then created
-        the directory outside the root, silently."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_a_standalone_canon_escape_is_refused_with_an_EMPTY_mold(self, std, tmp_path):
+    """⚑⚑ THE REACHABLE ONE, and the reason the incidental refusal was not enough.
+    With the mold's ``canon/`` half absent ``copy_tree`` returns on its first line,
+    so its ``_assert_contained`` never runs — and the chapter ``mkdir`` then created
+    the directory outside the root, silently."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        shutil.rmtree(std.template / "workset" / "canon")
-        outside = tmp_path / "OUTSIDE"
-        root = self._root(tmp_path, "solo-empty-mold", canon=str(outside))
-        with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert not outside.exists()
+    install_packaged_templates(std, ["claude"])
+    shutil.rmtree(std.template / "workset" / "canon")
+    outside = tmp_path / "OUTSIDE"
+    root = self._root(tmp_path, "solo-empty-mold", canon=str(outside))
+    with pytest.raises(TemplateScopeError):
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert not outside.exists()
 
-    def test_a_symlinked_skeleton_intermediate_writes_nothing_outside(
-        self, std, tmp_path
-    ):
-        """⚑ WHAT THE LEAF CHECK CANNOT SEE. ``workset.template`` is unrepointed and
-        squarely in-root, but ``template/box`` is a symlink out — and the skeleton
-        descends four levels below the leaf, so ``mkdir(parents=True)`` would build the
-        tree THROUGH the link. Only ``_assert_contained`` on the real target sees it."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_a_symlinked_skeleton_intermediate_writes_nothing_outside(self, std, tmp_path):
+    """⚑ WHAT THE LEAF CHECK CANNOT SEE. ``workset.template`` is unrepointed and
+    squarely in-root, but ``template/box`` is a symlink out — and the skeleton
+    descends four levels below the leaf, so ``mkdir(parents=True)`` would build the
+    tree THROUGH the link. Only ``_assert_contained`` on the real target sees it."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        outside = tmp_path / "linked-away"
-        outside.mkdir()
-        root = self._root(tmp_path, "ws-symlink-skel")
-        (root / "template").mkdir()
-        (root / "template" / "box").symlink_to(outside, target_is_directory=True)
-        with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root, workset_name=root.name)
-        assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
+    install_packaged_templates(std, ["claude"])
+    outside = tmp_path / "linked-away"
+    outside.mkdir()
+    root = self._root(tmp_path, "ws-symlink-skel")
+    (root / "template").mkdir()
+    (root / "template" / "box").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(TemplateScopeError):
+      install_workset_template(std, root, workset_name=root.name)
+    assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
 
-    def test_a_symlinked_chapter_leaf_writes_nothing_outside(self, std, tmp_path):
-        """⚑ The chapter's own twin of the case above, on the arm where the copy is
-        silent: the mold's ``canon/`` half is gone, ``workset.canon`` is the plain
-        in-root default, and only ``canon/handbook`` is the link out."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_a_symlinked_chapter_leaf_writes_nothing_outside(self, std, tmp_path):
+    """⚑ The chapter's own twin of the case above, on the arm where the copy is
+    silent: the mold's ``canon/`` half is gone, ``workset.canon`` is the plain
+    in-root default, and only ``canon/handbook`` is the link out."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        shutil.rmtree(std.template / "workset" / "canon")
-        outside = tmp_path / "chapter-away"
-        outside.mkdir()
-        root = self._root(tmp_path, "ws-symlink-chapter")
-        (root / "canon").mkdir()
-        (root / "canon" / "handbook").symlink_to(outside, target_is_directory=True)
-        with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
+    install_packaged_templates(std, ["claude"])
+    shutil.rmtree(std.template / "workset" / "canon")
+    outside = tmp_path / "chapter-away"
+    outside.mkdir()
+    root = self._root(tmp_path, "ws-symlink-chapter")
+    (root / "canon").mkdir()
+    (root / "canon" / "handbook").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(TemplateScopeError):
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
 
-    def test_a_symlinked_default_leaf_says_it_took_the_default(self, std, tmp_path):
-        """⚑ NO REPOINT TO QUOTE. When the DEFAULT leaf is itself a link out there is no
-        settings value to name, and a message reading ``workset.canon is set to None``
-        would be a worse answer than the one it replaced."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import install_workset_template
+  def test_a_symlinked_default_leaf_says_it_took_the_default(self, std, tmp_path):
+    """⚑ NO REPOINT TO QUOTE. When the DEFAULT leaf is itself a link out there is no
+    settings value to name, and a message reading ``workset.canon is set to None``
+    would be a worse answer than the one it replaced."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        outside = tmp_path / "default-away"
-        outside.mkdir()
-        root = self._root(tmp_path, "ws-symlink-default")
-        (root / "canon").symlink_to(outside, target_is_directory=True)
-        with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert "takes its default 'canon' leaf" in str(exc.value)
-        assert "None" not in str(exc.value)
+    install_packaged_templates(std, ["claude"])
+    outside = tmp_path / "default-away"
+    outside.mkdir()
+    root = self._root(tmp_path, "ws-symlink-default")
+    (root / "canon").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(TemplateScopeError) as exc:
+      install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert "takes its default 'canon' leaf" in str(exc.value)
+    assert "None" not in str(exc.value)
 
-    def test_canon_only_ignores_an_out_of_root_template_repoint(self, std, tmp_path):
-        """⚑ THE CHECK IS PER-LEAF, and standalone's ``workset.template`` is ``<None>``
-        (spec ``:936``): that path consults neither the key nor the skeleton, so a value
-        it never uses must not refuse a root that is otherwise fine."""
-        from kanibako.launch.templates import install_workset_template
+  def test_canon_only_ignores_an_out_of_root_template_repoint(self, std, tmp_path):
+    """⚑ THE CHECK IS PER-LEAF, and standalone's ``workset.template`` is ``<None>``
+    (spec ``:936``): that path consults neither the key nor the skeleton, so a value
+    it never uses must not refuse a root that is otherwise fine."""
+    from kanibako.launch.templates import install_workset_template
 
-        install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "solo-template-noise", template="{meta.workset.path}/../nowhere")
-        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
-        assert (root / "canon" / "handbook").is_dir()
-        assert not (tmp_path / "nowhere").exists()
+    install_packaged_templates(std, ["claude"])
+    root = self._root(tmp_path, "solo-template-noise", template="{meta.workset.path}/../nowhere")
+    install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+    assert (root / "canon" / "handbook").is_dir()
+    assert not (tmp_path / "nowhere").exists()
 
 
 class TestCopierEnforcement:
-    """The four §2a enforcement points, on the ONE shared copier."""
+  """The four §2a enforcement points, on the ONE shared copier."""
 
-    def test_a_symlinked_FINAL_target_is_refused(self, tmp_path):
-        """⚑⚑ THE SECOND MUST-FIX. The parent check cannot see this: the escape is
-        the LEAF. With ``overwrite`` a live symlink is followed and a file OUTSIDE
-        the subtree is replaced wholesale."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_a_symlinked_FINAL_target_is_refused(self, tmp_path):
+    """⚑⚑ THE SECOND MUST-FIX. The parent check cannot see this: the escape is
+    the LEAF. With ``overwrite`` a live symlink is followed and a file OUTSIDE
+    the subtree is replaced wholesale."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        outside = tmp_path / "outside.txt"
-        outside.write_text("PRECIOUS")
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "a.txt").write_text("payload")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        (dest / "a.txt").symlink_to(outside)
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest, overwrite=True)
-        assert outside.read_text() == "PRECIOUS"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("PRECIOUS")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("payload")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "a.txt").symlink_to(outside)
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest, overwrite=True)
+    assert outside.read_text() == "PRECIOUS"
 
-    def test_a_DANGLING_symlink_target_is_refused(self, tmp_path):
-        """The create-if-absent arm's version of the same hole: a dangling symlink
-        reads as ABSENT to ``exists()``, so ``copy2`` writes THROUGH it."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_a_DANGLING_symlink_target_is_refused(self, tmp_path):
+    """The create-if-absent arm's version of the same hole: a dangling symlink
+    reads as ABSENT to ``exists()``, so ``copy2`` writes THROUGH it."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        outside = tmp_path / "not-yet.txt"
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "a.txt").write_text("payload")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        (dest / "a.txt").symlink_to(outside)
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest)
-        assert not outside.exists()
+    outside = tmp_path / "not-yet.txt"
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("payload")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "a.txt").symlink_to(outside)
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest)
+    assert not outside.exists()
 
-    def test_a_refused_copy_creates_no_directories(self, tmp_path):
-        """The containment check runs BEFORE the ``mkdir``: refusing a copy must not
-        litter directories outside the destination subtree on the way to saying no."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_a_refused_copy_creates_no_directories(self, tmp_path):
+    """The containment check runs BEFORE the ``mkdir``: refusing a copy must not
+    litter directories outside the destination subtree on the way to saying no."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        src = tmp_path / "src"
-        (src / "sub" / "deep").mkdir(parents=True)
-        (src / "sub" / "deep" / "a.txt").write_text("payload")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        (dest / "sub").symlink_to(outside, target_is_directory=True)
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest)
-        assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    src = tmp_path / "src"
+    (src / "sub" / "deep").mkdir(parents=True)
+    (src / "sub" / "deep" / "a.txt").write_text("payload")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "sub").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest)
+    assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
 
-    def test_source_symlink_is_refused(self, tmp_path):
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_source_symlink_is_refused(self, tmp_path):
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        secret = tmp_path / "id_ed25519"
-        secret.write_text("PRIVATE KEY")
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "innocent.txt").symlink_to(secret)
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest)
-        assert not (dest / "innocent.txt").exists()
+    secret = tmp_path / "id_ed25519"
+    secret.write_text("PRIVATE KEY")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "innocent.txt").symlink_to(secret)
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest)
+    assert not (dest / "innocent.txt").exists()
 
-    def test_stage_layers_refuses_a_source_symlink(self, tmp_path):
-        """The staging pass reads layer content through ``copy_tree``, so the copier's
-        own source-symlink refusal fires BEFORE any byte is staged."""
-        from kanibako.errors import TemplateScopeError
+  def test_stage_layers_refuses_a_source_symlink(self, tmp_path):
+    """The staging pass reads layer content through ``copy_tree``, so the copier's
+    own source-symlink refusal fires BEFORE any byte is staged."""
+    from kanibako.errors import TemplateScopeError
 
-        secret = tmp_path / "secret.txt"
-        secret.write_text("PRIVATE KEY")
-        layer = tmp_path / "layer"
-        layer.mkdir()
-        (layer / "innocent.txt").symlink_to(secret)
-        home = tmp_path / "home"
-        home.mkdir()
-        with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
-            stage_layers(home, [layer])
-        assert not (home / "innocent.txt").exists()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("PRIVATE KEY")
+    layer = tmp_path / "layer"
+    layer.mkdir()
+    (layer / "innocent.txt").symlink_to(secret)
+    home = tmp_path / "home"
+    home.mkdir()
+    with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
+      stage_layers(home, [layer])
+    assert not (home / "innocent.txt").exists()
 
-    @pytest.mark.parametrize("kind", ["file", "dir", "nested", "dangling"])
-    def test_stage_layers_refuses_every_symlink_shape_in_any_layer(self, tmp_path, kind):
-        """Each shape the deleted staging check refused — a link to a file, to a
-        directory, one level down, or dangling — in a LOWER layer under a clean upper one.
-        Nothing reaches the home."""
-        from kanibako.errors import TemplateScopeError
+  @pytest.mark.parametrize("kind", ["file", "dir", "nested", "dangling"])
+  def test_stage_layers_refuses_every_symlink_shape_in_any_layer(self, tmp_path, kind):
+    """Each shape the deleted staging check refused — a link to a file, to a
+    directory, one level down, or dangling — in a LOWER layer under a clean upper one.
+    Nothing reaches the home."""
+    from kanibako.errors import TemplateScopeError
 
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        (outside / "secret.txt").write_text("PRIVATE KEY")
-        lower = tmp_path / "lower"
-        (lower / "sub").mkdir(parents=True)
-        (lower / "plain.txt").write_text("plain")
-        link = {
-            "file": lower / "innocent.txt",
-            "dir": lower / "innocent",
-            "nested": lower / "sub" / "innocent.txt",
-            "dangling": lower / "innocent.txt",
-        }[kind]
-        target = {
-            "file": outside / "secret.txt",
-            "dir": outside,
-            "nested": outside / "secret.txt",
-            "dangling": outside / "gone.txt",
-        }[kind]
-        link.symlink_to(target, target_is_directory=kind == "dir")
-        upper = tmp_path / "upper"
-        upper.mkdir()
-        (upper / "up.txt").write_text("up")
-        home = tmp_path / "home"
-        home.mkdir()
-        with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
-            stage_layers(home, [lower, upper])
-        assert list(home.iterdir()) == []
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("PRIVATE KEY")
+    lower = tmp_path / "lower"
+    (lower / "sub").mkdir(parents=True)
+    (lower / "plain.txt").write_text("plain")
+    link = {
+      "file": lower / "innocent.txt",
+      "dir": lower / "innocent",
+      "nested": lower / "sub" / "innocent.txt",
+      "dangling": lower / "innocent.txt",
+    }[kind]
+    target = {
+      "file": outside / "secret.txt",
+      "dir": outside,
+      "nested": outside / "secret.txt",
+      "dangling": outside / "gone.txt",
+    }[kind]
+    link.symlink_to(target, target_is_directory=kind == "dir")
+    upper = tmp_path / "upper"
+    upper.mkdir()
+    (upper / "up.txt").write_text("up")
+    home = tmp_path / "home"
+    home.mkdir()
+    with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
+      stage_layers(home, [lower, upper])
+    assert list(home.iterdir()) == []
 
-    def test_dest_symlink_cannot_escape_the_subtree(self, tmp_path):
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_dest_symlink_cannot_escape_the_subtree(self, tmp_path):
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        src = tmp_path / "src"
-        (src / "sub").mkdir(parents=True)
-        (src / "sub" / "a.txt").write_text("payload")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        (dest / "sub").symlink_to(outside, target_is_directory=True)
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest)
-        assert not (outside / "a.txt").exists()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    src = tmp_path / "src"
+    (src / "sub").mkdir(parents=True)
+    (src / "sub" / "a.txt").write_text("payload")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "sub").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest)
+    assert not (outside / "a.txt").exists()
 
-    def test_box_whitelist_denies_a_planted_settings_file(self, tmp_path):
-        """``box.yaml`` at a BOX store root is ``meta.box.settings``, the LAST
-        cascade level — template content would become the box's top-priority
-        settings, carrying any key it liked."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_box_whitelist_denies_a_planted_settings_file(self, tmp_path):
+    """``box.yaml`` at a BOX store root is ``meta.box.settings``, the LAST
+    cascade level — template content would become the box's top-priority
+    settings, carrying any key it liked."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "box.yaml").write_text("box: {image: evil}\n")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        with pytest.raises(TemplateScopeError) as exc:
-            copy_tree(src, dest, scope="box")
-        assert "BOX" in str(exc.value)
-        assert not (dest / "box.yaml").exists()
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "box.yaml").write_text("box: {image: evil}\n")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    with pytest.raises(TemplateScopeError) as exc:
+      copy_tree(src, dest, scope="box")
+    assert "BOX" in str(exc.value)
+    assert not (dest / "box.yaml").exists()
 
-    def test_box_whitelist_allows_the_two_declared_entries(self, tmp_path):
-        from kanibako.launch.templates import copy_tree
+  def test_box_whitelist_allows_the_two_declared_entries(self, tmp_path):
+    from kanibako.launch.templates import copy_tree
 
-        src = tmp_path / "src"
-        (src / "home").mkdir(parents=True)
-        (src / "home" / "x.txt").write_text("x")
-        (src / "canon" / "handbook").mkdir(parents=True)
-        (src / "canon" / "handbook" / "y.md").write_text("y")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        copy_tree(src, dest, scope="box")
-        assert (dest / "home" / "x.txt").is_file()
-        assert (dest / "canon" / "handbook" / "y.md").is_file()
+    src = tmp_path / "src"
+    (src / "home").mkdir(parents=True)
+    (src / "home" / "x.txt").write_text("x")
+    (src / "canon" / "handbook").mkdir(parents=True)
+    (src / "canon" / "handbook" / "y.md").write_text("y")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    copy_tree(src, dest, scope="box")
+    assert (dest / "home" / "x.txt").is_file()
+    assert (dest / "canon" / "handbook" / "y.md").is_file()
 
-    def test_canon_is_not_seedable_wholesale(self, tmp_path):
-        """ONLY ``canon/handbook`` is seedable, never ``canon/`` wholesale."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch.templates import copy_tree
+  def test_canon_is_not_seedable_wholesale(self, tmp_path):
+    """ONLY ``canon/handbook`` is seedable, never ``canon/`` wholesale."""
+    from kanibako.errors import TemplateScopeError
+    from kanibako.launch.templates import copy_tree
 
-        src = tmp_path / "src"
-        (src / "canon" / "charter").mkdir(parents=True)
-        (src / "canon" / "charter" / "z.md").write_text("z")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        with pytest.raises(TemplateScopeError):
-            copy_tree(src, dest, scope="box")
+    src = tmp_path / "src"
+    (src / "canon" / "charter").mkdir(parents=True)
+    (src / "canon" / "charter" / "z.md").write_text("z")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    with pytest.raises(TemplateScopeError):
+      copy_tree(src, dest, scope="box")
 
 
 # ---------------------------------------------------------------------------
@@ -2848,671 +3030,668 @@ class TestCopierEnforcement:
 # and the refresh plan partition.
 # ---------------------------------------------------------------------------
 
+
 class TestPackagedTemplatesDigest:
-    """``packaged_templates_digest`` — deterministic content hash over the
-    packaged base + RO canon (carrying the box guide) + each agent template tree."""
+  """``packaged_templates_digest`` — deterministic content hash over the
+  packaged base + RO canon (carrying the box guide) + each agent template tree."""
 
-    def _fake_trees(self, monkeypatch, tmp_path, *, base="B", guide="G", claude="C"):
-        base_dir = tmp_path / "pbase"
-        base_dir.mkdir()
-        (base_dir / "INSTRUCTIONS.md").write_text(base)
-        # The RO packaged CANON carries the box guide at
-        # canon/charter/general/ROM_GENERAL.md — the SOLE manifest source of the
-        # guide now (C-CANON R1).
-        bundle_dir = tmp_path / "pbundle"
-        (bundle_dir / _GUIDE_REL).parent.mkdir(parents=True)
-        (bundle_dir / _GUIDE_REL).write_text(guide)
-        claude_dir = tmp_path / "pclaude"
-        claude_dir.mkdir()
-        (claude_dir / ".claude.json").write_text(claude)
-        monkeypatch.setattr(
-            "kanibako.launch.templates._packaged_base_template", lambda: base_dir
-        )
-        monkeypatch.setattr(
-            "kanibako.launch.templates._packaged_shared_bundle", lambda: bundle_dir
-        )
-        monkeypatch.setattr(
-            "kanibako.launch.templates._packaged_agent_store",
-            lambda name: claude_dir if name == "claude" else None,
-        )
-        return base_dir, bundle_dir, claude_dir
+  def _fake_trees(self, monkeypatch, tmp_path, *, base="B", guide="G", claude="C"):
+    base_dir = tmp_path / "pbase"
+    base_dir.mkdir()
+    (base_dir / "INSTRUCTIONS.md").write_text(base)
+    # The RO packaged CANON carries the box guide at
+    # canon/charter/general/ROM_GENERAL.md — the SOLE manifest source of the
+    # guide now (C-CANON R1).
+    bundle_dir = tmp_path / "pbundle"
+    (bundle_dir / _GUIDE_REL).parent.mkdir(parents=True)
+    (bundle_dir / _GUIDE_REL).write_text(guide)
+    claude_dir = tmp_path / "pclaude"
+    claude_dir.mkdir()
+    (claude_dir / ".claude.json").write_text(claude)
+    monkeypatch.setattr("kanibako.launch.templates._packaged_base_template", lambda: base_dir)
+    monkeypatch.setattr("kanibako.launch.templates._packaged_shared_bundle", lambda: bundle_dir)
+    monkeypatch.setattr(
+      "kanibako.launch.templates._packaged_agent_store",
+      lambda name: claude_dir if name == "claude" else None,
+    )
+    return base_dir, bundle_dir, claude_dir
 
-    def test_deterministic_and_order_independent(self, monkeypatch, tmp_path):
-        self._fake_trees(monkeypatch, tmp_path)
-        d1 = packaged_templates_digest(["claude", "shell"])
-        d2 = packaged_templates_digest(["shell", "claude"])
-        assert d1 == d2
-        assert len(d1) == 64  # sha256 hex
+  def test_deterministic_and_order_independent(self, monkeypatch, tmp_path):
+    self._fake_trees(monkeypatch, tmp_path)
+    d1 = packaged_templates_digest(["claude", "shell"])
+    d2 = packaged_templates_digest(["shell", "claude"])
+    assert d1 == d2
+    assert len(d1) == 64  # sha256 hex
 
-    def test_changes_when_base_file_changes(self, monkeypatch, tmp_path):
-        base_dir, _, _ = self._fake_trees(monkeypatch, tmp_path)
-        before = packaged_templates_digest(["claude"])
-        (base_dir / "INSTRUCTIONS.md").write_text("CHANGED")
-        assert packaged_templates_digest(["claude"]) != before
+  def test_changes_when_base_file_changes(self, monkeypatch, tmp_path):
+    base_dir, _, _ = self._fake_trees(monkeypatch, tmp_path)
+    before = packaged_templates_digest(["claude"])
+    (base_dir / "INSTRUCTIONS.md").write_text("CHANGED")
+    assert packaged_templates_digest(["claude"]) != before
 
-    def test_changes_when_guide_changes(self, monkeypatch, tmp_path):
-        _, bundle_dir, _ = self._fake_trees(monkeypatch, tmp_path)
-        before = packaged_templates_digest(["claude"])
-        (bundle_dir / _GUIDE_REL).write_text("NEW GUIDE")
-        assert packaged_templates_digest(["claude"]) != before
+  def test_changes_when_guide_changes(self, monkeypatch, tmp_path):
+    _, bundle_dir, _ = self._fake_trees(monkeypatch, tmp_path)
+    before = packaged_templates_digest(["claude"])
+    (bundle_dir / _GUIDE_REL).write_text("NEW GUIDE")
+    assert packaged_templates_digest(["claude"]) != before
 
-    def test_kanibako_md_hashed_exactly_once(self, monkeypatch, tmp_path):
-        """Regression: the guide is enumerated ONCE (only via the RO bundle).
+  def test_kanibako_md_hashed_exactly_once(self, monkeypatch, tmp_path):
+    """Regression: the guide is enumerated ONCE (only via the RO bundle).
 
-        The retired ``{system.instructions}`` flat-copy used to add a SECOND
-        ``instructions/KANIBAKO.md`` manifest entry beside the bundle's own —
-        double-hashing the same bytes so a relocation flipped the digest and
-        spuriously tripped the setup gate.
-        """
-        self._fake_trees(monkeypatch, tmp_path)
-        keys = [k for k, _ in _packaged_manifest_entries(["claude"])]
-        guide = [k for k in keys if k.endswith("ROM_GENERAL.md")]
-        assert guide == [f"shared/{_GUIDE_REL}"], keys
+    The retired ``{system.instructions}`` flat-copy used to add a SECOND
+    ``instructions/KANIBAKO.md`` manifest entry beside the bundle's own —
+    double-hashing the same bytes so a relocation flipped the digest and
+    spuriously tripped the setup gate.
+    """
+    self._fake_trees(monkeypatch, tmp_path)
+    keys = [k for k, _ in _packaged_manifest_entries(["claude"])]
+    guide = [k for k in keys if k.endswith("ROM_GENERAL.md")]
+    assert guide == [f"shared/{_GUIDE_REL}"], keys
 
-    def test_changes_when_agent_template_changes(self, monkeypatch, tmp_path):
-        _, _, claude_dir = self._fake_trees(monkeypatch, tmp_path)
-        before = packaged_templates_digest(["claude"])
-        (claude_dir / ".claude.json").write_text("NEW")
-        assert packaged_templates_digest(["claude"]) != before
+  def test_changes_when_agent_template_changes(self, monkeypatch, tmp_path):
+    _, _, claude_dir = self._fake_trees(monkeypatch, tmp_path)
+    before = packaged_templates_digest(["claude"])
+    (claude_dir / ".claude.json").write_text("NEW")
+    assert packaged_templates_digest(["claude"]) != before
 
-    def test_agent_membership_changes_digest(self, monkeypatch, tmp_path):
-        self._fake_trees(monkeypatch, tmp_path)
-        # ``claude`` contributes a packaged tree; ``shell`` contributes none.
-        assert packaged_templates_digest(["claude"]) != packaged_templates_digest(
-            ["shell"]
-        )
+  def test_agent_membership_changes_digest(self, monkeypatch, tmp_path):
+    self._fake_trees(monkeypatch, tmp_path)
+    # ``claude`` contributes a packaged tree; ``shell`` contributes none.
+    assert packaged_templates_digest(["claude"]) != packaged_templates_digest(["shell"])
 
-    def test_real_packaged_digest_stable(self):
-        """Over the REAL packaged data the digest is stable across calls."""
-        from kanibako.targets import discover_targets
+  def test_real_packaged_digest_stable(self):
+    """Over the REAL packaged data the digest is stable across calls."""
+    from kanibako.targets import discover_targets
 
-        names = sorted(discover_targets())
-        assert packaged_templates_digest(names) == packaged_templates_digest(names)
-        assert len(packaged_templates_digest(names)) == 64
+    names = sorted(discover_targets())
+    assert packaged_templates_digest(names) == packaged_templates_digest(names)
+    assert len(packaged_templates_digest(names)) == 64
 
 
 class TestInstallPackagedTemplatesRefresh:
-    """``install_packaged_templates(..., refresh=True)`` = TRUE REFRESH, and J-3
-    item 1's boundary: it reaches the system-owned packaged STAGING **only**."""
+  """``install_packaged_templates(..., refresh=True)`` = TRUE REFRESH, and J-3
+  item 1's boundary: it reaches the system-owned packaged STAGING **only**."""
 
-    def test_refresh_overwrites_changed_staged_file(self, std):
-        install_packaged_templates(std, ["claude"])
-        rel = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
-        shipped = std.template.joinpath(*rel)
-        shipped.write_text("STALE USER EDIT")
-        install_packaged_templates(std, ["claude"], refresh=True)
-        packaged = _packaged_base_template().joinpath(*rel).read_text()
-        assert shipped.read_text() == packaged
-        assert shipped.read_text() != "STALE USER EDIT"
+  def test_refresh_overwrites_changed_staged_file(self, std):
+    install_packaged_templates(std, ["claude"])
+    rel = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
+    shipped = std.template.joinpath(*rel)
+    shipped.write_text("STALE USER EDIT")
+    install_packaged_templates(std, ["claude"], refresh=True)
+    packaged = _packaged_base_template().joinpath(*rel).read_text()
+    assert shipped.read_text() == packaged
+    assert shipped.read_text() != "STALE USER EDIT"
 
-    def test_refresh_adds_missing_shipped_file(self, std):
-        """A never-installed host: refresh ADDS every shipped file."""
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
-        assert (
-            std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-        ).is_file()
+  def test_refresh_adds_missing_shipped_file(self, std):
+    """A never-installed host: refresh ADDS every shipped file."""
+    install_packaged_templates(std, ["claude"], refresh=True)
+    assert (std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
+    assert (std.agents / "claude" / "template" / "box" / "home" / ".claude.json").is_file()
 
-    def test_refresh_leaves_user_only_file(self, std):
-        install_packaged_templates(std, ["claude"])
-        user_file = std.template / "box" / "home" / "MY_NOTES.md"
-        user_file.write_text("user only")
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert user_file.read_text() == "user only"
+  def test_refresh_leaves_user_only_file(self, std):
+    install_packaged_templates(std, ["claude"])
+    user_file = std.template / "box" / "home" / "MY_NOTES.md"
+    user_file.write_text("user only")
+    install_packaged_templates(std, ["claude"], refresh=True)
+    assert user_file.read_text() == "user only"
 
-    def test_refresh_never_overwrites_the_system_handbook(self, std):
-        """⚑ J-3 item 1: user-owned canon stores are NEVER overwritten by any
-        implicit path. ``kanibako setup`` may refresh the STAGING; it may not revert
-        the user's own handbook."""
-        install_packaged_templates(std, ["claude"])
-        mine = std.canon / "handbook" / "SYS_CONTENTS.md"
-        mine.write_text("MY HANDBOOK")
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert mine.read_text() == "MY HANDBOOK"
+  def test_refresh_never_overwrites_the_system_handbook(self, std):
+    """⚑ J-3 item 1: user-owned canon stores are NEVER overwritten by any
+    implicit path. ``kanibako setup`` may refresh the STAGING; it may not revert
+    the user's own handbook."""
+    install_packaged_templates(std, ["claude"])
+    mine = std.canon / "handbook" / "SYS_CONTENTS.md"
+    mine.write_text("MY HANDBOOK")
+    install_packaged_templates(std, ["claude"], refresh=True)
+    assert mine.read_text() == "MY HANDBOOK"
 
-    def test_refresh_never_overwrites_an_agent_store(self, std):
-        install_packaged_templates(std, ["claude"])
-        stub = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-        stub.write_text("{}")
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert stub.read_text() == "{}"
+  def test_refresh_never_overwrites_an_agent_store(self, std):
+    install_packaged_templates(std, ["claude"])
+    stub = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+    stub.write_text("{}")
+    install_packaged_templates(std, ["claude"], refresh=True)
+    assert stub.read_text() == "{}"
 
 
 class TestCreateIfAbsentRegression:
-    """The create-if-absent default (box-seed path) is UNCHANGED by the refresh
-    variant — it must still skip existing files."""
+  """The create-if-absent default (box-seed path) is UNCHANGED by the refresh
+  variant — it must still skip existing files."""
 
-    def test_install_default_still_create_if_absent(self, std):
-        install_packaged_templates(std, ["claude"])
-        mine = std.template / "box" / "home" / "MINE.md"
-        mine.write_text("MY EDITS")
-        install_packaged_templates(std, ["claude"])  # refresh defaults False
-        assert mine.read_text() == "MY EDITS"
+  def test_install_default_still_create_if_absent(self, std):
+    install_packaged_templates(std, ["claude"])
+    mine = std.template / "box" / "home" / "MINE.md"
+    mine.write_text("MY EDITS")
+    install_packaged_templates(std, ["claude"])  # refresh defaults False
+    assert mine.read_text() == "MY EDITS"
 
-    def test_public_alias_still_skips_existing(self, tmp_path):
-        """``copy_resource_tree_if_absent`` (the box-seed apply reuses it) must
-        still leave an existing dest file untouched (the data-loss guard)."""
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "a.txt").write_text("shipped")
-        dest = tmp_path / "dest"
-        dest.mkdir()
-        (dest / "a.txt").write_text("USER OWNED")
-        copy_resource_tree_if_absent(src, dest)
-        assert (dest / "a.txt").read_text() == "USER OWNED"
+  def test_public_alias_still_skips_existing(self, tmp_path):
+    """``copy_resource_tree_if_absent`` (the box-seed apply reuses it) must
+    still leave an existing dest file untouched (the data-loss guard)."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("shipped")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "a.txt").write_text("USER OWNED")
+    copy_resource_tree_if_absent(src, dest)
+    assert (dest / "a.txt").read_text() == "USER OWNED"
 
 
 class TestPlanTemplateRefresh:
-    """``plan_template_refresh`` → (added, overwritten, kept); files that are
-    byte-equal OR EQUIVALENT, and user-only files, never appear."""
+  """``plan_template_refresh`` → (added, overwritten, kept); files that are
+  byte-equal OR EQUIVALENT, and user-only files, never appear."""
 
-    _STAGED = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
+  _STAGED = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
 
-    def test_all_added_on_empty_host(self, std):
-        added, overwritten, kept = plan_template_refresh(std, ["claude"])
-        assert overwritten == []
-        assert kept == []
-        assert any(p.name == "LOCAL_CONTENTS.md" for p in added)
-        assert any(p.name == "SYS_CONTENTS.md" for p in added)
+  def test_all_added_on_empty_host(self, std):
+    added, overwritten, kept = plan_template_refresh(std, ["claude"])
+    assert overwritten == []
+    assert kept == []
+    assert any(p.name == "LOCAL_CONTENTS.md" for p in added)
+    assert any(p.name == "SYS_CONTENTS.md" for p in added)
 
-    def test_unchanged_after_install_is_empty(self, std):
-        install_packaged_templates(std, ["claude"])
-        assert plan_template_refresh(std, ["claude"]) == ([], [], [])
+  def test_unchanged_after_install_is_empty(self, std):
+    install_packaged_templates(std, ["claude"])
+    assert plan_template_refresh(std, ["claude"]) == ([], [], [])
 
-    def test_changed_staged_file_is_overwritten_partition(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template.joinpath(*self._STAGED)
-        target.write_text("# changed\n\nreal content change\n")
-        added, overwritten, kept = plan_template_refresh(std, ["claude"])
-        assert target in overwritten
-        assert added == []
+  def test_changed_staged_file_is_overwritten_partition(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template.joinpath(*self._STAGED)
+    target.write_text("# changed\n\nreal content change\n")
+    added, overwritten, kept = plan_template_refresh(std, ["claude"])
+    assert target in overwritten
+    assert added == []
 
-    def test_changed_user_owned_file_is_KEPT_not_overwritten(self, std):
-        """A user-owned store's difference is REPORTED, never scheduled for a
-        rewrite — that is what makes ``kept`` a distinct list."""
-        install_packaged_templates(std, ["claude"])
-        target = std.canon / "handbook" / "SYS_CONTENTS.md"
-        target.write_text("# mine\n\nentirely my own words\n")
-        added, overwritten, kept = plan_template_refresh(std, ["claude"])
-        assert target in kept
-        assert target not in overwritten
+  def test_changed_user_owned_file_is_KEPT_not_overwritten(self, std):
+    """A user-owned store's difference is REPORTED, never scheduled for a
+    rewrite — that is what makes ``kept`` a distinct list."""
+    install_packaged_templates(std, ["claude"])
+    target = std.canon / "handbook" / "SYS_CONTENTS.md"
+    target.write_text("# mine\n\nentirely my own words\n")
+    added, overwritten, kept = plan_template_refresh(std, ["claude"])
+    assert target in kept
+    assert target not in overwritten
 
-    def test_missing_file_is_added_partition(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template.joinpath(*self._STAGED)
-        target.unlink()
-        added, _overwritten, _kept = plan_template_refresh(std, ["claude"])
-        assert target in added
+  def test_missing_file_is_added_partition(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template.joinpath(*self._STAGED)
+    target.unlink()
+    added, _overwritten, _kept = plan_template_refresh(std, ["claude"])
+    assert target in added
 
-    def test_user_only_file_absent_from_plan(self, std):
-        install_packaged_templates(std, ["claude"])
-        (std.template / "box" / "home" / "USER.md").write_text("mine")
-        added, overwritten, kept = plan_template_refresh(std, ["claude"])
-        assert all(p.name != "USER.md" for p in added + overwritten + kept)
+  def test_user_only_file_absent_from_plan(self, std):
+    install_packaged_templates(std, ["claude"])
+    (std.template / "box" / "home" / "USER.md").write_text("mine")
+    added, overwritten, kept = plan_template_refresh(std, ["claude"])
+    assert all(p.name != "USER.md" for p in added + overwritten + kept)
 
 
 class TestPlanCountsTheAgentStoreStamp:
-    """The preview counts what :func:`ensure_agent_stores` would ADD, so setup never
-    says "up to date" over a store the action would stamp — and never over-counts one
-    the action leaves alone (absent-only, seed once)."""
+  """The preview counts what :func:`ensure_agent_stores` would ADD, so setup never
+  says "up to date" over a store the action would stamp — and never over-counts one
+  the action leaves alone (absent-only, seed once)."""
 
-    _CHAPTER = ("canon", "handbook", "SYS_AGENT.md")
+  _CHAPTER = ("canon", "handbook", "SYS_AGENT.md")
 
-    def test_a_deleted_shell_store_is_work_and_the_action_restamps_it(self, std):
-        install_packaged_templates(std, ["shell"])
-        shutil.rmtree(std.agents / "shell")
-        added, overwritten, kept = plan_template_refresh(std, ["shell"])
-        chapter = std.agents.joinpath("shell", *self._CHAPTER)
-        assert added == [chapter]
-        assert (overwritten, kept) == ([], [])
-        install_packaged_templates(std, ["shell"])
-        assert chapter.is_file()
-        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+  def test_a_deleted_shell_store_is_work_and_the_action_restamps_it(self, std):
+    install_packaged_templates(std, ["shell"])
+    shutil.rmtree(std.agents / "shell")
+    added, overwritten, kept = plan_template_refresh(std, ["shell"])
+    chapter = std.agents.joinpath("shell", *self._CHAPTER)
+    assert added == [chapter]
+    assert (overwritten, kept) == ([], [])
+    install_packaged_templates(std, ["shell"])
+    assert chapter.is_file()
+    assert plan_template_refresh(std, ["shell"]) == ([], [], [])
 
-    def test_a_canonless_plugin_store_is_work(self, std, monkeypatch):
-        from kanibako.launch import templates
+  def test_a_canonless_plugin_store_is_work(self, std, monkeypatch):
+    from kanibako.launch import templates
 
-        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
-        install_packaged_templates(std, ["thirdparty"])
-        assert plan_template_refresh(std, ["thirdparty"]) == ([], [], [])
-        shutil.rmtree(std.agents / "thirdparty" / "canon")
-        added, _overwritten, _kept = plan_template_refresh(std, ["thirdparty"])
-        assert added == [std.agents.joinpath("thirdparty", *self._CHAPTER)]
+    monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+    install_packaged_templates(std, ["thirdparty"])
+    assert plan_template_refresh(std, ["thirdparty"]) == ([], [], [])
+    shutil.rmtree(std.agents / "thirdparty" / "canon")
+    added, _overwritten, _kept = plan_template_refresh(std, ["thirdparty"])
+    assert added == [std.agents.joinpath("thirdparty", *self._CHAPTER)]
 
-    def test_an_empty_canon_dir_is_present_and_never_added_to(self, std):
-        install_packaged_templates(std, ["shell"])
-        shutil.rmtree(std.agents / "shell" / "canon")
-        (std.agents / "shell" / "canon").mkdir()
-        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
-        install_packaged_templates(std, ["shell"])
-        assert list((std.agents / "shell" / "canon").iterdir()) == []
+  def test_an_empty_canon_dir_is_present_and_never_added_to(self, std):
+    install_packaged_templates(std, ["shell"])
+    shutil.rmtree(std.agents / "shell" / "canon")
+    (std.agents / "shell" / "canon").mkdir()
+    assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+    install_packaged_templates(std, ["shell"])
+    assert list((std.agents / "shell" / "canon").iterdir()) == []
 
-    def test_a_canon_symlink_is_never_followed(self, std, tmp_path):
-        install_packaged_templates(std, ["shell"])
-        shutil.rmtree(std.agents / "shell" / "canon")
-        elsewhere = tmp_path / "elsewhere"
-        (std.agents / "shell" / "canon").symlink_to(elsewhere)  # dangling
-        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
-        install_packaged_templates(std, ["shell"])
-        assert not elsewhere.exists()
+  def test_a_canon_symlink_is_never_followed(self, std, tmp_path):
+    install_packaged_templates(std, ["shell"])
+    shutil.rmtree(std.agents / "shell" / "canon")
+    elsewhere = tmp_path / "elsewhere"
+    (std.agents / "shell" / "canon").symlink_to(elsewhere)  # dangling
+    assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+    install_packaged_templates(std, ["shell"])
+    assert not elsewhere.exists()
 
-    def test_a_missing_mold_file_is_work_but_a_differing_one_is_not_kept(self, std):
-        install_packaged_templates(std, ["shell"])
-        mold_file = std.template / "agent" / "common" / "MOLD.md"
-        mold_file.parent.mkdir(parents=True)
-        mold_file.write_text("from the mold")
-        added, _overwritten, kept = plan_template_refresh(std, ["shell"])
-        assert sorted(added) == sorted(
-            std.agents / n / "common" / "MOLD.md" for n in ("default", "shell")
-        )
-        install_packaged_templates(std, ["shell"])
-        (std.agents / "shell" / "common" / "MOLD.md").write_text("mine")
-        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+  def test_a_missing_mold_file_is_work_but_a_differing_one_is_not_kept(self, std):
+    install_packaged_templates(std, ["shell"])
+    mold_file = std.template / "agent" / "common" / "MOLD.md"
+    mold_file.parent.mkdir(parents=True)
+    mold_file.write_text("from the mold")
+    added, _overwritten, kept = plan_template_refresh(std, ["shell"])
+    assert sorted(added) == sorted(
+      std.agents / n / "common" / "MOLD.md" for n in ("default", "shell")
+    )
+    install_packaged_templates(std, ["shell"])
+    (std.agents / "shell" / "common" / "MOLD.md").write_text("mine")
+    assert plan_template_refresh(std, ["shell"]) == ([], [], [])
 
 
 class TestRefreshEquivalenceTiers:
-    """J-3 item 2: three tiers, REPORTING ONLY — byte-equal and EQUIVALENT are both
-    "current" and go unreported; only a real difference is named."""
+  """J-3 item 2: three tiers, REPORTING ONLY — byte-equal and EQUIVALENT are both
+  "current" and go unreported; only a real difference is named."""
 
-    def test_markdown_comment_and_whitespace_change_is_equivalent(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
-        text = target.read_text()
-        # A comment edit, ONE trailing space (insignificant — two would be a
-        # markdown HARD BREAK, which the normalizer deliberately preserves), CRLF
-        # line endings, and extra blank lines: all noise, none of it content.
-        target.write_text(
-            text.replace("<!--", "<!--[STOCK]", 1)
-            .replace("\n", " \r\n")
-            .rstrip()
-            + "\n\n\n"
-        )
-        added, overwritten, kept = plan_template_refresh(std, ["claude"])
-        assert overwritten == [] and kept == [] and added == []
+  def test_markdown_comment_and_whitespace_change_is_equivalent(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
+    text = target.read_text()
+    # A comment edit, ONE trailing space (insignificant — two would be a
+    # markdown HARD BREAK, which the normalizer deliberately preserves), CRLF
+    # line endings, and extra blank lines: all noise, none of it content.
+    target.write_text(
+      text.replace("<!--", "<!--[STOCK]", 1).replace("\n", " \r\n").rstrip() + "\n\n\n"
+    )
+    added, overwritten, kept = plan_template_refresh(std, ["claude"])
+    assert overwritten == [] and kept == [] and added == []
 
-    def test_markdown_body_change_is_different(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
-        target.write_text(target.read_text() + "\nA REAL NEW LINE\n")
-        _added, overwritten, _kept = plan_template_refresh(std, ["claude"])
-        assert target in overwritten
+  def test_markdown_body_change_is_different(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
+    target.write_text(target.read_text() + "\nA REAL NEW LINE\n")
+    _added, overwritten, _kept = plan_template_refresh(std, ["claude"])
+    assert target in overwritten
 
-    def test_yaml_reordering_is_equivalent(self, tmp_path):
-        from kanibako.launch.templates import _equivalent
+  def test_yaml_reordering_is_equivalent(self, tmp_path):
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("a: 1\nb: 2\n")
-        dst.write_text("b: 2\na: 1\n")
-        assert _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("a: 1\nb: 2\n")
+    dst.write_text("b: 2\na: 1\n")
+    assert _equivalent(src, dst)
 
-    def test_unparseable_yaml_is_different(self, tmp_path):
-        from kanibako.launch.templates import _equivalent
+  def test_unparseable_yaml_is_different(self, tmp_path):
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("a: 1\n")
-        dst.write_text("a: [1, 2\n")
-        assert not _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("a: 1\n")
+    dst.write_text("a: [1, 2\n")
+    assert not _equivalent(src, dst)
 
-    def test_a_repeated_key_is_different_not_equivalent(self, tmp_path):
-        """``"k: 1\\nk: 2\\n"`` and ``"k: 2\\n"`` read as the same document ONLY under
-        last-wins, which is a silent accept of the second value over the first (spec §0).
-        Both sides now go through ``parse_doc_text``, so the repeat is a parse failure and
-        the existing "a YAML parse failure ⇒ different" rule covers it with no new branch."""
-        from kanibako.launch.templates import _equivalent
+  def test_a_repeated_key_is_different_not_equivalent(self, tmp_path):
+    """``"k: 1\\nk: 2\\n"`` and ``"k: 2\\n"`` read as the same document ONLY under
+    last-wins, which is a silent accept of the second value over the first (spec §0).
+    Both sides now go through ``parse_doc_text``, so the repeat is a parse failure and
+    the existing "a YAML parse failure ⇒ different" rule covers it with no new branch."""
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("k: 1\nk: 2\n")
-        dst.write_text("k: 2\n")
-        assert not _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("k: 1\nk: 2\n")
+    dst.write_text("k: 2\n")
+    assert not _equivalent(src, dst)
 
-    def test_a_repeated_key_on_one_side_is_different(self, tmp_path):
-        from kanibako.launch.templates import _equivalent
+  def test_a_repeated_key_on_one_side_is_different(self, tmp_path):
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("k: 1\nk: 1\n")
-        dst.write_text("k: 1\n")
-        assert not _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("k: 1\nk: 1\n")
+    dst.write_text("k: 1\n")
+    assert not _equivalent(src, dst)
 
-    def test_a_shared_alias_is_still_equivalent(self, tmp_path):
-        """⚑ THE CONTROL: sharing one table across two keys is legal YAML, not a repeat —
-        it must not be read as a difference, or every aliased file reports as overwritten."""
-        from kanibako.launch.templates import _equivalent
+  def test_a_shared_alias_is_still_equivalent(self, tmp_path):
+    """⚑ THE CONTROL: sharing one table across two keys is legal YAML, not a repeat —
+    it must not be read as a difference, or every aliased file reports as overwritten."""
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("x: &s {q: 1}\ny: *s\n")
-        dst.write_text("x: {q: 1}\ny: {q: 1}\n")
-        assert _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("x: &s {q: 1}\ny: *s\n")
+    dst.write_text("x: {q: 1}\ny: {q: 1}\n")
+    assert _equivalent(src, dst)
 
-    def test_a_self_referential_anchor_is_different(self, tmp_path):
-        from kanibako.launch.templates import _equivalent
+  def test_a_self_referential_anchor_is_different(self, tmp_path):
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        src.write_text("x: &s {q: 1, self: *s}\n")
-        dst.write_text("x: {q: 1}\n")
-        assert not _equivalent(src, dst)
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text("x: &s {q: 1, self: *s}\n")
+    dst.write_text("x: {q: 1}\n")
+    assert not _equivalent(src, dst)
 
-    def test_fenced_code_whitespace_is_significant(self, tmp_path):
-        """CONSERVATIVE normalization: inside a fence, whitespace is CONTENT."""
-        from kanibako.launch.templates import _equivalent
+  def test_fenced_code_whitespace_is_significant(self, tmp_path):
+    """CONSERVATIVE normalization: inside a fence, whitespace is CONTENT."""
+    from kanibako.launch.templates import _equivalent
 
-        src = tmp_path / "a.md"
-        dst = tmp_path / "b.md"
-        src.write_text("t\n\n```\n  indented\n```\n")
-        dst.write_text("t\n\n```\nindented\n```\n")
-        assert not _equivalent(src, dst)
+    src = tmp_path / "a.md"
+    dst = tmp_path / "b.md"
+    src.write_text("t\n\n```\n  indented\n```\n")
+    dst.write_text("t\n\n```\nindented\n```\n")
+    assert not _equivalent(src, dst)
 
-    def test_trailing_hard_break_is_preserved(self, tmp_path):
-        from kanibako.launch.templates import _normalize_markdown
+  def test_trailing_hard_break_is_preserved(self, tmp_path):
+    from kanibako.launch.templates import _normalize_markdown
 
-        assert _normalize_markdown("one  \ntwo\n") == "one  \ntwo"
+    assert _normalize_markdown("one  \ntwo\n") == "one  \ntwo"
 
 
 def _shared_alias_levels(levels: int, fanout: int = 9) -> str:
-    """*levels* anchored lists, each *fanout* aliases to the one below, so the document
-    reaches its one leaf by ``fanout ** (levels - 1)`` DISTINCT PATHS.
+  """*levels* anchored lists, each *fanout* aliases to the one below, so the document
+  reaches its one leaf by ``fanout ** (levels - 1)`` DISTINCT PATHS.
 
-    ⚑ THE SAME SHAPE AS ``tests/test_settings/test_config.py::_aliased_levels``, which
-    is the document the loader's own bound is measured against.  The two bounds have to
-    hold on the SAME document, so a copy written here keeps them comparable instead of
-    letting each drift on its own.
-    """
-    lines = ["seed: &a ['x']"]
-    previous = "a"
-    for i in range(1, levels):
-        name = chr(ord("a") + i)
-        aliases = ",".join(["*" + previous] * fanout)
-        lines.append(f"{name}: &{name} [{aliases}]")
-        previous = name
-    lines.append(f"top: *{previous}")
-    return "\n".join(lines) + "\n"
+  ⚑ THE SAME SHAPE AS ``tests/test_settings/test_config.py::_aliased_levels``, which
+  is the document the loader's own bound is measured against.  The two bounds have to
+  hold on the SAME document, so a copy written here keeps them comparable instead of
+  letting each drift on its own.
+  """
+  lines = ["seed: &a ['x']"]
+  previous = "a"
+  for i in range(1, levels):
+    name = chr(ord("a") + i)
+    aliases = ",".join(["*" + previous] * fanout)
+    lines.append(f"{name}: &{name} [{aliases}]")
+    previous = name
+  lines.append(f"top: *{previous}")
+  return "\n".join(lines) + "\n"
 
 
 class TestEquivalenceOnSharedAliasDocuments:
-    """The COMPARE of two parsed documents is host-safety surface of its own.
+  """The COMPARE of two parsed documents is host-safety surface of its own.
 
-    ⚑ THE PARSE IS LINEAR IN CONTAINERS AND THE COMPARISON MUST BE TOO.  The loader's
-    own bound means both sides of a fanned-out document LOAD in microseconds — and a
-    comparison that walks every path then spends the exponential anyway, on a file of a
-    few hundred bytes, reached by ``setup``'s template refresh and by an install that
-    overwrites.
+  ⚑ THE PARSE IS LINEAR IN CONTAINERS AND THE COMPARISON MUST BE TOO.  The loader's
+  own bound means both sides of a fanned-out document LOAD in microseconds — and a
+  comparison that walks every path then spends the exponential anyway, on a file of a
+  few hundred bytes, reached by ``setup``'s template refresh and by an install that
+  overwrites.
+  """
+
+  def test_equal_shared_alias_documents_are_equivalent_within_the_bound(self, tmp_path):
+    """Ten levels of nine aliases is 338 bytes and ``9 ** 9`` paths to one leaf.
+
+    The two sides differ only in a COMMENT, so the bytes differ, both parse, and the
+    values are equal — the whole question ``_equivalent`` exists to answer.  The
+    bound is generous for the same reason the loader's is (1 s for work that must
+    finish in microseconds) and it fails by more than an order of magnitude, not by
+    a margin a loaded box could eat: the two sides reach one leaf by 9**9 paths
+    between them, so a walk that follows paths cannot be near a second.
     """
+    from kanibako.launch.templates import _equivalent
 
-    def test_equal_shared_alias_documents_are_equivalent_within_the_bound(self, tmp_path):
-        """Ten levels of nine aliases is 338 bytes and ``9 ** 9`` paths to one leaf.
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    document = _shared_alias_levels(10)
+    src.write_text(document)
+    dst.write_text("# a comment the other side does not have\n" + document)
+    assert src.read_bytes() != dst.read_bytes()
 
-        The two sides differ only in a COMMENT, so the bytes differ, both parse, and the
-        values are equal — the whole question ``_equivalent`` exists to answer.  The
-        bound is generous for the same reason the loader's is (1 s for work that must
-        finish in microseconds) and it fails by more than an order of magnitude, not by
-        a margin a loaded box could eat: the two sides reach one leaf by 9**9 paths
-        between them, so a walk that follows paths cannot be near a second.
-        """
-        from kanibako.launch.templates import _equivalent
+    start = time.perf_counter()
+    result = _equivalent(src, dst)
+    elapsed = time.perf_counter() - start
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        document = _shared_alias_levels(10)
-        src.write_text(document)
-        dst.write_text("# a comment the other side does not have\n" + document)
-        assert src.read_bytes() != dst.read_bytes()
+    assert result
+    assert elapsed < 1.0, (
+      f"the comparison took {elapsed:.1f}s on two {len(document)}-byte documents of shared aliases"
+    )
 
-        start = time.perf_counter()
-        result = _equivalent(src, dst)
-        elapsed = time.perf_counter() - start
+  def test_one_deepest_leaf_that_differs_is_a_difference(self, tmp_path):
+    """The negative case the memo must not soften: ONE leaf, at the bottom, ``y``
+    instead of ``x`` — the two documents share a shape that is equal everywhere
+    else, and a comparison that remembers "these containers" instead of "these two
+    containers" answers ``True`` here."""
+    from kanibako.launch.templates import _equivalent
 
-        assert result
-        assert elapsed < 1.0, (
-            f"the comparison took {elapsed:.1f}s on two "
-            f"{len(document)}-byte documents of shared aliases"
-        )
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    document = _shared_alias_levels(10)
+    src.write_text(document)
+    dst.write_text(document.replace("seed: &a ['x']", "seed: &a ['y']", 1))
 
-    def test_one_deepest_leaf_that_differs_is_a_difference(self, tmp_path):
-        """The negative case the memo must not soften: ONE leaf, at the bottom, ``y``
-        instead of ``x`` — the two documents share a shape that is equal everywhere
-        else, and a comparison that remembers "these containers" instead of "these two
-        containers" answers ``True`` here."""
-        from kanibako.launch.templates import _equivalent
+    start = time.perf_counter()
+    result = _equivalent(src, dst)
+    elapsed = time.perf_counter() - start
 
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        document = _shared_alias_levels(10)
-        src.write_text(document)
-        dst.write_text(document.replace("seed: &a ['x']", "seed: &a ['y']", 1))
+    assert not result
+    assert elapsed < 1.0, f"refusing one differing leaf took {elapsed:.1f}s"
 
-        start = time.perf_counter()
-        result = _equivalent(src, dst)
-        elapsed = time.perf_counter() - start
+  def test_a_one_sided_memo_would_have_answered_these_two_the_same_way(self, tmp_path):
+    """⚑ THE PAIR IS THE KEY, NOT THE CONTAINER.
 
-        assert not result
-        assert elapsed < 1.0, f"refusing one differing leaf took {elapsed:.1f}s"
+    The left document names ONE table twice, so the two keys hold the same object;
+    the right document names TWO tables that are not equal.  A memo keyed on one
+    side alone walks the first key, decides the pair equal, and reports the second
+    key from that decision — accepting a document whose second key says something
+    different.  Every other pair of keys here is equal, so only a key that holds the
+    PAIR can tell the two apart.
+    """
+    from kanibako.launch.templates import _equivalent
 
-    def test_a_one_sided_memo_would_have_answered_these_two_the_same_way(self, tmp_path):
-        """⚑ THE PAIR IS THE KEY, NOT THE CONTAINER.
+    for left, right in (
+      ("x: &s {k: 1}\ny: *s\n", "x: {k: 1}\ny: {k: 2}\n"),
+      ("x: &s [1, 2]\ny: *s\n", "x: [1, 2]\ny: [1, 3]\n"),
+      ("x: &s {k: 1}\ny: &t {k: 1}\nz: *s\n", "x: {k: 1}\ny: {k: 1}\nz: {k: 2}\n"),
+    ):
+      src = tmp_path / "a.yaml"
+      dst = tmp_path / "b.yaml"
+      src.write_text(left)
+      dst.write_text(right)
+      assert not _equivalent(src, dst), f"{left!r} vs {right!r}"
 
-        The left document names ONE table twice, so the two keys hold the same object;
-        the right document names TWO tables that are not equal.  A memo keyed on one
-        side alone walks the first key, decides the pair equal, and reports the second
-        key from that decision — accepting a document whose second key says something
-        different.  Every other pair of keys here is equal, so only a key that holds the
-        PAIR can tell the two apart.
-        """
-        from kanibako.launch.templates import _equivalent
+  def test_the_answer_equals_python_equality_on_the_parsed_documents(self, tmp_path):
+    """The comparison must be ``==`` ON THE PARSED DOCUMENTS, not a nearer thing.
 
-        for left, right in (
-            ("x: &s {k: 1}\ny: *s\n", "x: {k: 1}\ny: {k: 2}\n"),
-            ("x: &s [1, 2]\ny: *s\n", "x: [1, 2]\ny: [1, 3]\n"),
-            ("x: &s {k: 1}\ny: &t {k: 1}\nz: *s\n", "x: {k: 1}\ny: {k: 1}\nz: {k: 2}\n"),
-        ):
-            src = tmp_path / "a.yaml"
-            dst = tmp_path / "b.yaml"
-            src.write_text(left)
-            dst.write_text(right)
-            assert not _equivalent(src, dst), f"{left!r} vs {right!r}"
+    Each pair is checked against ``==`` itself, so a case nobody thought of is
+    covered by the same rule as one that is: key order is not a difference, ``1``
+    and ``1.0`` are, a list is not a mapping, a length is not an order, and an
+    absent key is not a null one.  Scalars keep Python's own semantics because that
+    is what ``==`` says — including the ``.nan`` that PyYAML hands to BOTH parses.
+    A pair whose BYTES differ is what puts the parse compare on the path at all, so
+    a row carrying a ``# host note`` on one side is there on purpose.
+    """
+    from kanibako.launch.templates import _equivalent
+    from kanibako.settings.config_io import parse_doc_text
 
-    def test_the_answer_equals_python_equality_on_the_parsed_documents(self, tmp_path):
-        """The comparison must be ``==`` ON THE PARSED DOCUMENTS, not a nearer thing.
+    corpus = [
+      ("key order", "a: 1\nb: 2\n", "b: 2\na: 1\n"),
+      ("1 vs 1.0", "a: 1\n", "a: 1.0\n"),
+      ("list vs dict", "a: [1, 2]\n", "a: {0: 1, 1: 2}\n"),
+      ("nested list length", "a: [[1, 2], [3]]\n", "a: [[1, 2], [3, 4]]\n"),
+      ("null vs absent", "a: ~\n", "{}\n"),
+      ("null vs null", "a: ~\n", "a: null\n"),
+      ("true vs 1", "a: true\n", "a: 1\n"),
+      ("nan vs nan", "a: .nan\n", "a: .nan  # host note\n"),
+      ("nan in a list", "a: [1, .nan]\n", "a: [1, .nan]  # host note\n"),
+      ("bare nan", ".nan\n", ".nan  # host note\n"),
+      ("one extra key", "a: 1\n", "a: 1\nb: 2\n"),
+      ("one missing key", "a: 1\nb: 2\n", "b: 2\n"),
+      ("deep equal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 2}]\n"),
+      ("deep unequal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 3}]\n"),
+      ("top-level list", "- 1\n- 2\n", "- 1\n- 2\n"),
+      ("top-level list vs mapping", "- 1\n- 2\n", "0: 1\n1: 2\n"),
+      ("top-level scalar", "just a string\n", "just a string\n"),
+      ("top-level scalar vs mapping", "just a string\n", "a: 1\n"),
+      (
+        "merge key",
+        "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n",
+        "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n",
+      ),
+      ("shared alias, equal", "x: &s {q: 1}\ny: *s\n", "x: {q: 1}\ny: {q: 1}\n"),
+      ("comment only", "a: 1  # note\n", "a: 1\n"),
+    ]
+    for why, left, right in corpus:
+      src = tmp_path / "a.yaml"
+      dst = tmp_path / "b.yaml"
+      src.write_text(left)
+      dst.write_text(right)
+      expected = parse_doc_text(left) == parse_doc_text(right)
+      assert _equivalent(src, dst) is expected, f"{why}: {left!r} vs {right!r}"
 
-        Each pair is checked against ``==`` itself, so a case nobody thought of is
-        covered by the same rule as one that is: key order is not a difference, ``1``
-        and ``1.0`` are, a list is not a mapping, a length is not an order, and an
-        absent key is not a null one.  Scalars keep Python's own semantics because that
-        is what ``==`` says — including the ``.nan`` that PyYAML hands to BOTH parses.
-        A pair whose BYTES differ is what puts the parse compare on the path at all, so
-        a row carrying a ``# host note`` on one side is there on purpose.
-        """
-        from kanibako.launch.templates import _equivalent
-        from kanibako.settings.config_io import parse_doc_text
+  def test_a_shared_alias_document_that_differs_deeply_is_a_difference(self, tmp_path):
+    """A big document that is equal everywhere except the LAST key still has to be
+    reported, which is the case a comparison that returns at the first difference
+    gets right and a memo that decides too early gets wrong."""
+    from kanibako.launch.templates import _equivalent
 
-        corpus = [
-            ("key order", "a: 1\nb: 2\n", "b: 2\na: 1\n"),
-            ("1 vs 1.0", "a: 1\n", "a: 1.0\n"),
-            ("list vs dict", "a: [1, 2]\n", "a: {0: 1, 1: 2}\n"),
-            ("nested list length", "a: [[1, 2], [3]]\n", "a: [[1, 2], [3, 4]]\n"),
-            ("null vs absent", "a: ~\n", "{}\n"),
-            ("null vs null", "a: ~\n", "a: null\n"),
-            ("true vs 1", "a: true\n", "a: 1\n"),
-            ("nan vs nan", "a: .nan\n", "a: .nan  # host note\n"),
-            ("nan in a list", "a: [1, .nan]\n", "a: [1, .nan]  # host note\n"),
-            ("bare nan", ".nan\n", ".nan  # host note\n"),
-            ("one extra key", "a: 1\n", "a: 1\nb: 2\n"),
-            ("one missing key", "a: 1\nb: 2\n", "b: 2\n"),
-            ("deep equal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 2}]\n"),
-            ("deep unequal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 3}]\n"),
-            ("top-level list", "- 1\n- 2\n", "- 1\n- 2\n"),
-            ("top-level list vs mapping", "- 1\n- 2\n", "0: 1\n1: 2\n"),
-            ("top-level scalar", "just a string\n", "just a string\n"),
-            ("top-level scalar vs mapping", "just a string\n", "a: 1\n"),
-            ("merge key", "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n",
-             "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n"),
-            ("shared alias, equal", "x: &s {q: 1}\ny: *s\n", "x: {q: 1}\ny: {q: 1}\n"),
-            ("comment only", "a: 1  # note\n", "a: 1\n"),
-        ]
-        for why, left, right in corpus:
-            src = tmp_path / "a.yaml"
-            dst = tmp_path / "b.yaml"
-            src.write_text(left)
-            dst.write_text(right)
-            expected = parse_doc_text(left) == parse_doc_text(right)
-            assert _equivalent(src, dst) is expected, f"{why}: {left!r} vs {right!r}"
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    document = _shared_alias_levels(6)
+    src.write_text(document)
+    dst.write_text(document.replace("top: *f", "top: ['y']", 1))
+    assert src.read_bytes() != dst.read_bytes()
 
-    def test_a_shared_alias_document_that_differs_deeply_is_a_difference(self, tmp_path):
-        """A big document that is equal everywhere except the LAST key still has to be
-        reported, which is the case a comparison that returns at the first difference
-        gets right and a memo that decides too early gets wrong."""
-        from kanibako.launch.templates import _equivalent
-
-        src = tmp_path / "a.yaml"
-        dst = tmp_path / "b.yaml"
-        document = _shared_alias_levels(6)
-        src.write_text(document)
-        dst.write_text(document.replace("top: *f", "top: ['y']", 1))
-        assert src.read_bytes() != dst.read_bytes()
-
-        assert not _equivalent(src, dst)
+    assert not _equivalent(src, dst)
 
 
 class TestStagingIsScoped:
-    """S-2/J-2: the box + workset whitelists are LIVE at the staging copy — the
-    earliest point a planted file can be REFUSED rather than carried forward.
+  """S-2/J-2: the box + workset whitelists are LIVE at the staging copy — the
+  earliest point a planted file can be REFUSED rather than carried forward.
 
-    ⚑ Nothing downstream re-checks it: the box seed copies from ``box/home`` and
-    ``box/canon/handbook`` DIRECTLY, so an unscoped staging copy would make J-2's
-    deny-by-default ruling dead prose.
-    """
+  ⚑ Nothing downstream re-checks it: the box seed copies from ``box/home`` and
+  ``box/canon/handbook`` DIRECTLY, so an unscoped staging copy would make J-2's
+  deny-by-default ruling dead prose.
+  """
 
-    def _fake_packaged(self, monkeypatch, tmp_path, scope_dir, plant):
-        from kanibako.launch import templates as _t
+  def _fake_packaged(self, monkeypatch, tmp_path, scope_dir, plant):
+    from kanibako.launch import templates as _t
 
-        root = tmp_path / "packaged"
-        real = _t._packaged_base_template()
-        shutil.copytree(real, root)
-        (root / scope_dir / plant).parent.mkdir(parents=True, exist_ok=True)
-        (root / scope_dir / plant).write_text("box: {image: evil}\n")
-        monkeypatch.setattr(_t, "_packaged_base_template", lambda: root)
-        return root
+    root = tmp_path / "packaged"
+    real = _t._packaged_base_template()
+    shutil.copytree(real, root)
+    (root / scope_dir / plant).parent.mkdir(parents=True, exist_ok=True)
+    (root / scope_dir / plant).write_text("box: {image: evil}\n")
+    monkeypatch.setattr(_t, "_packaged_base_template", lambda: root)
+    return root
 
-    def test_a_planted_box_settings_yaml_is_REFUSED_by_the_real_install(
-        self, std, monkeypatch, tmp_path,
-    ):
-        from kanibako.errors import TemplateScopeError
+  def test_a_planted_box_settings_yaml_is_REFUSED_by_the_real_install(
+    self,
+    std,
+    monkeypatch,
+    tmp_path,
+  ):
+    from kanibako.errors import TemplateScopeError
 
-        self._fake_packaged(monkeypatch, tmp_path, "box", "box.yaml")
-        with pytest.raises(TemplateScopeError) as exc:
-            install_packaged_templates(std, ["claude"])
-        assert "BOX" in str(exc.value)
-        assert not (std.template / "box" / "box.yaml").exists()
+    self._fake_packaged(monkeypatch, tmp_path, "box", "box.yaml")
+    with pytest.raises(TemplateScopeError) as exc:
+      install_packaged_templates(std, ["claude"])
+    assert "BOX" in str(exc.value)
+    assert not (std.template / "box" / "box.yaml").exists()
 
-    def test_a_planted_workset_registry_is_REFUSED_by_the_real_install(
-        self, std, monkeypatch, tmp_path,
-    ):
-        from kanibako.errors import TemplateScopeError
+  def test_a_planted_workset_registry_is_REFUSED_by_the_real_install(
+    self,
+    std,
+    monkeypatch,
+    tmp_path,
+  ):
+    from kanibako.errors import TemplateScopeError
 
-        self._fake_packaged(monkeypatch, tmp_path, "workset", "registry.yaml")
-        with pytest.raises(TemplateScopeError) as exc:
-            install_packaged_templates(std, ["claude"])
-        assert "WORKSET" in str(exc.value)
+    self._fake_packaged(monkeypatch, tmp_path, "workset", "registry.yaml")
+    with pytest.raises(TemplateScopeError) as exc:
+      install_packaged_templates(std, ["claude"])
+    assert "WORKSET" in str(exc.value)
 
 
 class TestRefreshHonorsTheClassifier:
-    """S-6: the PREVIEW and the ACTION must tell ONE truth.
+  """S-6: the PREVIEW and the ACTION must tell ONE truth.
 
-    ``plan_template_refresh`` calls an EQUIVALENT staging file "current" and does not
-    report it. A refresh that rewrote its bytes anyway would silently revert the very
-    edit the preview just said it would leave alone.
-    """
+  ``plan_template_refresh`` calls an EQUIVALENT staging file "current" and does not
+  report it. A refresh that rewrote its bytes anyway would silently revert the very
+  edit the preview just said it would leave alone.
+  """
 
-    _STAGED = ("box", "home", "canon", "workbook", "state", "devnotes.md")
+  _STAGED = ("box", "home", "canon", "workbook", "state", "devnotes.md")
 
-    def test_refresh_leaves_an_EQUIVALENT_staged_file_alone(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template.joinpath(*self._STAGED)
-        edited = (
-            target.read_text().replace("<!--", "<!--[STOCK]", 1).replace("\n", " \r\n")
-        )
-        target.write_text(edited, newline="")
-        before = target.read_bytes()
-        # The preview agrees it is "current"...
-        assert plan_template_refresh(std, ["claude"]) == ([], [], [])
-        install_packaged_templates(std, ["claude"], refresh=True)
-        # ...so the refresh must not have rewritten it.  BYTES, deliberately: text
-        # mode normalizes CRLF on read, which would make this pass either way.
-        assert target.read_bytes() == before
+  def test_refresh_leaves_an_EQUIVALENT_staged_file_alone(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template.joinpath(*self._STAGED)
+    edited = target.read_text().replace("<!--", "<!--[STOCK]", 1).replace("\n", " \r\n")
+    target.write_text(edited, newline="")
+    before = target.read_bytes()
+    # The preview agrees it is "current"...
+    assert plan_template_refresh(std, ["claude"]) == ([], [], [])
+    install_packaged_templates(std, ["claude"], refresh=True)
+    # ...so the refresh must not have rewritten it.  BYTES, deliberately: text
+    # mode normalizes CRLF on read, which would make this pass either way.
+    assert target.read_bytes() == before
 
-    def test_refresh_still_replaces_a_genuinely_DIFFERENT_staged_file(self, std):
-        install_packaged_templates(std, ["claude"])
-        target = std.template.joinpath(*self._STAGED)
-        target.write_text("# mine\n\nreal content change\n")
-        _added, overwritten, _kept = plan_template_refresh(std, ["claude"])
-        assert target in overwritten
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert "real content change" not in target.read_text()
+  def test_refresh_still_replaces_a_genuinely_DIFFERENT_staged_file(self, std):
+    install_packaged_templates(std, ["claude"])
+    target = std.template.joinpath(*self._STAGED)
+    target.write_text("# mine\n\nreal content change\n")
+    _added, overwritten, _kept = plan_template_refresh(std, ["claude"])
+    assert target in overwritten
+    install_packaged_templates(std, ["claude"], refresh=True)
+    assert "real content change" not in target.read_text()
 
 
 class TestPackagingGlobs:
-    """The wheel must carry HIDDEN entries under ``data/templates``.
+  """The wheel must carry HIDDEN entries under ``data/templates``.
 
-    ⚑ setuptools' ``**/*`` does NOT recurse into hidden directories. There are no
-    dotfiles under ``data/templates`` TODAY, so this is not yet a live bug — and that is
-    precisely the trap: ``templates/box/home/`` is a BOX HOME seed, so the first
-    ``.claude/`` or ``.config/`` dropped there would ship EMPTY and seed nothing,
-    with no build error and no launch warning. The patterns were added ahead of the
-    first such file; this pins them so a tidy-up cannot quietly remove them.
+  ⚑ setuptools' ``**/*`` does NOT recurse into hidden directories. There are no
+  dotfiles under ``data/templates`` TODAY, so this is not yet a live bug — and that is
+  precisely the trap: ``templates/box/home/`` is a BOX HOME seed, so the first
+  ``.claude/`` or ``.config/`` dropped there would ship EMPTY and seed nothing,
+  with no build error and no launch warning. The patterns were added ahead of the
+  first such file; this pins them so a tidy-up cannot quietly remove them.
 
-    Asserted at the PATTERN level rather than by building a wheel: a real build takes
-    ~20 s and needs network-isolated venv creation, so it belongs in the release
-    check, not the per-file gate. (Verified once by build: a ``.probefile`` and a
-    nested ``.probe/settings.json`` under ``template/box/home`` both land in the
-    wheel with these patterns.)
+  Asserted at the PATTERN level rather than by building a wheel: a real build takes
+  ~20 s and needs network-isolated venv creation, so it belongs in the release
+  check, not the per-file gate. (Verified once by build: a ``.probefile`` and a
+  nested ``.probe/settings.json`` under ``template/box/home`` both land in the
+  wheel with these patterns.)
+  """
+
+  def _patterns(self) -> list[str]:
+    import tomllib
+
+    from tests.support.repo import REPO_ROOT
+
+    root = REPO_ROOT / "pyproject.toml"
+    data = tomllib.loads(root.read_text())
+    return data["tool"]["setuptools"]["package-data"]["kanibako.data"]
+
+  def test_dot_dir_and_dot_file_patterns_present(self):
+    pats = set(self._patterns())
+    required = {
+      "templates/**/.*",  # a dotfile at any depth
+      "templates/.*/**/*",  # content under a top-level dot-dir
+      "templates/.*/*",
+      "templates/**/.*/**/*",  # content under a NESTED dot-dir (.claude/, .config/)
+      "templates/**/.*/*",
+      "rom/**/.*",
+      "rom/.*/**/*",
+      "rom/.*/*",
+      "rom/**/.*/**/*",
+      "rom/**/.*/*",
+    }
+    missing = required - pats
+    assert not missing, (
+      f"the hidden-entry globs for kanibako.data are missing {sorted(missing)} "
+      "— a dotfile under data/templates/ or data/rom/ would ship EMPTY and "
+      "the box seed would deliver nothing, silently"
+    )
+
+  def test_packaged_template_tree_is_the_declared_shape(self):
+    """The four ENUMERATED subtrees, and nothing else, under the template root.
+
+    ⚑ The packaged ``agent/`` is the ``agent.default`` CONTENT, stamped into
+    ``agents/default`` only; it is NOT the agent MOLD, which ships EMPTY (D5) and
+    whose host dir is guarantee-created by the install action (D7) — see
+    ``test_agent_mold_dir_is_guarantee_created_empty``.
     """
-
-    def _patterns(self) -> list[str]:
-        import tomllib
-
-        from tests.support.repo import REPO_ROOT
-
-        root = REPO_ROOT / "pyproject.toml"
-        data = tomllib.loads(root.read_text())
-        return data["tool"]["setuptools"]["package-data"]["kanibako.data"]
-
-    def test_dot_dir_and_dot_file_patterns_present(self):
-        pats = set(self._patterns())
-        required = {
-            "templates/**/.*",        # a dotfile at any depth
-            "templates/.*/**/*",      # content under a top-level dot-dir
-            "templates/.*/*",
-            "templates/**/.*/**/*",   # content under a NESTED dot-dir (.claude/, .config/)
-            "templates/**/.*/*",
-            "rom/**/.*",
-            "rom/.*/**/*",
-            "rom/.*/*",
-            "rom/**/.*/**/*",
-            "rom/**/.*/*",
-        }
-        missing = required - pats
-        assert not missing, (
-            f"the hidden-entry globs for kanibako.data are missing {sorted(missing)} "
-            "— a dotfile under data/templates/ or data/rom/ would ship EMPTY and "
-            "the box seed would deliver nothing, silently"
-        )
-
-    def test_packaged_template_tree_is_the_declared_shape(self):
-        """The four ENUMERATED subtrees, and nothing else, under the template root.
-
-        ⚑ The packaged ``agent/`` is the ``agent.default`` CONTENT, stamped into
-        ``agents/default`` only; it is NOT the agent MOLD, which ships EMPTY (D5) and
-        whose host dir is guarantee-created by the install action (D7) — see
-        ``test_agent_mold_dir_is_guarantee_created_empty``.
-        """
-        base = _packaged_base_template()
-        assert base is not None
-        assert {p.name for p in base.iterdir() if p.is_dir()} == {
-            "box", "workset", "agent", "system",
-        }
+    base = _packaged_base_template()
+    assert base is not None
+    assert {p.name for p in base.iterdir() if p.is_dir()} == {
+      "box",
+      "workset",
+      "agent",
+      "system",
+    }

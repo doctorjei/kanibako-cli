@@ -210,6 +210,7 @@ def set_oracle(fn: Callable[[str], KeyJudgment]) -> None:
 
 ### Classification ###
 
+
 class Verdict(_StructuralVerdict):
   """The classes a recorded write can land in; ``FINDING_VERDICTS`` fails a run.
 
@@ -221,6 +222,7 @@ class Verdict(_StructuralVerdict):
   exercises the refusal of an undeclared key has to write one; that is its point,
   and the concept has no meaning outside a test session.
   """
+
   NEGATIVE = "NEGATIVE"
 
 
@@ -240,6 +242,7 @@ _current_negative: frozenset[str] = frozenset()
 #: outliving its reason.
 _declared_negative: set[str] = set()
 _hit_negative: set[str] = set()
+
 
 class RowKey(NamedTuple):
   """What makes a census row DISTINCT: the path AND THE SHAPE written to it.
@@ -261,6 +264,7 @@ class RowKey(NamedTuple):
   ⚑ TEST-ACCOUNTING ONLY. ``undeclared_store_paths`` judges one real store, where a
   path holds a node or a scalar and never both, and needs none of this.
   """
+
   segments: tuple[str, ...]
   is_node: bool
 
@@ -287,6 +291,7 @@ _SELF_FILE = os.path.abspath(__file__)
 
 class _Sites(NamedTuple):
   """Where a write came from: the line that set it, and the caller of settings."""
+
   inner: str
   outer: str
 
@@ -325,7 +330,10 @@ def _box(node: KeyStore[Any]) -> list[tuple[str, ...]]:
 
 
 def _tag(
-  child: KeyStore[Any], parent_box: list[tuple[str, ...]], key: str, depth: int = 0,
+  child: KeyStore[Any],
+  parent_box: list[tuple[str, ...]],
+  key: str,
+  depth: int = 0,
 ) -> None:
   """Give *child* its path segments & push the correction down its subtree."""
   if depth > _MAX_TAG_DEPTH:
@@ -382,7 +390,8 @@ def _ask(path: str) -> KeyJudgment:
       _verdicts[path] = _oracle(path)
     except Exception as exc:  # pragma: no cover - an oracle fault is not a failure
       _verdicts[path] = KeyJudgment(
-        KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
+        KeyClass.UNDECLARED,
+        f"<oracle raised {type(exc).__name__}: {exc}>",
       )
   return _verdicts[path]
 
@@ -421,10 +430,17 @@ def drain() -> None:
       continue
     judged = classify(segments)
     _rows[row_key] = {
-      "path": render(segments, judged.key_len), "segments": list(segments),
-      "verdict": judged.verdict, "key": judged.key, "note": judged.note,
-      "negative": declared, "count": count, "site": sites.inner,
-      "outer_site": sites.outer, "value_type": kind, "is_node": row_key.is_node,
+      "path": render(segments, judged.key_len),
+      "segments": list(segments),
+      "verdict": judged.verdict,
+      "key": judged.key,
+      "note": judged.note,
+      "negative": declared,
+      "count": count,
+      "site": sites.inner,
+      "outer_site": sites.outer,
+      "value_type": kind,
+      "is_node": row_key.is_node,
     }
   _pending.clear()
 
@@ -449,7 +465,8 @@ def _apply_container_rule() -> None:
   for row_key, row in _rows.items():
     seen = node_view.get(row_key.segments)
     node_view[row_key.segments] = StoreNode(
-      row["verdict"], row_key.is_node or (seen is not None and seen.is_node),
+      row["verdict"],
+      row_key.is_node or (seen is not None and seen.is_node),
     )
   for segments, note in container_notes(node_view).items():
     # ⚑ ADDRESSING, NOT A SECOND GUARD. A rescue is a statement about the NODE
@@ -478,8 +495,7 @@ def _apply_negative_rule() -> None:
     if row["verdict"] in FINDING_VERDICTS and row["negative"]:
       row["verdict"] = Verdict.NEGATIVE
       row["note"] = (
-        f"the test declared this write with @pytest.mark.{NEGATIVE_MARKER} — "
-        f"{row['note']}"
+        f"the test declared this write with @pytest.mark.{NEGATIVE_MARKER} — {row['note']}"
       )
       # ⚑ A declaration is EXERCISED by the write that justifies it. Since rows now
       # carry the shape, the SCALAR write can discharge a marker the node write at
@@ -493,6 +509,7 @@ def unused_negatives() -> list[str]:
 
 
 ### pytest hooks ###
+
 
 def _enabled() -> bool:
   return os.environ.get(ENV_FLAG, "1").strip().lower() not in _OFF_TOKENS
@@ -636,9 +653,7 @@ def pytest_terminal_summary(terminalreporter: Any) -> None:
   stale = unused_negatives()
   write = terminalreporter.write_line
   write("")
-  write(
-    f"KeyStore census: {len(ordered)} distinct path/shape rows -> {_census_file()}"
-  )
+  write(f"KeyStore census: {len(ordered)} distinct path/shape rows -> {_census_file()}")
   write("  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
   if _collector_errors:
     write(f"  collector errors ({len(_collector_errors)}): {_collector_errors[:3]}")

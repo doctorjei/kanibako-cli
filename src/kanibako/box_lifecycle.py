@@ -28,106 +28,108 @@ from pathlib import Path
 # :func:`is_vscode_server_path_part` is authoritative and deliberately broader,
 # so editing this tuple does NOT change matching.
 VSCODE_SERVER_DIR_MARKERS: tuple[str, ...] = (
-    ".vscode-server",
-    ".vscode-server-insiders",
-    ".vscode-server-oss",
-    ".cursor-server",
+  ".vscode-server",
+  ".vscode-server-insiders",
+  ".vscode-server-oss",
+  ".cursor-server",
 )
 
 
 def is_vscode_server_path_part(part: str) -> bool:
-    """True when a single path SEGMENT names a VS Code remote-server dir.
+  """True when a single path SEGMENT names a VS Code remote-server dir.
 
-    Takes ONE path component (e.g. from :attr:`pathlib.Path.parts`), so a
-    caller tests each segment of a resolved/cmdline path independently.
-    """
-    return part.startswith(".vscode-server") or part == ".cursor-server"
+  Takes ONE path component (e.g. from :attr:`pathlib.Path.parts`), so a
+  caller tests each segment of a resolved/cmdline path independently.
+  """
+  return part.startswith(".vscode-server") or part == ".cursor-server"
 
 
 # ---------------------------------------------------------------------------
 # Pure surface detectors.
 # ---------------------------------------------------------------------------
 
-def vscode_server_present(proc_cmdlines: Iterable[str]) -> bool:
-    """True iff any process command line indicates a running in-box VS Code server.
 
-    PURE, over ALREADY-collected cmdlines: a cmdline counts when any
-    ``/``-delimited SEGMENT of it names a remote-server dir — so
-    ``/home/agent/.vscode-server/bin/<hash>/node`` matches while
-    ``/usr/bin/node`` does not.  An empty iterable → ``False``.
-    """
-    for cmdline in proc_cmdlines:
-        if any(is_vscode_server_path_part(part) for part in cmdline.split("/")):
-            return True
-    return False
+def vscode_server_present(proc_cmdlines: Iterable[str]) -> bool:
+  """True iff any process command line indicates a running in-box VS Code server.
+
+  PURE, over ALREADY-collected cmdlines: a cmdline counts when any
+  ``/``-delimited SEGMENT of it names a remote-server dir — so
+  ``/home/agent/.vscode-server/bin/<hash>/node`` matches while
+  ``/usr/bin/node`` does not.  An empty iterable → ``False``.
+  """
+  for cmdline in proc_cmdlines:
+    if any(is_vscode_server_path_part(part) for part in cmdline.split("/")):
+      return True
+  return False
 
 
 def tmux_terminal_attached(list_clients_output: str) -> bool:
-    """True iff ``tmux list-clients`` output shows ≥1 attached terminal client.
+  """True iff ``tmux list-clients`` output shows ≥1 attached terminal client.
 
-    PURE: tmux prints one LINE per attached client and nothing otherwise.
-    ⚑ The CALLER must normalize any tmux error to ``""`` to keep this a pure
-    string test — :func:`_tmux_clients_output` is what does that.
-    """
-    return bool(list_clients_output.strip())
+  PURE: tmux prints one LINE per attached client and nothing otherwise.
+  ⚑ The CALLER must normalize any tmux error to ``""`` to keep this a pure
+  string test — :func:`_tmux_clients_output` is what does that.
+  """
+  return bool(list_clients_output.strip())
 
 
 # ---------------------------------------------------------------------------
 # Attach-state model + transition classifier.
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class AttachState:
-    """Immutable snapshot of which client surfaces are attached to the box.
+  """Immutable snapshot of which client surfaces are attached to the box.
 
-    Two surfaces today, kept as named bools so a new one is a single added
-    field.  Frozen so a prev/cur pair is safe to hold across a watcher tick.
+  Two surfaces today, kept as named bools so a new one is a single added
+  field.  Frozen so a prev/cur pair is safe to hold across a watcher tick.
+  """
+
+  vscode_server: bool = False
+  tmux_terminal: bool = False
+
+  @property
+  def any_attached(self) -> bool:
+    """True when ANY client surface is currently attached."""
+    return self.vscode_server or self.tmux_terminal
+
+  @property
+  def _surfaces(self) -> tuple[bool, ...]:
+    """The per-surface flags, positionally stable across states.
+
+    A new surface added to this tuple needs no classifier change.
     """
-
-    vscode_server: bool = False
-    tmux_terminal: bool = False
-
-    @property
-    def any_attached(self) -> bool:
-        """True when ANY client surface is currently attached."""
-        return self.vscode_server or self.tmux_terminal
-
-    @property
-    def _surfaces(self) -> tuple[bool, ...]:
-        """The per-surface flags, positionally stable across states.
-
-        A new surface added to this tuple needs no classifier change.
-        """
-        return (self.vscode_server, self.tmux_terminal)
+    return (self.vscode_server, self.tmux_terminal)
 
 
 class LifecycleEvent(Enum):
-    """The transition a watcher tick produces (consumed by E2 self-heal / D)."""
+  """The transition a watcher tick produces (consumed by E2 self-heal / D)."""
 
-    ATTACH = "attach"
-    DETACH = "detach"
-    NONE = "none"
+  ATTACH = "attach"
+  DETACH = "detach"
+  NONE = "none"
 
 
 def classify_transition(prev: AttachState, cur: AttachState) -> LifecycleEvent:
-    """Classify the attach-state transition ``prev`` → ``cur`` (PURE).
+  """Classify the attach-state transition ``prev`` → ``cur`` (PURE).
 
-    * DETACH — ANY surface present in ``prev`` is gone in ``cur``, even when a
-      DIFFERENT surface appeared in the same tick.
-    * ATTACH — no surface was lost AND at least one new surface appeared.
-    * NONE — no surface changed (includes the idempotent same-state tick).
+  * DETACH — ANY surface present in ``prev`` is gone in ``cur``, even when a
+    DIFFERENT surface appeared in the same tick.
+  * ATTACH — no surface was lost AND at least one new surface appeared.
+  * NONE — no surface changed (includes the idempotent same-state tick).
 
-    ⚑ That DETACH bias is deliberate and safety-critical: MISSING a detach
-    drops a just-refreshed token, while an EXTRA detach costs only a redundant,
-    idempotent writeback.  Do not "fix" the mixed tick — see the llm-doc.
-    """
-    lost = any(p and not c for p, c in zip(prev._surfaces, cur._surfaces))
-    if lost:
-        return LifecycleEvent.DETACH
-    gained = any(c and not p for p, c in zip(prev._surfaces, cur._surfaces))
-    if gained:
-        return LifecycleEvent.ATTACH
-    return LifecycleEvent.NONE
+  ⚑ That DETACH bias is deliberate and safety-critical: MISSING a detach
+  drops a just-refreshed token, while an EXTRA detach costs only a redundant,
+  idempotent writeback.  Do not "fix" the mixed tick — see the llm-doc.
+  """
+  lost = any(p and not c for p, c in zip(prev._surfaces, cur._surfaces))
+  if lost:
+    return LifecycleEvent.DETACH
+  gained = any(c and not p for p, c in zip(prev._surfaces, cur._surfaces))
+  if gained:
+    return LifecycleEvent.ATTACH
+  return LifecycleEvent.NONE
 
 
 # ---------------------------------------------------------------------------
@@ -139,97 +141,95 @@ _Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 
 
 def _collect_proc_cmdlines() -> list[str]:
-    """Collect running-process command lines from ``/proc/*/cmdline``.
+  """Collect running-process command lines from ``/proc/*/cmdline``.
 
-    The impure companion to :func:`vscode_server_present`.  Tolerant: a
-    vanished PID, a permission error or a kernel thread's empty cmdline is
-    SKIPPED, never raised.
-    """
-    cmdlines: list[str] = []
-    for entry in glob("/proc/[0-9]*/cmdline"):
-        try:
-            raw = Path(entry).read_bytes()
-        except OSError:
-            # PID vanished between glob and read, or unreadable — skip it.
-            continue
-        # cmdline is NUL-delimited argv (trailing NUL); decode leniently.
-        text = raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip()
-        if text:
-            cmdlines.append(text)
-    return cmdlines
+  The impure companion to :func:`vscode_server_present`.  Tolerant: a
+  vanished PID, a permission error or a kernel thread's empty cmdline is
+  SKIPPED, never raised.
+  """
+  cmdlines: list[str] = []
+  for entry in glob("/proc/[0-9]*/cmdline"):
+    try:
+      raw = Path(entry).read_bytes()
+    except OSError:
+      # PID vanished between glob and read, or unreadable — skip it.
+      continue
+    # cmdline is NUL-delimited argv (trailing NUL); decode leniently.
+    text = raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip()
+    if text:
+      cmdlines.append(text)
+  return cmdlines
 
 
 def tmux_run(
-    run: _Runner,
-    args: list[str],
-    *,
-    on_error: Callable[[OSError], None] | None = None,
+  run: _Runner,
+  args: list[str],
+  *,
+  on_error: Callable[[OSError], None] | None = None,
 ) -> subprocess.CompletedProcess[str] | None:
-    """Run ``tmux <args>`` through *run*; ``None`` when tmux could not run at all.
+  """Run ``tmux <args>`` through *run*; ``None`` when tmux could not run at all.
 
-    THE tolerant tmux call for the PID-1 pair: a missing binary or any other
-    ``OSError`` is handed to *on_error* (this module does not log) and becomes
-    ``None``, never a raise.  A nonzero rc is the caller's to read.
-    """
-    try:
-        return run(["tmux", *args], capture_output=True, text=True, check=False)
-    except OSError as exc:
-        if on_error is not None:
-            on_error(exc)
-        return None
+  THE tolerant tmux call for the PID-1 pair: a missing binary or any other
+  ``OSError`` is handed to *on_error* (this module does not log) and becomes
+  ``None``, never a raise.  A nonzero rc is the caller's to read.
+  """
+  try:
+    return run(["tmux", *args], capture_output=True, text=True, check=False)
+  except OSError as exc:
+    if on_error is not None:
+      on_error(exc)
+    return None
 
 
 def _tmux_clients_output(session: str, run: _Runner) -> str:
-    """Return ``tmux list-clients -t <session>`` stdout, or ``""`` on any failure.
+  """Return ``tmux list-clients -t <session>`` stdout, or ``""`` on any failure.
 
-    Normalizes EVERY not-attached / no-tmux condition to the empty string
-    :func:`tmux_terminal_attached` reads as "no terminal".
-    ⚑ ``-F ""`` is NOT used: the default one-line-per-client output IS the
-    presence signal being tested.
-    """
-    proc = tmux_run(run, ["list-clients", "-t", session])
-    if proc is None or proc.returncode != 0:
-        return ""
-    return proc.stdout or ""
+  Normalizes EVERY not-attached / no-tmux condition to the empty string
+  :func:`tmux_terminal_attached` reads as "no terminal".
+  ⚑ ``-F ""`` is NOT used: the default one-line-per-client output IS the
+  presence signal being tested.
+  """
+  proc = tmux_run(run, ["list-clients", "-t", session])
+  if proc is None or proc.returncode != 0:
+    return ""
+  return proc.stdout or ""
 
 
 def snapshot_attach_state(
-    session: str,
-    *,
-    run: _Runner = subprocess.run,
-    proc_cmdlines: Iterable[str] | None = None,
+  session: str,
+  *,
+  run: _Runner = subprocess.run,
+  proc_cmdlines: Iterable[str] | None = None,
 ) -> AttachState:
-    """Probe the CURRENT client-attachment state of the box (the impure snapshot).
+  """Probe the CURRENT client-attachment state of the box (the impure snapshot).
 
-    Composes the two pure detectors over freshly probed system state; an
-    explicit *proc_cmdlines* skips the ``/proc`` read entirely.  ⚑ All probing
-    runs through ``_collect_proc_cmdlines`` and ``tmux_run``.  Never raises.
-    """
-    cmdlines = (
-        _collect_proc_cmdlines() if proc_cmdlines is None else list(proc_cmdlines)
-    )
-    return AttachState(
-        vscode_server=vscode_server_present(cmdlines),
-        tmux_terminal=tmux_terminal_attached(_tmux_clients_output(session, run)),
-    )
+  Composes the two pure detectors over freshly probed system state; an
+  explicit *proc_cmdlines* skips the ``/proc`` read entirely.  ⚑ All probing
+  runs through ``_collect_proc_cmdlines`` and ``tmux_run``.  Never raises.
+  """
+  cmdlines = _collect_proc_cmdlines() if proc_cmdlines is None else list(proc_cmdlines)
+  return AttachState(
+    vscode_server=vscode_server_present(cmdlines),
+    tmux_terminal=tmux_terminal_attached(_tmux_clients_output(session, run)),
+  )
 
 
 def canonical_tmux_session_pid(
-    session: str,
-    *,
-    run: _Runner = subprocess.run,
+  session: str,
+  *,
+  run: _Runner = subprocess.run,
 ) -> int | None:
-    """Best-effort PID of the tmux server hosting *session* (the "live marker").
+  """Best-effort PID of the tmux server hosting *session* (the "live marker").
 
-    ⚑ ``#{pid}`` is the tmux SERVER pid, not a pane or client pid.  ``None``
-    when the session is absent, tmux is missing, or the output is unparseable.
-    E2 uses this to identify the canonical always-on instance.
-    """
-    proc = tmux_run(run, ["display-message", "-p", "-t", session, "#{pid}"])
-    if proc is None or proc.returncode != 0:
-        return None
-    text = (proc.stdout or "").strip()
-    try:
-        return int(text)
-    except ValueError:
-        return None
+  ⚑ ``#{pid}`` is the tmux SERVER pid, not a pane or client pid.  ``None``
+  when the session is absent, tmux is missing, or the output is unparseable.
+  E2 uses this to identify the canonical always-on instance.
+  """
+  proc = tmux_run(run, ["display-message", "-p", "-t", session, "#{pid}"])
+  if proc is None or proc.returncode != 0:
+    return None
+  text = (proc.stdout or "").strip()
+  try:
+    return int(text)
+  except ValueError:
+    return None

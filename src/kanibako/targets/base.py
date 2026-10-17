@@ -24,8 +24,8 @@ from kanibako.settings.settings_keyspace import ACCESS_TIERS
 from kanibako.settings.settings_resolve import UNSET, _Unset
 
 if TYPE_CHECKING:
-    from kanibako.settings.agent_config import AgentConfig
-    from kanibako.vscode.vscode_config import CodexModelProvider
+  from kanibako.settings.agent_config import AgentConfig
+  from kanibako.vscode.vscode_config import CodexModelProvider
 
 # The map stored at ANY terminal bind-shaped key: `{box_dest: (host_src[, options])}`.
 # ⚑ A plugin emitting a NAME-keyed `BindDefault` tuple is refused BY NAME.
@@ -37,188 +37,190 @@ CategoryBindDefaults = dict[str, BindArm]
 
 @dataclass(frozen=True)
 class TargetSetting:
-    """A runtime setting a target advertises through `setting_descriptors`."""
+  """A runtime setting a target advertises through `setting_descriptors`."""
 
-    key: str                     # Setting key in agent state dict (e.g. "model")
-    description: str             # Human-readable description
-    # Floor value when not overridden; None = <None>; UNSET = no floor, the key
-    # inherits `agent.default.<key>`.  Read it through `descriptor_floor`.
-    default: str | None | _Unset = UNSET
-    choices: tuple[str, ...] = ()  # Valid values; empty = freeform
+  key: str  # Setting key in agent state dict (e.g. "model")
+  description: str  # Human-readable description
+  # Floor value when not overridden; None = <None>; UNSET = no floor, the key
+  # inherits `agent.default.<key>`.  Read it through `descriptor_floor`.
+  default: str | None | _Unset = UNSET
+  choices: tuple[str, ...] = ()  # Valid values; empty = freeform
 
 
 def descriptor_floor(
-    descriptors: Iterable[TargetSetting], *, plugin: str = "",
+  descriptors: Iterable[TargetSetting],
+  *,
+  plugin: str = "",
 ) -> dict[str, str | None]:
-    """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit.
+  """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit.
 
-    ⚑ A row naming no default INHERITS ``agent.default.<key>`` or is REFUSED BY
-    NAME, never floorless; a ``None`` that repeats ``agent.default``'s ``<None>`` is
-    REFUSED too.  Both are the rules the YAML loader applies to the same rows
-    (:mod:`~kanibako.settings.agent_defaults`).  *plugin* names the origin in a
-    refusal.  ⚑ Function-local import: that module imports this one.
-    """
-    from kanibako.settings.agent_defaults import (
-        refuse_floorless_default,
-        refuse_shadowing_null,
-    )
+  ⚑ A row naming no default INHERITS ``agent.default.<key>`` or is REFUSED BY
+  NAME, never floorless; a ``None`` that repeats ``agent.default``'s ``<None>`` is
+  REFUSED too.  Both are the rules the YAML loader applies to the same rows
+  (:mod:`~kanibako.settings.agent_defaults`).  *plugin* names the origin in a
+  refusal.  ⚑ Function-local import: that module imports this one.
+  """
+  from kanibako.settings.agent_defaults import (
+    refuse_floorless_default,
+    refuse_shadowing_null,
+  )
 
-    where = f" (plugin {plugin!r})" if plugin else ""
-    floor: dict[str, str | None] = {}
-    for row in descriptors:
-        if isinstance(row.default, _Unset):
-            refuse_floorless_default(row.key, where)
-            continue
-        if row.default is None:
-            refuse_shadowing_null(row.key, where)
-        floor[row.key] = row.default
-    return floor
+  where = f" (plugin {plugin!r})" if plugin else ""
+  floor: dict[str, str | None] = {}
+  for row in descriptors:
+    if isinstance(row.default, _Unset):
+      refuse_floorless_default(row.key, where)
+      continue
+    if row.default is None:
+      refuse_shadowing_null(row.key, where)
+    floor[row.key] = row.default
+  return floor
 
 
 @dataclass(frozen=True)
 class Mount:
-    """A volume mount for a container."""
+  """A volume mount for a container."""
 
-    source: Path
-    destination: str
-    options: str = ""  # e.g. "ro"
+  source: Path
+  destination: str
+  options: str = ""  # e.g. "ro"
 
-    def to_volume_arg(self) -> str:
-        """Return the -v argument string for podman/docker."""
-        base = f"{self.source}:{self.destination}"
-        return f"{base}:{self.options}" if self.options else base
+  def to_volume_arg(self) -> str:
+    """Return the -v argument string for podman/docker."""
+    base = f"{self.source}:{self.destination}"
+    return f"{base}:{self.options}" if self.options else base
 
 
 @dataclass
 class AgentInstall:
-    """Information about an agent installation on the host."""
+  """Information about an agent installation on the host."""
 
-    name: str  # e.g. "claude"
-    binary: Path  # host symlink/path to agent binary
-    install_dir: Path  # root of agent installation
-    # Host entrypoint the plugin owns, bound in as-is; anchored, never resolved via $PATH
-    launcher: Path | None = None
+  name: str  # e.g. "claude"
+  binary: Path  # host symlink/path to agent binary
+  install_dir: Path  # root of agent installation
+  # Host entrypoint the plugin owns, bound in as-is; anchored, never resolved via $PATH
+  launcher: Path | None = None
 
 
 class BindKind(Enum):
-    """Whether a binding mounts a single file or a directory."""
+  """Whether a binding mounts a single file or a directory."""
 
-    FILE = "file"
-    DIR = "dir"
+  FILE = "file"
+  DIR = "dir"
 
 
 class HostSrcOrigin(Enum):
-    """Where a binding's default host source comes from, before any cascade override."""
+  """Where a binding's default host source comes from, before any cascade override."""
 
-    LAUNCHER = "launcher"        # AgentInstall.launcher (detection-derived)
-    INSTALL_DIR = "install_dir"  # AgentInstall.install_dir
-    BINARY = "binary"            # AgentInstall.binary
-    LITERAL = "literal"          # a fixed Path in the descriptor (literal_src)
+  LAUNCHER = "launcher"  # AgentInstall.launcher (detection-derived)
+  INSTALL_DIR = "install_dir"  # AgentInstall.install_dir
+  BINARY = "binary"  # AgentInstall.binary
+  LITERAL = "literal"  # a fixed Path in the descriptor (literal_src)
 
 
 class BindScope(Enum):
-    """How widely a binding applies + its failure semantics."""
+  """How widely a binding applies + its failure semantics."""
 
-    AGENT_CRITICAL = "agent_critical"  # delivery-essential; missing source safe-fails; ro
-    AGENT = "agent"                    # agent-level share (plugins); overridable; may be rw
+  AGENT_CRITICAL = "agent_critical"  # delivery-essential; missing source safe-fails; ro
+  AGENT = "agent"  # agent-level share (plugins); overridable; may be rw
 
 
 @dataclass(frozen=True)
 class Binding:
-    """One bound element: a delivery binary/launcher/share, or an agent share."""
+  """One bound element: a delivery binary/launcher/share, or an agent share."""
 
-    # ⚑ `key` is a SETTINGS-FILE-only override key; there is no CLI route, so document none.
-    key: str                          # override key -> agent.<name>.bindings.{ro,rw}.<key>
-    origin: HostSrcOrigin
-    box_dest: str
-    kind: BindKind
-    scope: BindScope
-    ro: bool = True
-    literal_src: Path | None = None   # only when origin == LITERAL
-    owner: str = "shared"
+  # ⚑ `key` is a SETTINGS-FILE-only override key; there is no CLI route, so document none.
+  key: str  # override key -> agent.<name>.bindings.{ro,rw}.<key>
+  origin: HostSrcOrigin
+  box_dest: str
+  kind: BindKind
+  scope: BindScope
+  ro: bool = True
+  literal_src: Path | None = None  # only when origin == LITERAL
+  owner: str = "shared"
 
 
 class Channel(Enum):
-    """Where a value-bearing arg is emitted: an argv flag or an environment variable."""
+  """Where a value-bearing arg is emitted: an argv flag or an environment variable."""
 
-    FLAG = "flag"
-    ENV = "env"
+  FLAG = "flag"
+  ENV = "env"
 
 
 @dataclass(frozen=True)
 class SettingArg:
-    """A value-bearing agent setting routed to an argv flag or an env var (model, provider)."""
+  """A value-bearing agent setting routed to an argv flag or an env var (model, provider)."""
 
-    setting_key: str                  # agent setting supplying the value ("model", "provider")
-    channel: Channel
-    flag: tuple[str, ...] = ()        # FLAG form, e.g. ("--model",)
-    env_var: str = ""                 # ENV form, e.g. "GOOSE_MODEL"
-    emit_empty: bool | None = None    # does "" emit? None = undeclared: empty_default(setting_key)
+  setting_key: str  # agent setting supplying the value ("model", "provider")
+  channel: Channel
+  flag: tuple[str, ...] = ()  # FLAG form, e.g. ("--model",)
+  env_var: str = ""  # ENV form, e.g. "GOOSE_MODEL"
+  emit_empty: bool | None = None  # does "" emit? None = undeclared: empty_default(setting_key)
 
-    @staticmethod
-    def empty_default(setting_key: str) -> bool:
-        """Whether an undeclared entry emits an empty value: only ``model`` does."""
-        return setting_key == "model"
+  @staticmethod
+  def empty_default(setting_key: str) -> bool:
+    """Whether an undeclared entry emits an empty value: only ``model`` does."""
+    return setting_key == "model"
 
-    def emits(self, value: str | None) -> bool:
-        """Whether *value* reaches the harness: ``None`` never; ``""`` per ``emit_empty``."""
-        if value is None:
-            return False
-        if value:
-            return True
-        if self.emit_empty is not None:
-            return self.emit_empty
-        return self.empty_default(self.setting_key)
+  def emits(self, value: str | None) -> bool:
+    """Whether *value* reaches the harness: ``None`` never; ``""`` per ``emit_empty``."""
+    if value is None:
+      return False
+    if value:
+      return True
+    if self.emit_empty is not None:
+      return self.emit_empty
+    return self.empty_default(self.setting_key)
 
 
 @dataclass(frozen=True)
 class AccessTierRow:
-    """How one `access` tier is realized for one harness (spec §2d)."""
+  """How one `access` tier is realized for one harness (spec §2d)."""
 
-    # ⚑ An EMPTY row means emit nothing, DELIBERATELY; a MISSING row means cannot render.
-    flag: tuple[str, ...] = ()   # FLAG channel emission ( () = emit nothing )
-    env_value: str = ""          # ENV channel emission ( "" = emit nothing )
+  # ⚑ An EMPTY row means emit nothing, DELIBERATELY; a MISSING row means cannot render.
+  flag: tuple[str, ...] = ()  # FLAG channel emission ( () = emit nothing )
+  env_value: str = ""  # ENV channel emission ( "" = emit nothing )
 
 
 @dataclass(frozen=True)
 class AccessRealization:
-    """The per-harness realization of the `access` permission tier (spec §2d)."""
+  """The per-harness realization of the `access` permission tier (spec §2d)."""
 
-    channel: Channel
-    env_var: str = ""            # ENV form's variable name (e.g. goose GOOSE_MODE)
-    restricted: "AccessTierRow | None" = None   # None = unrenderable by this harness
-    editing: "AccessTierRow | None" = None      # None = unrenderable by this harness
-    full: "AccessTierRow | None" = None         # None = unrenderable by this harness
-    setting_key: str = ""
+  channel: Channel
+  env_var: str = ""  # ENV form's variable name (e.g. goose GOOSE_MODE)
+  restricted: "AccessTierRow | None" = None  # None = unrenderable by this harness
+  editing: "AccessTierRow | None" = None  # None = unrenderable by this harness
+  full: "AccessTierRow | None" = None  # None = unrenderable by this harness
+  setting_key: str = ""
 
-    def row(self, tier: str) -> "AccessTierRow | None":
-        """The row for *tier*, or `None` when unrenderable — an unknown tier collapses here too."""
-        if tier == "restricted":
-            return self.restricted
-        if tier == "editing":
-            return self.editing
-        if tier == "full":
-            return self.full
-        return None
+  def row(self, tier: str) -> "AccessTierRow | None":
+    """The row for *tier*, or `None` when unrenderable — an unknown tier collapses here too."""
+    if tier == "restricted":
+      return self.restricted
+    if tier == "editing":
+      return self.editing
+    if tier == "full":
+      return self.full
+    return None
 
-    def renders(self, tier: str) -> bool:
-        """Can this harness render *tier* at all? (presence of a row)"""
-        return self.row(tier) is not None
+  def renders(self, tier: str) -> bool:
+    """Can this harness render *tier* at all? (presence of a row)"""
+    return self.row(tier) is not None
 
-    def rendered_tiers(self) -> tuple[str, ...]:
-        """The tiers this harness can render, least->most permissive (order from `ACCESS_TIERS`)."""
-        return tuple(t for t in ACCESS_TIERS if self.renders(t))
+  def rendered_tiers(self) -> tuple[str, ...]:
+    """The tiers this harness can render, least->most permissive (order from `ACCESS_TIERS`)."""
+    return tuple(t for t in ACCESS_TIERS if self.renders(t))
 
 
 @dataclass(frozen=True)
 class PersonaSpec:
-    """How a persona's alternate endpoint and bearer token are delivered for this harness."""
+  """How a persona's alternate endpoint and bearer token are delivered for this harness."""
 
-    # ⚑ That key's VALUE is THREE-STATE: configured / ABSENT (refuse) / present-null (KEYLESS).
-    token_var: str = ""              # secret_path key == in-box env var; EMPTY = harness-dynamic
-    endpoint_delivery: str = "env"   # "env" | "config_file"; picks the preflight gate in start.py
-    wire_api: str = "responses"      # config-file wire; codex dropped "chat" (openai/codex#7782)
-    provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
+  # ⚑ That key's VALUE is THREE-STATE: configured / ABSENT (refuse) / present-null (KEYLESS).
+  token_var: str = ""  # secret_path key == in-box env var; EMPTY = harness-dynamic
+  endpoint_delivery: str = "env"  # "env" | "config_file"; picks the preflight gate in start.py
+  wire_api: str = "responses"  # config-file wire; codex dropped "chat" (openai/codex#7782)
+  provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
 
 
 #: Cap on the provider's own words as echoed back to a user, in CHARACTERS.
@@ -252,262 +254,263 @@ _UNREADABLE = "(withheld — the reply could not be decoded, so it could not be 
 
 
 class ProbeResponse(NamedTuple):
-    """What `http_probe` saw: an HTTP status (`None` = never reached) and the error text.
+  """What `http_probe` saw: an HTTP status (`None` = never reached) and the error text.
 
-    *body* is the provider's own words — normalized to ONE line, capped, and scrubbed of
-    every header value the request carried (`_provider_text`).  Empty when there was
-    nothing to read; one of two fixed sentences when the text was withheld instead
-    (`_WITHHELD`, `_UNREADABLE`).
+  *body* is the provider's own words — normalized to ONE line, capped, and scrubbed of
+  every header value the request carried (`_provider_text`).  Empty when there was
+  nothing to read; one of two fixed sentences when the text was withheld instead
+  (`_WITHHELD`, `_UNREADABLE`).
 
-    🛑 SCRUBBED IS NOT PROVEN CLEAN — read this before printing *body* anywhere.  The scrub
-    matches a credential's OWN CHARACTERS: in plain text, through one JSON decode, and
-    through `_EMBED_DEPTH` embedded documents.  A provider that re-encodes it otherwise
-    (`%2F`, `&#47;`, base64) defeats the scrub SILENTLY — nothing is withheld and this
-    string prints with the credential in it (`_survives`); a credential straddling
-    `_PROVIDER_READ_CAP` leaks its head the same way.  An error message for a human, NOT a
-    value proven free of secrets.
+  🛑 SCRUBBED IS NOT PROVEN CLEAN — read this before printing *body* anywhere.  The scrub
+  matches a credential's OWN CHARACTERS: in plain text, through one JSON decode, and
+  through `_EMBED_DEPTH` embedded documents.  A provider that re-encodes it otherwise
+  (`%2F`, `&#47;`, base64) defeats the scrub SILENTLY — nothing is withheld and this
+  string prints with the credential in it (`_survives`); a credential straddling
+  `_PROVIDER_READ_CAP` leaks its head the same way.  An error message for a human, NOT a
+  value proven free of secrets.
 
-    ⚑ AND IT IS THE PROVIDER'S MEANING, NOT ITS BYTES: a JSON body is re-serialized, so it
-    prints compacted, `1.50` prints as `1.5` and duplicate keys collapse to the last, and a
-    region past `_EMBED_DEPTH` or `_NEST_DEPTH` is replaced by the same marker a secret gets
-    — so a `<redacted>` here is NOT evidence a secret was there.  Nothing round-trips; do
-    not parse this looking for what the provider sent.
+  ⚑ AND IT IS THE PROVIDER'S MEANING, NOT ITS BYTES: a JSON body is re-serialized, so it
+  prints compacted, `1.50` prints as `1.5` and duplicate keys collapse to the last, and a
+  region past `_EMBED_DEPTH` or `_NEST_DEPTH` is replaced by the same marker a secret gets
+  — so a `<redacted>` here is NOT evidence a secret was there.  Nothing round-trips; do
+  not parse this looking for what the provider sent.
 
-    ⚑ ENCODABLE, THOUGH: `_provider_text` guarantees this string survives `str.encode`, so
-    printing it to a strict stream cannot raise (`UnicodeEncodeError`).
-    """
+  ⚑ ENCODABLE, THOUGH: `_provider_text` guarantees this string survives `str.encode`, so
+  printing it to a strict stream cannot raise (`UnicodeEncodeError`).
+  """
 
-    status: int | None
-    body: str = ""   # 🛑 the contract above governs — read it before you print this
+  status: int | None
+  body: str = ""  # 🛑 the contract above governs — read it before you print this
 
 
 def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
-    """Every caller-supplied header substring that must never survive into printed text.
+  """Every caller-supplied header substring that must never survive into printed text.
 
-    EVERY value qualifies, not just `Authorization`, and a scheme-prefixed value contributes
-    its REMAINDER too, so `Bearer <tok>` yields the bare token as well as the whole header.
-    ⚑ THE ONLY EXCLUSION IS LENGTH (`_SECRET_MIN_CHARS`), NEVER A HEADER NAME — do not add a
-    name-keyed exemption (llm-doc).
-    ⚑ SO THIS SET IS NOT ALL CREDENTIALS: length alone admits ordinary header values too.
-    ⚑ RETURNED LONGEST-FIRST, which `_scrub` requires.
-    """
-    out: list[str] = []
-    for value in headers.values():
-        if len(value) >= _SECRET_MIN_CHARS:
-            out.append(value)
-        _, sep, remainder = value.partition(" ")
-        if sep and len(remainder) >= _SECRET_MIN_CHARS:
-            out.append(remainder)
-    return tuple(sorted(out, key=len, reverse=True))
+  EVERY value qualifies, not just `Authorization`, and a scheme-prefixed value contributes
+  its REMAINDER too, so `Bearer <tok>` yields the bare token as well as the whole header.
+  ⚑ THE ONLY EXCLUSION IS LENGTH (`_SECRET_MIN_CHARS`), NEVER A HEADER NAME — do not add a
+  name-keyed exemption (llm-doc).
+  ⚑ SO THIS SET IS NOT ALL CREDENTIALS: length alone admits ordinary header values too.
+  ⚑ RETURNED LONGEST-FIRST, which `_scrub` requires.
+  """
+  out: list[str] = []
+  for value in headers.values():
+    if len(value) >= _SECRET_MIN_CHARS:
+      out.append(value)
+    _, sep, remainder = value.partition(" ")
+    if sep and len(remainder) >= _SECRET_MIN_CHARS:
+      out.append(remainder)
+  return tuple(sorted(out, key=len, reverse=True))
 
 
 def _scrub(text: str, secrets: tuple[str, ...]) -> str:
-    """*text* with every secret in it replaced by `_REDACTED`.
+  """*text* with every secret in it replaced by `_REDACTED`.
 
-    ⚑ ORDER-SENSITIVE: *secrets* must arrive LONGEST FIRST, as `_request_secrets` returns
-    them (llm-doc).
-    """
-    for secret in secrets:
-        text = text.replace(secret, _REDACTED)
-    return text
+  ⚑ ORDER-SENSITIVE: *secrets* must arrive LONGEST FIRST, as `_request_secrets` returns
+  them (llm-doc).
+  """
+  for secret in secrets:
+    text = text.replace(secret, _REDACTED)
+  return text
 
 
 def _compact(node: object) -> str:
-    """*node* re-serialized as ONE compact JSON line.
+  """*node* re-serialized as ONE compact JSON line.
 
-    ⚑ `ensure_ascii=False` is load-bearing, not cosmetic: the default defeats the scrub that
-    follows this call (llm-doc).
-    """
-    import json as _json
+  ⚑ `ensure_ascii=False` is load-bearing, not cosmetic: the default defeats the scrub that
+  follows this call (llm-doc).
+  """
+  import json as _json
 
-    return _json.dumps(node, ensure_ascii=False, separators=(",", ":"))
+  return _json.dumps(node, ensure_ascii=False, separators=(",", ":"))
 
 
 def _scrub_decoded(
-    node: object,
-    secrets: tuple[str, ...],
-    embed: int = _EMBED_DEPTH,
-    depth: int = _NEST_DEPTH,
+  node: object,
+  secrets: tuple[str, ...],
+  embed: int = _EMBED_DEPTH,
+  depth: int = _NEST_DEPTH,
 ) -> object:
-    """A `json.loads` result with every string it carries — KEYS INCLUDED — scrubbed.
+  """A `json.loads` result with every string it carries — KEYS INCLUDED — scrubbed.
 
-    TWO BUDGETS, neither spent on the other's axis: *embed* buys a descent into an EMBEDDED
-    document (`_scrub_embedded`), *depth* buys one ordinary container — so a deep tree of
-    dicts and lists is one document and costs no *embed*.
-    ⚑ Past EITHER, the region we declined to read is replaced by `_REDACTED` IN PLACE and
-    the walk carries on around it (llm-doc).
-    """
-    if depth <= 0:
-        return _REDACTED
-    if isinstance(node, str):
-        return _scrub_embedded(node, secrets, embed, depth)
-    if isinstance(node, list):
-        return [_scrub_decoded(item, secrets, embed, depth - 1) for item in node]
-    if isinstance(node, dict):
-        return {
-            _scrub_embedded(k, secrets, embed, depth): _scrub_decoded(v, secrets, embed, depth - 1)
-            for k, v in node.items()
-        }
-    return node
+  TWO BUDGETS, neither spent on the other's axis: *embed* buys a descent into an EMBEDDED
+  document (`_scrub_embedded`), *depth* buys one ordinary container — so a deep tree of
+  dicts and lists is one document and costs no *embed*.
+  ⚑ Past EITHER, the region we declined to read is replaced by `_REDACTED` IN PLACE and
+  the walk carries on around it (llm-doc).
+  """
+  if depth <= 0:
+    return _REDACTED
+  if isinstance(node, str):
+    return _scrub_embedded(node, secrets, embed, depth)
+  if isinstance(node, list):
+    return [_scrub_decoded(item, secrets, embed, depth - 1) for item in node]
+  if isinstance(node, dict):
+    return {
+      _scrub_embedded(k, secrets, embed, depth): _scrub_decoded(v, secrets, embed, depth - 1)
+      for k, v in node.items()
+    }
+  return node
 
 
 def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int) -> str:
-    """*text* scrubbed, FOLLOWED into an embedded JSON document when it is one.
+  """*text* scrubbed, FOLLOWED into an embedded JSON document when it is one.
 
-    ⚑ ONLY A CONTAINER IS FOLLOWED: a string parsing to a number, `null` or a quoted word
-    is left as written.
-    ⚑ `ValueError`, not `Exception` — that is the ONE failure meaning "not JSON"; do not
-    widen it (llm-doc).
-    ⚑ *depth* CARRIES ACROSS the hop rather than restarting: it is the recursion budget for
-    the whole walk, not for one document.
-    """
-    import json as _json
+  ⚑ ONLY A CONTAINER IS FOLLOWED: a string parsing to a number, `null` or a quoted word
+  is left as written.
+  ⚑ `ValueError`, not `Exception` — that is the ONE failure meaning "not JSON"; do not
+  widen it (llm-doc).
+  ⚑ *depth* CARRIES ACROSS the hop rather than restarting: it is the recursion budget for
+  the whole walk, not for one document.
+  """
+  import json as _json
 
-    try:
-        inner = _json.loads(text)
-    except ValueError:
-        inner = None
-    if isinstance(inner, (dict, list)):
-        if embed <= 0:
-            return _REDACTED
-        return _compact(_scrub_decoded(inner, secrets, embed - 1, depth - 1))
-    return _scrub(text, secrets)
+  try:
+    inner = _json.loads(text)
+  except ValueError:
+    inner = None
+  if isinstance(inner, (dict, list)):
+    if embed <= 0:
+      return _REDACTED
+    return _compact(_scrub_decoded(inner, secrets, embed - 1, depth - 1))
+  return _scrub(text, secrets)
 
 
 def _survives(text: str, secrets: tuple[str, ...]) -> bool:
-    """Is any secret still recoverable from *text* once backslash escaping is deleted?
+  """Is any secret still recoverable from *text* once backslash escaping is deleted?
 
-    A `True` FAILS LOUD: the caller replaces the whole body with `_WITHHELD`.
-    🛑 A GUARD, NOT COVERAGE.  Only backslash escaping is undone here; any other re-encoding
-    (`%2F`, `&#47;`, base64) is NOT caught and IS printed, credential and all (llm-doc).
-    """
-    bare = text.replace("\\", "")
-    return any(secret in text or secret in bare for secret in secrets)
+  A `True` FAILS LOUD: the caller replaces the whole body with `_WITHHELD`.
+  🛑 A GUARD, NOT COVERAGE.  Only backslash escaping is undone here; any other re-encoding
+  (`%2F`, `&#47;`, base64) is NOT caught and IS printed, credential and all (llm-doc).
+  """
+  bare = text.replace("\\", "")
+  return any(secret in text or secret in bare for secret in secrets)
 
 
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
-    """Normalize an error body into ONE capped, secret-scrubbed line.
+  """Normalize an error body into ONE capped, secret-scrubbed line.
 
-    ⚑ *raw* ARRIVES ALREADY CUT at `_PROVIDER_READ_CAP` BYTES (`http_probe`): a secret
-    straddling that cut is bisected and matches nothing here, and such a body cannot parse,
-    so it lands on the plain-text path.  `_PROVIDER_TEXT_CAP` is applied HERE, AFTER the
-    scrub (llm-doc).
-    ⚑ A JSON body is RE-SERIALIZED, not edited, so the return is the provider's MEANING and
-    not its bytes; `ProbeResponse.body` is the published contract for what that costs.  A
-    non-JSON body passes through unchanged apart from the whitespace collapse.
-    🛑 `_survives` guards both paths, and what walks past IT is PRINTED — read that
-    docstring before trusting this output.
+  ⚑ *raw* ARRIVES ALREADY CUT at `_PROVIDER_READ_CAP` BYTES (`http_probe`): a secret
+  straddling that cut is bisected and matches nothing here, and such a body cannot parse,
+  so it lands on the plain-text path.  `_PROVIDER_TEXT_CAP` is applied HERE, AFTER the
+  scrub (llm-doc).
+  ⚑ A JSON body is RE-SERIALIZED, not edited, so the return is the provider's MEANING and
+  not its bytes; `ProbeResponse.body` is the published contract for what that costs.  A
+  non-JSON body passes through unchanged apart from the whitespace collapse.
+  🛑 `_survives` guards both paths, and what walks past IT is PRINTED — read that
+  docstring before trusting this output.
 
-    🛑 Before 3.12 `json.loads` charges its OWN recursion against `sys.getrecursionlimit()`,
-    so a body nested past the floor below dies in the PARSE and takes `_UNREADABLE`.  There
-    is no depth knob to raise.  Re-derive the floor with:
+  🛑 Before 3.12 `json.loads` charges its OWN recursion against `sys.getrecursionlimit()`,
+  so a body nested past the floor below dies in the PARSE and takes `_UNREADABLE`.  There
+  is no depth knob to raise.  Re-derive the floor with:
 
-        python -c "import json
-        d = 0
-        try:
-            while True:
-                d += 1
-                json.loads('[' * d + '1' + ']' * d)
-        except RecursionError:
-            print('deepest nesting parsed:', d - 1)"
-    """
-    import json as _json
+      python -c "import json
+      d = 0
+      try:
+          while True:
+              d += 1
+              json.loads('[' * d + '1' + ']' * d)
+      except RecursionError:
+          print('deepest nesting parsed:', d - 1)"
+  """
+  import json as _json
 
-    secrets = _request_secrets(headers)
-    text = raw.decode("utf-8", "replace")
-    # ⚑ THE `ValueError` GUARD HOLDS THE PARSE AND NOTHING ELSE.  Widening it over the walk
-    # or the re-serialization sends a `ValueError` out of EITHER to the "not JSON" arm
-    # (llm-doc).
+  secrets = _request_secrets(headers)
+  text = raw.decode("utf-8", "replace")
+  # ⚑ THE `ValueError` GUARD HOLDS THE PARSE AND NOTHING ELSE.  Widening it over the walk
+  # or the re-serialization sends a `ValueError` out of EITHER to the "not JSON" arm
+  # (llm-doc).
+  try:
+    decoded = _json.loads(text)
+  except ValueError:
+    # Not JSON: no encoding layer to undo, so the wire text IS the display text.
+    pass
+  except Exception:
+    # Every other decode failure withholds; it must never reach the raw-spelling scrub.
+    return _UNREADABLE
+  else:
     try:
-        decoded = _json.loads(text)
-    except ValueError:
-        # Not JSON: no encoding layer to undo, so the wire text IS the display text.
-        pass
+      text = _compact(_scrub_decoded(decoded, secrets))
     except Exception:
-        # Every other decode failure withholds; it must never reach the raw-spelling scrub.
-        return _UNREADABLE
-    else:
-        try:
-            text = _compact(_scrub_decoded(decoded, secrets))
-        except Exception:
-            return _UNREADABLE   # the same safe default
-    # ⚑ BOTH CALLS ARE LOAD-BEARING: the whitespace collapse between them can create a match
-    # and can destroy one (llm-doc).
-    text = _scrub(text, secrets)
-    text = _scrub(" ".join(text.split()), secrets)
-    if _survives(text, secrets):
-        return _WITHHELD
-    # ⚑ NOT A NO-OP: it makes the result ENCODABLE, which `ProbeResponse.body` promises.  A
-    # decoded body can carry a lone surrogate, which raises `UnicodeEncodeError` in the
-    # CALLER's print.  ⚑ It must run AFTER the scrub, never before (llm-doc).
-    text = text.encode("utf-8", "replace").decode("utf-8")
-    if len(text) > _PROVIDER_TEXT_CAP:
-        text = text[:_PROVIDER_TEXT_CAP].rstrip() + "…"
-    return text
+      return _UNREADABLE  # the same safe default
+  # ⚑ BOTH CALLS ARE LOAD-BEARING: the whitespace collapse between them can create a match
+  # and can destroy one (llm-doc).
+  text = _scrub(text, secrets)
+  text = _scrub(" ".join(text.split()), secrets)
+  if _survives(text, secrets):
+    return _WITHHELD
+  # ⚑ NOT A NO-OP: it makes the result ENCODABLE, which `ProbeResponse.body` promises.  A
+  # decoded body can carry a lone surrogate, which raises `UnicodeEncodeError` in the
+  # CALLER's print.  ⚑ It must run AFTER the scrub, never before (llm-doc).
+  text = text.encode("utf-8", "replace").decode("utf-8")
+  if len(text) > _PROVIDER_TEXT_CAP:
+    text = text[:_PROVIDER_TEXT_CAP].rstrip() + "…"
+  return text
 
 
 def http_probe(
-    url: str,
-    *,
-    headers: dict[str, str],
-    body: dict | None = None,
-    timeout: float,
+  url: str,
+  *,
+  headers: dict[str, str],
+  body: dict | None = None,
+  timeout: float,
 ) -> ProbeResponse:
-    """POST *body* as JSON to *url* — or GET *url* when *body* is `None`; return the HTTP
-    status and the provider's error text.
+  """POST *body* as JSON to *url* — or GET *url* when *body* is `None`; return the HTTP
+  status and the provider's error text.
 
-    ⚑ A GET carries no body and no `Content-Type`; everything below holds for both methods.
+  ⚑ A GET carries no body and no `Content-Type`; everything below holds for both methods.
 
-    ⚑ NEVER raises, and never logs the request: *headers* carry credentials.
-    ⚑ The returned text is scrubbed of EVERY caller-supplied header value, not just
-    `Authorization` (`_provider_text`).  🛑 That scrub has a documented residue and the
-    residue REACHES PRINTED OUTPUT — read `ProbeResponse.body` before printing this.
-    ⚑ The body is cut at `_PROVIDER_READ_CAP` BYTES here, AHEAD of the scrub: a secret
-    straddling the cut arrives bisected and cannot be matched.
-    """
-    import json as _json
-    import urllib.error
-    import urllib.request
+  ⚑ NEVER raises, and never logs the request: *headers* carry credentials.
+  ⚑ The returned text is scrubbed of EVERY caller-supplied header value, not just
+  `Authorization` (`_provider_text`).  🛑 That scrub has a documented residue and the
+  residue REACHES PRINTED OUTPUT — read `ProbeResponse.body` before printing this.
+  ⚑ The body is cut at `_PROVIDER_READ_CAP` BYTES here, AHEAD of the scrub: a secret
+  straddling the cut arrives bisected and cannot be matched.
+  """
+  import json as _json
+  import urllib.error
+  import urllib.request
 
-    from kanibako.net.redirects import NoRedirects
+  from kanibako.net.redirects import NoRedirects
 
-    data = None if body is None else _json.dumps(body).encode("utf-8")
+  data = None if body is None else _json.dumps(body).encode("utf-8")
+  try:
+    req = urllib.request.Request(url, data=data, method="GET" if data is None else "POST")
+    for key, value in headers.items():
+      req.add_header(key, value)
+    if data is not None:
+      req.add_header("Content-Type", "application/json")
+    opener = urllib.request.build_opener(NoRedirects)
+    with opener.open(req, timeout=timeout) as resp:  # noqa: S310
+      return ProbeResponse(int(resp.status))
+  except urllib.error.HTTPError as exc:
     try:
-        req = urllib.request.Request(url, data=data, method="GET" if data is None else "POST")
-        for key, value in headers.items():
-            req.add_header(key, value)
-        if data is not None:
-            req.add_header("Content-Type", "application/json")
-        opener = urllib.request.build_opener(NoRedirects)
-        with opener.open(req, timeout=timeout) as resp:  # noqa: S310
-            return ProbeResponse(int(resp.status))
-    except urllib.error.HTTPError as exc:
-        try:
-            raw = exc.read(_PROVIDER_READ_CAP)
-        except Exception:
-            raw = b""
-        return ProbeResponse(int(exc.code), _provider_text(raw, headers))
+      raw = exc.read(_PROVIDER_READ_CAP)
     except Exception:
-        # Every transport shape (URLError / timeout / ssl / bad URL); the contract is never-raises.
-        return ProbeResponse(None)
+      raw = b""
+    return ProbeResponse(int(exc.code), _provider_text(raw, headers))
+  except Exception:
+    # Every transport shape (URLError / timeout / ssl / bad URL); the contract is never-raises.
+    return ProbeResponse(None)
 
 
 class _PersonaDefaultModel:
-    """Sentinel TYPE for :data:`PERSONA_DEFAULT_MODEL`; one instance, the ``__MISSING__`` pattern."""
-    _instance: "_PersonaDefaultModel | None" = None
+  """Sentinel TYPE for :data:`PERSONA_DEFAULT_MODEL`; one instance, the ``__MISSING__`` pattern."""
 
-    def __new__(cls) -> "_PersonaDefaultModel":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+  _instance: "_PersonaDefaultModel | None" = None
 
-    def __repr__(self) -> str:
-        return "PERSONA_DEFAULT_MODEL"
+  def __new__(cls) -> "_PersonaDefaultModel":
+    if cls._instance is None:
+      cls._instance = super().__new__(cls)
+    return cls._instance
 
-    # ⚑ FALSY on purpose: a core that predates the marker drops it (``if self.model:``), so a
-    # mixed core/plugin pair degrades to "absent", never to a crash.  Test it via ``is``.
-    def __bool__(self) -> bool:
-        return False
+  def __repr__(self) -> str:
+    return "PERSONA_DEFAULT_MODEL"
+
+  # ⚑ FALSY on purpose: a core that predates the marker drops it (``if self.model:``), so a
+  # mixed core/plugin pair degrades to "absent", never to a crash.  Test it via ``is``.
+  def __bool__(self) -> bool:
+    return False
 
 
 # A persona config that WRITES ``null`` for its model: "the persona's default", a SET value.
@@ -515,31 +518,31 @@ PERSONA_DEFAULT_MODEL: _PersonaDefaultModel = _PersonaDefaultModel()
 
 
 class PersonaSettings(NamedTuple):
-    """Persona-specific values read back OUT of a rendered harness config."""
+  """Persona-specific values read back OUT of a rendered harness config."""
 
-    endpoint: str | None   # the alternate base URL (codex base_url / claude ANTHROPIC_BASE_URL)
-    # None = the config names no model; PERSONA_DEFAULT_MODEL = it writes null; "" = it writes "".
-    model: str | None | _PersonaDefaultModel
-    auth_env: str          # env var the bearer token is exported as (codex env_key)
-    # ⚑ MappingProxyType, not a bare `{}`: a mutable default is one object shared by every instance.
-    env: Mapping[str, str] = MappingProxyType({})   # passthrough env block (no single-source vars)
-    env_dropped: tuple[str, ...] = ()               # NAMES skipped: value was not a string
+  endpoint: str | None  # the alternate base URL (codex base_url / claude ANTHROPIC_BASE_URL)
+  # None = the config names no model; PERSONA_DEFAULT_MODEL = it writes null; "" = it writes "".
+  model: str | None | _PersonaDefaultModel
+  auth_env: str  # env var the bearer token is exported as (codex env_key)
+  # ⚑ MappingProxyType, not a bare `{}`: a mutable default is one object shared by every instance.
+  env: Mapping[str, str] = MappingProxyType({})  # passthrough env block (no single-source vars)
+  env_dropped: tuple[str, ...] = ()  # NAMES skipped: value was not a string
 
 
 class PersonaReadOutcome(NamedTuple):
-    """The tri-state result of `Target.read_persona_settings`."""
+  """The tri-state result of `Target.read_persona_settings`."""
 
-    settings: PersonaSettings | None   # non-None = a usable config was read
-    reject_reason: str | None          # non-None = PRESENT but UNUSABLE; BOTH None = no reader
+  settings: PersonaSettings | None  # non-None = a usable config was read
+  reject_reason: str | None  # non-None = PRESENT but UNUSABLE; BOTH None = no reader
 
 
 class PersonaProbeVerdict(Enum):
-    """The four distinct answers `Target.verify_persona` can give."""
+  """The four distinct answers `Target.verify_persona` can give."""
 
-    PASS = "pass"                        # 2xx — the endpoint accepted the token
-    REJECTED = "rejected"                # 401/403 — a POSITIVE auth reject
-    INCONCLUSIVE = "inconclusive"        # probed, could not decide (blip/ambiguous)
-    NOT_APPLICABLE = "not_applicable"    # no probe was attempted, and none will be
+  PASS = "pass"  # 2xx — the endpoint accepted the token
+  REJECTED = "rejected"  # 401/403 — a POSITIVE auth reject
+  INCONCLUSIVE = "inconclusive"  # probed, could not decide (blip/ambiguous)
+  NOT_APPLICABLE = "not_applicable"  # no probe was attempted, and none will be
 
 
 # Statuses at which the endpoint POSITIVELY refused the request it was handed.
@@ -550,351 +553,354 @@ _SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
 
 
 def _tilde(path: Path) -> str:
-    """*path* with the user's home abbreviated to `~` — DISPLAY only, never a resolve."""
-    try:
-        return f"~/{path.relative_to(Path.home())}"
-    except (ValueError, RuntimeError, OSError):
-        return str(path)
+  """*path* with the user's home abbreviated to `~` — DISPLAY only, never a resolve."""
+  try:
+    return f"~/{path.relative_to(Path.home())}"
+  except (ValueError, RuntimeError, OSError):
+    return str(path)
 
 
 def _scrub_endpoint_userinfo(endpoint: str) -> str:
-    """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
+  """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
 
-    🛑 ONE rule: the span runs to the LAST ``@``; no ``/``, ``?`` or ``#`` bounds
-    it (a credential need not be delimiter-free — a base64 token carries ``/``).
-    Only WHERE it starts differs: past the scheme and its ``/`` run when a ``://``
-    ends an RFC 3986 scheme at index 0, else index 0.
+  🛑 ONE rule: the span runs to the LAST ``@``; no ``/``, ``?`` or ``#`` bounds
+  it (a credential need not be delimiter-free — a base64 token carries ``/``).
+  Only WHERE it starts differs: past the scheme and its ``/`` run when a ``://``
+  ends an RFC 3986 scheme at index 0, else index 0.
 
-    ⚑ The cost is OVER-REDACTION in printed text; only a span goes, and the
-    CHECK runs on the raw string — no working box is refused.
-    """
-    marker = endpoint.find("://")
-    scheme = _SCHEME.match(endpoint)
-    if scheme is not None and scheme.end() == marker:
-        after_scheme = marker + len("://")
-        tail = endpoint[after_scheme:]
-        start = after_scheme + len(tail) - len(tail.lstrip("/"))
-    else:
-        start = 0
-    last_at = endpoint.rfind("@", start)
-    if last_at == -1:
-        return endpoint
-    return endpoint[:start] + _REDACTED + endpoint[last_at:]
+  ⚑ The cost is OVER-REDACTION in printed text; only a span goes, and the
+  CHECK runs on the raw string — no working box is refused.
+  """
+  marker = endpoint.find("://")
+  scheme = _SCHEME.match(endpoint)
+  if scheme is not None and scheme.end() == marker:
+    after_scheme = marker + len("://")
+    tail = endpoint[after_scheme:]
+    start = after_scheme + len(tail) - len(tail.lstrip("/"))
+  else:
+    start = 0
+  last_at = endpoint.rfind("@", start)
+  if last_at == -1:
+    return endpoint
+  return endpoint[:start] + _REDACTED + endpoint[last_at:]
 
 
 @dataclass(frozen=True)
 class ProbeEvidence:
-    """What a persona probe SENT and what came back — the facts a non-PASS verdict rests on.
+  """What a persona probe SENT and what came back — the facts a non-PASS verdict rests on.
 
-    Filled in TWO halves: a plugin builds the request half before the call, and
-    `probe_outcome` fills *status* / *provider_text* from the answer.
-    ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction;
-    *token_by_value* says the token was handed over by VALUE from `-e` instead, and is
-    a flag for the same reason.  *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
-    record inherits `ProbeResponse.body`'s residue verbatim.  Read the block as an error
-    message for a human, not as a record proven free of secrets.
+  Filled in TWO halves: a plugin builds the request half before the call, and
+  `probe_outcome` fills *status* / *provider_text* from the answer.
+  ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction;
+  *token_by_value* says the token was handed over by VALUE from `-e` instead, and is
+  a flag for the same reason.  *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
+  record inherits `ProbeResponse.body`'s residue verbatim.  Read the block as an error
+  message for a human, not as a record proven free of secrets.
 
-    ⚑ *model* is what went ON THE WIRE, which is not always what the user configured: a
-    harness that resolves a tier alias through an env var records the id it SENT here and
-    says where it came from in *model_origin*.
+  ⚑ *model* is what went ON THE WIRE, which is not always what the user configured: a
+  harness that resolves a tier alias through an env var records the id it SENT here and
+  says where it came from in *model_origin*.
+  """
+
+  endpoint: str
+  model: str | None = None  # None = the `model` key was deliberately OMITTED
+  model_origin: str = ""  # "" = sent exactly as configured
+  token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
+  status: int | None = None  # None = the endpoint was never reached
+  provider_text: str = ""
+  request: str = ""  # method and path, e.g. "GET /v1/models"; "" = not recorded
+  token_by_value: bool = False  # True = the token came from `-e`, not *token_path*
+
+  def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
+    """The evidence block: one labeled line per input, then the provider's own words.
+
+    ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`) — it
+    may over-redact it.
+    ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
+
+    ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
+    RENDER-TIME fact, not evidence state, because the plugin that builds this record
+    was HANDED both values and cannot know.  `""` prints no provenance at all: a
+    caller that cannot answer must stay silent rather than guess, so the sentence is
+    unavailable to anyone who did not actually resolve it (P3).
+    🛑 It says a SOURCE, never a cascade RUNG: the launch path reads endpoint and
+    model off a collapsed snapshot and `settings_merge.merge` drops the level, so
+    naming a level here would be an invention.  Coarse and true beats precise and
+    made up.
+    🛑 AND IT SPEAKS ONLY FOR WHAT THE LINES ABOVE ACTUALLY SHOW — THREE arms,
+    each matching the model line's own state, because attributing provenance to
+    something that is not there is the one way this sentence can lie:
+    * *model* set and *model_origin* set — the id shown went on the WIRE after the
+      harness rewrote it (a claude tier alias through
+      `ANTHROPIC_DEFAULT_<TIER>_MODEL`), so the named source holds the ALIAS, not
+      that id, and the sentence narrows to the model's INPUT.  This is the
+      alias-403 arm: the measured failure the rewrite exists for, and so the
+      likeliest refusal a user ever reads.
+    * *model* set, no origin — the id is the source's own; today's wording stands.
+    * NO *model* — the line reads `(omitted)`, and an OMISSION does not come from
+      a source, so the sentence speaks for the endpoint alone.
+    ⚑ Three is the whole set: the model line has exactly these three states.
+
+    ⚑ A *request* prints its own line with the answer it got — a two-request probe
+    must say which request each status belongs to.
     """
+    model = "(omitted)" if not self.model else self.model
+    if self.model and self.model_origin:
+      model = f"{self.model}  ({self.model_origin})"
+    if self.token_by_value:
+      token = "(the value of -e on the command line)"
+    elif self.token_path is None:
+      token = "(none — this persona declares the endpoint keyless)"
+    else:
+      token = _tilde(self.token_path)
+    out = [
+      f"{indent}{'endpoint':<10}{_scrub_endpoint_userinfo(self.endpoint)}",
+      f"{indent}{'model':<10}{model}",
+      f"{indent}{'token':<10}{token}",
+    ]
+    if self.request:
+      answer = "no answer" if self.status is None else f"HTTP {self.status}"
+      out.append(f"{indent}{'request':<10}{self.request} — {answer}")
+    if resolved_from:
+      # ⚑ THREE arms, each guarded on exactly what the model line above says —
+      # the sentence may never speak for something that line does not show.
+      if not self.model:
+        # 🛑 An OMISSION does not come from a source: the line reads
+        # `(omitted)`, so there is no model for the sentence to attribute.
+        subject = "The endpoint above"
+      elif self.model_origin:
+        # The id shown is the harness's, not the named source's; only the
+        # input it was resolved FROM came from there.
+        subject = "The endpoint above, and the model it was resolved from,"
+      else:
+        subject = "The endpoint and model above"
+      out.append(f"{indent}{subject} came from {resolved_from}.")
+    if self.provider_text:
+      out.append(f"{indent}{'provider:':<10}{self.provider_text}")
+    if self.status in _REFUSAL_STATUSES:
+      out.append(
+        f"{indent}An HTTP {self.status} means the endpoint refused this request — "
+        f"it does not say which input was at fault."
+      )
+    return tuple(out)
 
-    endpoint: str
-    model: str | None = None        # None = the `model` key was deliberately OMITTED
-    model_origin: str = ""          # "" = sent exactly as configured
-    token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
-    status: int | None = None       # None = the endpoint was never reached
-    provider_text: str = ""
-    request: str = ""               # method and path, e.g. "GET /v1/models"; "" = not recorded
-    token_by_value: bool = False    # True = the token came from `-e`, not *token_path*
-
-    def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
-        """The evidence block: one labeled line per input, then the provider's own words.
-
-        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`) — it
-        may over-redact it.
-        ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
-
-        ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
-        RENDER-TIME fact, not evidence state, because the plugin that builds this record
-        was HANDED both values and cannot know.  `""` prints no provenance at all: a
-        caller that cannot answer must stay silent rather than guess, so the sentence is
-        unavailable to anyone who did not actually resolve it (P3).
-        🛑 It says a SOURCE, never a cascade RUNG: the launch path reads endpoint and
-        model off a collapsed snapshot and `settings_merge.merge` drops the level, so
-        naming a level here would be an invention.  Coarse and true beats precise and
-        made up.
-        🛑 AND IT SPEAKS ONLY FOR WHAT THE LINES ABOVE ACTUALLY SHOW — THREE arms,
-        each matching the model line's own state, because attributing provenance to
-        something that is not there is the one way this sentence can lie:
-        * *model* set and *model_origin* set — the id shown went on the WIRE after the
-          harness rewrote it (a claude tier alias through
-          `ANTHROPIC_DEFAULT_<TIER>_MODEL`), so the named source holds the ALIAS, not
-          that id, and the sentence narrows to the model's INPUT.  This is the
-          alias-403 arm: the measured failure the rewrite exists for, and so the
-          likeliest refusal a user ever reads.
-        * *model* set, no origin — the id is the source's own; today's wording stands.
-        * NO *model* — the line reads `(omitted)`, and an OMISSION does not come from
-          a source, so the sentence speaks for the endpoint alone.
-        ⚑ Three is the whole set: the model line has exactly these three states.
-
-        ⚑ A *request* prints its own line with the answer it got — a two-request probe
-        must say which request each status belongs to.
-        """
-        model = "(omitted)" if not self.model else self.model
-        if self.model and self.model_origin:
-            model = f"{self.model}  ({self.model_origin})"
-        if self.token_by_value:
-            token = "(the value of -e on the command line)"
-        elif self.token_path is None:
-            token = "(none — this persona declares the endpoint keyless)"
-        else:
-            token = _tilde(self.token_path)
-        out = [
-            f"{indent}{'endpoint':<10}{_scrub_endpoint_userinfo(self.endpoint)}",
-            f"{indent}{'model':<10}{model}",
-            f"{indent}{'token':<10}{token}",
-        ]
-        if self.request:
-            answer = "no answer" if self.status is None else f"HTTP {self.status}"
-            out.append(f"{indent}{'request':<10}{self.request} — {answer}")
-        if resolved_from:
-            # ⚑ THREE arms, each guarded on exactly what the model line above says —
-            # the sentence may never speak for something that line does not show.
-            if not self.model:
-                # 🛑 An OMISSION does not come from a source: the line reads
-                # `(omitted)`, so there is no model for the sentence to attribute.
-                subject = "The endpoint above"
-            elif self.model_origin:
-                # The id shown is the harness's, not the named source's; only the
-                # input it was resolved FROM came from there.
-                subject = "The endpoint above, and the model it was resolved from,"
-            else:
-                subject = "The endpoint and model above"
-            out.append(f"{indent}{subject} came from {resolved_from}.")
-        if self.provider_text:
-            out.append(f"{indent}{'provider:':<10}{self.provider_text}")
-        if self.status in _REFUSAL_STATUSES:
-            out.append(
-                f"{indent}An HTTP {self.status} means the endpoint refused this request — "
-                f"it does not say which input was at fault."
-            )
-        return tuple(out)
-
-    def block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
-        """`lines`, joined — the form a printed message interpolates."""
-        return "\n".join(self.lines(indent, resolved_from=resolved_from))
+  def block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
+    """`lines`, joined — the form a printed message interpolates."""
+    return "\n".join(self.lines(indent, resolved_from=resolved_from))
 
 
 class GeneralAccess(Enum):
-    """What the model-free request (a GET of the model list) showed about access."""
+  """What the model-free request (a GET of the model list) showed about access."""
 
-    VERIFIED = "verified"    # 2xx with the credential, 401/403 without it: the one proof of a key
-    OPEN = "open"            # 2xx with no credential: the list is public, so it tests no key
-    UNTESTED = "untested"    # 2xx with the credential; the request without it did not decide
-    DENIED = "denied"        # 401/403 on the first request
-    NO_ANSWER = "no_answer"  # first request unreachable, or any other status (3xx, 404, 5xx…)
+  VERIFIED = "verified"  # 2xx with the credential, 401/403 without it: the one proof of a key
+  OPEN = "open"  # 2xx with no credential: the list is public, so it tests no key
+  UNTESTED = "untested"  # 2xx with the credential; the request without it did not decide
+  DENIED = "denied"  # 401/403 on the first request
+  NO_ANSWER = "no_answer"  # first request unreachable, or any other status (3xx, 404, 5xx…)
 
 
 class ModelAccess(Enum):
-    """What the model request (today's completion probe) showed."""
+  """What the model request (today's completion probe) showed."""
 
-    OK = "ok"                          # 2xx
-    DENIED = "denied"                  # 401/403
-    MODEL_REQUIRED = "model_required"  # 400/422 to a request that OMITTED the model
-    AMBIGUOUS = "ambiguous"            # any other status
-    UNREACHABLE = "unreachable"        # no status
+  OK = "ok"  # 2xx
+  DENIED = "denied"  # 401/403
+  MODEL_REQUIRED = "model_required"  # 400/422 to a request that OMITTED the model
+  AMBIGUOUS = "ambiguous"  # any other status
+  UNREACHABLE = "unreachable"  # no status
 
 
 @dataclass(frozen=True)
 class AxisResult:
-    """One axis of a persona probe: its state and the evidence of the request that decided it.
+  """One axis of a persona probe: its state and the evidence of the request that decided it.
 
-    *control_status* is the general axis's request WITHOUT the credential: `None` when it was
-    not sent or not answered.  Always `None` on the model axis.
-    """
+  *control_status* is the general axis's request WITHOUT the credential: `None` when it was
+  not sent or not answered.  Always `None` on the model axis.
+  """
 
-    state: GeneralAccess | ModelAccess
-    evidence: ProbeEvidence
-    control_status: int | None = None
+  state: GeneralAccess | ModelAccess
+  evidence: ProbeEvidence
+  control_status: int | None = None
 
 
 @dataclass(frozen=True)
 class AccessReport:
-    """Both axes of a persona probe — the input `access_outcome` decides from."""
+  """Both axes of a persona probe — the input `access_outcome` decides from."""
 
-    general: AxisResult
-    model: AxisResult
+  general: AxisResult
+  model: AxisResult
 
-    @property
-    def control_status(self) -> int | None:
-        """The status of the general axis's request without the credential."""
-        return self.general.control_status
+  @property
+  def control_status(self) -> int | None:
+    """The status of the general axis's request without the credential."""
+    return self.general.control_status
 
 
 class PersonaProbeOutcome(NamedTuple):
-    """The result of `Target.verify_persona`: a verdict, a named cause, and its evidence."""
+  """The result of `Target.verify_persona`: a verdict, a named cause, and its evidence."""
 
-    verdict: PersonaProbeVerdict
-    reason: str | None = None   # set for the two non-answer arms; interpolates into a sentence
-    # ⚑ REQUIRED for a REJECTED — `rejected` takes it POSITIONALLY (llm-doc).
-    evidence: "ProbeEvidence | None" = None
-    # Both axes, when the verdict came from `access_outcome`; `None` for a one-request probe.
-    access: AccessReport | None = None
+  verdict: PersonaProbeVerdict
+  reason: str | None = None  # set for the two non-answer arms; interpolates into a sentence
+  # ⚑ REQUIRED for a REJECTED — `rejected` takes it POSITIONALLY (llm-doc).
+  evidence: "ProbeEvidence | None" = None
+  # Both axes, when the verdict came from `access_outcome`; `None` for a one-request probe.
+  access: AccessReport | None = None
 
-    @classmethod
-    def passed(cls) -> "PersonaProbeOutcome":
-        """2xx: the endpoint accepted the request."""
-        return cls(PersonaProbeVerdict.PASS)
+  @classmethod
+  def passed(cls) -> "PersonaProbeOutcome":
+    """2xx: the endpoint accepted the request."""
+    return cls(PersonaProbeVerdict.PASS)
 
-    @classmethod
-    def rejected(cls, evidence: ProbeEvidence) -> "PersonaProbeOutcome":
-        """401/403: the endpoint positively refused the request *evidence* describes."""
-        return cls(PersonaProbeVerdict.REJECTED, None, evidence)
+  @classmethod
+  def rejected(cls, evidence: ProbeEvidence) -> "PersonaProbeOutcome":
+    """401/403: the endpoint positively refused the request *evidence* describes."""
+    return cls(PersonaProbeVerdict.REJECTED, None, evidence)
 
-    @classmethod
-    def inconclusive(
-        cls, reason: str, evidence: "ProbeEvidence | None" = None,
-    ) -> "PersonaProbeOutcome":
-        """The probe ran and could not decide; *reason* says what it saw.
+  @classmethod
+  def inconclusive(
+    cls,
+    reason: str,
+    evidence: "ProbeEvidence | None" = None,
+  ) -> "PersonaProbeOutcome":
+    """The probe ran and could not decide; *reason* says what it saw.
 
-        *evidence* is absent for the one arm that has none — a probe that never got as far
-        as a request (a plugin that raised).
-        """
-        return cls(PersonaProbeVerdict.INCONCLUSIVE, reason, evidence)
+    *evidence* is absent for the one arm that has none — a probe that never got as far
+    as a request (a plugin that raised).
+    """
+    return cls(PersonaProbeVerdict.INCONCLUSIVE, reason, evidence)
 
-    @classmethod
-    def not_applicable(cls, reason: str) -> "PersonaProbeOutcome":
-        """No probe was attempted; *reason* says why none is possible."""
-        return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
+  @classmethod
+  def not_applicable(cls, reason: str) -> "PersonaProbeOutcome":
+    """No probe was attempted; *reason* says why none is possible."""
+    return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
 
-    def evidence_block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
-        """The evidence lines to append to a printed message, newline-led; `""` when none.
+  def evidence_block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
+    """The evidence lines to append to a printed message, newline-led; `""` when none.
 
-        ⚑ Empty unless the endpoint ANSWERED.  THE single renderer for both consumers —
-        the launch error and the create warning (llm-doc).  *resolved_from* is the
-        caller's own answer to "where did these inputs come from"; see
-        `ProbeEvidence.lines`.
+    ⚑ Empty unless the endpoint ANSWERED.  THE single renderer for both consumers —
+    the launch error and the create warning (llm-doc).  *resolved_from* is the
+    caller's own answer to "where did these inputs come from"; see
+    `ProbeEvidence.lines`.
 
-        ⚑ With *access* set (a two-axis probe) it renders BOTH requests: first, on a
-        REJECTED, the one sentence saying what each request showed (the Q29 table's
-        wording), then the model request's block, then the model-free request's own line.
-        🛑 The sentence says what the endpoint REFUSED, never that the token is bad.
-        """
-        access = self.access
-        if access is None:
-            if self.evidence is None or self.evidence.status is None:
-                return ""
-            return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
-        model = access.model.evidence
-        general = access.general.evidence
-        if model.status is None and general.status is None:
-            return ""
-        out: list[str] = []
-        if self.verdict is PersonaProbeVerdict.REJECTED:
-            keyed = model.token_path is not None or model.token_by_value
-            asked = (
-                f"the request for model '{model.model}'" if model.model
-                else "the request that named no model"
-            )
-            state = access.general.state
-            if state is GeneralAccess.VERIFIED:
-                summary = (
-                    f"The endpoint accepted this credential without a model and refused "
-                    f"the request for model '{model.model}'." if model.model else
-                    "The endpoint accepted this credential and refused a request that "
-                    "named no model."
-                )
-            elif state is GeneralAccess.DENIED:
-                summary = (
-                    "The endpoint refused this credential with and without a model."
-                    if keyed else
-                    "The endpoint refused every request made without a credential; "
-                    "this persona declares the endpoint keyless."
-                )
-            elif state is GeneralAccess.NO_ANSWER:
-                summary = ""
-            elif not keyed:
-                summary = (
-                    f"The endpoint refused an uncredentialed request for model "
-                    f"'{model.model}'." if model.model else
-                    "The endpoint refused an uncredentialed request that named no model."
-                )
-            else:
-                why = (
-                    "the model list is public" if state is GeneralAccess.OPEN
-                    else "the request without it did not decide"
-                )
-                summary = (
-                    f"The endpoint refused {asked}; the model-free check could not test "
-                    f"the credential ({why})."
-                )
-            if summary:
-                out.append(f"{indent}{summary}")
-        out.extend(model.lines(indent, resolved_from=resolved_from))
-        answer = "no answer" if general.status is None else f"HTTP {general.status}"
-        line = f"{indent}{'request':<10}{general.request} — {answer}"
-        if access.control_status is not None:
-            line += f"; without the credential, HTTP {access.control_status}"
-        out.append(line)
-        general_answered = general.status is not None and 200 <= general.status < 300
-        if general.provider_text and not general_answered:
-            out.append(f"{indent}{'provider:':<10}{general.provider_text}")
-        if general.status in _REFUSAL_STATUSES and model.status not in _REFUSAL_STATUSES:
-            out.append(
-                f"{indent}An HTTP {general.status} means the endpoint refused this request "
-                f"— it does not say which input was at fault."
-            )
-        return "\n" + "\n".join(out)
+    ⚑ With *access* set (a two-axis probe) it renders BOTH requests: first, on a
+    REJECTED, the one sentence saying what each request showed (the Q29 table's
+    wording), then the model request's block, then the model-free request's own line.
+    🛑 The sentence says what the endpoint REFUSED, never that the token is bad.
+    """
+    access = self.access
+    if access is None:
+      if self.evidence is None or self.evidence.status is None:
+        return ""
+      return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
+    model = access.model.evidence
+    general = access.general.evidence
+    if model.status is None and general.status is None:
+      return ""
+    out: list[str] = []
+    if self.verdict is PersonaProbeVerdict.REJECTED:
+      keyed = model.token_path is not None or model.token_by_value
+      asked = (
+        f"the request for model '{model.model}'"
+        if model.model
+        else "the request that named no model"
+      )
+      state = access.general.state
+      if state is GeneralAccess.VERIFIED:
+        summary = (
+          f"The endpoint accepted this credential without a model and refused "
+          f"the request for model '{model.model}'."
+          if model.model
+          else "The endpoint accepted this credential and refused a request that named no model."
+        )
+      elif state is GeneralAccess.DENIED:
+        summary = (
+          "The endpoint refused this credential with and without a model."
+          if keyed
+          else "The endpoint refused every request made without a credential; "
+          "this persona declares the endpoint keyless."
+        )
+      elif state is GeneralAccess.NO_ANSWER:
+        summary = ""
+      elif not keyed:
+        summary = (
+          f"The endpoint refused an uncredentialed request for model '{model.model}'."
+          if model.model
+          else "The endpoint refused an uncredentialed request that named no model."
+        )
+      else:
+        why = (
+          "the model list is public"
+          if state is GeneralAccess.OPEN
+          else "the request without it did not decide"
+        )
+        summary = (
+          f"The endpoint refused {asked}; the model-free check could not test "
+          f"the credential ({why})."
+        )
+      if summary:
+        out.append(f"{indent}{summary}")
+    out.extend(model.lines(indent, resolved_from=resolved_from))
+    answer = "no answer" if general.status is None else f"HTTP {general.status}"
+    line = f"{indent}{'request':<10}{general.request} — {answer}"
+    if access.control_status is not None:
+      line += f"; without the credential, HTTP {access.control_status}"
+    out.append(line)
+    general_answered = general.status is not None and 200 <= general.status < 300
+    if general.provider_text and not general_answered:
+      out.append(f"{indent}{'provider:':<10}{general.provider_text}")
+    if general.status in _REFUSAL_STATUSES and model.status not in _REFUSAL_STATUSES:
+      out.append(
+        f"{indent}An HTTP {general.status} means the endpoint refused this request "
+        f"— it does not say which input was at fault."
+      )
+    return "\n" + "\n".join(out)
 
-    def refusal_phrase(self, endpoint: str) -> str:
-        """How the endpoint refused, for the SENTENCE that introduces `evidence_block`.
+  def refusal_phrase(self, endpoint: str) -> str:
+    """How the endpoint refused, for the SENTENCE that introduces `evidence_block`.
 
-        The sentence and the block are one message, and both consumers must render them
-        alike — `evidence_block` single-sourced the block and this sentence escaped.
-        ⚑ MEASURED (`git log -S 'refused the probe' -- commands/box/_parser.py` ⇒
-        `c2f6ee91` alone): the create door has NEVER named the endpoint on this arm —
-        its pre-image read `the persona endpoint rejected the token for '<display>'` —
-        while the launch door always has, before `c2f6ee91` and after.  The two
-        sentences DIVERGED there; nothing was dropped, and sharing the block did not
-        close the gap.
+    The sentence and the block are one message, and both consumers must render them
+    alike — `evidence_block` single-sourced the block and this sentence escaped.
+    ⚑ MEASURED (`git log -S 'refused the probe' -- commands/box/_parser.py` ⇒
+    `c2f6ee91` alone): the create door has NEVER named the endpoint on this arm —
+    its pre-image read `the persona endpoint rejected the token for '<display>'` —
+    while the launch door always has, before `c2f6ee91` and after.  The two
+    sentences DIVERGED there; nothing was dropped, and sharing the block did not
+    close the gap.
 
-        ⚑ *endpoint* is interpolated ONLY when there is no status, which is exactly when
-        `evidence_block` returns `""` — with a status the block names the endpoint on its
-        own line and repeating it in the sentence would be the same fact twice (P10).
-        A status-less REJECTED cannot come from `probe_outcome`; a third-party plugin
-        that builds one by hand can still reach here, and this is what it gets.
-        ⚑ The interpolated endpoint is userinfo-scrubbed, like the block's own
-        endpoint line (`_scrub_endpoint_userinfo`).
-        """
-        status = self.evidence.status if self.evidence is not None else None
-        if status is None:
-            return f"({_scrub_endpoint_userinfo(endpoint)}) refused the probe"
-        return f"refused the probe with HTTP {status}"
+    ⚑ *endpoint* is interpolated ONLY when there is no status, which is exactly when
+    `evidence_block` returns `""` — with a status the block names the endpoint on its
+    own line and repeating it in the sentence would be the same fact twice (P10).
+    A status-less REJECTED cannot come from `probe_outcome`; a third-party plugin
+    that builds one by hand can still reach here, and this is what it gets.
+    ⚑ The interpolated endpoint is userinfo-scrubbed, like the block's own
+    endpoint line (`_scrub_endpoint_userinfo`).
+    """
+    status = self.evidence.status if self.evidence is not None else None
+    if status is None:
+      return f"({_scrub_endpoint_userinfo(endpoint)}) refused the probe"
+    return f"refused the probe with HTTP {status}"
 
 
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome:
-    """Map an HTTP probe *response* onto a `PersonaProbeOutcome`; `NOT_APPLICABLE` never comes here.
+  """Map an HTTP probe *response* onto a `PersonaProbeOutcome`; `NOT_APPLICABLE` never comes here.
 
-    *sent* is the request half of the evidence, built by the plugin that made the call; the
-    answer half is filled in HERE.
-    """
-    evidence = replace(
-        sent, status=response.status, provider_text=response.body,
-    )
-    if response.status is None:
-        return PersonaProbeOutcome.inconclusive(
-            "the endpoint could not be reached", evidence
-        )
-    if 200 <= response.status < 300:
-        return PersonaProbeOutcome.passed()
-    if response.status in _REFUSAL_STATUSES:
-        return PersonaProbeOutcome.rejected(evidence)
-    return PersonaProbeOutcome.inconclusive(
-        f"the endpoint answered HTTP {response.status}, which is neither an accept "
-        f"nor an auth reject",
-        evidence,
-    )
+  *sent* is the request half of the evidence, built by the plugin that made the call; the
+  answer half is filled in HERE.
+  """
+  evidence = replace(
+    sent,
+    status=response.status,
+    provider_text=response.body,
+  )
+  if response.status is None:
+    return PersonaProbeOutcome.inconclusive("the endpoint could not be reached", evidence)
+  if 200 <= response.status < 300:
+    return PersonaProbeOutcome.passed()
+  if response.status in _REFUSAL_STATUSES:
+    return PersonaProbeOutcome.rejected(evidence)
+  return PersonaProbeOutcome.inconclusive(
+    f"the endpoint answered HTTP {response.status}, which is neither an accept nor an auth reject",
+    evidence,
+  )
 
 
 # Statuses meaning "well-formed EXCEPT for a missing `model`"; consulted ONLY by the no-model probe.
@@ -903,620 +909,632 @@ _MODEL_REQUIRED_STATUSES = (400, 422)
 
 
 def probe_outcome_no_model(
-    response: ProbeResponse, sent: ProbeEvidence,
+  response: ProbeResponse,
+  sent: ProbeEvidence,
 ) -> PersonaProbeOutcome:
-    """`probe_outcome`, for a probe that deliberately OMITTED `model`."""
-    if response.status in _MODEL_REQUIRED_STATUSES:
-        return PersonaProbeOutcome.not_applicable(
-            f"the endpoint requires a model in the request (HTTP {response.status}) and "
-            f"the persona names none"
-        )
-    return probe_outcome(response, sent)
+  """`probe_outcome`, for a probe that deliberately OMITTED `model`."""
+  if response.status in _MODEL_REQUIRED_STATUSES:
+    return PersonaProbeOutcome.not_applicable(
+      f"the endpoint requires a model in the request (HTTP {response.status}) and "
+      f"the persona names none"
+    )
+  return probe_outcome(response, sent)
 
 
 def probe_token(
-    token_path: Path | None, token: str | None,
+  token_path: Path | None,
+  token: str | None,
 ) -> tuple[str | None, PersonaProbeOutcome | None]:
-    """The token a persona probe sends: `(token, None)`, or `(None, outcome)` to return.
+  """The token a persona probe sends: `(token, None)`, or `(None, outcome)` to return.
 
-    *token* is a VALUE from `-e` and wins over *token_path* (spec §1A: the box gets
-    the `-e` value, not the file).  With neither, the token is `None`: a KEYLESS probe.
-    A configured file that is unreadable or empty yields a `NOT_APPLICABLE` outcome
-    naming the PATH.  The token is never logged and never part of an outcome.
-    """
-    if token is not None:
-        return token, None
-    if token_path is None:
-        return None, None
-    try:
-        text = token_path.read_text(encoding="utf-8").strip()
-    except (OSError, UnicodeDecodeError):
-        return None, PersonaProbeOutcome.not_applicable(
-            f"the token file ({token_path}) could not be read"
-        )
-    if not text:
-        return None, PersonaProbeOutcome.not_applicable(
-            f"the token file ({token_path}) is empty"
-        )
-    return text, None
+  *token* is a VALUE from `-e` and wins over *token_path* (spec §1A: the box gets
+  the `-e` value, not the file).  With neither, the token is `None`: a KEYLESS probe.
+  A configured file that is unreadable or empty yields a `NOT_APPLICABLE` outcome
+  naming the PATH.  The token is never logged and never part of an outcome.
+  """
+  if token is not None:
+    return token, None
+  if token_path is None:
+    return None, None
+  try:
+    text = token_path.read_text(encoding="utf-8").strip()
+  except (OSError, UnicodeDecodeError):
+    return None, PersonaProbeOutcome.not_applicable(
+      f"the token file ({token_path}) could not be read"
+    )
+  if not text:
+    return None, PersonaProbeOutcome.not_applicable(f"the token file ({token_path}) is empty")
+  return text, None
 
 
 def _request_line(method: str, url: str) -> str:
-    """`ProbeEvidence.request` for *url*: the method and the path, never the host or query."""
-    from urllib.parse import urlsplit
+  """`ProbeEvidence.request` for *url*: the method and the path, never the host or query."""
+  from urllib.parse import urlsplit
 
-    return f"{method} {urlsplit(url).path or '/'}"
+  return f"{method} {urlsplit(url).path or '/'}"
 
 
 def probe_general_access(
-    list_url: str,
-    *,
-    headers: dict[str, str],
-    credential: tuple[str, str] | None,
-    sent: ProbeEvidence,
-    timeout: float,
+  list_url: str,
+  *,
+  headers: dict[str, str],
+  credential: tuple[str, str] | None,
+  sent: ProbeEvidence,
+  timeout: float,
 ) -> AxisResult:
-    """The general axis: GET *list_url*, a request that names no model.
+  """The general axis: GET *list_url*, a request that names no model.
 
-    With a *credential* (header name, value): a GET carrying it, then — only if that
-    answered 2xx — the CONTROL GET without it.  Without one: a single bare GET.  The two
-    GETs share ONE budget of *timeout*.  *headers* must not carry the credential; any
-    header named like it is dropped from the control request.
-    *sent* is the request half of the evidence; the evidence returned describes the FIRST
-    GET, with no model (none was sent).
-    ⚑ Never raises (`http_probe`).  No reply body decides anything; only statuses do.
-    """
-    import time
+  With a *credential* (header name, value): a GET carrying it, then — only if that
+  answered 2xx — the CONTROL GET without it.  Without one: a single bare GET.  The two
+  GETs share ONE budget of *timeout*.  *headers* must not carry the credential; any
+  header named like it is dropped from the control request.
+  *sent* is the request half of the evidence; the evidence returned describes the FIRST
+  GET, with no model (none was sent).
+  ⚑ Never raises (`http_probe`).  No reply body decides anything; only statuses do.
+  """
+  import time
 
-    deadline = time.monotonic() + timeout
-    first_headers = dict(headers)
-    if credential is not None:
-        first_headers[credential[0]] = credential[1]
-    first = http_probe(list_url, headers=first_headers, timeout=timeout)
-    evidence = replace(
-        sent, model=None, model_origin="", status=first.status,
-        provider_text=first.body, request=_request_line("GET", list_url),
-    )
-    if first.status is None:
-        return AxisResult(GeneralAccess.NO_ANSWER, evidence)
-    if first.status in _REFUSAL_STATUSES:
-        return AxisResult(GeneralAccess.DENIED, evidence)
-    if not 200 <= first.status < 300:
-        return AxisResult(GeneralAccess.NO_ANSWER, evidence)
-    if credential is None:
-        return AxisResult(GeneralAccess.OPEN, evidence)
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return AxisResult(GeneralAccess.UNTESTED, evidence)
-    name = credential[0].lower()
-    bare = {key: value for key, value in headers.items() if key.lower() != name}
-    control = http_probe(list_url, headers=bare, timeout=remaining).status
-    if control in _REFUSAL_STATUSES:
-        state = GeneralAccess.VERIFIED
-    elif control is not None and 200 <= control < 300:
-        state = GeneralAccess.OPEN
-    else:
-        state = GeneralAccess.UNTESTED
-    return AxisResult(state, evidence, control)
+  deadline = time.monotonic() + timeout
+  first_headers = dict(headers)
+  if credential is not None:
+    first_headers[credential[0]] = credential[1]
+  first = http_probe(list_url, headers=first_headers, timeout=timeout)
+  evidence = replace(
+    sent,
+    model=None,
+    model_origin="",
+    status=first.status,
+    provider_text=first.body,
+    request=_request_line("GET", list_url),
+  )
+  if first.status is None:
+    return AxisResult(GeneralAccess.NO_ANSWER, evidence)
+  if first.status in _REFUSAL_STATUSES:
+    return AxisResult(GeneralAccess.DENIED, evidence)
+  if not 200 <= first.status < 300:
+    return AxisResult(GeneralAccess.NO_ANSWER, evidence)
+  if credential is None:
+    return AxisResult(GeneralAccess.OPEN, evidence)
+  remaining = deadline - time.monotonic()
+  if remaining <= 0:
+    return AxisResult(GeneralAccess.UNTESTED, evidence)
+  name = credential[0].lower()
+  bare = {key: value for key, value in headers.items() if key.lower() != name}
+  control = http_probe(list_url, headers=bare, timeout=remaining).status
+  if control in _REFUSAL_STATUSES:
+    state = GeneralAccess.VERIFIED
+  elif control is not None and 200 <= control < 300:
+    state = GeneralAccess.OPEN
+  else:
+    state = GeneralAccess.UNTESTED
+  return AxisResult(state, evidence, control)
 
 
 def probe_model_access(
-    url: str,
-    *,
-    headers: dict[str, str],
-    body: dict,
-    sent: ProbeEvidence,
-    timeout: float,
+  url: str,
+  *,
+  headers: dict[str, str],
+  body: dict,
+  sent: ProbeEvidence,
+  timeout: float,
 ) -> AxisResult:
-    """The model axis: POST *body* to *url* — today's completion probe, unchanged in shape.
+  """The model axis: POST *body* to *url* — today's completion probe, unchanged in shape.
 
-    The model counts as OMITTED when *sent* names none (`sent.model` empty), and only
-    then can a 400/422 read as `MODEL_REQUIRED`.  ⚑ Never raises (`http_probe`).
-    """
-    response = http_probe(url, headers=headers, body=body, timeout=timeout)
-    evidence = replace(
-        sent, status=response.status, provider_text=response.body,
-        request=_request_line("POST", url),
-    )
-    status = response.status
-    if status is None:
-        state = ModelAccess.UNREACHABLE
-    elif 200 <= status < 300:
-        state = ModelAccess.OK
-    elif status in _REFUSAL_STATUSES:
-        state = ModelAccess.DENIED
-    elif not sent.model and status in _MODEL_REQUIRED_STATUSES:
-        state = ModelAccess.MODEL_REQUIRED
-    else:
-        state = ModelAccess.AMBIGUOUS
-    return AxisResult(state, evidence)
+  The model counts as OMITTED when *sent* names none (`sent.model` empty), and only
+  then can a 400/422 read as `MODEL_REQUIRED`.  ⚑ Never raises (`http_probe`).
+  """
+  response = http_probe(url, headers=headers, body=body, timeout=timeout)
+  evidence = replace(
+    sent,
+    status=response.status,
+    provider_text=response.body,
+    request=_request_line("POST", url),
+  )
+  status = response.status
+  if status is None:
+    state = ModelAccess.UNREACHABLE
+  elif 200 <= status < 300:
+    state = ModelAccess.OK
+  elif status in _REFUSAL_STATUSES:
+    state = ModelAccess.DENIED
+  elif not sent.model and status in _MODEL_REQUIRED_STATUSES:
+    state = ModelAccess.MODEL_REQUIRED
+  else:
+    state = ModelAccess.AMBIGUOUS
+  return AxisResult(state, evidence)
 
 
 #: How an INCONCLUSIVE reason names the general axis's result.
 _GENERAL_NOTE: dict[GeneralAccess | ModelAccess, str] = {
-    GeneralAccess.VERIFIED: "the model-free check verified the credential",
-    GeneralAccess.OPEN: "the model-free check was answered without a credential",
-    GeneralAccess.UNTESTED: (
-        "the model-free check was answered with the credential and not decided without it"
-    ),
+  GeneralAccess.VERIFIED: "the model-free check verified the credential",
+  GeneralAccess.OPEN: "the model-free check was answered without a credential",
+  GeneralAccess.UNTESTED: (
+    "the model-free check was answered with the credential and not decided without it"
+  ),
 }
 
 
 def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome:
-    """The verdict of a two-axis persona probe — THE one carrier of the Q29 verdict table.
+  """The verdict of a two-axis persona probe — THE one carrier of the Q29 verdict table.
 
-    Outside the cells marked below, the verdict is today's `probe_outcome` /
-    `probe_outcome_no_model` on the MODEL response, exactly.  A refusal of the model-free
-    request alone never refuses a box.  *model_exact* says the model request carried the id
-    the box itself sends: with the credential verified and the model request refused
-    (rows 4, 10), True refuses and False warns.
-    Every outcome carries *report* as `access`.
-    """
-    general = report.general
-    model = report.model
-    state = GeneralAccess.OPEN if general.state is GeneralAccess.UNTESTED else general.state
-    sent = model.evidence
-    response = ProbeResponse(sent.status, sent.provider_text)
-    today = (
-        probe_outcome(response, sent) if sent.model
-        else probe_outcome_no_model(response, sent)
-    )
-    if model.state is ModelAccess.DENIED and state is GeneralAccess.VERIFIED:
-        # H1 (rows 4, 10): the credential was verified and the model request refused.
-        # Refuse when the probe sent the box's own id; warn when it could not.
-        if model_exact:
-            outcome = today
-        else:
-            refused = f"the request for model '{sent.model}'" if sent.model else (
-                "a request that named no model"
-            )
-            outcome = PersonaProbeOutcome.inconclusive(
-                f"the endpoint accepted this credential without a model but refused "
-                f"{refused} with HTTP {sent.status}, and the probe could not send the "
-                f"model id the box will use",
-                sent,
-            )
-    elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.VERIFIED:
-        # Δ: authorization verified without a model — rule 3 itself.
-        outcome = PersonaProbeOutcome.passed()
-    elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.DENIED:
-        # Δ: the model-free request was refused and the model check could not decide.
-        outcome = PersonaProbeOutcome.inconclusive(
-            f"the endpoint refused the model-free check with HTTP "
-            f"{general.evidence.status} and requires a model in the request "
-            f"(HTTP {sent.status}), which the persona does not name",
-            general.evidence,
-        )
-    elif (
-        model.state in (ModelAccess.AMBIGUOUS, ModelAccess.UNREACHABLE)
-        and general.state is not GeneralAccess.NO_ANSWER
-    ):
-        note = _GENERAL_NOTE.get(
-            general.state,
-            f"the model-free check was refused with HTTP {general.evidence.status}",
-        )
-        outcome = today._replace(reason=f"{today.reason} ({note})")
+  Outside the cells marked below, the verdict is today's `probe_outcome` /
+  `probe_outcome_no_model` on the MODEL response, exactly.  A refusal of the model-free
+  request alone never refuses a box.  *model_exact* says the model request carried the id
+  the box itself sends: with the credential verified and the model request refused
+  (rows 4, 10), True refuses and False warns.
+  Every outcome carries *report* as `access`.
+  """
+  general = report.general
+  model = report.model
+  state = GeneralAccess.OPEN if general.state is GeneralAccess.UNTESTED else general.state
+  sent = model.evidence
+  response = ProbeResponse(sent.status, sent.provider_text)
+  today = probe_outcome(response, sent) if sent.model else probe_outcome_no_model(response, sent)
+  if model.state is ModelAccess.DENIED and state is GeneralAccess.VERIFIED:
+    # H1 (rows 4, 10): the credential was verified and the model request refused.
+    # Refuse when the probe sent the box's own id; warn when it could not.
+    if model_exact:
+      outcome = today
     else:
-        outcome = today
-    return outcome._replace(access=report)
+      refused = (
+        f"the request for model '{sent.model}'"
+        if sent.model
+        else ("a request that named no model")
+      )
+      outcome = PersonaProbeOutcome.inconclusive(
+        f"the endpoint accepted this credential without a model but refused "
+        f"{refused} with HTTP {sent.status}, and the probe could not send the "
+        f"model id the box will use",
+        sent,
+      )
+  elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.VERIFIED:
+    # Δ: authorization verified without a model — rule 3 itself.
+    outcome = PersonaProbeOutcome.passed()
+  elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.DENIED:
+    # Δ: the model-free request was refused and the model check could not decide.
+    outcome = PersonaProbeOutcome.inconclusive(
+      f"the endpoint refused the model-free check with HTTP "
+      f"{general.evidence.status} and requires a model in the request "
+      f"(HTTP {sent.status}), which the persona does not name",
+      general.evidence,
+    )
+  elif (
+    model.state in (ModelAccess.AMBIGUOUS, ModelAccess.UNREACHABLE)
+    and general.state is not GeneralAccess.NO_ANSWER
+  ):
+    note = _GENERAL_NOTE.get(
+      general.state,
+      f"the model-free check was refused with HTTP {general.evidence.status}",
+    )
+    outcome = today._replace(reason=f"{today.reason} ({note})")
+  else:
+    outcome = today
+  return outcome._replace(access=report)
 
 
 @dataclass(frozen=True)
 class Operation:
-    """A standalone op fragment (exec/headless), no session mode; spliced after `command`."""
+  """A standalone op fragment (exec/headless), no session mode; spliced after `command`."""
 
-    fragment: tuple[str, ...]
+  fragment: tuple[str, ...]
 
 
 class Cadence(Enum):
-    """Credential/config file sync cadence."""
+  """Credential/config file sync cadence."""
 
-    SYNC = "sync"            # bidirectional, mtime-gated each launch (credentials/token files)
-    SEED_ONCE = "seed_once"  # one-way host->project at init, never written back (config files)
+  SYNC = "sync"  # bidirectional, mtime-gated each launch (credentials/token files)
+  SEED_ONCE = "seed_once"  # one-way host->project at init, never written back (config files)
 
 
 @dataclass(frozen=True)
 class CredFileSpec:
-    """A credential/config file's lifecycle; the filter/merge payload stays a plugin hook."""
+  """A credential/config file's lifecycle; the filter/merge payload stays a plugin hook."""
 
-    home_rel: str                     # path under the project shell home (".claude/settings.json")
-    host_rel: str                     # path under the host home (".claude/settings.json")
-    cadence: Cadence = Cadence.SYNC
-    mtime_gate: bool = True           # only meaningful for SYNC
-    filtered: bool = False            # True -> plugin transform_cred hook runs
-    is_dir: bool = False              # DIRECTORY: recursive copy, no mtime gate, no filter
+  home_rel: str  # path under the project shell home (".claude/settings.json")
+  host_rel: str  # path under the host home (".claude/settings.json")
+  cadence: Cadence = Cadence.SYNC
+  mtime_gate: bool = True  # only meaningful for SYNC
+  filtered: bool = False  # True -> plugin transform_cred hook runs
+  is_dir: bool = False  # DIRECTORY: recursive copy, no mtime gate, no filter
 
 
 @dataclass(frozen=True)
 class PluginDescriptor:
-    """Declarative data a plugin exposes via `Target.descriptor`; divergent LOGIC stays in hooks."""
+  """Declarative data a plugin exposes via `Target.descriptor`; divergent LOGIC stays in hooks."""
 
-    command: tuple[str, ...]                       # box argv prefix (e.g. ("claude",))
-    bindings: tuple[Binding, ...]                  # ALL bound elements; ordered; >=1
-    mode: dict[str, tuple[str, ...]]               # INTERACTIVE launch ONLY: {"start", "continue"}
-    operations: dict[str, Operation] = field(default_factory=dict)  # standalone ops, no mode
-    access_realization: AccessRealization | None = None
-    settings: tuple[SettingArg, ...] = ()
-    persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token delivery
-                                           # (None = no persona block: no persona checks)
-    # ⚑ NO `container_env` FIELD — plugin env is `agent.<agent>.env.<VAR>`, and
-    # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
-    cred_files: tuple[CredFileSpec, ...] = ()
-    login_vars: tuple[str, ...] = ()  # env VAR names any one of which, delivered, is a login
-    host_prep: bool = False          # True -> core calls Target.prepare_host before mounts
-    init_dirs: tuple[str, ...] = ()   # extra dirs to mkdir in the project home (home-relative)
-    auth_share_support: bool = False  # RO CAPABILITY (spec §2d): supports shared credentials?
-    vscode_extension: str | None = None  # extension id auto-installed on attach; None = none
+  command: tuple[str, ...]  # box argv prefix (e.g. ("claude",))
+  bindings: tuple[Binding, ...]  # ALL bound elements; ordered; >=1
+  mode: dict[str, tuple[str, ...]]  # INTERACTIVE launch ONLY: {"start", "continue"}
+  operations: dict[str, Operation] = field(default_factory=dict)  # standalone ops, no mode
+  access_realization: AccessRealization | None = None
+  settings: tuple[SettingArg, ...] = ()
+  persona: "PersonaSpec | None" = None  # harness-specific persona endpoint/token delivery
+  # (None = no persona block: no persona checks)
+  # ⚑ NO `container_env` FIELD — plugin env is `agent.<agent>.env.<VAR>`, and
+  # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
+  cred_files: tuple[CredFileSpec, ...] = ()
+  login_vars: tuple[str, ...] = ()  # env VAR names any one of which, delivered, is a login
+  host_prep: bool = False  # True -> core calls Target.prepare_host before mounts
+  init_dirs: tuple[str, ...] = ()  # extra dirs to mkdir in the project home (home-relative)
+  auth_share_support: bool = False  # RO CAPABILITY (spec §2d): supports shared credentials?
+  vscode_extension: str | None = None  # extension id auto-installed on attach; None = none
 
 
 def _validate_agent_binary(binary: Path) -> str | None:
-    """Return a REASON string when *binary* is an unusable host executable, else `None`.
+  """Return a REASON string when *binary* is an unusable host executable, else `None`.
 
-    ⚑ Deliberately LENIENT: ELF magic is NOT required (shebang wrappers are legitimate).
-    """
-    try:
-        path = Path(binary)
-    except TypeError:
-        return f"invalid binary path: {binary!r}"
+  ⚑ Deliberately LENIENT: ELF magic is NOT required (shebang wrappers are legitimate).
+  """
+  try:
+    path = Path(binary)
+  except TypeError:
+    return f"invalid binary path: {binary!r}"
 
-    if not path.exists():
-        return f"binary not found at {path}"
-    if not path.is_file():
-        return f"binary path is not a regular file at {path}"
+  if not path.exists():
+    return f"binary not found at {path}"
+  if not path.is_file():
+    return f"binary path is not a regular file at {path}"
 
-    try:
-        size = path.stat().st_size
-    except OSError as e:
-        return f"cannot stat binary at {path}: {e}"
-    if size == 0:
-        return f"binary is empty (0 bytes) at {path}"
+  try:
+    size = path.stat().st_size
+  except OSError as e:
+    return f"cannot stat binary at {path}: {e}"
+  if size == 0:
+    return f"binary is empty (0 bytes) at {path}"
 
-    if not os.access(path, os.X_OK):
-        return f"binary present but not executable at {path}"
+  if not os.access(path, os.X_OK):
+    return f"binary present but not executable at {path}"
 
-    # Lenient corruption check: leading bytes all NUL is neither a binary nor a shebang wrapper.
-    try:
-        with open(path, "rb") as fh:
-            head = fh.read(4)
-        if head and set(head) == {0}:
-            return f"binary appears corrupt (leading bytes are all NUL) at {path}"
-    except OSError:
-        pass
+  # Lenient corruption check: leading bytes all NUL is neither a binary nor a shebang wrapper.
+  try:
+    with open(path, "rb") as fh:
+      head = fh.read(4)
+    if head and set(head) == {0}:
+      return f"binary appears corrupt (leading bytes are all NUL) at {path}"
+  except OSError:
+    pass
 
-    return None
+  return None
 
 
 class Target(ABC):
-    """Abstract base class for agent targets — ALL agent knowledge lives in implementations.
+  """Abstract base class for agent targets — ALL agent knowledge lives in implementations.
 
-    The launch is assembled from `descriptor`; there are no per-method launch hooks.
+  The launch is assembled from `descriptor`; there are no per-method launch hooks.
+  """
+
+  @property
+  @abstractmethod
+  def name(self) -> str:
+    """Short identifier for this target (e.g. 'claude') — the agent's NAME.
+
+    ⚑ Spell it however the agent spells itself: this value is kept verbatim and
+    is what a user is shown.  It is NOT the store directory.  Kanibako derives the
+    agent's NODE from it — the name in lowercase — and the node is what spells
+    ``<data>/agents/<node>/`` and the ``agent.<node>.*`` cascade slot (keyspec §0,
+    ``⚑ NAMING RULES``).  Two plugins whose names differ only in case therefore
+    claim ONE node — and what happens then depends on WHERE the second one came
+    from.  Within a single discovery route (two entry points, or two sub-packages
+    of one ``kanibako.plugins`` namespace) the second is REFUSED, because order
+    inside a route is arbitrary.  Between the routes an entry point OVERRIDES the
+    namespace scan, which only fills a node nothing has claimed yet.
     """
+    ...
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Short identifier for this target (e.g. 'claude') — the agent's NAME.
+  @property
+  @abstractmethod
+  def display_name(self) -> str:
+    """Human-readable name (e.g. 'Claude Code')."""
+    ...
 
-        ⚑ Spell it however the agent spells itself: this value is kept verbatim and
-        is what a user is shown.  It is NOT the store directory.  Kanibako derives the
-        agent's NODE from it — the name in lowercase — and the node is what spells
-        ``<data>/agents/<node>/`` and the ``agent.<node>.*`` cascade slot (keyspec §0,
-        ``⚑ NAMING RULES``).  Two plugins whose names differ only in case therefore
-        claim ONE node — and what happens then depends on WHERE the second one came
-        from.  Within a single discovery route (two entry points, or two sub-packages
-        of one ``kanibako.plugins`` namespace) the second is REFUSED, because order
-        inside a route is arbitrary.  Between the routes an entry point OVERRIDES the
-        namespace scan, which only fills a node nothing has claimed yet.
-        """
-        ...
+  @abstractmethod
+  def detect(self) -> AgentInstall | None:
+    """Detect the agent installation on the host; `None` if it is not installed."""
+    ...
 
-    @property
-    @abstractmethod
-    def display_name(self) -> str:
-        """Human-readable name (e.g. 'Claude Code')."""
-        ...
+  @property
+  def has_binary(self) -> bool:
+    """Whether this target requires a host-installed binary."""
+    return True
 
-    @abstractmethod
-    def detect(self) -> AgentInstall | None:
-        """Detect the agent installation on the host; `None` if it is not installed."""
-        ...
+  @property
+  def descriptor(self) -> "PluginDescriptor | None":
+    """Declarative plugin descriptor; None only for ShellTarget (see :func:`has_plugin`)."""
+    return None
 
-    @property
-    def has_binary(self) -> bool:
-        """Whether this target requires a host-installed binary."""
-        return True
+  def check_auth(
+    self,
+    *,
+    box_home: Path | None = None,
+    delivered: frozenset[str] = frozenset(),
+  ) -> bool:
+    """Whether the agent has a login to launch with.  Returns True if ok.
 
-    @property
-    def descriptor(self) -> "PluginDescriptor | None":
-        """Declarative plugin descriptor; None only for ShellTarget (see :func:`has_plugin`)."""
+    The launch gate passes the box's *box_home* and the *delivered* VAR names
+    (``None`` is the host check).  This default ignores both and passes; an
+    override calls :meth:`box_login_present` to check the box.
+    """
+    return True
+
+  @property
+  def checks_box_login(self) -> bool:
+    """Whether :meth:`check_auth` judges the box when given *box_home*.
+
+    ``agent reauth`` skips its host check for such a target: it syncs the box
+    from its store, then runs the gate.  Default ``False`` (the host check).
+    """
+    return False
+
+  def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool:
+    """Whether the box has a login: a descriptor ``login_vars`` name is in
+    *delivered* (the VAR names the launch gives a non-empty value, never the
+    values), or :meth:`credential_check_path` under *box_home* is a non-empty
+    regular file, stat'd through :mod:`kanibako.boxfs`.  A planted symlink, or a
+    ``home_rel`` that leaves *box_home*, fails it.  A target that declares
+    neither has nothing to check and passes.
+    """
+    desc = self.descriptor
+    if desc is not None and not delivered.isdisjoint(desc.login_vars):
+      return True
+    path = self.credential_check_path(box_home)
+    if path is None:
+      return desc is None or not desc.login_vars
+    try:
+      st = boxfs.stat(path, box_home)
+    except (OSError, ValueError):
+      return False
+    return stat.S_ISREG(st.st_mode) and st.st_size > 0
+
+  def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
+    """Plugin-owned pre-launch host preparation, BEFORE mounts are built. Default: no-op.
+
+    ⚑ Implementations MUST NOT crash the launch — log and swallow.
+    """
+    return None
+
+  def default_common(self) -> dict[str, BindArm]:
+    """Declare default AGENT-scope common/caches binds: TERMINAL key -> its whole `BindArm`."""
+    return {}
+
+  def default_seeds(self) -> dict[str, BindArm]:
+    """Declare default copy-once-at-init seeds: `agent.<agent>.seeded` -> its whole `BindArm`.
+
+    ⚑ ONE DEST SPACE, TWO DELIVERIES (spec §0): a `seeded` entry STAYS A COPY.
+    """
+    return {}
+
+  def default_envs(self) -> dict[str, str]:
+    """Declare default AGENT-scope env VARIABLES: `agent.<agent>.env.<VAR>` -> scalar value.
+
+    ⚑ The ONLY route a plugin has for a STATIC variable; the write-once arbitration
+    belongs to `store_collapse.collapse_env`, and there is none here.
+    """
+    return {}
+
+  def rom_root(self) -> Path | None:
+    """Locate this plugin's packaged CHARTER CHAPTER root (`<pkg>/data/rom`); `None` on ANY failure.
+
+    ⚑ Derived from `__package__`, NOT from `name` (llm-doc).
+    """
+    import importlib.resources
+    import sys
+
+    try:
+      module = sys.modules[type(self).__module__]
+      package = getattr(module, "__package__", None)
+      if not package:
         return None
+      ref = importlib.resources.files(package).joinpath("data", "rom")
+      path = Path(str(ref))
+    except Exception:
+      return None
+    return path if path.is_dir() else None
 
-    def check_auth(
-        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
-    ) -> bool:
-        """Whether the agent has a login to launch with.  Returns True if ok.
+  def default_category_binds(self) -> CategoryBindDefaults:
+    """Declare default AGENT-scope `{key}`-ref-sourced category binds: TERMINAL key -> `BindArm`.
 
-        The launch gate passes the box's *box_home* and the *delivered* VAR names
-        (``None`` is the host check).  This default ignores both and passes; an
-        override calls :meth:`box_login_present` to check the box.
-        """
-        return True
+    ⚑ Every destination must be normalized with `settings_resolve.normalize_bind_dest`.
+    ⚑ ONE SHAPE, TWO DELIVERIES: `seeded` and `synced` are COPIES and stay copies.
+    ⚑ A retired name-keyed `agent.<agent>.<category>.<name>` key is REFUSED BY NAME at
+    `settings_assemble._insert_dotted`; there is no shim.
+    ⚑ A plugin's own charter chapter is NOT declared here — see `rom_root`.
+    """
+    return {}
 
-    @property
-    def checks_box_login(self) -> bool:
-        """Whether :meth:`check_auth` judges the box when given *box_home*.
+  def setting_descriptors(self) -> list[TargetSetting]:
+    """Declare what runtime settings this target supports, as `TargetSetting` entries."""
+    return []
 
-        ``agent reauth`` skips its host check for such a target: it syncs the box
-        from its store, then runs the gate.  Default ``False`` (the host check).
-        """
-        return False
+  def generate_agent_config(self) -> AgentConfig:
+    """Return a default AgentConfig for this target.
 
-    def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool:
-        """Whether the box has a login: a descriptor ``login_vars`` name is in
-        *delivered* (the VAR names the launch gives a non-empty value, never the
-        values), or :meth:`credential_check_path` under *box_home* is a non-empty
-        regular file, stat'd through :mod:`kanibako.boxfs`.  A planted symlink, or a
-        ``home_rel`` that leaves *box_home*, fails it.  A target that declares
-        neither has nothing to check and passes.
-        """
-        desc = self.descriptor
-        if desc is not None and not delivered.isdisjoint(desc.login_vars):
-            return True
-        path = self.credential_check_path(box_home)
-        if path is None:
-            return desc is None or not desc.login_vars
-        try:
-            st = boxfs.stat(path, box_home)
-        except (OSError, ValueError):
-            return False
-        return stat.S_ISREG(st.st_mode) and st.st_size > 0
+    ⚑ EMPTY by default, and that is the FILE-PURITY invariant: the per-agent settings
+    file holds USER INTENT only, so a freshly generated one has nothing in it.
+    Declare your agent's description as a ``label`` row in your defaults file's
+    ``behavior:`` section (``agent.<agent>.label``, spec §2d); ``kanibako agent info``
+    prints it.
+    """
+    from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-    def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
-        """Plugin-owned pre-launch host preparation, BEFORE mounts are built. Default: no-op.
+    return _AgentConfig()
 
-        ⚑ Implementations MUST NOT crash the launch — log and swallow.
-        """
-        return None
+  @property
+  def default_entrypoint(self) -> str | None:
+    """Binary name for container entrypoint. None = use bash."""
+    return None
 
-    def default_common(self) -> dict[str, BindArm]:
-        """Declare default AGENT-scope common/caches binds: TERMINAL key -> its whole `BindArm`."""
-        return {}
+  def has_resumable_session(self, home: Path) -> bool:
+    """Report whether this agent has a session to resume under HOST-side *home*.
 
-    def default_seeds(self) -> dict[str, BindArm]:
-        """Declare default copy-once-at-init seeds: `agent.<agent>.seeded` -> its whole `BindArm`.
+    ⚑ The SOLE continue-vs-fresh guard: return `False` ONLY on a POSITIVE determination
+    that no resumable session exists — a wrong `False` silently drops a conversation.
+    """
+    return True
 
-        ⚑ ONE DEST SPACE, TWO DELIVERIES (spec §0): a `seeded` entry STAYS A COPY.
-        """
-        return {}
+  def should_run_setup(self, output: str) -> bool:
+    """Check if a launched session's output PROVES the config did NOT take.
 
-    def default_envs(self) -> dict[str, str]:
-        """Declare default AGENT-scope env VARIABLES: `agent.<agent>.env.<VAR>` -> scalar value.
+    ⚑ BOUNDED: setup already ran ONCE this invocation, so a match only ERRORS — it
+    never loops back into setup.
+    """
+    return False
 
-        ⚑ The ONLY route a plugin has for a STATIC variable; the write-once arbitration
-        belongs to `store_collapse.collapse_env`, and there is none here.
-        """
-        return {}
+  @property
+  def setup_entrypoint(self) -> str | None:
+    """Container entrypoint for the one-time interactive setup; `None` = no setup step."""
+    return None
 
-    def rom_root(self) -> Path | None:
-        """Locate this plugin's packaged CHARTER CHAPTER root (`<pkg>/data/rom`); `None` on ANY failure.
+  @property
+  def setup_args(self) -> list[str]:
+    """Arguments for the one-time setup command (see `setup_entrypoint`)."""
+    return []
 
-        ⚑ Derived from `__package__`, NOT from `name` (llm-doc).
-        """
-        import importlib.resources
-        import sys
+  @property
+  def config_dir_name(self) -> str:
+    """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""
+    return f".{self.name}"
 
-        try:
-            module = sys.modules[type(self).__module__]
-            package = getattr(module, "__package__", None)
-            if not package:
-                return None
-            ref = importlib.resources.files(package).joinpath("data", "rom")
-            path = Path(str(ref))
-        except Exception:
-            return None
-        return path if path.is_dir() else None
+  def credential_check_path(self, home: Path) -> Path | None:
+    """The credential file under *home* whose presence means "logged in", or ``None``.
 
-    def default_category_binds(self) -> CategoryBindDefaults:
-        """Declare default AGENT-scope `{key}`-ref-sourced category binds: TERMINAL key -> `BindArm`.
+    ⚑ DERIVED, NOT DECLARED A SECOND TIME: it is the FIRST file entry of the
+    descriptor's ``cred_files`` (a directory entry is skipped), so a plugin that
+    declares its credential for syncing is reported on too.  ``None`` with no
+    descriptor (``ShellTarget``) or no credential file.
+    """
+    desc = self.descriptor
+    if desc is None:
+      return None
+    for spec in desc.cred_files:
+      if not spec.is_dir:
+        return home / spec.home_rel
+    return None
 
-        ⚑ Every destination must be normalized with `settings_resolve.normalize_bind_dest`.
-        ⚑ ONE SHAPE, TWO DELIVERIES: `seeded` and `synced` are COPIES and stay copies.
-        ⚑ A retired name-keyed `agent.<agent>.<category>.<name>` key is REFUSED BY NAME at
-        `settings_assemble._insert_dotted`; there is no shim.
-        ⚑ A plugin's own charter chapter is NOT declared here — see `rom_root`.
-        """
-        return {}
+  def deliver_panel_permissions(
+    self,
+    *,
+    config_root: Path,
+    access: str,
+  ) -> bool:
+    """Write this agent's BOX-INVARIANT panel config (e.g. codex's ``sandbox_mode``).
 
-    def setting_descriptors(self) -> list[TargetSetting]:
-        """Declare what runtime settings this target supports, as `TargetSetting` entries."""
-        return []
+    ⚑ No tier is written: the `access` key is not projected, and the tier reaches the
+    launched agent only as launch flags or env. *access* is the box's launch tier (the
+    cascade value with any ``-S``/``-A`` folded in), passed for an implementation that
+    must refuse one it cannot render.
+    Best-effort: the caller wraps the call. Returns whether a write occurred.
+    """
+    return False
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return a default AgentConfig for this target.
+  def deliver_directive_hook(
+    self,
+    *,
+    config_root: Path,
+    access: str,
+    model_provider: "CodexModelProvider | None" = None,
+  ) -> bool:
+    """Seed this agent's SessionStart directive hook + any coupled managed config.
 
-        ⚑ EMPTY by default, and that is the FILE-PURITY invariant: the per-agent settings
-        file holds USER INTENT only, so a freshly generated one has nothing in it.
-        Declare your agent's description as a ``label`` row in your defaults file's
-        ``behavior:`` section (``agent.<agent>.label``, spec §2d); ``kanibako agent info``
-        prints it.
-        """
-        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
+    ⚑ Box-side literals are derived by the PLUGIN from `settings_resolve.GUEST_HOME`,
+    deliberately NOT seam parameters; if the in-box workdir ever becomes
+    key-configurable, promote an agent-agnostic `box_workdir` parameter HERE.
+    Best-effort as `deliver_panel_permissions`. Returns whether a write occurred.
+    """
+    return False
 
-        return _AgentConfig()
+  def reattach_config_notice(self) -> str | None:
+    """A heads-up to print when REATTACHING to an ALREADY-RUNNING box; `None` = no notice.
 
-    @property
-    def default_entrypoint(self) -> str | None:
-        """Binary name for container entrypoint. None = use bash."""
-        return None
+    ⚑ A reattach does NOT re-deliver config (llm-doc).
+    """
+    return None
 
-    def has_resumable_session(self, home: Path) -> bool:
-        """Report whether this agent has a session to resume under HOST-side *home*.
+  def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
+    """Extract persona values from a rendered harness config in *config_dir*.
 
-        ⚑ The SOLE continue-vs-fresh guard: return `False` ONLY on a POSITIVE determination
-        that no resumable session exists — a wrong `False` silently drops a conversation.
-        """
-        return True
+    ⚑ FAIL-SOFT: NEVER raises; an unusable config returns a SPECIFIC reject reason,
+    not a bare `None`. Pure read — never writes, never reads the token file.
+    """
+    return PersonaReadOutcome(settings=None, reject_reason=None)
 
-    def should_run_setup(self, output: str) -> bool:
-        """Check if a launched session's output PROVES the config did NOT take.
+  def verify_persona(
+    self,
+    endpoint: str,
+    token_path: Path | None,
+    model: str | None,
+    *,
+    env: Mapping[str, str] | None = None,
+    timeout: float = 5.0,
+    token: str | None = None,
+  ) -> PersonaProbeOutcome:
+    """Probe *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
-        ⚑ BOUNDED: setup already ran ONCE this invocation, so a match only ERRORS — it
-        never loops back into setup.
-        """
-        return False
+    ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the credential header
+    (`Authorization` for the first-party plugins) OMITTED rather than decline, and NEVER
+    substitute a placeholder credential.
+    ⚑ *token* is the token VALUE when the launch's `-e` gives the token var; it wins
+    over *token_path* because the box gets the `-e` value (`probe_token`).  The
+    launch passes it only when set, and only to an override that accepts it; with
+    `-e` an override without it is not called and the launch notes it is unverified.
+    ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
+    ⚑ *env* is the box's env.  At LAUNCH it is the collapsed `env` family (every rung,
+    the store, `-e`), folded off the pre-flight snapshot; at CREATE, which resolves no
+    cascade, it is the persona store's own `env:` block, less the two single-source vars.
+    A harness whose runtime resolves *model* through one of these (claude reads a tier
+    alias through `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
+    Resolving a mapping the USER wrote is not the substitution the rule above forbids;
+    inventing one is.
+    ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
+    request only — never logged, never persisted, never returned.
+    """
+    return PersonaProbeOutcome.not_applicable(
+      f"the {self.name} harness implements no persona verify probe"
+    )
 
-    @property
-    def setup_entrypoint(self) -> str | None:
-        """Container entrypoint for the one-time interactive setup; `None` = no setup step."""
-        return None
+  def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
+    """Why the box's *data* for *spec* must not replace the store copy, or `None`.
 
-    @property
-    def setup_args(self) -> list[str]:
-        """Arguments for the one-time setup command (see `setup_entrypoint`)."""
-        return []
+    The writeback engine asks before a box file reaches a store; a reason keeps
+    the store as it was.  A harness checks its own credential format, read the
+    way its own code reads it.  Default: no check.
+    """
+    return None
 
-    @property
-    def config_dir_name(self) -> str:
-        """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""
-        return f".{self.name}"
+  def transform_cred(
+    self,
+    spec: CredFileSpec,
+    src: Path | None,
+    dst: Path,
+    direction: str,
+  ) -> None:
+    """Transform a FILTERED credential/config file between host and project.
 
-    def credential_check_path(self, home: Path) -> Path | None:
-        """The credential file under *home* whose presence means "logged in", or ``None``.
+    ⚑ Called ONLY for specs with `filtered=True`; *direction* is `"in"` (host->project)
+    or `"out"`, and *src* is `None` when no source file is available.  Neither path
+    is ever in a box: the engine hands over host-side copies (for `"in"`, *dst* holds
+    the box file's content, absent when the box has none) and moves the result itself.
+    """
+    import shutil
 
-        ⚑ DERIVED, NOT DECLARED A SECOND TIME: it is the FIRST file entry of the
-        descriptor's ``cred_files`` (a directory entry is skipped), so a plugin that
-        declares its credential for syncing is reported on too.  ``None`` with no
-        descriptor (``ShellTarget``) or no credential file.
-        """
-        desc = self.descriptor
-        if desc is None:
-            return None
-        for spec in desc.cred_files:
-            if not spec.is_dir:
-                return home / spec.home_rel
-        return None
+    if src is not None and Path(src).is_file():
+      dst.parent.mkdir(parents=True, exist_ok=True)
+      shutil.copy2(str(src), str(dst))
 
-    def deliver_panel_permissions(
-        self, *, config_root: Path, access: str,
-    ) -> bool:
-        """Write this agent's BOX-INVARIANT panel config (e.g. codex's ``sandbox_mode``).
+  def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
+    """Plugin-specific post-session writeback BEYOND `cred_files` specs. Default: no-op.
 
-        ⚑ No tier is written: the `access` key is not projected, and the tier reaches the
-        launched agent only as launch flags or env. *access* is the box's launch tier (the
-        cascade value with any ``-S``/``-A`` folded in), passed for an implementation that
-        must refuse one it cannot render.
-        Best-effort: the caller wraps the call. Returns whether a write occurred.
-        """
-        return False
-
-    def deliver_directive_hook(
-        self,
-        *,
-        config_root: Path,
-        access: str,
-        model_provider: "CodexModelProvider | None" = None,
-    ) -> bool:
-        """Seed this agent's SessionStart directive hook + any coupled managed config.
-
-        ⚑ Box-side literals are derived by the PLUGIN from `settings_resolve.GUEST_HOME`,
-        deliberately NOT seam parameters; if the in-box workdir ever becomes
-        key-configurable, promote an agent-agnostic `box_workdir` parameter HERE.
-        Best-effort as `deliver_panel_permissions`. Returns whether a write occurred.
-        """
-        return False
-
-    def reattach_config_notice(self) -> str | None:
-        """A heads-up to print when REATTACHING to an ALREADY-RUNNING box; `None` = no notice.
-
-        ⚑ A reattach does NOT re-deliver config (llm-doc).
-        """
-        return None
-
-    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
-        """Extract persona values from a rendered harness config in *config_dir*.
-
-        ⚑ FAIL-SOFT: NEVER raises; an unusable config returns a SPECIFIC reject reason,
-        not a bare `None`. Pure read — never writes, never reads the token file.
-        """
-        return PersonaReadOutcome(settings=None, reject_reason=None)
-
-    def verify_persona(
-        self,
-        endpoint: str,
-        token_path: Path | None,
-        model: str | None,
-        *,
-        env: Mapping[str, str] | None = None,
-        timeout: float = 5.0,
-        token: str | None = None,
-    ) -> PersonaProbeOutcome:
-        """Probe *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
-
-        ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the credential header
-        (`Authorization` for the first-party plugins) OMITTED rather than decline, and NEVER
-        substitute a placeholder credential.
-        ⚑ *token* is the token VALUE when the launch's `-e` gives the token var; it wins
-        over *token_path* because the box gets the `-e` value (`probe_token`).  The
-        launch passes it only when set, and only to an override that accepts it; with
-        `-e` an override without it is not called and the launch notes it is unverified.
-        ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
-        ⚑ *env* is the box's env.  At LAUNCH it is the collapsed `env` family (every rung,
-        the store, `-e`), folded off the pre-flight snapshot; at CREATE, which resolves no
-        cascade, it is the persona store's own `env:` block, less the two single-source vars.
-        A harness whose runtime resolves *model* through one of these (claude reads a tier
-        alias through `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
-        Resolving a mapping the USER wrote is not the substitution the rule above forbids;
-        inventing one is.
-        ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
-        request only — never logged, never persisted, never returned.
-        """
-        return PersonaProbeOutcome.not_applicable(
-            f"the {self.name} harness implements no persona verify probe"
-        )
-
-    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
-        """Why the box's *data* for *spec* must not replace the store copy, or `None`.
-
-        The writeback engine asks before a box file reaches a store; a reason keeps
-        the store as it was.  A harness checks its own credential format, read the
-        way its own code reads it.  Default: no check.
-        """
-        return None
-
-    def transform_cred(
-        self,
-        spec: CredFileSpec,
-        src: Path | None,
-        dst: Path,
-        direction: str,
-    ) -> None:
-        """Transform a FILTERED credential/config file between host and project.
-
-        ⚑ Called ONLY for specs with `filtered=True`; *direction* is `"in"` (host->project)
-        or `"out"`, and *src* is `None` when no source file is available.  Neither path
-        is ever in a box: the engine hands over host-side copies (for `"in"`, *dst* holds
-        the box file's content, absent when the box has none) and moves the result itself.
-        """
-        import shutil
-        if src is not None and Path(src).is_file():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dst))
-
-    def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
-        """Plugin-specific post-session writeback BEYOND `cred_files` specs. Default: no-op.
-
-        ⚑ MUST be defensive — never raise on a malformed or absent file; a clean teardown
-        is the contract.
-        """
-        return None
+    ⚑ MUST be defensive — never raise on a malformed or absent file; a clean teardown
+    is the contract.
+    """
+    return None
 
 
 def has_plugin(target: Target | None) -> bool:
-    """True when *target* is a harness plugin: it has a ``PluginDescriptor`` (keyspec §2d).
+  """True when *target* is a harness plugin: it has a ``PluginDescriptor`` (keyspec §2d).
 
-    ⚑ Discovery refuses a plugin whose ``descriptor`` or ``default_entrypoint`` is
-    ``None``, so only the built-in ``ShellTarget`` lacks either; read "is there an
-    agent" here, never from either attribute.  A module function, not a method (P3),
-    so a third-party subclass cannot override it.
-    """
-    return target is not None and target.descriptor is not None
+  ⚑ Discovery refuses a plugin whose ``descriptor`` or ``default_entrypoint`` is
+  ``None``, so only the built-in ``ShellTarget`` lacks either; read "is there an
+  agent" here, never from either attribute.  A module function, not a method (P3),
+  so a third-party subclass cannot override it.
+  """
+  return target is not None and target.descriptor is not None

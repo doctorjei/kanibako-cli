@@ -27,8 +27,8 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
-    e2e_requires,
-    run_kanibako,
+  e2e_requires,
+  run_kanibako,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -46,89 +46,97 @@ TEMPLATE_IMAGE = "kanibako-template-jvm"
 
 
 class TestLazyPrep:
-    """``start <proj> --rig jvm`` builds the template, then launches a box."""
+  """``start <proj> --rig jvm`` builds the template, then launches a box."""
 
-    def test_start_rig_template_lazy_builds(self, e2e_env):
-        """start --rig jvm → image gets BUILT by the start path, box launches.
+  def test_start_rig_template_lazy_builds(self, e2e_env):
+    """start --rig jvm → image gets BUILT by the start path, box launches.
 
-        Uses conftest's ``run_kanibako`` helper (same isolated env that pins
-        podman storage to the host store) but overrides its timeout to
-        BUILD_TIMEOUT, since the lazy template build exceeds the default 60s
-        SUBPROCESS_TIMEOUT. ``--ephemeral`` makes the launch non-interactive:
-        the claude stub runs once and exits cleanly, so the box actually
-        starts (proving build + launch) without hanging on a session.
-        """
-        # Build mode for a headless/session-less environment: the start path
-        # lazy-builds the jvm template via a real `podman build` (kanibako's rig
-        # rebuild). Under the default oci/crun build isolation, crun creates a
-        # transient systemd cgroup scope, which needs a logind session -- absent
-        # in a non-login/headless session, where the build fails with "sd-bus
-        # call: Interactive authentication required". chroot isolation bypasses
-        # that session requirement and is harmless where the default would also
-        # work (CI). kanibako's build subprocess (ContainerRuntime.rebuild)
-        # inherits the caller env unchanged, so BUILDAH_ISOLATION reaches
-        # `podman build`. Scoped to this build test only -- NOT set globally in
-        # e2e_env.
-        env = {**e2e_env["env"], "BUILDAH_ISOLATION": "chroot"}
-        project = e2e_env["project"]
+    Uses conftest's ``run_kanibako`` helper (same isolated env that pins
+    podman storage to the host store) but overrides its timeout to
+    BUILD_TIMEOUT, since the lazy template build exceeds the default 60s
+    SUBPROCESS_TIMEOUT. ``--ephemeral`` makes the launch non-interactive:
+    the claude stub runs once and exits cleanly, so the box actually
+    starts (proving build + launch) without hanging on a session.
+    """
+    # Build mode for a headless/session-less environment: the start path
+    # lazy-builds the jvm template via a real `podman build` (kanibako's rig
+    # rebuild). Under the default oci/crun build isolation, crun creates a
+    # transient systemd cgroup scope, which needs a logind session -- absent
+    # in a non-login/headless session, where the build fails with "sd-bus
+    # call: Interactive authentication required". chroot isolation bypasses
+    # that session requirement and is harmless where the default would also
+    # work (CI). kanibako's build subprocess (ContainerRuntime.rebuild)
+    # inherits the caller env unchanged, so BUILDAH_ISOLATION reaches
+    # `podman build`. Scoped to this build test only -- NOT set globally in
+    # e2e_env.
+    env = {**e2e_env["env"], "BUILDAH_ISOLATION": "chroot"}
+    project = e2e_env["project"]
 
-        assert _podman is not None, "podman required"
+    assert _podman is not None, "podman required"
 
-        # Prove a lazy BUILD: the template image must be ABSENT at the start,
-        # so the only way it can exist afterwards is if `start` built it.
-        # Best-effort -- ignore failure if it wasn't there to begin with.
-        subprocess.run(
-            [_podman, "rmi", "-f", TEMPLATE_IMAGE],
-            capture_output=True,
-            timeout=60,
-        )
+    # Prove a lazy BUILD: the template image must be ABSENT at the start,
+    # so the only way it can exist afterwards is if `start` built it.
+    # Best-effort -- ignore failure if it wasn't there to begin with.
+    subprocess.run(
+      [_podman, "rmi", "-f", TEMPLATE_IMAGE],
+      capture_output=True,
+      timeout=60,
+    )
 
-        try:
-            # Register the project (no template here -- the rig is chosen at
-            # start time via --rig, which is the lazy-prep path under test).
-            result = run_kanibako(
-                ["create", str(project), "--name", "e2e_lazyprep"],
-                env=env,
-            )
-            assert result.returncode == 0, (
-                f"create failed (rc={result.returncode}):\n"
-                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-            )
+    try:
+      # Register the project (no template here -- the rig is chosen at
+      # start time via --rig, which is the lazy-prep path under test).
+      result = run_kanibako(
+        ["create", str(project), "--name", "e2e_lazyprep"],
+        env=env,
+      )
+      assert result.returncode == 0, (
+        f"create failed (rc={result.returncode}):\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+      )
 
-            # Start with --rig jvm: resolve_rig sees the bare template name,
-            # finds kanibako-template-jvm absent, BUILDS it, then launches.
-            # --ephemeral keeps the stub run non-interactive (runs once, exits).
-            # Long timeout for the on-the-fly toolchain build.
-            result = run_kanibako(
-                ["start", "e2e_lazyprep", "--rig", "jvm", "--ephemeral",
-                 "-e", "CLAUDE_STUB_MODE=session",
-                 "-e", "CLAUDE_STUB_SLEEP=1"],
-                env=env,
-                timeout=BUILD_TIMEOUT,
-            )
-            assert result.returncode == 0, (
-                f"start --rig jvm failed (rc={result.returncode}):\n"
-                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-            )
+      # Start with --rig jvm: resolve_rig sees the bare template name,
+      # finds kanibako-template-jvm absent, BUILDS it, then launches.
+      # --ephemeral keeps the stub run non-interactive (runs once, exits).
+      # Long timeout for the on-the-fly toolchain build.
+      result = run_kanibako(
+        [
+          "start",
+          "e2e_lazyprep",
+          "--rig",
+          "jvm",
+          "--ephemeral",
+          "-e",
+          "CLAUDE_STUB_MODE=session",
+          "-e",
+          "CLAUDE_STUB_SLEEP=1",
+        ],
+        env=env,
+        timeout=BUILD_TIMEOUT,
+      )
+      assert result.returncode == 0, (
+        f"start --rig jvm failed (rc={result.returncode}):\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+      )
 
-            # The template image must now exist locally -- built by the start
-            # path, since the test removed it beforehand.
-            inspect = subprocess.run(
-                [_podman, "image", "inspect", TEMPLATE_IMAGE],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            assert inspect.returncode == 0, (
-                f"{TEMPLATE_IMAGE!r} not found after `start --rig jvm`; "
-                f"lazy-prep did not build it: {inspect.stderr}"
-            )
-        finally:
-            # Best-effort cleanup so the suite stays clean; never fail the
-            # test on cleanup errors. (e2e_env teardown removes the box's
-            # container by the suite's CONTAINER_PREFIX.)
-            subprocess.run(
-                [_podman, "rmi", "-f", TEMPLATE_IMAGE],
-                capture_output=True,
-                timeout=60,
-            )
+      # The template image must now exist locally -- built by the start
+      # path, since the test removed it beforehand.
+      inspect = subprocess.run(
+        [_podman, "image", "inspect", TEMPLATE_IMAGE],
+        capture_output=True,
+        text=True,
+        timeout=30,
+      )
+      assert inspect.returncode == 0, (
+        f"{TEMPLATE_IMAGE!r} not found after `start --rig jvm`; "
+        f"lazy-prep did not build it: {inspect.stderr}"
+      )
+    finally:
+      # Best-effort cleanup so the suite stays clean; never fail the
+      # test on cleanup errors. (e2e_env teardown removes the box's
+      # container by the suite's CONTAINER_PREFIX.)
+      subprocess.run(
+        [_podman, "rmi", "-f", TEMPLATE_IMAGE],
+        capture_output=True,
+        timeout=60,
+      )

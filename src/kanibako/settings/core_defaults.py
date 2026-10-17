@@ -31,26 +31,26 @@ from kanibako.settings.config_io import load_packaged_mapping
 from kanibako.settings.settings_resolve import literal_expr, literal_map
 
 if TYPE_CHECKING:
-    from kanibako.settings.paths import ProjectPaths, StandardPaths
-    from kanibako.targets.base import PluginDescriptor, Target
+  from kanibako.settings.paths import ProjectPaths, StandardPaths
+  from kanibako.targets.base import PluginDescriptor, Target
 
 
 def packaged_data_dir(*parts: str) -> Traversable:
-    """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE join into it."""
-    return importlib.resources.files("kanibako.data").joinpath(*parts)
+  """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE join into it."""
+  return importlib.resources.files("kanibako.data").joinpath(*parts)
 
 
 def packaged_dir_or_none(*parts: str) -> Path | None:
-    """The packaged ``kanibako.data`` DIRECTORY at *parts* as a :class:`Path`, or ``None``.
+  """The packaged ``kanibako.data`` DIRECTORY at *parts* as a :class:`Path`, or ``None``.
 
-    ``None`` when the package cannot be located or *parts* is not a directory; a caller
-    for which absence is a packaging defect raises on ``None`` itself.
-    """
-    try:
-        path = Path(str(packaged_data_dir(*parts)))
-    except (ModuleNotFoundError, FileNotFoundError):
-        return None
-    return path if path.is_dir() else None
+  ``None`` when the package cannot be located or *parts* is not a directory; a caller
+  for which absence is a packaging defect raises on ``None`` itself.
+  """
+  try:
+    path = Path(str(packaged_data_dir(*parts)))
+  except (ModuleNotFoundError, FileNotFoundError):
+    return None
+  return path if path.is_dir() else None
 
 
 # The packaged READ-ONLY tree, relative to the ``kanibako.data`` root: the shipped
@@ -69,192 +69,192 @@ CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
 @lru_cache(maxsize=1)
 def _parse_doc() -> dict[str, Any]:
-    """Parse the bundled system/core defaults file ONCE; the cached, never-handed-out original."""
-    ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
-    return load_packaged_mapping(ref, CORE_DEFAULTS_FILENAME)
+  """Parse the bundled system/core defaults file ONCE; the cached, never-handed-out original."""
+  ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
+  return load_packaged_mapping(ref, CORE_DEFAULTS_FILENAME)
 
 
 def _load_doc() -> dict[str, Any]:
-    """The bundled system/core defaults document — a FRESH deep copy every call (P8)."""
-    return copy.deepcopy(_parse_doc())
+  """The bundled system/core defaults document — a FRESH deep copy every call (P8)."""
+  return copy.deepcopy(_parse_doc())
 
 
 def vault_mask_default() -> list[str]:
-    """Return the default masked DESTINATIONS — now EMPTY (no default mask)."""
-    masks = _load_doc().get("masks", {})
-    return [str(m) for m in masks]
+  """Return the default masked DESTINATIONS — now EMPTY (no default mask)."""
+  masks = _load_doc().get("masks", {})
+  return [str(m) for m in masks]
 
 
 def behavior_defaults() -> dict[str, str | None]:
-    """Return the declared ``agent.default.<key>`` BEHAVIOR floor (spec §2d).
+  """Return the declared ``agent.default.<key>`` BEHAVIOR floor (spec §2d).
 
-    The all-agents backstop, floored at ``agent.default.<key>``; a plugin's
-    descriptor floor lands at ``agent.<active>.<key>``, which the §2d pick reads
-    first, so a plugin's declared row still wins.  ⚑ Values are
-    STRINGS: the consumers run them through ``coerce_bool`` and
-    ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
-    ⚑ Except a ``<None>`` row, which stays a PRESENT ``None``, as in
-    :func:`pseudo_tier_defaults`: ``str()`` would ship the text ``"None"``.
-    """
-    return {
-        str(key): None if value is None else str(value)
-        for key, value in (_load_doc().get("agent_default") or {}).items()
-    }
+  The all-agents backstop, floored at ``agent.default.<key>``; a plugin's
+  descriptor floor lands at ``agent.<active>.<key>``, which the §2d pick reads
+  first, so a plugin's declared row still wins.  ⚑ Values are
+  STRINGS: the consumers run them through ``coerce_bool`` and
+  ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
+  ⚑ Except a ``<None>`` row, which stays a PRESENT ``None``, as in
+  :func:`pseudo_tier_defaults`: ``str()`` would ship the text ``"None"``.
+  """
+  return {
+    str(key): None if value is None else str(value)
+    for key, value in (_load_doc().get("agent_default") or {}).items()
+  }
 
 
 def behavior_default(key: str) -> str:
-    """ONE declared ``agent.default.<key>`` value — the FAIL-CLOSED single-key read.
+  """ONE declared ``agent.default.<key>`` value — the FAIL-CLOSED single-key read.
 
-    ⚑ THE ONE SPELLING of this read.  ``start._declared_behavior`` and
-    ``settings_keyspace.access_default`` both come here; a second fail-closed copy is
-    how the two would drift.
-    ⚑ A FUNCTION, not a constant: tests replace :func:`_load_doc`, and a module-level
-    read would bind the value at IMPORT time, before any patch.
-    ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
-    literal here would be exactly the consumer-side default this read replaced.
-    ⚑ A ``<None>`` row RAISES too, as in :func:`pseudo_tier_default`: its consumers
-    need a string.
-    """
-    defaults = behavior_defaults()
-    if key not in defaults:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_default.{key}' — the core "
-            f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
-        )
-    value = defaults[key]
-    if value is None:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.{key}' as <None>, "
-            f"but this read serves a string value."
-        )
-    return value
+  ⚑ THE ONE SPELLING of this read.  ``start._declared_behavior`` and
+  ``settings_keyspace.access_default`` both come here; a second fail-closed copy is
+  how the two would drift.
+  ⚑ A FUNCTION, not a constant: tests replace :func:`_load_doc`, and a module-level
+  read would bind the value at IMPORT time, before any patch.
+  ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
+  literal here would be exactly the consumer-side default this read replaced.
+  ⚑ A ``<None>`` row RAISES too, as in :func:`pseudo_tier_default`: its consumers
+  need a string.
+  """
+  defaults = behavior_defaults()
+  if key not in defaults:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} declares no 'agent_default.{key}' — the core "
+      f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
+    )
+  value = defaults[key]
+  if value is None:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.{key}' as <None>, "
+      f"but this read serves a string value."
+    )
+  return value
 
 
 def pseudo_tier_defaults() -> dict[str, str | None]:
-    """Return every addressable pseudo-agent's declared ``agent.<name>.<key>`` tier floor (spec §2d fence).
+  """Return every addressable pseudo-agent's declared ``agent.<name>.<key>`` tier floor (spec §2d fence).
 
-    The union, over :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS`, of each
-    name's OWN tier values, read off its ``agent_<name>:`` table the way
-    :func:`behavior_defaults` reads ``agent_default:``.  Folded into the base floor
-    UNCONDITIONALLY (every snapshot carries every tier; only that pseudo-agent's pick
-    reads it), so the fence defaults ANSWER for a box that already exists (P)
-    whatever that box runs.  ⚑ Values are STRINGS, same convention, same reason —
-    except a fence ``<None>`` row (``model``, ``continue_mode``), which stays a PRESENT
-    ``None`` (``str()`` would ship the text ``"None"``) and shadows ``agent.default``.
-    Every key the fence states no row for comes from ``agent.default``
-    (``settings_launch._fallback_node``).
-    """
-    doc = _load_doc()
-    return {
-        f"agent.{name}.{key}": None if value is None else str(value)
-        for name in sorted(ADDRESSABLE_PSEUDO_AGENTS)
-        for key, value in (doc.get(f"agent_{name}") or {}).items()
-    }
+  The union, over :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS`, of each
+  name's OWN tier values, read off its ``agent_<name>:`` table the way
+  :func:`behavior_defaults` reads ``agent_default:``.  Folded into the base floor
+  UNCONDITIONALLY (every snapshot carries every tier; only that pseudo-agent's pick
+  reads it), so the fence defaults ANSWER for a box that already exists (P)
+  whatever that box runs.  ⚑ Values are STRINGS, same convention, same reason —
+  except a fence ``<None>`` row (``model``, ``continue_mode``), which stays a PRESENT
+  ``None`` (``str()`` would ship the text ``"None"``) and shadows ``agent.default``.
+  Every key the fence states no row for comes from ``agent.default``
+  (``settings_launch._fallback_node``).
+  """
+  doc = _load_doc()
+  return {
+    f"agent.{name}.{key}": None if value is None else str(value)
+    for name in sorted(ADDRESSABLE_PSEUDO_AGENTS)
+    for key, value in (doc.get(f"agent_{name}") or {}).items()
+  }
 
 
 def pseudo_tier_default(agent_id: str, key: str) -> str:
-    """ONE declared STRING ``agent.<agent_id>.<key>`` value — the FAIL-CLOSED single-key read.
+  """ONE declared STRING ``agent.<agent_id>.<key>`` value — the FAIL-CLOSED single-key read.
 
-    The pseudo-agent-tier twin of :func:`behavior_default`: one spelling, re-read per
-    call, absent declaration RAISES as a packaging defect.  ⚑ An *agent_id* outside
-    :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS` RAISES: no other name has a
-    tier here.  ⚑ A ``<None>`` row RAISES too: this read serves a consumer that needs
-    a string (``label``), and handing it ``None`` would move the defect to wherever
-    the string is used.
-    """
-    if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
-        raise RuntimeError(
-            f"{agent_id!r} is not an addressable pseudo-agent — only "
-            f"{sorted(ADDRESSABLE_PSEUDO_AGENTS)} declare a tier in {CORE_DEFAULTS_FILENAME}."
-        )
-    defaults = pseudo_tier_defaults()
-    tier_key = f"agent.{agent_id}.{key}"
-    if tier_key not in defaults:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_{agent_id}.{key}' — the {agent_id} "
-            f"tier floor (spec §2d agent.{agent_id}.{key}) lives there and nowhere else."
-        )
-    value = defaults[tier_key]
-    if value is None:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} declares 'agent_{agent_id}.{key}' as <None>, "
-            f"but this read serves a string value."
-        )
-    return value
+  The pseudo-agent-tier twin of :func:`behavior_default`: one spelling, re-read per
+  call, absent declaration RAISES as a packaging defect.  ⚑ An *agent_id* outside
+  :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS` RAISES: no other name has a
+  tier here.  ⚑ A ``<None>`` row RAISES too: this read serves a consumer that needs
+  a string (``label``), and handing it ``None`` would move the defect to wherever
+  the string is used.
+  """
+  if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
+    raise RuntimeError(
+      f"{agent_id!r} is not an addressable pseudo-agent — only "
+      f"{sorted(ADDRESSABLE_PSEUDO_AGENTS)} declare a tier in {CORE_DEFAULTS_FILENAME}."
+    )
+  defaults = pseudo_tier_defaults()
+  tier_key = f"agent.{agent_id}.{key}"
+  if tier_key not in defaults:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} declares no 'agent_{agent_id}.{key}' — the {agent_id} "
+      f"tier floor (spec §2d agent.{agent_id}.{key}) lives there and nowhere else."
+    )
+  value = defaults[tier_key]
+  if value is None:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} declares 'agent_{agent_id}.{key}' as <None>, "
+      f"but this read serves a string value."
+    )
+  return value
 
 
 def env_default_categories() -> dict[str, str]:
-    """The STATIC core env floor as ``<scope>.env.<VAR>`` keys (spec §2d).
+  """The STATIC core env floor as ``<scope>.env.<VAR>`` keys (spec §2d).
 
-    ⚑ A SEPARATE emitter from ``start._core_env_default_categories``, whose docstring
-    forbids new entries: that one carries the launch-DERIVED ``KANIBAKO_*`` stamps —
-    values that do not exist until a launch runs — while these are values a FILE can
-    hold, which includes a ``{$VAR}`` EXPRESSION and is not limited to literals.  The
-    floor folds under the base level and the snapshot is expanded before any entry is
-    walked, so ``TERM: "{$TERM}"`` resolves here.  The derived table merges AFTER this
-    one, so a stamp still wins a VAR this section also names.
-    ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
-    reach the box as ``"True"``.
+  ⚑ A SEPARATE emitter from ``start._core_env_default_categories``, whose docstring
+  forbids new entries: that one carries the launch-DERIVED ``KANIBAKO_*`` stamps —
+  values that do not exist until a launch runs — while these are values a FILE can
+  hold, which includes a ``{$VAR}`` EXPRESSION and is not limited to literals.  The
+  floor folds under the base level and the snapshot is expanded before any entry is
+  walked, so ``TERM: "{$TERM}"`` resolves here.  The derived table merges AFTER this
+  one, so a stamp still wins a VAR this section also names.
+  ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
+  reach the box as ``"True"``.
 
-    ⚑ FAIL-CLOSED ON THE KEY IT BUILDS (R3).  Every emitted ``<scope>.env.<VAR>`` is
-    matched against ``settings_categories.ENV_KEY_RE`` — the keyspace's own
-    declaration of the family (spec §2a) — so a typo'd scope head (``sytem:``) or a
-    VAR that is not an env-name RAISES, naming the file and the head.  It used to be
-    a silent no-op: the bad key entered ``default_categories``, matched nothing
-    downstream and simply never reached a box.
-    ⚑ A leading ``{$GUEST_HOME}`` is expanded HERE, as the plugin loader does: left to
-    the snapshot it would resolve from the HOST and drop the key.
-    """
-    from kanibako.settings.settings_resolve import expand_guest_home
+  ⚑ FAIL-CLOSED ON THE KEY IT BUILDS (R3).  Every emitted ``<scope>.env.<VAR>`` is
+  matched against ``settings_categories.ENV_KEY_RE`` — the keyspace's own
+  declaration of the family (spec §2a) — so a typo'd scope head (``sytem:``) or a
+  VAR that is not an env-name RAISES, naming the file and the head.  It used to be
+  a silent no-op: the bad key entered ``default_categories``, matched nothing
+  downstream and simply never reached a box.
+  ⚑ A leading ``{$GUEST_HOME}`` is expanded HERE, as the plugin loader does: left to
+  the snapshot it would resolve from the HOST and drop the key.
+  """
+  from kanibako.settings.settings_resolve import expand_guest_home
 
-    table: dict[str, str] = {}
-    section = _load_doc().get("env") or {}
-    if not isinstance(section, dict):
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} 'env:' must be scope-keyed tables, got "
-            f"{type(section).__name__} — see the section's own comment for the shape."
-        )
-    for scope, entries in section.items():
-        if entries is None:
-            continue
-        if not isinstance(entries, dict):
-            raise PackagingError(
-                f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}' as "
-                f"{type(entries).__name__}, not a table of <VAR>: \"<value>\" — a "
-                f"variable belongs under the scope that owns it."
-            )
-        for var, value in entries.items():
-            _check_env_key(str(scope), str(var))
-            table[f"{scope}.env.{var}"] = expand_guest_home(str(value))
-    return table
+  table: dict[str, str] = {}
+  section = _load_doc().get("env") or {}
+  if not isinstance(section, dict):
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} 'env:' must be scope-keyed tables, got "
+      f"{type(section).__name__} — see the section's own comment for the shape."
+    )
+  for scope, entries in section.items():
+    if entries is None:
+      continue
+    if not isinstance(entries, dict):
+      raise PackagingError(
+        f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}' as "
+        f'{type(entries).__name__}, not a table of <VAR>: "<value>" — a '
+        f"variable belongs under the scope that owns it."
+      )
+    for var, value in entries.items():
+      _check_env_key(str(scope), str(var))
+      table[f"{scope}.env.{var}"] = expand_guest_home(str(value))
+  return table
 
 
 def _check_env_key(scope: str, var: str) -> None:
-    """RAISE unless ``<scope>.env.<VAR>`` is a declared key (spec §2a); name which half is wrong.
+  """RAISE unless ``<scope>.env.<VAR>`` is a declared key (spec §2a); name which half is wrong.
 
-    ⚑ ONE RULE, ASKED TWICE.  ``ENV_KEY_RE`` carries both halves — the legal scope
-    heads and the env-name shape — so the second match is a PROBE that tells the two
-    apart for the message, not a second copy of either.  Re-spelling the head set
-    here is exactly the drift the regex import avoids.
-    ⚑ A FUNCTION-LOCAL import, the :func:`add_bind` pattern: this module stays a thin
-    reader whose module scope pulls in no part of the settings stack, and
-    ``settings_categories`` imports nothing from ``kanibako`` at module scope, so
-    there is no cycle either way.
-    """
-    from kanibako.settings.settings_categories import ENV_KEY_RE
+  ⚑ ONE RULE, ASKED TWICE.  ``ENV_KEY_RE`` carries both halves — the legal scope
+  heads and the env-name shape — so the second match is a PROBE that tells the two
+  apart for the message, not a second copy of either.  Re-spelling the head set
+  here is exactly the drift the regex import avoids.
+  ⚑ A FUNCTION-LOCAL import, the :func:`add_bind` pattern: this module stays a thin
+  reader whose module scope pulls in no part of the settings stack, and
+  ``settings_categories`` imports nothing from ``kanibako`` at module scope, so
+  there is no cycle either way.
+  """
+  from kanibako.settings.settings_categories import ENV_KEY_RE
 
-    if ENV_KEY_RE.match(f"{scope}.env.{var}") is not None:
-        return
-    head_ok = ENV_KEY_RE.match(f"{scope}.env.PROBE") is not None
-    detail = (
-        f"'{var}' is not an env-var name ({ENV_VAR_NAME})" if head_ok
-        else f"'{scope}' is not a scope the env family is declared at — spec §2a "
-             f"allows system, workset, box and agent.<node> (bare 'agent' is not a key)"
-    )
-    raise PackagingError(
-        f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}.{var}', which is not a "
-        f"key: {detail}."
-    )
+  if ENV_KEY_RE.match(f"{scope}.env.{var}") is not None:
+    return
+  head_ok = ENV_KEY_RE.match(f"{scope}.env.PROBE") is not None
+  detail = (
+    f"'{var}' is not an env-var name ({ENV_VAR_NAME})"
+    if head_ok
+    else f"'{scope}' is not a scope the env family is declared at — spec §2a "
+    f"allows system, workset, box and agent.<node> (bare 'agent' is not a key)"
+  )
+  raise PackagingError(
+    f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}.{var}', which is not a key: {detail}."
+  )
 
 
 #: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}`` (R-5/R-11).
@@ -263,32 +263,32 @@ BindArmTable = dict[str, dict[str, tuple[str, ...]]]
 
 
 def add_bind(
-    binds: dict[str, Any],
-    category: str,
-    box_dest: str,
-    host_src: str,
-    options: str | None = None,
-    *,
-    scope: str = "box",
+  binds: dict[str, Any],
+  category: str,
+  box_dest: str,
+  host_src: str,
+  options: str | None = None,
+  *,
+  scope: str = "box",
 ) -> None:
-    """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds* (R-3/R-6/R-11).
+  """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds* (R-3/R-6/R-11).
 
-    ⚑ ``seeded`` / ``synced`` are COPIES and stay copies — what is DONE with an entry is
-    ``settings_categories._DELIVERY``'s answer, not this function's.
-    ⚑ The DEST is normalized; *host_src* is stored exactly as given.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  ⚑ ``seeded`` / ``synced`` are COPIES and stay copies — what is DONE with an entry is
+  ``settings_categories._DELIVERY``'s answer, not this function's.
+  ⚑ The DEST is normalized; *host_src* is stored exactly as given.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    arm_key = f"{scope}.{category}"
-    arm = binds.setdefault(arm_key, {})
-    dest = normalize_bind_dest(str(box_dest))
-    if dest in arm:
-        raise ValueError(
-            f"{arm_key} declares two floor entries at one destination "
-            f"{dest!r} ({arm[dest][0]!r} and {host_src!r}); a dest-keyed "
-            f"category admits one entry per destination."
-        )
-    arm[dest] = (host_src,) if options is None else (host_src, str(options))
+  arm_key = f"{scope}.{category}"
+  arm = binds.setdefault(arm_key, {})
+  dest = normalize_bind_dest(str(box_dest))
+  if dest in arm:
+    raise ValueError(
+      f"{arm_key} declares two floor entries at one destination "
+      f"{dest!r} ({arm[dest][0]!r} and {host_src!r}); a dest-keyed "
+      f"category admits one entry per destination."
+    )
+  arm[dest] = (host_src,) if options is None else (host_src, str(options))
 
 
 #: The ``channels:`` rows a standalone box has no host source for.
@@ -296,190 +296,197 @@ WORKSET_CHANNEL_SOURCES = ("workset_common", "workset_chat", "workset_share")
 
 
 def channel_source_key(dest: str) -> str | None:
-    """The settings key that feeds the packaged ``channels:`` row at guest *dest*.
+  """The settings key that feeds the packaged ``channels:`` row at guest *dest*.
 
-    Read backward through :func:`paths._floor_field`, so a probe-sourced row maps to
-    the key its probe resolves.  ``None`` for a row no single key feeds: the
-    ``workset_*`` rows and ``inbox``.
+  Read backward through :func:`paths._floor_field`, so a probe-sourced row maps to
+  the key its probe resolves.  ``None`` for a row no single key feeds: the
+  ``workset_*`` rows and ``inbox``.
+  """
+  from kanibako.settings.config_keys import _KEY_ROUTES
+  from kanibako.settings.paths import _floor_field
+  from kanibako.settings.settings_resolve import normalize_bind_dest
+
+  by_probe = {_floor_field(k): k for k in _KEY_ROUTES if k.startswith("system.channels.")}
+  for row in _load_doc().get("channels", []):
+    if normalize_bind_dest(str(row["box_dest"])) != dest:
+      continue
+    return by_probe.get(str(row["source"]))
+  return None
+
+
+def channel_default_categories(std: StandardPaths, proj: ProjectPaths) -> BindArmTable:
+  """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f)."""
+  from kanibako.channels import channels as _ch
+
+  addr = _ch.box_channel_addresses(proj, std)
+  wch = _ch.workset_channel_paths(proj, std)
+
+  def _src(path: "Path | None") -> "str | None":
+    """A probed source as a ``literal_expr``; a NULL ARM STAYS ``None``.
+
+    ⚑ The row's own ``meta_ref`` is what a channel bind emits, so a null arm
+    needs its SLOT KEPT (that is the standalone-omit gate) and its VALUE left
+    null — ``str(None)`` would put the four-character path ``"None"`` in the
+    slot the table reads.
     """
-    from kanibako.settings.config_keys import _KEY_ROUTES
-    from kanibako.settings.paths import _floor_field
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+    return None if path is None else literal_expr(str(path))
 
-    by_probe = {
-        _floor_field(k): k for k in _KEY_ROUTES if k.startswith("system.channels.")
-    }
+  # Symbolic source name -> runtime-probed host path, as a ``literal_expr``.  ⚑ Workset
+  # sources exist only for PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
+  # ⚑ A NULL ``std`` STAYS ``None`` HERE, on the terms
+  # :func:`core_default_categories` states below: ``str()`` would write the WORD "None"
+  # into a table of host paths.  The bind itself omits through the ``{system.channels.*}``
+  # ref and the launch floor (``paths.system_path_floor``); this map is the mode gate.
+  # ⛔ NOT the workset rows below — those belong to ``_workset_channel_floor_values``.
+  sources: dict[str, str | None] = {
+    "channels_common": _src(std.channels_common),
+    "channels_chat": _src(std.channels_chat),
+    "channels_share": _src(std.channels_share),
+    "channels_mailboxes": _src(std.channels_mailboxes),
+    "inbox": _src(addr.inbox),
+  }
+  if wch is not None:
+    sources.update(
+      {
+        "workset_common": _src(wch.common),
+        "workset_chat": _src(wch.chat),
+        "workset_share": _src(wch.share),
+      }
+    )
+  elif _ch.has_workset_channels(proj):
+    # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
+    # ``{workset.channels.*}`` ref, which resolves to null — the floor SUPPLIES that
+    # null (``workset_anchor_floor``) — so the collapse omits the bind and §2a warns
+    # (MIGRATION "…only its entry or only its source is `null`").
     for row in _load_doc().get("channels", []):
-        if normalize_bind_dest(str(row["box_dest"])) != dest:
-            continue
-        return by_probe.get(str(row["source"]))
-    return None
+      if row["source"] in WORKSET_CHANNEL_SOURCES:
+        sources[row["source"]] = str(row["meta_ref"])
 
-
-def channel_default_categories(
-    std: StandardPaths, proj: ProjectPaths
-) -> BindArmTable:
-    """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f)."""
-    from kanibako.channels import channels as _ch
-
-    addr = _ch.box_channel_addresses(proj, std)
-    wch = _ch.workset_channel_paths(proj, std)
-
-    def _src(path: "Path | None") -> "str | None":
-        """A probed source as a ``literal_expr``; a NULL ARM STAYS ``None``.
-
-        ⚑ The row's own ``meta_ref`` is what a channel bind emits, so a null arm
-        needs its SLOT KEPT (that is the standalone-omit gate) and its VALUE left
-        null — ``str(None)`` would put the four-character path ``"None"`` in the
-        slot the table reads.
-        """
-        return None if path is None else literal_expr(str(path))
-
-    # Symbolic source name -> runtime-probed host path, as a ``literal_expr``.  ⚑ Workset
-    # sources exist only for PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
-    # ⚑ A NULL ``std`` STAYS ``None`` HERE, on the terms
-    # :func:`core_default_categories` states below: ``str()`` would write the WORD "None"
-    # into a table of host paths.  The bind itself omits through the ``{system.channels.*}``
-    # ref and the launch floor (``paths.system_path_floor``); this map is the mode gate.
-    # ⛔ NOT the workset rows below — those belong to ``_workset_channel_floor_values``.
-    sources: dict[str, str | None] = {
-        "channels_common": _src(std.channels_common),
-        "channels_chat": _src(std.channels_chat),
-        "channels_share": _src(std.channels_share),
-        "channels_mailboxes": _src(std.channels_mailboxes),
-        "inbox": _src(addr.inbox),
-    }
-    if wch is not None:
-        sources.update({
-            "workset_common": _src(wch.common),
-            "workset_chat": _src(wch.chat),
-            "workset_share": _src(wch.share),
-        })
-    elif _ch.has_workset_channels(proj):
-        # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
-        # ``{workset.channels.*}`` ref, which resolves to null — the floor SUPPLIES that
-        # null (``workset_anchor_floor``) — so the collapse omits the bind and §2a warns
-        # (MIGRATION "…only its entry or only its source is `null`").
-        for row in _load_doc().get("channels", []):
-            if row["source"] in WORKSET_CHANNEL_SOURCES:
-                sources[row["source"]] = str(row["meta_ref"])
-
-    binds: BindArmTable = {}
-    for entry in _load_doc().get("channels", []):
-        source = entry["source"]
-        if source not in sources:
-            # Workset-scoped entry on a standalone box: no host source → omit.
-            continue
-        # ⚑ B2: a ``meta_ref`` entry emits the {key}-ref STRING as host_src (spec §2c); the
-        # ``source`` gate above still applies to it.
-        host_src = entry.get("meta_ref", sources[source])
-        add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
-    return binds
+  binds: BindArmTable = {}
+  for entry in _load_doc().get("channels", []):
+    source = entry["source"]
+    if source not in sources:
+      # Workset-scoped entry on a standalone box: no host source → omit.
+      continue
+    # ⚑ B2: a ``meta_ref`` entry emits the {key}-ref STRING as host_src (spec §2c); the
+    # ``source`` gate above still applies to it.
+    host_src = entry.get("meta_ref", sources[source])
+    add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
+  return binds
 
 
 def core_default_categories(
-    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str,
-    guarantee_create: bool = True,
+  std: StandardPaths,
+  proj: ProjectPaths,
+  *,
+  enable_vault: bool,
+  mode: str,
+  guarantee_create: bool = True,
 ) -> BindArmTable:
-    """Build the core box mounts — workspace + vault — as ``default_categories`` (step 3).
+  """Build the core box mounts — workspace + vault — as ``default_categories`` (step 3).
 
-    ⚑ NO HOME ROW. Home is pid 0, not one bind among these: it is constructed at the
-    assembly seam off ``meta.box.home`` (spec ``:1015``), never declared here.
-    """
-    # Symbolic source name -> runtime-probed host path off ``ProjectPaths``, as a
-    # ``literal_expr``.
-    # ⚑ ``project_path`` is ``None`` for a standalone box whose root nulls
-    # ``workset.workspaces`` (Q106).  ``str()`` would turn that into the WORD
-    # ``"None"`` and a bind would carry it as a host path, so the symbol is left
-    # UNPROBED here and an entry that actually names it is refused below.  Every
-    # shipped entry supplies ``meta_ref``/``mode_meta_ref`` and never reads it.
-    sources: dict[str, str | None] = {
-        name: None if path is None else literal_expr(str(path))
-        for name, path in (
-            ("project_path", proj.project_path),
-            ("vault_ro_path", proj.vault_ro_path),
-            ("vault_rw_path", proj.vault_rw_path),
-        )
-    }
-    vault_dir: dict[str, Path | None] = {
-        "vault_ro_path": proj.vault_ro_path,
-        "vault_rw_path": proj.vault_rw_path,
-    }
+  ⚑ NO HOME ROW. Home is pid 0, not one bind among these: it is constructed at the
+  assembly seam off ``meta.box.home`` (spec ``:1015``), never declared here.
+  """
+  # Symbolic source name -> runtime-probed host path off ``ProjectPaths``, as a
+  # ``literal_expr``.
+  # ⚑ ``project_path`` is ``None`` for a standalone box whose root nulls
+  # ``workset.workspaces`` (Q106).  ``str()`` would turn that into the WORD
+  # ``"None"`` and a bind would carry it as a host path, so the symbol is left
+  # UNPROBED here and an entry that actually names it is refused below.  Every
+  # shipped entry supplies ``meta_ref``/``mode_meta_ref`` and never reads it.
+  sources: dict[str, str | None] = {
+    name: None if path is None else literal_expr(str(path))
+    for name, path in (
+      ("project_path", proj.project_path),
+      ("vault_ro_path", proj.vault_ro_path),
+      ("vault_rw_path", proj.vault_rw_path),
+    )
+  }
+  vault_dir: dict[str, Path | None] = {
+    "vault_ro_path": proj.vault_ro_path,
+    "vault_rw_path": proj.vault_rw_path,
+  }
 
-    binds: BindArmTable = {}
-    for entry in _load_doc().get("core", []):
-        # Vault binds are UNIVERSAL unless explicitly disabled; only a disabled vault skips.
-        if entry.get("scope") == "vault":
-            if not enable_vault:
-                continue
-            src_name = entry["source"]
-            if src_name not in vault_dir:
-                continue  # unknown source name (defensive)
-            # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``{workset.vault_*}`` source
-            # resolves to null, so the collapse omits the bind and §2a warns.
-            src_path = vault_dir[src_name]
-            # ⚑ A dangling link or a non-directory there gets NO bind, on display and launch
-            # alike, and nothing at it is touched: the box launches without that vault, as
-            # ``paths._flag_missing_vault`` warns.
-            from kanibako.settings.paths import unusable_dir_finding
-            if src_path is not None and unusable_dir_finding(src_path) is not None:
-                continue
-            # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
-            # a DISPLAY verb (``box show --effective``) must not write to disk.
-            if guarantee_create and src_path is not None:
-                src_path.mkdir(parents=True, exist_ok=True)
-        category = entry["category"]
-        # ⚑ TWO {key}-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
-        # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
-        mode_ref = entry.get("mode_meta_ref")
-        if mode_ref is not None:
-            host_src = mode_ref[mode]
-        else:
-            host_src = entry.get("meta_ref", sources[entry["source"]])
-            if host_src is None:
-                raise PackagingError(
-                    f"{CORE_DEFAULTS_FILENAME} declares 'source: {entry['source']}' "
-                    f"with no 'meta_ref', and this box has no value for that "
-                    f"source — refusing rather than binding the text 'None' as a "
-                    f"host path."
-                )
-        add_bind(
-            binds, category, str(entry["box_dest"]), host_src,
-            str(entry["options"]),
+  binds: BindArmTable = {}
+  for entry in _load_doc().get("core", []):
+    # Vault binds are UNIVERSAL unless explicitly disabled; only a disabled vault skips.
+    if entry.get("scope") == "vault":
+      if not enable_vault:
+        continue
+      src_name = entry["source"]
+      if src_name not in vault_dir:
+        continue  # unknown source name (defensive)
+      # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``{workset.vault_*}`` source
+      # resolves to null, so the collapse omits the bind and §2a warns.
+      src_path = vault_dir[src_name]
+      # ⚑ A dangling link or a non-directory there gets NO bind, on display and launch
+      # alike, and nothing at it is touched: the box launches without that vault, as
+      # ``paths._flag_missing_vault`` warns.
+      from kanibako.settings.paths import unusable_dir_finding
+
+      if src_path is not None and unusable_dir_finding(src_path) is not None:
+        continue
+      # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
+      # a DISPLAY verb (``box show --effective``) must not write to disk.
+      if guarantee_create and src_path is not None:
+        src_path.mkdir(parents=True, exist_ok=True)
+    category = entry["category"]
+    # ⚑ TWO {key}-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
+    # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
+    mode_ref = entry.get("mode_meta_ref")
+    if mode_ref is not None:
+      host_src = mode_ref[mode]
+    else:
+      host_src = entry.get("meta_ref", sources[entry["source"]])
+      if host_src is None:
+        raise PackagingError(
+          f"{CORE_DEFAULTS_FILENAME} declares 'source: {entry['source']}' "
+          f"with no 'meta_ref', and this box has no value for that "
+          f"source — refusing rather than binding the text 'None' as a "
+          f"host path."
         )
-    return binds
+    add_bind(
+      binds,
+      category,
+      str(entry["box_dest"]),
+      host_src,
+      str(entry["options"]),
+    )
+  return binds
 
 
 def kani_default_categories() -> BindArmTable:
-    """Build the kanibako CLI binds — the UNCONDITIONAL trio — as ``default_categories``."""
-    import importlib.resources
+  """Build the kanibako CLI binds — the UNCONDITIONAL trio — as ``default_categories``."""
+  import importlib.resources
 
-    import kanibako
+  import kanibako
 
-    pkg_dir = Path(kanibako.__file__).parent
-    entry_ref = importlib.resources.files("kanibako.scripts").joinpath(
-        "kanibako-entry"
+  pkg_dir = Path(kanibako.__file__).parent
+  entry_ref = importlib.resources.files("kanibako.scripts").joinpath("kanibako-entry")
+  entry_path = Path(str(entry_ref))
+  secrets_ref = importlib.resources.files("kanibako.scripts").joinpath("kanibako-secrets.sh")
+  secrets_path = Path(str(secrets_ref))
+
+  sources: dict[str, str] = literal_map(
+    {
+      "kani_pkg": str(pkg_dir),
+      "kani_bin": str(entry_path),
+      "secret_export": str(secrets_path),
+    }
+  )
+
+  binds: BindArmTable = {}
+  for entry in _load_doc().get("kani", []):
+    category = entry["category"]
+    add_bind(
+      binds,
+      category,
+      str(entry["box_dest"]),
+      sources[entry["source"]],
+      str(entry["options"]),
     )
-    entry_path = Path(str(entry_ref))
-    secrets_ref = importlib.resources.files("kanibako.scripts").joinpath(
-        "kanibako-secrets.sh"
-    )
-    secrets_path = Path(str(secrets_ref))
-
-    sources: dict[str, str] = literal_map({
-        "kani_pkg": str(pkg_dir),
-        "kani_bin": str(entry_path),
-        "secret_export": str(secrets_path),
-    })
-
-    binds: BindArmTable = {}
-    for entry in _load_doc().get("kani", []):
-        category = entry["category"]
-        add_bind(
-            binds, category, str(entry["box_dest"]), sources[entry["source"]],
-            str(entry["options"]),
-        )
-    return binds
+  return binds
 
 
 # ===========================================================================
@@ -492,62 +499,65 @@ KICKOFF_PACKAGED_PARTS = (*PACKAGED_ROM_PARTS, "KICKOFF.md")
 
 
 def _kickoff_entry() -> dict[str, Any]:
-    """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it."""
-    entries = _load_doc().get("kickoff") or []
-    if not isinstance(entries, list) or len(entries) != 1:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} must declare EXACTLY ONE 'kickoff:' entry "
-            f"(got {entries!r}) — the directive-chain entry slot (spec §2c "
-            "box.bindings.ro[~/.config/kanibako/kickoff.md]) is declared there and "
-            "read back by both the "
-            "bind emitter and the KANIBAKO_DIRECTIVE_SEED env var."
-        )
-    return entries[0]
+  """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it."""
+  entries = _load_doc().get("kickoff") or []
+  if not isinstance(entries, list) or len(entries) != 1:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} must declare EXACTLY ONE 'kickoff:' entry "
+      f"(got {entries!r}) — the directive-chain entry slot (spec §2c "
+      "box.bindings.ro[~/.config/kanibako/kickoff.md]) is declared there and "
+      "read back by both the "
+      "bind emitter and the KANIBAKO_DIRECTIVE_SEED env var."
+    )
+  return entries[0]
 
 
 def kickoff_box_dest() -> str:
-    """The ``~``-spelled box-side kickoff slot — SINGLE SOURCE OF TRUTH, read from the file."""
-    return str(_kickoff_entry()["box_dest"])
+  """The ``~``-spelled box-side kickoff slot — SINGLE SOURCE OF TRUTH, read from the file."""
+  return str(_kickoff_entry()["box_dest"])
 
 
 def kickoff_guest_dest() -> str:
-    """:func:`kickoff_box_dest` as an ABSOLUTE guest path (the env var + the transition gate)."""
-    from kanibako.settings.settings_resolve import GUEST_HOME
+  """:func:`kickoff_box_dest` as an ABSOLUTE guest path (the env var + the transition gate)."""
+  from kanibako.settings.settings_resolve import GUEST_HOME
 
-    dest = kickoff_box_dest()
-    return GUEST_HOME + dest[1:] if dest.startswith("~") else dest
+  dest = kickoff_box_dest()
+  return GUEST_HOME + dest[1:] if dest.startswith("~") else dest
 
 
 def kickoff_default_categories(
-    descriptor: "PluginDescriptor | None" = None,
+  descriptor: "PluginDescriptor | None" = None,
 ) -> BindArmTable:
-    """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5)."""
-    from kanibako.targets.assembly import declares_box_dest
+  """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5)."""
+  from kanibako.targets.assembly import declares_box_dest
 
-    # ⚑⚑ THE TRANSITION GATE — core YIELDS to a plugin that still ships a kickoff (M-12).
-    # ⚑ REMOVAL CONDITION in llm-docs; re-verify against the three plugins before deleting.
-    if declares_box_dest(descriptor, kickoff_guest_dest()):
-        return {}
+  # ⚑⚑ THE TRANSITION GATE — core YIELDS to a plugin that still ships a kickoff (M-12).
+  # ⚑ REMOVAL CONDITION in llm-docs; re-verify against the three plugins before deleting.
+  if declares_box_dest(descriptor, kickoff_guest_dest()):
+    return {}
 
-    entry = _kickoff_entry()
-    # The host SOURCE, resolved from the entry's SYMBOLIC name (kani parity).
-    sources = {"kickoff": Path(str(packaged_data_dir(*KICKOFF_PACKAGED_PARTS)))}
-    src = sources[str(entry["source"])]
-    # ⚑ FAIL-CLOSED: a missing loader means NO directive chain at all, silently.
-    if not src.is_file():
-        raise PackagingError(
-            f"the packaged kickoff loader is missing at {src} — it is the entry "
-            "point of the whole directive chain (spec §2c "
-            "box.bindings.ro[~/.config/kanibako/kickoff.md]), "
-            "so a box launched without it would run with NO directives at all. This "
-            "is a PACKAGING defect; refusing to launch."
-        )
-    binds: BindArmTable = {}
-    add_bind(
-        binds, str(entry["category"]), str(entry["box_dest"]), literal_expr(str(src)),
-        str(entry["options"]),
+  entry = _kickoff_entry()
+  # The host SOURCE, resolved from the entry's SYMBOLIC name (kani parity).
+  sources = {"kickoff": Path(str(packaged_data_dir(*KICKOFF_PACKAGED_PARTS)))}
+  src = sources[str(entry["source"])]
+  # ⚑ FAIL-CLOSED: a missing loader means NO directive chain at all, silently.
+  if not src.is_file():
+    raise PackagingError(
+      f"the packaged kickoff loader is missing at {src} — it is the entry "
+      "point of the whole directive chain (spec §2c "
+      "box.bindings.ro[~/.config/kanibako/kickoff.md]), "
+      "so a box launched without it would run with NO directives at all. This "
+      "is a PACKAGING defect; refusing to launch."
     )
-    return binds
+  binds: BindArmTable = {}
+  add_bind(
+    binds,
+    str(entry["category"]),
+    str(entry["box_dest"]),
+    literal_expr(str(src)),
+    str(entry["options"]),
+  )
+  return binds
 
 
 # The packaged rom root — the READ-ONLY built-in CANON content; RO-bind DUAL of the
@@ -599,166 +609,169 @@ PLUGIN_CHAPTER_MARKER_REL = "ROM_AGENT.md"
 # ⚑ ``canon/handbook`` is here on the SKELETON's authority ("does box create own it?"), which
 # holds independently of what is bound.
 CANON_SEED_DENY_PREFIXES = (
-    f"{CANON_GUEST_ROOT}/COLLECTION.md",
-    f"{CANON_GUEST_ROOT}/{ROM_CHARTER_REL}",
-    f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}",
+  f"{CANON_GUEST_ROOT}/COLLECTION.md",
+  f"{CANON_GUEST_ROOT}/{ROM_CHARTER_REL}",
+  f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}",
 )
 
 
 def _canon_dest(rel: str) -> str:
-    """Return the ``~``-relative guest dest for a BOOK-ROOT-relative canon path *rel*."""
-    return f"~/{CANON_GUEST_ROOT}/{rel}"
+  """Return the ``~``-relative guest dest for a BOOK-ROOT-relative canon path *rel*."""
+  return f"~/{CANON_GUEST_ROOT}/{rel}"
 
 
 def assert_canon_bind_seed_disjoint(
-    bind_dests: Iterable[str], seed_rels: Iterable[str],
+  bind_dests: Iterable[str],
+  seed_rels: Iterable[str],
 ) -> None:
-    """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path (spec §2c).
+  """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path (spec §2c).
 
-    ⚑⚑ BOTH ARGUMENTS MUST BE ``~``-RELATIVE or every comparison silently misses.
-    ⚑ WIDENING THE INPUTS IS THE CALLER'S JOB — hence parameters, not computed inside.
-    PREFIX CONTAINMENT, not set intersection.
-    """
-    dests = sorted(set(bind_dests))
-    violations: list[str] = []
-    for rel in sorted(set(seed_rels)):
-        for dest in dests:
-            if rel == dest or rel.startswith(f"{dest}/"):
-                violations.append(
-                    f"{rel!r} is at/under the managed canon path {dest!r}"
-                )
-    if violations:
-        raise PackagingError(
-            "template seed lands in the MANAGED canon region (box create "
-            "materializes that region ROOT-OWNED, so the copy FAILS WITH EACCES "
-            "AT CREATE — it does not silently lose, it stops the create with an "
-            "OS error; and even where a copy could land, the mount SHADOWS it at "
-            "the same path regardless of order, so the content would be invisible "
-            "— not merged, not an error):\n"
-            + "\n".join(f"  - {v}" for v in violations)
-            + "\nSeeds target canon/{notebook,workbook} ONLY (spec §2c)."
-        )
+  ⚑⚑ BOTH ARGUMENTS MUST BE ``~``-RELATIVE or every comparison silently misses.
+  ⚑ WIDENING THE INPUTS IS THE CALLER'S JOB — hence parameters, not computed inside.
+  PREFIX CONTAINMENT, not set intersection.
+  """
+  dests = sorted(set(bind_dests))
+  violations: list[str] = []
+  for rel in sorted(set(seed_rels)):
+    for dest in dests:
+      if rel == dest or rel.startswith(f"{dest}/"):
+        violations.append(f"{rel!r} is at/under the managed canon path {dest!r}")
+  if violations:
+    raise PackagingError(
+      "template seed lands in the MANAGED canon region (box create "
+      "materializes that region ROOT-OWNED, so the copy FAILS WITH EACCES "
+      "AT CREATE — it does not silently lose, it stops the create with an "
+      "OS error; and even where a copy could land, the mount SHADOWS it at "
+      "the same path regardless of order, so the content would be invisible "
+      "— not merged, not an error):\n"
+      + "\n".join(f"  - {v}" for v in violations)
+      + "\nSeeds target canon/{notebook,workbook} ONLY (spec §2c)."
+    )
 
 
 def _rom_sibling_binds() -> list[tuple[str, str, bool]]:
-    """The packaged-canon SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.
+  """The packaged-canon SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.
 
-    ⚑ ONE declaration drives the completeness guard, the emission AND
-    :func:`internal_bind_keys`, so none of them can drift from the others.
-    """
-    return [
-        ("canon_collection", ROM_COLLECTION_REL, False),
-        ("canon_charter_contents", ROM_CONTENTS_REL, False),
-        *(
-            (f"canon_charter_{chapter}", f"{ROM_CHARTER_REL}/{chapter}", True)
-            for chapter in ROM_CHARTER_CHAPTERS
-        ),
-    ]
+  ⚑ ONE declaration drives the completeness guard, the emission AND
+  :func:`internal_bind_keys`, so none of them can drift from the others.
+  """
+  return [
+    ("canon_collection", ROM_COLLECTION_REL, False),
+    ("canon_charter_contents", ROM_CONTENTS_REL, False),
+    *(
+      (f"canon_charter_{chapter}", f"{ROM_CHARTER_REL}/{chapter}", True)
+      for chapter in ROM_CHARTER_CHAPTERS
+    ),
+  ]
 
 
 def _rom_agent_chapter_dest() -> str:
-    """The ``~``-spelled dest of the plugin's charter chapter bind (spec §2c)."""
-    return _canon_dest(f"{ROM_CHARTER_REL}/{CHARTER_AGENT_CHAPTER}")
+  """The ``~``-spelled dest of the plugin's charter chapter bind (spec §2c)."""
+  return _canon_dest(f"{ROM_CHARTER_REL}/{CHARTER_AGENT_CHAPTER}")
 
 
 def rom_default_categories() -> BindArmTable:
-    """Build the FIVE read-only packaged-CANON binds as ``default_categories`` (J-7, spec §2c).
+  """Build the FIVE read-only packaged-CANON binds as ``default_categories`` (J-7, spec §2c).
 
-    ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
-    :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
-    ⚑ ``charter/agent/`` is deliberately NOT required and must NOT ship.
+  ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
+  :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
+  ⚑ ``charter/agent/`` is deliberately NOT required and must NOT ship.
 
-    ⚑ RAISES :class:`PackagingError` when the packaged canon is MISSING, EMPTY, or INCOMPLETE:
-    each is a PACKAGING defect, and a box whose canon cannot be fully bound is refused rather
-    than launched.
-    """
-    from kanibako.launch import templates
+  ⚑ RAISES :class:`PackagingError` when the packaged canon is MISSING, EMPTY, or INCOMPLETE:
+  each is a PACKAGING defect, and a box whose canon cannot be fully bound is refused rather
+  than launched.
+  """
+  from kanibako.launch import templates
 
-    rom_root = packaged_dir_or_none(*ROM_ROOT_PARTS)
-    if rom_root is None:
-        raise PackagingError(
-            "kanibako's packaged canon root is missing: "
-            f"{packaged_data_dir(*ROM_ROOT_PARTS)}"
-        )
+  rom_root = packaged_dir_or_none(*ROM_ROOT_PARTS)
+  if rom_root is None:
+    raise PackagingError(
+      f"kanibako's packaged canon root is missing: {packaged_data_dir(*ROM_ROOT_PARTS)}"
+    )
 
-    rom_files = templates.walk_shipped_files(rom_root)
-    rom_rels = {rel for rel, _ in rom_files}
+  rom_files = templates.walk_shipped_files(rom_root)
+  rom_rels = {rel for rel, _ in rom_files}
 
-    # ⚑ FAIL-CLOSED (a): anchored to the guide's ON-DISK presence, NOT to a non-empty filtered
-    # list — that is what catches the over-broad-filter / empty-glob / broken-walk class.
-    guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
-    if guide_shipped and ROM_GUIDE_REL not in rom_rels:
-        raise PackagingError(
-            "rom shipped-file walk is missing the load-bearing box guide "
-            f"{ROM_GUIDE_REL!r} (the guide file ships under rom root {rom_root} but "
-            f"the walk produced {sorted(rom_rels)}); refusing to launch a box "
-            "without the guide."
-        )
+  # ⚑ FAIL-CLOSED (a): anchored to the guide's ON-DISK presence, NOT to a non-empty filtered
+  # list — that is what catches the over-broad-filter / empty-glob / broken-walk class.
+  guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
+  if guide_shipped and ROM_GUIDE_REL not in rom_rels:
+    raise PackagingError(
+      "rom shipped-file walk is missing the load-bearing box guide "
+      f"{ROM_GUIDE_REL!r} (the guide file ships under rom root {rom_root} but "
+      f"the walk produced {sorted(rom_rels)}); refusing to launch a box "
+      "without the guide."
+    )
 
-    # ⚑ An EMPTY rom root is a BROKEN install, not a supported state — it is refused, never
-    # tolerated as a no-canon box.
-    if not rom_files:
-        raise PackagingError(
-            f"kanibako's packaged canon root is empty: {rom_root}"
-        )
+  # ⚑ An EMPTY rom root is a BROKEN install, not a supported state — it is refused, never
+  # tolerated as a no-canon box.
+  if not rom_files:
+    raise PackagingError(f"kanibako's packaged canon root is empty: {rom_root}")
 
-    binds = _rom_sibling_binds()
+  binds = _rom_sibling_binds()
 
-    # ⚑ FAIL-CLOSED (b): a POPULATED rom root must carry the WHOLE payload — every emitted
-    # bind's SOURCE, plus the guide (which has no bind of its own: it rides ``general``'s).
-    present: list[tuple[str, bool]] = [
-        (rel, (rom_root / rel).is_dir() if is_dir else (rom_root / rel).is_file())
-        for _key, rel, is_dir in binds
-    ]
-    present.append((ROM_CHARTER_REL, (rom_root / ROM_CHARTER_REL).is_dir()))
-    present.append((ROM_GUIDE_REL, guide_shipped))
-    missing = [rel for rel, ok in present if not ok]
-    if missing:
-        raise PackagingError(
-            f"the packaged canon under rom root {rom_root} is incomplete — missing "
-            f"{sorted(set(missing))}. The rom root is populated, so this is a "
-            "PACKAGING defect; refusing to launch a box with a partial canon."
-        )
+  # ⚑ FAIL-CLOSED (b): a POPULATED rom root must carry the WHOLE payload — every emitted
+  # bind's SOURCE, plus the guide (which has no bind of its own: it rides ``general``'s).
+  present: list[tuple[str, bool]] = [
+    (rel, (rom_root / rel).is_dir() if is_dir else (rom_root / rel).is_file())
+    for _key, rel, is_dir in binds
+  ]
+  present.append((ROM_CHARTER_REL, (rom_root / ROM_CHARTER_REL).is_dir()))
+  present.append((ROM_GUIDE_REL, guide_shipped))
+  missing = [rel for rel, ok in present if not ok]
+  if missing:
+    raise PackagingError(
+      f"the packaged canon under rom root {rom_root} is incomplete — missing "
+      f"{sorted(set(missing))}. The rom root is populated, so this is a "
+      "PACKAGING defect; refusing to launch a box with a partial canon."
+    )
 
-    # DISJOINTNESS.  ⚑ RE-ANCHORED to the BOX-HOME template root, NOT the template ROOT: a
-    # root-relative walk can never match a ``canon/...`` prefix, so the guard would check
-    # NOTHING while still running and passing.
-    home_template_root = templates.packaged_box_home_template()
-    if home_template_root is not None:
-        assert_canon_bind_seed_disjoint(
-            CANON_SEED_DENY_PREFIXES,
-            (rel for rel, _ in templates.walk_shipped_files(home_template_root)),
-        )
+  # DISJOINTNESS.  ⚑ RE-ANCHORED to the BOX-HOME template root, NOT the template ROOT: a
+  # root-relative walk can never match a ``canon/...`` prefix, so the guard would check
+  # NOTHING while still running and passing.
+  home_template_root = templates.packaged_box_home_template()
+  if home_template_root is not None:
+    assert_canon_bind_seed_disjoint(
+      CANON_SEED_DENY_PREFIXES,
+      (rel for rel, _ in templates.walk_shipped_files(home_template_root)),
+    )
 
-    out: BindArmTable = {}
-    for _key, rel, _is_dir in binds:
-        add_bind(
-            out, "bindings.ro", _canon_dest(rel), literal_expr(str(rom_root / rel)), "ro",
-        )
-    return out
+  out: BindArmTable = {}
+  for _key, rel, _is_dir in binds:
+    add_bind(
+      out,
+      "bindings.ro",
+      _canon_dest(rel),
+      literal_expr(str(rom_root / rel)),
+      "ro",
+    )
+  return out
 
 
 def rom_agent_default_categories(
-    target: "Target",
+  target: "Target",
 ) -> BindArmTable:
-    """Build the PLUGIN's charter chapter bind — the SIXTH canon bind (spec §2c).
+  """Build the PLUGIN's charter chapter bind — the SIXTH canon bind (spec §2c).
 
-    ⚑ Emitted by CORE from the RESOLVED *target*, NOT by the plugin and NOT through the
-    agent-scope descriptor route; ``charter/agent`` is per-HARNESS, ``handbook/agent`` per-NODE.
-    """
-    rom_root = target.rom_root()
-    if rom_root is None:
-        return {}
-    # ⚑ GATE: emit ONLY when the plugin actually SHIPS a chapter — an ungated bare
-    # ``data/rom/`` would bind an empty dir and cost a per-launch missing-source warning.
-    if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
-        return {}
-    out: BindArmTable = {}
-    add_bind(
-        out, "bindings.ro",
-        _rom_agent_chapter_dest(), literal_expr(str(rom_root)), "ro",
-    )
-    return out
+  ⚑ Emitted by CORE from the RESOLVED *target*, NOT by the plugin and NOT through the
+  agent-scope descriptor route; ``charter/agent`` is per-HARNESS, ``handbook/agent`` per-NODE.
+  """
+  rom_root = target.rom_root()
+  if rom_root is None:
+    return {}
+  # ⚑ GATE: emit ONLY when the plugin actually SHIPS a chapter — an ungated bare
+  # ``data/rom/`` would bind an empty dir and cost a per-launch missing-source warning.
+  if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
+    return {}
+  out: BindArmTable = {}
+  add_bind(
+    out,
+    "bindings.ro",
+    _rom_agent_chapter_dest(),
+    literal_expr(str(rom_root)),
+    "ro",
+  )
+  return out
 
 
 # ===========================================================================
@@ -772,133 +785,133 @@ CANON_ACTIVE_AGENT_TOKEN = "<active>"
 
 
 def active_agent_ref(ref: str, agent_name: str | None) -> str | None:
-    """*ref* with :data:`CANON_ACTIVE_AGENT_TOKEN` replaced by the active node *agent_name*.
+  """*ref* with :data:`CANON_ACTIVE_AGENT_TOKEN` replaced by the active node *agent_name*.
 
-    ``None`` when *ref* carries the token and there is no agent (a BLANK, agent-less narrow
-    resolve): the row has no agent tier to name, so its caller drops it.
-    """
-    if CANON_ACTIVE_AGENT_TOKEN not in ref:
-        return ref
-    if not agent_name:
-        return None
-    return ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
+  ``None`` when *ref* carries the token and there is no agent (a BLANK, agent-less narrow
+  resolve): the row has no agent tier to name, so its caller drops it.
+  """
+  if CANON_ACTIVE_AGENT_TOKEN not in ref:
+    return ref
+  if not agent_name:
+    return None
+  return ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
 
 
 def active_behavior_floor(
-    floor: Mapping[str, object] | None, agent_name: str | None,
+  floor: Mapping[str, object] | None,
+  agent_name: str | None,
 ) -> dict[str, object]:
-    """*floor* (:func:`behavior_defaults`' shape) bound to the active node *agent_name*.
+  """*floor* (:func:`behavior_defaults`' shape) bound to the active node *agent_name*.
 
-    A row whose value names the active agent (``label``'s ``{meta.agent.<active>.name}``,
-    spec §2d: the agent's own name) is spelled for *agent_name*, and dropped when there is
-    none (:func:`active_agent_ref`); every other row passes through unchanged.
-    """
-    out: dict[str, object] = {}
-    for key, value in (floor or {}).items():
-        if isinstance(value, str):
-            bound = active_agent_ref(value, agent_name)
-            if bound is None:
-                continue
-            value = bound
-        out[key] = value
-    return out
+  A row whose value names the active agent (``label``'s ``{meta.agent.<active>.name}``,
+  spec §2d: the agent's own name) is spelled for *agent_name*, and dropped when there is
+  none (:func:`active_agent_ref`); every other row passes through unchanged.
+  """
+  out: dict[str, object] = {}
+  for key, value in (floor or {}).items():
+    if isinstance(value, str):
+      bound = active_agent_ref(value, agent_name)
+      if bound is None:
+        continue
+      value = bound
+    out[key] = value
+  return out
 
 
 def rom_must_exist_dests() -> frozenset[str]:
-    """The CORE packaged-canon binds whose source MUST exist at emit time, as DESTS.
+  """The CORE packaged-canon binds whose source MUST exist at emit time, as DESTS.
 
-    ⚑ THE FIVE ``_rom_sibling_binds()`` DESTINATIONS, CORE ONLY.  The plugin's
-    chapter (D5) is deliberately ABSENT: it is OPTIONAL under the ratified rule,
-    so a chapter source that vanishes between resolve and emit is omitted
-    silently, not refused.
+  ⚑ THE FIVE ``_rom_sibling_binds()`` DESTINATIONS, CORE ONLY.  The plugin's
+  chapter (D5) is deliberately ABSENT: it is OPTIONAL under the ratified rule,
+  so a chapter source that vanishes between resolve and emit is omitted
+  silently, not refused.
 
-    :func:`rom_default_categories` already RAISES at RESOLVE time when the
-    packaged canon is missing, empty or incomplete (D3, resolve half).  This set
-    is the EMIT half: it catches the narrower race where a source that resolved
-    fine has vanished by the time the bind map is emitted — the same race
-    :class:`BindingSourceError` already covers for agent delivery binds.
+  :func:`rom_default_categories` already RAISES at RESOLVE time when the
+  packaged canon is missing, empty or incomplete (D3, resolve half).  This set
+  is the EMIT half: it catches the narrower race where a source that resolved
+  fine has vanished by the time the bind map is emitted — the same race
+  :class:`BindingSourceError` already covers for agent delivery binds.
 
-    Derived from the SAME ``_rom_sibling_binds()`` declaration that builds the
-    binds and that :func:`internal_bind_keys` re-derives, so the three cannot
-    drift; normalized with the SAME function that keys the emitter's map.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  Derived from the SAME ``_rom_sibling_binds()`` declaration that builds the
+  binds and that :func:`internal_bind_keys` re-derives, so the three cannot
+  drift; normalized with the SAME function that keys the emitter's map.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    return frozenset(
-        normalize_bind_dest(_canon_dest(rel))
-        for _key, rel, _is_dir in _rom_sibling_binds()
-    )
+  return frozenset(
+    normalize_bind_dest(_canon_dest(rel)) for _key, rel, _is_dir in _rom_sibling_binds()
+  )
 
 
 def canon_silent_dests() -> frozenset[str]:
-    """The canon destinations whose ABSENT source is dropped SILENTLY, as DESTS (D5).
+  """The canon destinations whose ABSENT source is dropped SILENTLY, as DESTS (D5).
 
-    ⚑ EVERY ``canon:`` row's ``box_dest`` EXCEPT ``~/canon/handbook/SYS_CONTENTS.md``,
-    PLUS ``_rom_agent_chapter_dest()`` (the plugin's chapter).  Derived from the
-    ROWS rather than from a per-row flag, so adding a handbook row cannot
-    recreate the flag it retired.
+  ⚑ EVERY ``canon:`` row's ``box_dest`` EXCEPT ``~/canon/handbook/SYS_CONTENTS.md``,
+  PLUS ``_rom_agent_chapter_dest()`` (the plugin's chapter).  Derived from the
+  ROWS rather than from a per-row flag, so adding a handbook row cannot
+  recreate the flag it retired.
 
-    ⚑⚑ ``SYS_CONTENTS.md`` SITS IN NEITHER SET and keeps L7's warn-and-drop
-    default ON PURPOSE (D5): it is the handbook's table of contents, so a box
-    that loses it silently loses the one file naming every chapter it has.  The
-    other rows are chapter CONTENT — absent is the normal case for most boxes,
-    and a warning there is the per-launch noise that trains users to ignore
-    warnings.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  ⚑⚑ ``SYS_CONTENTS.md`` SITS IN NEITHER SET and keeps L7's warn-and-drop
+  default ON PURPOSE (D5): it is the handbook's table of contents, so a box
+  that loses it silently loses the one file naming every chapter it has.  The
+  other rows are chapter CONTENT — absent is the normal case for most boxes,
+  and a warning there is the per-launch noise that trains users to ignore
+  warnings.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    warns = {normalize_bind_dest(_canon_dest(HANDBOOK_CONTENTS_REL))}
-    return (
-        frozenset(
-            normalize_bind_dest(str(entry["box_dest"]))
-            for entry in _load_doc().get("canon", [])
-        )
-        - warns
-    ) | {normalize_bind_dest(_rom_agent_chapter_dest())}
+  warns = {normalize_bind_dest(_canon_dest(HANDBOOK_CONTENTS_REL))}
+  return (
+    frozenset(
+      normalize_bind_dest(str(entry["box_dest"])) for entry in _load_doc().get("canon", [])
+    )
+    - warns
+  ) | {normalize_bind_dest(_rom_agent_chapter_dest())}
 
 
 def canon_default_categories(agent_name: str | None) -> dict[str, object]:
-    """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
+  """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
 
-    ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``{key}``-refs
-    resolve against; both land in the SAME floor, so a user override of the scalar reroutes
-    the bind.
-    """
-    # ⚑ KEY vs DIRECTORY: the ``agent.<node>.canon`` key below keeps the CANONICAL
-    # node, while the value is a store PATH and takes the ``+``
-    # dirname (``agent_config.store_dirname``).
-    store_canon = (
-        f"{{config.agents}}/{store_dirname(agent_name)}/canon" if agent_name else None
+  ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``{key}``-refs
+  resolve against; both land in the SAME floor, so a user override of the scalar reroutes
+  the bind.
+  """
+  # ⚑ KEY vs DIRECTORY: the ``agent.<node>.canon`` key below keeps the CANONICAL
+  # node, while the value is a store PATH and takes the ``+``
+  # dirname (``agent_config.store_dirname``).
+  store_canon = f"{{config.agents}}/{store_dirname(agent_name)}/canon" if agent_name else None
+  out: dict[str, object] = {}
+  if agent_name:
+    # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
+    # ``agent.default`` — ``{meta.self.path}/canon``, the ACTIVE NODE's own store
+    # (one hop unrolled, as ``launch.templates.agent_template_defaults`` does) —
+    # and the node row only forwards to it, so a user's ``agent.default.canon``
+    # reaches a true agent and ``agent.<node>.canon`` still beats it.
+    # ⚑ NO STORE PROBE: a chapter whose source is absent is dropped silently
+    # (``canon_silent_dests``), so a node with no ``canon/`` binds nothing.
+    # A ``shell`` box takes the same arm: it inherits ``agent.default`` (§2d
+    # "Pseudo-agent(s)"), and ``launch.templates.ensure_agent_stores`` stamps core's
+    # chapter into its store as into every agent's.
+    out["agent.default.canon"] = store_canon
+    # ⚑ NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref never resolves through the
+    # pick, and the handbook bind below reads ``{agent.<active>.canon}``.
+    out[f"agent.{agent_name}.canon"] = "{agent.default.canon}"
+
+  for entry in _load_doc().get("canon", []):
+    # A BLANK agent (an agent-less narrow resolve) has no agent tier at all, so an
+    # active-agent row binds no chapter.  A ``shell`` box takes the tier like any
+    # node: its ``agent.shell.canon`` above forwards to ``agent.default.canon``.
+    ref = active_agent_ref(str(entry["meta_ref"]), agent_name)
+    if ref is None:
+      continue
+    add_bind(
+      out,
+      str(entry["category"]),
+      str(entry["box_dest"]),
+      ref,
+      str(entry["options"]),
     )
-    out: dict[str, object] = {}
-    if agent_name:
-        # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
-        # ``agent.default`` — ``{meta.self.path}/canon``, the ACTIVE NODE's own store
-        # (one hop unrolled, as ``launch.templates.agent_template_defaults`` does) —
-        # and the node row only forwards to it, so a user's ``agent.default.canon``
-        # reaches a true agent and ``agent.<node>.canon`` still beats it.
-        # ⚑ NO STORE PROBE: a chapter whose source is absent is dropped silently
-        # (``canon_silent_dests``), so a node with no ``canon/`` binds nothing.
-        # A ``shell`` box takes the same arm: it inherits ``agent.default`` (§2d
-        # "Pseudo-agent(s)"), and ``launch.templates.ensure_agent_stores`` stamps core's
-        # chapter into its store as into every agent's.
-        out["agent.default.canon"] = store_canon
-        # ⚑ NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref never resolves through the
-        # pick, and the handbook bind below reads ``{agent.<active>.canon}``.
-        out[f"agent.{agent_name}.canon"] = "{agent.default.canon}"
-
-    for entry in _load_doc().get("canon", []):
-        # A BLANK agent (an agent-less narrow resolve) has no agent tier at all, so an
-        # active-agent row binds no chapter.  A ``shell`` box takes the tier like any
-        # node: its ``agent.shell.canon`` above forwards to ``agent.default.canon``.
-        ref = active_agent_ref(str(entry["meta_ref"]), agent_name)
-        if ref is None:
-            continue
-        add_bind(
-            out, str(entry["category"]), str(entry["box_dest"]), ref,
-            str(entry["options"]),
-        )
-    return out
+  return out
 
 
 # ===========================================================================
@@ -921,9 +934,9 @@ HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
 # SILENT failure: the fallback still materializes and the unresolved-import warning returns
 # on every launch of every box lacking that chapter.
 HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
-    ("agent", "SYS_AGENT.md"),
-    ("workset", "SYS_WORKSET.md"),
-    ("box", "SYS_BOX.md"),
+  ("agent", "SYS_AGENT.md"),
+  ("workset", "SYS_WORKSET.md"),
+  ("box", "SYS_BOX.md"),
 )
 
 # ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0; under
@@ -939,191 +952,208 @@ CANON_SKELETON_FILE_MODE = "444"
 
 
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
-    """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs, PARENTS-FIRST (J-7).
+  """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs, PARENTS-FIRST (J-7).
 
-    ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated — a skeleton that
-    drifts from the binds is a mountpoint podman creates itself.
-    ``canon/notebook`` / ``canon/workbook`` are ABSENT by design: they are SEEDED and writable.
-    """
-    root = CANON_GUEST_ROOT
-    rels: list[tuple[str, bool]] = [
-        (root, True),
-        (f"{root}/{ROM_COLLECTION_REL}", False),
-        (f"{root}/{ROM_CHARTER_REL}", True),
-        (f"{root}/{ROM_CONTENTS_REL}", False),
-    ]
-    rels += [
-        (f"{root}/{ROM_CHARTER_REL}/{chapter}", True)
-        # ⚑ ``agent`` is ALWAYS pre-created, emission gate or not (J-7): a gate-false
-        # launch must show an EMPTY root-owned mountpoint, not a missing directory.
-        for chapter in (*ROM_CHARTER_CHAPTERS, CHARTER_AGENT_CHAPTER)
-    ]
-    rels += [
-        (f"{root}/{HANDBOOK_REL}", True),
-        (f"{root}/{HANDBOOK_CONTENTS_REL}", False),
-    ]
-    rels += [
-        (f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS
-    ]
-    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those chapter mountpoints —
-    # which the loop above already listed, so the file's parent is skeleton-owned and
-    # nothing here is agent-creatable.
-    rels += [
-        (f"{root}/{HANDBOOK_REL}/{chapter}/{entry}", False)
-        for chapter, entry in HANDBOOK_FALLBACK_ENTRIES
-    ]
-    return tuple(rels)
+  ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated — a skeleton that
+  drifts from the binds is a mountpoint podman creates itself.
+  ``canon/notebook`` / ``canon/workbook`` are ABSENT by design: they are SEEDED and writable.
+  """
+  root = CANON_GUEST_ROOT
+  rels: list[tuple[str, bool]] = [
+    (root, True),
+    (f"{root}/{ROM_COLLECTION_REL}", False),
+    (f"{root}/{ROM_CHARTER_REL}", True),
+    (f"{root}/{ROM_CONTENTS_REL}", False),
+  ]
+  rels += [
+    (f"{root}/{ROM_CHARTER_REL}/{chapter}", True)
+    # ⚑ ``agent`` is ALWAYS pre-created, emission gate or not (J-7): a gate-false
+    # launch must show an EMPTY root-owned mountpoint, not a missing directory.
+    for chapter in (*ROM_CHARTER_CHAPTERS, CHARTER_AGENT_CHAPTER)
+  ]
+  rels += [
+    (f"{root}/{HANDBOOK_REL}", True),
+    (f"{root}/{HANDBOOK_CONTENTS_REL}", False),
+  ]
+  rels += [(f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS]
+  # The IMPORT-FALLBACK entry files (F1), INSIDE three of those chapter mountpoints —
+  # which the loop above already listed, so the file's parent is skeleton-owned and
+  # nothing here is agent-creatable.
+  rels += [
+    (f"{root}/{HANDBOOK_REL}/{chapter}/{entry}", False)
+    for chapter, entry in HANDBOOK_FALLBACK_ENTRIES
+  ]
+  return tuple(rels)
 
 
 def materialize_canon_skeleton(
-    shell_path: Path,
-    *,
-    logger: "logging.Logger | None" = None,
-    quiet: bool = False,
+  shell_path: Path,
+  *,
+  logger: "logging.Logger | None" = None,
+  quiet: bool = False,
 ) -> None:
-    """Create the canon SKELETON in a box home and make it root-owned + unwritable (J-7).
+  """Create the canon SKELETON in a box home and make it root-owned + unwritable (J-7).
 
-    ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND — the 555 landing first kills the
-    ``canon/{notebook,workbook}`` copies with EACCES.
-    ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED ⇒ growing the skeleton is a MIGRATION.
-    ⚑ Ownership, not mode alone: a 555 dir the agent OWNS is no protection.
-    ⚑ The box home is box-writable and this runs with the box LIVE, so every entry goes
-    through :mod:`kanibako.boxfs`: a symlink at an entry or a parent is skipped with a
-    warning and never reaches the chown/chmod (which run ``-h`` where they can).
-    """
-    from kanibako import boxfs
+  ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND — the 555 landing first kills the
+  ``canon/{notebook,workbook}`` copies with EACCES.
+  ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED ⇒ growing the skeleton is a MIGRATION.
+  ⚑ Ownership, not mode alone: a 555 dir the agent OWNS is no protection.
+  ⚑ The box home is box-writable and this runs with the box LIVE, so every entry goes
+  through :mod:`kanibako.boxfs`: a symlink at an entry or a parent is skipped with a
+  warning and never reaches the chown/chmod (which run ``-h`` where they can).
+  """
+  from kanibako import boxfs
 
-    log = logger or _skeleton_logger()
-    dirs: list[Path] = []
-    files: list[Path] = []
-    # Parents come first, so a refused link is met before the entries under it, which
-    # are then skipped without a second warning.
-    refused: list[Path] = []
-    for rel, is_dir in canon_skeleton_rels():
-        p = shell_path / rel
-        if any(p.is_relative_to(link) for link in refused):
-            continue
-        if not boxfs.no_symlink_or_warn(p, shell_path):
-            refused.append(p)
-            continue
-        try:
-            if is_dir:
-                boxfs.mkdir(p, shell_path, parents=True, exist_ok=True)
-            else:
-                boxfs.mkdir(p.parent, shell_path, parents=True, exist_ok=True)
-                if not p.exists():
-                    boxfs.touch(p, shell_path)
-        except OSError as exc:
-            log.debug("canon skeleton: could not create %s (%s)", p, exc)
-            continue
-        (dirs if is_dir else files).append(p)
+  log = logger or _skeleton_logger()
+  dirs: list[Path] = []
+  files: list[Path] = []
+  # Parents come first, so a refused link is met before the entries under it, which
+  # are then skipped without a second warning.
+  refused: list[Path] = []
+  for rel, is_dir in canon_skeleton_rels():
+    p = shell_path / rel
+    if any(p.is_relative_to(link) for link in refused):
+      continue
+    if not boxfs.no_symlink_or_warn(p, shell_path):
+      refused.append(p)
+      continue
+    try:
+      if is_dir:
+        boxfs.mkdir(p, shell_path, parents=True, exist_ok=True)
+      else:
+        boxfs.mkdir(p.parent, shell_path, parents=True, exist_ok=True)
+        if not p.exists():
+          boxfs.touch(p, shell_path)
+    except OSError as exc:
+      log.debug("canon skeleton: could not create %s (%s)", p, exc)
+      continue
+    (dirs if is_dir else files).append(p)
 
-    if not dirs and not files:
-        return
-    _protect_canon_skeleton(dirs, files, log, quiet=quiet)
+  if not dirs and not files:
+    return
+  _protect_canon_skeleton(dirs, files, log, quiet=quiet)
 
 
 def materialize_canon_skeleton_if_present(
-    shell_path: Path, *, logger: "logging.Logger | None" = None,
+  shell_path: Path,
+  *,
+  logger: "logging.Logger | None" = None,
 ) -> None:
-    """Re-assert an EXISTING canon skeleton; do nothing if the home has none (helper boxes).
+  """Re-assert an EXISTING canon skeleton; do nothing if the home has none (helper boxes).
 
-    ⚑ NOT :func:`materialize_canon_skeleton`: a helper home is not a box, and gaining canon
-    mountpoints from a launch would be a silent layout change made by the wrong seam.
-    """
-    from kanibako import boxfs
+  ⚑ NOT :func:`materialize_canon_skeleton`: a helper home is not a box, and gaining canon
+  mountpoints from a launch would be a silent layout change made by the wrong seam.
+  """
+  from kanibako import boxfs
 
-    canon = shell_path / CANON_GUEST_ROOT
-    if not boxfs.no_symlink_or_warn(canon, shell_path) or not canon.is_dir():
-        return
-    materialize_canon_skeleton(shell_path, logger=logger, quiet=True)
+  canon = shell_path / CANON_GUEST_ROOT
+  if not boxfs.no_symlink_or_warn(canon, shell_path) or not canon.is_dir():
+    return
+  materialize_canon_skeleton(shell_path, logger=logger, quiet=True)
 
 
 def _skeleton_logger() -> "logging.Logger":
-    return logging.getLogger(__name__)
+  return logging.getLogger(__name__)
 
 
 def _protect_canon_skeleton(
-    dirs: list[Path], files: list[Path], log: "logging.Logger", *, quiet: bool = False,
+  dirs: list[Path],
+  files: list[Path],
+  log: "logging.Logger",
+  *,
+  quiet: bool = False,
 ) -> None:
-    """Make the skeleton root-owned + unwritable from inside the user namespace.
+  """Make the skeleton root-owned + unwritable from inside the user namespace.
 
-    THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod`` per mode
-    class.  ⚑ NEVER ``-R`` — a recursive sweep would take the SEEDED, agent-owned
-    ``notebook/`` + ``workbook/`` with it.
-    """
-    from kanibako.runtime.container import ContainerError, ContainerRuntime
+  THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod`` per mode
+  class.  ⚑ NEVER ``-R`` — a recursive sweep would take the SEEDED, agent-owned
+  ``notebook/`` + ``workbook/`` with it.
+  """
+  from kanibako.runtime.container import ContainerError, ContainerRuntime
 
-    everything = dirs + files
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError as exc:
-        _warn_unprotected(everything[0], log, str(exc).rstrip("."), True, quiet)
-        return
+  everything = dirs + files
+  try:
+    runtime = ContainerRuntime()
+  except ContainerError as exc:
+    _warn_unprotected(everything[0], log, str(exc).rstrip("."), True, quiet)
+    return
 
-    if not runtime.unshare_chown(
-        everything, UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID,
-    ):
-        _warn_unprotected(
-            everything[0], log, "podman unshare chown did not succeed", True, quiet,
-        )
-        return
-    for group, mode in ((dirs, CANON_SKELETON_DIR_MODE),
-                        (files, CANON_SKELETON_FILE_MODE)):
-        if group and not runtime.unshare_chmod(group, mode):
-            _warn_unprotected(
-                everything[0], log,
-                f"podman unshare chmod {mode} did not succeed",
-                False, quiet,
-            )
-            return
-    log.debug(
-        "canon skeleton protected (%d dirs + %d files under %s)",
-        len(dirs), len(files), everything[0],
+  if not runtime.unshare_chown(
+    everything,
+    UNSHARE_BOX_ROOT_UID,
+    UNSHARE_BOX_ROOT_GID,
+  ):
+    _warn_unprotected(
+      everything[0],
+      log,
+      "podman unshare chown did not succeed",
+      True,
+      quiet,
     )
+    return
+  for group, mode in ((dirs, CANON_SKELETON_DIR_MODE), (files, CANON_SKELETON_FILE_MODE)):
+    if group and not runtime.unshare_chmod(group, mode):
+      _warn_unprotected(
+        everything[0],
+        log,
+        f"podman unshare chmod {mode} did not succeed",
+        False,
+        quiet,
+      )
+      return
+  log.debug(
+    "canon skeleton protected (%d dirs + %d files under %s)",
+    len(dirs),
+    len(files),
+    everything[0],
+  )
 
 
 def _warn_unprotected(
-    root: Path, log: "logging.Logger", reason: str, agent_owned: bool,
-    quiet: bool = False,
+  root: Path,
+  log: "logging.Logger",
+  reason: str,
+  agent_owned: bool,
+  quiet: bool = False,
 ) -> None:
-    """Report a skeleton that did not get its full lockdown.
+  """Report a skeleton that did not get its full lockdown.
 
-    ⚑ *quiet* demotes the report to DEBUG; the POST-START caller sets it, because at WARNING
-    it would paint over the live session on every launch of a docker/unshare-less host.
-    ⚑ The two arms are genuinely different and must not share wording.
-    """
-    emit = log.debug if quiet else log.warning
-    if agent_owned:
-        emit(
-            "canon books at %s are left writable from inside the box: %s. The box "
-            "works normally — every canon bind still lands on its mountpoint — but "
-            "the agent can create stray files under ~/canon instead of only under "
-            "~/canon/{notebook,workbook}.",
-            root, reason,
-        )
-    else:
-        emit(
-            "canon books at %s are root-owned but keep their default modes: %s. The "
-            "agent still cannot write them, and the box works normally; only the "
-            "declared 555/444 modes were not applied.",
-            root, reason,
-        )
+  ⚑ *quiet* demotes the report to DEBUG; the POST-START caller sets it, because at WARNING
+  it would paint over the live session on every launch of a docker/unshare-less host.
+  ⚑ The two arms are genuinely different and must not share wording.
+  """
+  emit = log.debug if quiet else log.warning
+  if agent_owned:
+    emit(
+      "canon books at %s are left writable from inside the box: %s. The box "
+      "works normally — every canon bind still lands on its mountpoint — but "
+      "the agent can create stray files under ~/canon instead of only under "
+      "~/canon/{notebook,workbook}.",
+      root,
+      reason,
+    )
+  else:
+    emit(
+      "canon books at %s are root-owned but keep their default modes: %s. The "
+      "agent still cannot write them, and the box works normally; only the "
+      "declared 555/444 modes were not applied.",
+      root,
+      reason,
+    )
 
 
 def _table_bind_dests(table: str) -> frozenset[str]:
-    """The normalized box DESTS one declarative bind *table* names.
+  """The normalized box DESTS one declarative bind *table* names.
 
-    Read from the SAME rows that declare the binds and normalized with the SAME
-    function that keys the emitter's map — the :func:`canon_silent_dests`
-    pattern, for the same reason: a dest spelled twice is a dest that can drift.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  Read from the SAME rows that declare the binds and normalized with the SAME
+  function that keys the emitter's map — the :func:`canon_silent_dests`
+  pattern, for the same reason: a dest spelled twice is a dest that can drift.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    return frozenset(
-        normalize_bind_dest(str(entry["box_dest"]))
-        for entry in _load_doc().get(table, [])
-    )
+  return frozenset(
+    normalize_bind_dest(str(entry["box_dest"])) for entry in _load_doc().get(table, [])
+  )
 
 
 #: The declarative BIND tables, in file order — the sections whose rows carry a
@@ -1133,58 +1163,60 @@ BIND_TABLES = ("channels", "core", "kani", "kickoff", "canon", "helpers", "image
 
 
 def bind_dest_families() -> dict[str, str]:
-    """``{box_dest: table}`` — WHICH declarative section of this file declares a dest.
+  """``{box_dest: table}`` — WHICH declarative section of this file declares a dest.
 
-    The provenance read behind ``kanibako system defaults``
-    (:mod:`kanibako.settings.defaults_inventory`): a dest is reported as declared by the
-    section it actually sits in, so one that moves between tables re-labels itself
-    instead of drifting away from a hand-written label.
+  The provenance read behind ``kanibako system defaults``
+  (:mod:`kanibako.settings.defaults_inventory`): a dest is reported as declared by the
+  section it actually sits in, so one that moves between tables re-labels itself
+  instead of drifting away from a hand-written label.
 
-    ⚑ Dests are returned AS WRITTEN, not normalized — the caller matches them against the
-    manifest's ``bind_default_entries`` keys, which are the same ``~``-spelled strings.
-    :func:`_table_bind_dests` normalizes because its callers filter an EMITTED map, whose
-    keys have been through ``normalize_bind_dest``; these two reads answer different
-    questions and must not be merged.
-    """
-    return {
-        str(entry["box_dest"]): table
-        for table in BIND_TABLES
-        for entry in _load_doc().get(table) or []
-    }
+  ⚑ Dests are returned AS WRITTEN, not normalized — the caller matches them against the
+  manifest's ``bind_default_entries`` keys, which are the same ``~``-spelled strings.
+  :func:`_table_bind_dests` normalizes because its callers filter an EMITTED map, whose
+  keys have been through ``normalize_bind_dest``; these two reads answer different
+  questions and must not be merged.
+  """
+  return {
+    str(entry["box_dest"]): table
+    for table in BIND_TABLES
+    for entry in _load_doc().get(table) or []
+  }
 
 
 def bind_dest_owners() -> dict[str, str]:
-    """``{normalized box_dest: owner}`` — the ``owner:`` cell of every declared bind row
-    (keyspec §0 "Per-owner resources"); a row with none (generated machinery) is absent."""
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  """``{normalized box_dest: owner}`` — the ``owner:`` cell of every declared bind row
+  (keyspec §0 "Per-owner resources"); a row with none (generated machinery) is absent."""
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    return {
-        normalize_bind_dest(str(entry["box_dest"])): str(entry["owner"])
-        for table in BIND_TABLES
-        for entry in _load_doc().get(table) or []
-        if "owner" in entry
-    }
+  return {
+    normalize_bind_dest(str(entry["box_dest"])): str(entry["owner"])
+    for table in BIND_TABLES
+    for entry in _load_doc().get(table) or []
+    if "owner" in entry
+  }
 
 
 def _keyed_rows(
-    table: str, key: str, role: str, *, exactly_one: bool = False,
+  table: str,
+  key: str,
+  role: str,
+  *,
+  exactly_one: bool = False,
 ) -> list[dict[str, Any]]:
-    """The rows of *table* keyed *key*, or RAISE :class:`PackagingError` naming *role*.
+  """The rows of *table* keyed *key*, or RAISE :class:`PackagingError` naming *role*.
 
-    The ONE lookup for a code path that needs a named row: a shipped file that lost the
-    row (or, with *exactly_one*, carries it twice) is a packaging defect, not a default.
-    """
-    found = [e for e in _load_doc().get(table) or [] if e.get("key") == key]
-    if not found:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — {role}"
-        )
-    if exactly_one and len(found) != 1:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} has {len(found)} {table!r} rows keyed {key!r}; "
-            f"exactly one is allowed — {role}"
-        )
-    return found
+  The ONE lookup for a code path that needs a named row: a shipped file that lost the
+  row (or, with *exactly_one*, carries it twice) is a packaging defect, not a default.
+  """
+  found = [e for e in _load_doc().get(table) or [] if e.get("key") == key]
+  if not found:
+    raise PackagingError(f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — {role}")
+  if exactly_one and len(found) != 1:
+    raise PackagingError(
+      f"{CORE_DEFAULTS_FILENAME} has {len(found)} {table!r} rows keyed {key!r}; "
+      f"exactly one is allowed — {role}"
+    )
+  return found
 
 
 #: The declarative tables whose EVERY row is an INTERNAL bind (spec §2c: not a user key,
@@ -1197,34 +1229,33 @@ _INTERNAL_BIND_ROWS = (("images", "images_conf"),)
 
 
 def internal_bind_keys() -> frozenset[tuple[str, str]]:
-    """Every INTERNAL bind as ``(arm key, normalized dest)`` — the binds no user arm may drop.
+  """Every INTERNAL bind as ``(arm key, normalized dest)`` — the binds no user arm may drop.
 
-    Spec §2c: the kanibako CLI delivery, the secrets snippet, the kickoff slot, the six
-    packaged-charter binds and the generated storage.conf are INTERNAL — not user keys, not
-    repointable.  ``settings_launch.build_launch_snapshot`` re-imposes each one the floor
-    carries AFTER the merge, so a user's ``box.bindings.ro: null`` (or an entry at the
-    same dest) cannot remove or repoint kanibako's own delivery.
-    ⚑ Read from the SAME rows / constants that emit the binds, normalized with the SAME
-    function, so a moved dest moves here too.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  Spec §2c: the kanibako CLI delivery, the secrets snippet, the kickoff slot, the six
+  packaged-charter binds and the generated storage.conf are INTERNAL — not user keys, not
+  repointable.  ``settings_launch.build_launch_snapshot`` re-imposes each one the floor
+  carries AFTER the merge, so a user's ``box.bindings.ro: null`` (or an entry at the
+  same dest) cannot remove or repoint kanibako's own delivery.
+  ⚑ Read from the SAME rows / constants that emit the binds, normalized with the SAME
+  function, so a moved dest moves here too.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    doc = _load_doc()
-    rows = [
-        entry for table in _INTERNAL_BIND_TABLES for entry in doc.get(table) or []
-    ]
-    for table, key in _INTERNAL_BIND_ROWS:
-        rows += _keyed_rows(
-            table, key, "an INTERNAL bind (spec §2c) this module re-imposes after every merge",
-        )
-    keys = {
-        (f"box.{entry['category']}", normalize_bind_dest(str(entry["box_dest"])))
-        for entry in rows
-    }
-    rom_dests = [_canon_dest(rel) for _key, rel, _is_dir in _rom_sibling_binds()]
-    rom_dests.append(_rom_agent_chapter_dest())
-    keys |= {("box.bindings.ro", normalize_bind_dest(dest)) for dest in rom_dests}
-    return frozenset(keys)
+  doc = _load_doc()
+  rows = [entry for table in _INTERNAL_BIND_TABLES for entry in doc.get(table) or []]
+  for table, key in _INTERNAL_BIND_ROWS:
+    rows += _keyed_rows(
+      table,
+      key,
+      "an INTERNAL bind (spec §2c) this module re-imposes after every merge",
+    )
+  keys = {
+    (f"box.{entry['category']}", normalize_bind_dest(str(entry["box_dest"]))) for entry in rows
+  }
+  rom_dests = [_canon_dest(rel) for _key, rel, _is_dir in _rom_sibling_binds()]
+  rom_dests.append(_rom_agent_chapter_dest())
+  keys |= {("box.bindings.ro", normalize_bind_dest(dest)) for dest in rom_dests}
+  return frozenset(keys)
 
 
 #: The BINDS OF CONVENIENCE (``[R149]``), as ``(table, row key)``: machinery that bridges
@@ -1234,68 +1265,73 @@ def internal_bind_keys() -> frozenset[tuple[str, str]]:
 #: image store usable.  The kanibako CLI and the packaged canon are INTERNAL but are
 #: delivered content, so they are not here.
 _CONVENIENCE_BIND_ROWS = (
-    ("kani", "secret_export"),
-    ("kickoff", "kickoff"),
-    ("helpers", "helper_sock"),
-    ("helpers", "helper_budget"),
-    ("images", "images_conf"),
+  ("kani", "secret_export"),
+  ("kickoff", "kickoff"),
+  ("helpers", "helper_sock"),
+  ("helpers", "helper_budget"),
+  ("images", "images_conf"),
 )
 
 
 def convenience_bind_dests() -> frozenset[str]:
-    """The normalized dests of every bind of convenience (``[R149]``).
+  """The normalized dests of every bind of convenience (``[R149]``).
 
-    ``box show --effective`` omits a row at one of these dests only while its source is
-    still the floor's own (``settings_launch.convenience_bind_sources``); a user's bind
-    there is the user's, and is shown.  Read from the SAME rows that declare the binds,
-    so a moved dest moves here too; a lost row RAISES.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  ``box show --effective`` omits a row at one of these dests only while its source is
+  still the floor's own (``settings_launch.convenience_bind_sources``); a user's bind
+  there is the user's, and is shown.  Read from the SAME rows that declare the binds,
+  so a moved dest moves here too; a lost row RAISES.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    return frozenset(
-        normalize_bind_dest(str(e["box_dest"]))
-        for table, key in _CONVENIENCE_BIND_ROWS
-        for e in _keyed_rows(
-            table, key, "a bind of convenience box show --effective omits ([R149])",
-        )
+  return frozenset(
+    normalize_bind_dest(str(e["box_dest"]))
+    for table, key in _CONVENIENCE_BIND_ROWS
+    for e in _keyed_rows(
+      table,
+      key,
+      "a bind of convenience box show --effective omits ([R149])",
     )
+  )
 
 
 def helper_bind_dests() -> frozenset[str]:
-    """The HELPER table's HUB dests — the helper-hub resolve's EMISSION filter.
+  """The HELPER table's HUB dests — the helper-hub resolve's EMISSION filter.
 
-    A narrow resolve emits ONLY the dests its own injected table declares
-    (``commands.start._narrow_bind_map``); everything the user's cascade puts
-    elsewhere belongs to the main path, which emits it from the collapse.
-    ⚑ The spawn-budget row is NOT a hub dest: every start delivers it through its own
-    narrow resolve (:func:`spawn_budget_bind_dests`), hub or not.
-    """
-    return _table_bind_dests("helpers") - spawn_budget_bind_dests()
+  A narrow resolve emits ONLY the dests its own injected table declares
+  (``commands.start._narrow_bind_map``); everything the user's cascade puts
+  elsewhere belongs to the main path, which emits it from the collapse.
+  ⚑ The spawn-budget row is NOT a hub dest: every start delivers it through its own
+  narrow resolve (:func:`spawn_budget_bind_dests`), hub or not.
+  """
+  return _table_bind_dests("helpers") - spawn_budget_bind_dests()
 
 
 def spawn_budget_bind_dests() -> frozenset[str]:
-    """The spawn-budget row's dest — the every-start budget resolve's EMISSION filter."""
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  """The spawn-budget row's dest — the every-start budget resolve's EMISSION filter."""
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    return frozenset({normalize_bind_dest(helper_budget_dest()[0])})
+  return frozenset({normalize_bind_dest(helper_budget_dest()[0])})
 
 
 def image_bind_dests() -> frozenset[str]:
-    """The IMAGE table's own dests — the image-sharing resolve's EMISSION filter."""
-    return _table_bind_dests("images")
+  """The IMAGE table's own dests — the image-sharing resolve's EMISSION filter."""
+  return _table_bind_dests("images")
 
 
 def helper_budget_dest() -> tuple[str, str]:
-    """``(box_dest, options)`` of the spawn-budget row — the ONE carrier of the slot.
+  """``(box_dest, options)`` of the spawn-budget row — the ONE carrier of the slot.
 
-    The director's bind is emitted from this row by :func:`helper_default_categories`
-    on every start (``commands.start._deliver_spawn_budget``); the helper hub mounts each helper's parent-written copy at the same dest and options
-    (``channels.helper_listener._build_helper_mounts``), so a moved dest moves both.
-    """
-    (row,) = _keyed_rows(
-        "helpers", "helper_budget", "the spawn-budget bind (spec §2c)", exactly_one=True,
-    )
-    return str(row["box_dest"]), str(row["options"])
+  The director's bind is emitted from this row by :func:`helper_default_categories`
+  on every start (``commands.start._deliver_spawn_budget``); the helper hub mounts each helper's parent-written copy at the same dest and options
+  (``channels.helper_listener._build_helper_mounts``), so a moved dest moves both.
+  """
+  (row,) = _keyed_rows(
+    "helpers",
+    "helper_budget",
+    "the spawn-budget bind (spec §2c)",
+    exactly_one=True,
+  )
+  return str(row["box_dest"]), str(row["options"])
 
 
 #: The hub socket's file name inside its bound directory, host side and box side.
@@ -1303,137 +1339,141 @@ HELPER_SOCKET_NAME = "helper.sock"
 
 
 def helper_socket_dest() -> tuple[str, str]:
-    """``(box_dest, options)`` of the hub-socket row — the box DIRECTORY the socket is in.
+  """``(box_dest, options)`` of the hub-socket row — the box DIRECTORY the socket is in.
 
-    The ONE carrier of the dest: the director's bind is emitted from this row, the hub
-    binds each helper's at the same dest and options
-    (``channels.helper_listener._build_helper_mounts``), and the in-box CLI finds the
-    socket through :func:`box_helper_socket`.
-    """
-    (row,) = _keyed_rows(
-        "helpers", "helper_sock", "the helper-socket bind (spec §2c)", exactly_one=True,
-    )
-    return str(row["box_dest"]), str(row["options"])
+  The ONE carrier of the dest: the director's bind is emitted from this row, the hub
+  binds each helper's at the same dest and options
+  (``channels.helper_listener._build_helper_mounts``), and the in-box CLI finds the
+  socket through :func:`box_helper_socket`.
+  """
+  (row,) = _keyed_rows(
+    "helpers",
+    "helper_sock",
+    "the helper-socket bind (spec §2c)",
+    exactly_one=True,
+  )
+  return str(row["box_dest"]), str(row["options"])
 
 
 def box_helper_socket(home: Path) -> Path:
-    """The hub socket as seen IN a box whose home is *home*: the row's dest + the name."""
-    dest = helper_socket_dest()[0]
-    return home / dest.removeprefix("~/") / HELPER_SOCKET_NAME
+  """The hub socket as seen IN a box whose home is *home*: the row's dest + the name."""
+  dest = helper_socket_dest()[0]
+  return home / dest.removeprefix("~/") / HELPER_SOCKET_NAME
 
 
 def core_bind_slots() -> dict[str, tuple[str, str]]:
-    """Each ``core:`` row's ``source`` symbol → its ``(box_dest, options)``.
+  """Each ``core:`` row's ``source`` symbol → its ``(box_dest, options)``.
 
-    The director's workspace and vault binds are emitted from these rows by
-    :func:`core_default_categories`; the helper hub binds a helper's own leaves at the
-    same dests and options (``channels.helper_listener._build_helper_mounts``), so a
-    moved row moves both.
-    """
-    slots: dict[str, tuple[str, str]] = {}
-    for entry in _load_doc().get("core") or []:
-        source = str(entry["source"])
-        if source in slots:
-            raise PackagingError(
-                f"{CORE_DEFAULTS_FILENAME} has two 'core' rows with 'source: {source}'"
-            )
-        slots[source] = (str(entry["box_dest"]), str(entry["options"]))
-    return slots
+  The director's workspace and vault binds are emitted from these rows by
+  :func:`core_default_categories`; the helper hub binds a helper's own leaves at the
+  same dests and options (``channels.helper_listener._build_helper_mounts``), so a
+  moved row moves both.
+  """
+  slots: dict[str, tuple[str, str]] = {}
+  for entry in _load_doc().get("core") or []:
+    source = str(entry["source"])
+    if source in slots:
+      raise PackagingError(f"{CORE_DEFAULTS_FILENAME} has two 'core' rows with 'source: {source}'")
+    slots[source] = (str(entry["box_dest"]), str(entry["options"]))
+  return slots
 
 
 def helper_default_categories(
-    *,
-    socket_path: Path | None,
-    log_path: Path | None,
-    budget_path: Path | None = None,
+  *,
+  socket_path: Path | None,
+  log_path: Path | None,
+  budget_path: Path | None = None,
 ) -> BindArmTable:
-    """Build the ``helpers`` table's binds — the hub's live unix SOCKET and per-box
-    message LOG (Phase B), and the SPAWN BUDGET document (spec §2c
-    ``box.bindings.ro[~/spawn.yaml]``).
+  """Build the ``helpers`` table's binds — the hub's live unix SOCKET and per-box
+  message LOG (Phase B), and the SPAWN BUDGET document (spec §2c
+  ``box.bindings.ro[~/spawn.yaml]``).
 
-    The socket row binds *socket_path*'s DIRECTORY, which must exist; the hub binds the
-    socket inside it, before or after the box starts.
-    A ``None`` *socket_path* means NO HUB: neither hub row is emitted, which is how the
-    every-start budget resolve carries the budget row alone.  With a hub, a ``None``
-    *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
-    FORMULA: its ``<None>`` source makes the entry ``None`` at expand, so the collapse
-    omits it and ``settings_launch`` gives the lone-``<None>`` warning
-    (keyspec §2a "PER-ENTRY CASCADE MERGE") when the entry is not null.
-    A ``None`` or absent *budget_path* emits no budget entry: the start writes the
-    document before this runs, so its absence means no budget was delivered.
+  The socket row binds *socket_path*'s DIRECTORY, which must exist; the hub binds the
+  socket inside it, before or after the box starts.
+  A ``None`` *socket_path* means NO HUB: neither hub row is emitted, which is how the
+  every-start budget resolve carries the budget row alone.  With a hub, a ``None``
+  *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
+  FORMULA: its ``<None>`` source makes the entry ``None`` at expand, so the collapse
+  omits it and ``settings_launch`` gives the lone-``<None>`` warning
+  (keyspec §2a "PER-ENTRY CASCADE MERGE") when the entry is not null.
+  A ``None`` or absent *budget_path* emits no budget entry: the start writes the
+  document before this runs, so its absence means no budget was delivered.
 
-    ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
-    shared socket topology of a LIVE unix socket the hub listens on.
-    ⚑ The dests carry no ``{$XDG_STATE_HOME}`` token — they are written into the runtime's
-    arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
-    """
-    sources: dict[str, Path | None] = {
-        # symbolic source name -> probed host source (the DEST is in the file).
-        # ⚑ The socket's DIRECTORY is bound, never the socket: ``bind(2)`` makes a new
-        # inode, so a file bind would pin a running box to a socket a restarted hub no
-        # longer listens on (184-S2 (a) [Jei:2026-10-13]).
-        "helper_sock": None if socket_path is None else socket_path.parent,
-        "helper_log": log_path,
-        "helper_budget": budget_path,
-    }
-    # Sources whose ``None`` means "nothing to deliver" rather than a ``<None>`` formula.
-    skip_if_none = {"helper_budget"}
+  ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
+  shared socket topology of a LIVE unix socket the hub listens on.
+  ⚑ The dests carry no ``{$XDG_STATE_HOME}`` token — they are written into the runtime's
+  arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
+  """
+  sources: dict[str, Path | None] = {
+    # symbolic source name -> probed host source (the DEST is in the file).
+    # ⚑ The socket's DIRECTORY is bound, never the socket: ``bind(2)`` makes a new
+    # inode, so a file bind would pin a running box to a socket a restarted hub no
+    # longer listens on (184-S2 (a) [Jei:2026-10-13]).
+    "helper_sock": None if socket_path is None else socket_path.parent,
+    "helper_log": log_path,
+    "helper_budget": budget_path,
+  }
+  # Sources whose ``None`` means "nothing to deliver" rather than a ``<None>`` formula.
+  skip_if_none = {"helper_budget"}
 
-    binds: BindArmTable = {}
-    for entry in _load_doc().get("helpers", []):
-        if socket_path is None and entry["source"] != "helper_budget":
-            continue  # no hub: its socket and log rows have nothing to bind
-        src_path = sources[entry["source"]]
-        # Skip-if-missing (parity with the old `.exists()`-guarded appends).  A ``<None>``
-        # source is not skipped HERE: omitting it here was the silent second route.
-        if src_path is None:
-            if "meta_ref" not in entry or entry["source"] in skip_if_none:
-                continue
-        elif not src_path.exists():
-            continue
-        box_dest = str(entry["box_dest"])
-        category = entry["category"]
-        # ⚑ B2b: the ``.exists()`` gate above keys off the PROBED path while ``helper_log``'s
-        # emitted host_src is the spec FORMULA.  The two agree in EVERY mode — as of
-        # 2026-08-30 ``paths.helper_log_path`` resolves ``workset.logs`` in standalone too
-        # (its ``{workset.boxes}`` default resolves through the same no-snapshot route),
-        # closing migration M-14.  ⚑ ``helper_sock`` is NOT
-        # routed: its bounded name is the companion's name rule, not a ref formula (JC-B2b-3).
-        host_src = entry.get("meta_ref", literal_expr(str(src_path)))
-        add_bind(binds, category, box_dest, host_src, str(entry["options"]))
-    return binds
+  binds: BindArmTable = {}
+  for entry in _load_doc().get("helpers", []):
+    if socket_path is None and entry["source"] != "helper_budget":
+      continue  # no hub: its socket and log rows have nothing to bind
+    src_path = sources[entry["source"]]
+    # Skip-if-missing (parity with the old `.exists()`-guarded appends).  A ``<None>``
+    # source is not skipped HERE: omitting it here was the silent second route.
+    if src_path is None:
+      if "meta_ref" not in entry or entry["source"] in skip_if_none:
+        continue
+    elif not src_path.exists():
+      continue
+    box_dest = str(entry["box_dest"])
+    category = entry["category"]
+    # ⚑ B2b: the ``.exists()`` gate above keys off the PROBED path while ``helper_log``'s
+    # emitted host_src is the spec FORMULA.  The two agree in EVERY mode — as of
+    # 2026-08-30 ``paths.helper_log_path`` resolves ``workset.logs`` in standalone too
+    # (its ``{workset.boxes}`` default resolves through the same no-snapshot route),
+    # closing migration M-14.  ⚑ ``helper_sock`` is NOT
+    # routed: its bounded name is the companion's name rule, not a ref formula (JC-B2b-3).
+    host_src = entry.get("meta_ref", literal_expr(str(src_path)))
+    add_bind(binds, category, box_dest, host_src, str(entry["options"]))
+  return binds
 
 
 def image_default_categories(
-    *,
-    graph_root: Path | None,
-    storage_conf_path: Path,
+  *,
+  graph_root: Path | None,
+  storage_conf_path: Path,
 ) -> dict[str, object]:
-    """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
+  """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
 
-    ⚑ B3: the store bind is ROUTED THROUGH THE USER KEY ``{box.images_store}``, whose DEFAULT is
-    the probed *graph_root* — a floor scalar in this same MIXED table.  ⚑ 11a: the probe feeds
-    ONLY that default, so ``graph_root=None`` emits no scalar rather than gating the table.
-    ``images_conf`` stays an INTERNAL bind and NOT a key (spec §0's test).
-    """
-    sources: dict[str, str] = {
-        "images_conf": literal_expr(str(storage_conf_path)),
-    }
+  ⚑ B3: the store bind is ROUTED THROUGH THE USER KEY ``{box.images_store}``, whose DEFAULT is
+  the probed *graph_root* — a floor scalar in this same MIXED table.  ⚑ 11a: the probe feeds
+  ONLY that default, so ``graph_root=None`` emits no scalar rather than gating the table.
+  ``images_conf`` stays an INTERNAL bind and NOT a key (spec §0's test).
+  """
+  sources: dict[str, str] = {
+    "images_conf": literal_expr(str(storage_conf_path)),
+  }
 
-    binds: dict[str, object] = {}
-    if graph_root is not None:
-        sources["images_store"] = literal_expr(str(graph_root))
-        # The USER KEY behind the store bind: the probe lands as ``box.images_store``'s DEFAULT.
-        binds["box.images_store"] = literal_expr(str(graph_root))
-    for entry in _load_doc().get("images", []):
-        category = entry["category"]
-        # ⚑ ``meta_ref`` is the emitted host_src; the symbolic ``source`` is the probed-literal
-        # fallback, read LAZILY so a probe-fail ``None`` only raises if an entry needs it.
-        host_src = entry.get("meta_ref")
-        if host_src is None:
-            host_src = sources[entry["source"]]
-        add_bind(
-            binds, category, str(entry["box_dest"]), host_src,
-            str(entry["options"]),
-        )
-    return binds
+  binds: dict[str, object] = {}
+  if graph_root is not None:
+    sources["images_store"] = literal_expr(str(graph_root))
+    # The USER KEY behind the store bind: the probe lands as ``box.images_store``'s DEFAULT.
+    binds["box.images_store"] = literal_expr(str(graph_root))
+  for entry in _load_doc().get("images", []):
+    category = entry["category"]
+    # ⚑ ``meta_ref`` is the emitted host_src; the symbolic ``source`` is the probed-literal
+    # fallback, read LAZILY so a probe-fail ``None`` only raises if an entry needs it.
+    host_src = entry.get("meta_ref")
+    if host_src is None:
+      host_src = sources[entry["source"]]
+    add_bind(
+      binds,
+      category,
+      str(entry["box_dest"]),
+      host_src,
+      str(entry["options"]),
+    )
+  return binds

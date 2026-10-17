@@ -13,20 +13,20 @@ from pathlib import Path
 import pytest
 
 from kanibako.targets.base import (
-    AccessReport,
-    AxisResult,
-    GeneralAccess,
-    ModelAccess,
-    PersonaProbeOutcome,
-    PersonaProbeVerdict,
-    ProbeEvidence,
-    ProbeResponse,
-    access_outcome,
-    http_probe,
-    probe_general_access,
-    probe_model_access,
-    probe_outcome,
-    probe_outcome_no_model,
+  AccessReport,
+  AxisResult,
+  GeneralAccess,
+  ModelAccess,
+  PersonaProbeOutcome,
+  PersonaProbeVerdict,
+  ProbeEvidence,
+  ProbeResponse,
+  access_outcome,
+  http_probe,
+  probe_general_access,
+  probe_model_access,
+  probe_outcome,
+  probe_outcome_no_model,
 )
 from tests.test_targets.test_persona_settings import _ProbeServer
 
@@ -82,7 +82,9 @@ class TestHttpProbeGet:
     server.status = 403
     server.body = f'{{"error": "bad key {_TOKEN}"}}'.encode()
     response = http_probe(
-      server.endpoint + "/v1/models", headers={_CRED[0]: _CRED[1]}, timeout=5.0,
+      server.endpoint + "/v1/models",
+      headers={_CRED[0]: _CRED[1]},
+      timeout=5.0,
     )
     assert response.status == 403
     assert _TOKEN not in response.body
@@ -130,8 +132,15 @@ class TestProbeGeneralAccess:
 
   @pytest.mark.parametrize(
     ("keyed", "state"),
-    [(401, G.DENIED), (403, G.DENIED), (302, G.NO_ANSWER), (404, G.NO_ANSWER),
-     (405, G.NO_ANSWER), (429, G.NO_ANSWER), (500, G.NO_ANSWER)],
+    [
+      (401, G.DENIED),
+      (403, G.DENIED),
+      (302, G.NO_ANSWER),
+      (404, G.NO_ANSWER),
+      (405, G.NO_ANSWER),
+      (429, G.NO_ANSWER),
+      (500, G.NO_ANSWER),
+    ],
   )
   def test_no_control_unless_the_keyed_GET_is_2xx(self, server, keyed, state):
     server.script = {("GET", True): keyed, ("GET", False): 401}
@@ -152,8 +161,11 @@ class TestProbeGeneralAccess:
 
   def test_unreachable_is_NO_ANSWER(self):
     result = probe_general_access(
-      _dead_endpoint() + "/v1/models", headers={}, credential=_CRED,
-      sent=_sent(), timeout=2.0,
+      _dead_endpoint() + "/v1/models",
+      headers={},
+      credential=_CRED,
+      sent=_sent(),
+      timeout=2.0,
     )
     assert result.state is G.NO_ANSWER
     assert result.evidence.status is None
@@ -161,8 +173,11 @@ class TestProbeGeneralAccess:
   def test_the_control_drops_a_credential_header_left_in_headers(self, server):
     server.script = {("GET", True): 200, ("GET", False): 401}
     result = probe_general_access(
-      server.endpoint + "/v1/models", headers={"authorization": "Bearer stray-value"},
-      credential=_CRED, sent=_sent(server.endpoint), timeout=5.0,
+      server.endpoint + "/v1/models",
+      headers={"authorization": "Bearer stray-value"},
+      credential=_CRED,
+      sent=_sent(server.endpoint),
+      timeout=5.0,
     )
     assert result.state is G.VERIFIED
     assert server.log[1][2] is None
@@ -171,8 +186,12 @@ class TestProbeGeneralAccess:
     server.script = {("GET", True): 403}
     result = _general(server)
     assert result.evidence == ProbeEvidence(
-      endpoint=server.endpoint, model=None, token_path=Path("/t/token"),
-      status=403, provider_text="{}", request="GET /v1/models",
+      endpoint=server.endpoint,
+      model=None,
+      token_path=Path("/t/token"),
+      status=403,
+      provider_text="{}",
+      request="GET /v1/models",
     )
 
   def test_the_two_GETs_share_one_budget(self, server):
@@ -194,18 +213,26 @@ class TestProbeModelAccess:
   @pytest.mark.parametrize(
     ("status", "model", "state"),
     [
-      (200, "m", M.OK), (200, None, M.OK),
-      (401, "m", M.DENIED), (403, None, M.DENIED),
-      (400, None, M.MODEL_REQUIRED), (422, None, M.MODEL_REQUIRED),
-      (400, "m", M.AMBIGUOUS), (422, "m", M.AMBIGUOUS),
-      (404, None, M.AMBIGUOUS), (500, "m", M.AMBIGUOUS),
+      (200, "m", M.OK),
+      (200, None, M.OK),
+      (401, "m", M.DENIED),
+      (403, None, M.DENIED),
+      (400, None, M.MODEL_REQUIRED),
+      (422, None, M.MODEL_REQUIRED),
+      (400, "m", M.AMBIGUOUS),
+      (422, "m", M.AMBIGUOUS),
+      (404, None, M.AMBIGUOUS),
+      (500, "m", M.AMBIGUOUS),
     ],
   )
   def test_states(self, server, status, model, state):
     server.status = status
     result = probe_model_access(
-      server.endpoint + "/v1/messages", headers={}, body={"max_tokens": 1},
-      sent=_sent(server.endpoint, model), timeout=5.0,
+      server.endpoint + "/v1/messages",
+      headers={},
+      body={"max_tokens": 1},
+      sent=_sent(server.endpoint, model),
+      timeout=5.0,
     )
     assert result.state is state
     assert result.evidence.status == status
@@ -215,7 +242,11 @@ class TestProbeModelAccess:
 
   def test_unreachable(self):
     result = probe_model_access(
-      _dead_endpoint() + "/v1/messages", headers={}, body={}, sent=_sent(), timeout=2.0,
+      _dead_endpoint() + "/v1/messages",
+      headers={},
+      body={},
+      sent=_sent(),
+      timeout=2.0,
     )
     assert result.state is M.UNREACHABLE
 
@@ -225,17 +256,29 @@ class TestProbeModelAccess:
 # ---------------------------------------------------------------------------
 
 _GENERAL_STATUS = {
-  G.VERIFIED: 200, G.OPEN: 200, G.UNTESTED: 200, G.DENIED: 403, G.NO_ANSWER: 503,
+  G.VERIFIED: 200,
+  G.OPEN: 200,
+  G.UNTESTED: 200,
+  G.DENIED: 403,
+  G.NO_ANSWER: 503,
 }
 _CONTROL_STATUS = {G.VERIFIED: 401, G.OPEN: 200, G.UNTESTED: 500}
 _MODEL_STATUS = {
-  M.OK: 200, M.DENIED: 403, M.MODEL_REQUIRED: 400, M.AMBIGUOUS: 500, M.UNREACHABLE: None,
+  M.OK: 200,
+  M.DENIED: 403,
+  M.MODEL_REQUIRED: 400,
+  M.AMBIGUOUS: 500,
+  M.UNREACHABLE: None,
 }
 
 
 def _report(
-  general: GeneralAccess, model: ModelAccess, *, token: bool = True,
-  model_id: str | None = "m", model_status: int | None = -1,
+  general: GeneralAccess,
+  model: ModelAccess,
+  *,
+  token: bool = True,
+  model_id: str | None = "m",
+  model_status: int | None = -1,
 ) -> AccessReport:
   token_path = Path("/t/token") if token else None
   base = ProbeEvidence(endpoint="http://e.example", token_path=token_path)
@@ -244,16 +287,22 @@ def _report(
     general=AxisResult(
       general,
       ProbeEvidence(
-        endpoint=base.endpoint, token_path=token_path,
-        status=_GENERAL_STATUS[general], request="GET /v1/models",
+        endpoint=base.endpoint,
+        token_path=token_path,
+        status=_GENERAL_STATUS[general],
+        request="GET /v1/models",
       ),
       _CONTROL_STATUS.get(general),
     ),
     model=AxisResult(
       model,
       ProbeEvidence(
-        endpoint=base.endpoint, model=model_id, token_path=token_path,
-        status=status, provider_text="said no", request="POST /v1/messages",
+        endpoint=base.endpoint,
+        model=model_id,
+        token_path=token_path,
+        status=status,
+        provider_text="said no",
+        request="POST /v1/messages",
       ),
     ),
   )
@@ -272,7 +321,7 @@ _ROWS = [
   (1, True, "m", G.VERIFIED, M.OK, V.PASS),
   (2, True, "m", G.OPEN, M.OK, V.PASS),
   (3, True, "m", G.DENIED, M.OK, V.PASS),
-  (4, True, "m", G.VERIFIED, M.DENIED, V.REJECTED),   # H1: model_exact; else INCONCLUSIVE
+  (4, True, "m", G.VERIFIED, M.DENIED, V.REJECTED),  # H1: model_exact; else INCONCLUSIVE
   (5, True, "m", G.OPEN, M.DENIED, V.REJECTED),
   (6, True, "m", G.DENIED, M.DENIED, V.REJECTED),
   (7, True, None, G.VERIFIED, M.OK, V.PASS),
@@ -295,7 +344,8 @@ _ROWS = [
 class TestAccessOutcomeRows:
   @pytest.mark.parametrize("model_exact", [True, False])
   @pytest.mark.parametrize(
-    ("row", "token", "model_id", "general", "model", "verdict"), _ROWS,
+    ("row", "token", "model_id", "general", "model", "verdict"),
+    _ROWS,
     ids=[f"row{r[0]}" for r in _ROWS],
   )
   def test_row(self, row, token, model_id, general, model, verdict, model_exact):
@@ -323,10 +373,14 @@ class TestAccessOutcomeH1:
     assert outcome == _today(report)._replace(access=report)
     assert outcome.verdict is V.REJECTED
 
-  @pytest.mark.parametrize(("model_id", "refused"), [
-    ("m", "refused the request for model 'm' with HTTP 403"),
-    (None, "refused a request that named no model with HTTP 403"),
-  ], ids=["row4", "row10"])
+  @pytest.mark.parametrize(
+    ("model_id", "refused"),
+    [
+      ("m", "refused the request for model 'm' with HTTP 403"),
+      (None, "refused a request that named no model with HTTP 403"),
+    ],
+    ids=["row4", "row10"],
+  )
   def test_an_inexact_model_warns_and_launches(self, model_id, refused):
     report = _report(G.VERIFIED, M.DENIED, model_id=model_id)
     outcome = access_outcome(report, model_exact=False)
@@ -362,14 +416,14 @@ class TestAccessOutcomeArms:
     assert untested.verdict is opened.verdict
 
   def test_VERIFIED_and_MODEL_REQUIRED_passes(self):
-    outcome = access_outcome(_report(G.VERIFIED, M.MODEL_REQUIRED, model_id=None),
-                             model_exact=True)
+    outcome = access_outcome(
+      _report(G.VERIFIED, M.MODEL_REQUIRED, model_id=None), model_exact=True
+    )
     assert outcome.verdict is V.PASS
 
   @pytest.mark.parametrize("general", [G.OPEN, G.UNTESTED, G.NO_ANSWER])
   def test_no_verification_and_MODEL_REQUIRED_is_not_applicable(self, general):
-    outcome = access_outcome(_report(general, M.MODEL_REQUIRED, model_id=None),
-                             model_exact=True)
+    outcome = access_outcome(_report(general, M.MODEL_REQUIRED, model_id=None), model_exact=True)
     assert outcome.verdict is V.NOT_APPLICABLE
 
   def test_DENIED_and_MODEL_REQUIRED_is_inconclusive(self):
@@ -425,8 +479,7 @@ class TestNoRegression:
   @pytest.mark.parametrize("model_id", ["m", None])
   @pytest.mark.parametrize("status", _STATUSES)
   @pytest.mark.parametrize("general", list(G))
-  def test_every_other_cell_keeps_todays_verdict(self, general, status, model_id,
-                                                 model_exact):
+  def test_every_other_cell_keeps_todays_verdict(self, general, status, model_id, model_exact):
     model = _model_state(status, omitted=not model_id)
     if _changed(general, model, model_exact):
       pytest.skip("a changed cell")
@@ -442,8 +495,11 @@ class TestNoRegression:
       for model_id in ("m", None):
         server.status = status
         result = probe_model_access(
-          server.endpoint + "/v1/messages", headers={}, body={},
-          sent=_sent(server.endpoint, model_id), timeout=5.0,
+          server.endpoint + "/v1/messages",
+          headers={},
+          body={},
+          sent=_sent(server.endpoint, model_id),
+          timeout=5.0,
         )
         assert result.state is _model_state(status, omitted=not model_id)
 

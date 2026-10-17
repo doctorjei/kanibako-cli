@@ -73,7 +73,11 @@ COLLIDES = r"collides with the binding\(s\) already collapsed"
 
 def shape(*, ro=None, rw=None, mask=None, seed=None, sync=None) -> StoreShape:
   return StoreShape(
-    ro=ro or {}, rw=rw or {}, mask=mask or {}, seed=seed or [], sync=sync or [],
+    ro=ro or {},
+    rw=rw or {},
+    mask=mask or {},
+    seed=seed or [],
+    sync=sync or [],
   )
 
 
@@ -156,8 +160,7 @@ class TestHomeIsPidZero:
     message = str(excinfo.value)
     for clause in (
       "you must SUPPRESS the entry you do not want and then declare the one you do",
-      "An override is not enough: these are two different KEYS, so both survive the "
-      "cascade",
+      "An override is not enough: these are two different KEYS, so both survive the cascade",
       "Set the unwanted key to null in the settings file for its scope",
       "a file may write its own scope and the scopes it contains",
     ):
@@ -217,10 +220,12 @@ class TestTheSeedPassIsAConcatenation:
     # "nothing is arbitrated at a destination", so both rows reach the output in the
     # order they were declared. RED against a dest-keyed ``seed`` arm.
     collapsed = collapse(
-      box=shape(seed=[
-        CopyRow(f"{GUEST}/x", BindEntry("/h/first", "")),
-        CopyRow(f"{GUEST}/x", BindEntry("/h/second", "")),
-      ]),
+      box=shape(
+        seed=[
+          CopyRow(f"{GUEST}/x", BindEntry("/h/first", "")),
+          CopyRow(f"{GUEST}/x", BindEntry("/h/second", "")),
+        ]
+      ),
     )
     assert collapsed.seeded == [
       CollapsedCopy("/h/first", f"{GUEST}/x", ""),
@@ -232,10 +237,12 @@ class TestTheSeedPassIsAConcatenation:
     # row at one dest ride in behind the first unchecked.
     with pytest.raises(SettingsError, match="outside the home binding"):
       collapse(
-        box=shape(seed=[
-          CopyRow(f"{GUEST}/ok", BindEntry("/h/ok", "")),
-          CopyRow("/opt/thing", BindEntry("/h/nope", "")),
-        ]),
+        box=shape(
+          seed=[
+            CopyRow(f"{GUEST}/ok", BindEntry("/h/ok", "")),
+            CopyRow("/opt/thing", BindEntry("/h/nope", "")),
+          ]
+        ),
       )
 
   def test_the_dest_is_CARRIED_on_the_entry_and_NORMALIZED(self):
@@ -395,10 +402,12 @@ class TestTheSyncArmIsAPlainConcatenation:
   def test_a_sync_dest_REPEATS_INSIDE_ONE_SCOPE_TOO_and_the_arm_carries_both(self):
     # The seed arm's within-scope repeat, on the other copy arm.
     collapsed = collapse(
-      box=shape(sync=[
-        CopyRow(f"{GUEST}/c", BindEntry("/h/first", "")),
-        CopyRow(f"{GUEST}/c", BindEntry("/h/second", "")),
-      ]),
+      box=shape(
+        sync=[
+          CopyRow(f"{GUEST}/c", BindEntry("/h/first", "")),
+          CopyRow(f"{GUEST}/c", BindEntry("/h/second", "")),
+        ]
+      ),
     )
     assert collapsed.synced == [
       CollapsedCopy("/h/first", f"{GUEST}/c", ""),
@@ -410,10 +419,12 @@ class TestTheSyncArmIsAPlainConcatenation:
     # whole no matter what the bind map holds. Goes RED if any row is dropped.
     collapsed = collapse(
       system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-      box=shape(sync=[
-        CopyRow(f"{GUEST}/w/inner", BindEntry("/h/inner", "")),
-        CopyRow(f"{GUEST}/w", BindEntry("/h/at", "")),
-      ]),
+      box=shape(
+        sync=[
+          CopyRow(f"{GUEST}/w/inner", BindEntry("/h/inner", "")),
+          CopyRow(f"{GUEST}/w", BindEntry("/h/at", "")),
+        ]
+      ),
     )
     assert collapsed.synced == [
       CollapsedCopy("/h/inner", f"{GUEST}/w/inner", ""),
@@ -488,10 +499,14 @@ class TestTheSyncArmIsAPlainConcatenation:
     # whole-fold pass could see it. Nothing sees it now, and that is the point —
     # neither arrival order can produce a refusal or a dropped row.
     for shapes in (
-      {"system": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-       "box": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")})},
-      {"system": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-       "box": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))])},
+      {
+        "system": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+        "box": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+      },
+      {
+        "system": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+        "box": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+      },
     ):
       collapsed = collapse(**shapes)
       assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
@@ -677,8 +692,9 @@ class TestASyncMustBeCoveredByAMount:
     # ⚑⚑ THE MIRRORING USER. Same destination as the refusal above; a bind above it
     # is the whole difference, and the rule reads the CONDITION, not the spelling.
     collapsed = self._check(
-      box=shape(rw={"/data": BindEntry("/h/data", "Z,U")},
-                sync=[CopyRow("/data/z", BindEntry("/h/x", ""))]),
+      box=shape(
+        rw={"/data": BindEntry("/h/data", "Z,U")}, sync=[CopyRow("/data/z", BindEntry("/h/x", ""))]
+      ),
     )
     assert collapsed.synced == [CollapsedCopy("/h/x", "/data/z", "")]
 
@@ -695,8 +711,9 @@ class TestASyncMustBeCoveredByAMount:
     # SHARING a dest with a mount, this one refuses a sync for having NO mount. A
     # coverage rule written as "must not collide" would turn this green test red.
     collapsed = self._check(
-      box=shape(rw={"/opt/t": BindEntry("/h/t", "Z,U")},
-                sync=[CopyRow("/opt/t", BindEntry("/h/x", ""))]),
+      box=shape(
+        rw={"/opt/t": BindEntry("/h/t", "Z,U")}, sync=[CopyRow("/opt/t", BindEntry("/h/x", ""))]
+      ),
     )
     assert collapsed.synced == [CollapsedCopy("/h/x", "/opt/t", "")]
 
@@ -707,8 +724,10 @@ class TestASyncMustBeCoveredByAMount:
     # TWO refusals on one destination with two different messages, and would refuse
     # the file-at-a-mask's-own-point cell the table ACCEPTS.
     collapsed = self._check(
-      box=shape(mask={f"{GUEST}/private": True},
-                sync=[CopyRow(f"{GUEST}/private/f", BindEntry("/h/f", ""))]),
+      box=shape(
+        mask={f"{GUEST}/private": True},
+        sync=[CopyRow(f"{GUEST}/private/f", BindEntry("/h/f", ""))],
+      ),
     )
     assert collapsed.synced == [CollapsedCopy("/h/f", f"{GUEST}/private/f", "")]
 
@@ -725,8 +744,10 @@ class TestASyncMustBeCoveredByAMount:
     # sync is judged covered, and BOTH pass. Neither refusal can fire on the other's
     # row, so a user never sees two messages about one path.
     collapsed = self._check(
-      box=shape(seed=[CopyRow("~/x", BindEntry("/h/seed", ""))],
-                sync=[CopyRow("~/x", BindEntry("/h/sync", ""))]),
+      box=shape(
+        seed=[CopyRow("~/x", BindEntry("/h/seed", ""))],
+        sync=[CopyRow("~/x", BindEntry("/h/sync", ""))],
+      ),
     )
     assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
     assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/x", "")]
@@ -735,8 +756,10 @@ class TestASyncMustBeCoveredByAMount:
     # The separator guard, on the containment predicate this refusal reads through.
     with pytest.raises(SettingsError, match=self.UNCOVERED):
       self._check(
-        box=shape(rw={"/opt/tool": BindEntry("/h/t", "Z,U")},
-                  sync=[CopyRow("/opt/toolbox/c", BindEntry("/h/x", ""))]),
+        box=shape(
+          rw={"/opt/tool": BindEntry("/h/t", "Z,U")},
+          sync=[CopyRow("/opt/toolbox/c", BindEntry("/h/x", ""))],
+        ),
       )
 
   def test_an_OUTER_scopes_bind_covers_an_inner_scopes_sync(self):
@@ -1094,7 +1117,7 @@ class TestAMaskMayNotSubsumeHome:
 
 
 class TestAMaskCannotTakeOrEnterAnotherMask:
-  """"A void within a void" — the direction of prohibition is the INVERSE of a bind's."""
+  """ "A void within a void" — the direction of prohibition is the INVERSE of a bind's."""
 
   def test_a_mask_at_an_earlier_masks_EXACT_point_is_refused(self):
     # ⚑ TWO SCOPES ARE REQUIRED: one scope's mask arm is dest-keyed, so the same
@@ -1157,10 +1180,12 @@ class TestTheIntraScopeSorts:
     # cross-scope conflict. Within a scope there is no precedence to express, so
     # the sort — not a diagnostic — is the answer.
     collapsed = collapse(
-      box=shape(rw={
-        f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U"),
-        f"{GUEST}/x": BindEntry("/h/shallow", "Z,U"),
-      }),
+      box=shape(
+        rw={
+          f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U"),
+          f"{GUEST}/x": BindEntry("/h/shallow", "Z,U"),
+        }
+      ),
     )
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/shallow"
     assert collapsed.bindings[f"{GUEST}/x/y"].src == "/h/deep"
@@ -1179,15 +1204,22 @@ class TestTheIntraScopeSorts:
 
   def test_three_generations_of_bind_in_one_scope_collapse_parent_first(self):
     collapsed = collapse(
-      box=shape(rw={
-        f"{GUEST}/a/b/c": BindEntry("/h/c", "Z,U"),
-        f"{GUEST}/a": BindEntry("/h/a", "Z,U"),
-        f"{GUEST}/a/b": BindEntry("/h/b", "Z,U"),
-      }),
+      box=shape(
+        rw={
+          f"{GUEST}/a/b/c": BindEntry("/h/c", "Z,U"),
+          f"{GUEST}/a": BindEntry("/h/a", "Z,U"),
+          f"{GUEST}/a/b": BindEntry("/h/b", "Z,U"),
+        }
+      ),
     )
-    assert [collapsed.bindings[d].src for d in (
-      f"{GUEST}/a", f"{GUEST}/a/b", f"{GUEST}/a/b/c",
-    )] == ["/h/a", "/h/b", "/h/c"]
+    assert [
+      collapsed.bindings[d].src
+      for d in (
+        f"{GUEST}/a",
+        f"{GUEST}/a/b",
+        f"{GUEST}/a/b/c",
+      )
+    ] == ["/h/a", "/h/b", "/h/c"]
 
   def test_the_arm_order_survives_at_EQUAL_length(self):
     # The sort is STABLE, so the ro-before-rw walk is preserved: the ro entry is
@@ -1209,10 +1241,13 @@ class TestTheIntraScopeSorts:
         box=shape(rw={f"{GUEST}/x": BindEntry("/h/shallow", "Z,U")}),
       )
 
-  @pytest.mark.parametrize("declared", [
-    ((f"{GUEST}/x", f"{GUEST}/x/y")),
-    ((f"{GUEST}/x/y", f"{GUEST}/x")),
-  ])
+  @pytest.mark.parametrize(
+    "declared",
+    [
+      ((f"{GUEST}/x", f"{GUEST}/x/y")),
+      ((f"{GUEST}/x/y", f"{GUEST}/x")),
+    ],
+  )
   def test_nested_masks_in_ONE_scope_collapse_CHILD_first_either_way(self, declared):
     # ⚑⚑ THE INVERSE SORT, and it is load-bearing: the mask rule refuses a PARENT
     # and permits a CHILD, so masks must arrive child-first or one declaration
@@ -1223,9 +1258,15 @@ class TestTheIntraScopeSorts:
     assert list(collapsed.bindings) == [GUEST, f"{GUEST}/x"]
 
   def test_three_generations_of_mask_in_one_scope_leave_only_the_outermost(self):
-    collapsed = collapse(box=shape(mask={
-      f"{GUEST}/a/b": True, f"{GUEST}/a/b/c": True, f"{GUEST}/a": True,
-    }))
+    collapsed = collapse(
+      box=shape(
+        mask={
+          f"{GUEST}/a/b": True,
+          f"{GUEST}/a/b/c": True,
+          f"{GUEST}/a": True,
+        }
+      )
+    )
     assert list(collapsed.bindings) == [GUEST, f"{GUEST}/a"]
 
 
@@ -1274,26 +1315,35 @@ class TestTheLiveRoute:
 
   def ctx(self) -> ResolveCtx:
     return ResolveCtx(
-      agent_name="claude", workset_name="myws", host_home="/home/u",
-      xdg={"XDG_DATA_HOME": "/data"}, config={},
+      agent_name="claude",
+      workset_name="myws",
+      host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"},
+      config={},
     )
 
   def collapsed(self, floor: dict) -> CollapsedStore:
     ctx = self.ctx()
     snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
       default_categories=floor,
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
     return collapse_store_shapes(build_store_shape_set(entries), HOME)
 
   def test_a_real_floor_collapses_to_folded_binds_and_a_copy_list(self):
-    collapsed = self.collapsed({
-      "system.bindings.ro": {"~/ro": ("/h/ro",)},
-      "box.caches": {"~/cache": ("/h/cache",)},
-      "box.seeded": {"~/seed": ("/h/seed",)},
-    })
+    collapsed = self.collapsed(
+      {
+        "system.bindings.ro": {"~/ro": ("/h/ro",)},
+        "box.caches": {"~/cache": ("/h/cache",)},
+        "box.seeded": {"~/seed": ("/h/seed",)},
+      }
+    )
     assert collapsed.bindings[f"{GUEST}/ro"] == CollapsedBind("/h/ro", "ro")
     assert collapsed.bindings[f"{GUEST}/cache"] == CollapsedBind("/h/cache", "Z,U,rw")
     assert collapsed.bindings[GUEST].src == HOME.src
@@ -1309,19 +1359,23 @@ class TestTheLiveRoute:
     assert collapsed.seeded == []
 
   def test_a_real_mask_over_a_real_bind_from_an_outer_scope(self):
-    collapsed = self.collapsed({
-      "system.bindings.rw": {"~/x": ("/h/sys",)},
-      "box.masks": ["~/x"],
-    })
+    collapsed = self.collapsed(
+      {
+        "system.bindings.rw": {"~/x": ("/h/sys",)},
+        "box.masks": ["~/x"],
+      }
+    )
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
   def test_a_real_seeded_layer_UNDER_a_real_bind_is_carried_not_pruned(self):
     # The agent tier is DISCRIMINATED on the way in and folds under its BARE scope
     # token, which is what makes it collapse third-from-outermost.
-    collapsed = self.collapsed({
-      "agent.claude.common": {"~/x": ("/h/agent",)},
-      "box.seeded": {"~/x/file": ("/h/file",)},
-    })
+    collapsed = self.collapsed(
+      {
+        "agent.claude.common": {"~/x": ("/h/agent",)},
+        "box.seeded": {"~/x/file": ("/h/file",)},
+      }
+    )
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/agent"
     assert collapsed.seeded == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]
 
@@ -1344,15 +1398,22 @@ class TestDeclarationProvenance:
 
   def ctx(self) -> ResolveCtx:
     return ResolveCtx(
-      agent_name="claude", workset_name="myws", host_home="/home/u",
-      xdg={"XDG_DATA_HOME": "/data"}, config={},
+      agent_name="claude",
+      workset_name="myws",
+      host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"},
+      config={},
     )
 
   def entries(self, floor: dict):
     ctx = self.ctx()
     snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
       default_categories=floor,
     )
     return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -1379,10 +1440,12 @@ class TestDeclarationProvenance:
     assert with_keys.declared_by != {}
 
   def test_a_bind_and_a_mask_are_each_named_by_their_own_key(self):
-    collapsed = self.collapsed({
-      "system.bindings.ro": {"~/ro": ("/h/ro",)},
-      "box.masks": ["~/m"],
-    })
+    collapsed = self.collapsed(
+      {
+        "system.bindings.ro": {"~/ro": ("/h/ro",)},
+        "box.masks": ["~/m"],
+      }
+    )
     assert collapsed.declared_by[f"{GUEST}/ro"] == f"system.bindings.ro[{GUEST}/ro]"
     assert collapsed.declared_by[f"{GUEST}/m"] == f"box.masks[{GUEST}/m]"
 
@@ -1392,10 +1455,12 @@ class TestDeclarationProvenance:
 
   def test_a_subsumed_binds_key_LEAVES_WITH_IT(self):
     """The sweep takes the declaration too: a key left behind names a mount the box lacks."""
-    collapsed = self.collapsed({
-      "system.bindings.rw": {"~/x": ("/h/sys",)},
-      "box.masks": ["~/x"],
-    })
+    collapsed = self.collapsed(
+      {
+        "system.bindings.rw": {"~/x": ("/h/sys",)},
+        "box.masks": ["~/x"],
+      }
+    )
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
     assert collapsed.declared_by[f"{GUEST}/x"] == f"box.masks[{GUEST}/x]"
 
@@ -1408,20 +1473,24 @@ class TestDeclarationProvenance:
     destination answers ``system.masks[~/x]`` here, which is a key whose mask the box
     does not have. Only recording at the FOLD gets it right.
     """
-    collapsed = self.collapsed({
-      "system.masks": ["~/x"],
-      "workset.bindings.rw": {"~/x": ("/h/ws",)},
-      "box.masks": ["~/x"],
-    })
+    collapsed = self.collapsed(
+      {
+        "system.masks": ["~/x"],
+        "workset.bindings.rw": {"~/x": ("/h/ws",)},
+        "box.masks": ["~/x"],
+      }
+    )
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
     assert collapsed.declared_by[f"{GUEST}/x"] == f"box.masks[{GUEST}/x]"
 
   def test_a_copy_sharing_a_binds_destination_does_not_claim_it(self):
     """``synced`` at a bind's EXACT dest is ordinary (spec §2a) — and it is not a mount."""
-    collapsed = self.collapsed({
-      "box.bindings.rw": {"~/x": ("/h/x",)},
-      "box.synced": {"~/x": ("/h/x",)},
-    })
+    collapsed = self.collapsed(
+      {
+        "box.bindings.rw": {"~/x": ("/h/x",)},
+        "box.synced": {"~/x": ("/h/x",)},
+      }
+    )
     assert collapsed.declared_by[f"{GUEST}/x"] == f"box.bindings.rw[{GUEST}/x]"
 
   def test_an_abstraction_folded_into_the_rw_arm_is_named_by_ITS_key(self):
@@ -1432,10 +1501,12 @@ class TestDeclarationProvenance:
   def test_a_keyless_secret_at_a_masked_dest_does_not_claim_the_mask(self):
     """A ``null`` ``secret_path`` is source-less like a mask but folds into no arm."""
     dest = f"{SECRET_MOUNT_DIR}/TOK"
-    collapsed = self.collapsed({
-      "box.masks": [dest],
-      "box.secret_path.TOK": None,
-    })
+    collapsed = self.collapsed(
+      {
+        "box.masks": [dest],
+        "box.secret_path.TOK": None,
+      }
+    )
     assert collapsed.declared_by[dest] == f"box.masks[{dest}]"
 
 
@@ -1448,20 +1519,29 @@ def live_refusal_both(floor: dict) -> tuple[str, str]:
   classes below — a second fixture is a second opinion about what a launch does.
   """
   ctx = ResolveCtx(
-    agent_name="claude", workset_name="myws", host_home="/home/u",
-    xdg={"XDG_DATA_HOME": "/data"}, config={},
+    agent_name="claude",
+    workset_name="myws",
+    host_home="/home/u",
+    xdg={"XDG_DATA_HOME": "/data"},
+    config={},
   )
   out: list[str] = []
   for with_keys in (True, False):
     snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
       default_categories=floor,
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
     with pytest.raises(SettingsError) as excinfo:
       collapse_store_shapes(
-        build_store_shape_set(entries), HOME, entries if with_keys else None,
+        build_store_shape_set(entries),
+        HOME,
+        entries if with_keys else None,
       )
     out.append(str(excinfo.value))
   return out[0], out[1]
@@ -1489,10 +1569,12 @@ class TestTheRefusalsNameBothParticipants:
     return live_refusal_both(floor)
 
   def test_bind_over_bind_names_the_ARRIVING_and_the_SUBSUMED_key(self):
-    keyed, bare = self.both({
-      "system.bindings.rw": {"~/x": ("/h/sys",)},
-      "box.bindings.rw": {"~/x": ("/h/box",)},
-    })
+    keyed, bare = self.both(
+      {
+        "system.bindings.rw": {"~/x": ("/h/sys",)},
+        "box.bindings.rw": {"~/x": ("/h/box",)},
+      }
+    )
     assert f"the binding declared by 'box.bindings.rw[{GUEST}/x]' of '/h/box'" in keyed
     assert f"'/h/sys' declared by 'system.bindings.rw[{GUEST}/x]'" in keyed
     # The remedy the keys exist to make actionable is untouched.
@@ -1501,10 +1583,12 @@ class TestTheRefusalsNameBothParticipants:
     assert "the binding of '/h/box'" in bare
 
   def test_bind_under_mask_names_the_BINDING_and_the_MASK_key(self):
-    keyed, bare = self.both({
-      "system.masks": ["~/x"],
-      "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
-    })
+    keyed, bare = self.both(
+      {
+        "system.masks": ["~/x"],
+        "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
+      }
+    )
     assert f"the binding declared by 'box.bindings.rw[{GUEST}/x/inner]'" in keyed
     assert f"sits inside the mask declared by 'system.masks[{GUEST}/x]'" in keyed
     assert "declared by" not in bare
@@ -1512,10 +1596,12 @@ class TestTheRefusalsNameBothParticipants:
 
   def test_mask_on_mask_names_BOTH_masks_which_have_no_source_at_all(self):
     """🛑 The refusal that needed keys most: neither participant has a host source."""
-    keyed, bare = self.both({
-      "system.masks": ["~/x"],
-      "box.masks": ["~/x/inner"],
-    })
+    keyed, bare = self.both(
+      {
+        "system.masks": ["~/x"],
+        "box.masks": ["~/x/inner"],
+      }
+    )
     assert f"the mask declared by 'box.masks[{GUEST}/x/inner]'" in keyed
     assert f"collapsed at '{GUEST}/x' declared by 'system.masks[{GUEST}/x]'" in keyed
     assert "declared by" not in bare
@@ -1539,10 +1625,12 @@ class TestTheRefusalsNameBothParticipants:
     ``agent.masks.~/x`` — a key that is in nobody's settings file. The key is READ
     off ``CategoryEntry.key_segments``, which carries the node.
     """
-    keyed, _bare = self.both({
-      "agent.claude.masks": ["~/x"],
-      "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
-    })
+    keyed, _bare = self.both(
+      {
+        "agent.claude.masks": ["~/x"],
+        "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
+      }
+    )
     assert f"the mask declared by 'agent.claude.masks[{GUEST}/x]'" in keyed
     assert "agent.masks." not in keyed
 
@@ -1579,10 +1667,12 @@ class TestTheRefusalsCarryTheCure:
     assert SUPPRESS_THEN_ADD in bare
 
   def test_bind_over_bind_offers_it_and_keeps_its_own_hedge(self):
-    keyed, _bare = live_refusal_both({
-      "system.bindings.rw": {"~/x": ("/h/sys",)},
-      "box.bindings.rw": {"~/x": ("/h/box",)},
-    })
+    keyed, _bare = live_refusal_both(
+      {
+        "system.bindings.rw": {"~/x": ("/h/sys",)},
+        "box.bindings.rw": {"~/x": ("/h/box",)},
+      }
+    )
     assert SUPPRESS_THEN_ADD in keyed
     # The AMBIGUOUS variant, and it belongs to this refusal alone: two peers, either
     # may be the keeper. Both mask refusals have a DETERMINED occupant.
@@ -1591,15 +1681,15 @@ class TestTheRefusalsCarryTheCure:
   def test_bind_over_bind_never_offers_to_suppress_an_INTERNAL_bind(self):
     """Spec §2c: an internal bind is not repointable, and the resolve refuses a settings
     entry at its dest — so a collision with one names it and drops the hedge."""
-    keyed, bare = live_refusal_both({
-      "workset.bindings.ro": {"~/canon/charter/box/mine": ("/h/mine",)},
-      "box.bindings.ro": {"~/canon/charter/box": ("/rom/charter/box",)},
-    })
+    keyed, bare = live_refusal_both(
+      {
+        "workset.bindings.ro": {"~/canon/charter/box/mine": ("/h/mine",)},
+        "box.bindings.ro": {"~/canon/charter/box": ("/rom/charter/box",)},
+      }
+    )
     for message in (keyed, bare):
       assert "Either declaration may be the one you keep" not in message
-      assert (
-        f"'{GUEST}/canon/charter/box' is an internal kanibako bind (spec §2c)" in message
-      )
+      assert f"'{GUEST}/canon/charter/box' is an internal kanibako bind (spec §2c)" in message
       assert "change the other declaration" in message
 
   def test_the_mask_refusals_do_NOT_hedge_over_which_side_to_keep(self):
@@ -1671,13 +1761,13 @@ class TestTheResultPhrasesTakeTheProvenance:
     delivery that did not take it — so this branch stays silent rather than confident.
     """
     (row,) = self.rows(
-      [Declaration("box.seeded./opt/c", "/opt/c", "/h/c", "COPY")], {}, [],
+      [Declaration("box.seeded./opt/c", "/opt/c", "/h/c", "COPY")],
+      {},
+      [],
     )
     assert row.outcome == DERIVED_SUPERSEDED
     assert row.bind is None
-    assert derivation_result(row, {"/opt/c": "box.seeded./opt/c"}) == (
-      derivation_result(row)
-    )
+    assert derivation_result(row, {"/opt/c": "box.seeded./opt/c"}) == (derivation_result(row))
 
   def test_a_LIVE_mount_gains_no_clause_at_all(self):
     """The guard against a fix that annotates the rows that are working fine."""
@@ -1711,15 +1801,22 @@ class TestThePerRunOverride:
 
   def ctx(self) -> ResolveCtx:
     return ResolveCtx(
-      agent_name="claude", workset_name="myws", host_home="/home/u",
-      xdg={"XDG_DATA_HOME": "/data"}, config={},
+      agent_name="claude",
+      workset_name="myws",
+      host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"},
+      config={},
     )
 
   def slots(self, floor: dict, cli_env=None):
     ctx = self.ctx()
     snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
       default_categories=floor,
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -1786,7 +1883,8 @@ class TestThePerRunOverride:
 
   def test_it_touches_only_the_variables_it_names(self):
     slots = self.slots(
-      {"box.env.EDITOR": "vim", "box.env.PAGER": "less"}, {"EDITOR": "ed"},
+      {"box.env.EDITOR": "vim", "box.env.PAGER": "less"},
+      {"EDITOR": "ed"},
     )
     assert slots["PAGER"] == CollapsedEnv("less", "box", "box.env.PAGER")
 
@@ -1838,15 +1936,22 @@ class TestATwinRefusalSaysWhoSetAKeyNobodyWrote:
 
   def ctx(self) -> ResolveCtx:
     return ResolveCtx(
-      agent_name="claude", workset_name="myws", host_home="/home/u",
-      xdg={"XDG_DATA_HOME": "/data"}, config={},
+      agent_name="claude",
+      workset_name="myws",
+      host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"},
+      config={},
     )
 
   def refusal(self, floor: dict, origins) -> str:
     ctx = self.ctx()
     snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      agent_name="claude",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
       default_categories=floor,
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -1871,7 +1976,8 @@ class TestATwinRefusalSaysWhoSetAKeyNobodyWrote:
 
   def test_without_origins_the_message_is_unchanged(self):
     message = self.refusal(
-      {"system.env.KANIBAKO_NAME": "box", "box.env.KANIBAKO_NAME": "mine"}, None,
+      {"system.env.KANIBAKO_NAME": "box", "box.env.KANIBAKO_NAME": "mine"},
+      None,
     )
     assert "set by" not in message
     assert "'system.env.KANIBAKO_NAME' at the 'system' scope" in message

@@ -15,34 +15,37 @@ import pytest
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, PSEUDO_AGENT_NAMES
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
-    DECLARED_AGENT_LEAVES,
-    DECLARED_META_ASSEMBLY_LEAVES,
-    DECLARED_META_RUNTIME_LEAVES,
-    PSEUDO_AGENT_FENCES,
-    RESERVED_LEAF_NAMES,
-    RETIRING_KEYS,
-    is_valid_agent_segment,
-    key_validity,
+  DECLARED_AGENT_LEAVES,
+  DECLARED_META_ASSEMBLY_LEAVES,
+  DECLARED_META_RUNTIME_LEAVES,
+  PSEUDO_AGENT_FENCES,
+  RESERVED_LEAF_NAMES,
+  RETIRING_KEYS,
+  is_valid_agent_segment,
+  key_validity,
 )
 
 AGENTS = frozenset({"claude", "codex", "goose", "navigator℘claude"})
 
 
 def valid(key: str) -> bool:
-    return key_validity(key, valid_agents=AGENTS) is None
+  return key_validity(key, valid_agents=AGENTS) is None
 
 
 def reason(key: str) -> str:
-    r = key_validity(key, valid_agents=AGENTS)
-    assert r is not None, f"expected {key!r} to be INVALID"
-    return r
+  r = key_validity(key, valid_agents=AGENTS)
+  assert r is not None, f"expected {key!r} to be INVALID"
+  return r
 
 
 # ---------------------------------------------------------------------------
 # The AUTHORITATIVE surface: system.agent + agent.<agent>.** (spec §2h allowlist)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("key", [
+
+@pytest.mark.parametrize(
+  "key",
+  [
     "system.agent",
     "agent.claude.model",
     "agent.claude.access",
@@ -68,90 +71,105 @@ def reason(key: str) -> str:
     "agent.claude.masks",
     "agent.claude.env.DISABLE_AUTOUPDATER",
     "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN",
-])
+  ],
+)
 def test_authoritative_agent_surface_is_valid(key):
-    assert valid(key), reason(key)
+  assert valid(key), reason(key)
 
 
 def test_new_name_in_a_parametric_family_is_legal():
-    """§2h — VALIDITY, not EXISTENCE.
+  """§2h — VALIDITY, not EXISTENCE.
 
-    A NEW name inside a parametric family is exactly what a user may want to
-    add via a pref. An EXISTENCE test would permit only modifying keys that
-    already hold a value, which is the rejected reading.
+  A NEW name inside a parametric family is exactly what a user may want to
+  add via a pref. An EXISTENCE test would permit only modifying keys that
+  already hold a value, which is the rejected reading.
 
-    ⚑ The families that still carry a free <name> are the VAR-keyed ones
-    (``env`` / ``secret_path``) and the agent discriminator. The bind-shaped
-    CATEGORIES no longer do: all six went TERMINAL and DEST-KEYED (the two
-    ``bindings`` arms at R-5/R-10, then ``caches``/``seeded``/``common``/
-    ``synced`` on 2026-08-08c), so the destination is DATA inside the value and
-    the free name it replaced is gone from the keyspace entirely. That is not a
-    narrowing of §2h — a user may still add a destination nobody declared; it is
-    simply no longer expressed as a key segment.
-    """
-    assert valid("agent.claude.env.BRAND_NEW_THING")
-    assert valid("box.secret_path.NEVER_SEEN_BEFORE")
-    assert valid("pref.agent.claude.env.BRAND_NEW_THING")
-    # ⚑ NOT a bind-shaped category, in EITHER of its two terminal depths.
-    assert not valid("agent.claude.bindings.rw.boooooo")
-    assert not valid("agent.claude.common.brand_new_thing")
-    assert not valid("box.caches.never_seen_before")
+  ⚑ The families that still carry a free <name> are the VAR-keyed ones
+  (``env`` / ``secret_path``) and the agent discriminator. The bind-shaped
+  CATEGORIES no longer do: all six went TERMINAL and DEST-KEYED (the two
+  ``bindings`` arms at R-5/R-10, then ``caches``/``seeded``/``common``/
+  ``synced`` on 2026-08-08c), so the destination is DATA inside the value and
+  the free name it replaced is gone from the keyspace entirely. That is not a
+  narrowing of §2h — a user may still add a destination nobody declared; it is
+  simply no longer expressed as a key segment.
+  """
+  assert valid("agent.claude.env.BRAND_NEW_THING")
+  assert valid("box.secret_path.NEVER_SEEN_BEFORE")
+  assert valid("pref.agent.claude.env.BRAND_NEW_THING")
+  # ⚑ NOT a bind-shaped category, in EITHER of its two terminal depths.
+  assert not valid("agent.claude.bindings.rw.boooooo")
+  assert not valid("agent.claude.common.brand_new_thing")
+  assert not valid("box.caches.never_seen_before")
 
 
 def test_fabrication_is_still_rejected():
-    assert "not a valid agent" in reason("agent.zippity.wibble")
-    assert "not a declared agent key" in reason("agent.claude.notakey")
+  assert "not a valid agent" in reason("agent.zippity.wibble")
+  assert "not a declared agent key" in reason("agent.claude.notakey")
 
 
 def test_the_agent_file_alias_is_never_an_agent_segment():
-    """``self`` is the per-agent file's alias for its own node, never a key segment — refused
-    even where the valid-agent set would CONCEDE an unheard-of name
-    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), which is the set every launch and
-    ``settings_assemble.agent_record`` judge with."""
-    from kanibako.settings.agent_file import file_spelling
+  """``self`` is the per-agent file's alias for its own node, never a key segment — refused
+  even where the valid-agent set would CONCEDE an unheard-of name
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), which is the set every launch and
+  ``settings_assemble.agent_record`` judge with."""
+  from kanibako.settings.agent_file import file_spelling
 
-    alias = file_spelling()
-    for agents in (AGENTS, (alias,)):
-        r = key_validity(f"agent.{alias}.model", valid_agents=agents, agent_leaf_map=_KNOWN_MAP)
-        assert r is not None and f"'{alias}' is not an agent" in r
-    # The CONTROL: a conceded unheard-of name is still a key.
-    assert key_validity(
-        "agent.nosuchharness.model", valid_agents=("nosuchharness",), agent_leaf_map=_KNOWN_MAP,
-    ) is None
+  alias = file_spelling()
+  for agents in (AGENTS, (alias,)):
+    r = key_validity(f"agent.{alias}.model", valid_agents=agents, agent_leaf_map=_KNOWN_MAP)
+    assert r is not None and f"'{alias}' is not an agent" in r
+  # The CONTROL: a conceded unheard-of name is still a key.
+  assert (
+    key_validity(
+      "agent.nosuchharness.model",
+      valid_agents=("nosuchharness",),
+      agent_leaf_map=_KNOWN_MAP,
+    )
+    is None
+  )
 
 
 def test_bare_agent_key_is_not_a_key():
-    """§0 / §2d — the agent tier is DISCRIMINATED; a bare
-    ``agent.<category>.<name>`` must be REFUSED, not quietly widened."""
-    assert not valid("agent.bindings.rw.x")
-    assert not valid("agent.common")
-    assert not valid("agent.model")
+  """§0 / §2d — the agent tier is DISCRIMINATED; a bare
+  ``agent.<category>.<name>`` must be REFUSED, not quietly widened."""
+  assert not valid("agent.bindings.rw.x")
+  assert not valid("agent.common")
+  assert not valid("agent.model")
 
 
 def test_arm_less_binding_is_not_a_key():
-    """spec §2d — bindings are declared per ARM."""
-    r = reason("agent.claude.bindings.thing")
-    assert "per ARM" in r
-    assert not valid("box.bindings.thing")
-    # The bare category root is not a key either.
-    assert "per ARM" in reason("box.bindings")
+  """spec §2d — bindings are declared per ARM."""
+  r = reason("agent.claude.bindings.thing")
+  assert "per ARM" in r
+  assert not valid("box.bindings.thing")
+  # The bare category root is not a key either.
+  assert "per ARM" in reason("box.bindings")
 
 
 # ---------------------------------------------------------------------------
 # TERMINAL, DEST-KEYED categories (spec §2a; disk-store R-5/R-10, 2026-08-06c)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("key", [
-    "box.bindings.ro", "box.bindings.rw",
-    "system.bindings.ro", "workset.bindings.rw",
-    "agent.default.bindings.ro", "agent.claude.bindings.rw",
-])
+
+@pytest.mark.parametrize(
+  "key",
+  [
+    "box.bindings.ro",
+    "box.bindings.rw",
+    "system.bindings.ro",
+    "workset.bindings.rw",
+    "agent.default.bindings.ro",
+    "agent.claude.bindings.rw",
+  ],
+)
 def test_a_bindings_arm_is_a_key_on_its_own(key):
-    """R-5 — the ARM is the whole of the key; its VALUE is the dest-keyed map."""
-    assert valid(key), reason(key)
+  """R-5 — the ARM is the whole of the key; its VALUE is the dest-keyed map."""
+  assert valid(key), reason(key)
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize(
+  "key",
+  [
     "box.bindings.ro.vault",
     "box.bindings.rw.home",
     "workset.bindings.rw.data",
@@ -166,40 +184,51 @@ def test_a_bindings_arm_is_a_key_on_its_own(key):
     # proof would be worthless (the exact failure mode this arc has already hit
     # once). See the mutation note in the docstring.
     "box.bindings.ro.get",
-])
+  ],
+)
 def test_a_name_or_dest_under_a_bindings_arm_is_not_a_key(key):
-    """⚑ THE R-5/R-10 REFUSAL. Nothing may follow ``bindings.{ro,rw}``.
+  """⚑ THE R-5/R-10 REFUSAL. Nothing may follow ``bindings.{ro,rw}``.
 
-    Two things are asserted, and the SECOND is what makes this test non-vacuous:
-    the key is refused AND the reason says why — that the arm is TERMINAL and the
-    entries are destinations inside its VALUE. Without the discriminator this
-    would also pass under the old parser, which refused several of these for a
-    completely different reason (``leaf_name_reason``, wrong arm token, …).
+  Two things are asserted, and the SECOND is what makes this test non-vacuous:
+  the key is refused AND the reason says why — that the arm is TERMINAL and the
+  entries are destinations inside its VALUE. Without the discriminator this
+  would also pass under the old parser, which refused several of these for a
+  completely different reason (``leaf_name_reason``, wrong arm token, …).
 
-    ⚑ MUTATION: delete the ``if len(rest) == 2: return None`` / terminal-tail
-    refusal pair in ``settings_keyspace._category_reason`` and restore
-    ``len(rest) < 3`` — every key here becomes VALID and this test dies. Nothing
-    else in the suite emits the word TERMINAL for a bindings key.
-    """
-    r = reason(key)
-    assert "TERMINAL" in r, r
-    assert "destinations inside its value" in r, r
-    assert "no entry NAME" in r or "no entry name" in r.lower(), r
+  ⚑ MUTATION: delete the ``if len(rest) == 2: return None`` / terminal-tail
+  refusal pair in ``settings_keyspace._category_reason`` and restore
+  ``len(rest) < 3`` — every key here becomes VALID and this test dies. Nothing
+  else in the suite emits the word TERMINAL for a bindings key.
+  """
+  r = reason(key)
+  assert "TERMINAL" in r, r
+  assert "destinations inside its value" in r, r
+  assert "no entry NAME" in r or "no entry name" in r.lower(), r
 
 
-@pytest.mark.parametrize("key", [
-    "box.common", "box.caches", "box.seeded", "box.synced",
-    "system.caches", "workset.seeded",
-    "agent.default.common", "agent.claude.synced",
-])
+@pytest.mark.parametrize(
+  "key",
+  [
+    "box.common",
+    "box.caches",
+    "box.seeded",
+    "box.synced",
+    "system.caches",
+    "workset.seeded",
+    "agent.default.common",
+    "agent.claude.synced",
+  ],
+)
 def test_a_dest_keyed_category_is_a_key_on_its_own(key):
-    """2026-08-08c — the category TOKEN is the whole of the key; its VALUE is the
-    dest-keyed map. The same rule R-5 gave the ``bindings`` arms, one segment
-    shallower."""
-    assert valid(key), reason(key)
+  """2026-08-08c — the category TOKEN is the whole of the key; its VALUE is the
+  dest-keyed map. The same rule R-5 gave the ``bindings`` arms, one segment
+  shallower."""
+  assert valid(key), reason(key)
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize(
+  "key",
+  [
     "box.common.plugins",
     "box.caches.pip",
     "system.seeded.template",
@@ -213,548 +242,639 @@ def test_a_dest_keyed_category_is_a_key_on_its_own(key):
     # RESERVED dict-method name. Only the REASON tells the two parsers apart, so
     # the message assertions below are what make this row prove anything.
     "agent.claude.common.items",
-])
+  ],
+)
 def test_a_name_under_a_dest_keyed_category_is_not_a_key(key):
-    """⚑ THE 2026-08-08c REFUSAL. Nothing may follow ``caches``/``seeded``/
-    ``common``/``synced``.
+  """⚑ THE 2026-08-08c REFUSAL. Nothing may follow ``caches``/``seeded``/
+  ``common``/``synced``.
 
-    ⚑ MUTATION: in ``settings_keyspace._category_reason``, delete the
-    ``if len(rest) == 1: return None`` / refusal pair in the four-category branch
-    and fall through to the trailing ``return None`` — every key here becomes
-    VALID and this test dies. Nothing else in the suite emits the word TERMINAL
-    for one of these four.
-    """
-    r = reason(key)
-    assert "TERMINAL" in r, r
-    assert "destinations inside its value" in r, r
-    assert "have no NAME" in r or "no entry name" in r.lower(), r
+  ⚑ MUTATION: in ``settings_keyspace._category_reason``, delete the
+  ``if len(rest) == 1: return None`` / refusal pair in the four-category branch
+  and fall through to the trailing ``return None`` — every key here becomes
+  VALID and this test dies. Nothing else in the suite emits the word TERMINAL
+  for one of these four.
+  """
+  r = reason(key)
+  assert "TERMINAL" in r, r
+  assert "destinations inside its value" in r, r
+  assert "have no NAME" in r or "no entry name" in r.lower(), r
 
 
 def test_the_terminal_categories_are_declared_in_one_place():
-    """ALL SEVEN dest-keyed categories are the SAME shape, and the parser and the
-    pref walker must agree on which keys they are — see
-    ``settings_prefs._flatten_pref_node``. ONE constant; the two predicates over it
-    (:func:`is_terminal_category_tail` here, :func:`is_terminal_category_key` in the
-    class below) differ only in WHERE the tail may sit, never in WHICH tails there
-    are.
+  """ALL SEVEN dest-keyed categories are the SAME shape, and the parser and the
+  pref walker must agree on which keys they are — see
+  ``settings_prefs._flatten_pref_node``. ONE constant; the two predicates over it
+  (:func:`is_terminal_category_tail` here, :func:`is_terminal_category_key` in the
+  class below) differ only in WHERE the tail may sit, never in WHICH tails there
+  are.
 
-    ⚑ The seven sit at TWO depths: a ``bindings`` ARM is terminal at
-    ``bindings.{ro,rw}``, while ``masks`` and the four category tokens are
-    terminal ONE SEGMENT SHALLOWER. The tail matcher must handle both, which is
-    why it compares a SUFFIX rather than a fixed length.
-    """
-    from kanibako.settings.settings_keyspace import (
-        TERMINAL_CATEGORY_TAILS,
-        is_terminal_category_tail,
-    )
+  ⚑ The seven sit at TWO depths: a ``bindings`` ARM is terminal at
+  ``bindings.{ro,rw}``, while ``masks`` and the four category tokens are
+  terminal ONE SEGMENT SHALLOWER. The tail matcher must handle both, which is
+  why it compares a SUFFIX rather than a fixed length.
+  """
+  from kanibako.settings.settings_keyspace import (
+    TERMINAL_CATEGORY_TAILS,
+    is_terminal_category_tail,
+  )
 
-    assert TERMINAL_CATEGORY_TAILS == frozenset({
-        ("masks",), ("bindings", "ro"), ("bindings", "rw"),
-        ("caches",), ("seeded",), ("common",), ("synced",),
-    })
-    assert is_terminal_category_tail(("box", "masks"))
-    assert is_terminal_category_tail(("agent", "claude", "bindings", "rw"))
-    assert is_terminal_category_tail(("bindings", "ro"))
-    # The four that went terminal on 2026-08-08c, at every scope depth.
-    assert is_terminal_category_tail(("box", "common"))
-    assert is_terminal_category_tail(("agent", "claude", "caches"))
-    assert is_terminal_category_tail(("workset", "seeded"))
-    assert is_terminal_category_tail(("synced",))
-    # NOT terminal: a bare arm root, a tail that runs PAST a terminal key, an
-    # arm-shaped tail that is not a bindings arm, and the empty tail.
-    assert not is_terminal_category_tail(("box", "bindings"))
-    assert not is_terminal_category_tail(("box", "masks", "ro"))
-    assert not is_terminal_category_tail(("box", "common", "plugins"))
-    assert not is_terminal_category_tail(("ro",))
-    assert not is_terminal_category_tail(())
+  assert TERMINAL_CATEGORY_TAILS == frozenset(
+    {
+      ("masks",),
+      ("bindings", "ro"),
+      ("bindings", "rw"),
+      ("caches",),
+      ("seeded",),
+      ("common",),
+      ("synced",),
+    }
+  )
+  assert is_terminal_category_tail(("box", "masks"))
+  assert is_terminal_category_tail(("agent", "claude", "bindings", "rw"))
+  assert is_terminal_category_tail(("bindings", "ro"))
+  # The four that went terminal on 2026-08-08c, at every scope depth.
+  assert is_terminal_category_tail(("box", "common"))
+  assert is_terminal_category_tail(("agent", "claude", "caches"))
+  assert is_terminal_category_tail(("workset", "seeded"))
+  assert is_terminal_category_tail(("synced",))
+  # NOT terminal: a bare arm root, a tail that runs PAST a terminal key, an
+  # arm-shaped tail that is not a bindings arm, and the empty tail.
+  assert not is_terminal_category_tail(("box", "bindings"))
+  assert not is_terminal_category_tail(("box", "masks", "ro"))
+  assert not is_terminal_category_tail(("box", "common", "plugins"))
+  assert not is_terminal_category_tail(("ro",))
+  assert not is_terminal_category_tail(())
 
 
 class TestTerminalCategoryKeyMatchesOnPosition:
-    """``is_terminal_category_key`` answers on the category's POSITION.
+  """``is_terminal_category_key`` answers on the category's POSITION.
 
-    ⚑⚑ THE WHOLE POINT IS THAT IT IS NOT :func:`is_terminal_category_tail`. That one
-    is a SUFFIX test, correct for a caller holding a TAIL and WRONG for a caller
-    holding a whole key: ``system.channels.common`` / ``workset.channels.common`` are
-    the CHANNEL type-roots (spec §2c/§2f/§2g), ordinary path SCALARS that merely END
-    in a category token, and the suffix test claims them while their siblings
-    ``…channels.chat`` / ``…channels.share`` fall through — one family, two rules.
-    Spec §2a names the discriminator itself: *"the discriminator is the ``channels.``
-    segment, which the channel form always carries and the category form never
-    does"* — a category token is a category only where the SCOPE ends.
+  ⚑⚑ THE WHOLE POINT IS THAT IT IS NOT :func:`is_terminal_category_tail`. That one
+  is a SUFFIX test, correct for a caller holding a TAIL and WRONG for a caller
+  holding a whole key: ``system.channels.common`` / ``workset.channels.common`` are
+  the CHANNEL type-roots (spec §2c/§2f/§2g), ordinary path SCALARS that merely END
+  in a category token, and the suffix test claims them while their siblings
+  ``…channels.chat`` / ``…channels.share`` fall through — one family, two rules.
+  Spec §2a names the discriminator itself: *"the discriminator is the ``channels.``
+  segment, which the channel form always carries and the category form never
+  does"* — a category token is a category only where the SCOPE ends.
 
-    ⚑ These tests came from ``test_commands/test_start.py`` (QC), where the predicate
-    was a private copy. They moved WITH it; what stayed there is the FOLD behavior
-    that copy was bought for.
+  ⚑ These tests came from ``test_commands/test_start.py`` (QC), where the predicate
+  was a private copy. They moved WITH it; what stayed there is the FOLD behavior
+  that copy was bought for.
+  """
+
+  @staticmethod
+  def _pred(key):
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+    return is_terminal_category_key(key)
+
+  def test_the_true_set_is_exactly_a_scope_plus_a_declared_tail(self):
+    """DERIVED on both axes — the enumeration is not written down here.
+
+    The categories come from ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` and
+    the scopes from ``kb_store.SCOPE_CONTAINMENT``, so a seventh category
+    or a fifth scope is covered by this test the day it is declared. That is
+    the property the last flip lacked: four separate defects came from lookups
+    keyed on a spelling that changed, each frozen where the declaration moved.
     """
+    from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+    from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
 
-    @staticmethod
-    def _pred(key):
-        from kanibako.settings.settings_keyspace import is_terminal_category_key
+    for tail in TERMINAL_CATEGORY_TAILS:
+      cat = ".".join(tail)
+      for scope in SCOPE_CONTAINMENT:
+        if scope == "agent":
+          # The agent tier is DISCRIMINATED (spec §0/§2d): the key is
+          # ``agent.<node>.<category>``, a BARE ``agent.<category>`` is
+          # not a key at all, and one segment DEEPER than the node is
+          # the false-positive class.
+          assert self._pred(f"agent.claude.{cat}")
+          assert self._pred(f"agent.default.{cat}")
+          assert not self._pred(f"agent.{cat}")
+          assert not self._pred(f"agent.claude.channels.{cat}")
+          continue
+        assert self._pred(f"{scope}.{cat}")
+        # ONE SEGMENT DEEPER is never a category key, whatever the
+        # intervening token: that is the false-positive class.
+        assert not self._pred(f"{scope}.channels.{cat}")
+        assert not self._pred(f"{scope}.auth.{cat}")
+      # Unscoped, and the ``pref``/``meta`` mirrors, are out of this
+      # function's domain — the launch floor is keyed by SCOPE alone.
+      assert not self._pred(cat)
+      assert not self._pred(f"pref.box.{cat}")
+      assert not self._pred(f"meta.box.agent.{cat}")
 
-        return is_terminal_category_key(key)
+  def test_a_channels_type_root_fails_the_predicate_itself(self):
+    """The two enumerated false positives, excluded BY CONSTRUCTION.
 
-    def test_the_true_set_is_exactly_a_scope_plus_a_declared_tail(self):
-        """DERIVED on both axes — the enumeration is not written down here.
+    Named rather than derived because these two are the whole reason the
+    predicate changed shape: both are ``type: path`` in the manifest, i.e.
+    SCALARS, and both answered True to the tail match. The sibling
+    ``<scope>.common`` MOUNT category — one word, the other sense (spec §2a
+    "ONE WORD, ``common``, for both senses") — must still answer True, or the
+    fix would have closed the hole by breaking the category.
+    """
+    assert not self._pred("system.channels.common")
+    assert not self._pred("workset.channels.common")
+    assert self._pred("system.common")
+    assert self._pred("workset.common")
 
-        The categories come from ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` and
-        the scopes from ``kb_store.SCOPE_CONTAINMENT``, so a seventh category
-        or a fifth scope is covered by this test the day it is declared. That is
-        the property the last flip lacked: four separate defects came from lookups
-        keyed on a spelling that changed, each frozen where the declaration moved.
-        """
-        from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-        from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+  def test_a_persona_node_is_one_segment_and_the_grammar_enforces_it(self):
+    """The agent scope is EXACTLY two segments, and that is not an assumption.
 
-        for tail in TERMINAL_CATEGORY_TAILS:
-            cat = ".".join(tail)
-            for scope in SCOPE_CONTAINMENT:
-                if scope == "agent":
-                    # The agent tier is DISCRIMINATED (spec §0/§2d): the key is
-                    # ``agent.<node>.<category>``, a BARE ``agent.<category>`` is
-                    # not a key at all, and one segment DEEPER than the node is
-                    # the false-positive class.
-                    assert self._pred(f"agent.claude.{cat}")
-                    assert self._pred(f"agent.default.{cat}")
-                    assert not self._pred(f"agent.{cat}")
-                    assert not self._pred(f"agent.claude.channels.{cat}")
-                    continue
-                assert self._pred(f"{scope}.{cat}")
-                # ONE SEGMENT DEEPER is never a category key, whatever the
-                # intervening token: that is the false-positive class.
-                assert not self._pred(f"{scope}.channels.{cat}")
-                assert not self._pred(f"{scope}.auth.{cat}")
-            # Unscoped, and the ``pref``/``meta`` mirrors, are out of this
-            # function's domain — the launch floor is keyed by SCOPE alone.
-            assert not self._pred(cat)
-            assert not self._pred(f"pref.box.{cat}")
-            assert not self._pred(f"meta.box.agent.{cat}")
+    ``agent_ref.parse_agent_ref`` admits only alphanumerics plus ``-``/``_`` in
+    a segment and carries ``_DOT_HINT`` — *"'.' is reserved as the settings
+    key-path separator and cannot appear in an agent name"* — so a persona node
+    cannot widen ``agent.<node>`` beyond two segments. The premise is asserted here
+    rather than trusted, because if the grammar ever admitted a dot this
+    predicate would start answering False for that box's agent-scope binds and
+    drop them into last-wins, silently deleting an earlier family's map.
 
-    def test_a_channels_type_root_fails_the_predicate_itself(self):
-        """The two enumerated false positives, excluded BY CONSTRUCTION.
+    (⚑ ``settings_categories.AGENT_BIND_KEY_RE``'s comment claims the opposite,
+    citing ``navigator.v2℘claude``. Its non-greedy node costs nothing, but the
+    prose is wrong against this grammar — reported, not edited: that module is
+    not this seam.)
+    """
+    from kanibako.agent_ref import canonicalize_agent_ref
+    from kanibako.errors import ConfigError
 
-        Named rather than derived because these two are the whole reason the
-        predicate changed shape: both are ``type: path`` in the manifest, i.e.
-        SCALARS, and both answered True to the tail match. The sibling
-        ``<scope>.common`` MOUNT category — one word, the other sense (spec §2a
-        "ONE WORD, ``common``, for both senses") — must still answer True, or the
-        fix would have closed the hole by breaking the category.
-        """
-        assert not self._pred("system.channels.common")
-        assert not self._pred("workset.channels.common")
-        assert self._pred("system.common")
-        assert self._pred("workset.common")
+    # The canonical node of a real persona ref is ONE segment...
+    assert canonicalize_agent_ref("navigator+claude") == "navigator℘claude"
+    assert self._pred("agent.navigator℘claude.seeded")
+    assert self._pred("agent.navigator℘claude.bindings.ro")
+    # ...and a dotted persona is refused at the grammar, not later.
+    with pytest.raises(ConfigError):
+      canonicalize_agent_ref("navigator.v2+claude")
 
-    def test_a_persona_node_is_one_segment_and_the_grammar_enforces_it(self):
-        """The agent scope is EXACTLY two segments, and that is not an assumption.
+  def test_the_two_predicates_answer_DIFFERENT_questions(self):
+    """The pair is the point: same SET, different DOMAIN.
 
-        ``agent_ref.parse_agent_ref`` admits only alphanumerics plus ``-``/``_`` in
-        a segment and carries ``_DOT_HINT`` — *"'.' is reserved as the settings
-        key-path separator and cannot appear in an agent name"* — so a persona node
-        cannot widen ``agent.<node>`` beyond two segments. The premise is asserted here
-        rather than trusted, because if the grammar ever admitted a dot this
-        predicate would start answering False for that box's agent-scope binds and
-        drop them into last-wins, silently deleting an earlier family's map.
+    Both read :data:`TERMINAL_CATEGORY_TAILS`, so they can never disagree about
+    WHICH categories are terminal. They disagree about WHERE one may appear, and
+    the types say which question a call site is asking — segments for a tail, a
+    dotted string for a key. Deleting either and pointing its callers at the
+    other reintroduces one of the two defects.
 
-        (⚑ ``settings_categories.AGENT_BIND_KEY_RE``'s comment claims the opposite,
-        citing ``navigator.v2℘claude``. Its non-greedy node costs nothing, but the
-        prose is wrong against this grammar — reported, not edited: that module is
-        not this seam.)
-        """
-        from kanibako.agent_ref import canonicalize_agent_ref
-        from kanibako.errors import ConfigError
+    ⚑ MUTATION: make ``is_terminal_category_key`` delegate to
+    ``is_terminal_category_tail(key.split("."))`` -> the ``channels`` rows below
+    flip and this dies. Make the tail predicate demand a scope -> the bare-tail
+    rows die, and ``agent_defaults.load_category_binds`` (which is handed a BARE
+    category token, never a key) starts refusing every plugin declaration.
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
-        # The canonical node of a real persona ref is ONE segment...
-        assert canonicalize_agent_ref("navigator+claude") == "navigator℘claude"
-        assert self._pred("agent.navigator℘claude.seeded")
-        assert self._pred("agent.navigator℘claude.bindings.ro")
-        # ...and a dotted persona is refused at the grammar, not later.
-        with pytest.raises(ConfigError):
-            canonicalize_agent_ref("navigator.v2+claude")
+    # A whole key whose category sits where the SCOPE ends: BOTH say yes.
+    for key in (
+      "box.masks",
+      "system.bindings.rw",
+      "agent.claude.caches",
+      "workset.seeded",
+      "box.common",
+      "system.synced",
+    ):
+      assert is_terminal_category_tail(key.split(".")), key
+      assert self._pred(key), key
+    # A BARE tail — what a plugin declaration carries: only the TAIL test.
+    for tail in ("caches", "bindings.ro", "masks"):
+      assert is_terminal_category_tail(tail.split(".")), tail
+      assert not self._pred(tail), tail
+    # A leaf that merely ENDS in a category token: only the tail test, and that
+    # is the defect. ⚑ The meta pair joined this class on 2026-08-10b, when the
+    # collapse's copy output split into leaves NAMED for the categories they
+    # carry — a second, independent way for the suffix test to be fooled, and
+    # the reason the position predicate is the one every key-shaped call site
+    # uses. Neither reaches a tail call site: those are handed a plugin's bare
+    # category token or a ``pref:`` child, never a ``meta.*`` key.
+    for key in (
+      "system.channels.common",
+      "workset.channels.common",
+      "meta.assembly.seeded",
+      "meta.assembly.synced",
+    ):
+      assert is_terminal_category_tail(key.split(".")), key
+      assert not self._pred(key), key
 
-    def test_the_two_predicates_answer_DIFFERENT_questions(self):
-        """The pair is the point: same SET, different DOMAIN.
+  def test_the_channel_type_roots_classify_UNIFORMLY(self):
+    """One family, one answer — enumerated, not hand-listed.
 
-        Both read :data:`TERMINAL_CATEGORY_TAILS`, so they can never disagree about
-        WHICH categories are terminal. They disagree about WHERE one may appear, and
-        the types say which question a call site is asking — segments for a tail, a
-        dotted string for a key. Deleting either and pointing its callers at the
-        other reintroduces one of the two defects.
+    ``common`` is the ONLY channel type whose name collides with a category
+    token, so under the suffix test exactly one member of each ``channels``
+    family answered differently from its siblings. Deriving the members from the
+    manifest means a channel type named after a future category is covered the
+    day it is declared.
+    """
+    doc = manifest_doc()
+    families: dict[str, list[str]] = {}
+    for key in doc["keys"]:
+      head, _, rest = str(key).partition(".channels.")
+      if rest and "." not in rest:
+        families.setdefault(head, []).append(str(key))
+    assert set(families) == {"system", "workset"}, families
+    for scope, members in families.items():
+      # Every member is a channel type-root, so every member is False.
+      assert not any(self._pred(k) for k in members), (scope, members)
+      # And the collision is real: without it this test proves nothing.
+      assert f"{scope}.channels.common" in members, members
 
-        ⚑ MUTATION: make ``is_terminal_category_key`` delegate to
-        ``is_terminal_category_tail(key.split("."))`` -> the ``channels`` rows below
-        flip and this dies. Make the tail predicate demand a scope -> the bare-tail
-        rows die, and ``agent_defaults.load_category_binds`` (which is handed a BARE
-        category token, never a key) starts refusing every plugin declaration.
-        """
-        from kanibako.settings.settings_keyspace import is_terminal_category_tail
+  def test_no_DECLARED_key_gains_the_category_family(self):
+    """The accepted set only ever SHRANK: nothing new was let in.
 
-        # A whole key whose category sits where the SCOPE ends: BOTH say yes.
-        for key in ("box.masks", "system.bindings.rw", "agent.claude.caches",
-                    "workset.seeded", "box.common", "system.synced"):
-            assert is_terminal_category_tail(key.split(".")), key
-            assert self._pred(key), key
-        # A BARE tail — what a plugin declaration carries: only the TAIL test.
-        for tail in ("caches", "bindings.ro", "masks"):
-            assert is_terminal_category_tail(tail.split(".")), tail
-            assert not self._pred(tail), tail
-        # A leaf that merely ENDS in a category token: only the tail test, and that
-        # is the defect. ⚑ The meta pair joined this class on 2026-08-10b, when the
-        # collapse's copy output split into leaves NAMED for the categories they
-        # carry — a second, independent way for the suffix test to be fooled, and
-        # the reason the position predicate is the one every key-shaped call site
-        # uses. Neither reaches a tail call site: those are handed a plugin's bare
-        # category token or a ``pref:`` child, never a ``meta.*`` key.
-        for key in ("system.channels.common", "workset.channels.common",
-                    "meta.assembly.seeded", "meta.assembly.synced"):
-            assert is_terminal_category_tail(key.split(".")), key
-            assert not self._pred(key), key
+    Enumerated over every spelling the ratified manifest declares — the corpus
+    that makes the claim checkable rather than asserted. ``ADDED`` must be empty,
+    and the removals must be exactly the keys that merely END in a category
+    token: the two channel type-roots, and the two collapse-output leaves the
+    2026-08-10b split NAMED for the categories they carry. Both classes are
+    DECLARED keys that are not category keys, which is the whole reason the
+    position predicate exists.
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
-    def test_the_channel_type_roots_classify_UNIFORMLY(self):
-        """One family, one answer — enumerated, not hand-listed.
-
-        ``common`` is the ONLY channel type whose name collides with a category
-        token, so under the suffix test exactly one member of each ``channels``
-        family answered differently from its siblings. Deriving the members from the
-        manifest means a channel type named after a future category is covered the
-        day it is declared.
-        """
-        doc = manifest_doc()
-        families: dict[str, list[str]] = {}
-        for key in doc["keys"]:
-            head, _, rest = str(key).partition(".channels.")
-            if rest and "." not in rest:
-                families.setdefault(head, []).append(str(key))
-        assert set(families) == {"system", "workset"}, families
-        for scope, members in families.items():
-            # Every member is a channel type-root, so every member is False.
-            assert not any(self._pred(k) for k in members), (scope, members)
-            # And the collision is real: without it this test proves nothing.
-            assert f"{scope}.channels.common" in members, members
-
-    def test_no_DECLARED_key_gains_the_category_family(self):
-        """The accepted set only ever SHRANK: nothing new was let in.
-
-        Enumerated over every spelling the ratified manifest declares — the corpus
-        that makes the claim checkable rather than asserted. ``ADDED`` must be empty,
-        and the removals must be exactly the keys that merely END in a category
-        token: the two channel type-roots, and the two collapse-output leaves the
-        2026-08-10b split NAMED for the categories they carry. Both classes are
-        DECLARED keys that are not category keys, which is the whole reason the
-        position predicate exists.
-        """
-        from kanibako.settings.settings_keyspace import is_terminal_category_tail
-
-        declared = {str(k) for k in manifest_doc()["keys"]}
-        suffix = {k for k in declared if is_terminal_category_tail(k.split("."))}
-        position = {k for k in declared if self._pred(k)}
-        assert position - suffix == set()
-        assert suffix - position == {
-            "system.channels.common", "workset.channels.common",
-            "meta.assembly.seeded", "meta.assembly.synced",
-        }
+    declared = {str(k) for k in manifest_doc()["keys"]}
+    suffix = {k for k in declared if is_terminal_category_tail(k.split("."))}
+    position = {k for k in declared if self._pred(k)}
+    assert position - suffix == set()
+    assert suffix - position == {
+      "system.channels.common",
+      "workset.channels.common",
+      "meta.assembly.seeded",
+      "meta.assembly.synced",
+    }
 
 
 def test_the_bind_shaped_terminal_mirror_cannot_drift():
-    """``settings_categories._TERMINAL_BIND_CATEGORIES`` is a MIRROR of the constant
-    above, spelled again because that module is deliberately stdlib-only (it imports
-    only stdlib + the expression engine, so it cannot import this one). Pin the two
-    equal on the BIND-SHAPED members, so a category that goes dest-keyed cannot be
-    declared terminal in one place and left per-entry-keyed in the other.
+  """``settings_categories._TERMINAL_BIND_CATEGORIES`` is a MIRROR of the constant
+  above, spelled again because that module is deliberately stdlib-only (it imports
+  only stdlib + the expression engine, so it cannot import this one). Pin the two
+  equal on the BIND-SHAPED members, so a category that goes dest-keyed cannot be
+  declared terminal in one place and left per-entry-keyed in the other.
 
-    ⚑ ``masks`` is terminal but NOT bind-shaped, so it is deliberately absent from
-    the mirror — the comparison excludes it rather than pretending it is missing.
-    """
-    from kanibako.settings.settings_categories import (
-        _BIND_CATEGORIES,
-        _NON_TERMINAL_BIND_CATEGORIES,
-        _TERMINAL_BIND_CATEGORIES,
-    )
-    from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+  ⚑ ``masks`` is terminal but NOT bind-shaped, so it is deliberately absent from
+  the mirror — the comparison excludes it rather than pretending it is missing.
+  """
+  from kanibako.settings.settings_categories import (
+    _BIND_CATEGORIES,
+    _NON_TERMINAL_BIND_CATEGORIES,
+    _TERMINAL_BIND_CATEGORIES,
+  )
+  from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
 
-    # The keyspace's terminal tails, restricted to the bind-shaped categories.
-    bind_shaped_terminal = {
-        cat for cat in _BIND_CATEGORIES
-        if tuple(cat.split(".")) in TERMINAL_CATEGORY_TAILS
-    }
-    assert set(_TERMINAL_BIND_CATEGORIES) == bind_shaped_terminal
-    # ...and the complement really is a complement (no member in both, none lost).
-    assert not set(_TERMINAL_BIND_CATEGORIES) & set(_NON_TERMINAL_BIND_CATEGORIES)
-    assert (
-        set(_TERMINAL_BIND_CATEGORIES) | set(_NON_TERMINAL_BIND_CATEGORIES)
-        == set(_BIND_CATEGORIES)
-    )
+  # The keyspace's terminal tails, restricted to the bind-shaped categories.
+  bind_shaped_terminal = {
+    cat for cat in _BIND_CATEGORIES if tuple(cat.split(".")) in TERMINAL_CATEGORY_TAILS
+  }
+  assert set(_TERMINAL_BIND_CATEGORIES) == bind_shaped_terminal
+  # ...and the complement really is a complement (no member in both, none lost).
+  assert not set(_TERMINAL_BIND_CATEGORIES) & set(_NON_TERMINAL_BIND_CATEGORIES)
+  assert set(_TERMINAL_BIND_CATEGORIES) | set(_NON_TERMINAL_BIND_CATEGORIES) == set(
+    _BIND_CATEGORIES
+  )
 
 
 def test_masks_and_bindings_arms_refuse_a_tail_the_same_way():
-    """Two dest-keyed categories, ONE story (Code Convention 0). Both say the
-    entries are destinations inside the VALUE, not key segments."""
-    for key in ("box.masks./some/path", "box.bindings.ro./some/path"):
-        r = reason(key)
-        assert "not a key" in r
-        assert "destinations" in r or "box destinations" in r
+  """Two dest-keyed categories, ONE story (Code Convention 0). Both say the
+  entries are destinations inside the VALUE, not key segments."""
+  for key in ("box.masks./some/path", "box.bindings.ro./some/path"):
+    r = reason(key)
+    assert "not a key" in r
+    assert "destinations" in r or "box destinations" in r
 
 
 def test_reserved_leaf_names_rejected():
-    """spec §0 — a leaf may not be named after a public dict method.
+  """spec §0 — a leaf may not be named after a public dict method.
 
-    ⚑ The probes are VAR-keyed (``env`` / ``secret_path``) because those are the
-    only families left whose free segment is a KEY segment and therefore reaches
-    ``leaf_name_reason``. A reserved name under a bind-shaped category is now
-    refused one step earlier, as a tail past a TERMINAL key — pinned by
-    ``test_a_name_under_a_dest_keyed_category_is_not_a_key``, whose non-vacuity
-    case is exactly ``…common.items``.
-    """
-    assert "RESERVED" in reason("box.env.get")
-    assert "RESERVED" in reason("agent.claude.env.items")
-    assert "RESERVED" in reason("agent.claude.secret_path.copy")
-    assert "dunder" in reason("box.env.__init__")
+  ⚑ The probes are VAR-keyed (``env`` / ``secret_path``) because those are the
+  only families left whose free segment is a KEY segment and therefore reaches
+  ``leaf_name_reason``. A reserved name under a bind-shaped category is now
+  refused one step earlier, as a tail past a TERMINAL key — pinned by
+  ``test_a_name_under_a_dest_keyed_category_is_not_a_key``, whose non-vacuity
+  case is exactly ``…common.items``.
+  """
+  assert "RESERVED" in reason("box.env.get")
+  assert "RESERVED" in reason("agent.claude.env.items")
+  assert "RESERVED" in reason("agent.claude.secret_path.copy")
+  assert "dunder" in reason("box.env.__init__")
 
 
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
 def test_is_valid_agent_segment_accepts_every_pseudo_agent(name):
-    """The discriminator admits the RESERVED names, swept from the reservation itself.
+  """The discriminator admits the RESERVED names, swept from the reservation itself.
 
-    ⚑ PARAMETRIZED OFF :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` (P13), so a third
-    reserved name is covered with no edit here — and a name that is reserved against
-    agents but NOT admitted as a segment reds, which is the pair that must not come
-    apart.  ``AGENTS`` deliberately contains neither: the standing is the keyspace's
-    own, not a discovery result's.
-    """
-    assert name not in AGENTS
-    assert is_valid_agent_segment(name, AGENTS)
+  ⚑ PARAMETRIZED OFF :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` (P13), so a third
+  reserved name is covered with no edit here — and a name that is reserved against
+  agents but NOT admitted as a segment reds, which is the pair that must not come
+  apart.  ``AGENTS`` deliberately contains neither: the standing is the keyspace's
+  own, not a discovery result's.
+  """
+  assert name not in AGENTS
+  assert is_valid_agent_segment(name, AGENTS)
 
 
 def test_is_valid_agent_segment_accepts_members_and_refuses_the_rest():
-    assert is_valid_agent_segment("claude", AGENTS)
-    assert not is_valid_agent_segment("zippity", AGENTS)
+  assert is_valid_agent_segment("claude", AGENTS)
+  assert not is_valid_agent_segment("zippity", AGENTS)
 
 
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
 def test_a_pseudo_agent_tier_judges_like_a_real_one(name):
-    """⚑ THE STEP-1 FALSIFIER, both halves: the tier resolves, and it stays CLOSED.
+  """⚑ THE STEP-1 FALSIFIER, both halves: the tier resolves, and it stays CLOSED.
 
-    A pseudo-agent's leaves are its own §2d block and nothing else — there is no plugin
-    whose absence could excuse an unknown one — so an invented leaf must be refused at
-    ``agent.shell.*`` exactly as it is at ``agent.default.*``.  Admitting the
-    discriminator without that second half would open the tier rather than declare it.
-    """
-    assert valid(f"agent.{name}.label")
-    assert valid(f"agent.{name}.access")
-    assert valid(f"agent.{name}.env.TERM")
-    # §2d declares no ``meta.agent.default.*``; ``shell``'s fence keeps its own.
-    assert valid(f"meta.agent.{name}.name") == (name != "default")
-    assert not valid(f"agent.{name}.zippity")
+  A pseudo-agent's leaves are its own §2d block and nothing else — there is no plugin
+  whose absence could excuse an unknown one — so an invented leaf must be refused at
+  ``agent.shell.*`` exactly as it is at ``agent.default.*``.  Admitting the
+  discriminator without that second half would open the tier rather than declare it.
+  """
+  assert valid(f"agent.{name}.label")
+  assert valid(f"agent.{name}.access")
+  assert valid(f"agent.{name}.env.TERM")
+  # §2d declares no ``meta.agent.default.*``; ``shell``'s fence keeps its own.
+  assert valid(f"meta.agent.{name}.name") == (name != "default")
+  assert not valid(f"agent.{name}.zippity")
 
 
 def test_every_pseudo_agent_has_a_fence():
-    """The fence table and the reservation name ONE set of pseudo-agents."""
-    assert set(PSEUDO_AGENT_FENCES) == PSEUDO_AGENT_NAMES
+  """The fence table and the reservation name ONE set of pseudo-agents."""
+  assert set(PSEUDO_AGENT_FENCES) == PSEUDO_AGENT_NAMES
 
 
 def test_the_addressable_pseudo_agents_are_the_fences_that_declare_settings():
-    """A ref may ADDRESS exactly the pseudo-agents whose §2d fence declares an agent
-    settings file (``meta.agent.<name>.settings``); ``default`` declares none."""
-    assert ADDRESSABLE_PSEUDO_AGENTS == {
-        n for n, f in PSEUDO_AGENT_FENCES.items() if "settings" in f.meta_leaves
-    }
+  """A ref may ADDRESS exactly the pseudo-agents whose §2d fence declares an agent
+  settings file (``meta.agent.<name>.settings``); ``default`` declares none."""
+  assert ADDRESSABLE_PSEUDO_AGENTS == {
+    n for n, f in PSEUDO_AGENT_FENCES.items() if "settings" in f.meta_leaves
+  }
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize(
+  "key",
+  [
     "agent.shell.frobnicate",
-    "meta.agent.default.settings", "meta.agent.default.mode",
-    "meta.agent.default.exec", "meta.agent.default.auth",
+    "meta.agent.default.settings",
+    "meta.agent.default.mode",
+    "meta.agent.default.exec",
+    "meta.agent.default.auth",
     "meta.agent.default.auth.share_support",
-])
+  ],
+)
 def test_a_true_agent_leaf_is_refused_at_a_pseudo_agent(key):
-    """Each ``meta.agent.default`` spelling was a KEY while the true-agent rows reached
-    the pseudo-agents; the shell node is judged against the shell fence, which lists
-    no ``frobnicate``.
+  """Each ``meta.agent.default`` spelling was a KEY while the true-agent rows reached
+  the pseudo-agents; the shell node is judged against the shell fence, which lists
+  no ``frobnicate``.
 
-    The ``default`` agent tier is compared with the manifest by the kinemata view
-    ``pseudo-agent-leaves``, and the shell's agent tier IS that set
-    (:func:`test_every_universal_leaf_is_a_key_on_shell`); these pin the
-    ``meta.agent`` tier.
-    """
-    assert "not a declared" in reason(key)
+  The ``default`` agent tier is compared with the manifest by the kinemata view
+  ``pseudo-agent-leaves``, and the shell's agent tier IS that set
+  (:func:`test_every_universal_leaf_is_a_key_on_shell`); these pin the
+  ``meta.agent`` tier.
+  """
+  assert "not a declared" in reason(key)
 
 
-@pytest.mark.parametrize("key", [
-    "agent.shell.model", "agent.shell.endpoint", "agent.shell.continue_mode",
+@pytest.mark.parametrize(
+  "key",
+  [
+    "agent.shell.model",
+    "agent.shell.endpoint",
+    "agent.shell.continue_mode",
     "pref.agent.shell.model",
-])
+  ],
+)
 def test_the_shell_fence_declares_the_universal_leaves(key):
-    """The shell node holds every universal key: its fence rows (``<None>`` for
-    ``model``/``continue_mode``) and the ones it inherits from ``agent.default``."""
-    assert valid(key)
+  """The shell node holds every universal key: its fence rows (``<None>`` for
+  ``model``/``continue_mode``) and the ones it inherits from ``agent.default``."""
+  assert valid(key)
 
 
 @pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
 def test_every_universal_leaf_is_a_key_on_shell(leaf):
-    """§2d "Pseudo-agent(s)": shell inherits ``agent.default``, so every universal leaf is
-    settable on it, at the key and as a pref — a leaf added to
-    :data:`DECLARED_AGENT_LEAVES` can never be refused for shell.
-    (Mutation: drop ``"access"`` from the shell fence → RED.)"""
-    assert PSEUDO_AGENT_FENCES["shell"].leaves == DECLARED_AGENT_LEAVES
-    assert valid(f"agent.shell.{leaf}")
-    assert valid(f"pref.agent.shell.{leaf}")
+  """§2d "Pseudo-agent(s)": shell inherits ``agent.default``, so every universal leaf is
+  settable on it, at the key and as a pref — a leaf added to
+  :data:`DECLARED_AGENT_LEAVES` can never be refused for shell.
+  (Mutation: drop ``"access"`` from the shell fence → RED.)"""
+  assert PSEUDO_AGENT_FENCES["shell"].leaves == DECLARED_AGENT_LEAVES
+  assert valid(f"agent.shell.{leaf}")
+  assert valid(f"pref.agent.shell.{leaf}")
 
 
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
 def test_a_pseudo_agent_keeps_its_meta_rows_and_the_categories(name):
-    """Every ``meta.agent.<name>.*`` row the manifest spells stays a key, and the §2a
-    categories — declared at every agent scope by §2a, not by a §2d block — stay too.
-    ``default`` spells none (§2d)."""
-    meta = _manifest_leaves(f"meta.agent.{name}.")
-    assert bool(meta) == (name != "default"), name
-    for leaf in sorted(meta):
-        assert valid(f"meta.agent.{name}.{leaf}"), leaf
-    for tail in ("env.FOO", "secret_path.FOO", "caches", "bindings.ro", "masks"):
-        assert valid(f"agent.{name}.{tail}"), tail
+  """Every ``meta.agent.<name>.*`` row the manifest spells stays a key, and the §2a
+  categories — declared at every agent scope by §2a, not by a §2d block — stay too.
+  ``default`` spells none (§2d)."""
+  meta = _manifest_leaves(f"meta.agent.{name}.")
+  assert bool(meta) == (name != "default"), name
+  for leaf in sorted(meta):
+    assert valid(f"meta.agent.{name}.{leaf}"), leaf
+  for tail in ("env.FOO", "secret_path.FOO", "caches", "bindings.ro", "masks"):
+    assert valid(f"agent.{name}.{tail}"), tail
 
 
-@pytest.mark.parametrize("key", [
-    "meta.agent.default", "meta.agent.default.name", "meta.agent.default.path",
-])
+@pytest.mark.parametrize(
+  "key",
+  [
+    "meta.agent.default",
+    "meta.agent.default.name",
+    "meta.agent.default.path",
+  ],
+)
 def test_the_default_tier_declares_no_meta_rows(key):
-    """§2d declares no ``meta.agent.default.*``: a core value needing a store root roots
-    at the ACTIVE node (``meta.self.path``), so the retired anchors are refused by name."""
-    assert "not a declared" in reason(key)
+  """§2d declares no ``meta.agent.default.*``: a core value needing a store root roots
+  at the ACTIVE node (``meta.self.path``), so the retired anchors are refused by name."""
+  assert "not a declared" in reason(key)
 
 
 def test_a_true_agent_keeps_the_generic_rows():
-    """The fix narrows the pseudo-agents only."""
-    for leaf in ("model", "endpoint", "continue_mode"):
-        assert valid(f"agent.claude.{leaf}")
-        assert valid(f"agent.navigator℘claude.{leaf}")
-    for leaf in ("settings", "mode", "exec", "auth.share_support"):
-        assert valid(f"meta.agent.claude.{leaf}")
+  """The fix narrows the pseudo-agents only."""
+  for leaf in ("model", "endpoint", "continue_mode"):
+    assert valid(f"agent.claude.{leaf}")
+    assert valid(f"agent.navigator℘claude.{leaf}")
+  for leaf in ("settings", "mode", "exec", "auth.share_support"):
+    assert valid(f"meta.agent.claude.{leaf}")
 
 
 def test_the_refusal_message_offers_every_pseudo_agent():
-    """A refusal that named a NARROWER world would send a user to fix a good name."""
-    message = reason("agent.zippity.label")
-    for name in PSEUDO_AGENT_NAMES:
-        assert name in message, message
+  """A refusal that named a NARROWER world would send a user to fix a good name."""
+  message = reason("agent.zippity.label")
+  for name in PSEUDO_AGENT_NAMES:
+    assert name in message, message
 
 
 def test_non_active_agent_is_valid():
-    """§2h — the test is 'is it a VALID agent', NOT 'is it the ACTIVE
-    agent': pre-configuring an agent you may switch to is allowed."""
-    assert valid("agent.goose.model")
-    assert valid("agent.codex.access")
+  """§2h — the test is 'is it a VALID agent', NOT 'is it the ACTIVE
+  agent': pre-configuring an agent you may switch to is allowed."""
+  assert valid("agent.goose.model")
+  assert valid("agent.codex.access")
 
 
 # ---------------------------------------------------------------------------
 # The SUPPORTING surface (message quality)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("key", [
-    "config.data", "config.settings", "config.agents",
-    "config.primary_workset", "config.registry", "config.journal",
-    "system.channelroot", "system.template", "system.canon", "system.backup",
-    "system.cache", "system.runtime", "system.setup_completed",
-    "system.channels.common", "system.channels.chat", "system.channels.broadcast",
-    "system.channels.mailboxes", "system.channels.share",
+
+@pytest.mark.parametrize(
+  "key",
+  [
+    "config.data",
+    "config.settings",
+    "config.agents",
+    "config.primary_workset",
+    "config.registry",
+    "config.journal",
+    "system.channelroot",
+    "system.template",
+    "system.canon",
+    "system.backup",
+    "system.cache",
+    "system.runtime",
+    "system.setup_completed",
+    "system.channels.common",
+    "system.channels.chat",
+    "system.channels.broadcast",
+    "system.channels.mailboxes",
+    "system.channels.share",
     "system.auth.share_allowed",
-    "box.image", "box.share_images", "box.images_store", "box.canon",
-    "box.shell", "box.enable_vault",
-    "box.auth.global_enabled", "box.auth.workset_enabled",
-    "workset.workspaces", "workset.boxes", "workset.logs", "workset.registry",
-    "workset.template", "workset.canon", "workset.kuid",
-    "workset.skip_kuid_check", "workset.vault_ro", "workset.vault_rw",
+    "box.image",
+    "box.share_images",
+    "box.images_store",
+    "box.canon",
+    "box.shell",
+    "box.enable_vault",
+    "box.auth.global_enabled",
+    "box.auth.workset_enabled",
+    "workset.workspaces",
+    "workset.boxes",
+    "workset.logs",
+    "workset.registry",
+    "workset.template",
+    "workset.canon",
+    "workset.kuid",
+    "workset.skip_kuid_check",
+    "workset.vault_ro",
+    "workset.vault_rw",
     "workset.channelroot",
-    "workset.auth.share_allowed", "workset.auth.global_sync", "workset.auth.path",
-    "workset.channels.common", "workset.channels.chat",
-    "workset.channels.broadcast", "workset.channels.share",
-    "workset.channels.mailboxes", "workset.channels.share_global",
-    "box.bindings.rw", "box.bindings.ro", "box.masks",
-    "box.env.MYVAR", "box.secret_path.TOKEN",
-])
+    "workset.auth.share_allowed",
+    "workset.auth.global_sync",
+    "workset.auth.path",
+    "workset.channels.common",
+    "workset.channels.chat",
+    "workset.channels.broadcast",
+    "workset.channels.share",
+    "workset.channels.mailboxes",
+    "workset.channels.share_global",
+    "box.bindings.rw",
+    "box.bindings.ro",
+    "box.masks",
+    "box.env.MYVAR",
+    "box.secret_path.TOKEN",
+  ],
+)
 def test_supporting_surface_is_valid(key):
-    assert valid(key), reason(key)
+  assert valid(key), reason(key)
 
 
-@pytest.mark.parametrize("key", [
-    "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
+@pytest.mark.parametrize(
+  "key",
+  [
+    "meta.runtime.ws_root",
+    "meta.runtime.ws_name",
+    "meta.runtime.project_type",
     "meta.runtime.user.config",
-    "meta.runtime.admin.config", "meta.runtime.admin.settings",
-    "meta.assembly.bindings", "meta.assembly.seeded", "meta.assembly.synced",
+    "meta.runtime.admin.config",
+    "meta.runtime.admin.settings",
+    "meta.assembly.bindings",
+    "meta.assembly.seeded",
+    "meta.assembly.synced",
     "meta.assembly.env",
-    "meta.workset.path", "meta.workset.name", "meta.workset.settings",
+    "meta.workset.path",
+    "meta.workset.name",
+    "meta.workset.settings",
     "meta.workset.auth.global_active",
-    "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
-    "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
-    "meta.box.share_workset", "meta.box.auth.workset_path",
-    "meta.box.auth.global_active", "meta.box.auth.workset_active",
-    "meta.box.home", "meta.box.container", "meta.box.helper_num",
-    "meta.box.agent.model", "meta.box.agent.common",
-    "meta.agent.claude.name", "meta.agent.claude.path",
-    "meta.agent.claude.settings", "meta.agent.claude.mode",
-    "meta.agent.claude.exec", "meta.agent.claude.auth.share_support",
-])
+    "meta.box.path",
+    "meta.box.name",
+    "meta.box.mode",
+    "meta.box.workspace",
+    "meta.box.settings",
+    "meta.box.inbox",
+    "meta.box.share_global",
+    "meta.box.share_workset",
+    "meta.box.auth.workset_path",
+    "meta.box.auth.global_active",
+    "meta.box.auth.workset_active",
+    "meta.box.home",
+    "meta.box.container",
+    "meta.box.helper_num",
+    "meta.box.agent.model",
+    "meta.box.agent.common",
+    "meta.agent.claude.name",
+    "meta.agent.claude.path",
+    "meta.agent.claude.settings",
+    "meta.agent.claude.mode",
+    "meta.agent.claude.exec",
+    "meta.agent.claude.auth.share_support",
+  ],
+)
 def test_meta_families_are_valid(key):
-    assert valid(key), reason(key)
+  assert valid(key), reason(key)
 
 
 # ---------------------------------------------------------------------------
 # Manifest <-> declaration drift guards
 # ---------------------------------------------------------------------------
 
+
 def _manifest_leaves(prefix: str) -> set[str]:
-    """The manifest's DIRECT leaves under *prefix* — nested rows dropped.
+  """The manifest's DIRECT leaves under *prefix* — nested rows dropped.
 
-    ⚑ The manifest is read through :func:`kanibako.settings.keyspace_manifest
-    .manifest_doc`, which resolves the INSTALLED package data rather than a
-    repo-relative path — that is what makes a guard here a statement about the
-    ARTIFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
-    reads (three here, one in ``test_config_dest_parity``) each restated that
-    property in their own docstring; the loader now carries it once.
+  ⚑ The manifest is read through :func:`kanibako.settings.keyspace_manifest
+  .manifest_doc`, which resolves the INSTALLED package data rather than a
+  repo-relative path — that is what makes a guard here a statement about the
+  ARTIFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
+  reads (three here, one in ``test_config_dest_parity``) each restated that
+  property in their own docstring; the loader now carries it once.
 
-    ⚑ DROPPING A NESTED TAIL IS NOT LEAVING IT UNGUARDED, and two board rows read it
-    as one.  ``meta.box.auth.*``, ``meta.workset.auth.*`` and ``meta.agent.<agent>.auth.*`` are pinned in BOTH
-    directions by ``test_manifest_conformance.TestKeySetConformance``, which expands
-    every nested arm from ``_SCALAR_DECLARATIONS`` — verified 2026-09-19 by mutating a
-    stand-in manifest.  No auth guard was added here for that reason.
+  ⚑ DROPPING A NESTED TAIL IS NOT LEAVING IT UNGUARDED, and two board rows read it
+  as one.  ``meta.box.auth.*``, ``meta.workset.auth.*`` and ``meta.agent.<agent>.auth.*`` are pinned in BOTH
+  directions by ``test_manifest_conformance.TestKeySetConformance``, which expands
+  every nested arm from ``_SCALAR_DECLARATIONS`` — verified 2026-09-19 by mutating a
+  stand-in manifest.  No auth guard was added here for that reason.
 
-    ⚑ THE RUNTIME ARMS DO HAVE A SECOND CARRIER, one screen down:
-    ``test_the_nested_runtime_leaves_match_the_manifest`` states for
-    ``meta.runtime.{user,admin}.*`` what the conformance class already states — both
-    fire on a deleted ``meta.runtime.user.config`` row (measured 2026-09-19).  It is a
-    PRECEDENT THAT WAS NOT COPIED, not a rule the auth arms were exempted from: its
-    disposition is boarded, and the asymmetry stands until that is ruled on.
-    """
-    tails = {
-        str(k)[len(prefix):] for k in manifest_doc()["keys"] if str(k).startswith(prefix)
-    }
-    return {t for t in tails if "." not in t}
+  ⚑ THE RUNTIME ARMS DO HAVE A SECOND CARRIER, one screen down:
+  ``test_the_nested_runtime_leaves_match_the_manifest`` states for
+  ``meta.runtime.{user,admin}.*`` what the conformance class already states — both
+  fire on a deleted ``meta.runtime.user.config`` row (measured 2026-09-19).  It is a
+  PRECEDENT THAT WAS NOT COPIED, not a rule the auth arms were exempted from: its
+  disposition is boarded, and the asymmetry stands until that is ruled on.
+  """
+  tails = {str(k)[len(prefix) :] for k in manifest_doc()["keys"] if str(k).startswith(prefix)}
+  return {t for t in tails if "." not in t}
 
 
 def test_the_manifest_reserved_leaf_names_match_the_code():
-    """The reserved-name floor (spec §0) has a THIRD carrier — pin it to the code.
+  """The reserved-name floor (spec §0) has a THIRD carrier — pin it to the code.
 
-    ``settings_keyspace.RESERVED_LEAF_NAMES`` IS ``KeyStore.RESERVED_KEY_NAMES``
-    (an alias — identity pinned by
-    ``test_the_keyspace_floor_is_the_store_set_not_a_copy``), so the two CODE
-    carriers cannot drift apart. The manifest is a SEPARATE, hand-maintained
-    carrier that ships in the wheel as release authority, and until this case
-    NOTHING read it: keyspec §0 "Reserved key names" added the store's own two public
-    members to the code and the manifest silently stayed at the 11 ``dict``
-    methods, with the whole gate green.
+  ``settings_keyspace.RESERVED_LEAF_NAMES`` IS ``KeyStore.RESERVED_KEY_NAMES``
+  (an alias — identity pinned by
+  ``test_the_keyspace_floor_is_the_store_set_not_a_copy``), so the two CODE
+  carriers cannot drift apart. The manifest is a SEPARATE, hand-maintained
+  carrier that ships in the wheel as release authority, and until this case
+  NOTHING read it: keyspec §0 "Reserved key names" added the store's own two public
+  members to the code and the manifest silently stayed at the 11 ``dict``
+  methods, with the whole gate green.
 
-    ⚑ Asserted against ``KeyStore.RESERVED_KEY_NAMES``, never the alias — the
-    alias would be comparing the honest source to itself under a second name.
-    """
-    from kanibako.settings.keystore import KeyStore
+  ⚑ Asserted against ``KeyStore.RESERVED_KEY_NAMES``, never the alias — the
+  alias would be comparing the honest source to itself under a second name.
+  """
+  from kanibako.settings.keystore import KeyStore
 
-    manifest = set(manifest_doc()["policy"]["reserved_leaf_names"])
-    code = set(KeyStore.RESERVED_KEY_NAMES)
-    # Named in BOTH directions: a bare set == set on 13 strings says nothing
-    # actionable at the moment it fires.
-    assert manifest == code, (
-        f"reserved_leaf_names drift — in code not manifest: "
-        f"{sorted(code - manifest)}; in manifest not code: "
-        f"{sorted(manifest - code)}"
-    )
+  manifest = set(manifest_doc()["policy"]["reserved_leaf_names"])
+  code = set(KeyStore.RESERVED_KEY_NAMES)
+  # Named in BOTH directions: a bare set == set on 13 strings says nothing
+  # actionable at the moment it fires.
+  assert manifest == code, (
+    f"reserved_leaf_names drift — in code not manifest: "
+    f"{sorted(code - manifest)}; in manifest not code: "
+    f"{sorted(manifest - code)}"
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -780,113 +900,117 @@ COLLAPSE_LEAVES = ("bindings", "seeded", "synced", "env")
 RETIRED_ASSEMBLY_LEAVES = ("copies", "backup")
 
 
-@pytest.mark.parametrize("group, declared", [
+@pytest.mark.parametrize(
+  "group, declared",
+  [
     ("runtime", DECLARED_META_RUNTIME_LEAVES),
     ("assembly", DECLARED_META_ASSEMBLY_LEAVES),
-])
+  ],
+)
 def test_a_flat_meta_declaration_matches_the_manifest(group, declared):
-    """The two declaration sites are ONE question asked twice — pin them EQUAL.
+  """The two declaration sites are ONE question asked twice — pin them EQUAL.
 
-    ``settings_keyspace`` decides whether a spelling is a key; the manifest is the
-    ratified registry the spec projects onto. A leaf added to one and not the other
-    is the exact drift these families had no guard against.
+  ``settings_keyspace`` decides whether a spelling is a key; the manifest is the
+  ratified registry the spec projects onto. A leaf added to one and not the other
+  is the exact drift these families had no guard against.
 
-    ⚑ Parametrizing over the PAIR is what makes the 2026-08-09 move safe:
-    ``meta.assembly`` arrived as a new family, and a drift guard that covered only
-    ``meta.runtime`` would have said nothing about it. The ``meta.box`` sibling
-    keeps its own case below because it carries an extra claim about its
-    unproduced leaves, not because the helper cannot reach it.
-    """
-    assert _manifest_leaves(f"meta.{group}.") == set(declared)
+  ⚑ Parametrizing over the PAIR is what makes the 2026-08-09 move safe:
+  ``meta.assembly`` arrived as a new family, and a drift guard that covered only
+  ``meta.runtime`` would have said nothing about it. The ``meta.box`` sibling
+  keeps its own case below because it carries an extra claim about its
+  unproduced leaves, not because the helper cannot reach it.
+  """
+  assert _manifest_leaves(f"meta.{group}.") == set(declared)
 
 
 def test_the_collapse_outputs_are_declared_under_assembly_only():
-    """The 2026-08-09 MOVE, on the manifest side: under ``assembly``, gone from
-    ``runtime``."""
-    assert set(COLLAPSE_LEAVES) <= _manifest_leaves("meta.assembly.")
-    assert set(COLLAPSE_LEAVES) & _manifest_leaves("meta.runtime.") == set()
+  """The 2026-08-09 MOVE, on the manifest side: under ``assembly``, gone from
+  ``runtime``."""
+  assert set(COLLAPSE_LEAVES) <= _manifest_leaves("meta.assembly.")
+  assert set(COLLAPSE_LEAVES) & _manifest_leaves("meta.runtime.") == set()
 
 
 @pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
 def test_the_runtime_spelling_of_a_collapse_output_is_refused_by_name(leaf):
-    """The MOVE stated as a NEGATIVE: ``meta.runtime.bindings`` is not a key.
+  """The MOVE stated as a NEGATIVE: ``meta.runtime.bindings`` is not a key.
 
-    Without this the change is indistinguishable from an ADD — declaring the three
-    under ``meta.assembly`` while leaving them in
-    ``DECLARED_META_RUNTIME_LEAVES`` leaves every positive case green and both
-    spellings working, which is the clean break silently not happening. ⚑ Refused
-    BY NAME (spec §0), so the assertion is on the reason text carrying the key.
-    """
-    key = f"meta.runtime.{leaf}"
-    assert key in reason(key)
+  Without this the change is indistinguishable from an ADD — declaring the three
+  under ``meta.assembly`` while leaving them in
+  ``DECLARED_META_RUNTIME_LEAVES`` leaves every positive case green and both
+  spellings working, which is the clean break silently not happening. ⚑ Refused
+  BY NAME (spec §0), so the assertion is on the reason text carrying the key.
+  """
+  key = f"meta.runtime.{leaf}"
+  assert key in reason(key)
 
 
 def test_the_retired_config_file_spelling_is_refused_by_name():
-    """The rename ships CLEAN — no alias: ``meta.runtime.config_file`` is not a key.
+  """The rename ships CLEAN — no alias: ``meta.runtime.config_file`` is not a key.
 
-    Without this the rename is indistinguishable from an ADD — declaring the
-    three ``user``/``admin`` rows while leaving ``config_file`` valid leaves
-    every positive case green and both spellings working. ⚑ Refused BY NAME
-    (spec §0), so the assertion is on the reason text carrying the key.
-    """
-    key = "meta.runtime.config_file"
-    assert not valid(key)
-    assert key in reason(key)
+  Without this the rename is indistinguishable from an ADD — declaring the
+  three ``user``/``admin`` rows while leaving ``config_file`` valid leaves
+  every positive case green and both spellings working. ⚑ Refused BY NAME
+  (spec §0), so the assertion is on the reason text carrying the key.
+  """
+  key = "meta.runtime.config_file"
+  assert not valid(key)
+  assert key in reason(key)
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize(
+  "key",
+  [
     "meta.runtime.user.settings",
     "meta.runtime.user.invented",
     "meta.runtime.admin.invented",
-])
+  ],
+)
 def test_an_undeclared_runtime_subspace_leaf_is_refused_by_name(key):
-    """The mutation proof the validator widening owes: an UNDECLARED leaf under
-    ``meta.runtime.user`` / ``meta.runtime.admin`` refuses BY NAME — a stray
-    leaf must not fall through into a key."""
-    assert not valid(key)
-    assert key in reason(key)
+  """The mutation proof the validator widening owes: an UNDECLARED leaf under
+  ``meta.runtime.user`` / ``meta.runtime.admin`` refuses BY NAME — a stray
+  leaf must not fall through into a key."""
+  assert not valid(key)
+  assert key in reason(key)
 
 
 @pytest.mark.parametrize("leaf", RETIRED_ASSEMBLY_LEAVES)
 def test_a_retired_assembly_spelling_is_refused_by_name(leaf):
-    """The 2026-08-10b SPLIT stated as a negative, exactly as the 2026-08-09 MOVE is.
+  """The 2026-08-10b SPLIT stated as a negative, exactly as the 2026-08-09 MOVE is.
 
-    Without this the rename is indistinguishable from an ADD: declaring ``seeded``
-    and ``synced`` while leaving ``copies`` and ``backup`` in
-    ``DECLARED_META_ASSEMBLY_LEAVES`` leaves every positive case green and both
-    spellings working, which is the clean break silently not happening.
-    """
-    key = f"meta.assembly.{leaf}"
-    assert not valid(key)
-    assert key in reason(key)
+  Without this the rename is indistinguishable from an ADD: declaring ``seeded``
+  and ``synced`` while leaving ``copies`` and ``backup`` in
+  ``DECLARED_META_ASSEMBLY_LEAVES`` leaves every positive case green and both
+  spellings working, which is the clean break silently not happening.
+  """
+  key = f"meta.assembly.{leaf}"
+  assert not valid(key)
+  assert key in reason(key)
 
 
 @pytest.mark.parametrize("leaf", RETIRED_ASSEMBLY_LEAVES)
 def test_a_retired_assembly_spelling_is_gone_from_the_manifest_too(leaf):
-    """Both declaration sites drop it, or the drift guard above is the only witness."""
-    assert leaf not in _manifest_leaves("meta.assembly.")
+  """Both declaration sites drop it, or the drift guard above is the only witness."""
+  assert leaf not in _manifest_leaves("meta.assembly.")
 
 
 @pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
 def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
-    """UNIFORMITY, stated as sibling-equality rather than against a literal.
+  """UNIFORMITY, stated as sibling-equality rather than against a literal.
 
-    The honest read behavior is that NO ``meta.*`` key has a file-scope read surface:
-    a ``meta.*`` value is DERIVED per box at launch and stored in no settings file, so
-    ``system get meta.runtime.ws_root`` — a key that IS produced — is refused with the
-    same message an unproduced one gets. Having no producer therefore costs these four
-    nothing, and this case says so in the form that SURVIVED two rewordings of that
-    refusal without an edit ("unknown config key" until 2026-08-28, then the §0 gate's
-    own ``meta.*`` message): whatever the produced sibling answers, they answer. It goes
-    RED the moment one of them is special-cased in either direction — a fabricated
-    placeholder value on the read side, or a bespoke refusal naming them.
-    """
-    from kanibako.settings.config_keys import is_known_key
+  The honest read behavior is that NO ``meta.*`` key has a file-scope read surface:
+  a ``meta.*`` value is DERIVED per box at launch and stored in no settings file, so
+  ``system get meta.runtime.ws_root`` — a key that IS produced — is refused with the
+  same message an unproduced one gets. Having no producer therefore costs these four
+  nothing, and this case says so in the form that SURVIVED two rewordings of that
+  refusal without an edit ("unknown config key" until 2026-08-28, then the §0 gate's
+  own ``meta.*`` message): whatever the produced sibling answers, they answer. It goes
+  RED the moment one of them is special-cased in either direction — a fabricated
+  placeholder value on the read side, or a bespoke refusal naming them.
+  """
+  from kanibako.settings.config_keys import is_known_key
 
-    assert valid(f"meta.assembly.{leaf}"), reason(f"meta.assembly.{leaf}")
-    assert is_known_key(f"meta.assembly.{leaf}") == is_known_key(
-        "meta.runtime.ws_root"
-    )
+  assert valid(f"meta.assembly.{leaf}"), reason(f"meta.assembly.{leaf}")
+  assert is_known_key(f"meta.assembly.{leaf}") == is_known_key("meta.runtime.ws_root")
 
 
 # ---------------------------------------------------------------------------
@@ -907,355 +1031,362 @@ UNPRODUCED_BOX_LEAVES = ("container", "helper_num")
 
 
 def test_the_meta_box_declaration_matches_the_manifest():
-    """The ``meta.box`` half of the same drift guard — RED before 2026-08-08g.
+  """The ``meta.box`` half of the same drift guard — RED before 2026-08-08g.
 
-    ⚑ DIRECT leaves only: ``meta.box`` also carries ``auth.workset_path``,
-    ``auth.global_active``, ``auth.workset_active`` and the
-    ``agent.*`` mirror, which ``key_validity`` dispatches on separate arms and which
-    ``DECLARED_META_BOX_LEAVES`` deliberately does not hold.
-    """
-    from kanibako.settings.settings_keyspace import DECLARED_META_BOX_LEAVES
+  ⚑ DIRECT leaves only: ``meta.box`` also carries ``auth.workset_path``,
+  ``auth.global_active``, ``auth.workset_active`` and the
+  ``agent.*`` mirror, which ``key_validity`` dispatches on separate arms and which
+  ``DECLARED_META_BOX_LEAVES`` deliberately does not hold.
+  """
+  from kanibako.settings.settings_keyspace import DECLARED_META_BOX_LEAVES
 
-    manifest = _manifest_leaves("meta.box.")
-    assert manifest == set(DECLARED_META_BOX_LEAVES)
-    assert set(UNPRODUCED_BOX_LEAVES) <= manifest
+  manifest = _manifest_leaves("meta.box.")
+  assert manifest == set(DECLARED_META_BOX_LEAVES)
+  assert set(UNPRODUCED_BOX_LEAVES) <= manifest
 
 
 @pytest.mark.parametrize("leaf", UNPRODUCED_BOX_LEAVES)
 def test_an_unproduced_box_leaf_is_indistinguishable_from_a_produced_sibling(leaf):
-    """Sibling-equality again, against ``meta.box.path`` — which IS produced.
+  """Sibling-equality again, against ``meta.box.path`` — which IS produced.
 
-    ``meta.box.path`` is written by ``settings_launch.workset_anchor_floor``; these
-    are written by nothing. That difference must not reach the read surface,
-    and today it cannot: a ``meta.*`` value is derived per box at launch and lives in
-    no settings file, so ``system get`` refuses the produced anchor and these alike
-    (verified at the CLI, 2026-08-28 — the wording moved from "unknown config key" to
-    the §0 gate's own ``meta.*`` message that day, and the equality held across both).
-    The case goes RED if one is ever special-cased in either direction.
-    """
-    from kanibako.settings.config_keys import is_known_key
+  ``meta.box.path`` is written by ``settings_launch.workset_anchor_floor``; these
+  are written by nothing. That difference must not reach the read surface,
+  and today it cannot: a ``meta.*`` value is derived per box at launch and lives in
+  no settings file, so ``system get`` refuses the produced anchor and these alike
+  (verified at the CLI, 2026-08-28 — the wording moved from "unknown config key" to
+  the §0 gate's own ``meta.*`` message that day, and the equality held across both).
+  The case goes RED if one is ever special-cased in either direction.
+  """
+  from kanibako.settings.config_keys import is_known_key
 
-    assert valid(f"meta.box.{leaf}"), reason(f"meta.box.{leaf}")
-    assert is_known_key(f"meta.box.{leaf}") == is_known_key("meta.box.path")
+  assert valid(f"meta.box.{leaf}"), reason(f"meta.box.{leaf}")
+  assert is_known_key(f"meta.box.{leaf}") == is_known_key("meta.box.path")
 
 
 def test_the_cut_meta_derived_family_is_refused():
-    """R-8 (option 2) — the ``meta.derived.*`` key family is CUT: it is not a
-    key, and the refusal is the ORDINARY unknown-meta-group refusal."""
-    assert "not a declared meta group" in reason("meta.derived.x")
-    assert "not a declared meta group" in reason(
-        "meta.derived.agent.claude.common"
-    )
+  """R-8 (option 2) — the ``meta.derived.*`` key family is CUT: it is not a
+  key, and the refusal is the ORDINARY unknown-meta-group refusal."""
+  assert "not a declared meta group" in reason("meta.derived.x")
+  assert "not a declared meta group" in reason("meta.derived.agent.claude.common")
 
 
 def test_the_reserved_binding_derivations_node_is_not_a_key():
-    """R-8 / D-4 — ``binding_derivations`` is the reserved INTERNAL snapshot
-    node (manifest ``not_keys.reserved_internal``): refused by the closed head
-    dispatch by construction, so it can never be re-claimed as a key."""
-    assert "not a declared namespace" in reason("binding_derivations.x")
-    assert "not a declared namespace" in reason(
-        "binding_derivations.agent.claude.common"
-    )
+  """R-8 / D-4 — ``binding_derivations`` is the reserved INTERNAL snapshot
+  node (manifest ``not_keys.reserved_internal``): refused by the closed head
+  dispatch by construction, so it can never be re-claimed as a key."""
+  assert "not a declared namespace" in reason("binding_derivations.x")
+  assert "not a declared namespace" in reason("binding_derivations.agent.claude.common")
 
 
 def test_unknown_namespace_rejected():
-    assert "not a declared namespace" in reason("zippity.wibble")
+  assert "not a declared namespace" in reason("zippity.wibble")
 
 
 def test_workset_channel_addresses_into_the_system_stores_are_keys():
-    """R-35 (spec §2c) — ``workset.channels.{mailboxes,share_global}`` are KEYS.
+  """R-35 (spec §2c) — ``workset.channels.{mailboxes,share_global}`` are KEYS.
 
-    Mailboxes still AGGREGATE at system only (§2f); the workset leaf is the
-    workset's declared ADDRESS into that aggregate
-    (``{system.channels.mailboxes}/{meta.workset.name}``), present in EVERY mode.
-    This test previously pinned the EXCLUSION of ``workset.channels.mailboxes``
-    — that pin mis-read aggregation-at-system as absence-from-the-family, and
-    made the validity table refuse a leaf the launch floor accepted (R-35,
-    RATIFIED: fix the CODE).
-    """
-    assert valid("system.channels.mailboxes")
-    assert valid("workset.channels.mailboxes")
-    assert valid("workset.channels.share_global")
-    # ``share_global`` is the WORKSET-scope address; at system scope the store
-    # is plain ``share`` — the workset spelling is not a system leaf.
-    assert not valid("system.channels.share_global")
+  Mailboxes still AGGREGATE at system only (§2f); the workset leaf is the
+  workset's declared ADDRESS into that aggregate
+  (``{system.channels.mailboxes}/{meta.workset.name}``), present in EVERY mode.
+  This test previously pinned the EXCLUSION of ``workset.channels.mailboxes``
+  — that pin mis-read aggregation-at-system as absence-from-the-family, and
+  made the validity table refuse a leaf the launch floor accepted (R-35,
+  RATIFIED: fix the CODE).
+  """
+  assert valid("system.channels.mailboxes")
+  assert valid("workset.channels.mailboxes")
+  assert valid("workset.channels.share_global")
+  # ``share_global`` is the WORKSET-scope address; at system scope the store
+  # is plain ``share`` — the workset spelling is not a system leaf.
+  assert not valid("system.channels.share_global")
 
 
 def test_launch_floor_and_validity_table_agree_on_workset_channel_leaves():
-    """R-35's actual failure mode: the launch floor's allowlist and the
-    validity table are the SAME question asked at two seams, and they had
-    drifted apart (``mailboxes`` accepted by the floor, refused by the table).
-    Pin them EQUAL so neither declaration can move alone."""
-    from kanibako.settings.settings_keyspace import (
-        DECLARED_WORKSET_CHANNEL_LEAVES,
-    )
-    from kanibako.settings.settings_launch import _WORKSET_CHANNEL_LEAVES
+  """R-35's actual failure mode: the launch floor's allowlist and the
+  validity table are the SAME question asked at two seams, and they had
+  drifted apart (``mailboxes`` accepted by the floor, refused by the table).
+  Pin them EQUAL so neither declaration can move alone."""
+  from kanibako.settings.settings_keyspace import (
+    DECLARED_WORKSET_CHANNEL_LEAVES,
+  )
+  from kanibako.settings.settings_launch import _WORKSET_CHANNEL_LEAVES
 
-    assert _WORKSET_CHANNEL_LEAVES == DECLARED_WORKSET_CHANNEL_LEAVES
+  assert _WORKSET_CHANNEL_LEAVES == DECLARED_WORKSET_CHANNEL_LEAVES
 
 
 def test_pref_validity_delegates_to_the_target():
-    assert valid("pref.system.agent")
-    assert valid("pref.agent.claude.model")
-    assert "its target is not a declared key" in reason("pref.agent.zippity.x")
+  assert valid("pref.system.agent")
+  assert valid("pref.agent.claude.model")
+  assert "its target is not a declared key" in reason("pref.agent.zippity.x")
 
 
 def test_pref_of_pref_is_not_a_key():
-    """§2h categorical tier — request-of-request has no termination argument."""
-    assert "termination argument" in reason("pref.pref.system.agent")
+  """§2h categorical tier — request-of-request has no termination argument."""
+  assert "termination argument" in reason("pref.pref.system.agent")
 
 
 def test_empty_and_malformed():
-    assert key_validity("", valid_agents=AGENTS) is not None
-    assert "empty path segment" in reason("box..image")
+  assert key_validity("", valid_agents=AGENTS) is not None
+  assert "empty path segment" in reason("box..image")
 
 
 # ---------------------------------------------------------------------------
 # ⚑ THE CONFORMANCE TRIPWIRE
 # ---------------------------------------------------------------------------
 
+
 def test_known_config_keys_are_valid_under_the_validator():
-    """Every CLI-settable key must be a KEY — exempting only the retiring three.
+  """Every CLI-settable key must be a KEY — exempting only the retiring three.
 
-    ⚑ The two lists answer DIFFERENT questions (``settings_keyspace`` = "is this
-    a key?"; ``KNOWN_CONFIG_KEYS`` = "where does a set of it land?"), so this
-    asserts ONE direction only: settable ⊆ declared. The validator is
-    deliberately the superset.
+  ⚑ The two lists answer DIFFERENT questions (``settings_keyspace`` = "is this
+  a key?"; ``KNOWN_CONFIG_KEYS`` = "where does a set of it land?"), so this
+  asserts ONE direction only: settable ⊆ declared. The validator is
+  deliberately the superset.
 
-    ⚑ If a FOURTH key needs exempting, that is a spec/settable-surface
-    disagreement this arc has not accounted for — STOP and report it rather than
-    widening :data:`RETIRING_KEYS`.
-    """
-    from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS
+  ⚑ If a FOURTH key needs exempting, that is a spec/settable-surface
+  disagreement this arc has not accounted for — STOP and report it rather than
+  widening :data:`RETIRING_KEYS`.
+  """
+  from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS
 
-    # The bare scalars are the CLI's shorthand for the any-agent
-    # ``agent.default.<key>`` tier (config_keys: "the bare key is the
-    # any-agent agent.default tier"), so they are validated in that form.
-    offenders = {}
-    for key in KNOWN_CONFIG_KEYS:
-        if key in RETIRING_KEYS:
-            continue
-        probe = key if "." in key else f"agent.default.{key}"
-        r = key_validity(probe, valid_agents=AGENTS)
-        if r is not None:
-            offenders[key] = r
-    assert not offenders, (
-        "settable keys that are not declared keys (widen the spec or fix the "
-        f"settable surface — do NOT widen RETIRING_KEYS): {offenders}"
-    )
+  # The bare scalars are the CLI's shorthand for the any-agent
+  # ``agent.default.<key>`` tier (config_keys: "the bare key is the
+  # any-agent agent.default tier"), so they are validated in that form.
+  offenders = {}
+  for key in KNOWN_CONFIG_KEYS:
+    if key in RETIRING_KEYS:
+      continue
+    probe = key if "." in key else f"agent.default.{key}"
+    r = key_validity(probe, valid_agents=AGENTS)
+    if r is not None:
+      offenders[key] = r
+  assert not offenders, (
+    "settable keys that are not declared keys (widen the spec or fix the "
+    f"settable surface — do NOT widen RETIRING_KEYS): {offenders}"
+  )
 
 
 def test_retiring_keys_is_empty():
-    """Pins the exemption set EMPTY so re-growing it is a deliberate, reviewed act.
+  """Pins the exemption set EMPTY so re-growing it is a deliberate, reviewed act.
 
-    ⮕ P7 removed ``box.agent_name`` (RETIRED → ``pref.system.agent``, §2b) and
-    ``system.default_agent`` (RENAMED → ``system.agent``, §2g); the C-CANON seeds
-    half landed M-11 (``system.base_template`` → ``system.template``), which was the
-    last one. The "closed-keyspace resolve enforcement" follow-on is GATED on this
-    set being empty, so it is now unblocked from this side.
+  ⮕ P7 removed ``box.agent_name`` (RETIRED → ``pref.system.agent``, §2b) and
+  ``system.default_agent`` (RENAMED → ``system.agent``, §2g); the C-CANON seeds
+  half landed M-11 (``system.base_template`` → ``system.template``), which was the
+  last one. The "closed-keyspace resolve enforcement" follow-on is GATED on this
+  set being empty, so it is now unblocked from this side.
 
-    ⚑ A new entry here means the spec and the settable surface have diverged
-    somewhere unaccounted for — STOP and report, do not widen the set.
-    """
-    assert RETIRING_KEYS == frozenset()
+  ⚑ A new entry here means the spec and the settable surface have diverged
+  somewhere unaccounted for — STOP and report, do not widen the set.
+  """
+  assert RETIRING_KEYS == frozenset()
 
 
 def test_the_retired_base_template_spelling_is_gone():
-    """M-11 is a RENAME, not an alias: the old spelling must be neither settable
-    nor a declared key, so ``config set system.base_template`` refuses."""
-    from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS
+  """M-11 is a RENAME, not an alias: the old spelling must be neither settable
+  nor a declared key, so ``config set system.base_template`` refuses."""
+  from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS
 
-    assert "system.base_template" not in KNOWN_CONFIG_KEYS
-    assert "system.template" in KNOWN_CONFIG_KEYS
-    assert "system.canon" in KNOWN_CONFIG_KEYS
-    assert key_validity("system.base_template", valid_agents=AGENTS) is not None
-    assert key_validity("system.template", valid_agents=AGENTS) is None
-    assert key_validity("system.canon", valid_agents=AGENTS) is None
+  assert "system.base_template" not in KNOWN_CONFIG_KEYS
+  assert "system.template" in KNOWN_CONFIG_KEYS
+  assert "system.canon" in KNOWN_CONFIG_KEYS
+  assert key_validity("system.base_template", valid_agents=AGENTS) is not None
+  assert key_validity("system.template", valid_agents=AGENTS) is None
+  assert key_validity("system.canon", valid_agents=AGENTS) is None
 
 
 def test_retiring_keys_are_all_invalid_today():
-    """Each exemption must actually be invalid — an exemption for a key that
-    validates is dead weight that would hide a real regression."""
-    for key in RETIRING_KEYS:
-        assert key_validity(key, valid_agents=AGENTS) is not None, key
+  """Each exemption must actually be invalid — an exemption for a key that
+  validates is dead weight that would hide a real regression."""
+  for key in RETIRING_KEYS:
+    assert key_validity(key, valid_agents=AGENTS) is not None, key
 
 
 def test_declared_agent_leaves_cover_the_spec_2d_default_tier():
-    """Spot-check against spec §2d so a silent deletion is caught."""
-    assert {
-        "access", "allow_helpers", "continue_mode", "bootstrap", "model",
-        "run_args", "transform", "transform_settings", "endpoint", "template",
-        "canon",
-    } <= DECLARED_AGENT_LEAVES
+  """Spot-check against spec §2d so a silent deletion is caught."""
+  assert {
+    "access",
+    "allow_helpers",
+    "continue_mode",
+    "bootstrap",
+    "model",
+    "run_args",
+    "transform",
+    "transform_settings",
+    "endpoint",
+    "template",
+    "canon",
+  } <= DECLARED_AGENT_LEAVES
 
 
 def test_retired_auto_approve_is_not_a_key():
-    """R-41 RETIRED the boolean spelling: it is UNDECLARED, so the closed
-    keyspace must REFUSE it by name (spec §0).  A stored one is separately
-    refused at launch with the mapping — see
-    ``settings_assemble.refuse_retired_behavior_keys``."""
-    assert "auto_approve" not in DECLARED_AGENT_LEAVES
-    for key in (
-        "agent.claude.auto_approve",
-        "agent.default.auto_approve",
-        "pref.agent.claude.auto_approve",
-    ):
-        assert key_validity(key, valid_agents=AGENTS) is not None, key
+  """R-41 RETIRED the boolean spelling: it is UNDECLARED, so the closed
+  keyspace must REFUSE it by name (spec §0).  A stored one is separately
+  refused at launch with the mapping — see
+  ``settings_assemble.refuse_retired_behavior_keys``."""
+  assert "auto_approve" not in DECLARED_AGENT_LEAVES
+  for key in (
+    "agent.claude.auto_approve",
+    "agent.default.auto_approve",
+    "pref.agent.claude.auto_approve",
+  ):
+    assert key_validity(key, valid_agents=AGENTS) is not None, key
 
 
 def test_access_tier_vocabulary_is_declared_once():
-    """The enum + its default read as ONE vocabulary beside the leaf (R-41).
+  """The enum + its default read as ONE vocabulary beside the leaf (R-41).
 
-    ⚑ The DEFAULT is no longer a constant here: D1-2 moved the VALUE into
-    ``core-defaults.yaml``'s ``agent_default:`` section, so this module exposes an
-    ACCESSOR (``access_default``) rather than ``ACCESS_DEFAULT``. The enum stays a
-    constant — it is the closed vocabulary, not a default. What this pins is that
-    the settable surface, the launch resolver and the plugin descriptors still
-    reach ONE list and ONE default read. The two VALUES are compared with the
-    manifest by the ``access-choices`` (in order) and ``access-default-reader``
-    kinemata views.
-    """
-    from kanibako.settings import settings_keyspace
-    from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
+  ⚑ The DEFAULT is no longer a constant here: D1-2 moved the VALUE into
+  ``core-defaults.yaml``'s ``agent_default:`` section, so this module exposes an
+  ACCESSOR (``access_default``) rather than ``ACCESS_DEFAULT``. The enum stays a
+  constant — it is the closed vocabulary, not a default. What this pins is that
+  the settable surface, the launch resolver and the plugin descriptors still
+  reach ONE list and ONE default read. The two VALUES are compared with the
+  manifest by the ``access-choices`` (in order) and ``access-default-reader``
+  kinemata views.
+  """
+  from kanibako.settings import settings_keyspace
+  from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
 
-    assert access_default() in ACCESS_TIERS
-    assert not hasattr(settings_keyspace, "ACCESS_DEFAULT"), (
-        "the constant is retired — a restored one would be a SECOND spelling of a "
-        "value that now lives in core-defaults.yaml"
-    )
+  assert access_default() in ACCESS_TIERS
+  assert not hasattr(settings_keyspace, "ACCESS_DEFAULT"), (
+    "the constant is retired — a restored one would be a SECOND spelling of a "
+    "value that now lives in core-defaults.yaml"
+  )
 
 
 def test_the_keyspace_floor_is_the_store_set_not_a_copy():
-    """SHOULD-6 — ONE collision-safety floor, read here under a local name.
+  """SHOULD-6 — ONE collision-safety floor, read here under a local name.
 
-    ⚑ Equality is NOT the property: an alias makes ``==`` unfailable, and a
-    reintroduced literal copy would satisfy it on the day it is written. What can
-    still fail is (1) IDENTITY — a copy, however faithful, breaks it — and (2)
-    that the validator actually consults that object, walked over the WHOLE set
-    rather than the spot names of ``test_reserved_leaf_names_rejected``.
-    """
-    from kanibako.settings.keystore import KeyStore
+  ⚑ Equality is NOT the property: an alias makes ``==`` unfailable, and a
+  reintroduced literal copy would satisfy it on the day it is written. What can
+  still fail is (1) IDENTITY — a copy, however faithful, breaks it — and (2)
+  that the validator actually consults that object, walked over the WHOLE set
+  rather than the spot names of ``test_reserved_leaf_names_rejected``.
+  """
+  from kanibako.settings.keystore import KeyStore
 
-    assert RESERVED_LEAF_NAMES is KeyStore.RESERVED_KEY_NAMES
-    for name in KeyStore.RESERVED_KEY_NAMES:
-        r = reason(f"box.env.{name}")
-        assert "RESERVED" in r, name
-        # (3) and the reason must be TRUE of every name it is walked over. The set is
-        # no longer DICT method names alone — ``RESERVED_KEY_NAMES`` is a class
-        # attribute and ``insert_segments`` is a KeyStore method, not a dict one — so
-        # calling the offender a dict method is false for two members of this loop.
-        assert "dict method" not in r, name
+  assert RESERVED_LEAF_NAMES is KeyStore.RESERVED_KEY_NAMES
+  for name in KeyStore.RESERVED_KEY_NAMES:
+    r = reason(f"box.env.{name}")
+    assert "RESERVED" in r, name
+    # (3) and the reason must be TRUE of every name it is walked over. The set is
+    # no longer DICT method names alone — ``RESERVED_KEY_NAMES`` is a class
+    # attribute and ``insert_segments`` is a KeyStore method, not a dict one — so
+    # calling the offender a dict method is false for two members of this loop.
+    assert "dict method" not in r, name
 
 
 class TestOneSetTwoPositions:
-    """The half the shared object does NOT buy — and the direction of the gap.
+  """The half the shared object does NOT buy — and the direction of the gap.
 
-    ⚑ THE COMMENT ABOVE ``RESERVED_LEAF_NAMES`` USED TO SAY *"one set, so there is
-    nothing that can drift and nothing to guard"*.  The SET half is true and is pinned
-    by :func:`test_the_keyspace_floor_is_the_store_set_not_a_copy`.  The RULE half was
-    false: this module applies the set to the LEAF alone, ``KeyStore.__setitem__``
-    applies it to EVERY SEGMENT it writes.  So there IS something that differs, inside
-    the very thing the sentence said had nothing to guard.
+  ⚑ THE COMMENT ABOVE ``RESERVED_LEAF_NAMES`` USED TO SAY *"one set, so there is
+  nothing that can drift and nothing to guard"*.  The SET half is true and is pinned
+  by :func:`test_the_keyspace_floor_is_the_store_set_not_a_copy`.  The RULE half was
+  false: this module applies the set to the LEAF alone, ``KeyStore.__setitem__``
+  applies it to EVERY SEGMENT it writes.  So there IS something that differs, inside
+  the very thing the sentence said had nothing to guard.
 
-    ⚑⚑ THE GAP IS A NARROWER SUBSET, NOT A DISAGREEMENT, and that DIRECTION is what
-    these pin.  Widening the keyspace check to every segment would be a behavior
-    change — it would refuse keys that are legal today — and inverting the direction
-    silently would mean the keyspace refusing something the store accepts, which is
-    the failure this area has already paid for once.
-    """
+  ⚑⚑ THE GAP IS A NARROWER SUBSET, NOT A DISAGREEMENT, and that DIRECTION is what
+  these pin.  Widening the keyspace check to every segment would be a behavior
+  change — it would refuse keys that are legal today — and inverting the direction
+  silently would mean the keyspace refusing something the store accepts, which is
+  the failure this area has already paid for once.
+  """
 
-    def test_the_store_refuses_a_reserved_name_at_EVERY_position(self):
-        """Interior and leaf alike — the store's floor is positional, not terminal."""
-        from kanibako.settings.keystore import KeyStore, ReservedKeyError
+  def test_the_store_refuses_a_reserved_name_at_EVERY_position(self):
+    """Interior and leaf alike — the store's floor is positional, not terminal."""
+    from kanibako.settings.keystore import KeyStore, ReservedKeyError
 
-        for name in sorted(RESERVED_LEAF_NAMES):
-            for tree in ({"agent": {name: {"model": "x"}}}, {"agent": {"claude": {name: "x"}}}):
-                with pytest.raises(ReservedKeyError):
-                    KeyStore(tree)
-
-    def test_the_keyspace_judges_the_LEAF_ONLY(self):
-        """The witness path: a reserved name in an INTERIOR position is a KEY here.
-
-        ⚑ REAL BUT LATENT — ``agent.items.model`` reads as a key only if an agent is
-        literally NAMED ``items``, and no shipped plugin is.  Latent is not absent:
-        the agent segment is user-supplied (a persona node), so the only thing
-        standing between this and a real key is that nobody has picked the name.
-        """
-        agents = AGENTS | {"items"}          # an agent literally named ``items``
-        assert key_validity("agent.items.model", valid_agents=agents) is None
-        assert key_validity("agent.items.env.MYVAR", valid_agents=agents) is None
-
-    def test_the_store_is_STRICTLY_stricter(self):
-        """Both halves of "strictly": no escape upward, and a witnessed gap downward.
-
-        MUTATION-PROVED: make ``is_valid_agent_segment`` refuse a reserved name — the
-        smallest edit that "aligns the positions" for the witness path — and the second
-        block reds with *"the positional gap closed"* (the LEAF_ONLY case beside it reds
-        too).  That is the behavior change the comment now says must not be made
-        silently: it refuses ``agent.items.model``, a key that is legal today.
-        """
-        from kanibako.settings.keystore import KeyStore, ReservedKeyError
-
-        agents = AGENTS | {"items"}
-        # (1) Nothing this floor refuses is writable to the store — the leaf is a
-        #     segment, so the store's own check catches every one of them.
-        for name in sorted(RESERVED_LEAF_NAMES):
-            assert key_validity(f"box.env.{name}", valid_agents=AGENTS) is not None
-            with pytest.raises(ReservedKeyError):
-                KeyStore({"box": {"env": {name: "x"}}})
-
-        # (2) ...and the converse FAILS, which is what makes the relation strict.
-        gap = [
-            k for k in ("agent.items.model", "agent.items.env.MYVAR")
-            if key_validity(k, valid_agents=agents) is None
-        ]
-        assert gap, "the positional gap closed — see the class docstring before 'fixing' it"
+    for name in sorted(RESERVED_LEAF_NAMES):
+      for tree in ({"agent": {name: {"model": "x"}}}, {"agent": {"claude": {name: "x"}}}):
         with pytest.raises(ReservedKeyError):
-            KeyStore({"agent": {"items": {"model": "x"}}})
+          KeyStore(tree)
 
-    def test_a_FILE_authored_reserved_name_is_refused_by_the_STORE_not_this_floor(
-        self, tmp_path,
-    ):
-        """Why this floor is not redundant, stated as its own ORDER claim.
+  def test_the_keyspace_judges_the_LEAF_ONLY(self):
+    """The witness path: a reserved name in an INTERIOR position is a KEY here.
 
-        The store speaks FIRST on the file path — ``settings_assemble.parse_naming_file``
-        builds the ``KeyStore`` and raises before ``merge`` or any resolve — so the
-        reserved arm of :func:`key_validity` never runs there at all.
+    ⚑ REAL BUT LATENT — ``agent.items.model`` reads as a key only if an agent is
+    literally NAMED ``items``, and no shipped plugin is.  Latent is not absent:
+    the agent segment is user-supplied (a persona node), so the only thing
+    standing between this and a real key is that nobody has picked the name.
+    """
+    agents = AGENTS | {"items"}  # an agent literally named ``items``
+    assert key_validity("agent.items.model", valid_agents=agents) is None
+    assert key_validity("agent.items.env.MYVAR", valid_agents=agents) is None
 
-        ⚑ MUTATION IS THE PROOF: neuter this module's floor entirely and the file is
-        STILL refused, with the store's own wording.  ⚑ The class is ``SettingsError``
-        since 0c4fa47 lifted the file-naming wrap out of ``file_partial``; both tiers
-        agree on it now.
-        """
-        import yaml
+  def test_the_store_is_STRICTLY_stricter(self):
+    """Both halves of "strictly": no escape upward, and a witnessed gap downward.
 
-        from kanibako.settings import settings_keyspace as ks
-        from kanibako.settings.settings_resolve import SettingsError
-        from tests.support.assembly import assemble_levels_at
+    MUTATION-PROVED: make ``is_valid_agent_segment`` refuse a reserved name — the
+    smallest edit that "aligns the positions" for the witness path — and the second
+    block reds with *"the positional gap closed"* (the LEAF_ONLY case beside it reds
+    too).  That is the behavior change the comment now says must not be made
+    silently: it refuses ``agent.items.model``, a key that is legal today.
+    """
+    from kanibako.settings.keystore import KeyStore, ReservedKeyError
 
-        box = tmp_path / "box.yaml"
-        box.write_text(yaml.safe_dump({"box": {"env": {"items": "x"}}}))
-        base = tmp_path / "base.yaml"
-        base.write_text("{}\n")
+    agents = AGENTS | {"items"}
+    # (1) Nothing this floor refuses is writable to the store — the leaf is a
+    #     segment, so the store's own check catches every one of them.
+    for name in sorted(RESERVED_LEAF_NAMES):
+      assert key_validity(f"box.env.{name}", valid_agents=AGENTS) is not None
+      with pytest.raises(ReservedKeyError):
+        KeyStore({"box": {"env": {name: "x"}}})
 
-        def _assemble():
-            assemble_levels_at(agent_name="claude", base_path=base, box_path=box)
+    # (2) ...and the converse FAILS, which is what makes the relation strict.
+    gap = [
+      k
+      for k in ("agent.items.model", "agent.items.env.MYVAR")
+      if key_validity(k, valid_agents=agents) is None
+    ]
+    assert gap, "the positional gap closed — see the class docstring before 'fixing' it"
+    with pytest.raises(ReservedKeyError):
+      KeyStore({"agent": {"items": {"model": "x"}}})
 
-        with pytest.raises(SettingsError) as before:
-            _assemble()
-        assert "is reserved" in str(before.value)
+  def test_a_FILE_authored_reserved_name_is_refused_by_the_STORE_not_this_floor(
+    self,
+    tmp_path,
+  ):
+    """Why this floor is not redundant, stated as its own ORDER claim.
 
-        original = ks.leaf_name_reason
-        try:
-            ks.leaf_name_reason = lambda leaf: None
-            with pytest.raises(SettingsError) as after:
-                _assemble()
-        finally:
-            ks.leaf_name_reason = original
-        assert str(after.value) == str(before.value), (
-            "the keyspace floor turned out to be the one speaking on the file path — "
-            "the order claim above the RESERVED_LEAF_NAMES declaration is wrong"
-        )
+    The store speaks FIRST on the file path — ``settings_assemble.parse_naming_file``
+    builds the ``KeyStore`` and raises before ``merge`` or any resolve — so the
+    reserved arm of :func:`key_validity` never runs there at all.
+
+    ⚑ MUTATION IS THE PROOF: neuter this module's floor entirely and the file is
+    STILL refused, with the store's own wording.  ⚑ The class is ``SettingsError``
+    since 0c4fa47 lifted the file-naming wrap out of ``file_partial``; both tiers
+    agree on it now.
+    """
+    import yaml
+
+    from kanibako.settings import settings_keyspace as ks
+    from kanibako.settings.settings_resolve import SettingsError
+    from tests.support.assembly import assemble_levels_at
+
+    box = tmp_path / "box.yaml"
+    box.write_text(yaml.safe_dump({"box": {"env": {"items": "x"}}}))
+    base = tmp_path / "base.yaml"
+    base.write_text("{}\n")
+
+    def _assemble():
+      assemble_levels_at(agent_name="claude", base_path=base, box_path=box)
+
+    with pytest.raises(SettingsError) as before:
+      _assemble()
+    assert "is reserved" in str(before.value)
+
+    original = ks.leaf_name_reason
+    try:
+      ks.leaf_name_reason = lambda leaf: None
+      with pytest.raises(SettingsError) as after:
+        _assemble()
+    finally:
+      ks.leaf_name_reason = original
+    assert str(after.value) == str(before.value), (
+      "the keyspace floor turned out to be the one speaking on the file path — "
+      "the order claim above the RESERVED_LEAF_NAMES declaration is wrong"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1270,329 +1401,379 @@ class TestOneSetTwoPositions:
 
 
 def _probe_store(tree: dict) -> "object":
-    """A :class:`KeyStore` shaped like *tree* — nested dicts become nested nodes."""
-    from kanibako.settings.keystore import KeyStore
+  """A :class:`KeyStore` shaped like *tree* — nested dicts become nested nodes."""
+  from kanibako.settings.keystore import KeyStore
 
-    store = KeyStore()
-    for key, value in tree.items():
-        store[key] = _probe_store(value) if isinstance(value, dict) else value
-    return store
+  store = KeyStore()
+  for key, value in tree.items():
+    store[key] = _probe_store(value) if isinstance(value, dict) else value
+  return store
 
 
 def _paths(store: dict, prefix: tuple[str, ...] = ()) -> set[str]:
-    """The dotted paths ``undeclared_store_paths`` reports for *store*, as given."""
-    from kanibako.settings.settings_keyspace import (
-        key_class,
-        render_store_path,
-        undeclared_store_paths,
+  """The dotted paths ``undeclared_store_paths`` reports for *store*, as given."""
+  from kanibako.settings.settings_keyspace import (
+    key_class,
+    render_store_path,
+    undeclared_store_paths,
+  )
+
+  def oracle(path: str):
+    return key_class(path, valid_agents=AGENTS)
+
+  return {
+    render_store_path(segments, judgment.key_len)
+    for segments, judgment in undeclared_store_paths(
+      store,
+      oracle=oracle,
+      prefix=prefix,
     )
-
-    def oracle(path: str):
-        return key_class(path, valid_agents=AGENTS)
-
-    return {
-        render_store_path(segments, judgment.key_len)
-        for segments, judgment in undeclared_store_paths(
-            store, oracle=oracle, prefix=prefix,
-        )
-    }
+  }
 
 
 def _findings(tree: dict) -> set[str]:
-    """The dotted paths ``undeclared_store_paths`` reports for *tree*, built as a KeyStore."""
-    return _paths(_probe_store(tree))
+  """The dotted paths ``undeclared_store_paths`` reports for *tree*, built as a KeyStore."""
+  return _paths(_probe_store(tree))
 
 
 def _manifest_prefix_cases() -> list[tuple[str, str]]:
-    """Every ``(declared key, proper prefix)`` pair the ratified manifest implies.
+  """Every ``(declared key, proper prefix)`` pair the ratified manifest implies.
 
-    ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13). The rule is "a declared key hangs
-    under declared interiors", so the corpus is generated from the manifest's own key
-    rows: a shape change moves the corpus with it, where a hand-kept list of
-    namespace names would silently go stale the next time one moved.
-    ``<agent>`` is substituted; a row whose LEAF is a placeholder still contributes
-    its real prefixes.
-    """
-    cases: list[tuple[str, str]] = []
-    for row in manifest_doc()["keys"]:
-        key = str(row).replace("<agent>", "claude")
-        segments = key.split(".")
-        for cut in range(1, len(segments)):
-            prefix = ".".join(segments[:cut])
-            if "<" in prefix:
-                continue
-            cases.append((key, prefix))
-    return cases
+  ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13). The rule is "a declared key hangs
+  under declared interiors", so the corpus is generated from the manifest's own key
+  rows: a shape change moves the corpus with it, where a hand-kept list of
+  namespace names would silently go stale the next time one moved.
+  ``<agent>`` is substituted; a row whose LEAF is a placeholder still contributes
+  its real prefixes.
+  """
+  cases: list[tuple[str, str]] = []
+  for row in manifest_doc()["keys"]:
+    key = str(row).replace("<agent>", "claude")
+    segments = key.split(".")
+    for cut in range(1, len(segments)):
+      prefix = ".".join(segments[:cut])
+      if "<" in prefix:
+        continue
+      cases.append((key, prefix))
+  return cases
 
 
 @pytest.mark.parametrize("key,prefix", _manifest_prefix_cases())
 def test_every_prefix_of_a_declared_key_is_a_NAMESPACE_or_a_KEY(key, prefix):
-    """No declared key hangs under something the keyspace calls a fabrication.
+  """No declared key hangs under something the keyspace calls a fabrication.
 
-    ⚑ THE ANTI-REGRESSION FOR THE DEPTH PROXY. Under the old ``len(segments) == 1``
-    rule this held for ``box`` and failed for ``box.auth``, ``agent.claude`` and
-    ``meta.box.agent`` — every interior below the first segment.
+  ⚑ THE ANTI-REGRESSION FOR THE DEPTH PROXY. Under the old ``len(segments) == 1``
+  rule this held for ``box`` and failed for ``box.auth``, ``agent.claude`` and
+  ``meta.box.agent`` — every interior below the first segment.
 
-    INVERT: make any interior branch return ``UNDECLARED`` again and the prefixes
-    beneath it red, naming the key that would have been refused.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass, key_class
+  INVERT: make any interior branch return ``UNDECLARED`` again and the prefixes
+  beneath it red, naming the key that would have been refused.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    judged = key_class(prefix, valid_agents=AGENTS)
-    assert judged.cls in (KeyClass.NAMESPACE, KeyClass.KEY), (
-        f"{prefix!r} is a proper prefix of the declared key {key!r}, so it cannot be "
-        f"UNDECLARED — {judged.reason}"
-    )
+  judged = key_class(prefix, valid_agents=AGENTS)
+  assert judged.cls in (KeyClass.NAMESPACE, KeyClass.KEY), (
+    f"{prefix!r} is a proper prefix of the declared key {key!r}, so it cannot be "
+    f"UNDECLARED — {judged.reason}"
+  )
 
 
 def test_the_prefix_corpus_is_not_vacuous():
-    """⚑ The pin above must red on its own EMPTINESS (P15).
+  """⚑ The pin above must red on its own EMPTINESS (P15).
 
-    A generator that silently produced nothing would make every run green while
-    checking no prefix at all. Assert it reaches past the first segment, which is the
-    depth the old rule could not see.
-    """
-    cases = _manifest_prefix_cases()
-    assert len(cases) > 100, len(cases)
-    assert any(prefix.count(".") >= 2 for _, prefix in cases), "no deep prefix"
+  A generator that silently produced nothing would make every run green while
+  checking no prefix at all. Assert it reaches past the first segment, which is the
+  depth the old rule could not see.
+  """
+  cases = _manifest_prefix_cases()
+  assert len(cases) > 100, len(cases)
+  assert any(prefix.count(".") >= 2 for _, prefix in cases), "no deep prefix"
 
 
-@pytest.mark.parametrize("path", [
-    "box", "system", "workset", "agent", "meta", "config", "pref",
-    "meta.box", "meta.agent", "meta.runtime", "meta.assembly", "meta.workset",
-    "meta.agent.claude", "meta.box.agent",
-    "agent.claude", "agent.default",
-    "box.bindings", "box.env", "box.secret_path",
-    "system.channels", "workset.channels",
-    "pref.system", "pref.agent.claude",
+@pytest.mark.parametrize(
+  "path",
+  [
+    "box",
+    "system",
+    "workset",
+    "agent",
+    "meta",
+    "config",
+    "pref",
+    "meta.box",
+    "meta.agent",
+    "meta.runtime",
+    "meta.assembly",
+    "meta.workset",
+    "meta.agent.claude",
+    "meta.box.agent",
+    "agent.claude",
+    "agent.default",
+    "box.bindings",
+    "box.env",
+    "box.secret_path",
+    "system.channels",
+    "workset.channels",
+    "pref.system",
+    "pref.agent.claude",
     # The mirror spans TWO declared sources, so BOTH ends of it are interiors:
     # the ``meta.agent`` tier that owns the capability, and the box-side mirror of
     # it ([R141] as amended; spec :1081).
-    "box.auth", "system.auth", "workset.auth",
-    "meta.box.auth", "meta.agent.claude.auth", "meta.box.agent.auth",
+    "box.auth",
+    "system.auth",
+    "workset.auth",
+    "meta.box.auth",
+    "meta.agent.claude.auth",
+    "meta.box.agent.auth",
     "meta.workset.auth",
-    "meta.runtime.user", "meta.runtime.admin",
-])
+    "meta.runtime.user",
+    "meta.runtime.admin",
+  ],
+)
 def test_a_declared_interior_is_a_NAMESPACE(path):
-    """Each is a grouping declared keys hang under — spec :42 calls ``meta.*`` a
-    *"TOP-LEVEL, protected (read-only) namespace, grouped as meta.<scope>.*"*, and
-    the same is true one tier down.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass, key_class
+  """Each is a grouping declared keys hang under — spec :42 calls ``meta.*`` a
+  *"TOP-LEVEL, protected (read-only) namespace, grouped as meta.<scope>.*"*, and
+  the same is true one tier down.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    assert key_class(path, valid_agents=AGENTS).cls is KeyClass.NAMESPACE
+  assert key_class(path, valid_agents=AGENTS).cls is KeyClass.NAMESPACE
 
 
-@pytest.mark.parametrize("path", [
-    "box.zippity", "box.zippity.deeper", "agent.claude.zippity",
-    "meta.box.zippity", "meta.zippity", "zippity",
+@pytest.mark.parametrize(
+  "path",
+  [
+    "box.zippity",
+    "box.zippity.deeper",
+    "agent.claude.zippity",
+    "meta.box.zippity",
+    "meta.zippity",
+    "zippity",
     # A pref over a target OFF the §2h allowlist is no member of the family (spec §0),
     # though ``box`` is a namespace and ``box.image`` a key.
-    "pref.box", "pref.box.image",
-])
+    "pref.box",
+    "pref.box.image",
+  ],
+)
 def test_a_fabrication_is_UNDECLARED_not_a_NAMESPACE(path):
-    """The half that must NOT widen: a namespace class is for what the SPEC declares,
-    never for anything that merely happens to be a node."""
-    from kanibako.settings.settings_keyspace import KeyClass, key_class
+  """The half that must NOT widen: a namespace class is for what the SPEC declares,
+  never for anything that merely happens to be a node."""
+  from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    assert key_class(path, valid_agents=AGENTS).cls is KeyClass.UNDECLARED
+  assert key_class(path, valid_agents=AGENTS).cls is KeyClass.UNDECLARED
 
 
 def test_key_validity_still_refuses_every_non_key():
-    """⚑ THE SET BOUNDARIES SEE NO CHANGE. At a write site a NAMESPACE and a
-    fabrication are equally not-a-key, so both must still come back as a REASON —
-    ``config set box.auth=…`` may not start succeeding because ``box.auth`` gained a
-    class."""
-    from kanibako.settings.settings_keyspace import KeyClass, key_class
+  """⚑ THE SET BOUNDARIES SEE NO CHANGE. At a write site a NAMESPACE and a
+  fabrication are equally not-a-key, so both must still come back as a REASON —
+  ``config set box.auth=…`` may not start succeeding because ``box.auth`` gained a
+  class."""
+  from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    for path in ("box", "meta.box.agent", "agent.claude", "box.env", "box.zippity"):
-        assert key_class(path, valid_agents=AGENTS).cls is not KeyClass.KEY
-        assert key_validity(path, valid_agents=AGENTS) is not None, path
+  for path in ("box", "meta.box.agent", "agent.claude", "box.env", "box.zippity"):
+    assert key_class(path, valid_agents=AGENTS).cls is not KeyClass.KEY
+    assert key_validity(path, valid_agents=AGENTS) is not None, path
 
 
 # ---------------------------------------------------------------------------
 # The store classifier: a NODE at a namespace is structure, a SCALAR is not
 # ---------------------------------------------------------------------------
 
-def test_an_empty_declared_interior_is_not_a_finding():
-    """⚑ THE MEASURED REGRESSION. Both paths reached a real launch snapshot EMPTY —
-    ``meta.box.agent`` when spec §0 dropped its only child (a dangling ``{key}``-ref
-    referent), ``agent.claude`` when a ``--null`` pref suppressed its only entry —
-    and the classifier reported each as an undeclared key.
 
-    INVERT: restore the depth rule and both red, which is the state that would have
-    refused a legal box the day resolve enforcement was armed.
-    """
-    assert _findings({"meta": {"box": {"agent": {}}}}) == set()
-    assert _findings({"agent": {"claude": {}}}) == set()
-    assert _findings({"box": {}, "meta": {}, "agent": {}, "config": {}}) == set()
+def test_an_empty_declared_interior_is_not_a_finding():
+  """⚑ THE MEASURED REGRESSION. Both paths reached a real launch snapshot EMPTY —
+  ``meta.box.agent`` when spec §0 dropped its only child (a dangling ``{key}``-ref
+  referent), ``agent.claude`` when a ``--null`` pref suppressed its only entry —
+  and the classifier reported each as an undeclared key.
+
+  INVERT: restore the depth rule and both red, which is the state that would have
+  refused a legal box the day resolve enforcement was armed.
+  """
+  assert _findings({"meta": {"box": {"agent": {}}}}) == set()
+  assert _findings({"agent": {"claude": {}}}) == set()
+  assert _findings({"box": {}, "meta": {}, "agent": {}, "config": {}}) == set()
 
 
 def test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace():
-    """⚑⚑ THE LIVENESS PIN FOR :func:`undeclared_store_paths` ITSELF.
+  """⚑⚑ THE LIVENESS PIN FOR :func:`undeclared_store_paths` ITSELF.
 
-    Every other driver of it asserts ``== set()``, so the whole harness passes
-    vacuously if the function stops reporting: narrow its filter from
-    ``FINDING_VERDICTS`` back to ``{Verdict.UNDECLARED}`` and scalar-at-a-namespace
-    detection vanishes while every one of those assertions stays GREEN. That line is
-    on the PRODUCTION path — ``settings_keyspace_probe.observe`` is the instrument
-    the resolve-seam blast radius gets measured with, so a silent narrowing there
-    would hand the arm decision a number nobody measured.
+  Every other driver of it asserts ``== set()``, so the whole harness passes
+  vacuously if the function stops reporting: narrow its filter from
+  ``FINDING_VERDICTS`` back to ``{Verdict.UNDECLARED}`` and scalar-at-a-namespace
+  detection vanishes while every one of those assertions stays GREEN. That line is
+  on the PRODUCTION path — ``settings_keyspace_probe.observe`` is the instrument
+  the resolve-seam blast radius gets measured with, so a silent narrowing there
+  would hand the arm decision a number nobody measured.
 
-    ⚑ Pinning ``Verdict.NAMESPACE in FINDING_VERDICTS`` is NOT this: that pins the
-    CONSTANT, and the defect is the function no longer consulting it.
+  ⚑ Pinning ``Verdict.NAMESPACE in FINDING_VERDICTS`` is NOT this: that pins the
+  CONSTANT, and the defect is the function no longer consulting it.
 
-    MUTATION: narrow the filter at ``undeclared_store_paths`` and this reddens,
-    ``{'box'} != set()``.
+  MUTATION: narrow the filter at ``undeclared_store_paths`` and this reddens,
+  ``{'box'} != set()``.
 
-    A PLAIN DICT, not a KeyStore: a store holding the scalar is the write the
-    census refuses, and the audit reads any mapping.
-    """
-    assert _paths({"box": "a scalar"}) == {"box"}
+  A PLAIN DICT, not a KeyStore: a store holding the scalar is the write the
+  census refuses, and the audit reads any mapping.
+  """
+  assert _paths({"box": "a scalar"}) == {"box"}
 
 
 def test_a_PLAIN_mapping_is_walked_like_a_store():
-    """A nested plain dict is a NODE, exactly as a nested KeyStore is.
+  """A nested plain dict is a NODE, exactly as a nested KeyStore is.
 
-    MUTATION: test a value for ``KeyStore`` instead of ``Mapping`` in
-    ``walk_store_paths`` and both red — each ``box`` table reads as a scalar at a
-    namespace, and ``box.zippity`` is never reached.
-    """
-    assert _paths({"box": {"env": {"X": "1"}}}) == set()
-    assert _paths({"box": {"zippity": "wibble"}}) == {"box.zippity"}
+  MUTATION: test a value for ``KeyStore`` instead of ``Mapping`` in
+  ``walk_store_paths`` and both red — each ``box`` table reads as a scalar at a
+  namespace, and ``box.zippity`` is never reached.
+  """
+  assert _paths({"box": {"env": {"X": "1"}}}) == set()
+  assert _paths({"box": {"zippity": "wibble"}}) == {"box.zippity"}
 
 
 def test_a_PREFIX_judges_a_subtree_where_it_would_sit():
-    """*prefix* leads every returned path, so a scope's table is judged under its
-    scope without first being written there.
+  """*prefix* leads every returned path, so a scope's table is judged under its
+  scope without first being written there.
 
-    MUTATION: drop *prefix* from the walk in ``undeclared_store_paths`` and both
-    entries are judged at the top level — ``{'image', 'zippity'}``.
-    """
-    assert _paths({"image": "x", "zippity": "wibble"}, prefix=("box",)) == {
-        "box.zippity",
-    }
+  MUTATION: drop *prefix* from the walk in ``undeclared_store_paths`` and both
+  entries are judged at the top level — ``{'image', 'zippity'}``.
+  """
+  assert _paths({"image": "x", "zippity": "wibble"}, prefix=("box",)) == {
+    "box.zippity",
+  }
 
 
 def test_a_WHOLE_store_judges_its_top_level_where_a_FRAGMENT_declines_to():
-    """Spec §0: no bare top-level keys — and only a WHOLE store can say so.
+  """Spec §0: no bare top-level keys — and only a WHOLE store can say so.
 
-    ``undeclared_store_paths`` is handed a whole store (the launch snapshot), whose
-    top level IS the keyspace's, so a non-root entry there is a finding the oracle
-    names. ``classify_store_path`` judges one WRITE for the census, which cannot tell
-    a scope-local fragment from a whole store, and must keep answering ``UNROOTED``:
-    reddening there would report every fragment's contents as fabricated.
+  ``undeclared_store_paths`` is handed a whole store (the launch snapshot), whose
+  top level IS the keyspace's, so a non-root entry there is a finding the oracle
+  names. ``classify_store_path`` judges one WRITE for the census, which cannot tell
+  a scope-local fragment from a whole store, and must keep answering ``UNROOTED``:
+  reddening there would report every fragment's contents as fabricated.
 
-    A finding UNDER another finding is not named: the parent names the fix.
+  A finding UNDER another finding is not named: the parent names the fix.
 
-    MUTATION: route ``undeclared_store_paths`` through ``classify_store_path`` and
-    the first three assertions red (the top-level strays vanish); drop the
-    parent-only skip and the second reds (``zzz.a`` comes back); drop the root gate
-    from ``classify_store_path`` and the last two red.
-    """
-    from kanibako.settings.settings_keyspace import Verdict
+  MUTATION: route ``undeclared_store_paths`` through ``classify_store_path`` and
+  the first three assertions red (the top-level strays vanish); drop the
+  parent-only skip and the second reds (``zzz.a`` comes back); drop the root gate
+  from ``classify_store_path`` and the last two red.
+  """
+  from kanibako.settings.settings_keyspace import Verdict
 
-    assert _findings({"zzz": "foo"}) == {"zzz"}
-    assert _findings({"zzz": {"a": 1}}) == {"zzz"}
-    assert _findings({"box.env.X": "1"}) == {"box.env.X"}
-    # The control: the roots themselves, carrying declared keys, stay clean.
-    assert _findings({"box": {"env": {"X": "1"}}, "meta": {}, "config": {}}) == set()
-    assert _verdict("zzz") == Verdict.UNROOTED
-    assert _verdict("box.env.X") == Verdict.UNROOTED
+  assert _findings({"zzz": "foo"}) == {"zzz"}
+  assert _findings({"zzz": {"a": 1}}) == {"zzz"}
+  assert _findings({"box.env.X": "1"}) == {"box.env.X"}
+  # The control: the roots themselves, carrying declared keys, stay clean.
+  assert _findings({"box": {"env": {"X": "1"}}, "meta": {}, "config": {}}) == set()
+  assert _verdict("zzz") == Verdict.UNROOTED
+  assert _verdict("box.env.X") == Verdict.UNROOTED
 
 
 def test_a_dotted_name_inside_a_table_is_undeclared():
-    """Spec §0: a settings file nests a key as tables, so ``box: {"env.X": …}`` is ONE
-    entry named ``env.X`` — not the declared ``box.env.X`` it spells, and not a key.
+  """Spec §0: a settings file nests a key as tables, so ``box: {"env.X": …}`` is ONE
+  entry named ``env.X`` — not the declared ``box.env.X`` it spells, and not a key.
 
-    Judged one PATH at a time, so no store is built and nothing undeclared is written.
-    MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
-    ``_classify_whole_store_path`` and the first three verdicts turn ``DATA_SEGMENT``.
-    """
-    from kanibako.settings.settings_keyspace import Verdict
+  Judged one PATH at a time, so no store is built and nothing undeclared is written.
+  MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
+  ``_classify_whole_store_path`` and the first three verdicts turn ``DATA_SEGMENT``.
+  """
+  from kanibako.settings.settings_keyspace import Verdict
 
-    assert _verdict("box", "env.X") == Verdict.UNDECLARED
-    assert _verdict("box", "zzz.q") == Verdict.UNDECLARED
-    assert _verdict("box", "auth", "x.y") == Verdict.UNDECLARED
-    # Under an UNDECLARED table the table is the finding; its dotted child may be a
-    # destination, and gets no second, key-spelling reason.
-    assert _verdict("box", "zzz") == Verdict.UNDECLARED
-    assert _verdict("box", "zzz", "a.b") == Verdict.DATA_SEGMENT
+  assert _verdict("box", "env.X") == Verdict.UNDECLARED
+  assert _verdict("box", "zzz.q") == Verdict.UNDECLARED
+  assert _verdict("box", "auth", "x.y") == Verdict.UNDECLARED
+  # Under an UNDECLARED table the table is the finding; its dotted child may be a
+  # destination, and gets no second, key-spelling reason.
+  assert _verdict("box", "zzz") == Verdict.UNDECLARED
+  assert _verdict("box", "zzz", "a.b") == Verdict.DATA_SEGMENT
 
 
 def _rescued(*rows: tuple[tuple[str, ...], bool]) -> set[tuple[str, ...]]:
-    """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
+  """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
 
-    ⚑ Judged and rescued WITHOUT building a KeyStore, deliberately. A negative case
-    has to name a fabrication, and writing one into a real store would trip the
-    pytest write census — whose ``writes_undeclared`` marker is a SESSION-global that
-    another file pins by exact equality. The classifier is pure; drive it directly.
-    """
-    from kanibako.settings.settings_keyspace import (
-        StoreNode,
-        classify_store_path,
-        container_notes,
-        key_class,
-    )
+  ⚑ Judged and rescued WITHOUT building a KeyStore, deliberately. A negative case
+  has to name a fabrication, and writing one into a real store would trip the
+  pytest write census — whose ``writes_undeclared`` marker is a SESSION-global that
+  another file pins by exact equality. The classifier is pure; drive it directly.
+  """
+  from kanibako.settings.settings_keyspace import (
+    StoreNode,
+    classify_store_path,
+    container_notes,
+    key_class,
+  )
 
-    def oracle(path: str):
-        return key_class(path, valid_agents=AGENTS)
+  def oracle(path: str):
+    return key_class(path, valid_agents=AGENTS)
 
-    return set(container_notes({
+  return set(
+    container_notes(
+      {
         segments: StoreNode(
-            classify_store_path(segments, oracle=oracle).verdict, is_node,
+          classify_store_path(segments, oracle=oracle).verdict,
+          is_node,
         )
         for segments, is_node in rows
-    }))
+      }
+    )
+  )
 
 
 def _verdict(*segments: str) -> str:
-    from kanibako.settings.settings_keyspace import classify_store_path, key_class
+  from kanibako.settings.settings_keyspace import classify_store_path, key_class
 
-    return classify_store_path(
-        segments, oracle=lambda p: key_class(p, valid_agents=AGENTS),
-    ).verdict
+  return classify_store_path(
+    segments,
+    oracle=lambda p: key_class(p, valid_agents=AGENTS),
+  ).verdict
 
 
 def test_a_SCALAR_at_a_declared_interior_is_still_a_finding():
-    """The ``is_node`` guard, at every depth — this is what keeps the fix a
-    CORRECTNESS change rather than a widening.
+  """The ``is_node`` guard, at every depth — this is what keeps the fix a
+  CORRECTNESS change rather than a widening.
 
-    A namespace is a NODE. A value sitting on one is an undeclared SHAPE, so the
-    rescue must decline it whether it sits at depth 1 (where the old rule could see
-    it) or deeper (where it could not) — and it must still FAIL, which is why the
-    surviving ``NAMESPACE`` verdict is a member of ``FINDING_VERDICTS``.
-    """
-    from kanibako.settings.settings_keyspace import FINDING_VERDICTS, Verdict
+  A namespace is a NODE. A value sitting on one is an undeclared SHAPE, so the
+  rescue must decline it whether it sits at depth 1 (where the old rule could see
+  it) or deeper (where it could not) — and it must still FAIL, which is why the
+  surviving ``NAMESPACE`` verdict is a member of ``FINDING_VERDICTS``.
+  """
+  from kanibako.settings.settings_keyspace import FINDING_VERDICTS, Verdict
 
-    for path in (("box",), ("meta", "box", "agent"), ("agent", "claude")):
-        assert _verdict(*path) == Verdict.NAMESPACE, path
-        assert _rescued((path, True)) == {path}, f"a NODE at {path} is structure"
-        assert _rescued((path, False)) == set(), f"a SCALAR at {path} is not"
-        assert Verdict.NAMESPACE in FINDING_VERDICTS
+  for path in (("box",), ("meta", "box", "agent"), ("agent", "claude")):
+    assert _verdict(*path) == Verdict.NAMESPACE, path
+    assert _rescued((path, True)) == {path}, f"a NODE at {path} is structure"
+    assert _rescued((path, False)) == set(), f"a SCALAR at {path} is not"
+    assert Verdict.NAMESPACE in FINDING_VERDICTS
 
 
 def test_a_fabricated_subtree_is_still_a_finding_empty_or_not():
-    """Nothing declared beneath it and no declaration of its own ⇒ not scaffolding."""
-    from kanibako.settings.settings_keyspace import Verdict
+  """Nothing declared beneath it and no declaration of its own ⇒ not scaffolding."""
+  from kanibako.settings.settings_keyspace import Verdict
 
-    assert _verdict("box", "zippity") == Verdict.UNDECLARED
-    # ⚑ Not rescued EITHER WAY, and the second case says why the carriers rule cannot
-    # launder a fabrication: nothing under a fabricated node classifies DECLARED, so
-    # it never becomes a carrier however much is written beneath it.
-    assert _rescued((("box", "zippity"), True)) == set()
-    assert _verdict("box", "zippity", "image") == Verdict.UNDECLARED
-    assert _rescued(
-        (("box", "zippity"), True), (("box", "zippity", "image"), False),
-    ) == set()
+  assert _verdict("box", "zippity") == Verdict.UNDECLARED
+  # ⚑ Not rescued EITHER WAY, and the second case says why the carriers rule cannot
+  # launder a fabrication: nothing under a fabricated node classifies DECLARED, so
+  # it never becomes a carrier however much is written beneath it.
+  assert _rescued((("box", "zippity"), True)) == set()
+  assert _verdict("box", "zippity", "image") == Verdict.UNDECLARED
+  assert (
+    _rescued(
+      (("box", "zippity"), True),
+      (("box", "zippity", "image"), False),
+    )
+    == set()
+  )
 
 
 def test_a_populated_interior_carries_its_children_clean():
-    """The positive control: a real snapshot shape reports nothing."""
-    assert _findings({
+  """The positive control: a real snapshot shape reports nothing."""
+  assert (
+    _findings(
+      {
         "box": {"image": "x"},
         "meta": {"box": {"path": "/p", "agent": {"model": "m"}}},
-    }) == set()
+      }
+    )
+    == set()
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -1621,16 +1802,17 @@ def test_a_populated_interior_carries_its_children_clean():
 
 
 def _discovered(declared):
-    """*declared* AS A DISCOVERY PASS WOULD HAND IT OVER: conceding what it did not read.
+  """*declared* AS A DISCOVERY PASS WOULD HAND IT OVER: conceding what it did not read.
 
-    The production shape (``settings_prefs.default_valid_agents``,
-    ``settings_keyspace_probe``), and the only one that concedes at all.
-    """
-    from kanibako.settings.settings_keyspace import (
-        ConcedingLeafMap, unread_harnesses,
-    )
+  The production shape (``settings_prefs.default_valid_agents``,
+  ``settings_keyspace_probe``), and the only one that concedes at all.
+  """
+  from kanibako.settings.settings_keyspace import (
+    ConcedingLeafMap,
+    unread_harnesses,
+  )
 
-    return ConcedingLeafMap(declared, unread_harnesses(declared))
+  return ConcedingLeafMap(declared, unread_harnesses(declared))
 
 
 #: claude's vocabulary is READABLE and EMPTY; goose's could not be read, hence conceded.
@@ -1642,204 +1824,222 @@ _GOOSE_MAP = {"goose": frozenset({"provider"})}
 
 
 def _class(key: str, **kwargs):
-    from kanibako.settings.settings_keyspace import key_class
+  from kanibako.settings.settings_keyspace import key_class
 
-    return key_class(key, valid_agents=AGENTS, **kwargs)
+  return key_class(key, valid_agents=AGENTS, **kwargs)
 
 
 def test_an_unverifiable_agents_leaf_is_conceded_not_refused():
-    """The defect: a DECLARED plugin key refused for want of the plugin.
+  """The defect: a DECLARED plugin key refused for want of the plugin.
 
-    ``agent_leaves`` here holds only what a claude-only install could read, which is
-    exactly the position a shared config lands in.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  ``agent_leaves`` here holds only what a claude-only install could read, which is
+  exactly the position a shared config lands in.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class(
-        "agent.goose.provider",
-        agent_leaf_map=_KNOWN_MAP,
-    )
-    assert judged.cls is KeyClass.KEY, judged.reason
+  judged = _class(
+    "agent.goose.provider",
+    agent_leaf_map=_KNOWN_MAP,
+  )
+  assert judged.cls is KeyClass.KEY, judged.reason
 
 
 def test_a_verifiable_agents_undeclared_leaf_still_refuses():
-    """The other direction, and the one that keeps this a concession rather than a
-    hole: where the vocabulary IS known, §0 is enforced against it exactly as before.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  """The other direction, and the one that keeps this a concession rather than a
+  hole: where the vocabulary IS known, §0 is enforced against it exactly as before.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class(
-        "agent.claude.zippity",
-        agent_leaf_map=_KNOWN_MAP,
-    )
-    assert judged.cls is KeyClass.UNDECLARED
-    assert "not a declared agent key" in judged.reason
+  judged = _class(
+    "agent.claude.zippity",
+    agent_leaf_map=_KNOWN_MAP,
+  )
+  assert judged.cls is KeyClass.UNDECLARED
+  assert "not a declared agent key" in judged.reason
 
 
 def test_a_map_that_does_not_SAY_it_concedes_concedes_NOTHING():
-    """🛑 THE FAIL-OPEN, AND IT IS THE DEFAULT THAT MAKES IT ONE.
+  """🛑 THE FAIL-OPEN, AND IT IS THE DEFAULT THAT MAKES IT ONE.
 
-    The concession used to be spelled by a MISSING KEY, and two states wear that
-    spelling: *"this machine cannot read goose's vocabulary"*, which
-    keyspec §0 "The leaf VOCABULARY is partitioned by TIER" requires be conceded, and
-    *"nobody supplied a vocabulary"*, which must not be.
-    They are the same ``{}``, and the second is what a hand-built ``AgentNames`` or a
-    degraded discovery pass produces — so §0 was disarmed for EVERY named agent by an
-    omission, which is the fail-open direction on a CLOSED keyspace.
+  The concession used to be spelled by a MISSING KEY, and two states wear that
+  spelling: *"this machine cannot read goose's vocabulary"*, which
+  keyspec §0 "The leaf VOCABULARY is partitioned by TIER" requires be conceded, and
+  *"nobody supplied a vocabulary"*, which must not be.
+  They are the same ``{}``, and the second is what a hand-built ``AgentNames`` or a
+  degraded discovery pass produces — so §0 was disarmed for EVERY named agent by an
+  omission, which is the fail-open direction on a CLOSED keyspace.
 
-    ⚑ THE PAIR IS THE POINT: the same literal, wrapped and bare, must answer
-    differently. A plain mapping is a literal vocabulary; only a map that SAYS what it
-    could not read concedes it.
+  ⚑ THE PAIR IS THE POINT: the same literal, wrapped and bare, must answer
+  differently. A plain mapping is a literal vocabulary; only a map that SAYS what it
+  could not read concedes it.
 
-    MUTATION: drop the ``isinstance`` guard in ``agent_declared_leaves`` and read a
-    missing key as the concession again — the first block reddens and the second does
-    not, because conceding-always is what the old code did.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  MUTATION: drop the ``isinstance`` guard in ``agent_declared_leaves`` and read a
+  missing key as the concession again — the first block reddens and the second does
+  not, because conceding-always is what the old code did.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    bare = {"claude": frozenset()}
-    assert _class("agent.goose.provider", agent_leaf_map=bare).cls is (
-        KeyClass.UNDECLARED
-    )
-    assert _class("agent.goose.zippity", agent_leaf_map={}).cls is KeyClass.UNDECLARED
-    # …and the SAME literal, from a supplier that has looked, concedes as before.
-    assert _class(
-        "agent.goose.provider", agent_leaf_map=_discovered(bare),
-    ).cls is KeyClass.KEY
+  bare = {"claude": frozenset()}
+  assert _class("agent.goose.provider", agent_leaf_map=bare).cls is (KeyClass.UNDECLARED)
+  assert _class("agent.goose.zippity", agent_leaf_map={}).cls is KeyClass.UNDECLARED
+  # …and the SAME literal, from a supplier that has looked, concedes as before.
+  assert (
+    _class(
+      "agent.goose.provider",
+      agent_leaf_map=_discovered(bare),
+    ).cls
+    is KeyClass.KEY
+  )
 
 
 def test_the_all_agents_tier_is_never_conceded():
-    """``agent.default`` is CORE's tier, not a plugin's.
+  """``agent.default`` is CORE's tier, not a plugin's.
 
-    Conceding it would unarm §0 across the whole ``agent.default.*`` subtree — which
-    is where the behavior floor lands — for every install that lacks any one plugin.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  Conceding it would unarm §0 across the whole ``agent.default.*`` subtree — which
+  is where the behavior floor lands — for every install that lacks any one plugin.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    assert _class(
-        "agent.default.zippity",
-        agent_leaf_map={},
-    ).cls is KeyClass.UNDECLARED
+  assert (
+    _class(
+      "agent.default.zippity",
+      agent_leaf_map={},
+    ).cls
+    is KeyClass.UNDECLARED
+  )
 
 
 def test_the_all_agents_tier_is_judged_against_CORES_TABLE_ALONE():
-    """🛑 A PLUGIN-ONLY LEAF IS NOT A KEY AT ``agent.default``.
+  """🛑 A PLUGIN-ONLY LEAF IS NOT A KEY AT ``agent.default``.
 
-    ``agent.default.*`` is CORE's all-agents fallback layer, and a plugin declares
-    specifics for the agent it SHIPS — never for every other agent on the machine. The
-    ratified manifest says so twice: ``not_keys.code_residue`` carries
-    *"agent.default.provider: NOT a key at the DEFAULT tier"* and
-    ``provider_disposition`` (R-37) *"agent.default.provider remains not-a-key (no
-    default-tier declaration)"*; §2d's Default-tier census enumerates no ``provider``
-    row. The classifier unioned the plugin set in anyway, so goose's descriptor leaf
-    classified KEY here — MEASURED with all three plugins installed, and pinned by
-    nothing in either direction until now.
+  ``agent.default.*`` is CORE's all-agents fallback layer, and a plugin declares
+  specifics for the agent it SHIPS — never for every other agent on the machine. The
+  ratified manifest says so twice: ``not_keys.code_residue`` carries
+  *"agent.default.provider: NOT a key at the DEFAULT tier"* and
+  ``provider_disposition`` (R-37) *"agent.default.provider remains not-a-key (no
+  default-tier declaration)"*; §2d's Default-tier census enumerates no ``provider``
+  row. The classifier unioned the plugin set in anyway, so goose's descriptor leaf
+  classified KEY here — MEASURED with all three plugins installed, and pinned by
+  nothing in either direction until now.
 
-    ⚑ It is the SAME reason ``meta.agent.<agent>.*`` is judged against
-    :data:`DECLARED_META_AGENT_LEAVES`: a tier core owns has a core vocabulary.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑ It is the SAME reason ``meta.agent.<agent>.*`` is judged against
+  :data:`DECLARED_META_AGENT_LEAVES`: a tier core owns has a core vocabulary.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class("agent.default.provider", agent_leaf_map=_GOOSE_MAP)
-    assert judged.cls is KeyClass.UNDECLARED, judged.reason
-    # …and through the §2h spelling, which inherits its target's class.
-    assert _class(
-        "pref.agent.default.provider", agent_leaf_map=_GOOSE_MAP,
-    ).cls is KeyClass.UNDECLARED
+  judged = _class("agent.default.provider", agent_leaf_map=_GOOSE_MAP)
+  assert judged.cls is KeyClass.UNDECLARED, judged.reason
+  # …and through the §2h spelling, which inherits its target's class.
+  assert (
+    _class(
+      "pref.agent.default.provider",
+      agent_leaf_map=_GOOSE_MAP,
+    ).cls
+    is KeyClass.UNDECLARED
+  )
 
 
 def test_the_narrowing_does_not_reach_a_CORE_DECLARED_default_leaf():
-    """The other direction, without which the pin above invites an over-application.
+  """The other direction, without which the pin above invites an over-application.
 
-    ``transform`` is in :data:`DECLARED_AGENT_LEAVES` — §2d, and claude declares
-    ``tweakcc`` against it — so ``agent.default.transform`` is a key and stays one. What
-    narrows is the PLUGIN half of the vocabulary, not the tier.
-    """
-    from kanibako.settings.settings_keyspace import (
-        DECLARED_AGENT_LEAVES, KeyClass,
-    )
+  ``transform`` is in :data:`DECLARED_AGENT_LEAVES` — §2d, and claude declares
+  ``tweakcc`` against it — so ``agent.default.transform`` is a key and stays one. What
+  narrows is the PLUGIN half of the vocabulary, not the tier.
+  """
+  from kanibako.settings.settings_keyspace import (
+    DECLARED_AGENT_LEAVES,
+    KeyClass,
+  )
 
-    # ⚑ READ FROM THE DECLARATION, not asserted by hand (P13): the split this test
-    # guards IS core-vs-plugin, so a leaf leaving §2d must red here rather than let the
-    # row quietly become a second copy of the table.
-    assert "transform" in DECLARED_AGENT_LEAVES
-    assert "provider" not in DECLARED_AGENT_LEAVES
-    for leaf in sorted(DECLARED_AGENT_LEAVES):
-        judged = _class(f"agent.default.{leaf}", agent_leaf_map=_GOOSE_MAP)
-        assert judged.cls is KeyClass.KEY, f"agent.default.{leaf}: {judged.reason}"
+  # ⚑ READ FROM THE DECLARATION, not asserted by hand (P13): the split this test
+  # guards IS core-vs-plugin, so a leaf leaving §2d must red here rather than let the
+  # row quietly become a second copy of the table.
+  assert "transform" in DECLARED_AGENT_LEAVES
+  assert "provider" not in DECLARED_AGENT_LEAVES
+  for leaf in sorted(DECLARED_AGENT_LEAVES):
+    judged = _class(f"agent.default.{leaf}", agent_leaf_map=_GOOSE_MAP)
+    assert judged.cls is KeyClass.KEY, f"agent.default.{leaf}: {judged.reason}"
 
 
 def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
-    """🛑 A DEFAULT-TIER EDIT MAY NOT REACH THE NAMED TIER — that is a separate change.
+  """🛑 A DEFAULT-TIER EDIT MAY NOT REACH THE NAMED TIER — that is a separate change.
 
-    ``agent.goose.provider`` is a real goose ``setting_descriptor`` leaf and R-37 makes
-    it a legal key ON GOOSE, so this row must survive every default-tier edit.
+  ``agent.goose.provider`` is a real goose ``setting_descriptor`` leaf and R-37 makes
+  it a legal key ON GOOSE, so this row must survive every default-tier edit.
 
-    ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF
-    keyspec §0 "The leaf VOCABULARY is partitioned by TIER".**
-    ``provider`` is goose's declaration, so it is a key on goose and on nothing else —
-    *"Every other leaf is legal ONLY on the agent (or
-    harness) whose plugin declared it"*. Until 2026-08-30 the named tier judged against
-    a FLAT CROSS-AGENT UNION and ``agent.claude.provider`` was a key; the two rows below
-    are the same map read from both sides, which is what makes this a partition rather
-    than a narrowing of one agent.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF
+  keyspec §0 "The leaf VOCABULARY is partitioned by TIER".**
+  ``provider`` is goose's declaration, so it is a key on goose and on nothing else —
+  *"Every other leaf is legal ONLY on the agent (or
+  harness) whose plugin declared it"*. Until 2026-08-30 the named tier judged against
+  a FLAT CROSS-AGENT UNION and ``agent.claude.provider`` was a key; the two rows below
+  are the same map read from both sides, which is what makes this a partition rather
+  than a narrowing of one agent.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class("agent.goose.provider", agent_leaf_map=_GOOSE_MAP)
-    assert judged.cls is KeyClass.KEY, f"agent.goose.provider: {judged.reason}"
-    # 🛑 THE OPPOSITE SIDE. claude's vocabulary is READABLE here — it is a key of the
-    # map — so there is nothing to concede and goose's leaf has no slot on it.
-    other = _class(
-        "agent.claude.provider",
-        agent_leaf_map={**_GOOSE_MAP, "claude": frozenset()},
-    )
-    assert other.cls is KeyClass.UNDECLARED, "a plugin leaf is not a key on every agent"
-    assert "provider" in other.reason
+  judged = _class("agent.goose.provider", agent_leaf_map=_GOOSE_MAP)
+  assert judged.cls is KeyClass.KEY, f"agent.goose.provider: {judged.reason}"
+  # 🛑 THE OPPOSITE SIDE. claude's vocabulary is READABLE here — it is a key of the
+  # map — so there is nothing to concede and goose's leaf has no slot on it.
+  other = _class(
+    "agent.claude.provider",
+    agent_leaf_map={**_GOOSE_MAP, "claude": frozenset()},
+  )
+  assert other.cls is KeyClass.UNDECLARED, "a plugin leaf is not a key on every agent"
+  assert "provider" in other.reason
 
 
-@pytest.mark.parametrize("key", [
-    "agent.Goose.provider", "agent.GOOSE.provider", "agent.Claude.model",
-    "agent.Shell.label", "agent.Default.model", "agent.navigator+Claude.model",
-    "meta.agent.Claude.name", "pref.agent.Claude.model",
-])
+@pytest.mark.parametrize(
+  "key",
+  [
+    "agent.Goose.provider",
+    "agent.GOOSE.provider",
+    "agent.Claude.model",
+    "agent.Shell.label",
+    "agent.Default.model",
+    "agent.navigator+Claude.model",
+    "meta.agent.Claude.name",
+    "pref.agent.Claude.model",
+  ],
+)
 def test_a_capital_node_reaching_the_verdict_is_refused(key):
-    """Q87: the verdict does not fold — a capital node that reaches it was built by code.
+  """Q87: the verdict does not fold — a capital node that reaches it was built by code.
 
-    A user's capital is folded, with a warning, where it enters (a settings file, a typed
-    key); these pins keep that relief out of the verdict, and the refusal names the cure.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  A user's capital is folded, with a warning, where it enters (a settings file, a typed
+  key); these pins keep that relief out of the verdict, and the refusal names the cure.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class(key, agent_leaf_map=_GOOSE_MAP)
-    assert judged.cls is KeyClass.UNDECLARED, f"{key}: {judged.reason}"
-    assert "is not a valid agent" in judged.reason
-    assert "node is lowercase" in judged.reason, judged.reason
+  judged = _class(key, agent_leaf_map=_GOOSE_MAP)
+  assert judged.cls is KeyClass.UNDECLARED, f"{key}: {judged.reason}"
+  assert "is not a valid agent" in judged.reason
+  assert "node is lowercase" in judged.reason, judged.reason
 
 
 def test_an_unknown_agent_is_not_offered_a_lowercase_cure():
-    """The case cure is offered only where the lowercase spelling IS a valid agent."""
-    assert "lowercase" not in reason("agent.Zippity.model")
+  """The case cure is offered only where the lowercase spelling IS a valid agent."""
+  assert "lowercase" not in reason("agent.Zippity.model")
 
 
 def test_conceding_a_vocabulary_concedes_nothing_else():
-    """SHAPE and the reserved-name floor survive the concession.
+  """SHAPE and the reserved-name floor survive the concession.
 
-    The vocabulary is the plugin's; the tail SHAPE (§2d: one leaf, or a §2a category)
-    and the store-collision floor (§0 reserved names) are core's, and neither becomes
-    unknowable because a plugin is absent.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  The vocabulary is the plugin's; the tail SHAPE (§2d: one leaf, or a §2a category)
+  and the store-collision floor (§0 reserved names) are core's, and neither becomes
+  unknowable because a plugin is absent.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    unknown = dict(agent_leaf_map=_discovered({}))
-    # A multi-segment tail is not an agent key whoever declares the leaves.
-    assert _class("agent.goose.a.b", **unknown).cls is KeyClass.UNDECLARED
-    # A category token still routes to the category rules.
-    assert _class("agent.goose.bindings", **unknown).cls is KeyClass.NAMESPACE
-    # A reserved leaf name would shadow a real attribute on the resolved store.
-    assert _class("agent.goose.items", **unknown).cls is KeyClass.UNDECLARED
-    # And the tier itself is still a tier.
-    assert _class("agent.goose", **unknown).cls is KeyClass.NAMESPACE
+  unknown = dict(agent_leaf_map=_discovered({}))
+  # A multi-segment tail is not an agent key whoever declares the leaves.
+  assert _class("agent.goose.a.b", **unknown).cls is KeyClass.UNDECLARED
+  # A category token still routes to the category rules.
+  assert _class("agent.goose.bindings", **unknown).cls is KeyClass.NAMESPACE
+  # A reserved leaf name would shadow a real attribute on the resolved store.
+  assert _class("agent.goose.items", **unknown).cls is KeyClass.UNDECLARED
+  # And the tier itself is still a tier.
+  assert _class("agent.goose", **unknown).cls is KeyClass.NAMESPACE
 
 
 # ---------------------------------------------------------------------------
@@ -1861,233 +2061,252 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
 
 
 class _NeverAsk(Mapping):
-    """An injected leaf MAP that REDS if it is consulted at all.
+  """An injected leaf MAP that REDS if it is consulted at all.
 
-    ⚑ IT ANSWERS NOTHING, deliberately. A stub returning ``False`` would let a
-    re-materialized union pass this file while paying the cost it exists to forbid;
-    only raising makes the ASKING itself visible.
-    ⚑ A ``Mapping`` since 2026-08-30, and the collapse is visible in the rows below:
-    the vocabulary and the concession used to be two injected sets asked at two
-    moments, so a key could red on one and not the other. There is ONE question now —
-    ``map.get(<harness>)`` — and it is asked about the AGENT, never the leaf.
-    """
+  ⚑ IT ANSWERS NOTHING, deliberately. A stub returning ``False`` would let a
+  re-materialized union pass this file while paying the cost it exists to forbid;
+  only raising makes the ASKING itself visible.
+  ⚑ A ``Mapping`` since 2026-08-30, and the collapse is visible in the rows below:
+  the vocabulary and the concession used to be two injected sets asked at two
+  moments, so a key could red on one and not the other. There is ONE question now —
+  ``map.get(<harness>)`` — and it is asked about the AGENT, never the leaf.
+  """
 
-    def __getitem__(self, item):
-        raise AssertionError(f"the injected map was asked about {item!r}")
+  def __getitem__(self, item):
+    raise AssertionError(f"the injected map was asked about {item!r}")
 
-    def __iter__(self):
-        raise AssertionError("the injected map was iterated")
+  def __iter__(self):
+    raise AssertionError("the injected map was iterated")
 
-    def __len__(self) -> int:
-        raise AssertionError("the injected map was sized")
+  def __len__(self) -> int:
+    raise AssertionError("the injected map was sized")
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize(
+  "key",
+  [
     # Not an agent path at all — no branch under these heads has a leaf question.
-    "config.data", "system.template", "workset.boxes", "box.image", "box.zippity",
-    "meta.box.path", "meta.agent.goose.zippity", "pref.box.image",
+    "config.data",
+    "system.template",
+    "workset.boxes",
+    "box.image",
+    "box.zippity",
+    "meta.box.path",
+    "meta.agent.goose.zippity",
+    "pref.box.image",
     # An agent path whose leaf the CORE §2d contract already declares.
-    "agent.claude.model", "agent.default.access",
+    "agent.claude.model",
+    "agent.default.access",
     # …and the shapes that are refused before the vocabulary is reached.
-    "agent.claude", "agent.claude.bindings.ro", "agent.claude.a.b",
-])
+    "agent.claude",
+    "agent.claude.bindings.ro",
+    "agent.claude.a.b",
+  ],
+)
 def test_a_key_the_CORE_contract_can_answer_asks_NEITHER_injected_set(key):
-    """⚑ THE DEFERRAL, pinned where the classifier decides it.
+  """⚑ THE DEFERRAL, pinned where the classifier decides it.
 
-    Every key here is answerable from constants this module declares, so consulting a
-    plugin to answer it is pure cost. ``_NeverAsk`` raises rather than answering, so
-    the assertion is that the question was never PUT.
-    """
-    _class(key, agent_leaf_map=_NeverAsk())
+  Every key here is answerable from constants this module declares, so consulting a
+  plugin to answer it is pure cost. ``_NeverAsk`` raises rather than answering, so
+  the assertion is that the question was never PUT.
+  """
+  _class(key, agent_leaf_map=_NeverAsk())
 
 
 def test_the_plugin_set_IS_asked_for_a_leaf_only_a_plugin_can_declare():
-    """The other direction, without which the case above would pass on a classifier
-    that had simply stopped consulting the plugins.
+  """The other direction, without which the case above would pass on a classifier
+  that had simply stopped consulting the plugins.
 
-    ``provider`` is goose's real ``setting_descriptor`` leaf and is NOT in the core
-    §2d table, so the map is the only thing that can declare it — and the concession
-    behind it is the only thing that can excuse it.
+  ``provider`` is goose's real ``setting_descriptor`` leaf and is NOT in the core
+  §2d table, so the map is the only thing that can declare it — and the concession
+  behind it is the only thing that can excuse it.
 
-    ⚑ ONE ``raises`` WHERE THERE WERE TWO, and that is the collapse rather than a lost
-    row: the vocabulary and the concession were two sets asked at two moments, and are
-    now one ``map.get(<harness>)``. The question is put about the AGENT, so the match
-    below is ``'goose'`` and not ``'zippity'``.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑ ONE ``raises`` WHERE THERE WERE TWO, and that is the collapse rather than a lost
+  row: the vocabulary and the concession were two sets asked at two moments, and are
+  now one ``map.get(<harness>)``. The question is put about the AGENT, so the match
+  below is ``'goose'`` and not ``'zippity'``.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    assert _class(
-        "agent.goose.provider", agent_leaf_map=_GOOSE_MAP,
-    ).cls is KeyClass.KEY
-    with pytest.raises(AssertionError, match="asked about 'goose'"):
-        _class("agent.goose.zippity", agent_leaf_map=_NeverAsk())
+  assert (
+    _class(
+      "agent.goose.provider",
+      agent_leaf_map=_GOOSE_MAP,
+    ).cls
+    is KeyClass.KEY
+  )
+  with pytest.raises(AssertionError, match="asked about 'goose'"):
+    _class("agent.goose.zippity", agent_leaf_map=_NeverAsk())
 
 
 def test_the_REFUSAL_message_still_names_the_whole_vocabulary():
-    """🛑 NOT AN OPTIMIZATION TARGET. The render forces the map, and it is owed:
-    this branch is already refusing, and §2h wants the error to say WHAT is declared.
-    A refusal listing only the core table would be a lie on an agent with a plugin.
+  """🛑 NOT AN OPTIMIZATION TARGET. The render forces the map, and it is owed:
+  this branch is already refusing, and §2h wants the error to say WHAT is declared.
+  A refusal listing only the core table would be a lie on an agent with a plugin.
 
-    ⚑ THIS AGENT'S vocabulary, not every agent's. Under the flat union the message
-    offered the user leaves that were keys on some OTHER agent — which after
-    keyspec §0 "The leaf VOCABULARY is partitioned by TIER" would be naming a cure that does
-    not work.
-    """
-    judged = _class(
-        "agent.claude.zippity",
-        agent_leaf_map={"claude": frozenset({"provider"})},
-    )
-    assert "provider" in judged.reason
-    assert "model" in judged.reason
+  ⚑ THIS AGENT'S vocabulary, not every agent's. Under the flat union the message
+  offered the user leaves that were keys on some OTHER agent — which after
+  keyspec §0 "The leaf VOCABULARY is partitioned by TIER" would be naming a cure that does
+  not work.
+  """
+  judged = _class(
+    "agent.claude.zippity",
+    agent_leaf_map={"claude": frozenset({"provider"})},
+  )
+  assert "provider" in judged.reason
+  assert "model" in judged.reason
 
 
 def _category_tokens() -> "frozenset[str]":
-    """The §2a category tokens, READ FROM THE DELIVERY TABLE (P13).
+  """The §2a category tokens, READ FROM THE DELIVERY TABLE (P13).
 
-    ⚑ NOT from ``_is_category_token``, which is the property under test — the corpus
-    has to name a family the predicate has FORGOTTEN, and one derived from the
-    predicate cannot (P15). ``settings_categories._DELIVERY`` names all NINE families
-    with what each delivers, and ``CATEGORY_FAMILY_ROOTS`` is its per-family root: an
-    independent declaration, and the complete one.
+  ⚑ NOT from ``_is_category_token``, which is the property under test — the corpus
+  has to name a family the predicate has FORGOTTEN, and one derived from the
+  predicate cannot (P15). ``settings_categories._DELIVERY`` names all NINE families
+  with what each delivers, and ``CATEGORY_FAMILY_ROOTS`` is its per-family root: an
+  independent declaration, and the complete one.
 
-    ⚑ THE EARLIER CORPUS UNIONED THREE SUBSET TUPLES AND THEN NAMED ``env`` BY HAND,
-    on the stated ground that ``env`` had no declaring constant to read. It had this
-    one all along. The three are kept as a FLOOR — each names a subset, so one of
-    them losing a row that the delivery table also lost would otherwise shrink the
-    corpus in silence.
-    """
-    from kanibako.settings.settings_categories import (
-        CATEGORY_FAMILY_ROOTS,
-        CONCRETE_CATEGORIES,
-    )
-    from kanibako.settings.settings_keyspace import (
-        BIND_CATEGORIES,
-        TERMINAL_CATEGORY_TAILS,
-    )
+  ⚑ THE EARLIER CORPUS UNIONED THREE SUBSET TUPLES AND THEN NAMED ``env`` BY HAND,
+  on the stated ground that ``env`` had no declaring constant to read. It had this
+  one all along. The three are kept as a FLOOR — each names a subset, so one of
+  them losing a row that the delivery table also lost would otherwise shrink the
+  corpus in silence.
+  """
+  from kanibako.settings.settings_categories import (
+    CATEGORY_FAMILY_ROOTS,
+    CONCRETE_CATEGORIES,
+  )
+  from kanibako.settings.settings_keyspace import (
+    BIND_CATEGORIES,
+    TERMINAL_CATEGORY_TAILS,
+  )
 
-    floor = (
-        {c.split(".")[0] for c in BIND_CATEGORIES}
-        | {tail[0] for tail in TERMINAL_CATEGORY_TAILS}
-        | {c.split(".")[0] for c in CONCRETE_CATEGORIES}
-    )
-    assert floor <= CATEGORY_FAMILY_ROOTS, sorted(floor - CATEGORY_FAMILY_ROOTS)
-    return CATEGORY_FAMILY_ROOTS
+  floor = (
+    {c.split(".")[0] for c in BIND_CATEGORIES}
+    | {tail[0] for tail in TERMINAL_CATEGORY_TAILS}
+    | {c.split(".")[0] for c in CONCRETE_CATEGORIES}
+  )
+  assert floor <= CATEGORY_FAMILY_ROOTS, sorted(floor - CATEGORY_FAMILY_ROOTS)
+  return CATEGORY_FAMILY_ROOTS
 
 
 def test_a_category_token_under_agent_is_never_conceded(monkeypatch):
-    """🛑 THE CONCESSION'S TEST IS "COULD THIS BE AN AGENT", NOT "IS IT INSTALLED".
+  """🛑 THE CONCESSION'S TEST IS "COULD THIS BE AN AGENT", NOT "IS IT INSTALLED".
 
-    ``agent.common.plugins`` is the UNDISCRIMINATED relic MIGRATION.md
-    § "Housekeeping: renames you almost certainly don't carry" tells users to grep
-    their stores for. Under the install-state test it classified KEY —
-    because nothing declares an agent named ``common`` — so the concession un-armed
-    §0 over the exact shape the migration says stops a resolve. The category tokens
-    are a KNOWN FINITE SET; there is nothing unknowable about them to concede.
+  ``agent.common.plugins`` is the UNDISCRIMINATED relic MIGRATION.md
+  § "Housekeeping: renames you almost certainly don't carry" tells users to grep
+  their stores for. Under the install-state test it classified KEY —
+  because nothing declares an agent named ``common`` — so the concession un-armed
+  §0 over the exact shape the migration says stops a resolve. The category tokens
+  are a KNOWN FINITE SET; there is nothing unknowable about them to concede.
 
-    ⚑ Through the RESOLVE seam's oracle, where the agent NAME is conceded too. With
-    a narrow ``valid_agents`` every case here would refuse on the name instead and
-    the pin would pass without touching the concession at all.
-    """
-    from kanibako.settings import settings_keyspace_probe as probe
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑ Through the RESOLVE seam's oracle, where the agent NAME is conceded too. With
+  a narrow ``valid_agents`` every case here would refuse on the name instead and
+  the pin would pass without touching the concession at all.
+  """
+  from kanibako.settings import settings_keyspace_probe as probe
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    monkeypatch.setattr(
-        probe, "_PLUGINS", {"claude": frozenset()},
-    )
-    tokens = _category_tokens()
-    # ⚑ REDS ON ITS OWN EMPTINESS: a declaration rename that emptied the corpus
-    # would otherwise pass this vacuously (P15).
-    assert len(tokens) >= 8, sorted(tokens)
-    for token in sorted(tokens):
-        judged = probe.declared_keyspace_oracle(f"agent.{token}.zippity")
-        assert judged.cls is KeyClass.UNDECLARED, f"agent.{token}.zippity: {judged}"
+  monkeypatch.setattr(
+    probe,
+    "_PLUGINS",
+    {"claude": frozenset()},
+  )
+  tokens = _category_tokens()
+  # ⚑ REDS ON ITS OWN EMPTINESS: a declaration rename that emptied the corpus
+  # would otherwise pass this vacuously (P15).
+  assert len(tokens) >= 8, sorted(tokens)
+  for token in sorted(tokens):
+    judged = probe.declared_keyspace_oracle(f"agent.{token}.zippity")
+    assert judged.cls is KeyClass.UNDECLARED, f"agent.{token}.zippity: {judged}"
 
 
 def test_an_uninstalled_agents_leaf_is_still_conceded(monkeypatch):
-    """The OTHER direction, so the narrowing above cannot be over-read.
+  """The OTHER direction, so the narrowing above cannot be over-read.
 
-    An agent this machine has never heard of is UNENUMERABLE — the concession's
-    whole reason — so a real harness's declared leaf still resolves where its plugin
-    is absent. ⚑ THE RESIDUAL RIDES ON THIS AND IS IRREDUCIBLE: at the RESOLVE seam
-    the agent NAME is conceded too (``ANY_AGENT``), and a plausible-looking typo is
-    indistinguishable there from an uninstalled harness — so ``agent.clade.zippity``
-    resolves as well. Stated in CHANGELOG.md rather than hidden.
+  An agent this machine has never heard of is UNENUMERABLE — the concession's
+  whole reason — so a real harness's declared leaf still resolves where its plugin
+  is absent. ⚑ THE RESIDUAL RIDES ON THIS AND IS IRREDUCIBLE: at the RESOLVE seam
+  the agent NAME is conceded too (``ANY_AGENT``), and a plausible-looking typo is
+  indistinguishable there from an uninstalled harness — so ``agent.clade.zippity``
+  resolves as well. Stated in CHANGELOG.md rather than hidden.
 
-    ⚑ Through the SEAM's own oracle, because that is where both concessions meet;
-    ``key_class`` with a narrow ``valid_agents`` would refuse ``clade`` on its NAME
-    and never reach the leaf question this is about.
-    """
-    from kanibako.settings import settings_keyspace_probe as probe
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑ Through the SEAM's own oracle, because that is where both concessions meet;
+  ``key_class`` with a narrow ``valid_agents`` would refuse ``clade`` on its NAME
+  and never reach the leaf question this is about.
+  """
+  from kanibako.settings import settings_keyspace_probe as probe
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    monkeypatch.setattr(
-        probe, "_PLUGINS", {"claude": frozenset()},
-    )
-    assert probe.declared_keyspace_oracle(
-        "agent.goose.provider"
-    ).cls is KeyClass.KEY
-    assert probe.declared_keyspace_oracle(
-        "agent.clade.zippity"
-    ).cls is KeyClass.KEY
-    # …and the narrowing still holds under the SAME permissive name oracle.
-    assert probe.declared_keyspace_oracle(
-        "agent.common.plugins"
-    ).cls is KeyClass.UNDECLARED
+  monkeypatch.setattr(
+    probe,
+    "_PLUGINS",
+    {"claude": frozenset()},
+  )
+  assert probe.declared_keyspace_oracle("agent.goose.provider").cls is KeyClass.KEY
+  assert probe.declared_keyspace_oracle("agent.clade.zippity").cls is KeyClass.KEY
+  # …and the narrowing still holds under the SAME permissive name oracle.
+  assert probe.declared_keyspace_oracle("agent.common.plugins").cls is KeyClass.UNDECLARED
 
 
 def test_the_meta_agent_tier_is_not_conceded():
-    """🛑 ``meta.agent.<agent>.*`` is core-declared, so there is nothing to concede.
+  """🛑 ``meta.agent.<agent>.*`` is core-declared, so there is nothing to concede.
 
-    No plugin extends that tier's leaves, so its vocabulary is knowable whether or
-    not the plugin is installed. Extending the concession to it would give away a
-    subtree for a reason that does not apply to it.
-    """
-    from kanibako.settings.settings_keyspace import KeyClass
+  No plugin extends that tier's leaves, so its vocabulary is knowable whether or
+  not the plugin is installed. Extending the concession to it would give away a
+  subtree for a reason that does not apply to it.
+  """
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    assert _class(
-        "meta.agent.goose.zippity",
-        agent_leaf_map={},
-    ).cls is KeyClass.UNDECLARED
+  assert (
+    _class(
+      "meta.agent.goose.zippity",
+      agent_leaf_map={},
+    ).cls
+    is KeyClass.UNDECLARED
+  )
 
 
 def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
-    """A PERSONA is known iff its HARNESS is
-    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": *"or harness"*).
+  """A PERSONA is known iff its HARNESS is
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": *"or harness"*).
 
-    A persona takes its leaves from the harness right of the separator, so asking
-    about the node name would concede every persona on the machine.
+  A persona takes its leaves from the harness right of the separator, so asking
+  about the node name would concede every persona on the machine.
 
-    ⚑⚑ THE RULE MOVED FROM THE SUPPLIER TO THE KEYSPACE, and the pin moved with it.
-    The supplier used to answer ``harness_of(node)`` itself; the map it now hands over
-    is keyed by plain harness name, and ``settings_keyspace.agent_declared_leaves``
-    does the normalizing — which is what keeps the rule from having to be re-derived
-    by every future supplier. It is asserted through the oracle rather than against a
-    set, because the verdict is the only thing that was ever load-bearing.
-    """
-    from kanibako.settings import settings_keyspace_probe as probe
-    from kanibako.settings.settings_keyspace import KeyClass
+  ⚑⚑ THE RULE MOVED FROM THE SUPPLIER TO THE KEYSPACE, and the pin moved with it.
+  The supplier used to answer ``harness_of(node)`` itself; the map it now hands over
+  is keyed by plain harness name, and ``settings_keyspace.agent_declared_leaves``
+  does the normalizing — which is what keeps the rule from having to be re-derived
+  by every future supplier. It is asserted through the oracle rather than against a
+  set, because the verdict is the only thing that was ever load-bearing.
+  """
+  from kanibako.settings import settings_keyspace_probe as probe
+  from kanibako.settings.settings_keyspace import KeyClass
 
-    monkeypatch.setattr(
-        probe, "_PLUGINS", {"claude": frozenset()},
-    )
+  monkeypatch.setattr(
+    probe,
+    "_PLUGINS",
+    {"claude": frozenset()},
+  )
 
-    def verdict(key):
-        return probe.declared_keyspace_oracle(key).cls
+  def verdict(key):
+    return probe.declared_keyspace_oracle(key).cls
 
-    # claude's vocabulary is readable and empty ⇒ judged, not conceded…
-    assert verdict("agent.claude.zippity") is KeyClass.UNDECLARED
-    assert verdict("agent.navigator℘claude.zippity") is KeyClass.UNDECLARED
-    # …goose's is not ⇒ conceded, personas included.
-    assert verdict("agent.goose.zippity") is KeyClass.KEY
-    assert verdict("agent.navigator℘goose.zippity") is KeyClass.KEY
-    # 🛑 THE RAW SPELLING, AND IT WAS A LIVE HOLE: ``harness_of`` splits on ``℘``
-    # alone, so ``nav+claude`` used to miss the lookup entirely and be CONCEDED while
-    # its own canonical form was refused — one key, two answers by spelling. The
-    # keyspace canonicalizes before it looks, so both agree.
-    assert verdict("agent.navigator+claude.zippity") is KeyClass.UNDECLARED
-    # ⚑ ``default`` is never conceded: the all-agents tier's standing is the
-    # keyspace's, so every supplier gets it right by not having to know it.
-    assert verdict("agent.default.zippity") is KeyClass.UNDECLARED
+  # claude's vocabulary is readable and empty ⇒ judged, not conceded…
+  assert verdict("agent.claude.zippity") is KeyClass.UNDECLARED
+  assert verdict("agent.navigator℘claude.zippity") is KeyClass.UNDECLARED
+  # …goose's is not ⇒ conceded, personas included.
+  assert verdict("agent.goose.zippity") is KeyClass.KEY
+  assert verdict("agent.navigator℘goose.zippity") is KeyClass.KEY
+  # 🛑 THE RAW SPELLING, AND IT WAS A LIVE HOLE: ``harness_of`` splits on ``℘``
+  # alone, so ``nav+claude`` used to miss the lookup entirely and be CONCEDED while
+  # its own canonical form was refused — one key, two answers by spelling. The
+  # keyspace canonicalizes before it looks, so both agree.
+  assert verdict("agent.navigator+claude.zippity") is KeyClass.UNDECLARED
+  # ⚑ ``default`` is never conceded: the all-agents tier's standing is the
+  # keyspace's, so every supplier gets it right by not having to know it.
+  assert verdict("agent.default.zippity") is KeyClass.UNDECLARED
 
 
 # ---------------------------------------------------------------------------
@@ -2112,78 +2331,83 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
 #: collapse the coverage with them: the map carries the VOCABULARY and the CONCESSION,
 #: and each gets its own row.
 _ORACLE_BASE = {
-    "valid_agents": frozenset({"claude", "goose", "myagent"}),
-    "agent_leaf_map": {"claude": frozenset(), "goose": frozenset()},
+  "valid_agents": frozenset({"claude", "goose", "myagent"}),
+  "agent_leaf_map": {"claude": frozenset(), "goose": frozenset()},
 }
 _ORACLE_PROBES = {
-    "valid_agents": [
-        (
-            "agent.myagent.model",
-            {"valid_agents": frozenset({"myagent"})},
-            {"valid_agents": frozenset()},
-        ),
-    ],
-    "agent_leaf_map": [
-        # The VOCABULARY half: goose's own declaration, present or absent.
-        (
-            "agent.goose.provider",
-            {"agent_leaf_map": {"goose": frozenset({"provider"})}},
-            {"agent_leaf_map": {"goose": frozenset()}},
-        ),
-        # The CONCESSION half: goose absent from a map that CONCEDES what it did not
-        # read. ⚑ Both sides are discovery-shaped, so what flips is goose's standing
-        # and not the map's — a bare literal concedes nobody and would flip for the
-        # wrong reason.
-        (
-            "agent.goose.zippity",
-            {"agent_leaf_map": _discovered({"claude": frozenset()})},
-            {"agent_leaf_map": _discovered(
-                {"claude": frozenset(), "goose": frozenset()},
-            )},
-        ),
-    ],
+  "valid_agents": [
+    (
+      "agent.myagent.model",
+      {"valid_agents": frozenset({"myagent"})},
+      {"valid_agents": frozenset()},
+    ),
+  ],
+  "agent_leaf_map": [
+    # The VOCABULARY half: goose's own declaration, present or absent.
+    (
+      "agent.goose.provider",
+      {"agent_leaf_map": {"goose": frozenset({"provider"})}},
+      {"agent_leaf_map": {"goose": frozenset()}},
+    ),
+    # The CONCESSION half: goose absent from a map that CONCEDES what it did not
+    # read. ⚑ Both sides are discovery-shaped, so what flips is goose's standing
+    # and not the map's — a bare literal concedes nobody and would flip for the
+    # wrong reason.
+    (
+      "agent.goose.zippity",
+      {"agent_leaf_map": _discovered({"claude": frozenset()})},
+      {
+        "agent_leaf_map": _discovered(
+          {"claude": frozenset(), "goose": frozenset()},
+        )
+      },
+    ),
+  ],
 }
 
 
 def test_the_probe_set_covers_every_oracle_parameter():
-    """⚑ THE CORPUS IS DERIVED FROM THE SIGNATURE, NOT LISTED (P13).
+  """⚑ THE CORPUS IS DERIVED FROM THE SIGNATURE, NOT LISTED (P13).
 
-    A fourth oracle parameter added to ``key_class`` without a probe key reds here,
-    instead of joining the pref recursion's blind spot unnoticed.
-    """
-    import inspect
+  A fourth oracle parameter added to ``key_class`` without a probe key reds here,
+  instead of joining the pref recursion's blind spot unnoticed.
+  """
+  import inspect
 
-    from kanibako.settings.settings_keyspace import key_class
+  from kanibako.settings.settings_keyspace import key_class
 
-    keyword_only = {
-        name for name, p in inspect.signature(key_class).parameters.items()
-        if p.kind is inspect.Parameter.KEYWORD_ONLY
-    }
-    assert keyword_only == set(_ORACLE_PROBES)
+  keyword_only = {
+    name
+    for name, p in inspect.signature(key_class).parameters.items()
+    if p.kind is inspect.Parameter.KEYWORD_ONLY
+  }
+  assert keyword_only == set(_ORACLE_PROBES)
 
 
-@pytest.mark.parametrize("parameter,probe", [
+@pytest.mark.parametrize(
+  "parameter,probe",
+  [
     (parameter, probe)
     for parameter in sorted(_ORACLE_PROBES)
     for probe in _ORACLE_PROBES[parameter]
-])
+  ],
+)
 def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter, probe):
-    """The SAME key, both spellings, both verdicts — for every oracle parameter.
+  """The SAME key, both spellings, both verdicts — for every oracle parameter.
 
-    Each row is chosen so its verdict FLIPS with the parameter it names, so the
-    agreement is asserted on a key the parameter actually reaches; a row that
-    answered the same either way would pin nothing (P15).
-    """
-    from kanibako.settings.settings_keyspace import KeyClass, key_class
+  Each row is chosen so its verdict FLIPS with the parameter it names, so the
+  agreement is asserted on a key the parameter actually reaches; a row that
+  answered the same either way would pin nothing (P15).
+  """
+  from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    key, as_key, as_undeclared = probe
-    for override, expected in ((as_key, KeyClass.KEY),
-                               (as_undeclared, KeyClass.UNDECLARED)):
-        oracle = {**_ORACLE_BASE, **override}
-        bare = key_class(key, **oracle)
-        assert bare.cls is expected, f"{parameter}: {key} -> {bare}"
-        pref = key_class(f"pref.{key}", **oracle)
-        assert pref.cls is bare.cls, (
-            f"{parameter}: '{key}' is {bare.cls.name} but 'pref.{key}' is "
-            f"{pref.cls.name} — one key, two answers by spelling"
-        )
+  key, as_key, as_undeclared = probe
+  for override, expected in ((as_key, KeyClass.KEY), (as_undeclared, KeyClass.UNDECLARED)):
+    oracle = {**_ORACLE_BASE, **override}
+    bare = key_class(key, **oracle)
+    assert bare.cls is expected, f"{parameter}: {key} -> {bare}"
+    pref = key_class(f"pref.{key}", **oracle)
+    assert pref.cls is bare.cls, (
+      f"{parameter}: '{key}' is {bare.cls.name} but 'pref.{key}' is "
+      f"{pref.cls.name} — one key, two answers by spelling"
+    )

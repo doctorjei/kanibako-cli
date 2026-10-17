@@ -15,113 +15,113 @@ from kanibako._atomic import atomic_write_text
 
 
 def _temp_residue(directory):
-    """Return any leftover atomic-write temp files in *directory*."""
-    return [p for p in directory.iterdir() if ".tmp" in p.name]
+  """Return any leftover atomic-write temp files in *directory*."""
+  return [p for p in directory.iterdir() if ".tmp" in p.name]
 
 
 def test_writes_content(tmp_path):
-    target = tmp_path / "out.txt"
-    atomic_write_text(target, "hello world\n")
-    assert target.read_text() == "hello world\n"
+  target = tmp_path / "out.txt"
+  atomic_write_text(target, "hello world\n")
+  assert target.read_text() == "hello world\n"
 
 
 def test_creates_parent_dirs(tmp_path):
-    target = tmp_path / "a" / "b" / "c" / "out.txt"
-    atomic_write_text(target, "nested\n")
-    assert target.read_text() == "nested\n"
+  target = tmp_path / "a" / "b" / "c" / "out.txt"
+  atomic_write_text(target, "nested\n")
+  assert target.read_text() == "nested\n"
 
 
 def test_overwrites_existing(tmp_path):
-    target = tmp_path / "out.txt"
-    target.write_text("old content")
-    atomic_write_text(target, "new content")
-    assert target.read_text() == "new content"
+  target = tmp_path / "out.txt"
+  target.write_text("old content")
+  atomic_write_text(target, "new content")
+  assert target.read_text() == "new content"
 
 
 def test_no_temp_residue_on_success(tmp_path):
-    target = tmp_path / "out.txt"
-    atomic_write_text(target, "data")
-    # Only the target should remain; no .tmp scratch files left behind.
-    assert _temp_residue(tmp_path) == []
-    assert [p.name for p in tmp_path.iterdir()] == ["out.txt"]
+  target = tmp_path / "out.txt"
+  atomic_write_text(target, "data")
+  # Only the target should remain; no .tmp scratch files left behind.
+  assert _temp_residue(tmp_path) == []
+  assert [p.name for p in tmp_path.iterdir()] == ["out.txt"]
 
 
 def test_failure_leaves_original_intact(tmp_path, monkeypatch):
-    """If os.replace raises, the original file must NOT be truncated/lost."""
-    target = tmp_path / "out.txt"
-    target.write_text("ORIGINAL")
+  """If os.replace raises, the original file must NOT be truncated/lost."""
+  target = tmp_path / "out.txt"
+  target.write_text("ORIGINAL")
 
-    def boom(src, dst):
-        raise OSError("simulated rename failure")
+  def boom(src, dst):
+    raise OSError("simulated rename failure")
 
-    monkeypatch.setattr(os, "replace", boom)
+  monkeypatch.setattr(os, "replace", boom)
 
-    with pytest.raises(OSError):
-        atomic_write_text(target, "REPLACEMENT")
+  with pytest.raises(OSError):
+    atomic_write_text(target, "REPLACEMENT")
 
-    # Original content survives untouched.
-    assert target.read_text() == "ORIGINAL"
-    # And the failed temp file was cleaned up.
-    assert _temp_residue(tmp_path) == []
+  # Original content survives untouched.
+  assert target.read_text() == "ORIGINAL"
+  # And the failed temp file was cleaned up.
+  assert _temp_residue(tmp_path) == []
 
 
 def test_failure_leaves_no_target_when_absent(tmp_path, monkeypatch):
-    """If the target didn't exist and the write fails, no torn file appears."""
-    target = tmp_path / "out.txt"
+  """If the target didn't exist and the write fails, no torn file appears."""
+  target = tmp_path / "out.txt"
 
-    def boom(src, dst):
-        raise OSError("simulated rename failure")
+  def boom(src, dst):
+    raise OSError("simulated rename failure")
 
-    monkeypatch.setattr(os, "replace", boom)
+  monkeypatch.setattr(os, "replace", boom)
 
-    with pytest.raises(OSError):
-        atomic_write_text(target, "data")
+  with pytest.raises(OSError):
+    atomic_write_text(target, "data")
 
-    assert not target.exists()
-    assert _temp_residue(tmp_path) == []
+  assert not target.exists()
+  assert _temp_residue(tmp_path) == []
 
 
 def test_fsync_failure_leaves_original_intact(tmp_path, monkeypatch):
-    """A failing fsync must also leave the original intact and clean up."""
-    target = tmp_path / "out.txt"
-    target.write_text("ORIGINAL")
+  """A failing fsync must also leave the original intact and clean up."""
+  target = tmp_path / "out.txt"
+  target.write_text("ORIGINAL")
 
-    def boom(fd):
-        raise OSError("simulated fsync failure")
+  def boom(fd):
+    raise OSError("simulated fsync failure")
 
-    monkeypatch.setattr(os, "fsync", boom)
+  monkeypatch.setattr(os, "fsync", boom)
 
-    with pytest.raises(OSError):
-        atomic_write_text(target, "REPLACEMENT")
+  with pytest.raises(OSError):
+    atomic_write_text(target, "REPLACEMENT")
 
-    assert target.read_text() == "ORIGINAL"
-    assert _temp_residue(tmp_path) == []
+  assert target.read_text() == "ORIGINAL"
+  assert _temp_residue(tmp_path) == []
 
 
 def test_rmw_lock_is_reentrant_in_a_thread_and_exclusive_across_threads(tmp_path) -> None:
-    """A locked read-modify-write may call another; a second thread still waits."""
-    import threading
+  """A locked read-modify-write may call another; a second thread still waits."""
+  import threading
 
-    from kanibako._atomic import rmw_lock
+  from kanibako._atomic import rmw_lock
 
-    doc = tmp_path / "registry.yaml"
-    order: list[str] = []
+  doc = tmp_path / "registry.yaml"
+  order: list[str] = []
 
-    def _other():
-        with rmw_lock(doc):
-            order.append("other")
+  def _other():
+    with rmw_lock(doc):
+      order.append("other")
 
-    def _nested():
-        with rmw_lock(doc):
-            with rmw_lock(doc):  # self-deadlocks without re-entrancy
-                other = threading.Thread(target=_other, daemon=True)
-                other.start()
-                other.join(timeout=0.3)
-                order.append("held")
-        other.join(timeout=5)
+  def _nested():
+    with rmw_lock(doc):
+      with rmw_lock(doc):  # self-deadlocks without re-entrancy
+        other = threading.Thread(target=_other, daemon=True)
+        other.start()
+        other.join(timeout=0.3)
+        order.append("held")
+    other.join(timeout=5)
 
-    outer = threading.Thread(target=_nested, daemon=True)
-    outer.start()
-    outer.join(timeout=10)
-    assert not outer.is_alive(), "a nested rmw_lock deadlocked"
-    assert order == ["held", "other"]
+  outer = threading.Thread(target=_nested, daemon=True)
+  outer.start()
+  outer.join(timeout=10)
+  assert not outer.is_alive(), "a nested rmw_lock deadlocked"
+  assert order == ["held", "other"]

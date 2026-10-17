@@ -27,9 +27,7 @@ STUB = ast.Expr(value=ast.Constant(value=Ellipsis))
 # is reported as a PARSE ERROR at exit 2, loudly, rather than quietly filing the statement wrong.
 # Nothing is lost on 3.12+: there the tuple holds the real node type and every branch below reads
 # exactly as it did when it named the class.
-TYPE_ALIAS_NODES: tuple[type[ast.AST], ...] = (
-  (ast.TypeAlias,) if hasattr(ast, "TypeAlias") else ()
-)
+TYPE_ALIAS_NODES: tuple[type[ast.AST], ...] = (ast.TypeAlias,) if hasattr(ast, "TypeAlias") else ()
 
 # ---------------------------------------------------------------------------
 # Types-vs-Variables discriminator
@@ -50,23 +48,72 @@ TYPE_ALIAS_NODES: tuple[type[ast.AST], ...] = (
 # ---------------------------------------------------------------------------
 
 # Subscript bases that can only ever be spelled to build a type: ``BindMap = dict[str, X]``.
-TYPE_SUBSCRIPT_BASES = frozenset({
-  "Annotated", "Awaitable", "Callable", "ClassVar", "Coroutine", "Dict", "FrozenSet",
-  "Generator", "Iterable", "Iterator", "List", "Literal", "Mapping", "MutableMapping",
-  "MutableSequence", "Optional", "Sequence", "Set", "Tuple", "Type", "Union",
-  "dict", "frozenset", "list", "set", "tuple", "type",
-})
+TYPE_SUBSCRIPT_BASES = frozenset(
+  {
+    "Annotated",
+    "Awaitable",
+    "Callable",
+    "ClassVar",
+    "Coroutine",
+    "Dict",
+    "FrozenSet",
+    "Generator",
+    "Iterable",
+    "Iterator",
+    "List",
+    "Literal",
+    "Mapping",
+    "MutableMapping",
+    "MutableSequence",
+    "Optional",
+    "Sequence",
+    "Set",
+    "Tuple",
+    "Type",
+    "Union",
+    "dict",
+    "frozenset",
+    "list",
+    "set",
+    "tuple",
+    "type",
+  }
+)
 
 # Calls that DEFINE a type rather than produce a value.
-TYPE_FACTORY_CALLS = frozenset({
-  "NewType", "ParamSpec", "TypeAliasType", "TypeVar", "TypeVarTuple",
-})
+TYPE_FACTORY_CALLS = frozenset(
+  {
+    "NewType",
+    "ParamSpec",
+    "TypeAliasType",
+    "TypeVar",
+    "TypeVarTuple",
+  }
+)
 
 # Bare names that are types when used as an alias RHS (``PWTimeout: type[Exception] = Exception``).
-TYPE_BARE_NAMES = frozenset({
-  "Any", "AnyStr", "BaseException", "Exception", "bool", "bytearray", "bytes", "complex",
-  "dict", "float", "frozenset", "int", "list", "object", "set", "str", "tuple", "type",
-})
+TYPE_BARE_NAMES = frozenset(
+  {
+    "Any",
+    "AnyStr",
+    "BaseException",
+    "Exception",
+    "bool",
+    "bytearray",
+    "bytes",
+    "complex",
+    "dict",
+    "float",
+    "frozenset",
+    "int",
+    "list",
+    "object",
+    "set",
+    "str",
+    "tuple",
+    "type",
+  }
+)
 
 
 def _tail_name(node: ast.AST) -> str:
@@ -91,7 +138,7 @@ def _is_type_leaf(node: ast.AST) -> bool:
 
 def is_type_assignment(node: ast.stmt) -> bool:
   """True when *node* declares a TYPE (see the discriminator note above)."""
-  if isinstance(node, TYPE_ALIAS_NODES):       # PEP 695: ``type Foo = int | str``
+  if isinstance(node, TYPE_ALIAS_NODES):  # PEP 695: ``type Foo = int | str``
     return True
   if not isinstance(node, (ast.Assign, ast.AnnAssign)):
     return False
@@ -133,6 +180,7 @@ def is_type_assignment(node: ast.stmt) -> bool:
 # Naming / ordering
 # ---------------------------------------------------------------------------
 
+
 def bound_name(node: ast.stmt) -> str:
   """The name a statement binds (first target for a tuple unpack); '' when there is none."""
   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -163,20 +211,22 @@ def by_visibility(nodes: list[ast.stmt]) -> list[ast.stmt]:
   the doc reproduces it rather than imposing a second, unmaintained ordering of its own: if a
   listing reads wrong, the fix belongs in the module, where one change corrects both.
   """
-  return [n for n in nodes if not _is_private(bound_name(n))] + \
-         [n for n in nodes if _is_private(bound_name(n))]
+  return [n for n in nodes if not _is_private(bound_name(n))] + [
+    n for n in nodes if _is_private(bound_name(n))
+  ]
 
 
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 
+
 def _signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
   """Decorator lines + the ``def`` line, with NO trailing colon and NO body."""
   stubbed = copy.deepcopy(node)
   stubbed.body = [STUB]
   lines = ast.unparse(stubbed).split("\n")
-  if lines[-1].strip() == "...":        # drop the stub body ast.unparse insists on
+  if lines[-1].strip() == "...":  # drop the stub body ast.unparse insists on
     lines.pop()
   lines[-1] = lines[-1].rstrip()
   if lines[-1].endswith(":"):
@@ -206,8 +256,11 @@ def render_class(node: ast.ClassDef) -> list[str]:
   # Field order is SEMANTIC (dataclass positional order), so it is never repartitioned.
   if fields:
     groups.append([ast.unparse(f) for f in fields])
-  for group in (init, [m for m in rest if not _is_private(m.name)],
-                [m for m in rest if _is_private(m.name)]):
+  for group in (
+    init,
+    [m for m in rest if not _is_private(m.name)],
+    [m for m in rest if _is_private(m.name)],
+  ):
     if group:
       groups.append([line for m in group for line in _signature(m)])
   for inner in nested:
@@ -259,7 +312,7 @@ def sections(src: str) -> list[tuple[str, list[str]]]:
     lines: list[str] = []
     for cls in by_visibility(classes):
       if lines:
-        lines.append("")                      # one blank line between class blocks
+        lines.append("")  # one blank line between class blocks
       lines += render_class(cls)
     out.append(("Classes", lines))
   return out
@@ -291,7 +344,7 @@ def document(src_path: Path, mirror_rel: str, src: str) -> str:
     lines.append(f"Prose for these symbols lives in `llm-docs/{mirror_rel}.md`.")
   blocks = sections(src)
   if blocks:
-    lines.append("")                          # first blank of the two under the header
+    lines.append("")  # first blank of the two under the header
   for heading, fenced in blocks:
     lines.append("")
     lines.append(f"## {heading}")
@@ -330,7 +383,7 @@ def _skipped(path: Path) -> bool:
   if any(part in SKIP_PARTS for part in parts):
     return True
   return any(
-    parts[i:i + len(sub)] == sub
+    parts[i : i + len(sub)] == sub
     for sub in SKIP_SUBPATHS
     for i in range(len(parts) - len(sub) + 1)
   )
@@ -346,7 +399,7 @@ def mirror_rel(src_path: Path) -> str:
   """
   parts = src_path.parts
   if "src" in parts:
-    return "/".join(parts[parts.index("src") + 1:])
+    return "/".join(parts[parts.index("src") + 1 :])
   return "/".join(parts[1:])
 
 
@@ -493,8 +546,10 @@ def _run_all(check: bool) -> int:
   for line in stale:
     print(line)
   verb = "stale/missing" if check else "written"
-  print(f"{len(paths)} modules: {new} new, {changed} changed, {current} unchanged "
-        f"({new + changed} {verb})")
+  print(
+    f"{len(paths)} modules: {new} new, {changed} changed, {current} unchanged "
+    f"({new + changed} {verb})"
+  )
   return 1 if check and stale else 0
 
 
@@ -504,15 +559,20 @@ def main() -> int:
     epilog=EPILOG,
     formatter_class=argparse.RawDescriptionHelpFormatter,
   )
-  ap.add_argument("source", nargs="?",
-                  help="repo-relative path, e.g. src/kanibako/settings/paths.py")
-  ap.add_argument("--all", action="store_true",
-                  help="regenerate every .py under src/ and packages/ (see SCOPE)")
+  ap.add_argument(
+    "source", nargs="?", help="repo-relative path, e.g. src/kanibako/settings/paths.py"
+  )
+  ap.add_argument(
+    "--all", action="store_true", help="regenerate every .py under src/ and packages/ (see SCOPE)"
+  )
   ap.add_argument("--out", help="output path (default: api-docs/<mirror>.md)")
   ap.add_argument("--check", action="store_true", help="exit 1 if a doc is missing or stale")
   ap.add_argument("--stdout", action="store_true", help="print instead of writing")
-  ap.add_argument("--list-unchanged", action="store_true",
-                  help="print the path of every doc that is already current; writes nothing")
+  ap.add_argument(
+    "--list-unchanged",
+    action="store_true",
+    help="print the path of every doc that is already current; writes nothing",
+  )
   args = ap.parse_args()
 
   if args.list_unchanged:

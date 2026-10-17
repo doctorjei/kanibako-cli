@@ -17,12 +17,12 @@ from pathlib import Path
 
 from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.project.names import (
-    lookup_by_path,
-    read_names,
-    register_name,
-    resolve_name,
-    resolve_qualified_name,
-    unregister_name,
+  lookup_by_path,
+  read_names,
+  register_name,
+  resolve_name,
+  resolve_qualified_name,
+  unregister_name,
 )
 from kanibako.settings.paths import BoxMode, _early_scope
 from tests.support.early import early_record
@@ -32,857 +32,932 @@ from tests.support.early import early_record
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def registry(tmp_path: Path) -> Path:
-    """Return the resolved ``config.registry`` file path under a temp tree.
+  """Return the resolved ``config.registry`` file path under a temp tree.
 
-    The names API is path-based: every function takes ``std.registry`` (the
-    ``{data_path}/global/registry.yaml`` file), not the data root.
-    """
-    dp = tmp_path / "data"
-    dp.mkdir()
-    return dp / "global" / "registry.yaml"
+  The names API is path-based: every function takes ``std.registry`` (the
+  ``{data_path}/global/registry.yaml`` file), not the data root.
+  """
+  dp = tmp_path / "data"
+  dp.mkdir()
+  return dp / "global" / "registry.yaml"
 
 
 def _register_primary_box(
-    primary_workset: Path, name: str, workspace: Path | str,
+  primary_workset: Path,
+  name: str,
+  workspace: Path | str,
 ) -> None:
-    """Register a PRIMARY box (name → workspace) in the primary membership."""
-    from kanibako.project import workset_registry
+  """Register a PRIMARY box (name → workspace) in the primary membership."""
+  from kanibako.project import workset_registry
 
-    reg = workset_registry.resolve_workset_registry_path(primary_workset, None,
-            early=early_record(primary_workset.parent, mode=BoxMode.primary))
-    workset_registry.register_workset_box(reg, name, Path(workspace))
+  reg = workset_registry.resolve_workset_registry_path(
+    primary_workset, None, early=early_record(primary_workset.parent, mode=BoxMode.primary)
+  )
+  workset_registry.register_workset_box(reg, name, Path(workspace))
 
 
 # ---------------------------------------------------------------------------
 # read_names
 # ---------------------------------------------------------------------------
 
-class TestReadNames:
-    def test_empty_when_no_file(self, registry: Path) -> None:
-        result = read_names(registry)
-        assert result == {"worksets": {}}
 
-    def test_round_trip(self, registry: Path) -> None:
-        register_name(registry, "client", "/home/user/ws/client", section="worksets")
-        result = read_names(registry)
-        assert result["worksets"] == {"client": "/home/user/ws/client"}
+class TestReadNames:
+  def test_empty_when_no_file(self, registry: Path) -> None:
+    result = read_names(registry)
+    assert result == {"worksets": {}}
+
+  def test_round_trip(self, registry: Path) -> None:
+    register_name(registry, "client", "/home/user/ws/client", section="worksets")
+    result = read_names(registry)
+    assert result["worksets"] == {"client": "/home/user/ws/client"}
 
 
 # ---------------------------------------------------------------------------
 # register_name (worksets)
 # ---------------------------------------------------------------------------
 
+
 class TestRegisterName:
-    def test_register_workset(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/ws/root", section="worksets")
-        names = read_names(registry)
-        assert names["worksets"]["ws1"] == "/ws/root"
+  def test_register_workset(self, registry: Path) -> None:
+    register_name(registry, "ws1", "/ws/root", section="worksets")
+    names = read_names(registry)
+    assert names["worksets"]["ws1"] == "/ws/root"
 
-    def test_default_section_is_worksets(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/ws/root")
-        assert read_names(registry)["worksets"]["ws1"] == "/ws/root"
+  def test_default_section_is_worksets(self, registry: Path) -> None:
+    register_name(registry, "ws1", "/ws/root")
+    assert read_names(registry)["worksets"]["ws1"] == "/ws/root"
 
-    def test_duplicate_name(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/ws/root", section="worksets")
-        with pytest.raises(ProjectError, match="already registered"):
-            register_name(registry, "ws1", "/other/path", section="worksets")
+  def test_duplicate_name(self, registry: Path) -> None:
+    register_name(registry, "ws1", "/ws/root", section="worksets")
+    with pytest.raises(ProjectError, match="already registered"):
+      register_name(registry, "ws1", "/other/path", section="worksets")
 
-    def test_creates_parent_dirs(self, tmp_path: Path) -> None:
-        reg = tmp_path / "a" / "b" / "c" / "global" / "registry.yaml"
-        register_name(reg, "x", "/x", section="worksets")
-        assert reg.is_file()
+  def test_creates_parent_dirs(self, tmp_path: Path) -> None:
+    reg = tmp_path / "a" / "b" / "c" / "global" / "registry.yaml"
+    register_name(reg, "x", "/x", section="worksets")
+    assert reg.is_file()
 
-    def test_duplicate_is_case_blind(self, registry: Path) -> None:
-        """Spec §0, ``⚑ NAMING RULES``: names collide without regard to case."""
-        register_name(registry, "ws1", "/ws/root", section="worksets")
-        with pytest.raises(ProjectError, match="already registered"):
-            register_name(registry, "WS1", "/other/path", section="worksets")
+  def test_duplicate_is_case_blind(self, registry: Path) -> None:
+    """Spec §0, ``⚑ NAMING RULES``: names collide without regard to case."""
+    register_name(registry, "ws1", "/ws/root", section="worksets")
+    with pytest.raises(ProjectError, match="already registered"):
+      register_name(registry, "WS1", "/other/path", section="worksets")
 
-    def test_the_key_is_stored_AS_TYPED(self, registry: Path) -> None:
-        """🛑 The other half of the rule, and the one a fold silently breaks.
+  def test_the_key_is_stored_AS_TYPED(self, registry: Path) -> None:
+    """🛑 The other half of the rule, and the one a fold silently breaks.
 
-        Comparison folds; STORAGE never does.  A cure that lowercased on the way in is
-        exactly what keyspec §0 "CASE INSENSITIVE for collision purposes" retired, so
-        the written key is asserted, not assumed.
-        """
-        register_name(registry, "MixedCase", "/ws/root", section="worksets")
-        assert read_names(registry)["worksets"] == {"MixedCase": "/ws/root"}
+    Comparison folds; STORAGE never does.  A cure that lowercased on the way in is
+    exactly what keyspec §0 "CASE INSENSITIVE for collision purposes" retired, so
+    the written key is asserted, not assumed.
+    """
+    register_name(registry, "MixedCase", "/ws/root", section="worksets")
+    assert read_names(registry)["worksets"] == {"MixedCase": "/ws/root"}
 
 
 # ---------------------------------------------------------------------------
 # unregister_name (worksets)
 # ---------------------------------------------------------------------------
 
+
 class TestUnregisterName:
-    def test_unregister_existing(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/ws1", section="worksets")
-        assert unregister_name(registry, "ws1", section="worksets") is True
-        assert "ws1" not in read_names(registry)["worksets"]
+  def test_unregister_existing(self, registry: Path) -> None:
+    register_name(registry, "ws1", "/ws1", section="worksets")
+    assert unregister_name(registry, "ws1", section="worksets") is True
+    assert "ws1" not in read_names(registry)["worksets"]
 
-    def test_unregister_nonexistent(self, registry: Path) -> None:
-        assert unregister_name(registry, "nope", section="worksets") is False
+  def test_unregister_nonexistent(self, registry: Path) -> None:
+    assert unregister_name(registry, "nope", section="worksets") is False
 
-    def test_unregister_is_case_blind_and_REMOVES_THE_STORED_KEY(
-        self, registry: Path
-    ) -> None:
-        """Finding case-blind is only half of it: the delete must hit the stored key.
+  def test_unregister_is_case_blind_and_REMOVES_THE_STORED_KEY(self, registry: Path) -> None:
+    """Finding case-blind is only half of it: the delete must hit the stored key.
 
-        A fold applied to the QUERY alone reports ``True`` and leaves the entry behind —
-        the half-folded shape ``find_identifier`` exists to make unsayable.
-        """
-        register_name(registry, "MixedCase", "/ws1", section="worksets")
-        assert unregister_name(registry, "mixedcase", section="worksets") is True
-        assert read_names(registry)["worksets"] == {}
+    A fold applied to the QUERY alone reports ``True`` and leaves the entry behind —
+    the half-folded shape ``find_identifier`` exists to make unsayable.
+    """
+    register_name(registry, "MixedCase", "/ws1", section="worksets")
+    assert unregister_name(registry, "mixedcase", section="worksets") is True
+    assert read_names(registry)["worksets"] == {}
 
 
 # ---------------------------------------------------------------------------
 # resolve_name
 # ---------------------------------------------------------------------------
 
+
 class TestResolveName:
-    def test_resolve_primary_box_via_membership(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A bare primary-box name resolves via the primary membership (step 2)."""
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "myapp"
-        ws.mkdir()
-        _register_primary_box(primary, "myapp", ws)
+  def test_resolve_primary_box_via_membership(self, registry: Path, tmp_path: Path) -> None:
+    """A bare primary-box name resolves via the primary membership (step 2)."""
+    primary = tmp_path / "primary_workset"
+    ws = tmp_path / "myapp"
+    ws.mkdir()
+    _register_primary_box(primary, "myapp", ws)
 
-        path, kind = resolve_name(registry, "myapp", primary_workset=primary,
-                early_system=early_record(tmp_path))
-        assert path == str(ws)
-        assert kind == "project"
+    path, kind = resolve_name(
+      registry, "myapp", primary_workset=primary, early_system=early_record(tmp_path)
+    )
+    assert path == str(ws)
+    assert kind == "project"
 
-    def test_primary_step_skipped_without_primary_workset(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """No *primary_workset* → the primary membership is not consulted."""
-        primary = tmp_path / "primary_workset"
-        _register_primary_box(primary, "myapp", tmp_path / "myapp")
-        with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "myapp", early_system=early_record(tmp_path))
+  def test_primary_step_skipped_without_primary_workset(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """No *primary_workset* → the primary membership is not consulted."""
+    primary = tmp_path / "primary_workset"
+    _register_primary_box(primary, "myapp", tmp_path / "myapp")
+    with pytest.raises(ProjectError, match="Unknown project"):
+      resolve_name(registry, "myapp", early_system=early_record(tmp_path))
 
-    def test_resolve_workset(self, registry: Path, tmp_path: Path) -> None:
-        register_name(registry, "ws1", "/home/user/ws", section="worksets")
-        path, kind = resolve_name(registry, "ws1", early_system=early_record(tmp_path))
-        assert path == "/home/user/ws"
-        assert kind == "workset"
+  def test_resolve_workset(self, registry: Path, tmp_path: Path) -> None:
+    register_name(registry, "ws1", "/home/user/ws", section="worksets")
+    path, kind = resolve_name(registry, "ws1", early_system=early_record(tmp_path))
+    assert path == "/home/user/ws"
+    assert kind == "workset"
 
-    def test_primary_takes_precedence_over_workset(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A primary box (step 2) is found before a workset name."""
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "proj"
-        ws.mkdir()
-        _register_primary_box(primary, "proj", ws)
-        register_name(registry, "proj", "/ws", section="worksets")
+  def test_primary_takes_precedence_over_workset(self, registry: Path, tmp_path: Path) -> None:
+    """A primary box (step 2) is found before a workset name."""
+    primary = tmp_path / "primary_workset"
+    ws = tmp_path / "proj"
+    ws.mkdir()
+    _register_primary_box(primary, "proj", ws)
+    register_name(registry, "proj", "/ws", section="worksets")
 
-        path, kind = resolve_name(registry, "proj", primary_workset=primary,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert path == str(ws)
+    path, kind = resolve_name(
+      registry, "proj", primary_workset=primary, early_system=early_record(tmp_path)
+    )
+    assert kind == "project"
+    assert path == str(ws)
 
-    def test_a_name_both_kinds_hold_resolves_to_the_box_without_a_warning(
-        self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Per-kind namespaces (spec § Detection & import): a bare name that is BOTH a
-        primary box and a workset resolves to the BOX (box names come first), and
-        nothing is said — the workset's noun-scoped commands reach it."""
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "proj"
-        ws.mkdir()
-        _register_primary_box(primary, "proj", ws)
-        register_name(registry, "proj", "/ws", section="worksets")
+  def test_a_name_both_kinds_hold_resolves_to_the_box_without_a_warning(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+  ) -> None:
+    """Per-kind namespaces (spec § Detection & import): a bare name that is BOTH a
+    primary box and a workset resolves to the BOX (box names come first), and
+    nothing is said — the workset's noun-scoped commands reach it."""
+    primary = tmp_path / "primary_workset"
+    ws = tmp_path / "proj"
+    ws.mkdir()
+    _register_primary_box(primary, "proj", ws)
+    register_name(registry, "proj", "/ws", section="worksets")
 
-        with caplog.at_level("WARNING"):
-            path, kind = resolve_name(registry, "proj", primary_workset=primary,
-                    early_system=early_record(tmp_path))
-        assert (path, kind) == (str(ws), "project")
-        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+    with caplog.at_level("WARNING"):
+      path, kind = resolve_name(
+        registry, "proj", primary_workset=primary, early_system=early_record(tmp_path)
+      )
+    assert (path, kind) == (str(ws), "project")
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
-    def test_unknown_name_raises(self, registry: Path, tmp_path: Path) -> None:
-        with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "nope", early_system=early_record(tmp_path))
+  def test_unknown_name_raises(self, registry: Path, tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="Unknown project"):
+      resolve_name(registry, "nope", early_system=early_record(tmp_path))
 
-    def test_cwd_context_finds_workset_project(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """When cwd is inside a workset, check its workspace dirs first."""
-        ws_root = tmp_path / "ws"
-        ws_root.mkdir()
-        (ws_root / "workspaces" / "api").mkdir(parents=True)
-        register_name(registry, "myws", str(ws_root), section="worksets")
+  def test_cwd_context_finds_workset_project(self, registry: Path, tmp_path: Path) -> None:
+    """When cwd is inside a workset, check its workspace dirs first."""
+    ws_root = tmp_path / "ws"
+    ws_root.mkdir()
+    (ws_root / "workspaces" / "api").mkdir(parents=True)
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        path, kind = resolve_name(
-            registry, "api", cwd=ws_root / "workspaces" / "api",
-                    early_system=early_record(tmp_path)
-        )
-        assert path == str(ws_root / "workspaces" / "api")
-        assert kind == "project"
+    path, kind = resolve_name(
+      registry, "api", cwd=ws_root / "workspaces" / "api", early_system=early_record(tmp_path)
+    )
+    assert path == str(ws_root / "workspaces" / "api")
+    assert kind == "project"
 
-    def test_cwd_context_honors_workspaces_repoint(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """B2 (§3.3): the cwd-context step composes through the RESOLVED
-        ``workset.workspaces`` — a repoint in the workset workset.yaml is
-        honored, and the default dir is no longer consulted for the name."""
-        from kanibako.settings.config_io import dump_doc
+  def test_cwd_context_honors_workspaces_repoint(self, registry: Path, tmp_path: Path) -> None:
+    """B2 (§3.3): the cwd-context step composes through the RESOLVED
+    ``workset.workspaces`` — a repoint in the workset workset.yaml is
+    honored, and the default dir is no longer consulted for the name."""
+    from kanibako.settings.config_io import dump_doc
 
-        ws_root = tmp_path / "ws"
-        (ws_root / "pods" / "api").mkdir(parents=True)
-        # A decoy under the DEFAULT leaf proves the repoint is what resolves.
-        (ws_root / "workspaces" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
-        register_name(registry, "myws", str(ws_root), section="worksets")
+    ws_root = tmp_path / "ws"
+    (ws_root / "pods" / "api").mkdir(parents=True)
+    # A decoy under the DEFAULT leaf proves the repoint is what resolves.
+    (ws_root / "workspaces" / "api").mkdir(parents=True)
+    dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        path, kind = resolve_name(registry, "api", cwd=ws_root,
-                early_system=early_record(tmp_path))
-        assert path == str(ws_root / "pods" / "api")
-        assert kind == "project"
+    path, kind = resolve_name(registry, "api", cwd=ws_root, early_system=early_record(tmp_path))
+    assert path == str(ws_root / "pods" / "api")
+    assert kind == "project"
 
-    def test_cwd_context_falls_through_to_primary(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """cwd inside a workset but name matches a primary box instead."""
-        primary = tmp_path / "primary_workset"
-        other = tmp_path / "other" / "path"
-        other.mkdir(parents=True)
-        _register_primary_box(primary, "other", other)
+  def test_cwd_context_falls_through_to_primary(self, registry: Path, tmp_path: Path) -> None:
+    """cwd inside a workset but name matches a primary box instead."""
+    primary = tmp_path / "primary_workset"
+    other = tmp_path / "other" / "path"
+    other.mkdir(parents=True)
+    _register_primary_box(primary, "other", other)
 
-        ws_root = tmp_path / "ws"
-        ws_root.mkdir()
-        (ws_root / "workspaces").mkdir()
-        register_name(registry, "myws", str(ws_root), section="worksets")
+    ws_root = tmp_path / "ws"
+    ws_root.mkdir()
+    (ws_root / "workspaces").mkdir()
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        path, kind = resolve_name(
-            registry, "other", cwd=ws_root / "workspaces",
-            primary_workset=primary,
-            early_system=early_record(tmp_path),
-        )
-        assert path == str(other)
-        assert kind == "project"
+    path, kind = resolve_name(
+      registry,
+      "other",
+      cwd=ws_root / "workspaces",
+      primary_workset=primary,
+      early_system=early_record(tmp_path),
+    )
+    assert path == str(other)
+    assert kind == "project"
 
-    @pytest.mark.parametrize("registered", ["lnk", "real"])
-    @pytest.mark.parametrize("cwd_via", ["lnk", "real", "lnk2", "parent_link"])
-    def test_cwd_context_matches_either_spelling_of_the_workset(
-        self, registry: Path, tmp_path: Path, monkeypatch, registered: str, cwd_via: str,
-    ) -> None:
-        """S3b: the literal cwd meets the literal root, the resolved cwd the resolved
-        root, so a cwd reached through any link to the tree is in the space."""
-        real = tmp_path / "real"
-        (real / "ws" / "workspaces" / "api" / "x").mkdir(parents=True)
-        (tmp_path / "lnk").symlink_to(real)
-        (tmp_path / "lnk2").symlink_to(real / "ws")
-        (tmp_path / "plink").symlink_to(real)
-        ws_root = tmp_path / registered / "ws"
-        register_name(registry, "myws", str(ws_root), section="worksets")
-        primary = tmp_path / "primary_workset"
-        decoy = tmp_path / "decoy"
-        decoy.mkdir()
-        _register_primary_box(primary, "api", decoy)
-        here = {
-            "lnk": tmp_path / "lnk" / "ws", "real": real / "ws",
-            "lnk2": tmp_path / "lnk2", "parent_link": tmp_path / "plink" / "ws",
-        }[cwd_via] / "workspaces" / "api" / "x"
-        monkeypatch.chdir(here)
-        monkeypatch.setenv("PWD", str(here))
+  @pytest.mark.parametrize("registered", ["lnk", "real"])
+  @pytest.mark.parametrize("cwd_via", ["lnk", "real", "lnk2", "parent_link"])
+  def test_cwd_context_matches_either_spelling_of_the_workset(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    monkeypatch,
+    registered: str,
+    cwd_via: str,
+  ) -> None:
+    """S3b: the literal cwd meets the literal root, the resolved cwd the resolved
+    root, so a cwd reached through any link to the tree is in the space."""
+    real = tmp_path / "real"
+    (real / "ws" / "workspaces" / "api" / "x").mkdir(parents=True)
+    (tmp_path / "lnk").symlink_to(real)
+    (tmp_path / "lnk2").symlink_to(real / "ws")
+    (tmp_path / "plink").symlink_to(real)
+    ws_root = tmp_path / registered / "ws"
+    register_name(registry, "myws", str(ws_root), section="worksets")
+    primary = tmp_path / "primary_workset"
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _register_primary_box(primary, "api", decoy)
+    here = (
+      {
+        "lnk": tmp_path / "lnk" / "ws",
+        "real": real / "ws",
+        "lnk2": tmp_path / "lnk2",
+        "parent_link": tmp_path / "plink" / "ws",
+      }[cwd_via]
+      / "workspaces"
+      / "api"
+      / "x"
+    )
+    monkeypatch.chdir(here)
+    monkeypatch.setenv("PWD", str(here))
 
-        path, kind = resolve_name(registry, "api", cwd=here, primary_workset=primary,
-                                  early_system=early_record(tmp_path))
-        assert path == str(ws_root / "workspaces" / "api")
-        assert kind == "project"
+    path, kind = resolve_name(
+      registry, "api", cwd=here, primary_workset=primary, early_system=early_record(tmp_path)
+    )
+    assert path == str(ws_root / "workspaces" / "api")
+    assert kind == "project"
 
-    @pytest.mark.parametrize("stored", [".", "ws"])
-    def test_a_relative_stored_workset_root_holds_no_cwd(
-        self, registry: Path, tmp_path: Path, monkeypatch, stored: str,
-    ) -> None:
-        """A non-absolute root never matches: joined to the cwd, ``.`` holds every cwd."""
-        here = tmp_path / "anywhere"
-        (here / "ws" / "workspaces" / "api").mkdir(parents=True)
-        register_name(registry, "myws", stored, section="worksets")
-        primary = tmp_path / "primary_workset"
-        decoy = tmp_path / "decoy"
-        decoy.mkdir()
-        _register_primary_box(primary, "api", decoy)
-        for cwd in (here, here / "ws", here / "ws" / "workspaces" / "api"):
-            monkeypatch.chdir(cwd)
-            monkeypatch.setenv("PWD", str(cwd))
-            path, _kind = resolve_name(registry, "api", cwd=cwd, primary_workset=primary,
-                                       early_system=early_record(tmp_path))
-            assert path == str(decoy), cwd
+  @pytest.mark.parametrize("stored", [".", "ws"])
+  def test_a_relative_stored_workset_root_holds_no_cwd(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    monkeypatch,
+    stored: str,
+  ) -> None:
+    """A non-absolute root never matches: joined to the cwd, ``.`` holds every cwd."""
+    here = tmp_path / "anywhere"
+    (here / "ws" / "workspaces" / "api").mkdir(parents=True)
+    register_name(registry, "myws", stored, section="worksets")
+    primary = tmp_path / "primary_workset"
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _register_primary_box(primary, "api", decoy)
+    for cwd in (here, here / "ws", here / "ws" / "workspaces" / "api"):
+      monkeypatch.chdir(cwd)
+      monkeypatch.setenv("PWD", str(cwd))
+      path, _kind = resolve_name(
+        registry, "api", cwd=cwd, primary_workset=primary, early_system=early_record(tmp_path)
+      )
+      assert path == str(decoy), cwd
 
-    def test_cwd_outside_every_spelling_of_the_workset_is_not_its_space(
-        self, registry: Path, tmp_path: Path, monkeypatch,
-    ) -> None:
-        """A cwd beside the tree (a sibling sharing the root's name prefix) is not in it."""
-        real = tmp_path / "real"
-        (real / "ws" / "workspaces" / "api").mkdir(parents=True)
-        (tmp_path / "lnk").symlink_to(real)
-        register_name(registry, "myws", str(tmp_path / "lnk" / "ws"), section="worksets")
-        primary = tmp_path / "primary_workset"
-        decoy = tmp_path / "decoy"
-        decoy.mkdir()
-        _register_primary_box(primary, "api", decoy)
-        here = tmp_path / "lnk" / "ws-sibling"
-        (real / "ws-sibling").mkdir()
-        monkeypatch.chdir(here)
-        monkeypatch.setenv("PWD", str(here))
+  def test_cwd_outside_every_spelling_of_the_workset_is_not_its_space(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    monkeypatch,
+  ) -> None:
+    """A cwd beside the tree (a sibling sharing the root's name prefix) is not in it."""
+    real = tmp_path / "real"
+    (real / "ws" / "workspaces" / "api").mkdir(parents=True)
+    (tmp_path / "lnk").symlink_to(real)
+    register_name(registry, "myws", str(tmp_path / "lnk" / "ws"), section="worksets")
+    primary = tmp_path / "primary_workset"
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _register_primary_box(primary, "api", decoy)
+    here = tmp_path / "lnk" / "ws-sibling"
+    (real / "ws-sibling").mkdir()
+    monkeypatch.chdir(here)
+    monkeypatch.setenv("PWD", str(here))
 
-        path, _kind = resolve_name(registry, "api", cwd=here, primary_workset=primary,
-                                   early_system=early_record(tmp_path))
-        assert path == str(decoy)
+    path, _kind = resolve_name(
+      registry, "api", cwd=here, primary_workset=primary, early_system=early_record(tmp_path)
+    )
+    assert path == str(decoy)
 
-    # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
+  # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
 
-    def _register_ws_member(
-        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
-    ) -> Path:
-        """Register a NAMED workset + a member box in its per-workset registry.
+  def _register_ws_member(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    ws_name: str,
+    box_name: str,
+  ) -> Path:
+    """Register a NAMED workset + a member box in its per-workset registry.
 
-        Returns the box's workspace path.
-        """
-        from kanibako.project import workset_registry
+    Returns the box's workspace path.
+    """
+    from kanibako.project import workset_registry
 
-        ws_root = tmp_path / ws_name
-        box_ws = ws_root / "workspaces" / box_name
-        box_ws.mkdir(parents=True)
-        register_name(registry, ws_name, str(ws_root), section="worksets")
-        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
-        workset_registry.register_workset_box(reg_path, box_name, box_ws)
-        return box_ws
+    ws_root = tmp_path / ws_name
+    box_ws = ws_root / "workspaces" / box_name
+    box_ws.mkdir(parents=True)
+    register_name(registry, ws_name, str(ws_root), section="worksets")
+    reg_path = workset_registry.resolve_workset_registry_path(
+      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
+    )
+    workset_registry.register_workset_box(reg_path, box_name, box_ws)
+    return box_ws
 
-    def _register_member_at(
-        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
-        box_ws: Path,
-    ) -> Path:
-        """Register a NAMED workset whose *box_name* member sits at *box_ws*.
+  def _register_member_at(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    ws_name: str,
+    box_name: str,
+    box_ws: Path,
+  ) -> Path:
+    """Register a NAMED workset whose *box_name* member sits at *box_ws*.
 
-        *box_ws* is the path recorded in the per-workset ``boxes:`` registry, so
-        two worksets can be pointed at ONE target.
-        """
-        from kanibako.project import workset_registry
+    *box_ws* is the path recorded in the per-workset ``boxes:`` registry, so
+    two worksets can be pointed at ONE target.
+    """
+    from kanibako.project import workset_registry
 
-        ws_root = tmp_path / ws_name
-        ws_root.mkdir(exist_ok=True)
-        register_name(registry, ws_name, str(ws_root), section="worksets")
-        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
-        workset_registry.register_workset_box(reg_path, box_name, box_ws)
-        return box_ws
+    ws_root = tmp_path / ws_name
+    ws_root.mkdir(exist_ok=True)
+    register_name(registry, ws_name, str(ws_root), section="worksets")
+    reg_path = workset_registry.resolve_workset_registry_path(
+      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
+    )
+    workset_registry.register_workset_box(reg_path, box_name, box_ws)
+    return box_ws
 
-    def test_workset_member_from_outside_names_the_qualified_spelling(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """S8b (plan Q4): a member's bare name outside its space errors, naming
-        ``<workset>/<box>``; the member stays reachable by that spelling."""
-        self._register_ws_member(registry, tmp_path, "myws", "cluster2")
+  def test_workset_member_from_outside_names_the_qualified_spelling(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """S8b (plan Q4): a member's bare name outside its space errors, naming
+    ``<workset>/<box>``; the member stays reachable by that spelling."""
+    self._register_ws_member(registry, tmp_path, "myws", "cluster2")
 
-        # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
-        with pytest.raises(AmbiguousNameError, match="'myws/cluster2'"):
-            resolve_name(registry, "cluster2", cwd=tmp_path,
-                         early_system=early_record(tmp_path))
+    # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
+    with pytest.raises(AmbiguousNameError, match="'myws/cluster2'"):
+      resolve_name(registry, "cluster2", cwd=tmp_path, early_system=early_record(tmp_path))
 
-    def test_workset_member_ambiguous_across_worksets_raises(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A name that is a member of TWO worksets is ambiguous from outside."""
-        self._register_ws_member(registry, tmp_path, "ws1", "dup")
-        self._register_ws_member(registry, tmp_path, "ws2", "dup")
+  def test_workset_member_ambiguous_across_worksets_raises(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """A name that is a member of TWO worksets is ambiguous from outside."""
+    self._register_ws_member(registry, tmp_path, "ws1", "dup")
+    self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
-        with pytest.raises(ProjectError, match="Ambiguous"):
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+    with pytest.raises(ProjectError, match="Ambiguous"):
+      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
 
-    def test_workset_member_unknown_still_raises(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A bare name that is no member of any workset still raises."""
-        self._register_ws_member(registry, tmp_path, "myws", "cluster2")
-        with pytest.raises(ProjectError, match="Unknown"):
-            resolve_name(registry, "not-a-member", cwd=tmp_path,
-                    early_system=early_record(tmp_path))
+  def test_workset_member_unknown_still_raises(self, registry: Path, tmp_path: Path) -> None:
+    """A bare name that is no member of any workset still raises."""
+    self._register_ws_member(registry, tmp_path, "myws", "cluster2")
+    with pytest.raises(ProjectError, match="Unknown"):
+      resolve_name(registry, "not-a-member", cwd=tmp_path, early_system=early_record(tmp_path))
 
-    # -- The ambiguity message must make its own cure derivable --------------
+  # -- The ambiguity message must make its own cure derivable --------------
 
-    def test_ambiguity_message_names_the_qualified_candidates(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """The candidates are named ``<workset>/<name>``, so the cure is derivable.
+  def test_ambiguity_message_names_the_qualified_candidates(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """The candidates are named ``<workset>/<name>``, so the cure is derivable.
 
-        ``workset.workspaces`` is user-settable, so a registered workspace path
-        need not contain its workset name; a message that listed only paths
-        could not tell the user what to type.  Both candidates are named by
-        their STORED workset key.
+    ``workset.workspaces`` is user-settable, so a registered workspace path
+    need not contain its workset name; a message that listed only paths
+    could not tell the user what to type.  Both candidates are named by
+    their STORED workset key.
 
-        Mutation proof: having ``_workset_member_paths`` yield the path alone
-        (dropping the ``[worksets]`` key) leaves the message printing paths and
-        these qualified names absent.
-        """
-        ws1 = self._register_ws_member(registry, tmp_path, "ws1", "dup")
-        ws2 = self._register_ws_member(registry, tmp_path, "ws2", "dup")
+    Mutation proof: having ``_workset_member_paths`` yield the path alone
+    (dropping the ``[worksets]`` key) leaves the message printing paths and
+    these qualified names absent.
+    """
+    ws1 = self._register_ws_member(registry, tmp_path, "ws1", "dup")
+    ws2 = self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
-        with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
-        message = str(excinfo.value)
-        assert "ws1/dup" in message
-        assert "ws2/dup" in message
-        # The cure the message prescribes is now readable off its own output.
-        assert "<workset>/dup" in message
-        # ... and it is not merely the path re-spelled.
-        assert str(ws1) not in message
-        assert str(ws2) not in message
+    with pytest.raises(ProjectError) as excinfo:
+      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+    message = str(excinfo.value)
+    assert "ws1/dup" in message
+    assert "ws2/dup" in message
+    # The cure the message prescribes is now readable off its own output.
+    assert "<workset>/dup" in message
+    # ... and it is not merely the path re-spelled.
+    assert str(ws1) not in message
+    assert str(ws2) not in message
 
-    def test_ambiguity_survives_a_repointed_workspaces_dir(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Repointing ``workset.workspaces`` cannot hide which workset is which.
+  def test_ambiguity_survives_a_repointed_workspaces_dir(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """Repointing ``workset.workspaces`` cannot hide which workset is which.
 
-        Each workset gets an absolute workspaces dir outside its own root whose
-        path contains NO workset name — the case where a path-only message
-        leaves the user with no way to apply the ``<workset>/<name>`` cure.
-        """
-        from kanibako.project import workset_registry
-        from kanibako.settings.config_io import dump_doc
+    Each workset gets an absolute workspaces dir outside its own root whose
+    path contains NO workset name — the case where a path-only message
+    leaves the user with no way to apply the ``<workset>/<name>`` cure.
+    """
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import dump_doc
 
-        for ws_name, pool in (("alpha-ws", "pool-one"), ("beta-ws", "pool-two")):
-            pods = tmp_path / pool / "spaces"
-            member = pods / "dup"
-            member.mkdir(parents=True)
-            ws_root = tmp_path / ws_name
-            ws_root.mkdir()
-            dump_doc(
-                ws_root / "workset.yaml",
-                {"workset": {"workspaces": str(pods)}},
-            )
-            register_name(registry, ws_name, str(ws_root), section="worksets")
-            reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                    early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
-            workset_registry.register_workset_box(reg_path, "dup", member)
+    for ws_name, pool in (("alpha-ws", "pool-one"), ("beta-ws", "pool-two")):
+      pods = tmp_path / pool / "spaces"
+      member = pods / "dup"
+      member.mkdir(parents=True)
+      ws_root = tmp_path / ws_name
+      ws_root.mkdir()
+      dump_doc(
+        ws_root / "workset.yaml",
+        {"workset": {"workspaces": str(pods)}},
+      )
+      register_name(registry, ws_name, str(ws_root), section="worksets")
+      reg_path = workset_registry.resolve_workset_registry_path(
+        ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
+      )
+      workset_registry.register_workset_box(reg_path, "dup", member)
 
-        with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
-        message = str(excinfo.value)
-        assert "alpha-ws/dup" in message
-        assert "beta-ws/dup" in message
-        # Neither registered path mentions the workset it belongs to.
-        assert "pool-one" not in message
-        assert "pool-two" not in message
+    with pytest.raises(ProjectError) as excinfo:
+      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+    message = str(excinfo.value)
+    assert "alpha-ws/dup" in message
+    assert "beta-ws/dup" in message
+    # Neither registered path mentions the workset it belongs to.
+    assert "pool-one" not in message
+    assert "pool-two" not in message
 
-    def test_one_workset_sharing_a_target_is_not_ambiguous(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Two worksets naming ONE box are one candidate; qualification must not split it.
+  def test_one_workset_sharing_a_target_is_not_ambiguous(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """Two worksets naming ONE box are one candidate; qualification must not split it.
 
-        A symlinked workspace normalizes to the same path from both worksets.
-        That is one box, so the collapse on the resolved path stands — the error
-        names one qualified spelling, not a choice between two.
-        """
-        shared = tmp_path / "shared-ws" / "dup"
-        shared.mkdir(parents=True)
-        for ws_name in ("ws1", "ws2"):
-            self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
+    A symlinked workspace normalizes to the same path from both worksets.
+    That is one box, so the collapse on the resolved path stands — the error
+    names one qualified spelling, not a choice between two.
+    """
+    shared = tmp_path / "shared-ws" / "dup"
+    shared.mkdir(parents=True)
+    for ws_name in ("ws1", "ws2"):
+      self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
 
-        with pytest.raises(AmbiguousNameError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
-        message = str(excinfo.value)
-        assert "'ws1/dup'" in message
-        assert "Ambiguous" not in message
+    with pytest.raises(AmbiguousNameError) as excinfo:
+      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+    message = str(excinfo.value)
+    assert "'ws1/dup'" in message
+    assert "Ambiguous" not in message
 
-    def test_missing_workspace_folder_is_still_a_member(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A registered member whose workspace is gone is still named.
+  def test_missing_workspace_folder_is_still_a_member(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """A registered member whose workspace is gone is still named.
 
-        MEMBERSHIP IS REGISTRY-BORNE: the ``boxes:`` entry is the record, so a
-        missing folder does not turn the qualified-spelling error into a plain miss.
-        """
-        box_ws = self._register_ws_member(registry, tmp_path, "ws1", "gone")
-        shutil.rmtree(box_ws)
-        assert not box_ws.exists()
+    MEMBERSHIP IS REGISTRY-BORNE: the ``boxes:`` entry is the record, so a
+    missing folder does not turn the qualified-spelling error into a plain miss.
+    """
+    box_ws = self._register_ws_member(registry, tmp_path, "ws1", "gone")
+    shutil.rmtree(box_ws)
+    assert not box_ws.exists()
 
-        with pytest.raises(AmbiguousNameError, match="'ws1/gone'"):
-            resolve_name(registry, "gone", cwd=tmp_path, early_system=early_record(tmp_path))
+    with pytest.raises(AmbiguousNameError, match="'ws1/gone'"):
+      resolve_name(registry, "gone", cwd=tmp_path, early_system=early_record(tmp_path))
 
-    def test_ambiguity_labels_a_missing_workspace(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """A candidate whose workspace is gone is marked, not dropped.
+  def test_ambiguity_labels_a_missing_workspace(self, registry: Path, tmp_path: Path) -> None:
+    """A candidate whose workspace is gone is marked, not dropped.
 
-        Membership is registry-borne, so a dead folder stays a candidate — the
-        message says so instead of silently listing a path the user cannot use.
-        """
-        self._register_ws_member(registry, tmp_path, "ws1", "dup")
-        gone = self._register_ws_member(registry, tmp_path, "ws2", "dup")
-        shutil.rmtree(gone)
+    Membership is registry-borne, so a dead folder stays a candidate — the
+    message says so instead of silently listing a path the user cannot use.
+    """
+    self._register_ws_member(registry, tmp_path, "ws1", "dup")
+    gone = self._register_ws_member(registry, tmp_path, "ws2", "dup")
+    shutil.rmtree(gone)
 
-        with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
-        message = str(excinfo.value)
-        assert "ws1/dup" in message
-        assert "ws2/dup [workspace missing]" in message
+    with pytest.raises(ProjectError) as excinfo:
+      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+    message = str(excinfo.value)
+    assert "ws1/dup" in message
+    assert "ws2/dup [workspace missing]" in message
 
-    def test_ambiguity_prints_the_stored_box_spelling(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Each candidate's box half is its STORED spelling, not the typed one.
+  def test_ambiguity_prints_the_stored_box_spelling(self, registry: Path, tmp_path: Path) -> None:
+    """Each candidate's box half is its STORED spelling, not the typed one.
 
-        Names are case-blind for collision but keep their creation-time case as
-        canonical (§0), and the candidate is a command the user will run.  Two
-        worksets store ``Foo`` and ``foo``; the user types ``FOO``.
+    Names are case-blind for collision but keep their creation-time case as
+    canonical (§0), and the candidate is a command the user will run.  Two
+    worksets store ``Foo`` and ``foo``; the user types ``FOO``.
 
-        Mutation proof: printing the typed *name* in the candidate makes the
-        message read ``Cluster-A/FOO, cluster_b/FOO``.
-        """
-        self._register_ws_member(registry, tmp_path, "Cluster-A", "Foo")
-        self._register_ws_member(registry, tmp_path, "cluster_b", "foo")
+    Mutation proof: printing the typed *name* in the candidate makes the
+    message read ``Cluster-A/FOO, cluster_b/FOO``.
+    """
+    self._register_ws_member(registry, tmp_path, "Cluster-A", "Foo")
+    self._register_ws_member(registry, tmp_path, "cluster_b", "foo")
 
-        with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "FOO", cwd=tmp_path, early_system=early_record(tmp_path))
-        message = str(excinfo.value)
-        assert "(Cluster-A/Foo, cluster_b/foo)" in message
-        assert "Cluster-A/FOO" not in message
-        assert "cluster_b/FOO" not in message
+    with pytest.raises(ProjectError) as excinfo:
+      resolve_name(registry, "FOO", cwd=tmp_path, early_system=early_record(tmp_path))
+    message = str(excinfo.value)
+    assert "(Cluster-A/Foo, cluster_b/foo)" in message
+    assert "Cluster-A/FOO" not in message
+    assert "cluster_b/FOO" not in message
 
-    # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
+  # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
 
-    def test_cwd_context_resolves_stranded_member_after_repoint(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Bifrost A0: a member registered under the OLD composition (in-root,
-        before a ``workset.workspaces`` repoint) still resolves by cwd context —
-        the step-1 consult reads the REGISTERED ``boxes:`` path, never
-        re-deriving from the CURRENT composition.  The same name is a member of
-        a SECOND workset, so a step-1 miss would fall through to step 3 and
-        raise Ambiguous — the mutation proof."""
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def test_cwd_context_resolves_stranded_member_after_repoint(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """Bifrost A0: a member registered under the OLD composition (in-root,
+    before a ``workset.workspaces`` repoint) still resolves by cwd context —
+    the step-1 consult reads the REGISTERED ``boxes:`` path, never
+    re-deriving from the CURRENT composition.  The same name is a member of
+    a SECOND workset, so a step-1 miss would fall through to step 3 and
+    raise Ambiguous — the mutation proof."""
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        box_ws = self._register_ws_member(registry, tmp_path, "ws_a", "dup")
-        self._register_ws_member(registry, tmp_path, "ws-b", "dup")
-        # Absolute repoint of ws_a AFTER the member was registered in-root.
-        ws_root = tmp_path / "ws_a"
-        doc = load_doc(ws_root / "workset.yaml") if (
-            ws_root / "workset.yaml"
-        ).is_file() else {}
-        doc.setdefault("workset", {})["workspaces"] = str(tmp_path / "pods-a")
-        dump_doc(ws_root / "workset.yaml", doc)
+    box_ws = self._register_ws_member(registry, tmp_path, "ws_a", "dup")
+    self._register_ws_member(registry, tmp_path, "ws-b", "dup")
+    # Absolute repoint of ws_a AFTER the member was registered in-root.
+    ws_root = tmp_path / "ws_a"
+    doc = load_doc(ws_root / "workset.yaml") if (ws_root / "workset.yaml").is_file() else {}
+    doc.setdefault("workset", {})["workspaces"] = str(tmp_path / "pods-a")
+    dump_doc(ws_root / "workset.yaml", doc)
 
-        path, kind = resolve_name(registry, "dup", cwd=ws_root,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == box_ws.resolve()
+    path, kind = resolve_name(registry, "dup", cwd=ws_root, early_system=early_record(tmp_path))
+    assert kind == "project"
+    assert Path(path).resolve() == box_ws.resolve()
 
-    def test_cwd_inside_external_repointed_workspaces_dir(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """S-2 (the cwd-context asymmetry): a cwd INSIDE an EXTERNAL repointed
-        ``workset.workspaces`` dir is workset context too — the step-1 gate no
-        longer requires cwd under the workset ROOT.  Again disambiguated
-        against a second workset's same-named member (a gate miss → step 3 →
-        Ambiguous → RED)."""
-        from kanibako.project import workset_registry
-        from kanibako.settings.config_io import dump_doc
+  def test_cwd_inside_external_repointed_workspaces_dir(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """S-2 (the cwd-context asymmetry): a cwd INSIDE an EXTERNAL repointed
+    ``workset.workspaces`` dir is workset context too — the step-1 gate no
+    longer requires cwd under the workset ROOT.  Again disambiguated
+    against a second workset's same-named member (a gate miss → step 3 →
+    Ambiguous → RED)."""
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import dump_doc
 
-        external_pods = tmp_path / "external-pods"
-        member = external_pods / "dup"
-        member.mkdir(parents=True)
-        ws_root = tmp_path / "ws_a"
-        ws_root.mkdir()
-        dump_doc(
-            ws_root / "workset.yaml",
-            {"workset": {"workspaces": str(external_pods)}},
-        )
-        register_name(registry, "ws_a", str(ws_root), section="worksets")
-        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=early_record(tmp_path, mode=BoxMode.named, name="ws_a"))
-        workset_registry.register_workset_box(reg_path, "dup", member)
-        self._register_ws_member(registry, tmp_path, "ws-b", "dup")
+    external_pods = tmp_path / "external-pods"
+    member = external_pods / "dup"
+    member.mkdir(parents=True)
+    ws_root = tmp_path / "ws_a"
+    ws_root.mkdir()
+    dump_doc(
+      ws_root / "workset.yaml",
+      {"workset": {"workspaces": str(external_pods)}},
+    )
+    register_name(registry, "ws_a", str(ws_root), section="worksets")
+    reg_path = workset_registry.resolve_workset_registry_path(
+      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name="ws_a")
+    )
+    workset_registry.register_workset_box(reg_path, "dup", member)
+    self._register_ws_member(registry, tmp_path, "ws-b", "dup")
 
-        path, kind = resolve_name(registry, "dup", cwd=member,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == member.resolve()
+    path, kind = resolve_name(registry, "dup", cwd=member, early_system=early_record(tmp_path))
+    assert kind == "project"
+    assert Path(path).resolve() == member.resolve()
 
 
 # ---------------------------------------------------------------------------
 # Standalone names (the LAST resolution step)
 # ---------------------------------------------------------------------------
 
+
 class TestStandaloneNameResolution:
-    """A REGISTERED standalone box resolves by bare name; an UNregistered one does
-    not (system-design § Detection & import: registration is opt-in, and the
-    standalone name is checked AFTER the primary boxes and the workset
-    members — ``box create --standalone --register`` promises name resolution, and
-    until now nothing delivered it)."""
+  """A REGISTERED standalone box resolves by bare name; an UNregistered one does
+  not (system-design § Detection & import: registration is opt-in, and the
+  standalone name is checked AFTER the primary boxes and the workset
+  members — ``box create --standalone --register`` promises name resolution, and
+  until now nothing delivered it)."""
 
-    def _register_standalone(
-        self, registry: Path, tmp_path: Path, name: str, root: Path | None = None,
-    ) -> Path:
-        """Record a standalone box *name* → *root* (default ``tmp_path/<name>``)."""
-        from kanibako.project import registry_store
+  def _register_standalone(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    name: str,
+    root: Path | None = None,
+  ) -> Path:
+    """Record a standalone box *name* → *root* (default ``tmp_path/<name>``)."""
+    from kanibako.project import registry_store
 
-        root = tmp_path / name if root is None else root
-        root.mkdir(parents=True, exist_ok=True)
-        registry_store.register_standalone(registry, name, root)
-        return root
+    root = tmp_path / name if root is None else root
+    root.mkdir(parents=True, exist_ok=True)
+    registry_store.register_standalone(registry, name, root)
+    return root
 
-    def _register_ws_member(
-        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
-    ) -> Path:
-        """Register a NAMED workset with one member; return the member workspace."""
-        from kanibako.project import workset_registry
+  def _register_ws_member(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    ws_name: str,
+    box_name: str,
+  ) -> Path:
+    """Register a NAMED workset with one member; return the member workspace."""
+    from kanibako.project import workset_registry
 
-        ws_root = tmp_path / ws_name
-        ws_root.mkdir(exist_ok=True)
-        register_name(registry, ws_name, str(ws_root), section="worksets")
-        member = ws_root / "workspaces" / box_name
-        member.mkdir(parents=True)
-        reg_path = workset_registry.resolve_workset_registry_path(
-            ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
-        workset_registry.register_workset_box(reg_path, box_name, member)
-        return member
+    ws_root = tmp_path / ws_name
+    ws_root.mkdir(exist_ok=True)
+    register_name(registry, ws_name, str(ws_root), section="worksets")
+    member = ws_root / "workspaces" / box_name
+    member.mkdir(parents=True)
+    reg_path = workset_registry.resolve_workset_registry_path(
+      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
+    )
+    workset_registry.register_workset_box(reg_path, box_name, member)
+    return member
 
-    def test_a_registered_standalone_resolves_by_name(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """The standalone step: a registered standalone answers to its bare name from anywhere."""
-        root = self._register_standalone(registry, tmp_path, "solo_box")
+  def test_a_registered_standalone_resolves_by_name(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """The standalone step: a registered standalone answers to its bare name from anywhere."""
+    root = self._register_standalone(registry, tmp_path, "solo_box")
 
-        path, kind = resolve_name(registry, "solo_box",
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert path == str(root)
+    path, kind = resolve_name(registry, "solo_box", early_system=early_record(tmp_path))
+    assert kind == "project"
+    assert path == str(root)
 
-    def test_a_registered_standalone_name_is_case_folded(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """§0 NAMING RULES: ``SOLO_BOX`` and ``solo_box`` are the SAME name."""
-        root = self._register_standalone(registry, tmp_path, "solo_box")
+  def test_a_registered_standalone_name_is_case_folded(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """§0 NAMING RULES: ``SOLO_BOX`` and ``solo_box`` are the SAME name."""
+    root = self._register_standalone(registry, tmp_path, "solo_box")
 
-        path, kind = resolve_name(registry, "SOLO_BOX",
-                early_system=early_record(tmp_path))
-        assert (path, kind) == (str(root), "project")
+    path, kind = resolve_name(registry, "SOLO_BOX", early_system=early_record(tmp_path))
+    assert (path, kind) == (str(root), "project")
 
-    def test_a_registered_standalone_outranks_a_workset_name(
-        self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """system-design § Cross-kind name semantics: box and workset names are
-        per-kind namespaces and noun-scoped commands consult only their own, so a
-        box lookup never loses a box name to a same-named workset — and says nothing."""
-        register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
-        root = self._register_standalone(registry, tmp_path, "solo_box")
+  def test_a_registered_standalone_outranks_a_workset_name(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+  ) -> None:
+    """system-design § Cross-kind name semantics: box and workset names are
+    per-kind namespaces and noun-scoped commands consult only their own, so a
+    box lookup never loses a box name to a same-named workset — and says nothing."""
+    register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
+    root = self._register_standalone(registry, tmp_path, "solo_box")
 
-        with caplog.at_level("WARNING"):
-            path, kind = resolve_name(registry, "solo_box",
-                    early_system=early_record(tmp_path))
-        assert (path, kind) == (str(root), "project")
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert warnings == [], warnings
+    with caplog.at_level("WARNING"):
+      path, kind = resolve_name(registry, "solo_box", early_system=early_record(tmp_path))
+    assert (path, kind) == (str(root), "project")
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings == [], warnings
 
-    def test_a_member_box_outranks_its_workset_s_name(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """A member box sharing its workset's name is the box, not the workset: outside
-        its space that is the qualified-spelling error, never the workset."""
-        self._register_ws_member(registry, tmp_path, "same", "same")
+  def test_a_member_box_outranks_its_workset_s_name(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """A member box sharing its workset's name is the box, not the workset: outside
+    its space that is the qualified-spelling error, never the workset."""
+    self._register_ws_member(registry, tmp_path, "same", "same")
 
-        with pytest.raises(AmbiguousNameError, match="'same/same'"):
-            resolve_name(registry, "same", cwd=tmp_path.parent,
-                         early_system=early_record(tmp_path))
+    with pytest.raises(AmbiguousNameError, match="'same/same'"):
+      resolve_name(registry, "same", cwd=tmp_path.parent, early_system=early_record(tmp_path))
 
-    def test_a_workset_name_no_box_holds_still_reports_the_workset(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """Only on a box miss does the workset name answer, so a box verb can name it."""
-        register_name(registry, "lone", str(tmp_path / "ws"), section="worksets")
+  def test_a_workset_name_no_box_holds_still_reports_the_workset(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """Only on a box miss does the workset name answer, so a box verb can name it."""
+    register_name(registry, "lone", str(tmp_path / "ws"), section="worksets")
 
-        assert resolve_name(registry, "lone",
-                early_system=early_record(tmp_path)) == (str(tmp_path / "ws"), "workset")
+    assert resolve_name(registry, "lone", early_system=early_record(tmp_path)) == (
+      str(tmp_path / "ws"),
+      "workset",
+    )
 
-    def test_a_same_named_path_outranks_the_standalone_step(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """*path* (a same-named path exists) ranks before a registered standalone name."""
-        self._register_standalone(registry, tmp_path, "solo_box")
+  def test_a_same_named_path_outranks_the_standalone_step(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """*path* (a same-named path exists) ranks before a registered standalone name."""
+    self._register_standalone(registry, tmp_path, "solo_box")
 
-        assert resolve_name(registry, "solo_box", path="solo_box",
-                            early_system=early_record(tmp_path)) == ("solo_box", "path")
+    assert resolve_name(
+      registry, "solo_box", path="solo_box", early_system=early_record(tmp_path)
+    ) == ("solo_box", "path")
 
-    def test_a_primary_box_outranks_a_same_named_path_and_warns(
-        self, registry: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Primary space (plan S8): P before the path; the shadowed path is named."""
-        primary = tmp_path / "primary_workset"
-        workspace = tmp_path / "elsewhere" / "foo"
-        workspace.mkdir(parents=True)
-        _register_primary_box(primary, "foo", workspace)
-        (tmp_path / "foo").mkdir()
+  def test_a_primary_box_outranks_a_same_named_path_and_warns(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+  ) -> None:
+    """Primary space (plan S8): P before the path; the shadowed path is named."""
+    primary = tmp_path / "primary_workset"
+    workspace = tmp_path / "elsewhere" / "foo"
+    workspace.mkdir(parents=True)
+    _register_primary_box(primary, "foo", workspace)
+    (tmp_path / "foo").mkdir()
 
-        with caplog.at_level("WARNING"):
-            got = resolve_name(registry, "foo", cwd=tmp_path, primary_workset=primary,
-                               path=str(tmp_path / "foo"), early_system=early_record(tmp_path))
-        assert got == (str(workspace), "project")
-        assert any("shadowed" in r.getMessage() for r in caplog.records)
+    with caplog.at_level("WARNING"):
+      got = resolve_name(
+        registry,
+        "foo",
+        cwd=tmp_path,
+        primary_workset=primary,
+        path=str(tmp_path / "foo"),
+        early_system=early_record(tmp_path),
+      )
+    assert got == (str(workspace), "project")
+    assert any("shadowed" in r.getMessage() for r in caplog.records)
 
-    def test_the_shadowed_path_is_warned_once_per_process(
-        self, registry: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """One command resolves its box in several passes; the warning prints once."""
-        primary = tmp_path / "primary_workset"
-        workspace = tmp_path / "elsewhere" / "foo"
-        workspace.mkdir(parents=True)
-        _register_primary_box(primary, "foo", workspace)
-        (tmp_path / "foo").mkdir()
+  def test_the_shadowed_path_is_warned_once_per_process(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+  ) -> None:
+    """One command resolves its box in several passes; the warning prints once."""
+    primary = tmp_path / "primary_workset"
+    workspace = tmp_path / "elsewhere" / "foo"
+    workspace.mkdir(parents=True)
+    _register_primary_box(primary, "foo", workspace)
+    (tmp_path / "foo").mkdir()
 
-        with caplog.at_level("WARNING"):
-            for _ in range(3):
-                resolve_name(registry, "foo", cwd=tmp_path, primary_workset=primary,
-                             path=str(tmp_path / "foo"), early_system=early_record(tmp_path))
-        assert len([r for r in caplog.records if "shadowed" in r.getMessage()]) == 1
-
-    def test_a_primary_box_outranks_a_registered_standalone(
-        self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """The collision the spec names: a name that is BOTH a primary box and a
-        registered standalone resolves to the PRIMARY box, and warns."""
-        primary = tmp_path / "primary_workset"
-        workspace = tmp_path / "primary_ws_dir" / "solo_box"
-        workspace.mkdir(parents=True)
-        _register_primary_box(primary, "solo_box", workspace)
-        root = self._register_standalone(
-            registry, tmp_path, "solo_box", root=tmp_path / "sa_root" / "solo_box",
+    with caplog.at_level("WARNING"):
+      for _ in range(3):
+        resolve_name(
+          registry,
+          "foo",
+          cwd=tmp_path,
+          primary_workset=primary,
+          path=str(tmp_path / "foo"),
+          early_system=early_record(tmp_path),
         )
+    assert len([r for r in caplog.records if "shadowed" in r.getMessage()]) == 1
 
-        with caplog.at_level("WARNING"):
-            path, kind = resolve_name(registry, "solo_box", primary_workset=primary,
-                    early_system=early_record(tmp_path))
-        assert (path, kind) == (str(workspace), "project")
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "standalone" in warnings[0] and "shadowed" in warnings[0]
-        assert str(root) in warnings[0]
+  def test_a_primary_box_outranks_a_registered_standalone(
+    self,
+    registry: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+  ) -> None:
+    """The collision the spec names: a name that is BOTH a primary box and a
+    registered standalone resolves to the PRIMARY box, and warns."""
+    primary = tmp_path / "primary_workset"
+    workspace = tmp_path / "primary_ws_dir" / "solo_box"
+    workspace.mkdir(parents=True)
+    _register_primary_box(primary, "solo_box", workspace)
+    root = self._register_standalone(
+      registry,
+      tmp_path,
+      "solo_box",
+      root=tmp_path / "sa_root" / "solo_box",
+    )
 
-    def test_a_registered_standalone_outranks_a_member_outside_its_space(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """The member-of-another-workset error comes AFTER the standalone step (plan Q4)."""
-        self._register_ws_member(registry, tmp_path, "myws", "solo_box")
-        root = self._register_standalone(registry, tmp_path, "solo_box")
+    with caplog.at_level("WARNING"):
+      path, kind = resolve_name(
+        registry, "solo_box", primary_workset=primary, early_system=early_record(tmp_path)
+      )
+    assert (path, kind) == (str(workspace), "project")
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1, warnings
+    assert "standalone" in warnings[0] and "shadowed" in warnings[0]
+    assert str(root) in warnings[0]
 
-        path, kind = resolve_name(registry, "solo_box", cwd=tmp_path,
-                                  early_system=early_record(tmp_path))
-        assert (path, kind) == (str(root), "project")
+  def test_a_registered_standalone_outranks_a_member_outside_its_space(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """The member-of-another-workset error comes AFTER the standalone step (plan Q4)."""
+    self._register_ws_member(registry, tmp_path, "myws", "solo_box")
+    root = self._register_standalone(registry, tmp_path, "solo_box")
 
-    def test_an_unregistered_standalone_does_not_resolve_by_name(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """PIN (unchanged, and it must STAY unchanged): registration is opt-in, and
-        an unregistered standalone is reachable only by path or from inside its own
-        tree — a bare name for it still misses."""
-        (tmp_path / "unregistered_box").mkdir()
+    path, kind = resolve_name(
+      registry, "solo_box", cwd=tmp_path, early_system=early_record(tmp_path)
+    )
+    assert (path, kind) == (str(root), "project")
 
-        with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "unregistered_box",
-                    early_system=early_record(tmp_path))
+  def test_an_unregistered_standalone_does_not_resolve_by_name(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """PIN (unchanged, and it must STAY unchanged): registration is opt-in, and
+    an unregistered standalone is reachable only by path or from inside its own
+    tree — a bare name for it still misses."""
+    (tmp_path / "unregistered_box").mkdir()
 
-    def test_a_standalone_resolves_before_out_of_space_members(
-        self, registry: Path, tmp_path: Path,
-    ) -> None:
-        """Members of TWO worksets outside the space do not outrank a registered
-        standalone: their error is the cascade's last box step (plan Q4)."""
-        self._register_ws_member(registry, tmp_path, "ws1", "dup")
-        self._register_ws_member(registry, tmp_path, "ws2", "dup")
-        root = self._register_standalone(registry, tmp_path, "dup")
+    with pytest.raises(ProjectError, match="Unknown project"):
+      resolve_name(registry, "unregistered_box", early_system=early_record(tmp_path))
 
-        assert resolve_name(registry, "dup", cwd=tmp_path,
-                            early_system=early_record(tmp_path)) == (str(root), "project")
+  def test_a_standalone_resolves_before_out_of_space_members(
+    self,
+    registry: Path,
+    tmp_path: Path,
+  ) -> None:
+    """Members of TWO worksets outside the space do not outrank a registered
+    standalone: their error is the cascade's last box step (plan Q4)."""
+    self._register_ws_member(registry, tmp_path, "ws1", "dup")
+    self._register_ws_member(registry, tmp_path, "ws2", "dup")
+    root = self._register_standalone(registry, tmp_path, "dup")
+
+    assert resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path)) == (
+      str(root),
+      "project",
+    )
 
 
 # ---------------------------------------------------------------------------
 # resolve_qualified_name
 # ---------------------------------------------------------------------------
 
+
 class TestResolveQualifiedName:
-    def test_resolve_qualified(self, registry: Path, tmp_path: Path) -> None:
-        ws_root = tmp_path / "ws"
-        (ws_root / "workspaces" / "api").mkdir(parents=True)
-        register_name(registry, "myws", str(ws_root), section="worksets")
+  def test_resolve_qualified(self, registry: Path, tmp_path: Path) -> None:
+    ws_root = tmp_path / "ws"
+    (ws_root / "workspaces" / "api").mkdir(parents=True)
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=early_record(tmp_path))
-        assert path == str(ws_root / "workspaces" / "api")
-        assert ws_name == "myws"
+    path, ws_name = resolve_qualified_name(
+      registry, "myws/api", early_system=early_record(tmp_path)
+    )
+    assert path == str(ws_root / "workspaces" / "api")
+    assert ws_name == "myws"
 
-    def test_qualified_honors_workspaces_repoint(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """B2 (§3.3): ``workset/project`` composes through the RESOLVED
-        ``workset.workspaces`` (repoint honored)."""
-        from kanibako.settings.config_io import dump_doc
+  def test_qualified_honors_workspaces_repoint(self, registry: Path, tmp_path: Path) -> None:
+    """B2 (§3.3): ``workset/project`` composes through the RESOLVED
+    ``workset.workspaces`` (repoint honored)."""
+    from kanibako.settings.config_io import dump_doc
 
-        ws_root = tmp_path / "ws"
-        (ws_root / "pods" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
-        register_name(registry, "myws", str(ws_root), section="worksets")
+    ws_root = tmp_path / "ws"
+    (ws_root / "pods" / "api").mkdir(parents=True)
+    dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=early_record(tmp_path))
-        assert path == str(ws_root / "pods" / "api")
-        assert ws_name == "myws"
+    path, ws_name = resolve_qualified_name(
+      registry, "myws/api", early_system=early_record(tmp_path)
+    )
+    assert path == str(ws_root / "pods" / "api")
+    assert ws_name == "myws"
 
-    def test_qualified_resolves_stranded_member_after_repoint(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Bifrost A0: ``workset/project`` consults the REGISTERED ``boxes:``
-        membership FIRST, so a member registered under the OLD composition
-        still resolves after an absolute ``workset.workspaces`` repoint (the
-        composed candidate no longer exists → the pre-fix code raised
-        "not found in workset")."""
-        from kanibako.project import workset_registry
-        from kanibako.settings.config_io import dump_doc
+  def test_qualified_resolves_stranded_member_after_repoint(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """Bifrost A0: ``workset/project`` consults the REGISTERED ``boxes:``
+    membership FIRST, so a member registered under the OLD composition
+    still resolves after an absolute ``workset.workspaces`` repoint (the
+    composed candidate no longer exists → the pre-fix code raised
+    "not found in workset")."""
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import dump_doc
 
-        ws_root = tmp_path / "ws"
-        member = ws_root / "workspaces" / "api"
-        member.mkdir(parents=True)
-        register_name(registry, "myws", str(ws_root), section="worksets")
-        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=early_record(tmp_path, mode=BoxMode.named, name="myws"))
-        workset_registry.register_workset_box(reg_path, "api", member)
-        dump_doc(
-            ws_root / "workset.yaml",
-            {"workset": {"workspaces": str(tmp_path / "elsewhere")}},
-        )
+    ws_root = tmp_path / "ws"
+    member = ws_root / "workspaces" / "api"
+    member.mkdir(parents=True)
+    register_name(registry, "myws", str(ws_root), section="worksets")
+    reg_path = workset_registry.resolve_workset_registry_path(
+      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name="myws")
+    )
+    workset_registry.register_workset_box(reg_path, "api", member)
+    dump_doc(
+      ws_root / "workset.yaml",
+      {"workset": {"workspaces": str(tmp_path / "elsewhere")}},
+    )
 
-        path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=early_record(tmp_path))
-        assert Path(path).resolve() == member.resolve()
-        assert ws_name == "myws"
+    path, ws_name = resolve_qualified_name(
+      registry, "myws/api", early_system=early_record(tmp_path)
+    )
+    assert Path(path).resolve() == member.resolve()
+    assert ws_name == "myws"
 
-    def test_unknown_workset_raises(self, registry: Path, tmp_path: Path) -> None:
-        with pytest.raises(ProjectError, match="Unknown workset"):
-            resolve_qualified_name(registry, "nope/api", early_system=early_record(tmp_path))
+  def test_unknown_workset_raises(self, registry: Path, tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="Unknown workset"):
+      resolve_qualified_name(registry, "nope/api", early_system=early_record(tmp_path))
 
-    def test_unknown_project_in_workset_raises(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        ws_root = tmp_path / "ws"
-        (ws_root / "workspaces").mkdir(parents=True)
-        register_name(registry, "myws", str(ws_root), section="worksets")
+  def test_unknown_project_in_workset_raises(self, registry: Path, tmp_path: Path) -> None:
+    ws_root = tmp_path / "ws"
+    (ws_root / "workspaces").mkdir(parents=True)
+    register_name(registry, "myws", str(ws_root), section="worksets")
 
-        with pytest.raises(ProjectError, match="not found in workset"):
-            resolve_qualified_name(registry, "myws/nope",
-                    early_system=early_record(tmp_path))
+    with pytest.raises(ProjectError, match="not found in workset"):
+      resolve_qualified_name(registry, "myws/nope", early_system=early_record(tmp_path))
 
-    def test_not_qualified_raises(self, registry: Path, tmp_path: Path) -> None:
-        with pytest.raises(ProjectError, match="Not a qualified name"):
-            resolve_qualified_name(registry, "bare-name",
-                    early_system=early_record(tmp_path))
+  def test_not_qualified_raises(self, registry: Path, tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="Not a qualified name"):
+      resolve_qualified_name(registry, "bare-name", early_system=early_record(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -890,1056 +965,1145 @@ class TestResolveQualifiedName:
 # retired projects-section name operations.
 # ---------------------------------------------------------------------------
 
+
 class TestPrimaryBoxNameApi:
-    def test_assign_registers_membership(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.settings.paths import assign_primary_box_name, load_primary_boxes
+  def test_assign_registers_membership(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import assign_primary_box_name, load_primary_boxes
 
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "projects" / "myapp"
-        name = assign_primary_box_name(primary, str(ws),
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        assert name == "myapp"
-        assert load_primary_boxes(primary,
-                early=early_record(tmp_path, mode=BoxMode.primary))[name] == str(ws)
+    primary = tmp_path / "primary_workset"
+    ws = tmp_path / "projects" / "myapp"
+    name = assign_primary_box_name(
+      primary, str(ws), early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    assert name == "myapp"
+    assert load_primary_boxes(primary, early=early_record(tmp_path, mode=BoxMode.primary))[
+      name
+    ] == str(ws)
 
-    def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.settings.paths import assign_primary_box_name
+  def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import assign_primary_box_name
 
-        primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, "/a/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp"
-        assert assign_primary_box_name(primary, "/b/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp2"
+    primary = tmp_path / "primary_workset"
+    assert (
+      assign_primary_box_name(
+        primary, "/a/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+      )
+      == "myapp"
+    )
+    assert (
+      assign_primary_box_name(
+        primary, "/b/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+      )
+      == "myapp2"
+    )
 
-    def test_auto_name_does_not_skip_a_workset_name(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Per-kind namespaces: a WORKSET name does not push an auto-named PRIMARY box
-        off its basename (spec § Detection & import)."""
-        from kanibako.settings.paths import assign_primary_box_name
+  def test_auto_name_does_not_skip_a_workset_name(self, registry: Path, tmp_path: Path) -> None:
+    """Per-kind namespaces: a WORKSET name does not push an auto-named PRIMARY box
+    off its basename (spec § Detection & import)."""
+    from kanibako.settings.paths import assign_primary_box_name
 
-        register_name(registry, "myapp", "/ws", section="worksets")
-        primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, "/proj/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp"
+    register_name(registry, "myapp", "/ws", section="worksets")
+    primary = tmp_path / "primary_workset"
+    assert (
+      assign_primary_box_name(
+        primary, "/proj/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+      )
+      == "myapp"
+    )
 
-    def test_register_takes_a_workset_name(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """Per-kind namespaces: an EXPLICIT primary box name a WORKSET already holds
-        registers (spec § Detection & import)."""
-        from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
+  def test_register_takes_a_workset_name(self, registry: Path, tmp_path: Path) -> None:
+    """Per-kind namespaces: an EXPLICIT primary box name a WORKSET already holds
+    registers (spec § Detection & import)."""
+    from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
 
-        register_name(registry, "myapp", "/ws", section="worksets")
-        primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, "myapp", "/proj/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        assert load_primary_boxes(primary,
-                early=early_record(tmp_path, mode=BoxMode.primary))["myapp"] == "/proj/myapp"
+    register_name(registry, "myapp", "/ws", section="worksets")
+    primary = tmp_path / "primary_workset"
+    register_primary_box_name(
+      primary, "myapp", "/proj/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    assert (
+      load_primary_boxes(primary, early=early_record(tmp_path, mode=BoxMode.primary))["myapp"]
+      == "/proj/myapp"
+    )
 
-    def test_same_kind_primary_collision_refuses(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        """SAME-kind (two primary boxes, one name) refuses."""
-        from kanibako.settings.paths import register_primary_box_name
+  def test_same_kind_primary_collision_refuses(self, registry: Path, tmp_path: Path) -> None:
+    """SAME-kind (two primary boxes, one name) refuses."""
+    from kanibako.settings.paths import register_primary_box_name
 
-        primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, "myapp", "/a/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        with pytest.raises(ProjectError, match="already registered"):
-            register_primary_box_name(primary, "myapp", "/b/myapp",
-                    early=early_record(tmp_path, mode=BoxMode.primary))
+    primary = tmp_path / "primary_workset"
+    register_primary_box_name(
+      primary, "myapp", "/a/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    with pytest.raises(ProjectError, match="already registered"):
+      register_primary_box_name(
+        primary, "myapp", "/b/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+      )
 
-    def test_pick_skips_existing_box_dir(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        from kanibako.settings.paths import pick_primary_box_name
+  def test_pick_skips_existing_box_dir(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import pick_primary_box_name
 
-        primary = tmp_path / "primary_workset"
-        boxes = tmp_path / "boxes"
-        (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
-        name = pick_primary_box_name(primary, "/x/myapp", boxes_dir=boxes,
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        assert name == "myapp2"
+    primary = tmp_path / "primary_workset"
+    boxes = tmp_path / "boxes"
+    (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
+    name = pick_primary_box_name(
+      primary, "/x/myapp", boxes_dir=boxes, early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    assert name == "myapp2"
 
-    def test_if_absent_noop_on_identical(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        from kanibako.settings.paths import (
-            register_primary_box_name,
-            register_primary_box_name_if_absent,
-        )
+  def test_if_absent_noop_on_identical(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import (
+      register_primary_box_name,
+      register_primary_box_name_if_absent,
+    )
 
-        primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, "myapp", "/p/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        # Recovery re-entry: same name → same path is a silent no-op.
-        register_primary_box_name_if_absent(primary, "myapp", "/p/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
+    primary = tmp_path / "primary_workset"
+    register_primary_box_name(
+      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    # Recovery re-entry: same name → same path is a silent no-op.
+    register_primary_box_name_if_absent(
+      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
 
-    def test_if_absent_raises_on_different_path(
-        self, registry: Path, tmp_path: Path
-    ) -> None:
-        from kanibako.settings.paths import (
-            register_primary_box_name,
-            register_primary_box_name_if_absent,
-        )
+  def test_if_absent_raises_on_different_path(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import (
+      register_primary_box_name,
+      register_primary_box_name_if_absent,
+    )
 
-        primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, "myapp", "/p/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        with pytest.raises(ProjectError):
-            register_primary_box_name_if_absent(
-                primary, "myapp", "/OTHER/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary),
-            )
+    primary = tmp_path / "primary_workset"
+    register_primary_box_name(
+      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    with pytest.raises(ProjectError):
+      register_primary_box_name_if_absent(
+        primary,
+        "myapp",
+        "/OTHER/myapp",
+        early=early_record(tmp_path, mode=BoxMode.primary),
+      )
 
-    def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
-        from kanibako.settings.paths import register_primary_box_name
+  def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
+    from kanibako.settings.paths import register_primary_box_name
 
-        home = tmp_path / "fakehome"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        primary = tmp_path / "primary_workset"
-        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_primary_box_name(primary, "bad", str(home),
-                    early=early_record(tmp_path, mode=BoxMode.primary))
+    home = tmp_path / "fakehome"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    primary = tmp_path / "primary_workset"
+    with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+      register_primary_box_name(
+        primary, "bad", str(home), early=early_record(tmp_path, mode=BoxMode.primary)
+      )
 
-    def test_unregister(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.settings.paths import (
-            load_primary_boxes,
-            register_primary_box_name,
-            unregister_primary_box_name,
-        )
+  def test_unregister(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.settings.paths import (
+      load_primary_boxes,
+      register_primary_box_name,
+      unregister_primary_box_name,
+    )
 
-        primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, "myapp", "/p/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary))
-        unregister_primary_box_name(primary, "myapp", early=early_record(tmp_path, mode=BoxMode.primary))
-        assert "myapp" not in load_primary_boxes(primary,
-                early=early_record(tmp_path, mode=BoxMode.primary))
+    primary = tmp_path / "primary_workset"
+    register_primary_box_name(
+      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    unregister_primary_box_name(
+      primary, "myapp", early=early_record(tmp_path, mode=BoxMode.primary)
+    )
+    assert "myapp" not in load_primary_boxes(
+      primary, early=early_record(tmp_path, mode=BoxMode.primary)
+    )
 
 
 # ---------------------------------------------------------------------------
 # Name assignment wiring into project/workset creation
 # ---------------------------------------------------------------------------
 
+
 class TestLocalNameAssignment:
-    """Name assignment is wired into default-mode project creation."""
+  """Name assignment is wired into default-mode project creation."""
 
-    def test_new_project_gets_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_new_project_gets_name(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.name == "project"
+    assert proj.name == "project"
 
-    def test_name_stored_in_membership_not_on_disk(self, config_file, tmp_home, credentials_dir):
-        """P8b/Option A: the box name lives in the PRIMARY membership, NOT a
-        self-describing on-disk ``project:`` section (no ``project:`` on disk)."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
+  def test_name_stored_in_membership_not_on_disk(self, config_file, tmp_home, credentials_dir):
+    """P8b/Option A: the box name lives in the PRIMARY membership, NOT a
+    self-describing on-disk ``project:`` section (no ``project:`` on disk)."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.name == "project"
-        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
-        assert load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary)).get("project") == project_dir
+    assert proj.name == "project"
+    assert "project" not in load_doc(proj.metadata_path / "box.yaml")
+    assert (
+      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).get(
+        "project"
+      )
+      == project_dir
+    )
 
-    def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
+  def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert "project" in boxes
-        assert boxes["project"] == project_dir
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert "project" in boxes
+    assert boxes["project"] == project_dir
 
-    def test_name_collision_on_second_project(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_name_collision_on_second_project(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # Create first project named "mydir"
-        dir1 = tmp_home / "mydir"
-        dir1.mkdir()
-        proj1 = resolve_project(std, config, project_dir=str(dir1), initialize=True)
-        assert proj1.name == "mydir"
+    # Create first project named "mydir"
+    dir1 = tmp_home / "mydir"
+    dir1.mkdir()
+    proj1 = resolve_project(std, config, project_dir=str(dir1), initialize=True)
+    assert proj1.name == "mydir"
 
-        # Create second project with same basename in different location
-        parent2 = tmp_home / "other"
-        parent2.mkdir()
-        dir2 = parent2 / "mydir"
-        dir2.mkdir()
-        proj2 = resolve_project(std, config, project_dir=str(dir2), initialize=True)
-        assert proj2.name == "mydir2"
+    # Create second project with same basename in different location
+    parent2 = tmp_home / "other"
+    parent2.mkdir()
+    dir2 = parent2 / "mydir"
+    dir2.mkdir()
+    proj2 = resolve_project(std, config, project_dir=str(dir2), initialize=True)
+    assert proj2.name == "mydir2"
 
-    def test_existing_project_preserves_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_existing_project_preserves_name(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj1 = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        assert proj1.name == "project"
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj1 = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    assert proj1.name == "project"
 
-        # Re-resolve same project — name should persist, not re-assign.
-        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        assert proj2.name == "project"
+    # Re-resolve same project — name should persist, not re-assign.
+    proj2 = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    assert proj2.name == "project"
 
 
 class TestWorksetNameRegistration:
-    """Workset creation registers the name in the registry worksets section."""
+  """Workset creation registers the name in the registry worksets section."""
 
-    def test_create_workset_registers_name(self, std, tmp_home):
-        from kanibako.project.workset import create_workset
+  def test_create_workset_registers_name(self, std, tmp_home):
+    from kanibako.project.workset import create_workset
 
-        root = tmp_home / "ws_root"
-        create_workset("myworkset", root, std)
+    root = tmp_home / "ws_root"
+    create_workset("myworkset", root, std)
 
-        names = read_names(std.registry)
-        assert "myworkset" in names["worksets"]
-        assert names["worksets"]["myworkset"] == str(root.resolve())
+    names = read_names(std.registry)
+    assert "myworkset" in names["worksets"]
+    assert names["worksets"]["myworkset"] == str(root.resolve())
 
-    def test_delete_workset_unregisters_name(self, std, tmp_home):
-        from kanibako.project.workset import create_workset, delete_workset
+  def test_delete_workset_unregisters_name(self, std, tmp_home):
+    from kanibako.project.workset import create_workset, delete_workset
 
-        root = tmp_home / "ws_root"
-        create_workset("myworkset", root, std)
-        assert "myworkset" in read_names(std.registry)["worksets"]
+    root = tmp_home / "ws_root"
+    create_workset("myworkset", root, std)
+    assert "myworkset" in read_names(std.registry)["worksets"]
 
-        delete_workset("myworkset", std, remove_files=True)
-        assert "myworkset" not in read_names(std.registry)["worksets"]
+    delete_workset("myworkset", std, remove_files=True)
+    assert "myworkset" not in read_names(std.registry)["worksets"]
 
 
 class TestNameRegistration:
-    """Name uniqueness and unregister operations on primary boxes."""
+  """Name uniqueness and unregister operations on primary boxes."""
 
-    def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
+  def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Project should be auto-registered under its directory name
-        assert "project" in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
+    # Project should be auto-registered under its directory name
+    assert "project" in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-    def test_unregister_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            load_primary_boxes,
-            load_std_paths,
-            resolve_project,
-            unregister_primary_box_name,
-        )
+  def test_unregister_name(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      load_primary_boxes,
+      load_std_paths,
+      resolve_project,
+      unregister_primary_box_name,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert "project" in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
-        unregister_primary_box_name(std.primary_workset, "project",
-                early=_early_scope(std, BoxMode.primary))
-        assert "project" not in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
+    assert "project" in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
+    unregister_primary_box_name(
+      std.primary_workset, "project", early=_early_scope(std, BoxMode.primary)
+    )
+    assert "project" not in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
 
 class TestBoxListName:
-    """box list shows NAME column."""
+  """box list shows NAME column."""
 
-    def test_list_shows_name_column(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_list
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_list_shows_name_column(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_list
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace()
-        rc = run_list(args)
-        assert rc == 0
-        output = capsys.readouterr().out
-        assert "NAME" in output
-        assert "project" in output
+    args = argparse.Namespace()
+    rc = run_list(args)
+    assert rc == 0
+    output = capsys.readouterr().out
+    assert "NAME" in output
+    assert "project" in output
 
 
 # ---------------------------------------------------------------------------
 # $HOME guard in register_name (worksets)
 # ---------------------------------------------------------------------------
 
-class TestRegisterNameHomeGuard:
-    def test_refuses_home_as_project_path(self, registry: Path, monkeypatch) -> None:
-        home = registry.parent.parent.parent / "fakehome"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_name(registry, "bad", str(home), section="worksets")
 
-    def test_allows_subdirectory_of_home(self, registry: Path, monkeypatch) -> None:
-        home = registry.parent.parent.parent / "fakehome"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        subdir = home / "worksets" / "myws"
-        subdir.mkdir(parents=True)
-        register_name(registry, "myws", str(subdir), section="worksets")
-        assert read_names(registry)["worksets"]["myws"] == str(subdir)
+class TestRegisterNameHomeGuard:
+  def test_refuses_home_as_project_path(self, registry: Path, monkeypatch) -> None:
+    home = registry.parent.parent.parent / "fakehome"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+      register_name(registry, "bad", str(home), section="worksets")
+
+  def test_allows_subdirectory_of_home(self, registry: Path, monkeypatch) -> None:
+    home = registry.parent.parent.parent / "fakehome"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    subdir = home / "worksets" / "myws"
+    subdir.mkdir(parents=True)
+    register_name(registry, "myws", str(subdir), section="worksets")
+    assert read_names(registry)["worksets"]["myws"] == str(subdir)
 
 
 # ---------------------------------------------------------------------------
 # lookup_by_path (worksets)
 # ---------------------------------------------------------------------------
 
+
 class TestLookupByPath:
-    def test_finds_workset_by_path(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/home/user/ws", section="worksets")
-        result = lookup_by_path(registry, "/home/user/ws")
-        assert result == ("ws1", "worksets")
+  def test_finds_workset_by_path(self, registry: Path) -> None:
+    register_name(registry, "ws1", "/home/user/ws", section="worksets")
+    result = lookup_by_path(registry, "/home/user/ws")
+    assert result == ("ws1", "worksets")
 
-    def test_returns_none_for_unknown(self, registry: Path) -> None:
-        assert lookup_by_path(registry, "/nope") is None
+  def test_returns_none_for_unknown(self, registry: Path) -> None:
+    assert lookup_by_path(registry, "/nope") is None
 
-    def test_resolves_symlinks(self, registry: Path, tmp_path: Path) -> None:
-        real = tmp_path / "real"
-        real.mkdir()
-        link = tmp_path / "link"
-        link.symlink_to(real)
-        register_name(registry, "ws1", str(real), section="worksets")
-        result = lookup_by_path(registry, str(link))
-        assert result == ("ws1", "worksets")
+  def test_resolves_symlinks(self, registry: Path, tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    register_name(registry, "ws1", str(real), section="worksets")
+    result = lookup_by_path(registry, str(link))
+    assert result == ("ws1", "worksets")
 
 
 # ---------------------------------------------------------------------------
 # box rm (was: box forget)
 # ---------------------------------------------------------------------------
 
+
 class TestBoxRm:
-    def test_rm_by_name(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
+  def test_rm_by_name(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(target="project", purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 0
+    args = argparse.Namespace(target="project", purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 0
 
-        assert "project" not in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
+    assert "project" not in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-        out = capsys.readouterr().out
-        assert "Removed 'project' from the registry" in out
+    out = capsys.readouterr().out
+    assert "Removed 'project' from the registry" in out
 
-    def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
-        """Without --purge, rm deregisters and points at BOTH recovery paths."""
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
+    """Without --purge, rm deregisters and points at BOTH recovery paths."""
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(target="project", purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 0
+    args = argparse.Namespace(target="project", purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 0
 
-        out = capsys.readouterr().out
-        assert "Deregistered 'project'" in out
-        assert "metadata retained" in out
-        # Points at BOTH recovery paths: register (restore) and rm --purge (delete).
-        assert "box register project" in out
-        assert "box rm project --purge" in out
+    out = capsys.readouterr().out
+    assert "Deregistered 'project'" in out
+    assert "metadata retained" in out
+    # Points at BOTH recovery paths: register (restore) and rm --purge (delete).
+    assert "box register project" in out
+    assert "box rm project --purge" in out
 
-    def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
+  def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(target=project_dir, purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 0
+    args = argparse.Namespace(target=project_dir, purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 0
 
-        assert "project" not in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
+    assert "project" not in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-    def test_rm_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_rm
 
-        args = argparse.Namespace(target="nonexistent", purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 1
-        assert "not a registered" in capsys.readouterr().err
+    args = argparse.Namespace(target="nonexistent", purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 1
+    assert "not a registered" in capsys.readouterr().err
 
-    def test_rm_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_rm_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        metadata_dir = proj.metadata_path
-        assert metadata_dir.is_dir()
+    metadata_dir = proj.metadata_path
+    assert metadata_dir.is_dir()
 
-        args = argparse.Namespace(target="project", purge=True, force=True)
-        rc = run_rm(args)
-        assert rc == 0
+    args = argparse.Namespace(target="project", purge=True, force=True)
+    rc = run_rm(args)
+    assert rc == 0
 
-        assert not metadata_dir.is_dir()
-        assert "Removed metadata" in capsys.readouterr().out
+    assert not metadata_dir.is_dir()
+    assert "Removed metadata" in capsys.readouterr().out
 
-    def test_rm_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_rm_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Every per-box log file (PRIMARY → primary_workset/logs/<box>.*), the helper
-        # log and the creds watcher's log alike.
-        from kanibako.settings.paths import box_log_files
+    # Every per-box log file (PRIMARY → primary_workset/logs/<box>.*), the helper
+    # log and the creds watcher's log alike.
+    from kanibako.settings.paths import box_log_files
 
-        std.primary_logs.mkdir(parents=True, exist_ok=True)
-        logs = box_log_files(std.primary_logs, "project")
-        for log_file in logs:
-            log_file.write_text("test")
+    std.primary_logs.mkdir(parents=True, exist_ok=True)
+    logs = box_log_files(std.primary_logs, "project")
+    for log_file in logs:
+      log_file.write_text("test")
 
-        args = argparse.Namespace(target="project", purge=True, force=True)
-        rc = run_rm(args)
-        assert rc == 0
-        assert [log_file for log_file in logs if log_file.exists()] == []
+    args = argparse.Namespace(target="project", purge=True, force=True)
+    rc = run_rm(args)
+    assert rc == 0
+    assert [log_file for log_file in logs if log_file.exists()] == []
 
-    def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "project"
-        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "project"
+    resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        # Create a file in the workspace to verify it survives.
-        (project_dir / "important.txt").write_text("keep me")
+    # Create a file in the workspace to verify it survives.
+    (project_dir / "important.txt").write_text("keep me")
 
-        args = argparse.Namespace(target="project", purge=True, force=True)
-        run_rm(args)
+    args = argparse.Namespace(target="project", purge=True, force=True)
+    run_rm(args)
 
-        assert project_dir.is_dir()
-        assert (project_dir / "important.txt").read_text() == "keep me"
+    assert project_dir.is_dir()
+    assert (project_dir / "important.txt").read_text() == "keep me"
 
-    def test_rm_workset_name_is_refused(self, config_file, tmp_home, credentials_dir, capsys):
-        """A name that is only a workset is refused (rc 1) and the workset stays.
+  def test_rm_workset_name_is_refused(self, config_file, tmp_home, credentials_dir, capsys):
+    """A name that is only a workset is refused (rc 1) and the workset stays.
 
-        ``workset rm`` owns workset removal.
-        """
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.project.workset import create_workset
+    ``workset rm`` owns workset removal.
+    """
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.project.workset import create_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        ws_root = tmp_home / "ws_root"
-        create_workset("myws", ws_root, std)
-        assert "myws" in read_names(std.registry)["worksets"]
+    ws_root = tmp_home / "ws_root"
+    create_workset("myws", ws_root, std)
+    assert "myws" in read_names(std.registry)["worksets"]
 
-        args = argparse.Namespace(target="myws", purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 1
-        assert "not a registered box" in capsys.readouterr().err
-        assert "myws" in read_names(std.registry)["worksets"]
-        assert ws_root.is_dir()
+    args = argparse.Namespace(target="myws", purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 1
+    assert "not a registered box" in capsys.readouterr().err
+    assert "myws" in read_names(std.registry)["worksets"]
+    assert ws_root.is_dir()
 
 
 # ---------------------------------------------------------------------------
 # box lifecycle I1: deregistered section + purge-by-name (the reported bug)
 # ---------------------------------------------------------------------------
 
+
 class TestBoxDeregisterPurge:
-    """`rm` (no --purge) parks a deregistered entry; `rm <name> --purge` then
-    resolves it BY NAME — closing the orphaned-metadata dead-end.
-    """
+  """`rm` (no --purge) parks a deregistered entry; `rm <name> --purge` then
+  resolves it BY NAME — closing the orphaned-metadata dead-end.
+  """
 
-    def _make_primary(self, config_file, tmp_home):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def _make_primary(self, config_file, tmp_home):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        return std, proj
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+    return std, proj
 
-    def test_rm_parks_deregistered_entry(self, config_file, tmp_home, credentials_dir):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_rm_parks_deregistered_entry(self, config_file, tmp_home, credentials_dir):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
 
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
 
-        entry = registry_store.lookup_deregistered(std.registry, "project")
-        assert entry is not None
-        assert entry["kind"] == "primary"
-        assert entry["metadata"] == str(metadata_dir)
-        assert entry["workspace"] == str(tmp_home / "project")
-        # Metadata is RETAINED (not deleted).
-        assert metadata_dir.is_dir()
+    entry = registry_store.lookup_deregistered(std.registry, "project")
+    assert entry is not None
+    assert entry["kind"] == "primary"
+    assert entry["metadata"] == str(metadata_dir)
+    assert entry["workspace"] == str(tmp_home / "project")
+    # Metadata is RETAINED (not deleted).
+    assert metadata_dir.is_dir()
 
-    def test_purge_by_name_after_deregister(self, config_file, tmp_home, credentials_dir, capsys):
-        """THE REPORTED BUG: rm then `rm <name> --purge` succeeds by name."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_purge_by_name_after_deregister(self, config_file, tmp_home, credentials_dir, capsys):
+    """THE REPORTED BUG: rm then `rm <name> --purge` succeeds by name."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
 
-        # Deregister (the active membership is now gone).
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        capsys.readouterr()
+    # Deregister (the active membership is now gone).
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    capsys.readouterr()
 
-        # Purge BY NAME — before I1 this errored "not a registered project".
-        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
-        assert rc == 0
-        assert not metadata_dir.is_dir()
-        # The deregistered entry is dropped once its metadata is gone.
-        assert registry_store.lookup_deregistered(std.registry, "project") is None
+    # Purge BY NAME — before I1 this errored "not a registered project".
+    rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    assert rc == 0
+    assert not metadata_dir.is_dir()
+    # The deregistered entry is dropped once its metadata is gone.
+    assert registry_store.lookup_deregistered(std.registry, "project") is None
 
-    def test_purge_by_name_idempotent_on_missing_dir(self, config_file, tmp_home, credentials_dir, capsys):
-        """Entry present but dir already gone → drop entry, no error."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
+  def test_purge_by_name_idempotent_on_missing_dir(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """Entry present but dir already gone → drop entry, no error."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
 
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        # Delete the metadata out-of-band, leaving a stale deregistered entry.
-        shutil.rmtree(metadata_dir)
-        assert registry_store.lookup_deregistered(std.registry, "project") is not None
-        capsys.readouterr()
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    # Delete the metadata out-of-band, leaving a stale deregistered entry.
+    shutil.rmtree(metadata_dir)
+    assert registry_store.lookup_deregistered(std.registry, "project") is not None
+    capsys.readouterr()
 
-        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
-        assert rc == 0
-        assert registry_store.lookup_deregistered(std.registry, "project") is None
-        out = capsys.readouterr().out
-        assert "stale entry" in out.lower() or "No metadata" in out
+    rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    assert rc == 0
+    assert registry_store.lookup_deregistered(std.registry, "project") is None
+    out = capsys.readouterr().out
+    assert "stale entry" in out.lower() or "No metadata" in out
 
-    def test_partly_failed_purge_keeps_deregistered_entry(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ):
-        """A re-purge whose metadata dir survives keeps the entry, so a retry finds it."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box import _parser
-        from kanibako.commands.box._parser import run_rm
+  def test_partly_failed_purge_keeps_deregistered_entry(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ):
+    """A re-purge whose metadata dir survives keeps the entry, so a retry finds it."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box import _parser
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        capsys.readouterr()
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    capsys.readouterr()
 
-        real_remove = _parser.remove_path
-        monkeypatch.setattr(_parser, "remove_path",
-                            lambda p: False if p == metadata_dir else real_remove(p))
-        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
-        assert rc == 1
-        assert metadata_dir.is_dir()
-        assert registry_store.lookup_deregistered(std.registry, "project") is not None
-        assert "box rm project --purge" in capsys.readouterr().err
+    real_remove = _parser.remove_path
+    monkeypatch.setattr(
+      _parser, "remove_path", lambda p: False if p == metadata_dir else real_remove(p)
+    )
+    rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    assert rc == 1
+    assert metadata_dir.is_dir()
+    assert registry_store.lookup_deregistered(std.registry, "project") is not None
+    assert "box rm project --purge" in capsys.readouterr().err
 
-        monkeypatch.setattr(_parser, "remove_path", real_remove)
-        assert run_rm(argparse.Namespace(target="project", purge=True, force=True)) == 0
-        assert not metadata_dir.is_dir()
-        assert registry_store.lookup_deregistered(std.registry, "project") is None
+    monkeypatch.setattr(_parser, "remove_path", real_remove)
+    assert run_rm(argparse.Namespace(target="project", purge=True, force=True)) == 0
+    assert not metadata_dir.is_dir()
+    assert registry_store.lookup_deregistered(std.registry, "project") is None
 
-    def test_partly_failed_active_purge_parks_deregistered_entry(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ):
-        """An active purge that leaves the metadata parks it, as a plain `rm` would."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box import _parser
-        from kanibako.commands.box._parser import run_rm
+  def test_partly_failed_active_purge_parks_deregistered_entry(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ):
+    """An active purge that leaves the metadata parks it, as a plain `rm` would."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box import _parser
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
 
-        real_remove = _parser.remove_path
-        monkeypatch.setattr(_parser, "remove_path",
-                            lambda p: False if p == metadata_dir else real_remove(p))
-        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
-        assert rc == 1
-        entry = registry_store.lookup_deregistered(std.registry, "project")
-        assert entry is not None and entry["metadata"] == str(metadata_dir)
-        assert "box rm project --purge" in capsys.readouterr().out
+    real_remove = _parser.remove_path
+    monkeypatch.setattr(
+      _parser, "remove_path", lambda p: False if p == metadata_dir else real_remove(p)
+    )
+    rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    assert rc == 1
+    entry = registry_store.lookup_deregistered(std.registry, "project")
+    assert entry is not None and entry["metadata"] == str(metadata_dir)
+    assert "box rm project --purge" in capsys.readouterr().out
 
-        monkeypatch.setattr(_parser, "remove_path", real_remove)
-        assert run_rm(argparse.Namespace(target="project", purge=True, force=True)) == 0
-        assert not metadata_dir.is_dir()
-        assert registry_store.lookup_deregistered(std.registry, "project") is None
+    monkeypatch.setattr(_parser, "remove_path", real_remove)
+    assert run_rm(argparse.Namespace(target="project", purge=True, force=True)) == 0
+    assert not metadata_dir.is_dir()
+    assert registry_store.lookup_deregistered(std.registry, "project") is None
 
-    def test_re_rm_without_purge_shows_guidance(self, config_file, tmp_home, credentials_dir, capsys):
-        """A second `rm` (no --purge) on a deregistered box guides, never errors."""
-        from kanibako.commands.box._parser import run_rm
+  def test_re_rm_without_purge_shows_guidance(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """A second `rm` (no --purge) on a deregistered box guides, never errors."""
+    from kanibako.commands.box._parser import run_rm
 
-        self._make_primary(config_file, tmp_home)
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        capsys.readouterr()
+    self._make_primary(config_file, tmp_home)
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    capsys.readouterr()
 
-        rc = run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "already deregistered" in out
-        assert "box register project" in out
-        assert "box rm project --purge" in out
+    rc = run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "already deregistered" in out
+    assert "box register project" in out
+    assert "box rm project --purge" in out
 
-    def test_purge_by_name_deletes_only_its_own_metadata(self, config_file, tmp_home, credentials_dir):
-        """Mutation proof: purge deletes the box dir and NOTHING else beside it."""
-        from kanibako.commands.box._parser import run_rm
+  def test_purge_by_name_deletes_only_its_own_metadata(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    """Mutation proof: purge deletes the box dir and NOTHING else beside it."""
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        # A sibling box dir under std.boxes/ that must survive.
-        sibling = std.boxes / "other_box"
-        sibling.mkdir(parents=True, exist_ok=True)
-        (sibling / "keep.txt").write_text("keep me")
-        # The user's workspace files must survive too.
-        (tmp_home / "project" / "important.txt").write_text("workspace")
+    std, proj = self._make_primary(config_file, tmp_home)
+    # A sibling box dir under std.boxes/ that must survive.
+    sibling = std.boxes / "other_box"
+    sibling.mkdir(parents=True, exist_ok=True)
+    (sibling / "keep.txt").write_text("keep me")
+    # The user's workspace files must survive too.
+    (tmp_home / "project" / "important.txt").write_text("workspace")
 
-        run_rm(argparse.Namespace(target="project", purge=False, force=False))
-        run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    run_rm(argparse.Namespace(target="project", purge=False, force=False))
+    run_rm(argparse.Namespace(target="project", purge=True, force=True))
 
-        assert not proj.metadata_path.is_dir()
-        assert sibling.is_dir()
-        assert (sibling / "keep.txt").read_text() == "keep me"
-        assert (tmp_home / "project" / "important.txt").read_text() == "workspace"
+    assert not proj.metadata_path.is_dir()
+    assert sibling.is_dir()
+    assert (sibling / "keep.txt").read_text() == "keep me"
+    assert (tmp_home / "project" / "important.txt").read_text() == "workspace"
 
-    def test_purge_refuses_uncontained_metadata_path(self, config_file, tmp_home, credentials_dir, capsys):
-        """CONTAINMENT: a crafted deregistered entry escaping std.boxes is REFUSED."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
+  def test_purge_refuses_uncontained_metadata_path(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """CONTAINMENT: a crafted deregistered entry escaping std.boxes is REFUSED."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # A sentinel directory OUTSIDE std.boxes/ that must never be deleted.
-        victim = tmp_home / "victim"
-        victim.mkdir()
-        (victim / "precious.txt").write_text("do not delete")
+    # A sentinel directory OUTSIDE std.boxes/ that must never be deleted.
+    victim = tmp_home / "victim"
+    victim.mkdir()
+    (victim / "precious.txt").write_text("do not delete")
 
-        registry_store.register_deregistered(
-            std.registry, "evil", kind="primary",
-            workspace=str(tmp_home / "project"), metadata=str(victim),
-        )
+    registry_store.register_deregistered(
+      std.registry,
+      "evil",
+      kind="primary",
+      workspace=str(tmp_home / "project"),
+      metadata=str(victim),
+    )
 
-        rc = run_rm(argparse.Namespace(target="evil", purge=True, force=True))
-        assert rc == 1
-        # Nothing deleted; the entry is NOT dropped (a refusal, not a success).
-        assert victim.is_dir()
-        assert (victim / "precious.txt").read_text() == "do not delete"
-        assert registry_store.lookup_deregistered(std.registry, "evil") is not None
-        assert "refusing" in capsys.readouterr().err.lower()
+    rc = run_rm(argparse.Namespace(target="evil", purge=True, force=True))
+    assert rc == 1
+    # Nothing deleted; the entry is NOT dropped (a refusal, not a success).
+    assert victim.is_dir()
+    assert (victim / "precious.txt").read_text() == "do not delete"
+    assert registry_store.lookup_deregistered(std.registry, "evil") is not None
+    assert "refusing" in capsys.readouterr().err.lower()
 
-    def test_purge_refuses_dotdot_escape(self, config_file, tmp_home, credentials_dir, capsys):
-        """CONTAINMENT: a `..` escape resolves outside std.boxes → REFUSED."""
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
+  def test_purge_refuses_dotdot_escape(self, config_file, tmp_home, credentials_dir, capsys):
+    """CONTAINMENT: a `..` escape resolves outside std.boxes → REFUSED."""
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        outside = std.boxes.parent / "outside"
-        outside.mkdir(parents=True, exist_ok=True)
-        (outside / "keep").write_text("x")
-        crafted = str(std.boxes / ".." / "outside")
+    outside = std.boxes.parent / "outside"
+    outside.mkdir(parents=True, exist_ok=True)
+    (outside / "keep").write_text("x")
+    crafted = str(std.boxes / ".." / "outside")
 
-        registry_store.register_deregistered(
-            std.registry, "sneaky", kind="primary",
-            workspace=None, metadata=crafted,
-        )
-        rc = run_rm(argparse.Namespace(target="sneaky", purge=True, force=True))
-        assert rc == 1
-        assert outside.is_dir()
-        assert (outside / "keep").exists()
-        assert "refusing" in capsys.readouterr().err.lower()
+    registry_store.register_deregistered(
+      std.registry,
+      "sneaky",
+      kind="primary",
+      workspace=None,
+      metadata=crafted,
+    )
+    rc = run_rm(argparse.Namespace(target="sneaky", purge=True, force=True))
+    assert rc == 1
+    assert outside.is_dir()
+    assert (outside / "keep").exists()
+    assert "refusing" in capsys.readouterr().err.lower()
 
-    def test_active_purge_still_deletes_via_shared_helper(self, config_file, tmp_home, credentials_dir, capsys):
-        """Non-regression: a direct `rm --purge` on an ACTIVE box still purges."""
-        from kanibako.commands.box._parser import run_rm
+  def test_active_purge_still_deletes_via_shared_helper(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """Non-regression: a direct `rm --purge` on an ACTIVE box still purges."""
+    from kanibako.commands.box._parser import run_rm
 
-        std, proj = self._make_primary(config_file, tmp_home)
-        metadata_dir = proj.metadata_path
-        std.primary_logs.mkdir(parents=True, exist_ok=True)
-        log_file = std.primary_logs / "project.jsonl"
-        log_file.write_text("x")
-        # Sibling that must survive.
-        sibling = std.boxes / "sib"
-        sibling.mkdir(parents=True, exist_ok=True)
+    std, proj = self._make_primary(config_file, tmp_home)
+    metadata_dir = proj.metadata_path
+    std.primary_logs.mkdir(parents=True, exist_ok=True)
+    log_file = std.primary_logs / "project.jsonl"
+    log_file.write_text("x")
+    # Sibling that must survive.
+    sibling = std.boxes / "sib"
+    sibling.mkdir(parents=True, exist_ok=True)
 
-        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
-        assert rc == 0
-        assert not metadata_dir.is_dir()
-        assert not log_file.exists()
-        assert sibling.is_dir()
-        assert "Removed metadata" in capsys.readouterr().out
+    rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+    assert rc == 0
+    assert not metadata_dir.is_dir()
+    assert not log_file.exists()
+    assert sibling.is_dir()
+    assert "Removed metadata" in capsys.readouterr().out
 
 
 class TestStandaloneDeregisterPurge:
-    def _make_standalone(self, config_file, tmp_home):
-        from kanibako.project import registry_store
-        from kanibako.settings.config import WORKSET_META_FILE, load_config
-        from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
+  def _make_standalone(self, config_file, tmp_home):
+    from kanibako.project import registry_store
+    from kanibako.settings.config import WORKSET_META_FILE, load_config
+    from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_root"
-        (root / STANDALONE_META_DIR).mkdir(parents=True)
-        (root / WORKSET_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
-        (root / "vault").mkdir()
-        (root / "keep.txt").write_text("workspace file")
-        registry_store.register_standalone(std.registry, "k_box", root)
-        return std, root
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_root"
+    (root / STANDALONE_META_DIR).mkdir(parents=True)
+    (root / WORKSET_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
+    (root / "vault").mkdir()
+    (root / "keep.txt").write_text("workspace file")
+    registry_store.register_standalone(std.registry, "k_box", root)
+    return std, root
 
-    def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import WORKSET_META_FILE
-        from kanibako.settings.paths import STANDALONE_META_DIR
+  def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.paths import STANDALONE_META_DIR
 
-        std, root = self._make_standalone(config_file, tmp_home)
+    std, root = self._make_standalone(config_file, tmp_home)
 
-        # Deregister: registry.standalone entry dropped, in-tree metadata retained,
-        # deregistered blob parked.
-        rc = run_rm(argparse.Namespace(target="k_box", purge=False, force=False))
-        assert rc == 0
-        assert "k_box" not in registry_store.load_standalone(std.registry)
-        entry = registry_store.lookup_deregistered(std.registry, "k_box")
-        assert entry is not None and entry["kind"] == "standalone"
-        assert entry["metadata"] == str(root)
-        assert (root / STANDALONE_META_DIR).is_dir()
+    # Deregister: registry.standalone entry dropped, in-tree metadata retained,
+    # deregistered blob parked.
+    rc = run_rm(argparse.Namespace(target="k_box", purge=False, force=False))
+    assert rc == 0
+    assert "k_box" not in registry_store.load_standalone(std.registry)
+    entry = registry_store.lookup_deregistered(std.registry, "k_box")
+    assert entry is not None and entry["kind"] == "standalone"
+    assert entry["metadata"] == str(root)
+    assert (root / STANDALONE_META_DIR).is_dir()
 
-        # Purge BY NAME: deletes only the in-tree artifacts, never the root/workspace.
-        rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
-        assert rc == 0
-        assert not (root / STANDALONE_META_DIR).is_dir()
-        assert not (root / WORKSET_META_FILE).exists()
-        assert not (root / "vault").exists()
-        assert root.is_dir()
-        assert (root / "keep.txt").read_text() == "workspace file"
-        assert registry_store.lookup_deregistered(std.registry, "k_box") is None
+    # Purge BY NAME: deletes only the in-tree artifacts, never the root/workspace.
+    rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
+    assert rc == 0
+    assert not (root / STANDALONE_META_DIR).is_dir()
+    assert not (root / WORKSET_META_FILE).exists()
+    assert not (root / "vault").exists()
+    assert root.is_dir()
+    assert (root / "keep.txt").read_text() == "workspace file"
+    assert registry_store.lookup_deregistered(std.registry, "k_box") is None
 
-    def test_standalone_partly_failed_active_purge_parks_entry(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
-    ):
-        from kanibako.project import registry_store
-        from kanibako.commands.box import _parser
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.paths import STANDALONE_META_DIR
+  def test_standalone_partly_failed_active_purge_parks_entry(
+    self, config_file, tmp_home, credentials_dir, monkeypatch
+  ):
+    from kanibako.project import registry_store
+    from kanibako.commands.box import _parser
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.paths import STANDALONE_META_DIR
 
-        std, root = self._make_standalone(config_file, tmp_home)
-        real_remove = _parser.remove_path
-        monkeypatch.setattr(_parser, "remove_path", lambda p: False)
-        rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
-        assert rc == 1
-        assert "k_box" not in registry_store.load_standalone(std.registry)
-        entry = registry_store.lookup_deregistered(std.registry, "k_box")
-        assert entry is not None and entry["kind"] == "standalone"
+    std, root = self._make_standalone(config_file, tmp_home)
+    real_remove = _parser.remove_path
+    monkeypatch.setattr(_parser, "remove_path", lambda p: False)
+    rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
+    assert rc == 1
+    assert "k_box" not in registry_store.load_standalone(std.registry)
+    entry = registry_store.lookup_deregistered(std.registry, "k_box")
+    assert entry is not None and entry["kind"] == "standalone"
 
-        monkeypatch.setattr(_parser, "remove_path", real_remove)
-        assert run_rm(argparse.Namespace(target="k_box", purge=True, force=True)) == 0
-        assert not (root / STANDALONE_META_DIR).is_dir()
-        assert registry_store.lookup_deregistered(std.registry, "k_box") is None
+    monkeypatch.setattr(_parser, "remove_path", real_remove)
+    assert run_rm(argparse.Namespace(target="k_box", purge=True, force=True)) == 0
+    assert not (root / STANDALONE_META_DIR).is_dir()
+    assert registry_store.lookup_deregistered(std.registry, "k_box") is None
 
-    def test_standalone_partly_failed_purge_keeps_entry(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
-    ):
-        from kanibako.project import registry_store
-        from kanibako.commands.box import _parser
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.paths import STANDALONE_META_DIR
+  def test_standalone_partly_failed_purge_keeps_entry(
+    self, config_file, tmp_home, credentials_dir, monkeypatch
+  ):
+    from kanibako.project import registry_store
+    from kanibako.commands.box import _parser
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.paths import STANDALONE_META_DIR
 
-        std, root = self._make_standalone(config_file, tmp_home)
-        assert run_rm(argparse.Namespace(target="k_box", purge=False, force=False)) == 0
+    std, root = self._make_standalone(config_file, tmp_home)
+    assert run_rm(argparse.Namespace(target="k_box", purge=False, force=False)) == 0
 
-        monkeypatch.setattr(_parser, "remove_path", lambda p: False)
-        rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
-        assert rc == 1
-        assert (root / STANDALONE_META_DIR).is_dir()
-        assert registry_store.lookup_deregistered(std.registry, "k_box") is not None
+    monkeypatch.setattr(_parser, "remove_path", lambda p: False)
+    rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
+    assert rc == 1
+    assert (root / STANDALONE_META_DIR).is_dir()
+    assert registry_store.lookup_deregistered(std.registry, "k_box") is not None
 
 
 class TestRmPurgeDeletesTheBoxLogsByName:
-    """``box rm --purge`` deletes a box's log files BY NAME, wherever ``workset.logs``
-    resolves — the same files ``box purge`` deletes."""
+  """``box rm --purge`` deletes a box's log files BY NAME, wherever ``workset.logs``
+  resolves — the same files ``box purge`` deletes."""
 
-    @pytest.mark.parametrize("deregister_first", [False, True])
-    def test_standalone_logs_outside_box_data_are_deleted(
-        self, config_file, tmp_home, credentials_dir, deregister_first,
-    ):
-        """A standalone box whose ``workset.logs`` points outside ``box_data/``: removing
-        ``box_data/`` whole does not reach its logs, so they are deleted by name — on
-        the direct purge and on the deregistered-box purge alike."""
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.paths import (
-            box_log_files, box_logs_location, load_std_paths, resolve_standalone_project,
-        )
+  @pytest.mark.parametrize("deregister_first", [False, True])
+  def test_standalone_logs_outside_box_data_are_deleted(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    deregister_first,
+  ):
+    """A standalone box whose ``workset.logs`` points outside ``box_data/``: removing
+    ``box_data/`` whole does not reach its logs, so they are deleted by name — on
+    the direct purge and on the deregistered-box purge alike."""
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.paths import (
+      box_log_files,
+      box_logs_location,
+      load_std_paths,
+      resolve_standalone_project,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_logs"
-        root.mkdir()
-        resolve_standalone_project(std, config, str(root), initialize=True, name="sa_logs")
-        elsewhere = tmp_home / "sa-log-store"
-        write_nested_key(root / "workset.yaml", ("workset",), "logs", str(elsewhere))
-        proj = resolve_standalone_project(std, config, str(root))
-        logs_dir, box = box_logs_location(std, proj)
-        assert logs_dir == elsewhere
-        logs = box_log_files(logs_dir, box)
-        elsewhere.mkdir()
-        for log in logs:
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_logs"
+    root.mkdir()
+    resolve_standalone_project(std, config, str(root), initialize=True, name="sa_logs")
+    elsewhere = tmp_home / "sa-log-store"
+    write_nested_key(root / "workset.yaml", ("workset",), "logs", str(elsewhere))
+    proj = resolve_standalone_project(std, config, str(root))
+    logs_dir, box = box_logs_location(std, proj)
+    assert logs_dir == elsewhere
+    logs = box_log_files(logs_dir, box)
+    elsewhere.mkdir()
+    for log in logs:
+      log.write_text("x")
 
-        if deregister_first:
-            assert run_rm(argparse.Namespace(target=box, purge=False, force=True)) == 0
-            assert [log for log in logs if not log.exists()] == []
-        assert run_rm(argparse.Namespace(target=box, purge=True, force=True)) == 0
-        assert [log for log in logs if log.exists()] == []
+    if deregister_first:
+      assert run_rm(argparse.Namespace(target=box, purge=False, force=True)) == 0
+      assert [log for log in logs if not log.exists()] == []
+    assert run_rm(argparse.Namespace(target=box, purge=True, force=True)) == 0
+    assert [log for log in logs if log.exists()] == []
 
-    @pytest.mark.parametrize("deregister_first", [False, True])
-    def test_a_moved_kuid_box_purges_its_live_names_logs(
-        self, config_file, tmp_home, credentials_dir, deregister_first,
-    ):
-        """A MOVED kuid standalone box keeps its old registry KEY while its logs are
-        named for the LIVE ``<kuid>_<leaf>`` name, so the purge must delete by the live
-        name, never by the key."""
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.project import registry_store
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.paths import (
-            box_log_files, box_logs_location, load_std_paths, resolve_standalone_project,
-        )
+  @pytest.mark.parametrize("deregister_first", [False, True])
+  def test_a_moved_kuid_box_purges_its_live_names_logs(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    deregister_first,
+  ):
+    """A MOVED kuid standalone box keeps its old registry KEY while its logs are
+    named for the LIVE ``<kuid>_<leaf>`` name, so the purge must delete by the live
+    name, never by the key."""
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.project import registry_store
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.paths import (
+      box_log_files,
+      box_logs_location,
+      load_std_paths,
+      resolve_standalone_project,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = tmp_home / "sa_before"
-        root.mkdir()
-        resolve_standalone_project(std, config, str(root), initialize=True)
-        (key,) = registry_store.standalone_box_names(std.registry)
-        moved = tmp_home / "sa_after"
-        root.rename(moved)
-        registry_store.register_standalone(std.registry, key, moved)
-        elsewhere = tmp_home / "sa-moved-log-store"
-        write_nested_key(moved / "workset.yaml", ("workset",), "logs", str(elsewhere))
-        logs_dir, box = box_logs_location(std, resolve_standalone_project(std, config, str(moved)))
-        assert logs_dir == elsewhere
-        assert box != key
-        logs = box_log_files(logs_dir, box)
-        elsewhere.mkdir()
-        for log in logs:
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = tmp_home / "sa_before"
+    root.mkdir()
+    resolve_standalone_project(std, config, str(root), initialize=True)
+    (key,) = registry_store.standalone_box_names(std.registry)
+    moved = tmp_home / "sa_after"
+    root.rename(moved)
+    registry_store.register_standalone(std.registry, key, moved)
+    elsewhere = tmp_home / "sa-moved-log-store"
+    write_nested_key(moved / "workset.yaml", ("workset",), "logs", str(elsewhere))
+    logs_dir, box = box_logs_location(std, resolve_standalone_project(std, config, str(moved)))
+    assert logs_dir == elsewhere
+    assert box != key
+    logs = box_log_files(logs_dir, box)
+    elsewhere.mkdir()
+    for log in logs:
+      log.write_text("x")
 
-        if deregister_first:
-            assert run_rm(argparse.Namespace(target=key, purge=False, force=True)) == 0
-            assert [log for log in logs if not log.exists()] == []
-        assert run_rm(argparse.Namespace(target=key, purge=True, force=True)) == 0
-        assert [log for log in logs if log.exists()] == []
+    if deregister_first:
+      assert run_rm(argparse.Namespace(target=key, purge=False, force=True)) == 0
+      assert [log for log in logs if not log.exists()] == []
+    assert run_rm(argparse.Namespace(target=key, purge=True, force=True)) == 0
+    assert [log for log in logs if log.exists()] == []
 
-    def test_a_case_variant_purges_the_stored_names_logs(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Spec §0: a deregistered box is found case-blind, and its logs are named by the
-        STORED spelling — so ``rm PROJECT --purge`` must delete ``project.*``."""
-        from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import box_log_files, load_std_paths, resolve_project
+  def test_a_case_variant_purges_the_stored_names_logs(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Spec §0: a deregistered box is found case-blind, and its logs are named by the
+    STORED spelling — so ``rm PROJECT --purge`` must delete ``project.*``."""
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import box_log_files, load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
-        assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
-        std.primary_logs.mkdir(parents=True, exist_ok=True)
-        logs = box_log_files(std.primary_logs, "project")
-        for log in logs:
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
+    assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
+    std.primary_logs.mkdir(parents=True, exist_ok=True)
+    logs = box_log_files(std.primary_logs, "project")
+    for log in logs:
+      log.write_text("x")
 
-        assert run_rm(argparse.Namespace(target="PROJECT", purge=True, force=True)) == 0
-        assert [log for log in logs if log.exists()] == []
+    assert run_rm(argparse.Namespace(target="PROJECT", purge=True, force=True)) == 0
+    assert [log for log in logs if log.exists()] == []
 
-    def test_a_case_variant_readopts_the_stored_name(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """Spec §0: the twin of the purge case above, on the ``register`` verb. A
-        deregistered box is found case-blind, and the readopt RE-REGISTERS the name —
-        membership, home and logs are all keyed by it — so ``register PROJECT`` must
-        restore the STORED spelling ``project``, never the typed ``PROJECT``.
+  def test_a_case_variant_readopts_the_stored_name(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """Spec §0: the twin of the purge case above, on the ``register`` verb. A
+    deregistered box is found case-blind, and the readopt RE-REGISTERS the name —
+    membership, home and logs are all keyed by it — so ``register PROJECT`` must
+    restore the STORED spelling ``project``, never the typed ``PROJECT``.
 
-        The purge fix only covers ``rm``: it names the log files. Here a typed
-        case-variant wrote the membership entry under the wrong spelling, leaving a
-        key that pointed at no box home at all.
-        """
-        from kanibako.commands.box._parser import run_register, run_rm
-        from kanibako.project.registry_store import load_deregistered
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            box_log_files, load_primary_boxes, load_std_paths, resolve_project,
-        )
+    The purge fix only covers ``rm``: it names the log files. Here a typed
+    case-variant wrote the membership entry under the wrong spelling, leaving a
+    key that pointed at no box home at all.
+    """
+    from kanibako.commands.box._parser import run_register, run_rm
+    from kanibako.project.registry_store import load_deregistered
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      box_log_files,
+      load_primary_boxes,
+      load_std_paths,
+      resolve_project,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
-        assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
-        assert "project" in load_deregistered(std.registry)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
+    assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
+    assert "project" in load_deregistered(std.registry)
 
-        assert run_register(argparse.Namespace(target="PROJECT", box=None)) == 0
+    assert run_register(argparse.Namespace(target="PROJECT", box=None)) == 0
 
-        # The membership entry, the home it names, and the log names all agree on
-        # the STORED spelling; the typed variant is written nowhere.
-        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert sorted(boxes) == ["project"]
-        assert (std.boxes / "project").is_dir()
-        std.primary_logs.mkdir(parents=True, exist_ok=True)
-        assert [p.name for p in box_log_files(std.primary_logs, "project")] == [
-            "project.jsonl", "project.creds-watcher.log", "project.helper-hub.log",
-        ]
-        assert load_deregistered(std.registry) == {}
+    # The membership entry, the home it names, and the log names all agree on
+    # the STORED spelling; the typed variant is written nowhere.
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert sorted(boxes) == ["project"]
+    assert (std.boxes / "project").is_dir()
+    std.primary_logs.mkdir(parents=True, exist_ok=True)
+    assert [p.name for p in box_log_files(std.primary_logs, "project")] == [
+      "project.jsonl",
+      "project.creds-watcher.log",
+      "project.helper-hub.log",
+    ]
+    assert load_deregistered(std.registry) == {}
 
 
 # ---------------------------------------------------------------------------
 # box lifecycle I4: purge-side stale-entry guard (belt-and-suspenders)
 # ---------------------------------------------------------------------------
 
+
 class TestPurgeStaleDeregisteredGuard:
-    """The deregistered ``--purge`` REFUSES to delete a metadata path a NEW active
-    box now occupies (a reused name), dropping the stale entry instead — never
-    deleting the live box's home (box-lifecycle I4, belt-and-suspenders).
+  """The deregistered ``--purge`` REFUSES to delete a metadata path a NEW active
+  box now occupies (a reused name), dropping the stale entry instead — never
+  deleting the live box's home (box-lifecycle I4, belt-and-suspenders).
 
-    Exercised by calling :func:`_purge_deregistered` directly: through ``run_rm``
-    the active-first name resolution already routes a reused name to the ACTIVE
-    purge, so this is the defensive layer for direct / future callers.
-    """
+  Exercised by calling :func:`_purge_deregistered` directly: through ``run_rm``
+  the active-first name resolution already routes a reused name to the ACTIVE
+  purge, so this is the defensive layer for direct / future callers.
+  """
 
-    def test_primary_stale_entry_refused_active_home_intact(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import _purge_deregistered
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            load_primary_boxes,
-            load_std_paths,
-            register_primary_box_name,
-        )
+  def test_primary_stale_entry_refused_active_home_intact(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import _purge_deregistered
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      load_primary_boxes,
+      load_std_paths,
+      register_primary_box_name,
+    )
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        # An ACTIVE primary box "dup" whose home is std.boxes/dup.
-        ws = tmp_home / "dupws"
-        ws.mkdir()
-        home = std.boxes / "dup"
-        (home / "home").mkdir(parents=True, exist_ok=True)
-        (home / "home" / "LIVE.txt").write_text("live-box-data")
-        register_primary_box_name(
-            std.primary_workset, "dup", str(ws),
-            early=_early_scope(std, BoxMode.primary),
-        )
-        assert "dup" in load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary))
+    # An ACTIVE primary box "dup" whose home is std.boxes/dup.
+    ws = tmp_home / "dupws"
+    ws.mkdir()
+    home = std.boxes / "dup"
+    (home / "home").mkdir(parents=True, exist_ok=True)
+    (home / "home" / "LIVE.txt").write_text("live-box-data")
+    register_primary_box_name(
+      std.primary_workset,
+      "dup",
+      str(ws),
+      early=_early_scope(std, BoxMode.primary),
+    )
+    assert "dup" in load_primary_boxes(
+      std.primary_workset, early=_early_scope(std, BoxMode.primary)
+    )
 
-        # A STALE deregistered entry pointing at the SAME home path.
-        registry_store.register_deregistered(
-            std.registry, "dup", kind="primary",
-            workspace=str(ws), metadata=str(home),
-        )
+    # A STALE deregistered entry pointing at the SAME home path.
+    registry_store.register_deregistered(
+      std.registry,
+      "dup",
+      kind="primary",
+      workspace=str(ws),
+      metadata=str(home),
+    )
 
-        rc = _purge_deregistered(
-            std, "dup",
-            registry_store.lookup_deregistered(std.registry, "dup"),
-            argparse.Namespace(purge=True, force=True),
-            config=config,
-        )
-        assert rc == 1
-        # The live box's home is INTACT; the stale entry was dropped.
-        assert (home / "home" / "LIVE.txt").read_text() == "live-box-data"
-        assert registry_store.lookup_deregistered(std.registry, "dup") is None
-        assert "stale" in capsys.readouterr().err.lower()
+    rc = _purge_deregistered(
+      std,
+      "dup",
+      registry_store.lookup_deregistered(std.registry, "dup"),
+      argparse.Namespace(purge=True, force=True),
+      config=config,
+    )
+    assert rc == 1
+    # The live box's home is INTACT; the stale entry was dropped.
+    assert (home / "home" / "LIVE.txt").read_text() == "live-box-data"
+    assert registry_store.lookup_deregistered(std.registry, "dup") is None
+    assert "stale" in capsys.readouterr().err.lower()
 
-    def test_standalone_stale_entry_refused_active_root_intact(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        from kanibako.project import registry_store
-        from kanibako.commands.box._parser import _purge_deregistered
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
+  def test_standalone_stale_entry_refused_active_root_intact(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.project import registry_store
+    from kanibako.commands.box._parser import _purge_deregistered
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
+    config = load_config(config_file)
+    std = load_std_paths(config)
 
-        root = tmp_home / "sabox"
-        (root / STANDALONE_META_DIR).mkdir(parents=True)
-        (root / STANDALONE_META_DIR / "KEEP.txt").write_text("standalone-live")
-        # ACTIVE standalone box registered at this root.
-        registry_store.register_standalone(std.registry, "sabox", root)
-        # STALE deregistered entry for the same root.
-        registry_store.register_deregistered(
-            std.registry, "sabox", kind="standalone",
-            workspace=str(root), metadata=str(root),
-        )
+    root = tmp_home / "sabox"
+    (root / STANDALONE_META_DIR).mkdir(parents=True)
+    (root / STANDALONE_META_DIR / "KEEP.txt").write_text("standalone-live")
+    # ACTIVE standalone box registered at this root.
+    registry_store.register_standalone(std.registry, "sabox", root)
+    # STALE deregistered entry for the same root.
+    registry_store.register_deregistered(
+      std.registry,
+      "sabox",
+      kind="standalone",
+      workspace=str(root),
+      metadata=str(root),
+    )
 
-        rc = _purge_deregistered(
-            std, "sabox",
-            registry_store.lookup_deregistered(std.registry, "sabox"),
-            argparse.Namespace(purge=True, force=True),
-            config=config,
-        )
-        assert rc == 1
-        assert (root / STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"
-        assert registry_store.lookup_deregistered(std.registry, "sabox") is None
-        assert "stale" in capsys.readouterr().err.lower()
+    rc = _purge_deregistered(
+      std,
+      "sabox",
+      registry_store.lookup_deregistered(std.registry, "sabox"),
+      argparse.Namespace(purge=True, force=True),
+      config=config,
+    )
+    assert rc == 1
+    assert (root / STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"
+    assert registry_store.lookup_deregistered(std.registry, "sabox") is None
+    assert "stale" in capsys.readouterr().err.lower()

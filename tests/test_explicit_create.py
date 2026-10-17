@@ -17,10 +17,10 @@ import shlex
 import pytest
 
 from kanibako.commands.start import (
-    _no_box_error,
-    _resolve_existing_box,
-    _run_container,
-    _unbuilt_box_error,
+  _no_box_error,
+  _resolve_existing_box,
+  _run_container,
+  _unbuilt_box_error,
 )
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — not even to set up a case.
@@ -38,1411 +38,1582 @@ from kanibako.settings.paths import BoxMode, _early_scope
 
 
 def _launch(project_dir, **over):
-    """Minimal ``_run_container`` launch (foreground start) for a target."""
-    kwargs = dict(
-        project_dir=project_dir, entrypoint=None, image_override=None,
-        new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
-    )
-    kwargs.update(over)
-    return _run_container(**kwargs)
+  """Minimal ``_run_container`` launch (foreground start) for a target."""
+  kwargs = dict(
+    project_dir=project_dir,
+    entrypoint=None,
+    image_override=None,
+    new_session=False,
+    safe_mode=False,
+    resume_mode=False,
+    extra_args=[],
+  )
+  kwargs.update(over)
+  return _run_container(**kwargs)
 
 
 def _create_args(path, **over):
-    # ⚑ ``no_vault=True`` is this suite's vault SUPPRESSION shorthand, and it is
-    # indistinguishable from a typed ``--no-vault`` — a SHAPING flag the recovery
-    # refusal must refuse.  A recovery re-run passes ``no_vault=False`` to spell
-    # the flag the way the CLI spells it when absent.
-    ns = argparse.Namespace(
-        path=str(path), standalone=False, no_vault=True,
-        name=None, image=None, agent=None, allow_home=False,
-        recover=False,
-    )
-    for k, v in over.items():
-        setattr(ns, k, v)
-    return ns
+  # ⚑ ``no_vault=True`` is this suite's vault SUPPRESSION shorthand, and it is
+  # indistinguishable from a typed ``--no-vault`` — a SHAPING flag the recovery
+  # refusal must refuse.  A recovery re-run passes ``no_vault=False`` to spell
+  # the flag the way the CLI spells it when absent.
+  ns = argparse.Namespace(
+    path=str(path),
+    standalone=False,
+    no_vault=True,
+    name=None,
+    image=None,
+    agent=None,
+    allow_home=False,
+    recover=False,
+  )
+  for k, v in over.items():
+    setattr(ns, k, v)
+  return ns
 
 
 def _std(config_file):
-    from kanibako.settings.config import load_config
-    from kanibako.settings.paths import load_std_paths
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import load_std_paths
 
-    config = load_config(config_file)
-    return config, load_std_paths(config)
+  config = load_config(config_file)
+  return config, load_std_paths(config)
 
 
 def _primary_boxes(std):
-    """The PRIMARY membership, read with *std*'s early record."""
-    from kanibako.settings.paths import load_primary_boxes
+  """The PRIMARY membership, read with *std*'s early record."""
+  from kanibako.settings.paths import load_primary_boxes
 
-    return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
 
 # ---------------------------------------------------------------------------
 # `create` at a path a NAMED box already holds → refused, nothing written
 # ---------------------------------------------------------------------------
 
-def _connected_member(tmp_home, std, *, name="extbox", dirname="ext"):
-    """A workset with ONE externally-connected member at ``tmp_home/<dirname>``."""
-    from kanibako.project.workset import add_project, create_workset
 
-    ws = create_workset("wsa", tmp_home / "wsa", std)
-    member = tmp_home / dirname
-    member.mkdir()
-    add_project(ws, name, member, std)
-    return member
+def _connected_member(tmp_home, std, *, name="extbox", dirname="ext"):
+  """A workset with ONE externally-connected member at ``tmp_home/<dirname>``."""
+  from kanibako.project.workset import add_project, create_workset
+
+  ws = create_workset("wsa", tmp_home / "wsa", std)
+  member = tmp_home / dirname
+  member.mkdir()
+  add_project(ws, name, member, std)
+  return member
 
 
 class TestCreateRefusesNamedBoxWorkspace:
-    """The PATH half of "one record per project" at the ``create`` door.
+  """The PATH half of "one record per project" at the ``create`` door.
 
-    ``create`` picked a PRIMARY box name from the path, so a path a NAMED box
-    already holds collided with nothing the NAME guard could see — and the box
-    it made was then unreachable, because the ancestor-walk detection resolves
-    that directory to the named box.
+  ``create`` picked a PRIMARY box name from the path, so a path a NAMED box
+  already holds collided with nothing the NAME guard could see — and the box
+  it made was then unreachable, because the ancestor-walk detection resolves
+  that directory to the named box.
+  """
+
+  def test_create_at_a_connected_path_is_refused(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.box._parser import run_create
+
+    _config, std = _std(config_file)
+    member = _connected_member(tmp_home, std)
+
+    assert run_create(_create_args(member)) == 1
+    err = capsys.readouterr().err
+    assert "already the workspace of named box 'extbox'" in err
+    assert "in workset 'wsa'" in err
+    # ⚑ Qualified: a bare name tries the PRIMARY workset first.
+    assert "kanibako box show wsa/extbox" in err
+    # The WRITE is what the refusal is for: no membership row, no box dir.
+    assert _primary_boxes(std) == {}
+    assert not any(std.boxes.iterdir()) if std.boxes.exists() else True
+
+  def test_create_inside_a_connected_path_is_refused(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """The resolver matches the DEEPEST registered ANCESTOR, as ``connect`` does."""
+    from kanibako.commands.box._parser import run_create
+
+    _config, std = _std(config_file)
+    member = _connected_member(tmp_home, std)
+    inner = member / "deep" / "inner"
+    inner.mkdir(parents=True)
+
+    assert run_create(_create_args(inner)) == 1
+    assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
+    assert _primary_boxes(std) == {}
+
+  def test_a_neighbor_path_is_not_refused(self, config_file, tmp_home, credentials_dir, capsys):
+    """The guard is the OWNING PATH, not the containing directory."""
+    from kanibako.commands.box._parser import run_create
+
+    _config, std = _std(config_file)
+    _connected_member(tmp_home, std)
+    neighbor = tmp_home / "ext2"
+    neighbor.mkdir()
+
+    assert run_create(_create_args(neighbor)) == 0
+    assert "already the workspace of named box" not in capsys.readouterr().err
+
+  def test_an_in_tree_member_is_not_refused(self, config_file, tmp_home, credentials_dir, capsys):
+    """A member under the workset's own ``workset.workspaces`` is not this guard's.
+
+    The resolver skips in-tree members, so this guard never claims them; that
+    path is in the workset's path space, whose own rule decides the create.
+    Only this guard's message is pinned here, whatever the exit code.
     """
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project.workset import add_project, create_workset
 
-    def test_create_at_a_connected_path_is_refused(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        from kanibako.commands.box._parser import run_create
+    _config, std = _std(config_file)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    member = ws.root / "workspaces" / "m1"
+    member.mkdir(parents=True)
+    add_project(ws, "m1", member, std)
 
-        _config, std = _std(config_file)
-        member = _connected_member(tmp_home, std)
+    run_create(_create_args(member))
+    assert "already the workspace of named box" not in capsys.readouterr().err
 
-        assert run_create(_create_args(member)) == 1
-        err = capsys.readouterr().err
-        assert "already the workspace of named box 'extbox'" in err
-        assert "in workset 'wsa'" in err
-        # ⚑ Qualified: a bare name tries the PRIMARY workset first.
-        assert "kanibako box show wsa/extbox" in err
-        # The WRITE is what the refusal is for: no membership row, no box dir.
-        assert _primary_boxes(std) == {}
-        assert not any(std.boxes.iterdir()) if std.boxes.exists() else True
+  def test_standalone_at_a_connected_path_is_refused(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """The rule is mode-free: detection finds the connected box before a
+    standalone marker, so a standalone box there would be unreachable too."""
+    from kanibako.commands.box._parser import run_create
 
-    def test_create_inside_a_connected_path_is_refused(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The resolver matches the DEEPEST registered ANCESTOR, as ``connect`` does."""
-        from kanibako.commands.box._parser import run_create
+    _config, std = _std(config_file)
+    member = _connected_member(tmp_home, std)
+    before = sorted(p.name for p in member.iterdir())
 
-        _config, std = _std(config_file)
-        member = _connected_member(tmp_home, std)
-        inner = member / "deep" / "inner"
-        inner.mkdir(parents=True)
+    assert run_create(_create_args(member, standalone=True)) == 1
+    err = capsys.readouterr().err
+    assert "already the workspace of named box 'extbox'" in err
+    assert sorted(p.name for p in member.iterdir()) == before
 
-        assert run_create(_create_args(inner)) == 1
-        assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
-        assert _primary_boxes(std) == {}
+  def test_the_cure_the_refusal_names_actually_works(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """The named cure is the verb the refusal prints, run as printed."""
+    from kanibako.commands.box._parser import run_create
 
-    def test_a_neighbor_path_is_not_refused(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The guard is the OWNING PATH, not the containing directory."""
-        from kanibako.commands.box._parser import run_create
+    _config, std = _std(config_file)
+    member = _connected_member(tmp_home, std)
 
-        _config, std = _std(config_file)
-        _connected_member(tmp_home, std)
-        neighbor = tmp_home / "ext2"
-        neighbor.mkdir()
+    assert run_create(_create_args(member)) == 1
+    cure = "kanibako workset disconnect wsa extbox --force"
+    assert cure in capsys.readouterr().err
 
-        assert run_create(_create_args(neighbor)) == 0
-        assert "already the workspace of named box" not in capsys.readouterr().err
+    from kanibako.commands.workset_cmd import run_disconnect
+    import argparse
 
-    def test_an_in_tree_member_is_not_refused(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """A member under the workset's own ``workset.workspaces`` is not this guard's.
-
-        The resolver skips in-tree members, so this guard never claims them; that
-        path is in the workset's path space, whose own rule decides the create.
-        Only this guard's message is pinned here, whatever the exit code.
-        """
-        from kanibako.commands.box._parser import run_create
-        from kanibako.project.workset import add_project, create_workset
-
-        _config, std = _std(config_file)
-        ws = create_workset("wsa", tmp_home / "wsa", std)
-        member = ws.root / "workspaces" / "m1"
-        member.mkdir(parents=True)
-        add_project(ws, "m1", member, std)
-
-        run_create(_create_args(member))
-        assert "already the workspace of named box" not in capsys.readouterr().err
-
-    def test_standalone_at_a_connected_path_is_refused(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The rule is mode-free: detection finds the connected box before a
-        standalone marker, so a standalone box there would be unreachable too."""
-        from kanibako.commands.box._parser import run_create
-
-        _config, std = _std(config_file)
-        member = _connected_member(tmp_home, std)
-        before = sorted(p.name for p in member.iterdir())
-
-        assert run_create(_create_args(member, standalone=True)) == 1
-        err = capsys.readouterr().err
-        assert "already the workspace of named box 'extbox'" in err
-        assert sorted(p.name for p in member.iterdir()) == before
-
-    def test_the_cure_the_refusal_names_actually_works(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The named cure is the verb the refusal prints, run as printed."""
-        from kanibako.commands.box._parser import run_create
-
-        _config, std = _std(config_file)
-        member = _connected_member(tmp_home, std)
-
-        assert run_create(_create_args(member)) == 1
-        cure = "kanibako workset disconnect wsa extbox --force"
-        assert cure in capsys.readouterr().err
-
-        from kanibako.commands.workset_cmd import run_disconnect
-        import argparse
-
-        assert run_disconnect(argparse.Namespace(
-            workset="wsa", project="extbox", force=True, remove_files=False,
-        )) == 0
-        capsys.readouterr()
-        # The path is free now, so the same create that was refused succeeds.
-        assert run_create(_create_args(member)) == 0
-        assert list(_primary_boxes(std)) == ["ext"]
+    assert (
+      run_disconnect(
+        argparse.Namespace(
+          workset="wsa",
+          project="extbox",
+          force=True,
+          remove_files=False,
+        )
+      )
+      == 0
+    )
+    capsys.readouterr()
+    # The path is free now, so the same create that was refused succeeds.
+    assert run_create(_create_args(member)) == 0
+    assert list(_primary_boxes(std)) == ["ext"]
 
 
 # ---------------------------------------------------------------------------
 # Launch on an ABSENT box → exact error + non-zero exit (no box materialized)
 # ---------------------------------------------------------------------------
 
+
 class TestLaunchAbsentBoxErrors:
-    def test_bare_kanibako_cwd_errors(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """Bare ``kanibako`` (project_dir=None → cwd) on a dir with no box errors
-        and materializes NOTHING; the suggestion is a bare ``kanibako create``.
+  def test_bare_kanibako_cwd_errors(self, config_file, tmp_home, credentials_dir, capsys):
+    """Bare ``kanibako`` (project_dir=None → cwd) on a dir with no box errors
+    and materializes NOTHING; the suggestion is a bare ``kanibako create``.
 
-        ⚑ The suggestion is no longer wrapped in single quotes: the printed
-        command is the tail of the line, so a reader copies it and it pastes.
-        That is why this pin reads ``run:  `` and not ``run '...'``.
-        """
-        _config, std = _std(config_file)
-        rc = _launch(None)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "no box at" in err
-        assert "run:  kanibako create" in err
-        # No box was invented for the wrong cwd.
-        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+    ⚑ The suggestion is no longer wrapped in single quotes: the printed
+    command is the tail of the line, so a reader copies it and it pastes.
+    That is why this pin reads ``run:  `` and not ``run '...'``.
+    """
+    _config, std = _std(config_file)
+    rc = _launch(None)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no box at" in err
+    assert "run:  kanibako create" in err
+    # No box was invented for the wrong cwd.
+    assert not std.boxes.exists() or not any(std.boxes.iterdir())
 
-    def test_start_named_box_errors_with_copy_pasteable_spec(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """A bare NAME that resolves to no registered box errors, and the suggested
-        ``create`` carries that spec so it is copy-pasteable."""
-        _config, std = _std(config_file)
-        rc = _launch("ghostbox")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "no box at ghostbox" in err
-        assert "kanibako create ghostbox" in err
-        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+  def test_start_named_box_errors_with_copy_pasteable_spec(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """A bare NAME that resolves to no registered box errors, and the suggested
+    ``create`` carries that spec so it is copy-pasteable."""
+    _config, std = _std(config_file)
+    rc = _launch("ghostbox")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no box at ghostbox" in err
+    assert "kanibako create ghostbox" in err
+    assert not std.boxes.exists() or not any(std.boxes.iterdir())
 
-    def test_shell_absent_box_errors(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """``kanibako shell`` (box_shell_mode) routes through the same gate."""
-        _config, std = _std(config_file)
-        rc = _launch(None, box_shell_mode=True)
-        assert rc == 1
-        assert "no box at" in capsys.readouterr().err
-        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+  def test_shell_absent_box_errors(self, config_file, tmp_home, credentials_dir, capsys):
+    """``kanibako shell`` (box_shell_mode) routes through the same gate."""
+    _config, std = _std(config_file)
+    rc = _launch(None, box_shell_mode=True)
+    assert rc == 1
+    assert "no box at" in capsys.readouterr().err
+    assert not std.boxes.exists() or not any(std.boxes.iterdir())
 
 
 # ---------------------------------------------------------------------------
 # `create` materializes + prints the start-hint; create-then-launch passes gate
 # ---------------------------------------------------------------------------
 
+
 class TestCreateAndThenLaunch:
-    def test_create_prints_start_hint(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        from kanibako.commands.box._parser import run_create
+  def test_create_prints_start_hint(self, config_file, tmp_home, credentials_dir, capsys):
+    from kanibako.commands.box._parser import run_create
 
-        rc = run_create(_create_args(tmp_home / "project"))
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Created default project in" in out
-        # The copy-pasteable start hint (exact wording).
-        assert "Start the box by executing 'kanibako'" in out
-        assert "shortcuts to 'kanibako start'" in out
+    rc = run_create(_create_args(tmp_home / "project"))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Created default project in" in out
+    # The copy-pasteable start hint (exact wording).
+    assert "Start the box by executing 'kanibako'" in out
+    assert "shortcuts to 'kanibako start'" in out
 
-    def test_create_then_launch_passes_gate(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """After ``create`` the box EXISTS, so the launch gate resolves it (no
-        "no box" error) — create-then-start works."""
-        from kanibako.commands.box._parser import run_create
+  def test_create_then_launch_passes_gate(self, config_file, tmp_home, credentials_dir):
+    """After ``create`` the box EXISTS, so the launch gate resolves it (no
+    "no box" error) — create-then-start works."""
+    from kanibako.commands.box._parser import run_create
 
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        # cwd is tmp_home/project (fixture chdir); the launch resolves the box.
-        proj = _resolve_existing_box(std, config, None)
-        assert proj is not None
-        assert proj.name == "project"
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    # cwd is tmp_home/project (fixture chdir); the launch resolves the box.
+    proj = _resolve_existing_box(std, config, None)
+    assert proj is not None
+    assert proj.name == "project"
 
-    def test_existing_box_still_resolves_for_autostart(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """An EXISTING (stopped) box passes the gate — auto-START is unchanged.
+  def test_existing_box_still_resolves_for_autostart(self, config_file, tmp_home, credentials_dir):
+    """An EXISTING (stopped) box passes the gate — auto-START is unchanged.
 
-        (The full stopped→start launch flow is covered by the ``start_mocks``
-        suite; here we assert the gate itself does not block an existing box.)"""
-        from kanibako.settings.paths import resolve_box_target
+    (The full stopped→start launch flow is covered by the ``start_mocks``
+    suite; here we assert the gate itself does not block an existing box.)"""
+    from kanibako.settings.paths import resolve_box_target
 
-        config, std = _std(config_file)
-        # Materialize + register a bare box the way `create` would.
-        resolve_box_target(
-            std, config, None, initialize=True, register=True, warn=False,
-        )
-        proj = _resolve_existing_box(std, config, None)
-        assert proj is not None
-        assert proj.name == "project"
+    config, std = _std(config_file)
+    # Materialize + register a bare box the way `create` would.
+    resolve_box_target(
+      std,
+      config,
+      None,
+      initialize=True,
+      register=True,
+      warn=False,
+    )
+    proj = _resolve_existing_box(std, config, None)
+    assert proj is not None
+    assert proj.name == "project"
 
 
 # ---------------------------------------------------------------------------
 # Crash-recovery boundary: launch errors on a half-created box; create completes
 # ---------------------------------------------------------------------------
 
+
 class TestInterruptedCreateBoundary:
-    def test_launch_does_not_resurrect_half_created_box(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """An INTERRUPTED create (box dir + pending journal entry, but NOT yet
-        registered) reads as "no box" on a launch — the launch errors rather than
-        silently completing someone's half-finished create.  ``create --recover``
-        is what completes it (forward-recovery belongs to create)."""
-        from kanibako.commands.box._parser import run_create
-        from kanibako.commands.start import _pending_create_entry, _write_create_entry
-        from kanibako.settings.paths import resolve_project
+  def test_launch_does_not_resurrect_half_created_box(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """An INTERRUPTED create (box dir + pending journal entry, but NOT yet
+    registered) reads as "no box" on a launch — the launch errors rather than
+    silently completing someone's half-finished create.  ``create --recover``
+    is what completes it (forward-recovery belongs to create)."""
+    from kanibako.commands.box._parser import run_create
+    from kanibako.commands.start import _pending_create_entry, _write_create_entry
+    from kanibako.settings.paths import resolve_project
 
-        config, std = _std(config_file)
-        project_dir = str(tmp_home / "project")
+    config, std = _std(config_file)
+    project_dir = str(tmp_home / "project")
 
-        # Simulate a crash mid-create: the deferred resolve created boxes/project
-        # + meta (register=False → NOT registered) and the write-ahead journal
-        # entry was written, but the box was never registered / the entry cleared.
-        proj = resolve_project(
-            std, config, project_dir=project_dir, initialize=True, register=False,
+    # Simulate a crash mid-create: the deferred resolve created boxes/project
+    # + meta (register=False → NOT registered) and the write-ahead journal
+    # entry was written, but the box was never registered / the entry cleared.
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=project_dir,
+      initialize=True,
+      register=False,
+    )
+    _write_create_entry(std, proj)
+    assert (std.boxes / "project").is_dir()
+    assert _pending_create_entry(std, proj) is not None
+    assert _primary_boxes(std) == {}  # unregistered
+
+    # LAUNCH must treat the not-yet-registered box as "no box" → error, NOT
+    # resurrect/complete it.
+    assert _resolve_existing_box(std, config, None) is None
+    rc = _launch(None)
+    assert rc == 1
+    assert "no box at" in capsys.readouterr().err
+
+    # Re-running `create --recover` COMPLETES the interrupted create
+    # (forward-recovery), after which the box is registered and the launch
+    # gate resolves it.
+    rc_create = run_create(_create_args(tmp_home / "project", recover=True, no_vault=False))
+    assert rc_create == 0
+    assert _pending_create_entry(std, proj) is None
+    assert _primary_boxes(std).get("project") == project_dir
+    assert _resolve_existing_box(std, config, None) is not None
+
+  @staticmethod
+  def _half_created_standalone(std, config, root):
+    """A standalone create stopped after its resolve and journal entry."""
+    from kanibako.commands.start import _write_create_entry
+    from kanibako.settings.paths import resolve_standalone_project
+
+    root.mkdir()
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(root),
+      initialize=True,
+      register=False,
+    )
+    _write_create_entry(std, proj)
+    return proj
+
+  def test_launch_refuses_half_created_standalone_and_keeps_its_entry(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """The import pass must not adopt a standalone box whose create is pending:
+    the launch refuses naming ``create --recover``, the entry survives, and
+    ``create --recover`` then finishes the box."""
+    from kanibako.commands.box._parser import run_create
+    from kanibako.commands.start import _pending_create_entry
+    from kanibako.project import registry_store
+
+    config, std = _std(config_file)
+    root = tmp_home / "sa"
+    proj = self._half_created_standalone(std, config, root)
+
+    assert _launch(str(root)) == 1
+    err = capsys.readouterr().err
+    assert "Imported" not in err
+    assert f"Finish it:  kanibako create --standalone --recover {root}" in [
+      ln.strip() for ln in err.splitlines()
+    ]
+    assert _pending_create_entry(std, proj) is not None
+    assert registry_store.load_standalone(std.registry) == {}
+
+    assert run_create(_create_args(root, standalone=True, recover=True, no_vault=False)) == 0
+    assert _pending_create_entry(std, proj) is None
+    assert _resolve_existing_box(std, config, str(root)) is not None
+
+  def test_register_refuses_half_created_standalone_and_keeps_its_entry(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.commands.box._parser import run_register
+    from kanibako.commands.start import _pending_create_entry
+    from kanibako.project import registry_store
+
+    config, std = _std(config_file)
+    root = tmp_home / "sa"
+    proj = self._half_created_standalone(std, config, root)
+
+    assert run_register(argparse.Namespace(target=str(root), box=None)) == 1
+    err = capsys.readouterr().err
+    assert f"kanibako create --standalone --recover --register {root}" in [
+      ln.strip() for ln in err.splitlines()
+    ]
+    assert _pending_create_entry(std, proj) is not None
+    assert registry_store.load_standalone(std.registry) == {}
+
+  # -- the UNREGISTERED-but-pending arm: the launch names the cure that runs ----
+
+  @staticmethod
+  def _unregistered_pending_create(config_file, path):
+    """A PRIMARY create stopped BEFORE registration: entry written, unregistered."""
+    from tests.test_create_recovery import _simulate_interrupted_create
+
+    path.mkdir(parents=True, exist_ok=True)
+    config, std = _std(config_file)
+    return std, _simulate_interrupted_create(
+      std,
+      config,
+      standalone=False,
+      path=path,
+      register_box=False,
+    )
+
+  def test_launch_names_recover_when_create_is_pending_unregistered(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ):
+    """An UNREGISTERED box with a pending ``create`` entry refuses naming
+    ``create --recover``, which is what performs the replay — not ``create``,
+    which the same path refuses in turn.  Both the PATH and the CWD launch
+    routes print that one line, and neither adopts the half-built box."""
+    # ⚑ TWO WORKSPACES, NOT ONE REUSED: ``tmp_home`` chdirs into
+    # ``tmp_path/project``, so a box placed there would make the PATH route and
+    # the CWD route the same call and cover one of them twice.
+    by_path = tmp_home / "by-path"
+    by_cwd = tmp_home / "by-cwd"
+    std, _p1 = self._unregistered_pending_create(config_file, by_path)
+    std, _p2 = self._unregistered_pending_create(config_file, by_cwd)
+
+    assert _launch(str(by_path)) == 1
+    err = capsys.readouterr().err
+    # ⚑ THE LINE, NOT A SUBSTRING OF IT: the whole remedy is one command.
+    assert f"  Finish it:  kanibako create --recover {by_path}" in [
+      ln.rstrip() for ln in err.splitlines()
+    ]
+    assert "kanibako box diagnose" in err
+    # ``create`` alone is the refusal this arm replaces: it re-runs the create
+    # and is refused for the very entry named here.
+    assert f"run:  kanibako create {by_path}" not in err
+    # REGISTRATION IS STILL THE EXISTENCE SIGNAL — nothing was adopted.
+    assert _primary_boxes(std) == {}
+
+    # THE CWD ROUTE (``shell`` / bare ``kanibako`` from inside the workspace)
+    # names ITS OWN box's cure, from inside that box's directory.
+    monkeypatch.chdir(by_cwd)
+    assert _launch(None) == 1
+    err = capsys.readouterr().err
+    assert f"  Finish it:  kanibako create --recover {by_cwd}" in [
+      ln.rstrip() for ln in err.splitlines()
+    ]
+    assert f"kanibako create --recover {by_path}" not in err
+    assert _primary_boxes(std) == {}
+
+  def test_printed_recover_cure_registers_the_box(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """The printed ``--recover`` line RUNS: tokenized as printed it names a
+    real path with ``--recover``, and running it that way registers the box
+    and clears the entry — so the cure is the whole remedy."""
+    from pathlib import Path
+
+    from kanibako.commands.box._parser import run_create
+    from kanibako.commands.start import _pending_create_entry
+
+    path = tmp_home / "by-path"
+    std, proj = self._unregistered_pending_create(config_file, path)
+
+    assert _launch(str(path)) == 1
+    cure = (
+      next(
+        ln.strip()
+        for ln in capsys.readouterr().err.splitlines()
+        if ln.strip().startswith("Finish it:")
+      )
+      .removeprefix("Finish it:")
+      .strip()
+    )
+
+    # ⚑ READ THE CURE AS SHELL TOKENS, so a line that would not run as printed
+    # (unquoted path, a stray flag) fails here rather than at the user's shell.
+    argv = shlex.split(cure)
+    assert argv[:3] == ["kanibako", "create", "--recover"]
+    printed_path = argv[3]
+    assert Path(printed_path).resolve() == path.resolve()
+
+    assert (
+      run_create(
+        _create_args(
+          printed_path,
+          recover=True,
+          no_vault=False,
         )
-        _write_create_entry(std, proj)
-        assert (std.boxes / "project").is_dir()
-        assert _pending_create_entry(std, proj) is not None
-        assert _primary_boxes(std) == {}  # unregistered
+      )
+      == 0
+    )
+    assert _pending_create_entry(std, proj) is None
+    # The box is named for the directory, `_` for its `-` (spec §0).
+    assert _primary_boxes(std) == {"by_path": printed_path}
+    # THE GATE NOW PASSES — the box resolves for the next launch.
+    config, _ = _std(config_file)
+    assert _resolve_existing_box(std, config, str(path)) is not None
 
-        # LAUNCH must treat the not-yet-registered box as "no box" → error, NOT
-        # resurrect/complete it.
-        assert _resolve_existing_box(std, config, None) is None
-        rc = _launch(None)
-        assert rc == 1
-        assert "no box at" in capsys.readouterr().err
+  def test_launch_without_a_pending_entry_keeps_the_plain_create_cure(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """A workspace with NO journal entry is not an interrupted create: the
+    launch keeps naming plain ``create``, so the new arm does not answer a
+    box that was never half-built."""
+    from kanibako.commands.start import _pending_create_entry
+    from kanibako.settings.paths import resolve_project
 
-        # Re-running `create --recover` COMPLETES the interrupted create
-        # (forward-recovery), after which the box is registered and the launch
-        # gate resolves it.
-        rc_create = run_create(
-            _create_args(tmp_home / "project", recover=True, no_vault=False)
-        )
-        assert rc_create == 0
-        assert _pending_create_entry(std, proj) is None
-        assert _primary_boxes(std).get("project") == project_dir
-        assert _resolve_existing_box(std, config, None) is not None
+    path = tmp_home / "by-path"
+    path.mkdir()
+    config, std = _std(config_file)
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=str(path),
+      initialize=True,
+      register=False,
+    )
+    assert _pending_create_entry(std, proj) is None
 
-    @staticmethod
-    def _half_created_standalone(std, config, root):
-        """A standalone create stopped after its resolve and journal entry."""
-        from kanibako.commands.start import _write_create_entry
-        from kanibako.settings.paths import resolve_standalone_project
+    assert _launch(str(path)) == 1
+    err = capsys.readouterr().err
+    assert f"Error: no box at {path}. To create a new box, run:" in err
+    assert f"kanibako create {path}" in err
+    assert "--recover" not in err
 
-        root.mkdir()
-        proj = resolve_standalone_project(
-            std, config, str(root), initialize=True, register=False,
-        )
-        _write_create_entry(std, proj)
-        return proj
+  def test_unreadable_journal_keeps_the_plain_no_box_refusal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """A journal that will not parse leaves the plain refusal standing.  The
+    pending lookup only enriches that refusal, so it must not turn an
+    unparseable journal into the message — which would tell the user to
+    delete the very entry the lookup exists to report."""
+    from kanibako.settings.paths import resolve_project
 
-    def test_launch_refuses_half_created_standalone_and_keeps_its_entry(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The import pass must not adopt a standalone box whose create is pending:
-        the launch refuses naming ``create --recover``, the entry survives, and
-        ``create --recover`` then finishes the box."""
-        from kanibako.commands.box._parser import run_create
-        from kanibako.commands.start import _pending_create_entry
-        from kanibako.project import registry_store
+    path = tmp_home / "by-path"
+    path.mkdir()
+    config, std = _std(config_file)
+    resolve_project(std, config, project_dir=str(path), initialize=True, register=False)
+    std.journal.parent.mkdir(parents=True, exist_ok=True)
+    std.journal.write_text("- not\n- a mapping\n")
 
-        config, std = _std(config_file)
-        root = tmp_home / "sa"
-        proj = self._half_created_standalone(std, config, root)
-
-        assert _launch(str(root)) == 1
-        err = capsys.readouterr().err
-        assert "Imported" not in err
-        assert (f"Finish it:  kanibako create --standalone --recover {root}"
-                in [ln.strip() for ln in err.splitlines()])
-        assert _pending_create_entry(std, proj) is not None
-        assert registry_store.load_standalone(std.registry) == {}
-
-        assert run_create(
-            _create_args(root, standalone=True, recover=True, no_vault=False)
-        ) == 0
-        assert _pending_create_entry(std, proj) is None
-        assert _resolve_existing_box(std, config, str(root)) is not None
-
-    def test_register_refuses_half_created_standalone_and_keeps_its_entry(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        from kanibako.commands.box._parser import run_register
-        from kanibako.commands.start import _pending_create_entry
-        from kanibako.project import registry_store
-
-        config, std = _std(config_file)
-        root = tmp_home / "sa"
-        proj = self._half_created_standalone(std, config, root)
-
-        assert run_register(
-            argparse.Namespace(target=str(root), box=None)
-        ) == 1
-        err = capsys.readouterr().err
-        assert (f"kanibako create --standalone --recover --register {root}"
-                in [ln.strip() for ln in err.splitlines()])
-        assert _pending_create_entry(std, proj) is not None
-        assert registry_store.load_standalone(std.registry) == {}
-
-    # -- the UNREGISTERED-but-pending arm: the launch names the cure that runs ----
-
-    @staticmethod
-    def _unregistered_pending_create(config_file, path):
-        """A PRIMARY create stopped BEFORE registration: entry written, unregistered."""
-        from tests.test_create_recovery import _simulate_interrupted_create
-
-        path.mkdir(parents=True, exist_ok=True)
-        config, std = _std(config_file)
-        return std, _simulate_interrupted_create(
-            std, config, standalone=False, path=path, register_box=False,
-        )
-
-    def test_launch_names_recover_when_create_is_pending_unregistered(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ):
-        """An UNREGISTERED box with a pending ``create`` entry refuses naming
-        ``create --recover``, which is what performs the replay — not ``create``,
-        which the same path refuses in turn.  Both the PATH and the CWD launch
-        routes print that one line, and neither adopts the half-built box."""
-        # ⚑ TWO WORKSPACES, NOT ONE REUSED: ``tmp_home`` chdirs into
-        # ``tmp_path/project``, so a box placed there would make the PATH route and
-        # the CWD route the same call and cover one of them twice.
-        by_path = tmp_home / "by-path"
-        by_cwd = tmp_home / "by-cwd"
-        std, _p1 = self._unregistered_pending_create(config_file, by_path)
-        std, _p2 = self._unregistered_pending_create(config_file, by_cwd)
-
-        assert _launch(str(by_path)) == 1
-        err = capsys.readouterr().err
-        # ⚑ THE LINE, NOT A SUBSTRING OF IT: the whole remedy is one command.
-        assert (f"  Finish it:  kanibako create --recover {by_path}"
-                in [ln.rstrip() for ln in err.splitlines()])
-        assert "kanibako box diagnose" in err
-        # ``create`` alone is the refusal this arm replaces: it re-runs the create
-        # and is refused for the very entry named here.
-        assert f"run:  kanibako create {by_path}" not in err
-        # REGISTRATION IS STILL THE EXISTENCE SIGNAL — nothing was adopted.
-        assert _primary_boxes(std) == {}
-
-        # THE CWD ROUTE (``shell`` / bare ``kanibako`` from inside the workspace)
-        # names ITS OWN box's cure, from inside that box's directory.
-        monkeypatch.chdir(by_cwd)
-        assert _launch(None) == 1
-        err = capsys.readouterr().err
-        assert (f"  Finish it:  kanibako create --recover {by_cwd}"
-                in [ln.rstrip() for ln in err.splitlines()])
-        assert f"kanibako create --recover {by_path}" not in err
-        assert _primary_boxes(std) == {}
-
-    def test_printed_recover_cure_registers_the_box(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """The printed ``--recover`` line RUNS: tokenized as printed it names a
-        real path with ``--recover``, and running it that way registers the box
-        and clears the entry — so the cure is the whole remedy."""
-        from pathlib import Path
-
-        from kanibako.commands.box._parser import run_create
-        from kanibako.commands.start import _pending_create_entry
-
-        path = tmp_home / "by-path"
-        std, proj = self._unregistered_pending_create(config_file, path)
-
-        assert _launch(str(path)) == 1
-        cure = next(
-            ln.strip() for ln in capsys.readouterr().err.splitlines()
-            if ln.strip().startswith("Finish it:")
-        ).removeprefix("Finish it:").strip()
-
-        # ⚑ READ THE CURE AS SHELL TOKENS, so a line that would not run as printed
-        # (unquoted path, a stray flag) fails here rather than at the user's shell.
-        argv = shlex.split(cure)
-        assert argv[:3] == ["kanibako", "create", "--recover"]
-        printed_path = argv[3]
-        assert Path(printed_path).resolve() == path.resolve()
-
-        assert run_create(_create_args(
-            printed_path, recover=True, no_vault=False,
-        )) == 0
-        assert _pending_create_entry(std, proj) is None
-        # The box is named for the directory, `_` for its `-` (spec §0).
-        assert _primary_boxes(std) == {"by_path": printed_path}
-        # THE GATE NOW PASSES — the box resolves for the next launch.
-        config, _ = _std(config_file)
-        assert _resolve_existing_box(std, config, str(path)) is not None
-
-    def test_launch_without_a_pending_entry_keeps_the_plain_create_cure(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """A workspace with NO journal entry is not an interrupted create: the
-        launch keeps naming plain ``create``, so the new arm does not answer a
-        box that was never half-built."""
-        from kanibako.commands.start import _pending_create_entry
-        from kanibako.settings.paths import resolve_project
-
-        path = tmp_home / "by-path"
-        path.mkdir()
-        config, std = _std(config_file)
-        proj = resolve_project(
-            std, config, project_dir=str(path), initialize=True, register=False,
-        )
-        assert _pending_create_entry(std, proj) is None
-
-        assert _launch(str(path)) == 1
-        err = capsys.readouterr().err
-        assert f"Error: no box at {path}. To create a new box, run:" in err
-        assert f"kanibako create {path}" in err
-        assert "--recover" not in err
-
-    def test_unreadable_journal_keeps_the_plain_no_box_refusal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """A journal that will not parse leaves the plain refusal standing.  The
-        pending lookup only enriches that refusal, so it must not turn an
-        unparseable journal into the message — which would tell the user to
-        delete the very entry the lookup exists to report."""
-        from kanibako.settings.paths import resolve_project
-
-        path = tmp_home / "by-path"
-        path.mkdir()
-        config, std = _std(config_file)
-        resolve_project(std, config, project_dir=str(path), initialize=True,
-                        register=False)
-        std.journal.parent.mkdir(parents=True, exist_ok=True)
-        std.journal.write_text("- not\n- a mapping\n")
-
-        assert _launch(str(path)) == 1
-        err = capsys.readouterr().err
-        assert f"Error: no box at {path}. To create a new box, run:" in err
-        assert "--recover" not in err
+    assert _launch(str(path)) == 1
+    err = capsys.readouterr().err
+    assert f"Error: no box at {path}. To create a new box, run:" in err
+    assert "--recover" not in err
 
 
 # ---------------------------------------------------------------------------
 # MBR-6: a launch REFUSES a registered box whose directory is gone
 # ---------------------------------------------------------------------------
 
+
 class TestLaunchRefusesUnbuiltBox:
-    """[Jei:2026-08-02f]: *"no, a launch should not silently rebuild anything."*
+  """[Jei:2026-08-02f]: *"no, a launch should not silently rebuild anything."*
 
-    A registered box whose directory has been deleted used to be re-materialized
-    by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
-    box, and leaves the filesystem untouched.
+  A registered box whose directory has been deleted used to be re-materialized
+  by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
+  box, and leaves the filesystem untouched.
 
-    ⚑ EVERY test in this class takes ``protected_canon``.  Removing the box dir is
-    the SETUP for all three, and on an unprotected host that removal is trivial —
-    so without the fixture the local run cannot see the failure CI sees.  The
-    fixture reproduces the MODE half (555/444) deterministically; ownership still
-    only exists on CI/bifrost, so this makes the local run meaningful, not an
-    oracle.
+  ⚑ EVERY test in this class takes ``protected_canon``.  Removing the box dir is
+  the SETUP for all three, and on an unprotected host that removal is trivial —
+  so without the fixture the local run cannot see the failure CI sees.  The
+  fixture reproduces the MODE half (555/444) deterministically; ownership still
+  only exists on CI/bifrost, so this makes the local run meaningful, not an
+  oracle.
+  """
+
+  def test_registered_box_with_missing_dir_refuses_and_builds_nothing(
+    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+  ):
+    from kanibako.commands.box._parser import run_create
+
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    box_dir = std.boxes / "project"
+    assert box_dir.is_dir()
+    capsys.readouterr()
+
+    # The box dir goes; the registration survives.  That IS the case.
+    assert remove_box_tree(box_dir), "the box tree must actually be gone"
+    assert _primary_boxes(std).get("project") == str(tmp_home / "project")
+
+    rc = _launch(None)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "is registered, but its box directory is gone" in err
+    assert "box 'project'" in err
+    assert "will not rebuild it" in err
+    # NOTHING was materialized — not the box dir, not a home tree.
+    assert not box_dir.exists()
+    # ...and the registration is left exactly as it was, so the cure below
+    # has something to work with.
+    assert _primary_boxes(std).get("project") == str(tmp_home / "project")
+
+  def test_the_cure_the_refusal_names_actually_works(
+    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+  ):
+    """The B9 standard: a cure that does not work is worse than no cure.
+
+    The message names ``kanibako create <workspace>``; run exactly that and
+    the box must come back and pass the launch gate.
     """
+    from kanibako.commands.box._parser import run_create
 
-    def test_registered_box_with_missing_dir_refuses_and_builds_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
-    ):
-        from kanibako.commands.box._parser import run_create
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    assert remove_box_tree(std.boxes / "project")
+    capsys.readouterr()
 
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        box_dir = std.boxes / "project"
-        assert box_dir.is_dir()
-        capsys.readouterr()
+    assert _launch(None) == 1
+    err = capsys.readouterr().err
+    assert f"Rebuild it:  kanibako create {tmp_home / 'project'}" in err
 
-        # The box dir goes; the registration survives.  That IS the case.
-        assert remove_box_tree(box_dir), "the box tree must actually be gone"
-        assert _primary_boxes(std).get("project") == str(
-            tmp_home / "project"
-        )
+    # The cure, run as printed.
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    assert (std.boxes / "project" / "home").is_dir()
+    assert _resolve_existing_box(std, config, None) is not None
 
-        rc = _launch(None)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "is registered, but its box directory is gone" in err
-        assert "box 'project'" in err
-        assert "will not rebuild it" in err
-        # NOTHING was materialized — not the box dir, not a home tree.
-        assert not box_dir.exists()
-        # ...and the registration is left exactly as it was, so the cure below
-        # has something to work with.
-        assert _primary_boxes(std).get("project") == str(
-            tmp_home / "project"
-        )
+  def test_shell_and_named_target_route_through_the_same_gate(
+    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+  ):
+    """``kanibako shell`` and a bare-NAME target hit the one chokepoint too."""
+    from kanibako.commands.box._parser import run_create
 
-    def test_the_cure_the_refusal_names_actually_works(
-        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
-    ):
-        """The B9 standard: a cure that does not work is worse than no cure.
+    _config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    assert remove_box_tree(std.boxes / "project")
+    capsys.readouterr()
 
-        The message names ``kanibako create <workspace>``; run exactly that and
-        the box must come back and pass the launch gate.
-        """
-        from kanibako.commands.box._parser import run_create
-
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        assert remove_box_tree(std.boxes / "project")
-        capsys.readouterr()
-
-        assert _launch(None) == 1
-        err = capsys.readouterr().err
-        assert f"Rebuild it:  kanibako create {tmp_home / 'project'}" in err
-
-        # The cure, run as printed.
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        assert (std.boxes / "project" / "home").is_dir()
-        assert _resolve_existing_box(std, config, None) is not None
-
-    def test_shell_and_named_target_route_through_the_same_gate(
-        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
-    ):
-        """``kanibako shell`` and a bare-NAME target hit the one chokepoint too."""
-        from kanibako.commands.box._parser import run_create
-
-        _config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        assert remove_box_tree(std.boxes / "project")
-        capsys.readouterr()
-
-        assert _launch(None, box_shell_mode=True) == 1
-        assert "its box directory is gone" in capsys.readouterr().err
-        assert _launch("project") == 1
-        assert "its box directory is gone" in capsys.readouterr().err
-        assert not (std.boxes / "project").exists()
+    assert _launch(None, box_shell_mode=True) == 1
+    assert "its box directory is gone" in capsys.readouterr().err
+    assert _launch("project") == 1
+    assert "its box directory is gone" in capsys.readouterr().err
+    assert not (std.boxes / "project").exists()
 
 
 class TestUnbuiltBoxErrorMessage:
-    """``_unbuilt_box_error`` unit: which boxes it refuses, and the cure it names."""
+  """``_unbuilt_box_error`` unit: which boxes it refuses, and the cure it names."""
 
-    def test_intact_box_is_not_refused(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        from kanibako.commands.box._parser import run_create
+  def test_intact_box_is_not_refused(self, config_file, tmp_home, credentials_dir):
+    from kanibako.commands.box._parser import run_create
 
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        proj = _resolve_existing_box(std, config, None)
-        assert proj is not None
-        assert _unbuilt_box_error(proj, std) is None
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    proj = _resolve_existing_box(std, config, None)
+    assert proj is not None
+    assert _unbuilt_box_error(proj, std) is None
 
-    def test_connected_workset_box_is_not_refused_before_its_first_launch(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """⚑ The reason the test is the BOX DIR and not the home tree.
+  def test_connected_workset_box_is_not_refused_before_its_first_launch(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    """⚑ The reason the test is the BOX DIR and not the home tree.
 
-        ``workset connect`` registers the box and creates its dir but NEVER
-        seeds — the home is materialized by the FIRST launch.  Gating on
-        ``shell_path`` would refuse that sanctioned flow.
-        """
-        from kanibako.project.workset import add_project, create_workset
-        from kanibako.settings.paths import resolve_box_target
+    ``workset connect`` registers the box and creates its dir but NEVER
+    seeds — the home is materialized by the FIRST launch.  Gating on
+    ``shell_path`` would refuse that sanctioned flow.
+    """
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import resolve_box_target
 
-        config, std = _std(config_file)
-        ws = create_workset("wsa", tmp_home / "wsa", std)
-        src = tmp_home / "member"
-        src.mkdir()
-        add_project(ws, "member", src, std)
+    config, std = _std(config_file)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    src = tmp_home / "member"
+    src.mkdir()
+    add_project(ws, "member", src, std)
 
-        proj = resolve_box_target(
-            std, config, str(src), initialize=False, register=True, warn=False,
-        )
-        assert proj.name == "member"
-        assert not proj.shell_path.exists()  # never seeded by connect
-        assert _unbuilt_box_error(proj, std) is None
+    proj = resolve_box_target(
+      std,
+      config,
+      str(src),
+      initialize=False,
+      register=True,
+      warn=False,
+    )
+    assert proj.name == "member"
+    assert not proj.shell_path.exists()  # never seeded by connect
+    assert _unbuilt_box_error(proj, std) is None
 
-    def test_named_box_with_missing_dir_names_the_workset_cure(
-        self, config_file, tmp_home, credentials_dir
-    ):
-        """``create`` refuses inside a workset member ("already initialized"), so
-        the named-box cure is ``workset disconnect`` + ``workset connect``."""
-        from kanibako.project.workset import add_project, create_workset
-        from kanibako.settings.paths import resolve_box_target
+  def test_named_box_with_missing_dir_names_the_workset_cure(
+    self, config_file, tmp_home, credentials_dir
+  ):
+    """``create`` refuses inside a workset member ("already initialized"), so
+    the named-box cure is ``workset disconnect`` + ``workset connect``."""
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import resolve_box_target
 
-        config, std = _std(config_file)
-        ws = create_workset("wsa", tmp_home / "wsa", std)
-        src = tmp_home / "member"
-        src.mkdir()
-        add_project(ws, "member", src, std)
+    config, std = _std(config_file)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    src = tmp_home / "member"
+    src.mkdir()
+    add_project(ws, "member", src, std)
 
-        proj = resolve_box_target(
-            std, config, str(src), initialize=False, register=True, warn=False,
-        )
-        # A box METADATA tree: ``connect`` never seeds, so there is no skeleton here
-        # today — but it is still a box tree, and the same rule applies to all of them.
-        assert remove_box_tree(proj.metadata_path)
+    proj = resolve_box_target(
+      std,
+      config,
+      str(src),
+      initialize=False,
+      register=True,
+      warn=False,
+    )
+    # A box METADATA tree: ``connect`` never seeds, so there is no skeleton here
+    # today — but it is still a box tree, and the same rule applies to all of them.
+    assert remove_box_tree(proj.metadata_path)
 
-        msg = _unbuilt_box_error(proj, std)
-        assert msg is not None
-        assert "box 'member' is registered" in msg
-        assert (
-            f"Rebuild it:  kanibako workset disconnect wsa member "
-            f"&& kanibako workset connect wsa {src}"
-        ) in msg
+    msg = _unbuilt_box_error(proj, std)
+    assert msg is not None
+    assert "box 'member' is registered" in msg
+    assert (
+      f"Rebuild it:  kanibako workset disconnect wsa member && kanibako workset connect wsa {src}"
+    ) in msg
 
 
 class _ResolveStop(Exception):
-    """Raised by the stubbed materializing resolve: the launch got PAST the gate."""
+  """Raised by the stubbed materializing resolve: the launch got PAST the gate."""
 
 
 def _stop_at_materialize(monkeypatch, seen):
-    """Stub ``start.resolve_box_target`` so a launch stops at its MATERIALIZING resolve.
+  """Stub ``start.resolve_box_target`` so a launch stops at its MATERIALIZING resolve.
 
-    The non-materializing probe runs for real.  *seen* records whether the home
-    existed when the materializing call came, so a test can show the notice was
-    printed BEFORE anything was rebuilt.
-    """
-    import kanibako.commands.start as start_mod
+  The non-materializing probe runs for real.  *seen* records whether the home
+  existed when the materializing call came, so a test can show the notice was
+  printed BEFORE anything was rebuilt.
+  """
+  import kanibako.commands.start as start_mod
 
-    real = start_mod.resolve_box_target
+  real = start_mod.resolve_box_target
 
-    def fake(std, config, project_dir, *, initialize=False, **kw):
-        proj = real(std, config, project_dir, initialize=False, **kw)
-        if initialize:
-            seen.append(proj.shell_path.is_dir())
-            raise _ResolveStop
-        return proj
+  def fake(std, config, project_dir, *, initialize=False, **kw):
+    proj = real(std, config, project_dir, initialize=False, **kw)
+    if initialize:
+      seen.append(proj.shell_path.is_dir())
+      raise _ResolveStop
+    return proj
 
-    monkeypatch.setattr(start_mod, "resolve_box_target", fake)
+  monkeypatch.setattr(start_mod, "resolve_box_target", fake)
 
 
 class TestLaunchAnnouncesRebuilds:
-    """MBR-6 residual 1: a missing home (any mode) or STANDALONE workspace is
-    re-created by the launch, so the launch SAYS so — a notice, never a refusal
-    (the launch works today).  Printed on the probe, before anything is created.
-    """
+  """MBR-6 residual 1: a missing home (any mode) or STANDALONE workspace is
+  re-created by the launch, so the launch SAYS so — a notice, never a refusal
+  (the launch works today).  Printed on the probe, before anything is created.
+  """
 
-    def _notices(self, caplog):
-        return [r.getMessage() for r in caplog.records
-                if "home directory" in r.getMessage() or "workspace for box" in r.getMessage()]
+  def _notices(self, caplog):
+    return [
+      r.getMessage()
+      for r in caplog.records
+      if "home directory" in r.getMessage() or "workspace for box" in r.getMessage()
+    ]
 
-    def test_primary_missing_home_warns_it_comes_back_unseeded(
-        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
-    ):
-        from kanibako.commands.box._parser import run_create
+  def test_primary_missing_home_warns_it_comes_back_unseeded(
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+  ):
+    from kanibako.commands.box._parser import run_create
 
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        home = _resolve_existing_box(std, config, None).shell_path
-        assert remove_box_tree(home)
-        seen: list[bool] = []
-        _stop_at_materialize(monkeypatch, seen)
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    home = _resolve_existing_box(std, config, None).shell_path
+    assert remove_box_tree(home)
+    seen: list[bool] = []
+    _stop_at_materialize(monkeypatch, seen)
 
-        with pytest.raises(_ResolveStop):
-            _launch(None)
-        assert seen == [False]  # announced before anything was rebuilt
-        assert self._notices(caplog) == [
-            f"Warning: the home directory for box 'project' is missing ({home}); this "
-            "launch re-creates it with only a minimal shell profile; the seed and "
-            "templates are not re-applied."
-        ]
+    with pytest.raises(_ResolveStop):
+      _launch(None)
+    assert seen == [False]  # announced before anything was rebuilt
+    assert self._notices(caplog) == [
+      f"Warning: the home directory for box 'project' is missing ({home}); this "
+      "launch re-creates it with only a minimal shell profile; the seed and "
+      "templates are not re-applied."
+    ]
 
-    def test_named_missing_home_says_it_is_created_and_seeded(
-        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
-    ):
-        from kanibako.project.workset import add_project, create_workset
+  def test_named_missing_home_says_it_is_created_and_seeded(
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
+  ):
+    from kanibako.project.workset import add_project, create_workset
 
-        config, std = _std(config_file)
-        ws = create_workset("wsa", tmp_home / "wsa", std)
-        src = tmp_home / "member"
-        src.mkdir()
-        add_project(ws, "member", src, std)
-        home = _resolve_existing_box(std, config, str(src)).shell_path
-        assert not home.exists()
-        seen: list[bool] = []
-        _stop_at_materialize(monkeypatch, seen)
+    config, std = _std(config_file)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    src = tmp_home / "member"
+    src.mkdir()
+    add_project(ws, "member", src, std)
+    home = _resolve_existing_box(std, config, str(src)).shell_path
+    assert not home.exists()
+    seen: list[bool] = []
+    _stop_at_materialize(monkeypatch, seen)
 
-        with pytest.raises(_ResolveStop):
-            _launch(str(src))
-        assert seen == [False]
-        assert self._notices(caplog) == [
-            f"Note: box 'member' has no home directory ({home}); this launch creates it "
-            "and seeds it."
-        ]
+    with pytest.raises(_ResolveStop):
+      _launch(str(src))
+    assert seen == [False]
+    assert self._notices(caplog) == [
+      f"Note: box 'member' has no home directory ({home}); this launch creates it and seeds it."
+    ]
 
-    def test_standalone_missing_home_and_workspace_both_warn(
-        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
-    ):
-        from kanibako.commands.box._parser import run_create
+  def test_standalone_missing_home_and_workspace_both_warn(
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+  ):
+    from kanibako.commands.box._parser import run_create
 
-        config, std = _std(config_file)
-        root = tmp_home / "solo"
-        root.mkdir()
-        assert run_create(_create_args(root, standalone=True)) == 0
-        proj = _resolve_existing_box(std, config, str(root))
-        assert proj is not None and proj.project_path is not None
-        assert remove_box_tree(proj.shell_path)
-        assert remove_box_tree(proj.project_path)
-        seen: list[bool] = []
-        _stop_at_materialize(monkeypatch, seen)
+    config, std = _std(config_file)
+    root = tmp_home / "solo"
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True)) == 0
+    proj = _resolve_existing_box(std, config, str(root))
+    assert proj is not None and proj.project_path is not None
+    assert remove_box_tree(proj.shell_path)
+    assert remove_box_tree(proj.project_path)
+    seen: list[bool] = []
+    _stop_at_materialize(monkeypatch, seen)
 
-        with pytest.raises(_ResolveStop):
-            _launch(str(root))
-        assert seen == [False]
-        assert self._notices(caplog) == [
-            f"Warning: the home directory for box '{proj.name}' is missing "
-            f"({proj.shell_path}); this launch re-creates it with only a minimal shell "
-            "profile; the seed and templates are not re-applied.",
-            f"Warning: the workspace for box '{proj.name}' is missing "
-            f"({proj.project_path}); this launch creates a new, empty folder there, and "
-            "work done in the box lands in it.",
-        ]
+    with pytest.raises(_ResolveStop):
+      _launch(str(root))
+    assert seen == [False]
+    assert self._notices(caplog) == [
+      f"Warning: the home directory for box '{proj.name}' is missing "
+      f"({proj.shell_path}); this launch re-creates it with only a minimal shell "
+      "profile; the seed and templates are not re-applied.",
+      f"Warning: the workspace for box '{proj.name}' is missing "
+      f"({proj.project_path}); this launch creates a new, empty folder there, and "
+      "work done in the box lands in it.",
+    ]
 
-    def test_named_missing_home_and_workspace_refuses_and_creates_nothing(
-        self, config_file, tmp_home, credentials_dir, caplog, capsys, monkeypatch
-    ):
-        """The workspace refusal runs on the probe, so the home is not created bare;
-        with the workspace back, the next launch still creates the home as NEW (seeded)."""
-        import kanibako.commands.start as start_mod
-        from kanibako.project.workset import add_project, create_workset
+  def test_named_missing_home_and_workspace_refuses_and_creates_nothing(
+    self, config_file, tmp_home, credentials_dir, caplog, capsys, monkeypatch
+  ):
+    """The workspace refusal runs on the probe, so the home is not created bare;
+    with the workspace back, the next launch still creates the home as NEW (seeded)."""
+    import kanibako.commands.start as start_mod
+    from kanibako.project.workset import add_project, create_workset
 
-        config, std = _std(config_file)
-        ws = create_workset("wsa", tmp_home / "wsa", std)
-        src = tmp_home / "member"
-        src.mkdir()
-        add_project(ws, "member", src, std)
-        home = _resolve_existing_box(std, config, str(src)).shell_path
-        assert not home.exists()
-        src.rmdir()
-        real = start_mod.resolve_box_target
-        _stop_at_materialize(monkeypatch, [])
+    config, std = _std(config_file)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    src = tmp_home / "member"
+    src.mkdir()
+    add_project(ws, "member", src, std)
+    home = _resolve_existing_box(std, config, str(src)).shell_path
+    assert not home.exists()
+    src.rmdir()
+    real = start_mod.resolve_box_target
+    _stop_at_materialize(monkeypatch, [])
 
-        assert _launch(str(src)) == 1
-        assert capsys.readouterr().err == (
-            f"Error: the workspace for box 'member' is missing ({src}).\n"
-            "  Kanibako will not launch a box with no workspace.\n"
-            "  If you moved it, re-create or remap the box.\n"
-        )
-        assert not home.exists()
-        assert self._notices(caplog) == []
+    assert _launch(str(src)) == 1
+    assert capsys.readouterr().err == (
+      f"Error: the workspace for box 'member' is missing ({src}).\n"
+      "  Kanibako will not launch a box with no workspace.\n"
+      "  If you moved it, re-create or remap the box.\n"
+    )
+    assert not home.exists()
+    assert self._notices(caplog) == []
 
-        src.mkdir()
-        is_new: list[bool] = []
+    src.mkdir()
+    is_new: list[bool] = []
 
-        def fake(std, config, project_dir, *, initialize=False, **kw):
-            proj = real(std, config, project_dir, initialize=initialize, **kw)
-            if initialize:
-                is_new.append(proj.is_new)  # the gate on ``_seed_box_home``
-                raise _ResolveStop
-            return proj
+    def fake(std, config, project_dir, *, initialize=False, **kw):
+      proj = real(std, config, project_dir, initialize=initialize, **kw)
+      if initialize:
+        is_new.append(proj.is_new)  # the gate on ``_seed_box_home``
+        raise _ResolveStop
+      return proj
 
-        monkeypatch.setattr(start_mod, "resolve_box_target", fake)
-        with pytest.raises(_ResolveStop):
-            _launch(str(src))
-        assert is_new == [True]
+    monkeypatch.setattr(start_mod, "resolve_box_target", fake)
+    with pytest.raises(_ResolveStop):
+      _launch(str(src))
+    assert is_new == [True]
 
-    def test_intact_box_announces_nothing(
-        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
-    ):
-        from kanibako.commands.box._parser import run_create
+  def test_intact_box_announces_nothing(
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
+  ):
+    from kanibako.commands.box._parser import run_create
 
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        _stop_at_materialize(monkeypatch, [])
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    _stop_at_materialize(monkeypatch, [])
 
-        with pytest.raises(_ResolveStop):
-            _launch(None)
-        assert self._notices(caplog) == []
+    with pytest.raises(_ResolveStop):
+      _launch(None)
+    assert self._notices(caplog) == []
 
 
 # ---------------------------------------------------------------------------
 # `_no_box_error` message shape (unit)
 # ---------------------------------------------------------------------------
 
+
 class TestNoBoxErrorMessage:
-    def test_named_spec_is_copy_pasteable(self):
-        """A NAME-shaped miss offers BOTH branches, register first (I3/§D4a)."""
-        msg = _no_box_error("myproj")
-        assert msg == (
-            "Error: no box at myproj.\n"
-            "  A bare name is resolved through the registry, and nothing "
-            "is registered under it.\n"
-            "  If this is an unregistered standalone box, register it "
-            "first:  kanibako box register <path-to-its-box-root>\n"
-            "  Otherwise create a new box:  kanibako create myproj"
-        )
+  def test_named_spec_is_copy_pasteable(self):
+    """A NAME-shaped miss offers BOTH branches, register first (I3/§D4a)."""
+    msg = _no_box_error("myproj")
+    assert msg == (
+      "Error: no box at myproj.\n"
+      "  A bare name is resolved through the registry, and nothing "
+      "is registered under it.\n"
+      "  If this is an unregistered standalone box, register it "
+      "first:  kanibako box register <path-to-its-box-root>\n"
+      "  Otherwise create a new box:  kanibako create myproj"
+    )
 
-    def test_name_shaped_miss_leads_with_the_register_cure(self):
-        """⚑ ``create <name>`` must never be the ONLY path offered for a name.
+  def test_name_shaped_miss_leads_with_the_register_cure(self):
+    """⚑ ``create <name>`` must never be the ONLY path offered for a name.
 
-        Since I3/§D4a an unregistered standalone box is real, on disk and
-        launchable from its own directory, yet invisible to a bare name — and
-        following ``create <name>`` from anywhere else mkdirs ``./<name>`` and
-        puts a PRIMARY box in it, which is the harm this function's own contract
-        names.  Both cures present, register FIRST.
-        """
-        msg = _no_box_error("ghostbox")
-        assert "kanibako box register <path-to-its-box-root>" in msg
-        assert "kanibako create ghostbox" in msg
-        assert msg.index("box register") < msg.index("kanibako create ghostbox")
+    Since I3/§D4a an unregistered standalone box is real, on disk and
+    launchable from its own directory, yet invisible to a bare name — and
+    following ``create <name>`` from anywhere else mkdirs ``./<name>`` and
+    puts a PRIMARY box in it, which is the harm this function's own contract
+    names.  Both cures present, register FIRST.
+    """
+    msg = _no_box_error("ghostbox")
+    assert "kanibako box register <path-to-its-box-root>" in msg
+    assert "kanibako create ghostbox" in msg
+    assert msg.index("box register") < msg.index("kanibako create ghostbox")
 
-    def test_path_shaped_miss_keeps_the_one_liner(self, tmp_path, monkeypatch):
-        """⚑ Only the NAME shape changed.  A spec that IS a path on disk has no
-        registry story — ``create <path>`` is the right and only cure there.
+  def test_path_shaped_miss_keeps_the_one_liner(self, tmp_path, monkeypatch):
+    """⚑ Only the NAME shape changed.  A spec that IS a path on disk has no
+    registry story — ``create <path>`` is the right and only cure there.
 
-        ⚑ The cure is now ``shlex.quote``d and the line carries no wrapping
-        quotes.  This pin exists because BOTH halves are load-bearing: without
-        the quoting a spec with a space pastes as two arguments, and with the
-        wrapping quotes the tail a reader copies is not a command at all.  A
-        plain path needs neither, so the text here is unchanged apart from the
-        ``run:  `` separator.
-        """
-        monkeypatch.chdir(tmp_path)
-        real = tmp_path / "realdir"
-        real.mkdir()
-        msg = _no_box_error(str(real))
-        assert msg == (
-            f"Error: no box at {real.resolve()}. To create a new box, "
-            f"run:  kanibako create {shlex.quote(str(real))}"
-        )
-        assert "box register" not in msg
+    ⚑ The cure is now ``shlex.quote``d and the line carries no wrapping
+    quotes.  This pin exists because BOTH halves are load-bearing: without
+    the quoting a spec with a space pastes as two arguments, and with the
+    wrapping quotes the tail a reader copies is not a command at all.  A
+    plain path needs neither, so the text here is unchanged apart from the
+    ``run:  `` separator.
+    """
+    monkeypatch.chdir(tmp_path)
+    real = tmp_path / "realdir"
+    real.mkdir()
+    msg = _no_box_error(str(real))
+    assert msg == (
+      f"Error: no box at {real.resolve()}. To create a new box, "
+      f"run:  kanibako create {shlex.quote(str(real))}"
+    )
+    assert "box register" not in msg
 
-    @pytest.mark.parametrize("spec", ["./gone", "a/b/c"])
-    def test_missing_path_designation_gets_the_path_message(
-        self, tmp_path, monkeypatch, spec,
-    ):
-        """A designation that cannot be a box name is a PATH, so a miss has no
-        registry story, whether or not it exists on disk.
+  @pytest.mark.parametrize("spec", ["./gone", "a/b/c"])
+  def test_missing_path_designation_gets_the_path_message(
+    self,
+    tmp_path,
+    monkeypatch,
+    spec,
+  ):
+    """A designation that cannot be a box name is a PATH, so a miss has no
+    registry story, whether or not it exists on disk.
 
-        ⚑ The spec is ``shlex.quote``d and unquoted around, so the expectation
-        goes through ``shlex.quote`` too — the ``a b`` case is the one that
-        distinguishes the quoting from a pass-through, and it is asserted as
-        text here and as a real command paste in the pasteability tests below.
-        """
-        monkeypatch.chdir(tmp_path)
-        msg = _no_box_error(spec)
-        assert msg == (
-            f"Error: no box at {(tmp_path / spec).resolve()}. To create a new box, "
-            f"run:  kanibako create {shlex.quote(spec)}"
-        )
+    ⚑ The spec is ``shlex.quote``d and unquoted around, so the expectation
+    goes through ``shlex.quote`` too — the ``a b`` case is the one that
+    distinguishes the quoting from a pass-through, and it is asserted as
+    text here and as a real command paste in the pasteability tests below.
+    """
+    monkeypatch.chdir(tmp_path)
+    msg = _no_box_error(spec)
+    assert msg == (
+      f"Error: no box at {(tmp_path / spec).resolve()}. To create a new box, "
+      f"run:  kanibako create {shlex.quote(spec)}"
+    )
 
-    @pytest.mark.parametrize("spec, spelled", [
-        ("a b", "a_b"), ("o'brien", "o_brien"), ("2gone", "_2gone")])
-    def test_a_leaf_create_would_refuse_gets_the_name_cure(
-            self, tmp_path, monkeypatch, spec, spelled):
-        """``create <spec>`` names the box after the leaf, and refuses this one."""
-        monkeypatch.chdir(tmp_path)
-        msg = _no_box_error(spec)
-        assert msg.startswith(f"Error: no box at {(tmp_path / spec).resolve()}. "
-                              f"The directory name '{spec}' is not a valid box name: ")
-        cure = msg.rsplit("\n  ", 1)[1]
-        assert shlex.split(cure) == ["kanibako", "create", spec, "--name", spelled]
+  @pytest.mark.parametrize(
+    "spec, spelled", [("a b", "a_b"), ("o'brien", "o_brien"), ("2gone", "_2gone")]
+  )
+  def test_a_leaf_create_would_refuse_gets_the_name_cure(
+    self, tmp_path, monkeypatch, spec, spelled
+  ):
+    """``create <spec>`` names the box after the leaf, and refuses this one."""
+    monkeypatch.chdir(tmp_path)
+    msg = _no_box_error(spec)
+    assert msg.startswith(
+      f"Error: no box at {(tmp_path / spec).resolve()}. "
+      f"The directory name '{spec}' is not a valid box name: "
+    )
+    cure = msg.rsplit("\n  ", 1)[1]
+    assert shlex.split(cure) == ["kanibako", "create", spec, "--name", spelled]
 
-    @pytest.mark.parametrize("spec", [".gone", "gone.", "my-dir"])
-    def test_a_leaf_create_derives_gets_the_plain_cure(self, tmp_path, monkeypatch, spec):
-        """A ``-`` or ``.`` in the leaf is written ``_`` (spec §0), so create would not refuse."""
-        monkeypatch.chdir(tmp_path)
-        assert _no_box_error(spec).endswith(f"run:  kanibako create {shlex.quote(spec)}")
+  @pytest.mark.parametrize("spec", [".gone", "gone.", "my-dir"])
+  def test_a_leaf_create_derives_gets_the_plain_cure(self, tmp_path, monkeypatch, spec):
+    """A ``-`` or ``.`` in the leaf is written ``_`` (spec §0), so create would not refuse."""
+    monkeypatch.chdir(tmp_path)
+    assert _no_box_error(spec).endswith(f"run:  kanibako create {shlex.quote(spec)}")
 
-    def test_a_leaf_with_an_ascii_spelling_gets_that_spelling(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        assert _no_box_error("Café").endswith(
-            "Its ASCII spelling works:\n  kanibako create 'Café' --name Cafe")
+  def test_a_leaf_with_an_ascii_spelling_gets_that_spelling(self, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert _no_box_error("Café").endswith(
+      "Its ASCII spelling works:\n  kanibako create 'Café' --name Cafe"
+    )
 
-    def test_no_spec_in_a_refused_leaf_cures_with_bare_create(self, tmp_path, monkeypatch):
-        cwd = tmp_path / "my dir"
-        cwd.mkdir()
-        monkeypatch.chdir(cwd)
-        assert _no_box_error(None).endswith(
-            "Its '_' spelling works:\n  kanibako create --name my_dir")
+  def test_no_spec_in_a_refused_leaf_cures_with_bare_create(self, tmp_path, monkeypatch):
+    cwd = tmp_path / "my dir"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    assert _no_box_error(None).endswith("Its '_' spelling works:\n  kanibako create --name my_dir")
 
-    def test_missing_qualified_designation_gets_the_name_message(
-        self, tmp_path, monkeypatch,
-    ):
-        monkeypatch.chdir(tmp_path)
-        assert "A bare name is resolved through the registry" in _no_box_error("ws/gone")
+  def test_missing_qualified_designation_gets_the_name_message(
+    self,
+    tmp_path,
+    monkeypatch,
+  ):
+    monkeypatch.chdir(tmp_path)
+    assert "A bare name is resolved through the registry" in _no_box_error("ws/gone")
 
-    def test_no_spec_suggests_bare_create(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        msg = _no_box_error(None)
-        assert msg == (
-            f"Error: no box at {tmp_path}. To create a new box, "
-            "run:  kanibako create"
-        )
+  def test_no_spec_suggests_bare_create(self, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    msg = _no_box_error(None)
+    assert msg == (f"Error: no box at {tmp_path}. To create a new box, run:  kanibako create")
 
-    def test_spec_with_a_space_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
-        """⚑ The SPACE case.  The defect is not the wording but the command a
-        reader copies out of the line, so the assertion is on that command: the
-        spec must split out as ONE token, verbatim, or the paste creates a box in
-        a directory the user never named.
-        """
-        monkeypatch.chdir(tmp_path)
-        spec = "a b"
-        printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)} --name a_b"
-        assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
+  def test_spec_with_a_space_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
+    """⚑ The SPACE case.  The defect is not the wording but the command a
+    reader copies out of the line, so the assertion is on that command: the
+    spec must split out as ONE token, verbatim, or the paste creates a box in
+    a directory the user never named.
+    """
+    monkeypatch.chdir(tmp_path)
+    spec = "a b"
+    printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
+    assert printed == f"kanibako create {shlex.quote(spec)} --name a_b"
+    assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
-    def test_spec_with_a_quote_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
-        """⚑ The QUOTE case, and it is the one that catches a fix which only
-        handles spaces.
+  def test_spec_with_a_quote_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
+    """⚑ The QUOTE case, and it is the one that catches a fix which only
+    handles spaces.
 
-        No space here, so a spaces-only cure leaves the embedded ``'`` opening a
-        shell string that never closes: the paste does not create a box at the
-        named directory, it runs whatever the shell recovers from the rest of
-        the line.  ``shlex.quote`` closes and reopens the quote around it, so
-        the spec survives as one argument.
-        """
-        monkeypatch.chdir(tmp_path)
-        spec = "o'brien"
-        printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)} --name o_brien"
-        assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
+    No space here, so a spaces-only cure leaves the embedded ``'`` opening a
+    shell string that never closes: the paste does not create a box at the
+    named directory, it runs whatever the shell recovers from the rest of
+    the line.  ``shlex.quote`` closes and reopens the quote around it, so
+    the spec survives as one argument.
+    """
+    monkeypatch.chdir(tmp_path)
+    spec = "o'brien"
+    printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
+    assert printed == f"kanibako create {shlex.quote(spec)} --name o_brien"
+    assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
 
 # ---------------------------------------------------------------------------
 # BROKEN STANDALONE: registered, but its ``box_data/`` is gone
 # ---------------------------------------------------------------------------
 
+
 class TestBrokenStandaloneNoBoxError:
-    """A standalone box whose ``box_data/`` was deleted resolves NAMELESS, so the
-    explicit-create gate answers it — and the generic message's copy-pasteable
-    suggestion is built from the user's own spec.  For a bare standalone NAME that
-    yields ``kanibako create <name>``, and running THAT mkdirs a directory
-    literally named ``<name>`` in the CWD and puts a PRIMARY box in it.  These pin
-    the replacement (D-1/A2) and, negatively, the floor: the damaging form must
-    never appear.
+  """A standalone box whose ``box_data/`` was deleted resolves NAMELESS, so the
+  explicit-create gate answers it — and the generic message's copy-pasteable
+  suggestion is built from the user's own spec.  For a bare standalone NAME that
+  yields ``kanibako create <name>``, and running THAT mkdirs a directory
+  literally named ``<name>`` in the CWD and puts a PRIMARY box in it.  These pin
+  the replacement (D-1/A2) and, negatively, the floor: the damaging form must
+  never appear.
+  """
+
+  def _broken(self, config_file, tmp_home):
+    """Create a REAL standalone box, then delete its ``box_data/``.
+
+    Returns ``(std, box_name, root)``.  Deletion goes through
+    ``remove_box_tree`` — the canon skeleton under ``box_data/home`` is
+    root-owned + 555 where ``podman unshare`` works.
     """
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project import registry_store
 
-    def _broken(self, config_file, tmp_home):
-        """Create a REAL standalone box, then delete its ``box_data/``.
+    root = (tmp_home / "sa-proj").resolve()
+    root.mkdir()
+    # ⚑ ``--register`` (I3/§D4a): the branch under test is the message for a
+    # REGISTERED standalone box, and registration at create is opt-in now.
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=True,
+    )
+    assert run_create(ns) == 0
+    _config, std = _std(config_file)
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert name, "standalone create must have registered a name"
+    assert remove_box_tree(root / "box_data")
+    return std, name, root
 
-        Returns ``(std, box_name, root)``.  Deletion goes through
-        ``remove_box_tree`` — the canon skeleton under ``box_data/home`` is
-        root-owned + 555 where ``podman unshare`` works.
-        """
-        from kanibako.commands.box._parser import run_create
-        from kanibako.project import registry_store
+  def test_by_name_names_the_ruled_cure(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    std, name, root = self._broken(config_file, tmp_home)
+    msg = _no_box_error(name, std)
+    # THE FLOOR, asserted negatively: the suggestion that mkdirs ./<name>.
+    assert f"kanibako create {name}" not in msg
+    assert "no box at" not in msg
+    assert f"box '{name}' is registered as a standalone box at {root}" in msg
+    assert f"its box data ({root / 'box_data'}) is gone" in msg
+    assert "A launch will not rebuild it" in msg
 
-        root = (tmp_home / "sa-proj").resolve()
-        root.mkdir()
-        # ⚑ ``--register`` (I3/§D4a): the branch under test is the message for a
-        # REGISTERED standalone box, and registration at create is opt-in now.
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=True,
-        )
-        assert run_create(ns) == 0
-        _config, std = _std(config_file)
-        name = registry_store.standalone_name_for_root(std.registry, root)
-        assert name, "standalone create must have registered a name"
-        assert remove_box_tree(root / "box_data")
-        return std, name, root
+  @pytest.mark.parametrize("legacy", [False, True], ids=["valid-name", "legacy-name"])
+  def test_the_rebuild_cure_runs_as_printed(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    legacy,
+  ):
+    """Both halves run on ONE ``&&`` line, by ROOT: a stored name may break the
+    box-name rule, and ``create`` refuses a standalone ``--name``.  ``--register``
+    brings the box back into the registry."""
+    from kanibako.cli import main
+    from kanibako.project import registry_store
 
-    def test_by_name_names_the_ruled_cure(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        std, name, root = self._broken(config_file, tmp_home)
-        msg = _no_box_error(name, std)
-        # THE FLOOR, asserted negatively: the suggestion that mkdirs ./<name>.
-        assert f"kanibako create {name}" not in msg
-        assert "no box at" not in msg
-        assert f"box '{name}' is registered as a standalone box at {root}" in msg
-        assert f"its box data ({root / 'box_data'}) is gone" in msg
-        assert "A launch will not rebuild it" in msg
+    std, name, root = self._broken(config_file, tmp_home)
+    if legacy:
+      text = std.registry.read_text().replace(f"{name}:", "'bad name':")
+      std.registry.write_text(text)
+      name = "bad name"
+    (root / "workspace" / "mine.txt").write_text("user data")
+    msg = _no_box_error(str(root), std)
+    (cure,) = [ln.split(":  ", 1)[1] for ln in msg.splitlines() if "Rebuild it:" in ln]
+    steps = cure.split(" && ")
+    assert len(steps) == 2 and "--name" not in cure
+    monkeypatch.chdir(tmp_home)
+    for step in steps:
+      argv = shlex.split(step)
+      assert argv[0] == "kanibako"
+      try:
+        main(argv[1:])
+      except SystemExit as exc:
+        assert not exc.code, step
+    assert registry_store.standalone_name_for_root(std.registry, root)
+    assert (root / "box_data").is_dir()
+    assert (root / "workspace" / "mine.txt").read_text() == "user data"
+    assert "your workspace/ and vault/ are not touched" in msg
 
-    @pytest.mark.parametrize("legacy", [False, True], ids=["valid-name", "legacy-name"])
-    def test_the_rebuild_cure_runs_as_printed(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, legacy,
-    ):
-        """Both halves run on ONE ``&&`` line, by ROOT: a stored name may break the
-        box-name rule, and ``create`` refuses a standalone ``--name``.  ``--register``
-        brings the box back into the registry."""
-        from kanibako.cli import main
-        from kanibako.project import registry_store
+  @staticmethod
+  def _legacy(config_file, tmp_home, monkeypatch, mode, name="my-box"):
+    """A box REGISTERED under *name*, which the box-name rule refuses; cwd is ``tmp_home``."""
+    from kanibako.project import registry_store
+    from kanibako.settings.paths import register_primary_box_name
 
-        std, name, root = self._broken(config_file, tmp_home)
-        if legacy:
-            text = std.registry.read_text().replace(f"{name}:", "'bad name':")
-            std.registry.write_text(text)
-            name = "bad name"
-        (root / "workspace" / "mine.txt").write_text("user data")
-        msg = _no_box_error(str(root), std)
-        (cure,) = [ln.split(":  ", 1)[1] for ln in msg.splitlines() if "Rebuild it:" in ln]
-        steps = cure.split(" && ")
-        assert len(steps) == 2 and "--name" not in cure
-        monkeypatch.chdir(tmp_home)
-        for step in steps:
-            argv = shlex.split(step)
-            assert argv[0] == "kanibako"
-            try:
-                main(argv[1:])
-            except SystemExit as exc:
-                assert not exc.code, step
-        assert registry_store.standalone_name_for_root(std.registry, root)
-        assert (root / "box_data").is_dir()
-        assert (root / "workspace" / "mine.txt").read_text() == "user data"
-        assert "your workspace/ and vault/ are not touched" in msg
+    _config, std = _std(config_file)
+    root = (tmp_home / "legacy").resolve()
+    root.mkdir()
+    if mode == "standalone":
+      registry_store.register_standalone(std.registry, name, root)
+    else:
+      register_primary_box_name(
+        std.primary_workset, name, str(root), early=_early_scope(std, BoxMode.primary)
+      )
+    monkeypatch.chdir(tmp_home)
+    return std, root
 
-    @staticmethod
-    def _legacy(config_file, tmp_home, monkeypatch, mode, name="my-box"):
-        """A box REGISTERED under *name*, which the box-name rule refuses; cwd is ``tmp_home``."""
-        from kanibako.project import registry_store
-        from kanibako.settings.paths import register_primary_box_name
+  @pytest.mark.parametrize(
+    "argv",
+    [
+      ["start"],
+      ["shell"],
+      ["stop"],
+      ["box", "info"],
+      ["box", "show"],
+      ["box", "diagnose"],
+      ["box", "archive"],
+      ["box", "convert", "--default"],
+      ["box", "rm"],
+      ["code"],
+      ["box", "move", "{name}", "/nowhere/new"],
+      ["box", "remap", "{name}", "/nowhere/new"],
+    ],
+  )
+  def test_every_verb_that_looks_a_box_up_names_the_path_of_a_legacy_name(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+    argv,
+  ):
+    """One refusal for every verb: the typed name is a path that does not exist, and
+    the miss names the registered box's path instead of "no such path"."""
+    from kanibako.cli import main
 
-        _config, std = _std(config_file)
-        root = (tmp_home / "legacy").resolve()
-        root.mkdir()
-        if mode == "standalone":
-            registry_store.register_standalone(std.registry, name, root)
-        else:
-            register_primary_box_name(std.primary_workset, name, str(root),
-                                      early=_early_scope(std, BoxMode.primary))
-        monkeypatch.chdir(tmp_home)
-        return std, root
+    _std_paths, root = self._legacy(config_file, tmp_home, monkeypatch, "primary")
+    argv = [a.replace("{name}", "MY-BOX") for a in argv]
+    if "MY-BOX" not in argv:
+      argv.append("MY-BOX")
+    with pytest.raises(SystemExit) as exc:
+      main(argv)
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    err = captured.out + captured.err  # ``box diagnose`` reports on stdout
+    assert "Error: box name 'my-box' does not meet the naming rules" in err
+    assert (
+      f"reached by its path only: give {root} in place of the name, or give it a "
+      f"valid name:\n  kanibako box move {root} <new-path> --name my_box\n"
+    ) in err
+    assert "does not exist" not in err and "kanibako create" not in err
 
-    @pytest.mark.parametrize("argv", [
-        ["start"], ["shell"], ["stop"], ["box", "info"], ["box", "show"], ["box", "diagnose"],
-        ["box", "archive"], ["box", "convert", "--default"], ["box", "rm"], ["code"],
-        ["box", "move", "{name}", "/nowhere/new"], ["box", "remap", "{name}", "/nowhere/new"],
-    ])
-    def test_every_verb_that_looks_a_box_up_names_the_path_of_a_legacy_name(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, argv,
-    ):
-        """One refusal for every verb: the typed name is a path that does not exist, and
-        the miss names the registered box's path instead of "no such path"."""
-        from kanibako.cli import main
+  @pytest.mark.parametrize("mode", ["standalone", "primary"])
+  def test_rule_breaking_stored_name_points_at_its_path(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    mode,
+  ):
+    """A designation that breaks the box-name rule is a PATH, so a box REGISTERED
+    under such a name is not reached by it: the refusal names its path, and a
+    standalone box's cure registers it again, re-deriving its name from its directory."""
+    from kanibako.errors import LegacyBoxNameError
+    from kanibako.settings.paths import refuse_legacy_box
 
-        _std_paths, root = self._legacy(config_file, tmp_home, monkeypatch, "primary")
-        argv = [a.replace("{name}", "MY-BOX") for a in argv]
-        if "MY-BOX" not in argv:
-            argv.append("MY-BOX")
-        with pytest.raises(SystemExit) as exc:
-            main(argv)
-        assert exc.value.code == 1
-        captured = capsys.readouterr()
-        err = captured.out + captured.err  # ``box diagnose`` reports on stdout
-        assert "Error: box name 'my-box' does not meet the naming rules" in err
-        assert (f"reached by its path only: give {root} in place of the name, or give it a "
-                f"valid name:\n  kanibako box move {root} <new-path> --name my_box\n") in err
-        assert "does not exist" not in err and "kanibako create" not in err
+    std, root = self._legacy(config_file, tmp_home, monkeypatch, mode, "bad name")
+    with pytest.raises(LegacyBoxNameError) as exc:
+      refuse_legacy_box(std, "BAD NAME")
+    msg = str(exc.value)
+    assert msg.startswith("box name 'bad name' does not meet the naming rules")
+    assert f"reached by its path only: give {root} in place of the name, " in msg
+    if mode == "standalone":
+      assert msg.endswith(f"\n  kanibako box rm {root}\n  kanibako box register {root}")
+    else:
+      assert msg.endswith(f"\n  kanibako box move {root} <new-path> --name bad_name")
 
-    @pytest.mark.parametrize("mode", ["standalone", "primary"])
-    def test_rule_breaking_stored_name_points_at_its_path(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, mode,
-    ):
-        """A designation that breaks the box-name rule is a PATH, so a box REGISTERED
-        under such a name is not reached by it: the refusal names its path, and a
-        standalone box's cure registers it again, re-deriving its name from its directory."""
-        from kanibako.errors import LegacyBoxNameError
-        from kanibako.settings.paths import refuse_legacy_box
+  def test_the_rename_cure_offers_the_name_the_deriver_would_pick(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    """``a-b`` beside a registered ``a_b`` (and ``a_b2``) is offered ``a_b3``, never a taken name."""
+    from kanibako.errors import LegacyBoxNameError
+    from kanibako.settings.paths import refuse_legacy_box, register_primary_box_name
 
-        std, root = self._legacy(config_file, tmp_home, monkeypatch, mode, "bad name")
-        with pytest.raises(LegacyBoxNameError) as exc:
-            refuse_legacy_box(std, "BAD NAME")
-        msg = str(exc.value)
-        assert msg.startswith("box name 'bad name' does not meet the naming rules")
-        assert f"reached by its path only: give {root} in place of the name, " in msg
-        if mode == "standalone":
-            assert msg.endswith(f"\n  kanibako box rm {root}\n  kanibako box register {root}")
-        else:
-            assert msg.endswith(f"\n  kanibako box move {root} <new-path> --name bad_name")
+    std, root = self._legacy(config_file, tmp_home, monkeypatch, "primary", "a-b")
+    for taken in ("A_B", "a_b2"):
+      (tmp_home / taken).mkdir()
+      register_primary_box_name(
+        std.primary_workset, taken, str(tmp_home / taken), early=_early_scope(std, BoxMode.primary)
+      )
+    with pytest.raises(LegacyBoxNameError) as exc:
+      refuse_legacy_box(std, "a-b")
+    assert str(exc.value).endswith(f"kanibako box move {root} <new-path> --name a_b3")
 
-    def test_the_rename_cure_offers_the_name_the_deriver_would_pick(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        """``a-b`` beside a registered ``a_b`` (and ``a_b2``) is offered ``a_b3``, never a taken name."""
-        from kanibako.errors import LegacyBoxNameError
-        from kanibako.settings.paths import refuse_legacy_box, register_primary_box_name
+  def test_the_box_own_path_after_a_mv_is_no_name_lookup(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    """``box remap my-box <new>`` beside the folder the user moved: *my-box* is the
+    box's own registered path, which reaches it by path, so it is not refused."""
+    from kanibako.errors import LegacyBoxNameError
+    from kanibako.settings.paths import (
+      refuse_legacy_box,
+      register_primary_box_name,
+      resolve_designation,
+    )
 
-        std, root = self._legacy(config_file, tmp_home, monkeypatch, "primary", "a-b")
-        for taken in ("A_B", "a_b2"):
-            (tmp_home / taken).mkdir()
-            register_primary_box_name(std.primary_workset, taken, str(tmp_home / taken),
-                                      early=_early_scope(std, BoxMode.primary))
-        with pytest.raises(LegacyBoxNameError) as exc:
-            refuse_legacy_box(std, "a-b")
-        assert str(exc.value).endswith(f"kanibako box move {root} <new-path> --name a_b3")
+    _config, std = _std(config_file)
+    gone = (tmp_home / "my-box").resolve()
+    register_primary_box_name(
+      std.primary_workset, "my-box", str(gone), early=_early_scope(std, BoxMode.primary)
+    )
+    monkeypatch.chdir(tmp_home)
+    assert (
+      resolve_designation(std, "my-box", unknown_name_is_path=True, name_first=True) == "my-box"
+    )
+    # ``box rm`` asks after its own lookups found nothing, so there it still refuses.
+    with pytest.raises(LegacyBoxNameError):
+      refuse_legacy_box(std, "my-box")
 
-    def test_the_box_own_path_after_a_mv_is_no_name_lookup(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        """``box remap my-box <new>`` beside the folder the user moved: *my-box* is the
-        box's own registered path, which reaches it by path, so it is not refused."""
-        from kanibako.errors import LegacyBoxNameError
-        from kanibako.settings.paths import (refuse_legacy_box, register_primary_box_name,
-                                             resolve_designation)
+  @pytest.mark.parametrize("connected", [True, False], ids=["connected", "in-tree"])
+  def test_a_named_member_typed_by_its_legacy_qualified_name_names_its_path(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    connected,
+  ):
+    """A member connected from outside its workset is renamed in place by ``box
+    convert``, since ``box move`` refuses to relocate it; an in-tree member moves."""
+    from kanibako.errors import LegacyBoxNameError
+    from kanibako.project.workset import create_workset
+    from kanibako.settings.paths import refuse_legacy_box, _register_workset_box_membership
 
-        _config, std = _std(config_file)
-        gone = (tmp_home / "my-box").resolve()
-        register_primary_box_name(std.primary_workset, "my-box", str(gone),
-                                  early=_early_scope(std, BoxMode.primary))
-        monkeypatch.chdir(tmp_home)
-        assert resolve_designation(std, "my-box", unknown_name_is_path=True,
-                                   name_first=True) == "my-box"
-        # ``box rm`` asks after its own lookups found nothing, so there it still refuses.
-        with pytest.raises(LegacyBoxNameError):
-            refuse_legacy_box(std, "my-box")
+    _config, std = _std(config_file)
+    ws = create_workset("ws_1", tmp_home / "wsroot", std)
+    member = (tmp_home / "m1" if connected else ws.root / "workspaces" / "mem-1").resolve()
+    member.mkdir()
+    _register_workset_box_membership(
+      ws.root, "mem-1", member, early=_early_scope(std, BoxMode.named, "ws_1")
+    )
+    monkeypatch.chdir(tmp_home)
+    with pytest.raises(LegacyBoxNameError) as exc:
+      refuse_legacy_box(std, "WS_1/mem-1")
+    msg = str(exc.value)
+    assert msg.startswith("box name 'mem-1' does not meet the naming rules")
+    cure = (
+      f"kanibako box convert {member} --workset ws_1 --name mem_1"
+      if connected
+      else f"kanibako box move {member} <new-path> --name mem_1"
+    )
+    assert msg.endswith(f"give {member} in place of the name, or give it a valid name:\n  {cure}")
 
-    @pytest.mark.parametrize("connected", [True, False], ids=["connected", "in-tree"])
-    def test_a_named_member_typed_by_its_legacy_qualified_name_names_its_path(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, connected,
-    ):
-        """A member connected from outside its workset is renamed in place by ``box
-        convert``, since ``box move`` refuses to relocate it; an in-tree member moves."""
-        from kanibako.errors import LegacyBoxNameError
-        from kanibako.project.workset import create_workset
-        from kanibako.settings.paths import refuse_legacy_box, _register_workset_box_membership
+  def test_an_existing_dir_at_the_typed_path_wins_over_a_legacy_box(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    from kanibako.settings.paths import register_primary_box_name
 
-        _config, std = _std(config_file)
-        ws = create_workset("ws_1", tmp_home / "wsroot", std)
-        member = (tmp_home / "m1" if connected else ws.root / "workspaces" / "mem-1").resolve()
-        member.mkdir()
-        _register_workset_box_membership(ws.root, "mem-1", member,
-                                         early=_early_scope(std, BoxMode.named, "ws_1"))
-        monkeypatch.chdir(tmp_home)
-        with pytest.raises(LegacyBoxNameError) as exc:
-            refuse_legacy_box(std, "WS_1/mem-1")
-        msg = str(exc.value)
-        assert msg.startswith("box name 'mem-1' does not meet the naming rules")
-        cure = (f"kanibako box convert {member} --workset ws_1 --name mem_1" if connected
-                else f"kanibako box move {member} <new-path> --name mem_1")
-        assert msg.endswith(f"give {member} in place of the name, or give it a valid name:\n"
-                            f"  {cure}")
+    _config, std = _std(config_file)
+    root = (tmp_home / "legacy").resolve()
+    root.mkdir()
+    register_primary_box_name(
+      std.primary_workset, "bad name", str(root), early=_early_scope(std, BoxMode.primary)
+    )
+    (tmp_home / "bad name").mkdir()
+    monkeypatch.chdir(tmp_home)
+    msg = _no_box_error("bad name", std)
+    assert msg.startswith(f"Error: no box at {tmp_home.resolve() / 'bad name'}. ")
+    assert msg.endswith("\n  kanibako create 'bad name' --name bad_name")
+    assert str(root) not in msg
 
-    def test_an_existing_dir_at_the_typed_path_wins_over_a_legacy_box(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        from kanibako.settings.paths import register_primary_box_name
+  def test_by_path_names_the_ruled_cure(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The ROOT-PATH form (``kanibako start <root>``) gets the SAME message.
+    Its own milder defect was suggesting ``create <root>`` with no
+    ``--standalone``, which would have made a PRIMARY box at that root."""
+    std, name, root = self._broken(config_file, tmp_home)
+    assert _no_box_error(str(root), std) == _no_box_error(name, std)
+    assert "--standalone" in _no_box_error(str(root), std)
 
-        _config, std = _std(config_file)
-        root = (tmp_home / "legacy").resolve()
-        root.mkdir()
-        register_primary_box_name(std.primary_workset, "bad name", str(root),
-                                  early=_early_scope(std, BoxMode.primary))
-        (tmp_home / "bad name").mkdir()
-        monkeypatch.chdir(tmp_home)
-        msg = _no_box_error("bad name", std)
-        assert msg.startswith(f"Error: no box at {tmp_home.resolve() / 'bad name'}. ")
-        assert msg.endswith("\n  kanibako create 'bad name' --name bad_name")
-        assert str(root) not in msg
+  def test_intact_standalone_never_takes_the_branch(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """⚑ The ``box_data/`` clause is load-bearing.  With a LIVE box tree on
+    disk, ``box rm`` DOES park a deregistered entry and delete things — so the
+    branch must not fire, and the suggestion must never be reachable in that
+    state."""
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project import registry_store
 
-    def test_by_path_names_the_ruled_cure(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The ROOT-PATH form (``kanibako start <root>``) gets the SAME message.
-        Its own milder defect was suggesting ``create <root>`` with no
-        ``--standalone``, which would have made a PRIMARY box at that root."""
-        std, name, root = self._broken(config_file, tmp_home)
-        assert _no_box_error(str(root), std) == _no_box_error(name, std)
-        assert "--standalone" in _no_box_error(str(root), std)
+    root = (tmp_home / "sa-proj").resolve()
+    root.mkdir()
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=True,
+    )
+    assert run_create(ns) == 0
+    _config, std = _std(config_file)
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert (root / "box_data").is_dir()
 
-    def test_intact_standalone_never_takes_the_branch(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """⚑ The ``box_data/`` clause is load-bearing.  With a LIVE box tree on
-        disk, ``box rm`` DOES park a deregistered entry and delete things — so the
-        branch must not fire, and the suggestion must never be reachable in that
-        state."""
-        from kanibako.commands.box._parser import run_create
-        from kanibako.project import registry_store
+    msg = _no_box_error(name, std)
+    assert "is registered as a standalone box" not in msg
+    assert "kanibako box rm" not in msg
+    assert msg == _no_box_error(name)
 
-        root = (tmp_home / "sa-proj").resolve()
-        root.mkdir()
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=True,
-        )
-        assert run_create(ns) == 0
-        _config, std = _std(config_file)
-        name = registry_store.standalone_name_for_root(std.registry, root)
-        assert (root / "box_data").is_dir()
+  def test_unregistered_name_is_unchanged(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """D-2 regression pin: a token naming NO standalone box does not take the
+    registry-keyed branch — it gets the ordinary NAME-shaped message, ``std``
+    or not.
 
-        msg = _no_box_error(name, std)
-        assert "is registered as a standalone box" not in msg
-        assert "kanibako box rm" not in msg
-        assert msg == _no_box_error(name)
+    ⚑ That message is no longer the one-line ``create`` suggestion: the
+    bare-name question this test once called "still-boarded" was decided by
+    I3/§D4a, and the register cure now leads it (see
+    ``TestNoBoxErrorMessage``).  What this pin still owns is the BRANCH — the
+    ``_broken_standalone_error`` text must not appear for a token that names
+    no registered box."""
+    _config, std = _std(config_file)
+    assert _no_box_error("ghostbox", std) == _no_box_error("ghostbox")
+    assert "is registered as a standalone box" not in _no_box_error(
+      "ghostbox",
+      std,
+    )
+    assert _no_box_error(None, std) == _no_box_error(None)
 
-    def test_unregistered_name_is_unchanged(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """D-2 regression pin: a token naming NO standalone box does not take the
-        registry-keyed branch — it gets the ordinary NAME-shaped message, ``std``
-        or not.
-
-        ⚑ That message is no longer the one-line ``create`` suggestion: the
-        bare-name question this test once called "still-boarded" was decided by
-        I3/§D4a, and the register cure now leads it (see
-        ``TestNoBoxErrorMessage``).  What this pin still owns is the BRANCH — the
-        ``_broken_standalone_error`` text must not appear for a token that names
-        no registered box."""
-        _config, std = _std(config_file)
-        assert _no_box_error("ghostbox", std) == _no_box_error("ghostbox")
-        assert "is registered as a standalone box" not in _no_box_error(
-            "ghostbox", std,
-        )
-        assert _no_box_error(None, std) == _no_box_error(None)
-
-    def test_launch_at_broken_standalone_prints_the_cure(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """End-to-end through the real launch gate — the seam the fix has to
-        reach, not just the helper."""
-        std, name, root = self._broken(config_file, tmp_home)
-        capsys.readouterr()
-        assert _launch(name) == 1
-        err = capsys.readouterr().err
-        assert f"kanibako create {name}" not in err
-        assert (
-            f"kanibako box rm {root} && kanibako create --standalone --register {root}"
-        ) in err
+  def test_launch_at_broken_standalone_prints_the_cure(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """End-to-end through the real launch gate — the seam the fix has to
+    reach, not just the helper."""
+    std, name, root = self._broken(config_file, tmp_home)
+    capsys.readouterr()
+    assert _launch(name) == 1
+    err = capsys.readouterr().err
+    assert f"kanibako create {name}" not in err
+    assert (f"kanibako box rm {root} && kanibako create --standalone --register {root}") in err
 
 
 class TestStandaloneCureFamily:
-    """The standalone cures name the box that is there and keep its kuid.
+  """The standalone cures name the box that is there and keep its kuid.
 
-    A leaf alone names no ``<kuid>_<leaf>`` box; an UNREGISTERED broken root, or a
-    registered one reached through a symlinked parent, is offered
-    ``create --standalone``, never a plain ``create`` that makes a PRIMARY box; and
-    ``create --standalone`` over a root that stores a kuid keeps it.
-    """
+  A leaf alone names no ``<kuid>_<leaf>`` box; an UNREGISTERED broken root, or a
+  registered one reached through a symlinked parent, is offered
+  ``create --standalone``, never a plain ``create`` that makes a PRIMARY box; and
+  ``create --standalone`` over a root that stores a kuid keeps it.
+  """
 
-    def _make(self, config_file, root, *, register):
-        """Create a REAL standalone box at *root*, then delete its ``box_data/``."""
-        from kanibako.commands.box._parser import run_create
+  def _make(self, config_file, root, *, register):
+    """Create a REAL standalone box at *root*, then delete its ``box_data/``."""
+    from kanibako.commands.box._parser import run_create
 
-        root.mkdir(parents=True)
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=register,
-        )
-        assert run_create(ns) == 0
-        assert remove_box_tree(root / "box_data")
-        return _std(config_file)[1]
+    root.mkdir(parents=True)
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=register,
+    )
+    assert run_create(ns) == 0
+    assert remove_box_tree(root / "box_data")
+    return _std(config_file)[1]
 
-    def _kuid(self, root):
-        from kanibako.settings.config import read_workset_kuid
+  def _kuid(self, root):
+    from kanibako.settings.config import read_workset_kuid
 
-        return read_workset_kuid(root / "workset.yaml")
+    return read_workset_kuid(root / "workset.yaml")
 
-    def test_a_leaf_alone_names_the_registered_box(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        from kanibako.project import registry_store
+  def test_a_leaf_alone_names_the_registered_box(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.project import registry_store
 
-        root = (tmp_home / "plain").resolve()
-        std = self._make(config_file, root, register=True)
-        name = registry_store.standalone_name_for_root(std.registry, root)
-        (tmp_home / "elsewhere").mkdir()
-        monkeypatch.chdir(tmp_home / "elsewhere")
-        capsys.readouterr()
-        assert _launch("plain") == 1
-        err = capsys.readouterr().err
-        assert "nothing is registered under it" not in err
-        assert f"  Registered at {root}:  kanibako start {name}\n" in err
+    root = (tmp_home / "plain").resolve()
+    std = self._make(config_file, root, register=True)
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    (tmp_home / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_home / "elsewhere")
+    capsys.readouterr()
+    assert _launch("plain") == 1
+    err = capsys.readouterr().err
+    assert "nothing is registered under it" not in err
+    assert f"  Registered at {root}:  kanibako start {name}\n" in err
 
-    @pytest.mark.parametrize("how", ["path", "symlinked-parent", "cwd-in-workspace"])
-    def test_an_unregistered_broken_root_is_offered_create_standalone(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, how,
-    ):
-        real = (tmp_home / "real").resolve()
-        root = real / "u1"
-        self._make(config_file, root, register=False)
-        (tmp_home / "link").symlink_to(real)
-        shown = tmp_home / "link" / "u1" if how == "symlinked-parent" else root
-        monkeypatch.chdir(root / "workspace" if how == "cwd-in-workspace" else tmp_home)
-        capsys.readouterr()
-        assert _launch(None if how == "cwd-in-workspace" else str(shown)) == 1
-        err = capsys.readouterr().err
-        assert f"Rebuild it:  kanibako create --standalone {shown}\n" in err
-        assert "To create a new box, run:  kanibako create" not in err
+  @pytest.mark.parametrize("how", ["path", "symlinked-parent", "cwd-in-workspace"])
+  def test_an_unregistered_broken_root_is_offered_create_standalone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+    how,
+  ):
+    real = (tmp_home / "real").resolve()
+    root = real / "u1"
+    self._make(config_file, root, register=False)
+    (tmp_home / "link").symlink_to(real)
+    shown = tmp_home / "link" / "u1" if how == "symlinked-parent" else root
+    monkeypatch.chdir(root / "workspace" if how == "cwd-in-workspace" else tmp_home)
+    capsys.readouterr()
+    assert _launch(None if how == "cwd-in-workspace" else str(shown)) == 1
+    err = capsys.readouterr().err
+    assert f"Rebuild it:  kanibako create --standalone {shown}\n" in err
+    assert "To create a new box, run:  kanibako create" not in err
 
-    def test_a_registered_root_through_a_symlinked_parent_gets_the_broken_message(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        real = (tmp_home / "real").resolve()
-        real.mkdir()
-        (tmp_home / "link").symlink_to(real)
-        root = tmp_home / "link" / "s1"
-        self._make(config_file, root, register=True)
-        monkeypatch.chdir(tmp_home)
-        capsys.readouterr()
-        assert _launch(str(root)) == 1
-        err = capsys.readouterr().err
-        assert f"is registered as a standalone box at {root}" in err
-        assert f"kanibako create --standalone --register {root}" in err
+  def test_a_registered_root_through_a_symlinked_parent_gets_the_broken_message(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    real = (tmp_home / "real").resolve()
+    real.mkdir()
+    (tmp_home / "link").symlink_to(real)
+    root = tmp_home / "link" / "s1"
+    self._make(config_file, root, register=True)
+    monkeypatch.chdir(tmp_home)
+    capsys.readouterr()
+    assert _launch(str(root)) == 1
+    err = capsys.readouterr().err
+    assert f"is registered as a standalone box at {root}" in err
+    assert f"kanibako create --standalone --register {root}" in err
 
-    @pytest.mark.parametrize("register", [False, True], ids=["unregistered", "registered"])
-    def test_create_standalone_keeps_the_stored_kuid(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, register,
-    ):
-        """``create --standalone <root>``, and the registered box's printed rebuild
-        cure run as printed, give back the SAME kuid and name."""
-        from kanibako.cli import main
-        from kanibako.project import registry_store
+  @pytest.mark.parametrize("register", [False, True], ids=["unregistered", "registered"])
+  def test_create_standalone_keeps_the_stored_kuid(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    register,
+  ):
+    """``create --standalone <root>``, and the registered box's printed rebuild
+    cure run as printed, give back the SAME kuid and name."""
+    from kanibako.cli import main
+    from kanibako.project import registry_store
 
-        root = (tmp_home / "proj").resolve()
-        std = self._make(config_file, root, register=register)
-        before = self._kuid(root)
-        name = registry_store.standalone_name_for_root(std.registry, root)
-        monkeypatch.chdir(tmp_home)
-        steps = [f"kanibako create --standalone {root}"]
-        if register:
-            (cure,) = [ln.split(":  ", 1)[1]
-                       for ln in _no_box_error(str(root), std).splitlines()
-                       if "Rebuild it:" in ln]
-            steps = cure.split(" && ")
-        for step in steps:
-            try:
-                main(shlex.split(step)[1:])
-            except SystemExit as exc:
-                assert not exc.code, step
-        assert self._kuid(root) == before
-        assert registry_store.standalone_name_for_root(std.registry, root) == name
+    root = (tmp_home / "proj").resolve()
+    std = self._make(config_file, root, register=register)
+    before = self._kuid(root)
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    monkeypatch.chdir(tmp_home)
+    steps = [f"kanibako create --standalone {root}"]
+    if register:
+      (cure,) = [
+        ln.split(":  ", 1)[1]
+        for ln in _no_box_error(str(root), std).splitlines()
+        if "Rebuild it:" in ln
+      ]
+      steps = cure.split(" && ")
+    for step in steps:
+      try:
+        main(shlex.split(step)[1:])
+      except SystemExit as exc:
+        assert not exc.code, step
+    assert self._kuid(root) == before
+    assert registry_store.standalone_name_for_root(std.registry, root) == name
 
-    def test_a_copied_workset_yaml_does_not_take_a_registered_boxs_kuid(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, caplog,
-    ):
-        """A kuid held by a registered box at ANOTHER root is not carried: one kuid, one box."""
-        from kanibako.cli import main
-        from kanibako.launch.box_identity import standalone_kuid
-        from kanibako.project import registry_store
+  def test_a_copied_workset_yaml_does_not_take_a_registered_boxs_kuid(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    caplog,
+  ):
+    """A kuid held by a registered box at ANOTHER root is not carried: one kuid, one box."""
+    from kanibako.cli import main
+    from kanibako.launch.box_identity import standalone_kuid
+    from kanibako.project import registry_store
 
-        first = (tmp_home / "a" / "proj").resolve()
-        std = self._make(config_file, first, register=True)
-        held = self._kuid(first)
-        other = (tmp_home / "b" / "other").resolve()
-        other.mkdir(parents=True)
-        (other / "workset.yaml").write_text((first / "workset.yaml").read_text())
-        monkeypatch.chdir(tmp_home)
-        try:
-            main(["create", "--standalone", "--register", str(other)])
-        except SystemExit as exc:
-            assert not exc.code
-        assert self._kuid(other) != held
-        name = registry_store.standalone_name_for_root(std.registry, other)
-        assert name is not None and standalone_kuid(name) == self._kuid(other)
-        assert standalone_kuid(registry_store.standalone_name_for_root(std.registry, first)) == held
-        assert f"workset.kuid '{held}'" in caplog.text
+    first = (tmp_home / "a" / "proj").resolve()
+    std = self._make(config_file, first, register=True)
+    held = self._kuid(first)
+    other = (tmp_home / "b" / "other").resolve()
+    other.mkdir(parents=True)
+    (other / "workset.yaml").write_text((first / "workset.yaml").read_text())
+    monkeypatch.chdir(tmp_home)
+    try:
+      main(["create", "--standalone", "--register", str(other)])
+    except SystemExit as exc:
+      assert not exc.code
+    assert self._kuid(other) != held
+    name = registry_store.standalone_name_for_root(std.registry, other)
+    assert name is not None and standalone_kuid(name) == self._kuid(other)
+    assert standalone_kuid(registry_store.standalone_name_for_root(std.registry, first)) == held
+    assert f"workset.kuid '{held}'" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -1450,438 +1621,512 @@ class TestStandaloneCureFamily:
 # ``workset.workspaces`` — the workspace bind is mounted at every launch
 # ---------------------------------------------------------------------------
 
-def _null_workspaces(root):
-    """Set ``workset.workspaces: null`` in *root*'s workset.yaml, keeping what is there."""
-    from kanibako.settings.config_io import dump_doc, load_doc
 
-    path = root / "workset.yaml"
-    doc = dict(load_doc(path)) if path.is_file() else {}
-    doc["workset"] = {**doc.get("workset", {}), "workspaces": None}
-    dump_doc(path, doc)
-    return path
+def _null_workspaces(root):
+  """Set ``workset.workspaces: null`` in *root*'s workset.yaml, keeping what is there."""
+  from kanibako.settings.config_io import dump_doc, load_doc
+
+  path = root / "workset.yaml"
+  doc = dict(load_doc(path)) if path.is_file() else {}
+  doc["workset"] = {**doc.get("workset", {}), "workspaces": None}
+  dump_doc(path, doc)
+  return path
 
 
 def _tree(root):
-    return sorted(root.rglob("*"))
+  return sorted(root.rglob("*"))
 
 
 def _assert_launch_passes_the_gate(target, monkeypatch, capsys):
-    """Launch *target* with no container runtime: reaching that error means the gate passed."""
-    from kanibako.commands import start
-    from kanibako.errors import ContainerError
+  """Launch *target* with no container runtime: reaching that error means the gate passed."""
+  from kanibako.commands import start
+  from kanibako.errors import ContainerError
 
-    def _no_runtime():
-        raise ContainerError("no runtime (test)")
+  def _no_runtime():
+    raise ContainerError("no runtime (test)")
 
-    monkeypatch.setattr(start, "ContainerRuntime", _no_runtime)
-    capsys.readouterr()
-    assert _launch(target) == 1
-    # The caught error is printed as-is, so a bad KANIBAKO_DOCKER_CMD names itself.
-    assert "Error: no runtime (test)" in capsys.readouterr().err
+  monkeypatch.setattr(start, "ContainerRuntime", _no_runtime)
+  capsys.readouterr()
+  assert _launch(target) == 1
+  # The caught error is printed as-is, so a bad KANIBAKO_DOCKER_CMD names itself.
+  assert "Error: no runtime (test)" in capsys.readouterr().err
 
 
 class TestLaunchRefusesNullWorkspaceBind:
-    """Q106 [Jei:2026-09-28]: *"if a critical bind is <None>, launch should fail"*.
+  """Q106 [Jei:2026-09-28]: *"if a critical bind is <None>, launch should fail"*.
 
-    Named in-tree and standalone boxes refuse on the probe, before anything is created;
-    primary and an external named member resolve their workspace through no workset key.
-    """
+  Named in-tree and standalone boxes refuse on the probe, before anything is created;
+  primary and an external named member resolve their workspace through no workset key.
+  """
 
-    def test_standalone_refuses_naming_the_key_and_file_and_creates_nothing(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.commands.box._parser import run_create
-        from kanibako.errors import WorksetError
+  def test_standalone_refuses_naming_the_key_and_file_and_creates_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.commands.box._parser import run_create
+    from kanibako.errors import WorksetError
 
-        root = (tmp_home / "sa-null").resolve()
-        root.mkdir()
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=True,
-        )
-        assert run_create(ns) == 0
-        settings = _null_workspaces(root)
-        before = _tree(tmp_home)
+    root = (tmp_home / "sa-null").resolve()
+    root.mkdir()
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=True,
+    )
+    assert run_create(ns) == 0
+    settings = _null_workspaces(root)
+    before = _tree(tmp_home)
 
-        with pytest.raises(WorksetError) as exc:
-            _launch(str(root))
-        message = str(exc.value)
-        assert "workset.workspaces" in message
-        assert str(settings) in message
-        assert "~/workspace" in message
-        assert "Delete that line" in message
-        assert _tree(tmp_home) == before
-        assert not any(p.name == "None" for p in before)
+    with pytest.raises(WorksetError) as exc:
+      _launch(str(root))
+    message = str(exc.value)
+    assert "workset.workspaces" in message
+    assert str(settings) in message
+    assert "~/workspace" in message
+    assert "Delete that line" in message
+    assert _tree(tmp_home) == before
+    assert not any(p.name == "None" for p in before)
 
-    def test_named_in_tree_member_refuses_and_creates_nothing(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.errors import WorksetError
-        from kanibako.project.workset import add_project, create_workset
+  def test_named_in_tree_member_refuses_and_creates_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.errors import WorksetError
+    from kanibako.project.workset import add_project, create_workset
 
-        _config, std = _std(config_file)
-        root = (tmp_home / "worksets" / "nullws").resolve()
-        ws = create_workset("nullws", root, std)
-        add_project(ws, "app", root / "workspaces" / "app", std)
-        settings = _null_workspaces(root)
-        before = _tree(tmp_home)
+    _config, std = _std(config_file)
+    root = (tmp_home / "worksets" / "nullws").resolve()
+    ws = create_workset("nullws", root, std)
+    add_project(ws, "app", root / "workspaces" / "app", std)
+    settings = _null_workspaces(root)
+    before = _tree(tmp_home)
 
-        # By path and by qualified name: the one chokepoint either way.
-        for target in (str(root / "workspaces" / "app"), "nullws/app"):
-            with pytest.raises(WorksetError) as exc:
-                _launch(target)
-            assert "Cannot launch box 'app'" in str(exc.value)
-            assert str(settings) in str(exc.value)
-        assert _tree(tmp_home) == before
+    # By path and by qualified name: the one chokepoint either way.
+    for target in (str(root / "workspaces" / "app"), "nullws/app"):
+      with pytest.raises(WorksetError) as exc:
+        _launch(target)
+      assert "Cannot launch box 'app'" in str(exc.value)
+      assert str(settings) in str(exc.value)
+    assert _tree(tmp_home) == before
 
-    def test_named_external_member_is_untouched(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        from kanibako.commands.start import _refuse_null_workspace_bind
-        from kanibako.project.workset import add_project, create_workset
+  def test_named_external_member_is_untouched(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.commands.start import _refuse_null_workspace_bind
+    from kanibako.project.workset import add_project, create_workset
 
-        config, std = _std(config_file)
-        root = (tmp_home / "worksets" / "extws").resolve()
-        ws = create_workset("extws", root, std)
-        source = (tmp_home / "ext-src").resolve()
-        source.mkdir()
-        add_project(ws, "ext", source, std)
-        _null_workspaces(root)
+    config, std = _std(config_file)
+    root = (tmp_home / "worksets" / "extws").resolve()
+    ws = create_workset("extws", root, std)
+    source = (tmp_home / "ext-src").resolve()
+    source.mkdir()
+    add_project(ws, "ext", source, std)
+    _null_workspaces(root)
 
-        proj = _resolve_existing_box(std, config, str(source))
-        assert proj is not None and proj.name == "ext"
-        assert proj.project_path == source
-        _refuse_null_workspace_bind(std, proj)  # no raise
-        _assert_launch_passes_the_gate(str(source), monkeypatch, capsys)
+    proj = _resolve_existing_box(std, config, str(source))
+    assert proj is not None and proj.name == "ext"
+    assert proj.project_path == source
+    _refuse_null_workspace_bind(std, proj)  # no raise
+    _assert_launch_passes_the_gate(str(source), monkeypatch, capsys)
 
-    def test_primary_is_untouched(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
-    ):
-        from kanibako.commands.box._parser import run_create
-        from kanibako.commands.start import _refuse_null_workspace_bind
+  def test_primary_is_untouched(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+    capsys,
+  ):
+    from kanibako.commands.box._parser import run_create
+    from kanibako.commands.start import _refuse_null_workspace_bind
 
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        # Primary's ``workset.workspaces`` IS <None> (spec §2c); a file value changes nothing.
-        _null_workspaces(std.primary_workset)
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    # Primary's ``workset.workspaces`` IS <None> (spec §2c); a file value changes nothing.
+    _null_workspaces(std.primary_workset)
 
-        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
-        assert proj is not None and proj.name == "project"
-        _refuse_null_workspace_bind(std, proj)  # no raise
-        _assert_launch_passes_the_gate(str(tmp_home / "project"), monkeypatch, capsys)
+    proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+    assert proj is not None and proj.name == "project"
+    _refuse_null_workspace_bind(std, proj)  # no raise
+    _assert_launch_passes_the_gate(str(tmp_home / "project"), monkeypatch, capsys)
 
 
 class TestStandaloneNullWorkspaceHasNoPath:
-    """Q106 review: under a null ``workset.workspaces`` a standalone box has NO workspace.
+  """Q106 review: under a null ``workset.workspaces`` a standalone box has NO workspace.
 
-    ``meta.box.workspace`` is ``<None>``; no display names the default ``<root>/workspace``
-    and nothing named ``None`` is created.  The launch refusal above stays the one refusal.
-    """
+  ``meta.box.workspace`` is ``<None>``; no display names the default ``<root>/workspace``
+  and nothing named ``None`` is created.  The launch refusal above stays the one refusal.
+  """
 
-    def _box(self, tmp_home):
-        import shutil
+  def _box(self, tmp_home):
+    import shutil
 
-        from kanibako.commands.box._parser import run_create
+    from kanibako.commands.box._parser import run_create
 
-        root = (tmp_home / "sa-null").resolve()
-        root.mkdir()
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=True,
-        )
-        assert run_create(ns) == 0
-        _null_workspaces(root)
-        # The create made the default folder before the null; without it, any path to it
-        # in the output below can only be a fabrication.
-        shutil.rmtree(root / "workspace")
-        return root
+    root = (tmp_home / "sa-null").resolve()
+    root.mkdir()
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=True,
+    )
+    assert run_create(ns) == 0
+    _null_workspaces(root)
+    # The create made the default folder before the null; without it, any path to it
+    # in the output below can only be a fabrication.
+    shutil.rmtree(root / "workspace")
+    return root
 
-    def _cli(self, argv, capsys):
-        from kanibako import cli
+  def _cli(self, argv, capsys):
+    from kanibako import cli
 
-        capsys.readouterr()
-        try:
-            cli.main(argv)
-            code = 0
-        except SystemExit as exc:
-            code = exc.code
-        return code, capsys.readouterr()
+    capsys.readouterr()
+    try:
+      cli.main(argv)
+      code = 0
+    except SystemExit as exc:
+      code = exc.code
+    return code, capsys.readouterr()
 
-    def test_resolve_and_floor_carry_none(self, config_file, tmp_home, credentials_dir):
-        from kanibako.settings.paths import resolve_standalone_project
-        from kanibako.settings.settings_launch import (
-            _box_inputs, _workset_workspaces_floor_value,
-        )
+  def test_resolve_and_floor_carry_none(self, config_file, tmp_home, credentials_dir):
+    from kanibako.settings.paths import resolve_standalone_project
+    from kanibako.settings.settings_launch import (
+      _box_inputs,
+      _workset_workspaces_floor_value,
+    )
 
-        root = self._box(tmp_home)
-        config, std = _std(config_file)
-        proj = resolve_standalone_project(std, config, str(root), initialize=True)
-        assert proj.project_path is None
-        assert _workset_workspaces_floor_value(
-            "standalone", str(root), early=_early_scope(std, BoxMode.standalone),
-        ) is None
-        inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
-        assert inputs.meta_identity is not None
-        assert inputs.meta_identity["meta.box.workspace"] is None
-        assert not (root / "workspace").exists()
-        assert not any(p.name == "None" for p in _tree(tmp_home))
+    root = self._box(tmp_home)
+    config, std = _std(config_file)
+    proj = resolve_standalone_project(std, config, str(root), initialize=True)
+    assert proj.project_path is None
+    assert (
+      _workset_workspaces_floor_value(
+        "standalone",
+        str(root),
+        early=_early_scope(std, BoxMode.standalone),
+      )
+      is None
+    )
+    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+    assert inputs.meta_identity is not None
+    assert inputs.meta_identity["meta.box.workspace"] is None
+    assert not (root / "workspace").exists()
+    assert not any(p.name == "None" for p in _tree(tmp_home))
 
-    def test_displays_show_none_never_the_default_folder(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        root = self._box(tmp_home)
-        fabricated = str(root / "workspace")
+  def test_displays_show_none_never_the_default_folder(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    root = self._box(tmp_home)
+    fabricated = str(root / "workspace")
 
-        code, out = self._cli(["box", "show", str(root), "--effective"], capsys)
-        assert code == 0, out.err
-        assert "box.bindings" in out.out  # the resolve ran
-        assert fabricated not in out.out + out.err
-        assert "= None" not in out.out
+    code, out = self._cli(["box", "show", str(root), "--effective"], capsys)
+    assert code == 0, out.err
+    assert "box.bindings" in out.out  # the resolve ran
+    assert fabricated not in out.out + out.err
+    assert "= None" not in out.out
 
-        code, out = self._cli(["box", "info", str(root)], capsys)
-        assert code == 0, out.err
-        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
-        assert fabricated not in out.out + out.err
+    code, out = self._cli(["box", "info", str(root)], capsys)
+    assert code == 0, out.err
+    assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+    assert fabricated not in out.out + out.err
 
-        # ``meta.*`` is derived per launch and ``box get`` refuses it for EVERY box.
-        code, out = self._cli(["box", "get", str(root), "meta.box.workspace"], capsys)
-        assert code == 1
-        assert "cannot be read here" in out.err
-        assert fabricated not in out.out + out.err
+    # ``meta.*`` is derived per launch and ``box get`` refuses it for EVERY box.
+    code, out = self._cli(["box", "get", str(root), "meta.box.workspace"], capsys)
+    assert code == 1
+    assert "cannot be read here" in out.err
+    assert fabricated not in out.out + out.err
 
-        # The display verbs may seed their own state; none of it is the default folder.
-        assert not (root / "workspace").exists()
-        assert not any(p.name == "None" for p in _tree(tmp_home))
+    # The display verbs may seed their own state; none of it is the default folder.
+    assert not (root / "workspace").exists()
+    assert not any(p.name == "None" for p in _tree(tmp_home))
 
-    def test_lifecycle_ops_refuse_naming_the_key(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.commands.box._lifecycle import resolve_lifecycle_target
-        from kanibako.errors import WorksetError
+  def test_lifecycle_ops_refuse_naming_the_key(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.commands.box._lifecycle import resolve_lifecycle_target
+    from kanibako.errors import WorksetError
 
-        root = self._box(tmp_home)
-        config, std = _std(config_file)
-        with pytest.raises(WorksetError) as exc:
-            resolve_lifecycle_target(str(root), std, config)
-        assert "workset.workspaces" in str(exc.value)
-        assert str(root / "workset.yaml") in str(exc.value)
+    root = self._box(tmp_home)
+    config, std = _std(config_file)
+    with pytest.raises(WorksetError) as exc:
+      resolve_lifecycle_target(str(root), std, config)
+    assert "workset.workspaces" in str(exc.value)
+    assert str(root / "workset.yaml") in str(exc.value)
 
 
 class TestNamedInTreeNullWorkspaceHasNoPath:
-    """A named IN-TREE member under a null ``workset.workspaces`` has no workspace either.
+  """A named IN-TREE member under a null ``workset.workspaces`` has no workspace either.
 
-    ``{workset.workspaces}/<name>`` is a whole-value ``<None>`` (§0), so the launch refuses
-    and the two display faces must not name the registered folder: it is the RECORD, not
-    the resolution.  An external member and a primary box resolve through no workset key
-    and keep their own path — the boundary this must not cross.
+  ``{workset.workspaces}/<name>`` is a whole-value ``<None>`` (§0), so the launch refuses
+  and the two display faces must not name the registered folder: it is the RECORD, not
+  the resolution.  An external member and a primary box resolve through no workset key
+  and keep their own path — the boundary this must not cross.
+  """
+
+  def _member(self, tmp_home, config_file):
+    from kanibako.project.workset import add_project, create_workset
+
+    config, std = _std(config_file)
+    root = (tmp_home / "worksets" / "nullws").resolve()
+    ws = create_workset("nullws", root, std)
+    add_project(ws, "app", root / "workspaces" / "app", std)
+    settings = _null_workspaces(root)
+    return config, std, root, settings
+
+  def _cli(self, argv, capsys):
+    from kanibako import cli
+
+    capsys.readouterr()
+    try:
+      cli.main(argv)
+      code = 0
+    except SystemExit as exc:
+      code = exc.code
+    return code, capsys.readouterr()
+
+  def test_resolve_and_floor_carry_none(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    from kanibako.settings.settings_launch import _box_inputs
+
+    config, std, _root, _settings = self._member(tmp_home, config_file)
+    proj = _resolve_existing_box(std, config, "nullws/app")
+    assert proj is not None and proj.name == "app"
+    assert proj.project_path is None
+    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+    assert inputs.meta_identity is not None
+    assert inputs.meta_identity["meta.box.workspace"] is None
+    # The RECORD of where the files are survives the null: the hash is the box's
+    # identity, and nulling must not rename its container or drop its membership.
+    assert proj.project_hash
+    assert not any(p.name == "None" for p in _tree(tmp_home))
+
+  def test_displays_show_none_never_the_registered_folder(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    self._member(tmp_home, config_file)
+    recorded = str(tmp_home / "worksets" / "nullws" / "workspaces" / "app")
+
+    code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
+    assert code == 0, out.err
+    assert "box.bindings" in out.out  # the resolve ran
+    assert recorded not in out.out + out.err
+    assert "= None" not in out.out
+
+    code, out = self._cli(["box", "info", "nullws/app"], capsys)
+    assert code == 0, out.err
+    assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+    assert recorded not in out.out + out.err
+    assert not any(p.name == "None" for p in _tree(tmp_home))
+
+  def test_the_displays_agree_with_the_launch_refusal(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Both faces and the launch answer from the one resolved value."""
+    from kanibako.errors import WorksetError
+
+    self._member(tmp_home, config_file)
+
+    with pytest.raises(WorksetError) as exc:
+      _launch("nullws/app")
+    message = str(exc.value)
+    assert "workset.workspaces" in message
+
+    code, out = self._cli(["box", "info", "nullws/app"], capsys)
+    assert code == 0, out.err
+    # The launch says the box has no workspace to mount; the display must not contradict.
+    assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+
+    code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
+    assert code == 0, out.err
+    assert "~/workspace]" not in out.out
+
+  def test_lifecycle_state_carries_the_recorded_workspace(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """A lifecycle op works on the RECORD — where the files are — so it still resolves.
+
+    ⚑ The null governs the RESOLVED ``meta.box.workspace``, which is what the launch
+    mounts; a move or a re-point needs the leaf on disk, and refusing at resolve time
+    would strand a box that can legitimately move OUT to a directory outside the workset.
+    The op-level refusal is what stops a move that would land a new in-tree leaf.
     """
+    from kanibako.commands.box._lifecycle import resolve_lifecycle_target
+    from kanibako.project.workset import load_workset
 
-    def _member(self, tmp_home, config_file):
-        from kanibako.project.workset import add_project, create_workset
+    config, std, root, _settings = self._member(tmp_home, config_file)
+    recorded = root / "workspaces" / "app"
+    state = resolve_lifecycle_target("nullws/app", std, config)
+    assert state.workspace_path == recorded
+    assert state.mode.value == "named"
+    # The box is still a member, so the op can re-point or release it.
+    assert [
+      p.name for p in load_workset(root, "nullws", early_system=std.early_system).projects
+    ] == ["app"]
 
-        config, std = _std(config_file)
-        root = (tmp_home / "worksets" / "nullws").resolve()
-        ws = create_workset("nullws", root, std)
-        add_project(ws, "app", root / "workspaces" / "app", std)
-        settings = _null_workspaces(root)
-        return config, std, root, settings
+  def test_an_external_member_keeps_its_own_workspace(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The boundary: a recorded workspace OUTSIDE the root resolves through no key."""
+    from kanibako.project.workset import add_project, create_workset
 
-    def _cli(self, argv, capsys):
-        from kanibako import cli
+    config, std = _std(config_file)
+    root = (tmp_home / "worksets" / "extws").resolve()
+    ws = create_workset("extws", root, std)
+    source = (tmp_home / "ext-src").resolve()
+    source.mkdir()
+    add_project(ws, "ext", source, std)
+    _null_workspaces(root)
 
-        capsys.readouterr()
-        try:
-            cli.main(argv)
-            code = 0
-        except SystemExit as exc:
-            code = exc.code
-        return code, capsys.readouterr()
+    proj = _resolve_existing_box(std, config, str(source))
+    assert proj is not None and proj.name == "ext"
+    assert proj.project_path == source
 
-    def test_resolve_and_floor_carry_none(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        from kanibako.settings.settings_launch import _box_inputs
+  def test_a_primary_box_keeps_its_project_dir(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+  ):
+    """The boundary: primary's workspace is the project dir, not a workset key."""
+    from kanibako.commands.box._parser import run_create
 
-        config, std, _root, _settings = self._member(tmp_home, config_file)
-        proj = _resolve_existing_box(std, config, "nullws/app")
-        assert proj is not None and proj.name == "app"
-        assert proj.project_path is None
-        inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
-        assert inputs.meta_identity is not None
-        assert inputs.meta_identity["meta.box.workspace"] is None
-        # The RECORD of where the files are survives the null: the hash is the box's
-        # identity, and nulling must not rename its container or drop its membership.
-        assert proj.project_hash
-        assert not any(p.name == "None" for p in _tree(tmp_home))
+    config, std = _std(config_file)
+    assert run_create(_create_args(tmp_home / "project")) == 0
+    _null_workspaces(std.primary_workset)
 
-    def test_displays_show_none_never_the_registered_folder(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        self._member(tmp_home, config_file)
-        recorded = str(tmp_home / "worksets" / "nullws" / "workspaces" / "app")
-
-        code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
-        assert code == 0, out.err
-        assert "box.bindings" in out.out  # the resolve ran
-        assert recorded not in out.out + out.err
-        assert "= None" not in out.out
-
-        code, out = self._cli(["box", "info", "nullws/app"], capsys)
-        assert code == 0, out.err
-        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
-        assert recorded not in out.out + out.err
-        assert not any(p.name == "None" for p in _tree(tmp_home))
-
-    def test_the_displays_agree_with_the_launch_refusal(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Both faces and the launch answer from the one resolved value."""
-        from kanibako.errors import WorksetError
-
-        self._member(tmp_home, config_file)
-
-        with pytest.raises(WorksetError) as exc:
-            _launch("nullws/app")
-        message = str(exc.value)
-        assert "workset.workspaces" in message
-
-        code, out = self._cli(["box", "info", "nullws/app"], capsys)
-        assert code == 0, out.err
-        # The launch says the box has no workspace to mount; the display must not contradict.
-        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
-
-        code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
-        assert code == 0, out.err
-        assert "~/workspace]" not in out.out
-
-    def test_lifecycle_state_carries_the_recorded_workspace(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """A lifecycle op works on the RECORD — where the files are — so it still resolves.
-
-        ⚑ The null governs the RESOLVED ``meta.box.workspace``, which is what the launch
-        mounts; a move or a re-point needs the leaf on disk, and refusing at resolve time
-        would strand a box that can legitimately move OUT to a directory outside the workset.
-        The op-level refusal is what stops a move that would land a new in-tree leaf.
-        """
-        from kanibako.commands.box._lifecycle import resolve_lifecycle_target
-        from kanibako.project.workset import load_workset
-
-        config, std, root, _settings = self._member(tmp_home, config_file)
-        recorded = root / "workspaces" / "app"
-        state = resolve_lifecycle_target("nullws/app", std, config)
-        assert state.workspace_path == recorded
-        assert state.mode.value == "named"
-        # The box is still a member, so the op can re-point or release it.
-        assert [p.name for p in load_workset(root, "nullws", early_system=std.early_system).projects] == ["app"]
-
-    def test_an_external_member_keeps_its_own_workspace(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The boundary: a recorded workspace OUTSIDE the root resolves through no key."""
-        from kanibako.project.workset import add_project, create_workset
-
-        config, std = _std(config_file)
-        root = (tmp_home / "worksets" / "extws").resolve()
-        ws = create_workset("extws", root, std)
-        source = (tmp_home / "ext-src").resolve()
-        source.mkdir()
-        add_project(ws, "ext", source, std)
-        _null_workspaces(root)
-
-        proj = _resolve_existing_box(std, config, str(source))
-        assert proj is not None and proj.name == "ext"
-        assert proj.project_path == source
-
-    def test_a_primary_box_keeps_its_project_dir(
-        self, config_file, tmp_home, credentials_dir,
-    ):
-        """The boundary: primary's workspace is the project dir, not a workset key."""
-        from kanibako.commands.box._parser import run_create
-
-        config, std = _std(config_file)
-        assert run_create(_create_args(tmp_home / "project")) == 0
-        _null_workspaces(std.primary_workset)
-
-        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
-        assert proj is not None and proj.name == "project"
-        assert proj.project_path == (tmp_home / "project").resolve()
+    proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+    assert proj is not None and proj.name == "project"
+    assert proj.project_path == (tmp_home / "project").resolve()
 
 
 class TestUnregisteredStandaloneRegisterHint:
-    """The hint an unregistered standalone ``create`` prints is a RUNNABLE cure.
+  """The hint an unregistered standalone ``create`` prints is a RUNNABLE cure.
 
-    Registration at create is opt-in for a standalone box (§D4a), so this line is
-    the only thing that tells the user how to adopt the box they just made.  Its
-    operand is the box ROOT, and a root is not one shell word whenever it holds a
-    space — pasted unquoted, ``register`` rejects the words after the space as
-    extra arguments (rc 2, "unrecognized arguments") and adopts nothing.
-    """
+  Registration at create is opt-in for a standalone box (§D4a), so this line is
+  the only thing that tells the user how to adopt the box they just made.  Its
+  operand is the box ROOT, and a root is not one shell word whenever it holds a
+  space — pasted unquoted, ``register`` rejects the words after the space as
+  extra arguments (rc 2, "unrecognized arguments") and adopts nothing.
+  """
 
-    @staticmethod
-    def _spaced_root(tmp_home):
-        # ⚑ The space sits in the PARENT so what breaks is the cure line's quoting
-        # alone; a spaced LEAF would make the box NAME illegal and fail for a
-        # second, unrelated reason.
-        root = tmp_home / "sa box" / "sa"
-        root.mkdir(parents=True)
-        return root
+  @staticmethod
+  def _spaced_root(tmp_home):
+    # ⚑ The space sits in the PARENT so what breaks is the cure line's quoting
+    # alone; a spaced LEAF would make the box NAME illegal and fail for a
+    # second, unrelated reason.
+    root = tmp_home / "sa box" / "sa"
+    root.mkdir(parents=True)
+    return root
 
-    def test_the_hint_at_a_spaced_root_registers_that_root(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Pinned as a RUN, not a string match: only the run says the box at the
-        SPACED root is the one that got adopted."""
-        from kanibako.cli import build_parser
-        from kanibako.commands.box._parser import run_create
-        from kanibako.project import registry_store
+  def test_the_hint_at_a_spaced_root_registers_that_root(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Pinned as a RUN, not a string match: only the run says the box at the
+    SPACED root is the one that got adopted."""
+    from kanibako.cli import build_parser
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project import registry_store
 
-        root = self._spaced_root(tmp_home)
-        ns = argparse.Namespace(
-            path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False, register=False,
-        )
-        capsys.readouterr()
-        assert run_create(ns) == 0
-        out = capsys.readouterr().out
+    root = self._spaced_root(tmp_home)
+    ns = argparse.Namespace(
+      path=str(root),
+      standalone=True,
+      no_vault=True,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      register=False,
+    )
+    capsys.readouterr()
+    assert run_create(ns) == 0
+    out = capsys.readouterr().out
 
-        _config, std = _std(config_file)
-        assert registry_store.standalone_name_for_root(std.registry, root) is None
+    _config, std = _std(config_file)
+    assert registry_store.standalone_name_for_root(std.registry, root) is None
 
-        # The cure is a WHOLE line: wrapped in prose quotes it nests them around
-        # the quoted root and no longer pastes.
-        assert "'kanibako box register" not in out, out
-        found = re.search(r"to address it by name from elsewhere, run:\n  (.*)$", out, re.M)
-        assert found, f"no registration hint in {out!r}"
-        argv = shlex.split(found.group(1))
-        assert argv[:3] == ["kanibako", "box", "register"]
-        assert argv[3:] == [str(root)], "the root must arrive as ONE operand"
+    # The cure is a WHOLE line: wrapped in prose quotes it nests them around
+    # the quoted root and no longer pastes.
+    assert "'kanibako box register" not in out, out
+    found = re.search(r"to address it by name from elsewhere, run:\n  (.*)$", out, re.M)
+    assert found, f"no registration hint in {out!r}"
+    argv = shlex.split(found.group(1))
+    assert argv[:3] == ["kanibako", "box", "register"]
+    assert argv[3:] == [str(root)], "the root must arrive as ONE operand"
 
-        parsed = build_parser().parse_args(argv[1:])
-        assert parsed.func(parsed) == 0
-        assert registry_store.standalone_name_for_root(std.registry, root)
+    parsed = build_parser().parse_args(argv[1:])
+    assert parsed.func(parsed) == 0
+    assert registry_store.standalone_name_for_root(std.registry, root)
 
 
 class TestCreateRefusesPerOwnerBeforeTheDir:
-    """A primary ``create <path>`` refused by an inherited per-owner key leaves no ``<path>``."""
+  """A primary ``create <path>`` refused by an inherited per-owner key leaves no ``<path>``."""
 
-    @pytest.mark.parametrize("key", ["registry", "canon", "channels.chat"])
-    def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
-        from kanibako.cli import main
-        from kanibako.settings.config_io import dump_doc
+  @pytest.mark.parametrize("key", ["registry", "canon", "channels.chat"])
+  def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
+    from kanibako.cli import main
+    from kanibako.settings.config_io import dump_doc
 
-        _config, std = _std(config_file)
-        head, _, leaf = key.partition(".")
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"workset": {head: {leaf: "/srv/x"} if leaf else "/srv/x"}})
-        target = tmp_home / "new"
-        capsys.readouterr()
+    _config, std = _std(config_file)
+    head, _, leaf = key.partition(".")
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(std.settings, {"workset": {head: {leaf: "/srv/x"} if leaf else "/srv/x"}})
+    target = tmp_home / "new"
+    capsys.readouterr()
 
-        with pytest.raises(SystemExit) as exc:
-            main(["create", str(target)])
-        assert exc.value.code == 1
-        assert f"workset.{key}" in capsys.readouterr().err
-        assert not target.exists()
+    with pytest.raises(SystemExit) as exc:
+      main(["create", str(target)])
+    assert exc.value.code == 1
+    assert f"workset.{key}" in capsys.readouterr().err
+    assert not target.exists()
 
 
 # ⚑ ``workset.registry`` and ``workset.template`` are the per-owner keys a standalone
@@ -1892,332 +2137,398 @@ _STANDALONE_ACCEPTED_KEYS = ["registry", "template"]
 
 
 class TestStandaloneCreatePerOwnerBeforeTheDir:
-    """A standalone ``create <path>`` refuses its own per-owner keys, and only those."""
+  """A standalone ``create <path>`` refuses its own per-owner keys, and only those."""
 
-    @staticmethod
-    def _system_workset_key(config_file, key, value="/srv/x"):
-        _config, std = _std(config_file)
-        head, _, leaf = key.partition(".")
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        from kanibako.settings.config_io import dump_doc
-        dump_doc(std.settings, {"workset": {head: {leaf: value} if leaf else value}})
-        return std
+  @staticmethod
+  def _system_workset_key(config_file, key, value="/srv/x"):
+    _config, std = _std(config_file)
+    head, _, leaf = key.partition(".")
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    from kanibako.settings.config_io import dump_doc
 
-    @pytest.mark.parametrize(
-        "key", ["canon", "workspaces", "channelroot", "channels.chat"],
+    dump_doc(std.settings, {"workset": {head: {leaf: value} if leaf else value}})
+    return std
+
+  @pytest.mark.parametrize(
+    "key",
+    ["canon", "workspaces", "channelroot", "channels.chat"],
+  )
+  def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
+    """The refusal lands before the mkdir, so no ``<path>`` stands behind it."""
+    from kanibako.cli import main
+
+    self._system_workset_key(config_file, key)
+    target = tmp_home / "new"
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exc:
+      main(["create", "--standalone", str(target)])
+    assert exc.value.code == 1
+    assert f"workset.{key}" in capsys.readouterr().err
+    assert not target.exists(), f"{key} refused the create but left {target} behind"
+
+  @pytest.mark.parametrize("key", _STANDALONE_ACCEPTED_KEYS)
+  def test_inherited_value_the_standalone_arm_accepts_still_creates(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    key,
+  ):
+    """An inherited value the standalone arm accepts must not block the create."""
+    from kanibako.cli import main
+
+    self._system_workset_key(config_file, key)
+    target = tmp_home / "new"
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exc:
+      main(["create", "--standalone", str(target)])
+    assert exc.value.code == 0, capsys.readouterr().err
+    assert (target / "box_data").is_dir(), f"{key} blocked a standalone create"
+
+  @pytest.mark.parametrize("key", ["channelroot", "channels.chat", "channels.mailboxes"])
+  def test_refused_a_pre_existing_target_is_left_as_the_user_left_it(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    key,
+  ):
+    """The refusal lands before ANY write, so a target that ALREADY exists is untouched.
+
+    ⛔ A guard that runs only under ``if not target.exists()`` never reaches this case:
+    the create then materializes a whole box beside ``user.txt`` and refuses afterwards.
+    """
+    from kanibako.cli import main
+
+    self._system_workset_key(config_file, key)
+    target = tmp_home / "mine"
+    target.mkdir()
+    (target / "user.txt").write_text("the user's own file\n")
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exc:
+      main(["create", "--standalone", str(target)])
+    assert exc.value.code == 1
+    assert f"workset.{key}" in capsys.readouterr().err
+    assert sorted(p.name for p in target.iterdir()) == ["user.txt"], (
+      f"{key} refused the create but wrote into {target}"
     )
-    def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
-        """The refusal lands before the mkdir, so no ``<path>`` stands behind it."""
-        from kanibako.cli import main
 
-        self._system_workset_key(config_file, key)
-        target = tmp_home / "new"
-        capsys.readouterr()
+  @pytest.mark.parametrize("key", ["channelroot", "channels.chat"])
+  def test_refused_a_cwd_target_is_left_as_the_user_left_it(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+    key,
+  ):
+    """With no ``<path>`` the target is the cwd, which always exists: same contract."""
+    from kanibako.cli import main
 
-        with pytest.raises(SystemExit) as exc:
-            main(["create", "--standalone", str(target)])
-        assert exc.value.code == 1
-        assert f"workset.{key}" in capsys.readouterr().err
-        assert not target.exists(), f"{key} refused the create but left {target} behind"
+    self._system_workset_key(config_file, key)
+    cwd = tmp_home / "mine"
+    cwd.mkdir()
+    (cwd / "user.txt").write_text("the user's own file\n")
+    monkeypatch.chdir(cwd)
+    capsys.readouterr()
 
-    @pytest.mark.parametrize("key", _STANDALONE_ACCEPTED_KEYS)
-    def test_inherited_value_the_standalone_arm_accepts_still_creates(
-        self, config_file, tmp_home, credentials_dir, capsys, key,
-    ):
-        """An inherited value the standalone arm accepts must not block the create."""
-        from kanibako.cli import main
-
-        self._system_workset_key(config_file, key)
-        target = tmp_home / "new"
-        capsys.readouterr()
-
-        with pytest.raises(SystemExit) as exc:
-            main(["create", "--standalone", str(target)])
-        assert exc.value.code == 0, capsys.readouterr().err
-        assert (target / "box_data").is_dir(), f"{key} blocked a standalone create"
-
-    @pytest.mark.parametrize("key", ["channelroot", "channels.chat", "channels.mailboxes"])
-    def test_refused_a_pre_existing_target_is_left_as_the_user_left_it(
-        self, config_file, tmp_home, credentials_dir, capsys, key,
-    ):
-        """The refusal lands before ANY write, so a target that ALREADY exists is untouched.
-
-        ⛔ A guard that runs only under ``if not target.exists()`` never reaches this case:
-        the create then materializes a whole box beside ``user.txt`` and refuses afterwards.
-        """
-        from kanibako.cli import main
-
-        self._system_workset_key(config_file, key)
-        target = tmp_home / "mine"
-        target.mkdir()
-        (target / "user.txt").write_text("the user's own file\n")
-        capsys.readouterr()
-
-        with pytest.raises(SystemExit) as exc:
-            main(["create", "--standalone", str(target)])
-        assert exc.value.code == 1
-        assert f"workset.{key}" in capsys.readouterr().err
-        assert sorted(p.name for p in target.iterdir()) == ["user.txt"], (
-            f"{key} refused the create but wrote into {target}"
-        )
-
-    @pytest.mark.parametrize("key", ["channelroot", "channels.chat"])
-    def test_refused_a_cwd_target_is_left_as_the_user_left_it(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch, key,
-    ):
-        """With no ``<path>`` the target is the cwd, which always exists: same contract."""
-        from kanibako.cli import main
-
-        self._system_workset_key(config_file, key)
-        cwd = tmp_home / "mine"
-        cwd.mkdir()
-        (cwd / "user.txt").write_text("the user's own file\n")
-        monkeypatch.chdir(cwd)
-        capsys.readouterr()
-
-        with pytest.raises(SystemExit) as exc:
-            main(["create", "--standalone"])
-        assert exc.value.code == 1
-        assert f"workset.{key}" in capsys.readouterr().err
-        assert sorted(p.name for p in cwd.iterdir()) == ["user.txt"], (
-            f"{key} refused the create but wrote into {cwd}"
-        )
+    with pytest.raises(SystemExit) as exc:
+      main(["create", "--standalone"])
+    assert exc.value.code == 1
+    assert f"workset.{key}" in capsys.readouterr().err
+    assert sorted(p.name for p in cwd.iterdir()) == ["user.txt"], (
+      f"{key} refused the create but wrote into {cwd}"
+    )
 
 
 class TestRefusedCreateRemovesTheDirsItMade:
-    """A refused ``create <path>`` leaves no directory it made, and no other one is touched.
+  """A refused ``create <path>`` leaves no directory it made, and no other one is touched.
 
-    The refusals below land after ``<path>`` is made: the probes need it to exist.
-    """
+  The refusals below land after ``<path>`` is made: the probes need it to exist.
+  """
 
-    _OUT_OF_ROOT_CANON = "/srv/x/{meta.workset.path}"
+  _OUT_OF_ROOT_CANON = "/srv/x/{meta.workset.path}"
 
-    def _refuse(self, capsys, argv: list[str]) -> str:
-        from kanibako.cli import main
+  def _refuse(self, capsys, argv: list[str]) -> str:
+    from kanibako.cli import main
 
-        capsys.readouterr()
-        with pytest.raises(SystemExit) as exc:
-            main(argv)
-        assert exc.value.code == 1
-        return capsys.readouterr().err
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exc:
+      main(argv)
+    assert exc.value.code == 1
+    return capsys.readouterr().err
 
-    def test_out_of_root_canon_leaves_no_path(self, config_file, tmp_home, credentials_dir,
-                                              capsys):
-        TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
-            config_file, "canon", self._OUT_OF_ROOT_CANON)
-        target = tmp_home / "new" / "deep"
+  def test_out_of_root_canon_leaves_no_path(self, config_file, tmp_home, credentials_dir, capsys):
+    TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
+      config_file, "canon", self._OUT_OF_ROOT_CANON
+    )
+    target = tmp_home / "new" / "deep"
 
-        err = self._refuse(capsys, ["create", "--standalone", str(target)])
-        assert "workset.canon" in err and "OUTSIDE the workset root" in err
-        assert not (tmp_home / "new").exists()
+    err = self._refuse(capsys, ["create", "--standalone", str(target)])
+    assert "workset.canon" in err and "OUTSIDE the workset root" in err
+    assert not (tmp_home / "new").exists()
 
-    def test_out_of_root_canon_keeps_a_pre_existing_target_as_found(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
-            config_file, "canon", self._OUT_OF_ROOT_CANON)
-        target = tmp_home / "mine"
-        target.mkdir()
-        (target / "user.txt").write_text("the user's own file\n")
+  def test_out_of_root_canon_keeps_a_pre_existing_target_as_found(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
+      config_file, "canon", self._OUT_OF_ROOT_CANON
+    )
+    target = tmp_home / "mine"
+    target.mkdir()
+    (target / "user.txt").write_text("the user's own file\n")
 
-        self._refuse(capsys, ["create", "--standalone", str(target)])
-        assert sorted(p.name for p in target.iterdir()) == ["user.txt"]
+    self._refuse(capsys, ["create", "--standalone", str(target)])
+    assert sorted(p.name for p in target.iterdir()) == ["user.txt"]
 
-    @pytest.mark.parametrize("mode", [[], ["--standalone"]])
-    @pytest.mark.parametrize("flags", [["--agent", "bad!x"], ["--recover"]])
-    def test_refusal_removes_only_the_dirs_it_made(
-        self, config_file, tmp_home, credentials_dir, capsys, mode, flags,
-    ):
-        parent = tmp_home / "existing"
-        parent.mkdir()
-        target = parent / "new" / "deep"
+  @pytest.mark.parametrize("mode", [[], ["--standalone"]])
+  @pytest.mark.parametrize("flags", [["--agent", "bad!x"], ["--recover"]])
+  def test_refusal_removes_only_the_dirs_it_made(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    mode,
+    flags,
+  ):
+    parent = tmp_home / "existing"
+    parent.mkdir()
+    target = parent / "new" / "deep"
 
-        self._refuse(capsys, ["create", *mode, *flags, str(target)])
-        assert parent.is_dir() and not any(parent.iterdir())
+    self._refuse(capsys, ["create", *mode, *flags, str(target)])
+    assert parent.is_dir() and not any(parent.iterdir())
 
-    def test_a_raise_after_the_commit_keeps_the_workspace(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
-    ):
-        """A registered box keeps its workspace even if the create raises afterwards."""
-        from kanibako.cli import main
-        from kanibako.commands import start
+  def test_a_raise_after_the_commit_keeps_the_workspace(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    monkeypatch,
+  ):
+    """A registered box keeps its workspace even if the create raises afterwards."""
+    from kanibako.cli import main
+    from kanibako.commands import start
 
-        real = start._clear_create_entry
+    real = start._clear_create_entry
 
-        def clear_then_break(*a, **kw):
-            real(*a, **kw)
-            raise BrokenPipeError("stdout closed")
+    def clear_then_break(*a, **kw):
+      real(*a, **kw)
+      raise BrokenPipeError("stdout closed")
 
-        monkeypatch.setattr(start, "_clear_create_entry", clear_then_break)
-        target = tmp_home / "new" / "ws"
+    monkeypatch.setattr(start, "_clear_create_entry", clear_then_break)
+    target = tmp_home / "new" / "ws"
 
-        with pytest.raises((SystemExit, BrokenPipeError)):
-            main(["create", str(target)])
-        assert target.is_dir()
+    with pytest.raises((SystemExit, BrokenPipeError)):
+      main(["create", str(target)])
+    assert target.is_dir()
 
-    def test_a_dir_made_by_someone_else_meanwhile_survives(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        """Only the dirs the create's own mkdir made are removed, not ones made since it began."""
-        from kanibako.commands.box import _parser
+  def test_a_dir_made_by_someone_else_meanwhile_survives(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    """Only the dirs the create's own mkdir made are removed, not ones made since it began."""
+    from kanibako.commands.box import _parser
 
-        theirs = tmp_home / "theirs"
-        real = _parser.refuse_inherited_per_owner
+    theirs = tmp_home / "theirs"
+    real = _parser.refuse_inherited_per_owner
 
-        def make_theirs_first(*a, **kw):
-            theirs.mkdir(exist_ok=True)
-            return real(*a, **kw)
+    def make_theirs_first(*a, **kw):
+      theirs.mkdir(exist_ok=True)
+      return real(*a, **kw)
 
-        monkeypatch.setattr(_parser, "refuse_inherited_per_owner", make_theirs_first)
+    monkeypatch.setattr(_parser, "refuse_inherited_per_owner", make_theirs_first)
 
-        self._refuse(capsys, ["create", "--agent", "bad!x", str(theirs / "deep")])
-        assert theirs.is_dir() and not any(theirs.iterdir())
+    self._refuse(capsys, ["create", "--agent", "bad!x", str(theirs / "deep")])
+    assert theirs.is_dir() and not any(theirs.iterdir())
 
-    def test_a_dotdot_path_leaves_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        monkeypatch.chdir(tmp_home)
+  def test_a_dotdot_path_leaves_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    monkeypatch.chdir(tmp_home)
 
-        self._refuse(capsys, ["create", "--standalone", "--agent", "bad!x", "rel/a/../b"])
-        assert not (tmp_home / "rel").exists()
+    self._refuse(capsys, ["create", "--standalone", "--agent", "bad!x", "rel/a/../b"])
+    assert not (tmp_home / "rel").exists()
 
-    def test_a_late_os_error_is_an_error_line_and_leaves_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        from kanibako.settings import paths
+  def test_a_late_os_error_is_an_error_line_and_leaves_nothing(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    from kanibako.settings import paths
 
-        def denied(*a, **kw):
-            raise PermissionError(13, "Permission denied", "boxes/ws")
+    def denied(*a, **kw):
+      raise PermissionError(13, "Permission denied", "boxes/ws")
 
-        monkeypatch.setattr(paths, "_init_common", denied)
-        target = tmp_home / "new" / "ws"
+    monkeypatch.setattr(paths, "_init_common", denied)
+    target = tmp_home / "new" / "ws"
 
-        err = self._refuse(capsys, ["create", str(target)])
-        assert "Error: [Errno 13] Permission denied: 'boxes/ws'" in err.splitlines()
-        assert "run the same 'kanibako create' again" in err
-        assert not (tmp_home / "new").exists()
+    err = self._refuse(capsys, ["create", str(target)])
+    assert "Error: [Errno 13] Permission denied: 'boxes/ws'" in err.splitlines()
+    assert "run the same 'kanibako create' again" in err
+    assert not (tmp_home / "new").exists()
 
-    def test_an_os_error_after_the_commit_names_the_recover_line(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-    ):
-        """Past the commit a re-run is refused, so the cure is the ``--recover`` line, and it runs."""
-        import shlex
+  def test_an_os_error_after_the_commit_names_the_recover_line(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    """Past the commit a re-run is refused, so the cure is the ``--recover`` line, and it runs."""
+    import shlex
 
-        from kanibako.cli import main
-        from kanibako.commands import start
+    from kanibako.cli import main
+    from kanibako.commands import start
 
-        def denied(*a, **kw):
-            raise PermissionError(13, "Permission denied", "registry")
+    def denied(*a, **kw):
+      raise PermissionError(13, "Permission denied", "registry")
 
-        target = tmp_home / "new" / "ws"
-        with monkeypatch.context() as m:
-            m.setattr(start, "_register_new_box", denied)
-            err = self._refuse(capsys, ["create", str(target)])
-        cure = f"kanibako create --recover {shlex.quote(str(target))}"
-        assert f"  Fix that, then run: {cure}" in err.splitlines()
+    target = tmp_home / "new" / "ws"
+    with monkeypatch.context() as m:
+      m.setattr(start, "_register_new_box", denied)
+      err = self._refuse(capsys, ["create", str(target)])
+    cure = f"kanibako create --recover {shlex.quote(str(target))}"
+    assert f"  Fix that, then run: {cure}" in err.splitlines()
 
-        with pytest.raises(SystemExit) as exc:
-            main(shlex.split(cure)[1:])
-        assert exc.value.code == 0
+    with pytest.raises(SystemExit) as exc:
+      main(shlex.split(cure)[1:])
+    assert exc.value.code == 0
 
 
 def test_a_member_create_names_its_failed_rollback_as_a_create(
-    config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+  config_file,
+  tmp_home,
+  credentials_dir,
+  capsys,
+  monkeypatch,
 ):
-    """``box create`` of a member whose membership write fails names the create, not a connect."""
-    import os
+  """``box create`` of a member whose membership write fails names the create, not a connect."""
+  import os
 
-    import kanibako.settings.paths as paths_mod
-    from kanibako.commands.box._parser import run_create
-    from kanibako.project.workset import create_workset
-    from kanibako.runtime.container import ContainerRuntime
+  import kanibako.settings.paths as paths_mod
+  from kanibako.commands.box._parser import run_create
+  from kanibako.project.workset import create_workset
+  from kanibako.runtime.container import ContainerRuntime
 
-    _config, std = _std(config_file)
-    ws = create_workset("gamma", tmp_home / "gamma", std)
-    boxes = ws.projects_dir
-    real = paths_mod._register_workset_box_membership
+  _config, std = _std(config_file)
+  ws = create_workset("gamma", tmp_home / "gamma", std)
+  boxes = ws.projects_dir
+  real = paths_mod._register_workset_box_membership
 
-    def locked(*a, **k):
-        os.chmod(boxes, 0o555)  # the unwind cannot remove boxes/alpha now
-        os.chmod(ws.root, 0o555)  # and the membership write itself fails for real
-        return real(*a, **k)
+  def locked(*a, **k):
+    os.chmod(boxes, 0o555)  # the unwind cannot remove boxes/alpha now
+    os.chmod(ws.root, 0o555)  # and the membership write itself fails for real
+    return real(*a, **k)
 
-    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
-    monkeypatch.chdir(ws.root)
-    try:
-        # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
-        # read-only ``boxes/`` (CI has one): this run models the host where it fails too.
-        with monkeypatch.context() as mp:
-            mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
-            assert run_create(_create_args("alpha")) == 1
-    finally:
-        os.chmod(ws.root, 0o755)
-        os.chmod(boxes, 0o755)
-    err = capsys.readouterr().err
-    assert (f"Note: the box creation failed and was not fully undone; check 'alpha' in "
-            f"workset 'gamma' at {ws.root}") in err, err
-    assert "workset connect" not in err
+  monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+  monkeypatch.chdir(ws.root)
+  try:
+    # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+    # read-only ``boxes/`` (CI has one): this run models the host where it fails too.
+    with monkeypatch.context() as mp:
+      mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+      assert run_create(_create_args("alpha")) == 1
+  finally:
+    os.chmod(ws.root, 0o755)
+    os.chmod(boxes, 0o755)
+  err = capsys.readouterr().err
+  assert (
+    f"Note: the box creation failed and was not fully undone; check 'alpha' in "
+    f"workset 'gamma' at {ws.root}"
+  ) in err, err
+  assert "workset connect" not in err
 
 
 @pytest.mark.parametrize("stuck", [True, False], ids=["leftover", "clean"])
 def test_a_member_create_gives_one_account_of_its_rollback(
-    config_file, tmp_home, credentials_dir, capsys, monkeypatch, stuck,
+  config_file,
+  tmp_home,
+  credentials_dir,
+  capsys,
+  monkeypatch,
+  stuck,
 ):
-    """``add_project`` owns the member it rolled back: the create's own undo does not undo
-    it again, so no Warning about a member that is already gone.  A leftover keeps the
-    journal entry, so ``--recover`` can finish; a clean rollback clears it."""
-    import os
+  """``add_project`` owns the member it rolled back: the create's own undo does not undo
+  it again, so no Warning about a member that is already gone.  A leftover keeps the
+  journal entry, so ``--recover`` can finish; a clean rollback clears it."""
+  import os
 
-    import kanibako.settings.paths as paths_mod
-    from kanibako.commands.box._parser import run_create
-    from kanibako.project.workset import create_workset
-    from kanibako.runtime.container import ContainerRuntime
+  import kanibako.settings.paths as paths_mod
+  from kanibako.commands.box._parser import run_create
+  from kanibako.project.workset import create_workset
+  from kanibako.runtime.container import ContainerRuntime
 
-    _config, std = _std(config_file)
-    ws = create_workset("gamma", tmp_home / "gamma", std)
-    boxes = ws.projects_dir
-    real = paths_mod._register_workset_box_membership
+  _config, std = _std(config_file)
+  ws = create_workset("gamma", tmp_home / "gamma", std)
+  boxes = ws.projects_dir
+  real = paths_mod._register_workset_box_membership
 
-    def locked(*a, **k):
-        if stuck:
-            os.chmod(boxes, 0o555)
-        os.chmod(ws.root, 0o555)
-        return real(*a, **k)
+  def locked(*a, **k):
+    if stuck:
+      os.chmod(boxes, 0o555)
+    os.chmod(ws.root, 0o555)
+    return real(*a, **k)
 
-    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
-    monkeypatch.chdir(ws.root)
-    try:
-        with monkeypatch.context() as mp:
-            if stuck:
-                # ⚑ A working ``podman unshare rm`` ignores modes and would delete through
-                # the read-only ``boxes/`` (CI has one): this run models the host where it
-                # fails too.
-                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
-            assert run_create(_create_args("alpha")) == 1
-    finally:
-        os.chmod(ws.root, 0o755)
-        os.chmod(boxes, 0o755)
-    err = capsys.readouterr().err
-    assert "Warning" not in err, err
-    assert "could not undo the member" not in err, err
-    assert err.count(f"could not remove {boxes / 'alpha'}") == int(stuck), err
-    assert err.count("was not fully undone") == int(stuck), err
-    assert (boxes / "alpha").exists() is stuck
-    import yaml
+  monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+  monkeypatch.chdir(ws.root)
+  try:
+    with monkeypatch.context() as mp:
+      if stuck:
+        # ⚑ A working ``podman unshare rm`` ignores modes and would delete through
+        # the read-only ``boxes/`` (CI has one): this run models the host where it
+        # fails too.
+        mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+      assert run_create(_create_args("alpha")) == 1
+  finally:
+    os.chmod(ws.root, 0o755)
+    os.chmod(boxes, 0o755)
+  err = capsys.readouterr().err
+  assert "Warning" not in err, err
+  assert "could not undo the member" not in err, err
+  assert err.count(f"could not remove {boxes / 'alpha'}") == int(stuck), err
+  assert err.count("was not fully undone") == int(stuck), err
+  assert (boxes / "alpha").exists() is stuck
+  import yaml
 
-    entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
-    assert bool(entries) is stuck, entries
-    cure = f"cd {shlex.quote(str(ws.root))} && kanibako create --recover alpha"
-    rerun = f"run: {cure}" if stuck else "run the same 'kanibako create' again."
-    assert f"\n  Fix that, then {rerun}\n" in err, err
-    if not stuck:
-        return
-    # ⚑ The kept entry refuses a plain re-run; the Note names the --recover that finishes
-    # it, never a removal the next run does not need.
-    assert (f"Note: could not remove {boxes / 'alpha'}, which this operation created; "
-            f"the create stays pending; {cure} finishes it\n") in err, err
-    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", real)
-    assert run_create(_create_args("alpha", recover=True, no_vault=False)) == 0
-    assert (boxes / "alpha").is_dir()
-    entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
-    assert not entries, entries
+  entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+  assert bool(entries) is stuck, entries
+  cure = f"cd {shlex.quote(str(ws.root))} && kanibako create --recover alpha"
+  rerun = f"run: {cure}" if stuck else "run the same 'kanibako create' again."
+  assert f"\n  Fix that, then {rerun}\n" in err, err
+  if not stuck:
+    return
+  # ⚑ The kept entry refuses a plain re-run; the Note names the --recover that finishes
+  # it, never a removal the next run does not need.
+  assert (
+    f"Note: could not remove {boxes / 'alpha'}, which this operation created; "
+    f"the create stays pending; {cure} finishes it\n"
+  ) in err, err
+  monkeypatch.setattr(paths_mod, "_register_workset_box_membership", real)
+  assert run_create(_create_args("alpha", recover=True, no_vault=False)) == 0
+  assert (boxes / "alpha").is_dir()
+  entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+  assert not entries, entries

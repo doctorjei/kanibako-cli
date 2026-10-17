@@ -18,8 +18,8 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
-    e2e_requires,
-    run_kanibako,
+  e2e_requires,
+  run_kanibako,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -34,77 +34,76 @@ BUILD_TIMEOUT = 600  # seconds
 
 
 class TestTemplatePrep:
-    """``rig prep jvm`` builds a working JVM toolchain image."""
+  """``rig prep jvm`` builds a working JVM toolchain image."""
 
-    def test_rig_prep_template_jvm(self, e2e_env):
-        """prep jvm → image exists and ``java -version`` runs.
+  def test_rig_prep_template_jvm(self, e2e_env):
+    """prep jvm → image exists and ``java -version`` runs.
 
-        Uses conftest's ``run_kanibako`` helper (same isolated env that pins
-        podman storage to the host store) but overrides its timeout to
-        BUILD_TIMEOUT, since the apt-get toolchain install exceeds the default
-        60s SUBPROCESS_TIMEOUT.
-        """
-        # Build mode for a headless/session-less environment: this test triggers
-        # a real `podman build` (via kanibako's rig rebuild). Under the default
-        # oci/crun build isolation, crun creates a transient systemd cgroup
-        # scope, which needs a logind session -- absent in a non-login/headless
-        # session, where the build fails with "sd-bus call: Interactive
-        # authentication required". chroot isolation bypasses that session
-        # requirement and is harmless where the default would also work (CI).
-        # kanibako's build subprocess (ContainerRuntime.rebuild) inherits the
-        # caller env unchanged, so BUILDAH_ISOLATION reaches `podman build`.
-        # Scoped to this build test only -- NOT set globally in e2e_env.
-        env = {**e2e_env["env"], "BUILDAH_ISOLATION": "chroot"}
-        image_name = "kanibako-template-jvm"
+    Uses conftest's ``run_kanibako`` helper (same isolated env that pins
+    podman storage to the host store) but overrides its timeout to
+    BUILD_TIMEOUT, since the apt-get toolchain install exceeds the default
+    60s SUBPROCESS_TIMEOUT.
+    """
+    # Build mode for a headless/session-less environment: this test triggers
+    # a real `podman build` (via kanibako's rig rebuild). Under the default
+    # oci/crun build isolation, crun creates a transient systemd cgroup
+    # scope, which needs a logind session -- absent in a non-login/headless
+    # session, where the build fails with "sd-bus call: Interactive
+    # authentication required". chroot isolation bypasses that session
+    # requirement and is harmless where the default would also work (CI).
+    # kanibako's build subprocess (ContainerRuntime.rebuild) inherits the
+    # caller env unchanged, so BUILDAH_ISOLATION reaches `podman build`.
+    # Scoped to this build test only -- NOT set globally in e2e_env.
+    env = {**e2e_env["env"], "BUILDAH_ISOLATION": "chroot"}
+    image_name = "kanibako-template-jvm"
 
-        assert _podman is not None, "podman required"
+    assert _podman is not None, "podman required"
 
-        try:
-            # 1. Build the bundled template image via the real CLI. The template's
-            #    declared base (the pre-warmed oci image) satisfies its FROM.
-            #    Long timeout for the toolchain install.
-            result = run_kanibako(
-                ["rig", "prep", "jvm"],
-                env=env,
-                timeout=BUILD_TIMEOUT,
-            )
-            assert result.returncode == 0, (
-                f"rig prep jvm failed (rc={result.returncode}):\n"
-                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-            )
+    try:
+      # 1. Build the bundled template image via the real CLI. The template's
+      #    declared base (the pre-warmed oci image) satisfies its FROM.
+      #    Long timeout for the toolchain install.
+      result = run_kanibako(
+        ["rig", "prep", "jvm"],
+        env=env,
+        timeout=BUILD_TIMEOUT,
+      )
+      assert result.returncode == 0, (
+        f"rig prep jvm failed (rc={result.returncode}):\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+      )
 
-            # 2. The template image should now exist locally.
-            inspect = subprocess.run(
-                [_podman, "image", "inspect", image_name],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            assert inspect.returncode == 0, (
-                f"image {image_name!r} not found after build: {inspect.stderr}"
-            )
+      # 2. The template image should now exist locally.
+      inspect = subprocess.run(
+        [_podman, "image", "inspect", image_name],
+        capture_output=True,
+        text=True,
+        timeout=30,
+      )
+      assert inspect.returncode == 0, (
+        f"image {image_name!r} not found after build: {inspect.stderr}"
+      )
 
-            # 3. The JVM toolchain actually runs inside the built image. Override
-            #    the base ENTRYPOINT (kanibako-entrypoint -> `exec /bin/bash
-            #    "$@"`); without --entrypoint, `podman run IMAGE sh -lc CMD`
-            #    becomes `bash sh -lc CMD` and mangles the command.
-            java = subprocess.run(
-                [_podman, "run", "--rm", "--entrypoint", "sh", image_name,
-                 "-c", "java -version"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            assert java.returncode == 0, (
-                f"'java -version' failed in {image_name!r} "
-                f"(rc={java.returncode}):\nstdout:\n{java.stdout}\n"
-                f"stderr:\n{java.stderr}"
-            )
-        finally:
-            # Best-effort cleanup so the suite stays clean; never fail the
-            # test on cleanup errors.
-            subprocess.run(
-                [_podman, "rmi", "-f", image_name],
-                capture_output=True,
-                timeout=60,
-            )
+      # 3. The JVM toolchain actually runs inside the built image. Override
+      #    the base ENTRYPOINT (kanibako-entrypoint -> `exec /bin/bash
+      #    "$@"`); without --entrypoint, `podman run IMAGE sh -lc CMD`
+      #    becomes `bash sh -lc CMD` and mangles the command.
+      java = subprocess.run(
+        [_podman, "run", "--rm", "--entrypoint", "sh", image_name, "-c", "java -version"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+      )
+      assert java.returncode == 0, (
+        f"'java -version' failed in {image_name!r} "
+        f"(rc={java.returncode}):\nstdout:\n{java.stdout}\n"
+        f"stderr:\n{java.stderr}"
+      )
+    finally:
+      # Best-effort cleanup so the suite stays clean; never fail the
+      # test on cleanup errors.
+      subprocess.run(
+        [_podman, "rmi", "-f", image_name],
+        capture_output=True,
+        timeout=60,
+      )

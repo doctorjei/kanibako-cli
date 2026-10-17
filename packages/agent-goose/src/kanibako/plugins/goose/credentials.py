@@ -10,16 +10,15 @@ view).  The former bespoke ``refresh_secrets`` / ``writeback_secrets`` copies
 from __future__ import annotations
 
 try:
-    import yaml
+  import yaml
 except ImportError:
-    raise ImportError(
-        "PyYAML is required for the Goose plugin. Install it with: pip install pyyaml"
-    )
+  raise ImportError("PyYAML is required for the Goose plugin. Install it with: pip install pyyaml")
+
 
 def parse_yaml(text: str | bytes) -> dict:
-    """Parse YAML text as a mapping, returning {} for anything else or an error."""
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
+  """Parse YAML text as a mapping, returning {} for anything else or an error."""
+  try:
+    data = yaml.safe_load(text)
+  except yaml.YAMLError:
+    return {}
+  return data if isinstance(data, dict) else {}

@@ -8,786 +8,807 @@ from pathlib import Path
 import pytest
 
 from kanibako.targets.base import (
-    AccessRealization,
-    AccessTierRow,
-    AgentInstall,
-    BindKind,
-    Binding,
-    BindScope,
-    Cadence,
-    Channel,
-    CredFileSpec,
-    HostSrcOrigin,
-    Mount,
-    Operation,
-    PersonaSpec,
-    PluginDescriptor,
-    SettingArg,
-    Target,
-    _validate_agent_binary,
-    has_plugin,
+  AccessRealization,
+  AccessTierRow,
+  AgentInstall,
+  BindKind,
+  Binding,
+  BindScope,
+  Cadence,
+  Channel,
+  CredFileSpec,
+  HostSrcOrigin,
+  Mount,
+  Operation,
+  PersonaSpec,
+  PluginDescriptor,
+  SettingArg,
+  Target,
+  _validate_agent_binary,
+  has_plugin,
 )
 
 
 class TestMount:
-    def test_to_volume_arg_simple(self):
-        m = Mount(source=Path("/host/dir"), destination="/container/dir")
-        assert m.to_volume_arg() == "/host/dir:/container/dir"
+  def test_to_volume_arg_simple(self):
+    m = Mount(source=Path("/host/dir"), destination="/container/dir")
+    assert m.to_volume_arg() == "/host/dir:/container/dir"
 
-    def test_to_volume_arg_with_options(self):
-        m = Mount(source=Path("/host/dir"), destination="/container/dir", options="ro")
-        assert m.to_volume_arg() == "/host/dir:/container/dir:ro"
+  def test_to_volume_arg_with_options(self):
+    m = Mount(source=Path("/host/dir"), destination="/container/dir", options="ro")
+    assert m.to_volume_arg() == "/host/dir:/container/dir:ro"
 
-    def test_to_volume_arg_complex_options(self):
-        m = Mount(source=Path("/a"), destination="/b", options="Z,U")
-        assert m.to_volume_arg() == "/a:/b:Z,U"
+  def test_to_volume_arg_complex_options(self):
+    m = Mount(source=Path("/a"), destination="/b", options="Z,U")
+    assert m.to_volume_arg() == "/a:/b:Z,U"
 
-    def test_frozen(self):
-        m = Mount(source=Path("/a"), destination="/b")
-        with pytest.raises(AttributeError):
-            m.source = Path("/c")  # type: ignore[misc]
+  def test_frozen(self):
+    m = Mount(source=Path("/a"), destination="/b")
+    with pytest.raises(AttributeError):
+      m.source = Path("/c")  # type: ignore[misc]
 
 
 class TestAgentInstall:
-    def test_fields(self):
-        ai = AgentInstall(
-            name="claude",
-            binary=Path("/usr/bin/claude"),
-            install_dir=Path("/opt/claude"),
-        )
-        assert ai.name == "claude"
-        assert ai.binary == Path("/usr/bin/claude")
-        assert ai.install_dir == Path("/opt/claude")
+  def test_fields(self):
+    ai = AgentInstall(
+      name="claude",
+      binary=Path("/usr/bin/claude"),
+      install_dir=Path("/opt/claude"),
+    )
+    assert ai.name == "claude"
+    assert ai.binary == Path("/usr/bin/claude")
+    assert ai.install_dir == Path("/opt/claude")
 
 
 class TestValidateAgentBinary:
-    """Tests for the shared _validate_agent_binary launch/diagnose helper."""
+  """Tests for the shared _validate_agent_binary launch/diagnose helper."""
 
-    def test_valid_executable_returns_none(self, tmp_path):
-        binary = tmp_path / "claude"
-        binary.write_text("#!/bin/sh\nexec real \"$@\"\n")
-        binary.chmod(0o755)
-        assert _validate_agent_binary(binary) is None
+  def test_valid_executable_returns_none(self, tmp_path):
+    binary = tmp_path / "claude"
+    binary.write_text('#!/bin/sh\nexec real "$@"\n')
+    binary.chmod(0o755)
+    assert _validate_agent_binary(binary) is None
 
-    def test_native_binary_returns_none(self, tmp_path):
-        """A non-zero executable with ELF-like (non-NUL) leading bytes is fine."""
-        binary = tmp_path / "claude"
-        binary.write_bytes(b"\x7fELF\x02\x01\x01\x00rest-of-binary")
-        binary.chmod(0o755)
-        assert _validate_agent_binary(binary) is None
+  def test_native_binary_returns_none(self, tmp_path):
+    """A non-zero executable with ELF-like (non-NUL) leading bytes is fine."""
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"\x7fELF\x02\x01\x01\x00rest-of-binary")
+    binary.chmod(0o755)
+    assert _validate_agent_binary(binary) is None
 
-    def test_zero_byte_returns_reason(self, tmp_path):
-        binary = tmp_path / "claude"
-        binary.touch()  # 0 bytes
-        binary.chmod(0o755)
-        reason = _validate_agent_binary(binary)
-        assert reason is not None
-        assert "0 bytes" in reason
-        assert str(binary) in reason
+  def test_zero_byte_returns_reason(self, tmp_path):
+    binary = tmp_path / "claude"
+    binary.touch()  # 0 bytes
+    binary.chmod(0o755)
+    reason = _validate_agent_binary(binary)
+    assert reason is not None
+    assert "0 bytes" in reason
+    assert str(binary) in reason
 
-    def test_non_executable_returns_reason(self, tmp_path):
-        binary = tmp_path / "claude"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o644)  # no exec bit
-        reason = _validate_agent_binary(binary)
-        assert reason is not None
-        assert "not executable" in reason
-        assert str(binary) in reason
+  def test_non_executable_returns_reason(self, tmp_path):
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o644)  # no exec bit
+    reason = _validate_agent_binary(binary)
+    assert reason is not None
+    assert "not executable" in reason
+    assert str(binary) in reason
 
-    def test_missing_returns_reason(self, tmp_path):
-        binary = tmp_path / "nope"
-        reason = _validate_agent_binary(binary)
-        assert reason is not None
-        assert "not found" in reason
+  def test_missing_returns_reason(self, tmp_path):
+    binary = tmp_path / "nope"
+    reason = _validate_agent_binary(binary)
+    assert reason is not None
+    assert "not found" in reason
 
-    def test_all_nul_leading_bytes_returns_reason(self, tmp_path):
-        """Non-empty but truncated/corrupt (all-NUL head) -> rejected, no ELF needed."""
-        binary = tmp_path / "claude"
-        binary.write_bytes(b"\x00\x00\x00\x00")
-        binary.chmod(0o755)
-        reason = _validate_agent_binary(binary)
-        assert reason is not None
-        assert "corrupt" in reason
+  def test_all_nul_leading_bytes_returns_reason(self, tmp_path):
+    """Non-empty but truncated/corrupt (all-NUL head) -> rejected, no ELF needed."""
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"\x00\x00\x00\x00")
+    binary.chmod(0o755)
+    reason = _validate_agent_binary(binary)
+    assert reason is not None
+    assert "corrupt" in reason
 
 
 class TestTargetABC:
-    def test_cannot_instantiate(self):
-        with pytest.raises(TypeError):
-            Target()  # type: ignore[abstract]
+  def test_cannot_instantiate(self):
+    with pytest.raises(TypeError):
+      Target()  # type: ignore[abstract]
 
-    def test_concrete_subclass(self):
-        class DummyTarget(Target):
-            @property
-            def name(self) -> str:
-                return "dummy"
+  def test_concrete_subclass(self):
+    class DummyTarget(Target):
+      @property
+      def name(self) -> str:
+        return "dummy"
 
-            @property
-            def display_name(self) -> str:
-                return "Dummy Agent"
+      @property
+      def display_name(self) -> str:
+        return "Dummy Agent"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        t = DummyTarget()
-        assert t.name == "dummy"
-        assert t.display_name == "Dummy Agent"
-        assert t.detect() is None
-        assert t.check_auth() is True  # default no-op returns True
-        assert t.default_common() == {}
+    t = DummyTarget()
+    assert t.name == "dummy"
+    assert t.display_name == "Dummy Agent"
+    assert t.detect() is None
+    assert t.check_auth() is True  # default no-op returns True
+    assert t.default_common() == {}
 
-    def test_default_seeds(self):
-        """Default default_seeds() returns empty dict (no seeds)."""
+  def test_default_seeds(self):
+    """Default default_seeds() returns empty dict (no seeds)."""
 
-        class MinimalTarget(Target):
-            @property
-            def name(self) -> str:
-                return "minimal"
+    class MinimalTarget(Target):
+      @property
+      def name(self) -> str:
+        return "minimal"
 
-            @property
-            def display_name(self) -> str:
-                return "Minimal"
+      @property
+      def display_name(self) -> str:
+        return "Minimal"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        t = MinimalTarget()
-        assert t.default_seeds() == {}
+    t = MinimalTarget()
+    assert t.default_seeds() == {}
 
-    def test_delivery_seam_defaults_are_inert(self, tmp_path):
-        """The T1 delivery seams default to no-op ``False`` ("no write") so core
-        can call them UNCONDITIONALLY for every agent: a target without a
-        panel-permission or directive-hook surface (goose directive, no-agent
-        shell, any future plugin) inherits the inert behavior and never touches
-        the filesystem."""
+  def test_delivery_seam_defaults_are_inert(self, tmp_path):
+    """The T1 delivery seams default to no-op ``False`` ("no write") so core
+    can call them UNCONDITIONALLY for every agent: a target without a
+    panel-permission or directive-hook surface (goose directive, no-agent
+    shell, any future plugin) inherits the inert behavior and never touches
+    the filesystem."""
 
-        class PlainTarget(Target):
-            @property
-            def name(self) -> str:
-                return "plain"
+    class PlainTarget(Target):
+      @property
+      def name(self) -> str:
+        return "plain"
 
-            @property
-            def display_name(self) -> str:
-                return "Plain"
+      @property
+      def display_name(self) -> str:
+        return "Plain"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        t = PlainTarget()
-        config_root = tmp_path / "box-home"
-        config_root.mkdir()
-        for tier in ("restricted", "editing", "full"):
-            assert t.deliver_panel_permissions(
-                config_root=config_root, access=tier,
-            ) is False
-            assert t.deliver_directive_hook(
-                config_root=config_root, access=tier,
-            ) is False
-        assert t.deliver_directive_hook(
-            config_root=config_root, access="full", model_provider=None,
-        ) is False
-        # Inert means INERT: nothing was created under the box home.
-        assert list(config_root.iterdir()) == []
+    t = PlainTarget()
+    config_root = tmp_path / "box-home"
+    config_root.mkdir()
+    for tier in ("restricted", "editing", "full"):
+      assert (
+        t.deliver_panel_permissions(
+          config_root=config_root,
+          access=tier,
+        )
+        is False
+      )
+      assert (
+        t.deliver_directive_hook(
+          config_root=config_root,
+          access=tier,
+        )
+        is False
+      )
+    assert (
+      t.deliver_directive_hook(
+        config_root=config_root,
+        access="full",
+        model_provider=None,
+      )
+      is False
+    )
+    # Inert means INERT: nothing was created under the box home.
+    assert list(config_root.iterdir()) == []
 
-    def test_reattach_config_notice_default_is_none(self):
-        """The reattach-notice seam defaults to ``None`` (no notice) — an agent
-        with no launch-projected config surface inherits it, so core prints
-        nothing on its reattach path."""
+  def test_reattach_config_notice_default_is_none(self):
+    """The reattach-notice seam defaults to ``None`` (no notice) — an agent
+    with no launch-projected config surface inherits it, so core prints
+    nothing on its reattach path."""
 
-        class PlainTarget(Target):
-            @property
-            def name(self) -> str:
-                return "plain"
+    class PlainTarget(Target):
+      @property
+      def name(self) -> str:
+        return "plain"
 
-            @property
-            def display_name(self) -> str:
-                return "Plain"
+      @property
+      def display_name(self) -> str:
+        return "Plain"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        assert PlainTarget().reattach_config_notice() is None
+    assert PlainTarget().reattach_config_notice() is None
 
-    def test_delivery_seams_are_keyword_only(self, tmp_path):
-        """The seam contract is keyword-only — positional use must fail loudly
-        (guards against silent arg-order drift at the unconditional call site)."""
+  def test_delivery_seams_are_keyword_only(self, tmp_path):
+    """The seam contract is keyword-only — positional use must fail loudly
+    (guards against silent arg-order drift at the unconditional call site)."""
 
-        class PlainTarget(Target):
-            @property
-            def name(self) -> str:
-                return "plain"
+    class PlainTarget(Target):
+      @property
+      def name(self) -> str:
+        return "plain"
 
-            @property
-            def display_name(self) -> str:
-                return "Plain"
+      @property
+      def display_name(self) -> str:
+        return "Plain"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        t = PlainTarget()
-        with pytest.raises(TypeError):
-            t.deliver_panel_permissions(tmp_path, True)  # type: ignore[misc]
-        with pytest.raises(TypeError):
-            t.deliver_directive_hook(tmp_path, True)  # type: ignore[misc]
+    t = PlainTarget()
+    with pytest.raises(TypeError):
+      t.deliver_panel_permissions(tmp_path, True)  # type: ignore[misc]
+    with pytest.raises(TypeError):
+      t.deliver_directive_hook(tmp_path, True)  # type: ignore[misc]
 
-    def test_abstract_methods_enforced(self):
-        """Target subclass missing abstract methods cannot be instantiated."""
+  def test_abstract_methods_enforced(self):
+    """Target subclass missing abstract methods cannot be instantiated."""
 
-        class IncompleteTarget(Target):
-            @property
-            def name(self):
-                return "x"
+    class IncompleteTarget(Target):
+      @property
+      def name(self):
+        return "x"
 
-            @property
-            def display_name(self):
-                return "X"
+      @property
+      def display_name(self):
+        return "X"
 
-        with pytest.raises(TypeError):
-            IncompleteTarget()  # type: ignore[abstract]
+    with pytest.raises(TypeError):
+      IncompleteTarget()  # type: ignore[abstract]
 
 
 class TestHasResumableSession:
-    """Base hook default: True — always attempt continue (byte-identical
-    behavior for every target that does not override)."""
+  """Base hook default: True — always attempt continue (byte-identical
+  behavior for every target that does not override)."""
 
-    def _minimal_target(self) -> Target:
-        class MinimalTarget(Target):
-            @property
-            def name(self) -> str:
-                return "minimal"
+  def _minimal_target(self) -> Target:
+    class MinimalTarget(Target):
+      @property
+      def name(self) -> str:
+        return "minimal"
 
-            @property
-            def display_name(self) -> str:
-                return "Minimal"
+      @property
+      def display_name(self) -> str:
+        return "Minimal"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        return MinimalTarget()
+    return MinimalTarget()
 
-    def test_default_true(self, tmp_path):
-        assert self._minimal_target().has_resumable_session(tmp_path) is True
+  def test_default_true(self, tmp_path):
+    assert self._minimal_target().has_resumable_session(tmp_path) is True
 
-    def test_default_true_even_for_missing_home(self, tmp_path):
-        # The base default never inspects the path — True regardless.
-        missing = tmp_path / "does-not-exist"
-        assert self._minimal_target().has_resumable_session(missing) is True
+  def test_default_true_even_for_missing_home(self, tmp_path):
+    # The base default never inspects the path — True regardless.
+    missing = tmp_path / "does-not-exist"
+    assert self._minimal_target().has_resumable_session(missing) is True
 
-    def test_shell_does_not_override(self):
-        """shell keeps the base default-True hook (a plain shell has no
-        session to resume, so continue-vs-fresh never applies)."""
-        from kanibako.targets.shell import ShellTarget
+  def test_shell_does_not_override(self):
+    """shell keeps the base default-True hook (a plain shell has no
+    session to resume, so continue-vs-fresh never applies)."""
+    from kanibako.targets.shell import ShellTarget
 
-        assert (
-            ShellTarget().has_resumable_session.__func__
-            is Target.has_resumable_session
-        )
+    assert ShellTarget().has_resumable_session.__func__ is Target.has_resumable_session
 
-    def test_agents_with_doomable_resume_override(self):
-        """claude / goose / codex MUST override the hook so a fresh box (empty
-        session store) goes straight to a new session — the retry net was removed,
-        so this is the SOLE continue-vs-fresh guard for each."""
-        from kanibako.plugins.claude.target import ClaudeTarget
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_agents_with_doomable_resume_override(self):
+    """claude / goose / codex MUST override the hook so a fresh box (empty
+    session store) goes straight to a new session — the retry net was removed,
+    so this is the SOLE continue-vs-fresh guard for each."""
+    from kanibako.plugins.claude.target import ClaudeTarget
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.plugins.goose.target import GooseTarget
 
-        for target in (ClaudeTarget(), CodexTarget(), GooseTarget()):
-            assert (
-                target.has_resumable_session.__func__
-                is not Target.has_resumable_session
-            ), f"{target.name} must override has_resumable_session"
+    for target in (ClaudeTarget(), CodexTarget(), GooseTarget()):
+      assert target.has_resumable_session.__func__ is not Target.has_resumable_session, (
+        f"{target.name} must override has_resumable_session"
+      )
 
 
 class TestGenerateAgentConfig:
-    """Tests for Target.generate_agent_config() default implementation."""
+  """Tests for Target.generate_agent_config() default implementation."""
 
-    def test_default_returns_crab_config(self):
-        class SimpleTarget(Target):
-            @property
-            def name(self) -> str:
-                return "simple"
+  def test_default_returns_crab_config(self):
+    class SimpleTarget(Target):
+      @property
+      def name(self) -> str:
+        return "simple"
 
-            @property
-            def display_name(self) -> str:
-                return "Simple Agent"
+      @property
+      def display_name(self) -> str:
+        return "Simple Agent"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        # ⚑ EMPTY (D8b): the base used to return ``AgentConfig(name=self.display_name)``,
-        # and ``name`` was not a settings key.  A plugin declares its description as a
-        # ``label`` row in its defaults file instead — ``agent.<agent>.label``, spec §2d.
-        t = SimpleTarget()
-        cfg = t.generate_agent_config()
-        assert cfg.run_args is None
-        assert cfg.state == {}
+    # ⚑ EMPTY (D8b): the base used to return ``AgentConfig(name=self.display_name)``,
+    # and ``name`` was not a settings key.  A plugin declares its description as a
+    # ``label`` row in its defaults file instead — ``agent.<agent>.label``, spec §2d.
+    t = SimpleTarget()
+    cfg = t.generate_agent_config()
+    assert cfg.run_args is None
+    assert cfg.state == {}
 
 
 class TestPublicExports:
-    def test_core_types_importable_from_package(self):
-        from kanibako.targets import AgentInstall, Mount, TargetSetting
-        assert AgentInstall is not None
-        assert Mount is not None
-        assert TargetSetting is not None
+  def test_core_types_importable_from_package(self):
+    from kanibako.targets import AgentInstall, Mount, TargetSetting
+
+    assert AgentInstall is not None
+    assert Mount is not None
+    assert TargetSetting is not None
 
 
 class TestPluginDescriptorDataclasses:
-    """Construction, defaults, and frozen-ness of the declarative descriptor vocabulary."""
+  """Construction, defaults, and frozen-ness of the declarative descriptor vocabulary."""
 
-    def test_enum_values(self):
-        assert BindKind.FILE.value == "file"
-        assert BindKind.DIR.value == "dir"
-        assert HostSrcOrigin.LAUNCHER.value == "launcher"
-        assert HostSrcOrigin.LITERAL.value == "literal"
-        assert BindScope.AGENT_CRITICAL.value == "agent_critical"
-        assert BindScope.AGENT.value == "agent"
-        assert Channel.FLAG.value == "flag"
-        assert Channel.ENV.value == "env"
-        assert Cadence.SYNC.value == "sync"
-        assert Cadence.SEED_ONCE.value == "seed_once"
+  def test_enum_values(self):
+    assert BindKind.FILE.value == "file"
+    assert BindKind.DIR.value == "dir"
+    assert HostSrcOrigin.LAUNCHER.value == "launcher"
+    assert HostSrcOrigin.LITERAL.value == "literal"
+    assert BindScope.AGENT_CRITICAL.value == "agent_critical"
+    assert BindScope.AGENT.value == "agent"
+    assert Channel.FLAG.value == "flag"
+    assert Channel.ENV.value == "env"
+    assert Cadence.SYNC.value == "sync"
+    assert Cadence.SEED_ONCE.value == "seed_once"
 
-    def test_binding_required_fields_and_defaults(self):
-        b = Binding(
-            key="binary",
-            origin=HostSrcOrigin.BINARY,
-            box_dest="/usr/local/bin/claude",
-            kind=BindKind.FILE,
-            scope=BindScope.AGENT_CRITICAL,
-        )
-        assert b.key == "binary"
-        assert b.origin is HostSrcOrigin.BINARY
-        assert b.box_dest == "/usr/local/bin/claude"
-        assert b.kind is BindKind.FILE
-        assert b.scope is BindScope.AGENT_CRITICAL
-        # defaults
-        assert b.ro is True
-        assert b.literal_src is None
+  def test_binding_required_fields_and_defaults(self):
+    b = Binding(
+      key="binary",
+      origin=HostSrcOrigin.BINARY,
+      box_dest="/usr/local/bin/claude",
+      kind=BindKind.FILE,
+      scope=BindScope.AGENT_CRITICAL,
+    )
+    assert b.key == "binary"
+    assert b.origin is HostSrcOrigin.BINARY
+    assert b.box_dest == "/usr/local/bin/claude"
+    assert b.kind is BindKind.FILE
+    assert b.scope is BindScope.AGENT_CRITICAL
+    # defaults
+    assert b.ro is True
+    assert b.literal_src is None
 
-    def test_binding_frozen(self):
-        b = Binding(
-            key="binary",
-            origin=HostSrcOrigin.BINARY,
-            box_dest="/usr/local/bin/claude",
-            kind=BindKind.FILE,
-            scope=BindScope.AGENT_CRITICAL,
-        )
-        with pytest.raises(FrozenInstanceError):
-            b.ro = False  # type: ignore[misc]
+  def test_binding_frozen(self):
+    b = Binding(
+      key="binary",
+      origin=HostSrcOrigin.BINARY,
+      box_dest="/usr/local/bin/claude",
+      kind=BindKind.FILE,
+      scope=BindScope.AGENT_CRITICAL,
+    )
+    with pytest.raises(FrozenInstanceError):
+      b.ro = False  # type: ignore[misc]
 
-    def test_setting_arg_flag_and_env(self):
-        flag = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
-        assert flag.flag == ("--model",)
-        assert flag.env_var == ""
-        env = SettingArg(setting_key="model", channel=Channel.ENV, env_var="GOOSE_MODEL")
-        assert env.env_var == "GOOSE_MODEL"
-        assert env.flag == ()
+  def test_setting_arg_flag_and_env(self):
+    flag = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
+    assert flag.flag == ("--model",)
+    assert flag.env_var == ""
+    env = SettingArg(setting_key="model", channel=Channel.ENV, env_var="GOOSE_MODEL")
+    assert env.env_var == "GOOSE_MODEL"
+    assert env.flag == ()
 
-    def test_setting_arg_emits(self):
-        """``emits``: S5a's one carrier of the empty-value rule."""
-        model = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
-        provider = SettingArg(setting_key="provider", channel=Channel.ENV, env_var="P")
-        assert model.emit_empty is None            # undeclared
-        # None never emits, whatever the entry declares.
-        for s in (model, provider,
-                  SettingArg("model", Channel.FLAG, ("--m",), emit_empty=True)):
-            assert s.emits(None) is False
-        # "" follows the key's default when undeclared...
-        assert model.emits("") is True
-        assert provider.emits("") is False
-        # ...and the declaration when set.
-        assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("") is False
-        assert SettingArg("provider", Channel.ENV, env_var="P", emit_empty=True).emits("") is True
-        # An ID always emits.
-        assert model.emits("gpt-x") is True
-        assert provider.emits("openai") is True
-        assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("gpt-x") is True
+  def test_setting_arg_emits(self):
+    """``emits``: S5a's one carrier of the empty-value rule."""
+    model = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
+    provider = SettingArg(setting_key="provider", channel=Channel.ENV, env_var="P")
+    assert model.emit_empty is None  # undeclared
+    # None never emits, whatever the entry declares.
+    for s in (model, provider, SettingArg("model", Channel.FLAG, ("--m",), emit_empty=True)):
+      assert s.emits(None) is False
+    # "" follows the key's default when undeclared...
+    assert model.emits("") is True
+    assert provider.emits("") is False
+    # ...and the declaration when set.
+    assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("") is False
+    assert SettingArg("provider", Channel.ENV, env_var="P", emit_empty=True).emits("") is True
+    # An ID always emits.
+    assert model.emits("gpt-x") is True
+    assert provider.emits("openai") is True
+    assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("gpt-x") is True
 
-    def test_setting_arg_empty_default(self):
-        assert SettingArg.empty_default("model") is True
-        assert SettingArg.empty_default("provider") is False
+  def test_setting_arg_empty_default(self):
+    assert SettingArg.empty_default("model") is True
+    assert SettingArg.empty_default("provider") is False
 
-    def test_access_realization_defaults(self):
-        # ⚑ R-41: EVERY tier row defaults to ``None`` = "this harness cannot
-        # render that tier", so a descriptor that declares a permission channel
-        # and forgets a row REFUSES it rather than emitting nothing (which, for a
-        # harness whose own default is permissive, would BE the bypass).
-        ar = AccessRealization(channel=Channel.FLAG)
-        assert ar.restricted is None
-        assert ar.editing is None
-        assert ar.full is None
-        assert ar.rendered_tiers() == ()
-        assert ar.env_var == ""
-        assert ar.setting_key == ""
+  def test_access_realization_defaults(self):
+    # ⚑ R-41: EVERY tier row defaults to ``None`` = "this harness cannot
+    # render that tier", so a descriptor that declares a permission channel
+    # and forgets a row REFUSES it rather than emitting nothing (which, for a
+    # harness whose own default is permissive, would BE the bypass).
+    ar = AccessRealization(channel=Channel.FLAG)
+    assert ar.restricted is None
+    assert ar.editing is None
+    assert ar.full is None
+    assert ar.rendered_tiers() == ()
+    assert ar.env_var == ""
+    assert ar.setting_key == ""
 
-    def test_access_realization_rows_and_lookup(self):
-        ar = AccessRealization(
-            channel=Channel.FLAG,
-            restricted=AccessTierRow(),
-            full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
-            setting_key="access",
-        )
-        # An EMPTY row is a DECLARED realization (emit nothing); a MISSING row is
-        # not renderable at all. The two must never collapse.
-        assert ar.row("restricted") == AccessTierRow()
-        assert ar.renders("restricted") is True
-        assert ar.row("editing") is None
-        assert ar.renders("editing") is False
-        assert ar.row("full").flag == ("--dangerously-skip-permissions",)
-        assert ar.rendered_tiers() == ("restricted", "full")
-        # An unknown tier collapses to "not renderable" — never to a row.
-        assert ar.row("bogus") is None
+  def test_access_realization_rows_and_lookup(self):
+    ar = AccessRealization(
+      channel=Channel.FLAG,
+      restricted=AccessTierRow(),
+      full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
+      setting_key="access",
+    )
+    # An EMPTY row is a DECLARED realization (emit nothing); a MISSING row is
+    # not renderable at all. The two must never collapse.
+    assert ar.row("restricted") == AccessTierRow()
+    assert ar.renders("restricted") is True
+    assert ar.row("editing") is None
+    assert ar.renders("editing") is False
+    assert ar.row("full").flag == ("--dangerously-skip-permissions",)
+    assert ar.rendered_tiers() == ("restricted", "full")
+    # An unknown tier collapses to "not renderable" — never to a row.
+    assert ar.row("bogus") is None
 
-    def test_access_tier_row_defaults_and_frozen(self):
-        row = AccessTierRow()
-        assert row.flag == ()
-        assert row.env_value == ""
-        with pytest.raises(FrozenInstanceError):
-            row.flag = ("x",)  # type: ignore[misc]
+  def test_access_tier_row_defaults_and_frozen(self):
+    row = AccessTierRow()
+    assert row.flag == ()
+    assert row.env_value == ""
+    with pytest.raises(FrozenInstanceError):
+      row.flag = ("x",)  # type: ignore[misc]
 
-    def test_operation_fragment(self):
-        op = Operation(fragment=("--print",))
-        assert op.fragment == ("--print",)
-        with pytest.raises(FrozenInstanceError):
-            op.fragment = ("x",)  # type: ignore[misc]
+  def test_operation_fragment(self):
+    op = Operation(fragment=("--print",))
+    assert op.fragment == ("--print",)
+    with pytest.raises(FrozenInstanceError):
+      op.fragment = ("x",)  # type: ignore[misc]
 
-    def test_cred_file_spec_defaults(self):
-        cf = CredFileSpec(
-            home_rel=".claude/.credentials.json",
-            host_rel=".claude/.credentials.json",
-        )
-        assert cf.cadence is Cadence.SYNC
-        assert cf.mtime_gate is True
-        assert cf.filtered is False
+  def test_cred_file_spec_defaults(self):
+    cf = CredFileSpec(
+      home_rel=".claude/.credentials.json",
+      host_rel=".claude/.credentials.json",
+    )
+    assert cf.cadence is Cadence.SYNC
+    assert cf.mtime_gate is True
+    assert cf.filtered is False
 
-    def test_persona_spec_defaults(self):
-        """A DECLARED-NOTHING persona spec pins nothing, and no harness can veto a
-        missing model: the field is retired."""
-        p = PersonaSpec()
-        assert p.token_var == ""
-        assert p.endpoint_delivery == "env"
-        assert p.wire_api == "responses"
-        assert p.provider_pin == ()
-        assert not hasattr(p, "model_required")
+  def test_persona_spec_defaults(self):
+    """A DECLARED-NOTHING persona spec pins nothing, and no harness can veto a
+    missing model: the field is retired."""
+    p = PersonaSpec()
+    assert p.token_var == ""
+    assert p.endpoint_delivery == "env"
+    assert p.wire_api == "responses"
+    assert p.provider_pin == ()
+    assert not hasattr(p, "model_required")
 
-    def test_persona_spec_has_no_host_dir_adopt_field(self):
-        """B3 is retired: the field that gated it does not exist (D3).
+  def test_persona_spec_has_no_host_dir_adopt_field(self):
+    """B3 is retired: the field that gated it does not exist (D3).
 
-        The legacy claude host dir ``~/.config/claude/<persona>/`` was a SECOND
-        credential ingestion route; nothing reads it any more, so nothing declares
-        it either.  Pinned because a field re-added "just in case" is exactly the
-        compatibility arm the retirement ruled out.
-        """
-        import dataclasses
+    The legacy claude host dir ``~/.config/claude/<persona>/`` was a SECOND
+    credential ingestion route; nothing reads it any more, so nothing declares
+    it either.  Pinned because a field re-added "just in case" is exactly the
+    compatibility arm the retirement ruled out.
+    """
+    import dataclasses
 
-        assert "host_dir_adopt" not in {
-            f.name for f in dataclasses.fields(PersonaSpec)
-        }
-        with pytest.raises(TypeError):
-            PersonaSpec(host_dir_adopt=True)   # type: ignore[call-arg]
+    assert "host_dir_adopt" not in {f.name for f in dataclasses.fields(PersonaSpec)}
+    with pytest.raises(TypeError):
+      PersonaSpec(host_dir_adopt=True)  # type: ignore[call-arg]
 
-    def test_plugin_descriptor_minimal_defaults(self):
-        d = PluginDescriptor(
-            command=("claude",),
-            bindings=(
-                Binding(
-                    key="binary",
-                    origin=HostSrcOrigin.BINARY,
-                    box_dest="/usr/local/bin/claude",
-                    kind=BindKind.FILE,
-                    scope=BindScope.AGENT_CRITICAL,
-                ),
-            ),
-            mode={"start": (), "continue": ("--continue",)},
-        )
-        assert d.operations == {}
-        assert d.access_realization is None
-        assert d.settings == ()
-        assert not hasattr(d, "container_env")   # env is a settings key, not a field
-        assert d.cred_files == ()
-        assert d.host_prep is False
-        assert d.init_dirs == ()
+  def test_plugin_descriptor_minimal_defaults(self):
+    d = PluginDescriptor(
+      command=("claude",),
+      bindings=(
+        Binding(
+          key="binary",
+          origin=HostSrcOrigin.BINARY,
+          box_dest="/usr/local/bin/claude",
+          kind=BindKind.FILE,
+          scope=BindScope.AGENT_CRITICAL,
+        ),
+      ),
+      mode={"start": (), "continue": ("--continue",)},
+    )
+    assert d.operations == {}
+    assert d.access_realization is None
+    assert d.settings == ()
+    assert not hasattr(d, "container_env")  # env is a settings key, not a field
+    assert d.cred_files == ()
+    assert d.host_prep is False
+    assert d.init_dirs == ()
 
-    def test_plugin_descriptor_claude_column(self):
-        """A descriptor mirroring the validated claude column."""
-        d = PluginDescriptor(
-            command=("claude",),
-            bindings=(
-                Binding(
-                    key="launcher",
-                    origin=HostSrcOrigin.LAUNCHER,
-                    box_dest="/usr/local/bin/claude",
-                    kind=BindKind.FILE,
-                    scope=BindScope.AGENT_CRITICAL,
-                ),
-            ),
-            mode={"start": (), "continue": ("--continue",)},
-            operations={"exec": Operation(fragment=("--print",))},
-            access_realization=AccessRealization(
-                channel=Channel.FLAG,
-                full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
-                setting_key="access",
-            ),
-            settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
-            cred_files=(
-                CredFileSpec(
-                    home_rel=".claude/.credentials.json",
-                    host_rel=".claude/.credentials.json",
-                    cadence=Cadence.SYNC,
-                ),
-                CredFileSpec(
-                    home_rel=".claude/settings.json",
-                    host_rel=".claude/settings.json",
-                    cadence=Cadence.SEED_ONCE,
-                ),
-            ),
-            init_dirs=(".claude",),
-        )
-        assert d.command == ("claude",)
-        assert len(d.bindings) == 1
-        assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
-        assert d.mode["continue"] == ("--continue",)
-        assert d.operations["exec"].fragment == ("--print",)
-        assert d.access_realization is not None and d.access_realization.setting_key == "access"
-        assert d.cred_files[0].cadence is Cadence.SYNC
-        assert d.cred_files[1].cadence is Cadence.SEED_ONCE
-        assert d.init_dirs == (".claude",)
+  def test_plugin_descriptor_claude_column(self):
+    """A descriptor mirroring the validated claude column."""
+    d = PluginDescriptor(
+      command=("claude",),
+      bindings=(
+        Binding(
+          key="launcher",
+          origin=HostSrcOrigin.LAUNCHER,
+          box_dest="/usr/local/bin/claude",
+          kind=BindKind.FILE,
+          scope=BindScope.AGENT_CRITICAL,
+        ),
+      ),
+      mode={"start": (), "continue": ("--continue",)},
+      operations={"exec": Operation(fragment=("--print",))},
+      access_realization=AccessRealization(
+        channel=Channel.FLAG,
+        full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
+        setting_key="access",
+      ),
+      settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
+      cred_files=(
+        CredFileSpec(
+          home_rel=".claude/.credentials.json",
+          host_rel=".claude/.credentials.json",
+          cadence=Cadence.SYNC,
+        ),
+        CredFileSpec(
+          home_rel=".claude/settings.json",
+          host_rel=".claude/settings.json",
+          cadence=Cadence.SEED_ONCE,
+        ),
+      ),
+      init_dirs=(".claude",),
+    )
+    assert d.command == ("claude",)
+    assert len(d.bindings) == 1
+    assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
+    assert d.mode["continue"] == ("--continue",)
+    assert d.operations["exec"].fragment == ("--print",)
+    assert d.access_realization is not None and d.access_realization.setting_key == "access"
+    assert d.cred_files[0].cadence is Cadence.SYNC
+    assert d.cred_files[1].cadence is Cadence.SEED_ONCE
+    assert d.init_dirs == (".claude",)
 
-    def test_plugin_descriptor_frozen(self):
-        d = PluginDescriptor(
-            command=("claude",),
-            bindings=(
-                Binding(
-                    key="binary",
-                    origin=HostSrcOrigin.BINARY,
-                    box_dest="/usr/local/bin/claude",
-                    kind=BindKind.FILE,
-                    scope=BindScope.AGENT_CRITICAL,
-                ),
-            ),
-            mode={"start": ()},
-        )
-        with pytest.raises(FrozenInstanceError):
-            d.host_prep = True  # type: ignore[misc]
+  def test_plugin_descriptor_frozen(self):
+    d = PluginDescriptor(
+      command=("claude",),
+      bindings=(
+        Binding(
+          key="binary",
+          origin=HostSrcOrigin.BINARY,
+          box_dest="/usr/local/bin/claude",
+          kind=BindKind.FILE,
+          scope=BindScope.AGENT_CRITICAL,
+        ),
+      ),
+      mode={"start": ()},
+    )
+    with pytest.raises(FrozenInstanceError):
+      d.host_prep = True  # type: ignore[misc]
 
-    def test_default_descriptor_is_none(self):
-        class NoDescTarget(Target):
-            @property
-            def name(self) -> str:
-                return "nd"
+  def test_default_descriptor_is_none(self):
+    class NoDescTarget(Target):
+      @property
+      def name(self) -> str:
+        return "nd"
 
-            @property
-            def display_name(self) -> str:
-                return "No Descriptor"
+      @property
+      def display_name(self) -> str:
+        return "No Descriptor"
 
-            def detect(self):
-                return None
+      def detect(self):
+        return None
 
-        assert NoDescTarget().descriptor is None
+    assert NoDescTarget().descriptor is None
 
 
 class TestHasPlugin:
-    """``has_plugin`` is the ONE reading of "this target has no plugin" (P3).
+  """``has_plugin`` is the ONE reading of "this target has no plugin" (P3).
 
-    A refactor, not a behavior change: the value it pins is that the predicate
-    is a MODULE FUNCTION a third-party subclass cannot override, and that it
-    answers the three cases the three former call-site readings each got right
-    by their own route — no target, the built-in shell, a plugin.
+  A refactor, not a behavior change: the value it pins is that the predicate
+  is a MODULE FUNCTION a third-party subclass cannot override, and that it
+  answers the three cases the three former call-site readings each got right
+  by their own route — no target, the built-in shell, a plugin.
+  """
+
+  def test_no_target_has_no_plugin(self):
+    assert has_plugin(None) is False
+
+  def test_the_builtin_shell_has_no_plugin(self):
+    from kanibako.targets.shell import ShellTarget
+
+    assert has_plugin(ShellTarget()) is False
+
+  def test_a_descriptor_bearing_target_has_a_plugin(self):
+    class PluginTarget(Target):
+      @property
+      def name(self) -> str:
+        return "pt"
+
+      @property
+      def display_name(self) -> str:
+        return "Plugin Target"
+
+      @property
+      def descriptor(self) -> PluginDescriptor:
+        return PluginDescriptor(
+          command=("pt",),
+          bindings=(
+            Binding(
+              key="binary",
+              origin=HostSrcOrigin.BINARY,
+              box_dest="/usr/local/bin/pt",
+              kind=BindKind.FILE,
+              scope=BindScope.AGENT_CRITICAL,
+            ),
+          ),
+          mode={"start": ()},
+        )
+
+      @property
+      def default_entrypoint(self) -> str | None:
+        return "pt"
+
+      def detect(self):
+        return None
+
+    assert has_plugin(PluginTarget()) is True
+
+  def test_it_is_a_module_function_not_a_Target_attribute(self):
+    """P3: a method or property would be one more thing a subclass overrides."""
+    assert not hasattr(Target, "has_plugin")
+    import kanibako.targets.base as base_mod
+
+    assert callable(base_mod.has_plugin)
+
+  def test_a_subclass_can_move_the_answer_only_by_supplying_a_descriptor(self):
+    """What a subclass override actually does, which is NOT nothing.
+
+    ``has_plugin`` reads the ``descriptor`` ATTRIBUTE, so a subclass that
+    supplies one moves the answer — it does not get a veto. The guarantee
+    is not that the predicate defends itself; it is that the shape is
+    enforced where registration happens (``targets._register``, covered by
+    ``TestAPluginMustHaveThePluginShape``). This pins that the answer
+    follows the override, and that the override leaves ``default_entrypoint``
+    ``None`` — the half registration refuses on.
     """
+    from kanibako.targets.shell import ShellTarget
 
-    def test_no_target_has_no_plugin(self):
-        assert has_plugin(None) is False
+    class LyingShell(ShellTarget):
+      @property
+      def descriptor(self):
+        return PluginDescriptor(command=("ls",), bindings=(), mode={})
 
-    def test_the_builtin_shell_has_no_plugin(self):
-        from kanibako.targets.shell import ShellTarget
-
-        assert has_plugin(ShellTarget()) is False
-
-    def test_a_descriptor_bearing_target_has_a_plugin(self):
-        class PluginTarget(Target):
-            @property
-            def name(self) -> str:
-                return "pt"
-
-            @property
-            def display_name(self) -> str:
-                return "Plugin Target"
-
-            @property
-            def descriptor(self) -> PluginDescriptor:
-                return PluginDescriptor(
-                    command=("pt",),
-                    bindings=(
-                        Binding(
-                            key="binary",
-                            origin=HostSrcOrigin.BINARY,
-                            box_dest="/usr/local/bin/pt",
-                            kind=BindKind.FILE,
-                            scope=BindScope.AGENT_CRITICAL,
-                        ),
-                    ),
-                    mode={"start": ()},
-                )
-
-            @property
-            def default_entrypoint(self) -> str | None:
-                return "pt"
-
-            def detect(self):
-                return None
-
-        assert has_plugin(PluginTarget()) is True
-
-    def test_it_is_a_module_function_not_a_Target_attribute(self):
-        """P3: a method or property would be one more thing a subclass overrides."""
-        assert not hasattr(Target, "has_plugin")
-        import kanibako.targets.base as base_mod
-
-        assert callable(base_mod.has_plugin)
-
-    def test_a_subclass_can_move_the_answer_only_by_supplying_a_descriptor(self):
-        """What a subclass override actually does, which is NOT nothing.
-
-        ``has_plugin`` reads the ``descriptor`` ATTRIBUTE, so a subclass that
-        supplies one moves the answer — it does not get a veto. The guarantee
-        is not that the predicate defends itself; it is that the shape is
-        enforced where registration happens (``targets._register``, covered by
-        ``TestAPluginMustHaveThePluginShape``). This pins that the answer
-        follows the override, and that the override leaves ``default_entrypoint``
-        ``None`` — the half registration refuses on.
-        """
-        from kanibako.targets.shell import ShellTarget
-
-        class LyingShell(ShellTarget):
-            @property
-            def descriptor(self):
-                return PluginDescriptor(command=("ls",), bindings=(), mode={})
-
-        # The override lands on the SUBCLASS and the predicate reads the
-        # attribute, so the answer follows it. This fails if has_plugin ever
-        # stops reading the descriptor (a default_entrypoint reading, an
-        # isinstance check, or a Target method the subclass could override).
-        assert has_plugin(LyingShell()) is True
-        # ... and what the override does NOT supply is the other half of the
-        # plugin shape, which is exactly the half _register refuses on.
-        assert LyingShell().default_entrypoint is None
+    # The override lands on the SUBCLASS and the predicate reads the
+    # attribute, so the answer follows it. This fails if has_plugin ever
+    # stops reading the descriptor (a default_entrypoint reading, an
+    # isinstance check, or a Target method the subclass could override).
+    assert has_plugin(LyingShell()) is True
+    # ... and what the override does NOT supply is the other half of the
+    # plugin shape, which is exactly the half _register refuses on.
+    assert LyingShell().default_entrypoint is None
 
 
 class TestCredentialCheckPath:
-    """The credential the agent report checks is DERIVED from ``cred_files``."""
+  """The credential the agent report checks is DERIVED from ``cred_files``."""
 
-    @staticmethod
-    def _shell_with(cred_files):
-        from kanibako.targets.shell import ShellTarget
+  @staticmethod
+  def _shell_with(cred_files):
+    from kanibako.targets.shell import ShellTarget
 
-        class CredShell(ShellTarget):
-            @property
-            def descriptor(self):
-                return PluginDescriptor(
-                    command=("ls",), bindings=(), mode={}, cred_files=cred_files,
-                )
+    class CredShell(ShellTarget):
+      @property
+      def descriptor(self):
+        return PluginDescriptor(
+          command=("ls",),
+          bindings=(),
+          mode={},
+          cred_files=cred_files,
+        )
 
-        return CredShell()
+    return CredShell()
 
-    def test_no_descriptor_checks_nothing(self, tmp_path):
-        from kanibako.targets.shell import ShellTarget
+  def test_no_descriptor_checks_nothing(self, tmp_path):
+    from kanibako.targets.shell import ShellTarget
 
-        assert ShellTarget().credential_check_path(tmp_path) is None
+    assert ShellTarget().credential_check_path(tmp_path) is None
 
-    def test_no_cred_files_checks_nothing(self, tmp_path):
-        assert self._shell_with(()).credential_check_path(tmp_path) is None
+  def test_no_cred_files_checks_nothing(self, tmp_path):
+    assert self._shell_with(()).credential_check_path(tmp_path) is None
 
-    def test_the_first_declared_file_is_checked(self, tmp_path):
-        target = self._shell_with((
-            CredFileSpec(home_rel=".x/dir", host_rel=".x/dir", is_dir=True),
-            CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json"),
-            CredFileSpec(home_rel=".x/other.json", host_rel=".x/other.json"),
-        ))
-        assert target.credential_check_path(tmp_path) == tmp_path / ".x" / "auth.json"
+  def test_the_first_declared_file_is_checked(self, tmp_path):
+    target = self._shell_with(
+      (
+        CredFileSpec(home_rel=".x/dir", host_rel=".x/dir", is_dir=True),
+        CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json"),
+        CredFileSpec(home_rel=".x/other.json", host_rel=".x/other.json"),
+      )
+    )
+    assert target.credential_check_path(tmp_path) == tmp_path / ".x" / "auth.json"
 
 
 class TestBoxLoginPresent:
-    """The core box test ``Target.box_login_present``: a delivered login VAR or a box store."""
+  """The core box test ``Target.box_login_present``: a delivered login VAR or a box store."""
 
-    _STORE = CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json")
+  _STORE = CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json")
 
-    @staticmethod
-    def _target(*, login_vars=(), cred_files=()):
-        from kanibako.targets.shell import ShellTarget
+  @staticmethod
+  def _target(*, login_vars=(), cred_files=()):
+    from kanibako.targets.shell import ShellTarget
 
-        class LoginShell(ShellTarget):
-            @property
-            def descriptor(self):
-                return PluginDescriptor(
-                    command=("ls",), bindings=(), mode={},
-                    cred_files=cred_files, login_vars=login_vars,
-                )
+    class LoginShell(ShellTarget):
+      @property
+      def descriptor(self):
+        return PluginDescriptor(
+          command=("ls",),
+          bindings=(),
+          mode={},
+          cred_files=cred_files,
+          login_vars=login_vars,
+        )
 
-        return LoginShell()
+    return LoginShell()
 
-    def test_default_check_auth_passes_on_the_host(self):
-        assert self._target(login_vars=("TOKEN",)).check_auth() is True
+  def test_default_check_auth_passes_on_the_host(self):
+    assert self._target(login_vars=("TOKEN",)).check_auth() is True
 
-    def test_default_check_auth_passes_a_cred_files_plugin_with_an_empty_box_store(self, tmp_path):
-        # Today's verdict: the gate runs before the host->box refresh, so a plugin
-        # that does not override check_auth must not fail on a box with no store.
-        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
-        assert target.check_auth(box_home=tmp_path, delivered=frozenset()) is True
+  def test_default_check_auth_passes_a_cred_files_plugin_with_an_empty_box_store(self, tmp_path):
+    # Today's verdict: the gate runs before the host->box refresh, so a plugin
+    # that does not override check_auth must not fail on a box with no store.
+    target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+    assert target.check_auth(box_home=tmp_path, delivered=frozenset()) is True
 
-    def test_a_delivered_login_var_passes(self, tmp_path):
-        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
-        assert target.box_login_present(tmp_path, frozenset({"TOKEN"})) is True
+  def test_a_delivered_login_var_passes(self, tmp_path):
+    target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+    assert target.box_login_present(tmp_path, frozenset({"TOKEN"})) is True
 
-    def test_an_undeclared_delivered_var_does_not_pass(self, tmp_path):
-        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
-        assert target.box_login_present(tmp_path, frozenset({"OTHER"})) is False
+  def test_an_undeclared_delivered_var_does_not_pass(self, tmp_path):
+    target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+    assert target.box_login_present(tmp_path, frozenset({"OTHER"})) is False
 
-    def test_a_non_empty_store_passes(self, tmp_path):
-        (tmp_path / ".x").mkdir()
-        (tmp_path / ".x" / "auth.json").write_text("{}")
-        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is True
+  def test_a_non_empty_store_passes(self, tmp_path):
+    (tmp_path / ".x").mkdir()
+    (tmp_path / ".x" / "auth.json").write_text("{}")
+    assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is True
 
-    def test_an_empty_store_fails(self, tmp_path):
-        (tmp_path / ".x").mkdir()
-        (tmp_path / ".x" / "auth.json").write_text("")
-        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+  def test_an_empty_store_fails(self, tmp_path):
+    (tmp_path / ".x").mkdir()
+    (tmp_path / ".x" / "auth.json").write_text("")
+    assert (
+      self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+    )
 
-    def test_a_missing_store_fails(self, tmp_path):
-        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+  def test_a_missing_store_fails(self, tmp_path):
+    assert (
+      self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+    )
 
-    def test_a_directory_at_the_store_fails(self, tmp_path):
-        (tmp_path / ".x" / "auth.json").mkdir(parents=True)
-        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+  def test_a_directory_at_the_store_fails(self, tmp_path):
+    (tmp_path / ".x" / "auth.json").mkdir(parents=True)
+    assert (
+      self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
+    )
 
-    def test_a_planted_leaf_symlink_is_refused(self, tmp_path):
-        outside = tmp_path / "outside.json"
-        outside.write_text('{"token": "host"}')
-        home = tmp_path / "home"
-        (home / ".x").mkdir(parents=True)
-        (home / ".x" / "auth.json").symlink_to(outside)
-        assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
+  def test_a_planted_leaf_symlink_is_refused(self, tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"token": "host"}')
+    home = tmp_path / "home"
+    (home / ".x").mkdir(parents=True)
+    (home / ".x" / "auth.json").symlink_to(outside)
+    assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
 
-    def test_a_planted_parent_symlink_is_refused(self, tmp_path):
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        (outside / "auth.json").write_text('{"token": "host"}')
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / ".x").symlink_to(outside)
-        assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
+  def test_a_planted_parent_symlink_is_refused(self, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "auth.json").write_text('{"token": "host"}')
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".x").symlink_to(outside)
+    assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
 
-    def test_declared_login_vars_with_no_store_fail_undelivered(self, tmp_path):
-        assert self._target(login_vars=("TOKEN",)).box_login_present(tmp_path, frozenset()) is False
+  def test_declared_login_vars_with_no_store_fail_undelivered(self, tmp_path):
+    assert self._target(login_vars=("TOKEN",)).box_login_present(tmp_path, frozenset()) is False
 
-    def test_a_target_declaring_no_login_passes(self, tmp_path):
-        from kanibako.targets.shell import ShellTarget
+  def test_a_target_declaring_no_login_passes(self, tmp_path):
+    from kanibako.targets.shell import ShellTarget
 
-        assert ShellTarget().box_login_present(tmp_path, frozenset()) is True
-        assert self._target().box_login_present(tmp_path, frozenset()) is True
+    assert ShellTarget().box_login_present(tmp_path, frozenset()) is True
+    assert self._target().box_login_present(tmp_path, frozenset()) is True
 
-    def test_a_home_rel_leaving_the_box_fails_closed(self, tmp_path):
-        outside = tmp_path / "outside.json"
-        outside.write_text('{"token": "host"}')
-        home = tmp_path / "home"
-        home.mkdir()
-        for home_rel in (str(outside), "../outside.json"):
-            spec = CredFileSpec(home_rel=home_rel, host_rel=".x/auth.json")
-            assert self._target(cred_files=(spec,)).box_login_present(home, frozenset()) is False
+  def test_a_home_rel_leaving_the_box_fails_closed(self, tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"token": "host"}')
+    home = tmp_path / "home"
+    home.mkdir()
+    for home_rel in (str(outside), "../outside.json"):
+      spec = CredFileSpec(home_rel=home_rel, host_rel=".x/auth.json")
+      assert self._target(cred_files=(spec,)).box_login_present(home, frozenset()) is False

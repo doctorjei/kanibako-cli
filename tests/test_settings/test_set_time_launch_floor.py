@@ -45,7 +45,10 @@ def workset(std, tmp_home):
   """A working set whose file requests one agent leaf through ``pref:``."""
   ws = create_workset("floorws", tmp_home / "floorws", std)
   inputs = resolve_inputs(
-    subject=ResolveSubject.WORKSET, std=std, ws=ws, agent_name=_AGENT,
+    subject=ResolveSubject.WORKSET,
+    std=std,
+    ws=ws,
+    agent_name=_AGENT,
     system_path=std.settings,
   )
   path = inputs.cascade_workset_path
@@ -56,7 +59,11 @@ def workset(std, tmp_home):
 
 def _target(std, ws):
   return ci._set_time_target(
-    std=std, proj=None, ws=ws, agent_name=_AGENT, system_path=std.settings,
+    std=std,
+    proj=None,
+    ws=ws,
+    agent_name=_AGENT,
+    system_path=std.settings,
   )
 
 
@@ -74,15 +81,23 @@ def _launch_value(target, value: str):
   doc = load_doc(path)
   dump_doc(path, {**doc, "workset": {"env": {_KEY.rsplit(".", 1)[1]: value}}})
   snapshot = build_launch_snapshot(
-    **target.as_kwargs(), agent_name=_AGENT, agent_path=None,
+    **target.as_kwargs(),
+    agent_name=_AGENT,
+    agent_path=None,
     default_categories=dict(target.system_floor),
   )
   return _leaf(snapshot, _KEY)
 
 
-@pytest.mark.parametrize("fragment", [
-  "system scalar floor", "system path tier", "workset anchor", "workset pref",
-])
+@pytest.mark.parametrize(
+  "fragment",
+  [
+    "system scalar floor",
+    "system path tier",
+    "workset anchor",
+    "workset pref",
+  ],
+)
 def test_set_time_resolves_each_floor_fragment_as_the_launch_does(fragment, std, workset):
   target = _target(std, workset)
   value = _candidates(target)[fragment]

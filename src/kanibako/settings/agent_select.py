@@ -50,195 +50,193 @@ SELECTION_KEY = "system.agent"
 
 @dataclass(frozen=True)
 class AgentSelection:
-    """The resolved agent node, plus the *source* that chose it.
+  """The resolved agent node, plus the *source* that chose it.
 
-    *node* is the canonical agent NODE-name; :func:`select_agent` never returns ``""``,
-    and a plain-shell box is the node ``shell`` (spec §2b, §2d); *source* is ``"cli"``
-    or ``"settings"``. Both
-    vocabularies are spelled out in the llm-doc.
+  *node* is the canonical agent NODE-name; :func:`select_agent` never returns ``""``,
+  and a plain-shell box is the node ``shell`` (spec §2b, §2d); *source* is ``"cli"``
+  or ``"settings"``. Both
+  vocabularies are spelled out in the llm-doc.
 
-    🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** ``"autopick"``
-    was the installed-agent count rule, deleted 2026-09-19 — nothing auto-selects,
-    not even with exactly one agent installed. ``"suppressed"`` was
-    ``pref.system.agent: null`` yielding the plain-shell box; that state is now a
-    REFUSAL (:class:`~kanibako.errors.AgentNoDefaultError`).
+  🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** ``"autopick"``
+  was the installed-agent count rule, deleted 2026-09-19 — nothing auto-selects,
+  not even with exactly one agent installed. ``"suppressed"`` was
+  ``pref.system.agent: null`` yielding the plain-shell box; that state is now a
+  REFUSAL (:class:`~kanibako.errors.AgentNoDefaultError`).
 
-    ⚑ **The ``has_agent`` / ``target is None`` guards below are KEPT, and NOT
-    because ``shell`` is coming.** Keyspec §2b makes the plain-shell box an
-    effective ``{system.agent}`` of ``shell`` — a NAMED node (``meta.agent.shell.name
-    = "shell"``, §2d) — so a D2 selection is ``node="shell"`` and ``has_agent`` is
-    TRUE for it. The guards stay because ``""`` still means opposite things on the
-    two sides of the target seam, holding that shape costs one conjunct, and the
-    incident that proved it is on record (bifrost E-NULL, 2026-07-31). **Do not
-    read them as evidence that a null selection still launches anything.**
+  ⚑ **The ``has_agent`` / ``target is None`` guards below are KEPT, and NOT
+  because ``shell`` is coming.** Keyspec §2b makes the plain-shell box an
+  effective ``{system.agent}`` of ``shell`` — a NAMED node (``meta.agent.shell.name
+  = "shell"``, §2d) — so a D2 selection is ``node="shell"`` and ``has_agent`` is
+  TRUE for it. The guards stay because ``""`` still means opposite things on the
+  two sides of the target seam, holding that shape costs one conjunct, and the
+  incident that proved it is on record (bifrost E-NULL, 2026-07-31). **Do not
+  read them as evidence that a null selection still launches anything.**
+  """
+
+  node: str
+  source: str
+
+  @property
+  def has_agent(self) -> bool:
+    """Does this box run an agent AT ALL? (spec §2b D-M6.)
+
+    ⚑⚑ **USE THIS — never ``bool(selection.node)`` at a call site, and NEVER
+    pass an empty node on to ``resolve_target``.** ``""`` means OPPOSITE things
+    on the two sides of that seam: *this box runs NO agent* here, *no name was
+    given, AUTO-DETECT one* there. Handing the first to the second LAUNDERS a
+    deliberate suppression into a live agent with credentials delivered — a
+    measured incident, not a theory. ⚑ There is no helper; the guard IS the
+    translation, spelled at each seam:
+
+    ``target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None``
+
+    ⚑ ``None``, deliberately NOT ``ShellTarget()`` — the llm-doc says why,
+    and carries the downstream gates that key on ``target is None``.
+
+    ⚑ **The NODE decides, and nothing else (P4).** This used to read
+    ``self.source != "suppressed" and bool(self.node)``; ``"suppressed"`` is a
+    retired source no production path emits, so the conjunct was dead weight in
+    front of the only test that ever mattered. ``bool(self.node)`` is the same
+    predicate for every value the class can hold.
     """
+    return bool(self.node)
 
-    node: str
-    source: str
-
-    @property
-    def has_agent(self) -> bool:
-        """Does this box run an agent AT ALL? (spec §2b D-M6.)
-
-        ⚑⚑ **USE THIS — never ``bool(selection.node)`` at a call site, and NEVER
-        pass an empty node on to ``resolve_target``.** ``""`` means OPPOSITE things
-        on the two sides of that seam: *this box runs NO agent* here, *no name was
-        given, AUTO-DETECT one* there. Handing the first to the second LAUNDERS a
-        deliberate suppression into a live agent with credentials delivered — a
-        measured incident, not a theory. ⚑ There is no helper; the guard IS the
-        translation, spelled at each seam:
-
-        ``target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None``
-
-        ⚑ ``None``, deliberately NOT ``ShellTarget()`` — the llm-doc says why,
-        and carries the downstream gates that key on ``target is None``.
-
-        ⚑ **The NODE decides, and nothing else (P4).** This used to read
-        ``self.source != "suppressed" and bool(self.node)``; ``"suppressed"`` is a
-        retired source no production path emits, so the conjunct was dead weight in
-        front of the only test that ever mattered. ``bool(self.node)`` is the same
-        predicate for every value the class can hold.
-        """
-        return bool(self.node)
-
-    @property
-    def selection_level(self) -> "dict[str, object] | None":
-        """The §1A top-most level to install; a launch with no selection pins ``shell`` itself."""
-        return {SELECTION_KEY: self.node} if self.node else None
+  @property
+  def selection_level(self) -> "dict[str, object] | None":
+    """The §1A top-most level to install; a launch with no selection pins ``shell`` itself."""
+    return {SELECTION_KEY: self.node} if self.node else None
 
 
 def launch_resolve_ctx(std, proj, agent_name: "str | None"):
-    """Build the host-side :class:`~kanibako.settings.settings_resolve.ResolveCtx`.
+  """Build the host-side :class:`~kanibako.settings.settings_resolve.ResolveCtx`.
 
-    The ONE ctx builder for every snapshot resolve —
-    ``settings_launch.resolve_inputs`` calls this too, so the selection pre-pass and
-    the launch snapshot cannot drift in what ``{config.*}`` / ``{$XDG_*}`` / ``~`` mean.
-    The llm-doc carries the §1A resolver SPLIT and the xdg map's shape.
+  The ONE ctx builder for every snapshot resolve —
+  ``settings_launch.resolve_inputs`` calls this too, so the selection pre-pass and
+  the launch snapshot cannot drift in what ``{config.*}`` / ``{$XDG_*}`` / ``~`` mean.
+  The llm-doc carries the §1A resolver SPLIT and the xdg map's shape.
 
-    ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
-    ``{$AGENT}`` resolves to a recorded refusal rather than to a silent ``""``.
-    """
-    return host_resolve_ctx(std, proj.group, agent_name)
+  ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
+  ``{$AGENT}`` resolves to a recorded refusal rather than to a silent ``""``.
+  """
+  return host_resolve_ctx(std, proj.group, agent_name)
 
 
 class _WorksetGroup(Protocol):
-    """What :func:`host_resolve_ctx` reads off a working set (a ``ProjectGroup`` or a ``Workset``)."""
+  """What :func:`host_resolve_ctx` reads off a working set (a ``ProjectGroup`` or a ``Workset``)."""
 
-    @property
-    def name(self) -> str: ...
-    @property
-    def is_default(self) -> bool: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def is_default(self) -> bool: ...
 
 
 def host_resolve_ctx(std, group: "_WorksetGroup | None", agent_name: "str | None"):
-    """The :func:`launch_resolve_ctx` builder for a resolve with NO box.
+  """The :func:`launch_resolve_ctx` builder for a resolve with NO box.
 
-    *group* is the working set the resolve is in, or ``None`` for a resolve in none
-    (the system scope).  The primary working set is spelled like ``None``:
-    ``ResolveCtx.workset_name`` names a NAMED working set only.
-    """
-    from kanibako.settings.paths import host_config_map, host_xdg_map
-    from kanibako.settings.settings_resolve import ResolveCtx
+  *group* is the working set the resolve is in, or ``None`` for a resolve in none
+  (the system scope).  The primary working set is spelled like ``None``:
+  ``ResolveCtx.workset_name`` names a NAMED working set only.
+  """
+  from kanibako.settings.paths import host_config_map, host_xdg_map
+  from kanibako.settings.settings_resolve import ResolveCtx
 
-    workset_name = (
-        group.name if (group is not None and not group.is_default) else None
-    )
-    return ResolveCtx(
-        agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=str(Path.home()),
-        # ⚑⚑ BOTH MAPS ARE DERIVED BUILDERS, NEITHER IS A LITERAL HERE. The
-        # ``config=`` half used to be five string literals, and ``CONFIG_PATH_DEFAULTS``
-        # has declared SIX since ``config.journal`` landed the day after they were
-        # written: a binding sourced at ``@config.journal`` was accepted by ``config
-        # set`` and DROPPED at launch, silently, rc 0. ``paths.host_config_map`` derives
-        # the tier from the declared table, so the two cannot part again.
-        xdg=host_xdg_map(std.data_home),
-        config=host_config_map(std),
-    )
+  workset_name = group.name if (group is not None and not group.is_default) else None
+  return ResolveCtx(
+    agent_name=agent_name,
+    workset_name=workset_name,
+    host_home=str(Path.home()),
+    # ⚑⚑ BOTH MAPS ARE DERIVED BUILDERS, NEITHER IS A LITERAL HERE. The
+    # ``config=`` half used to be five string literals, and ``CONFIG_PATH_DEFAULTS``
+    # has declared SIX since ``config.journal`` landed the day after they were
+    # written: a binding sourced at ``@config.journal`` was accepted by ``config
+    # set`` and DROPPED at launch, silently, rc 0. ``paths.host_config_map`` derives
+    # the tier from the declared table, so the two cannot part again.
+    xdg=host_xdg_map(std.data_home),
+    config=host_config_map(std),
+  )
 
 
 def select_agent(
-    *,
-    std,
-    proj,
-    explicit_agent: "str | None" = None,
+  *,
+  std,
+  proj,
+  explicit_agent: "str | None" = None,
 ) -> AgentSelection:
-    """Resolve the agent for *proj* — the ONE seam (spec §1A / §2g / §2h).
+  """Resolve the agent for *proj* — the ONE seam (spec §1A / §2g / §2h).
 
-    Raises :class:`~kanibako.errors.AgentNoDefaultError` for a present-``None``
-    selection, the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
-    ``config.resolve_agent`` raises (including
-    :class:`~kanibako.errors.AgentUnsetError` when nothing set the key), a
-    :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection
-    key itself does not resolve, the ref-grammar ``ConfigError`` for an
-    *explicit_agent* that is malformed or blank, and the retired-key refusal
-    (migration M-4).
-    Informational callers that must degrade rather than fail keep their own
-    ``try/except`` — see the llm-doc.
-    """
-    from kanibako.errors import AgentNoDefaultError
-    from kanibako.settings.config import resolve_agent, settings_base_path
-    from kanibako.settings.paths import box_workset_settings_paths, project_cure_ref
-    from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
-    from kanibako.settings.settings_launch import resolve_selected_agent
+  Raises :class:`~kanibako.errors.AgentNoDefaultError` for a present-``None``
+  selection, the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
+  ``config.resolve_agent`` raises (including
+  :class:`~kanibako.errors.AgentUnsetError` when nothing set the key), a
+  :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection
+  key itself does not resolve, the ref-grammar ``ConfigError`` for an
+  *explicit_agent* that is malformed or blank, and the retired-key refusal
+  (migration M-4).
+  Informational callers that must degrade rather than fail keep their own
+  ``try/except`` — see the llm-doc.
+  """
+  from kanibako.errors import AgentNoDefaultError
+  from kanibako.settings.config import resolve_agent, settings_base_path
+  from kanibako.settings.paths import box_workset_settings_paths, project_cure_ref
+  from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
+  from kanibako.settings.settings_launch import resolve_selected_agent
 
-    box_path, workset_path = box_workset_settings_paths(proj)
-    system_path = std.settings
+  box_path, workset_path = box_workset_settings_paths(proj)
+  system_path = std.settings
 
-    # RETIRED spellings: refuse by name first (P7 / M-4), BASE
-    # included — a site admin's stale key defaults DOWN into every box. Judged on the
-    # reader's view: a dropped table gets no cure.
-    read_settings_files(
-        (
-            ("base", settings_base_path()),
-            ("system", system_path),
-            ("workset", workset_path),
-            ("box", box_path),
-        ),
-        purpose=ReadPurpose.SELECT,
-        # The cure's subject is the reference that reaches the box from ANY cwd.
-        box_ref=project_cure_ref(proj) if proj.name else None,
+  # RETIRED spellings: refuse by name first (P7 / M-4), BASE
+  # included — a site admin's stale key defaults DOWN into every box. Judged on the
+  # reader's view: a dropped table gets no cure.
+  read_settings_files(
+    (
+      ("base", settings_base_path()),
+      ("system", system_path),
+      ("workset", workset_path),
+      ("box", box_path),
+    ),
+    purpose=ReadPurpose.SELECT,
+    # The cure's subject is the reference that reaches the box from ANY cwd.
+    box_ref=project_cure_ref(proj) if proj.name else None,
+  )
+
+  requested: object = __MISSING__
+  # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
+  # whole question by itself (the no-default REFUSAL below never reaches
+  # ``resolve_agent``), so a truthy test let a GIVEN-but-blank ref be answered
+  # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
+  # the files said, with nothing printed.  A blank ref is a value: it goes
+  # through to ``resolve_agent``, which refuses it by the ref grammar's own
+  # message.  ``None`` keeps its one meaning — no ref was given at all.
+  if explicit_agent is None:
+    # Only the cascade can decline or supply; ``--agent`` short-circuits it.
+    requested = resolve_selected_agent(
+      ctx=launch_resolve_ctx(std, proj, None),
+      system_path=system_path,
+      workset_path=workset_path,
+      box_path=box_path,
     )
+    if requested is None:
+      # PRESENT-None = NO DEFAULT IS SET (spec §2b): an agent must be named
+      # explicitly, or the launch REFUSES saying so. ⚑ Keep it distinct from
+      # ``__MISSING__`` — never collapse them with a falsiness test: the two
+      # states print DIFFERENT refusals, which is the whole ruling.
+      # 🛑 It used to return the NO-AGENT plain-shell box; under
+      # [Jei:2026-09-19] `<None>` no longer reaches that box — the `shell`
+      # pseudo-agent does, BY NAME.
+      raise AgentNoDefaultError(
+        "No default agent is set: system.agent is null (a blank value and "
+        "'~' spell this too),\n"
+        "so an agent must be named explicitly.\n"
+        "Name one with '--agent <name>', or set this box's agent with:\n"
+        "  kanibako box set pref.system.agent=<name>\n"
+        "'kanibako shell' reaches the box's container without an agent."
+      )
 
-    requested: object = __MISSING__
-    # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
-    # whole question by itself (the no-default REFUSAL below never reaches
-    # ``resolve_agent``), so a truthy test let a GIVEN-but-blank ref be answered
-    # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
-    # the files said, with nothing printed.  A blank ref is a value: it goes
-    # through to ``resolve_agent``, which refuses it by the ref grammar's own
-    # message.  ``None`` keeps its one meaning — no ref was given at all.
-    if explicit_agent is None:
-        # Only the cascade can decline or supply; ``--agent`` short-circuits it.
-        requested = resolve_selected_agent(
-            ctx=launch_resolve_ctx(std, proj, None),
-            system_path=system_path,
-            workset_path=workset_path,
-            box_path=box_path,
-        )
-        if requested is None:
-            # PRESENT-None = NO DEFAULT IS SET (spec §2b): an agent must be named
-            # explicitly, or the launch REFUSES saying so. ⚑ Keep it distinct from
-            # ``__MISSING__`` — never collapse them with a falsiness test: the two
-            # states print DIFFERENT refusals, which is the whole ruling.
-            # 🛑 It used to return the NO-AGENT plain-shell box; under
-            # [Jei:2026-09-19] `<None>` no longer reaches that box — the `shell`
-            # pseudo-agent does, BY NAME.
-            raise AgentNoDefaultError(
-                "No default agent is set: system.agent is null (a blank value and "
-                "'~' spell this too),\n"
-                "so an agent must be named explicitly.\n"
-                "Name one with '--agent <name>', or set this box's agent with:\n"
-                "  kanibako box set pref.system.agent=<name>\n"
-                "'kanibako shell' reaches the box's container without an agent."
-            )
-
-    node = resolve_agent(
-        explicit_agent=explicit_agent,
-        requested=None if requested is __MISSING__ else str(requested),
-    )
-    # ⚑ TWO SOURCES, not four: ``resolve_agent`` REFUSES an unset key rather than
-    # picking for the user, so a returning call always has a name somebody wrote.
-    source = "cli" if explicit_agent is not None else "settings"
-    return AgentSelection(node=node, source=source)
+  node = resolve_agent(
+    explicit_agent=explicit_agent,
+    requested=None if requested is __MISSING__ else str(requested),
+  )
+  # ⚑ TWO SOURCES, not four: ``resolve_agent`` REFUSES an unset key rather than
+  # picking for the user, so a returning call always has a name somebody wrote.
+  source = "cli" if explicit_agent is not None else "settings"
+  return AgentSelection(node=node, source=source)

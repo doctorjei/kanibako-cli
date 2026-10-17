@@ -39,925 +39,1056 @@ from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.paths import load_std_paths
 from kanibako.settings.settings_keyspace import (
-    SCALAR_AGENT_LEAVES,
-    TERMINAL_CATEGORY_TAILS,
+  SCALAR_AGENT_LEAVES,
+  TERMINAL_CATEGORY_TAILS,
 )
 
 
 def _set(key_value, *, force=True):
-    return run_set(argparse.Namespace(key_value=key_value, force=force))
+  return run_set(argparse.Namespace(key_value=key_value, force=force))
 
 
 def _reset(key=None, *, all_keys=False, force=True):
-    return run_reset(argparse.Namespace(key=key, all_keys=all_keys, force=force))
+  return run_reset(argparse.Namespace(key=key, all_keys=all_keys, force=force))
 
 
 def _get(key):
-    return run_get(argparse.Namespace(key=key))
+  return run_get(argparse.Namespace(key=key))
 
 
 def _show(*, effective=False):
-    return run_show(argparse.Namespace(effective=effective))
+  return run_show(argparse.Namespace(effective=effective))
 
 
 def _std(config_file):
-    return load_std_paths(load_config(config_file))
+  return load_std_paths(load_config(config_file))
 
 
 def _seed_system_agent(config_file, name):
-    """Programmatically seed system.agent into the settings file.
+  """Programmatically seed system.agent into the settings file.
 
-    Mirrors what ``kanibako setup`` does; the CLI ``set`` now writes the SAME
-    location (F3), so this stays only as the setup-write stand-in.
-    """
-    std = _std(config_file)
-    std.settings.parent.mkdir(parents=True, exist_ok=True)
-    write_nested_key(std.settings, ("system",), "agent", name)
-    return std
+  Mirrors what ``kanibako setup`` does; the CLI ``set`` now writes the SAME
+  location (F3), so this stays only as the setup-write stand-in.
+  """
+  std = _std(config_file)
+  std.settings.parent.mkdir(parents=True, exist_ok=True)
+  write_nested_key(std.settings, ("system",), "agent", name)
+  return std
 
 
 def _launch_auth_source(std, *, agent_name="claude", mode="primary"):
-    """The LAUNCH's credential-sharing decision, off the REAL system settings
-    file — the same ``build_launch_snapshot`` → ``resolve_auth_source`` read
-    ``start._resolve_box_auth_source`` performs (system_path=std.settings)."""
-    from kanibako.settings.paths import host_xdg_map
-    from kanibako.settings.settings_launch import (
-        auth_chain_floor,
-        build_launch_snapshot,
-        meta_identity_floor,
-        meta_runtime_floor,
-        resolve_auth_source,
-    )
-    from kanibako.settings.settings_resolve import ResolveCtx
+  """The LAUNCH's credential-sharing decision, off the REAL system settings
+  file — the same ``build_launch_snapshot`` → ``resolve_auth_source`` read
+  ``start._resolve_box_auth_source`` performs (system_path=std.settings)."""
+  from kanibako.settings.paths import host_xdg_map
+  from kanibako.settings.settings_launch import (
+    auth_chain_floor,
+    build_launch_snapshot,
+    meta_identity_floor,
+    meta_runtime_floor,
+    resolve_auth_source,
+  )
+  from kanibako.settings.settings_resolve import ResolveCtx
 
-    ctx = ResolveCtx(
-        agent_name=agent_name, workset_name=None,
-        host_home=str(Path.home()), xdg=host_xdg_map(),
-    )
-    snapshot = build_launch_snapshot(
-        agent_name=agent_name, ctx=ctx,
-        system_path=std.settings, agent_path=None,
-        workset_path=None, box_path=None,
-        auth_chain=auth_chain_floor(mode=mode, agent_name=agent_name),
-        meta_runtime=meta_runtime_floor(
-            mode=mode,
-            ws_name=("__PRIMARY__" if mode == "primary" else "__STANDALONE__"),
-            ws_root_literal=None,
-        ),
-        meta_identity=meta_identity_floor(
-            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None,
-            agent_name=agent_name, agent_real_name=agent_name,
-            agent_auth_share_support=True,
-        ),
-    )
-    return resolve_auth_source(snapshot, mode=mode)
+  ctx = ResolveCtx(
+    agent_name=agent_name,
+    workset_name=None,
+    host_home=str(Path.home()),
+    xdg=host_xdg_map(),
+  )
+  snapshot = build_launch_snapshot(
+    agent_name=agent_name,
+    ctx=ctx,
+    system_path=std.settings,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
+    auth_chain=auth_chain_floor(mode=mode, agent_name=agent_name),
+    meta_runtime=meta_runtime_floor(
+      mode=mode,
+      ws_name=("__PRIMARY__" if mode == "primary" else "__STANDALONE__"),
+      ws_root_literal=None,
+    ),
+    meta_identity=meta_identity_floor(
+      box_name="b",
+      project_path="/p",
+      inbox="/i",
+      share_global="/sg",
+      share_workset=None,
+      agent_name=agent_name,
+      agent_real_name=agent_name,
+      agent_auth_share_support=True,
+    ),
+  )
+  return resolve_auth_source(snapshot, mode=mode)
 
 
 class TestSystemAuthShareAllowed:
-    """F2: ``system.auth.share_allowed`` — a declared settable SETTINGS key.
+  """F2: ``system.auth.share_allowed`` — a declared settable SETTINGS key.
 
-    set → get → show --effective → launch must agree on ONE storage location:
-    the ``system.auth.share_allowed`` entry of the system SETTINGS file.
-    """
+  set → get → show --effective → launch must agree on ONE storage location:
+  the ``system.auth.share_allowed`` entry of the system SETTINGS file.
+  """
 
-    def test_set_lands_in_settings_file_not_config_file(
-        self, config_file, tmp_home,
-    ):
-        rc = _set("system.auth.share_allowed=false")
-        assert rc == 0
-        std = _std(config_file)
-        # Stored as a REAL bool in the system SETTINGS file (the launch input).
-        assert load_doc(std.settings)["system"]["auth"]["share_allowed"] is False
-        # NOT in kanibako.cfg: that file carries ``config.*`` alone, and a
-        # ``system:`` table there is REFUSED at load (``bootstrap_config_paths``).
-        assert "auth" not in load_doc(config_file).get("system", {})
+  def test_set_lands_in_settings_file_not_config_file(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    rc = _set("system.auth.share_allowed=false")
+    assert rc == 0
+    std = _std(config_file)
+    # Stored as a REAL bool in the system SETTINGS file (the launch input).
+    assert load_doc(std.settings)["system"]["auth"]["share_allowed"] is False
+    # NOT in kanibako.cfg: that file carries ``config.*`` alone, and a
+    # ``system:`` table there is REFUSED at load (``bootstrap_config_paths``).
+    assert "auth" not in load_doc(config_file).get("system", {})
 
-    def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
-        _set("system.auth.share_allowed=false")
-        capsys.readouterr()
-        rc = _get("system.auth.share_allowed")
-        assert rc == 0
-        assert "system.auth.share_allowed=false" in capsys.readouterr().out
+  def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
+    _set("system.auth.share_allowed=false")
+    capsys.readouterr()
+    rc = _get("system.auth.share_allowed")
+    assert rc == 0
+    assert "system.auth.share_allowed=false" in capsys.readouterr().out
 
-    def test_show_effective_renders_the_set_value(
-        self, config_file, tmp_home, capsys,
-    ):
-        _set("system.auth.share_allowed=false")
-        capsys.readouterr()
-        rc = _show(effective=True)
-        assert rc == 0
-        assert "system.auth.share_allowed = false" in capsys.readouterr().out
+  def test_show_effective_renders_the_set_value(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    _set("system.auth.share_allowed=false")
+    capsys.readouterr()
+    rc = _show(effective=True)
+    assert rc == 0
+    assert "system.auth.share_allowed = false" in capsys.readouterr().out
 
-    def test_show_overrides_renders_the_set_value(
-        self, config_file, tmp_home, capsys,
-    ):
-        _set("system.auth.share_allowed=false")
-        capsys.readouterr()
-        rc = _show()
-        assert rc == 0
-        assert "system.auth.share_allowed = false" in capsys.readouterr().out
+  def test_show_overrides_renders_the_set_value(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    _set("system.auth.share_allowed=false")
+    capsys.readouterr()
+    rc = _show()
+    assert rc == 0
+    assert "system.auth.share_allowed = false" in capsys.readouterr().out
 
-    def test_launch_honors_the_set_value(self, config_file, tmp_home):
-        """The LAUNCH auth resolve reads the SAME file ``set`` wrote: with the
-        host-wide gate off, sharing is private everywhere (tier ``box``)."""
-        std = _std(config_file)
-        # Baseline (unset): primary + capable defaults to the workset tier.
-        assert _launch_auth_source(std).tier == "workset"
-        _set("system.auth.share_allowed=false")
-        a = _launch_auth_source(std)
-        assert a.tier == "box"
-        assert a.creds_shared is False
+  def test_launch_honors_the_set_value(self, config_file, tmp_home):
+    """The LAUNCH auth resolve reads the SAME file ``set`` wrote: with the
+    host-wide gate off, sharing is private everywhere (tier ``box``)."""
+    std = _std(config_file)
+    # Baseline (unset): primary + capable defaults to the workset tier.
+    assert _launch_auth_source(std).tier == "workset"
+    _set("system.auth.share_allowed=false")
+    a = _launch_auth_source(std)
+    assert a.tier == "box"
+    assert a.creds_shared is False
 
-    def test_reset_removes_from_settings_file(self, config_file, tmp_home):
-        _set("system.auth.share_allowed=false")
-        rc = _reset("system.auth.share_allowed")
-        assert rc == 0
-        std = _std(config_file)
-        assert "auth" not in load_doc(std.settings).get("system", {})
-        # And the launch decision reverts to the default (workset tier).
-        assert _launch_auth_source(std).tier == "workset"
+  def test_reset_removes_from_settings_file(self, config_file, tmp_home):
+    _set("system.auth.share_allowed=false")
+    rc = _reset("system.auth.share_allowed")
+    assert rc == 0
+    std = _std(config_file)
+    assert "auth" not in load_doc(std.settings).get("system", {})
+    # And the launch decision reverts to the default (workset tier).
+    assert _launch_auth_source(std).tier == "workset"
 
 
 class TestSystemDefaultAgentSetting:
-    """F3: ``system.agent`` — a SETTING routed to the settings tier's
-    ``agent.default`` table, EXACTLY where the shipped reader
-    (``config.read_system_agent``) and ``setup`` already live."""
+  """F3: ``system.agent`` — a SETTING routed to the settings tier's
+  ``agent.default`` table, EXACTLY where the shipped reader
+  (``config.read_system_agent``) and ``setup`` already live."""
 
-    def test_set_writes_where_read_system_agent_reads(
-        self, config_file, tmp_home,
-    ):
-        rc = _set("system.agent=goose")
-        assert rc == 0
-        std = _std(config_file)
-        assert load_doc(std.settings)["system"]["agent"] == "goose"
-        # The LAUNCH reader sees the CLI-set value (set/launch agreement).
-        assert read_system_agent(std.settings) == "goose"
-        # Nothing landed in the kanibako.cfg CONFIG file.
-        assert "agent" not in load_doc(config_file)
+  def test_set_writes_where_read_system_agent_reads(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    rc = _set("system.agent=goose")
+    assert rc == 0
+    std = _std(config_file)
+    assert load_doc(std.settings)["system"]["agent"] == "goose"
+    # The LAUNCH reader sees the CLI-set value (set/launch agreement).
+    assert read_system_agent(std.settings) == "goose"
+    # Nothing landed in the kanibako.cfg CONFIG file.
+    assert "agent" not in load_doc(config_file)
 
-    def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
-        _set("system.agent=goose")
-        capsys.readouterr()
-        rc = _get("system.agent")
-        assert rc == 0
-        assert "system.agent=goose" in capsys.readouterr().out
+  def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
+    _set("system.agent=goose")
+    capsys.readouterr()
+    rc = _get("system.agent")
+    assert rc == 0
+    assert "system.agent=goose" in capsys.readouterr().out
 
-    def test_get_reads_setup_written_value(self, config_file, tmp_home, capsys):
-        """A ``setup``-written value (the programmatic path) reads back through
-        ``system get`` — one storage location for both writers."""
-        _seed_system_agent(config_file, "codex")
-        capsys.readouterr()
-        rc = _get("system.agent")
-        assert rc == 0
-        assert "system.agent=codex" in capsys.readouterr().out
+  def test_get_reads_setup_written_value(self, config_file, tmp_home, capsys):
+    """A ``setup``-written value (the programmatic path) reads back through
+    ``system get`` — one storage location for both writers."""
+    _seed_system_agent(config_file, "codex")
+    capsys.readouterr()
+    rc = _get("system.agent")
+    assert rc == 0
+    assert "system.agent=codex" in capsys.readouterr().out
 
-    def test_reset_removes_the_setting(self, config_file, tmp_home):
-        std = _seed_system_agent(config_file, "claude")
-        rc = _reset("system.agent")
-        assert rc == 0
-        assert read_system_agent(std.settings) is None
+  def test_reset_removes_the_setting(self, config_file, tmp_home):
+    std = _seed_system_agent(config_file, "claude")
+    rc = _reset("system.agent")
+    assert rc == 0
+    assert read_system_agent(std.settings) is None
 
-    def test_reset_unset_reports_no_override(self, config_file, tmp_home, capsys):
-        rc = _reset("system.agent")
-        assert rc == 0
-        assert "No override" in capsys.readouterr().out
+  def test_reset_unset_reports_no_override(self, config_file, tmp_home, capsys):
+    rc = _reset("system.agent")
+    assert rc == 0
+    assert "No override" in capsys.readouterr().out
 
-    def test_show_renders_default_agent_from_settings_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        _seed_system_agent(config_file, "goose")
-        capsys.readouterr()
-        rc = _show()
-        assert rc == 0
-        assert "goose" in capsys.readouterr().out
+  def test_show_renders_default_agent_from_settings_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    _seed_system_agent(config_file, "goose")
+    capsys.readouterr()
+    rc = _show()
+    assert rc == 0
+    assert "goose" in capsys.readouterr().out
 
 
 class TestSystemEnvTier:
-    """``system set system.env.<VAR>`` — the system env tier.
+  """``system set system.env.<VAR>`` — the system env tier.
 
-    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``{config.data}/env``,
-    a docker ``.env`` FILE the launch layered as its system tier. R-39 retired
-    the spelling and the RQ-1 re-ruling [Jei:2026-08-02] retired the launch READ, so the file is
-    gone from both ends. The system env tier is now the settings key
-    ``system.env.<VAR>``, stored in the system SETTINGS file and delivered by
-    ``settings_launch._emit_scope_node`` as a system-scope ``env`` entry.
+  ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``{config.data}/env``,
+  a docker ``.env`` FILE the launch layered as its system tier. R-39 retired
+  the spelling and the RQ-1 re-ruling [Jei:2026-08-02] retired the launch READ, so the file is
+  gone from both ends. The system env tier is now the settings key
+  ``system.env.<VAR>``, stored in the system SETTINGS file and delivered by
+  ``settings_launch._emit_scope_node`` as a system-scope ``env`` entry.
+  """
+
+  def test_bare_env_set_is_refused_with_the_system_cure(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    rc = _set("env.EDITOR=nano")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "system.env.EDITOR" in err
+    # The retired FILE is not created, and not suggested.
+    assert not (_std(config_file).data_path / "env").exists()
+    assert "no longer read at all" in err
+
+  def test_bare_env_get_is_refused_at_the_handler(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``env.`` stays KEY-SHAPED (``is_known_key``) precisely so the read
+    reaches this refusal instead of being read as a project name."""
+    rc = _get("env.EDITOR")
+    assert rc == 1
+    assert "system.env.EDITOR" in capsys.readouterr().err
+
+  def test_set_env_writes_the_system_settings_file(self, config_file, tmp_home):
+    rc = _set("system.env.EDITOR=nano")
+    assert rc == 0
+    std = _std(config_file)
+    assert load_doc(std.settings)["system"]["env"]["EDITOR"] == "nano"
+    # SETTINGS, never the Layer-1 CONFIG file.
+    assert "env" not in load_doc(config_file).get("system", {})
+
+  def test_get_env_reads_back(self, config_file, tmp_home, capsys):
+    _set("system.env.EDITOR=nano")
+    capsys.readouterr()
+    rc = _get("system.env.EDITOR")
+    assert rc == 0
+    assert "system.env.EDITOR=nano" in capsys.readouterr().out
+
+  def test_show_renders_env(self, config_file, tmp_home, capsys):
+    _set("system.env.EDITOR=nano")
+    capsys.readouterr()
+    rc = _show()
+    assert rc == 0
+    assert "system.env.EDITOR = nano" in capsys.readouterr().out
+
+  def test_launch_env_is_the_collapsed_slots_and_only_them(self):
+    """``_build_config_env`` projects the slots — it layers nothing under them.
+
+    🛑 RECOMPOSED TWICE, and the second time the SUBJECT went. It first read an
+    un-arbitrated ``LaunchDeliveries.envs`` entry list and claimed the pick was
+    "the most-specific scope per VAR" — the CASCADE's direction, which is not
+    the direction VARIABLES realize in. It then pinned the agent tier as an
+    UNDER-layer, which MBR-1 P3 retired: that dict was the per-agent file's
+    ``self.env``, off the cascade entirely and therefore below ``system``, and
+    the file's table is an ordinary ``agent.<node>.env.<VAR>`` key now. One
+    input, no layering, nothing to order.
     """
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings.store_collapse import CollapsedEnv
 
-    def test_bare_env_set_is_refused_with_the_system_cure(
-        self, config_file, tmp_home, capsys,
-    ):
-        rc = _set("env.EDITOR=nano")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "system.env.EDITOR" in err
-        # The retired FILE is not created, and not suggested.
-        assert not (_std(config_file).data_path / "env").exists()
-        assert "no longer read at all" in err
+    def _slot(var, value, scope):
+      return {var: CollapsedEnv(value, scope, f"{scope}.env.{var}")}
 
-    def test_bare_env_get_is_refused_at_the_handler(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``env.`` stays KEY-SHAPED (``is_known_key``) precisely so the read
-        reaches this refusal instead of being read as a project name."""
-        rc = _get("env.EDITOR")
-        assert rc == 1
-        assert "system.env.EDITOR" in capsys.readouterr().err
+    assert _build_config_env({}) == {}
+    assert _build_config_env(_slot("EDITOR", "box-e", "box"))["EDITOR"] == "box-e"
+    # The scope rides as PROVENANCE and this projection never consults it.
+    assert _build_config_env(
+      _slot("PAGER", "less", "system"),
+    ) == {"PAGER": "less"}
 
-    def test_set_env_writes_the_system_settings_file(self, config_file, tmp_home):
-        rc = _set("system.env.EDITOR=nano")
-        assert rc == 0
-        std = _std(config_file)
-        assert load_doc(std.settings)["system"]["env"]["EDITOR"] == "nano"
-        # SETTINGS, never the Layer-1 CONFIG file.
-        assert "env" not in load_doc(config_file).get("system", {})
-
-    def test_get_env_reads_back(self, config_file, tmp_home, capsys):
-        _set("system.env.EDITOR=nano")
-        capsys.readouterr()
-        rc = _get("system.env.EDITOR")
-        assert rc == 0
-        assert "system.env.EDITOR=nano" in capsys.readouterr().out
-
-    def test_show_renders_env(self, config_file, tmp_home, capsys):
-        _set("system.env.EDITOR=nano")
-        capsys.readouterr()
-        rc = _show()
-        assert rc == 0
-        assert "system.env.EDITOR = nano" in capsys.readouterr().out
-
-    def test_launch_env_is_the_collapsed_slots_and_only_them(self):
-        """``_build_config_env`` projects the slots — it layers nothing under them.
-
-        🛑 RECOMPOSED TWICE, and the second time the SUBJECT went. It first read an
-        un-arbitrated ``LaunchDeliveries.envs`` entry list and claimed the pick was
-        "the most-specific scope per VAR" — the CASCADE's direction, which is not
-        the direction VARIABLES realize in. It then pinned the agent tier as an
-        UNDER-layer, which MBR-1 P3 retired: that dict was the per-agent file's
-        ``self.env``, off the cascade entirely and therefore below ``system``, and
-        the file's table is an ordinary ``agent.<node>.env.<VAR>`` key now. One
-        input, no layering, nothing to order.
-        """
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings.store_collapse import CollapsedEnv
-
-        def _slot(var, value, scope):
-            return {var: CollapsedEnv(value, scope, f"{scope}.env.{var}")}
-
-        assert _build_config_env({}) == {}
-        assert _build_config_env(_slot("EDITOR", "box-e", "box"))["EDITOR"] == "box-e"
-        # The scope rides as PROVENANCE and this projection never consults it.
-        assert _build_config_env(
-            _slot("PAGER", "less", "system"),
-        ) == {"PAGER": "less"}
-
-    def test_reset_env_removes_it(self, config_file, tmp_home, capsys):
-        _set("system.env.EDITOR=nano")
-        rc = _reset("system.env.EDITOR")
-        assert rc == 0
-        std = _std(config_file)
-        assert "env" not in load_doc(std.settings).get("system", {})
+  def test_reset_env_removes_it(self, config_file, tmp_home, capsys):
+    _set("system.env.EDITOR=nano")
+    rc = _reset("system.env.EDITOR")
+    assert rc == 0
+    std = _std(config_file)
+    assert "env" not in load_doc(std.settings).get("system", {})
 
 
 class TestSystemStructuralFileOnly:
-    """``system.setup_completed`` is SETTABLE, and every verb names the ONE table
-    the marker is stored in — the SYSTEM SETTINGS file's ``system:``.
+  """``system.setup_completed`` is SETTABLE, and every verb names the ONE table
+  the marker is stored in — the SYSTEM SETTINGS file's ``system:``.
 
-    ⚑⚑ THIS CLASS ASSERTED THE OPPOSITE UNTIL 2026-08-23, and the reversal is the
-    saying-so.  It pinned a refusal on all three verbs whose cure was "hand-edit the
-    config file" — for a key spec §2g calls "PERSISTS, user-resettable" and the
-    registry marks ``set: cli+file``.  Telling a user to hand-edit a file the CLI can
-    write is not a safety property; it is the surface failing to keep a declared
-    promise, and the hand-edit had exactly the same lack of validation.
+  ⚑⚑ THIS CLASS ASSERTED THE OPPOSITE UNTIL 2026-08-23, and the reversal is the
+  saying-so.  It pinned a refusal on all three verbs whose cure was "hand-edit the
+  config file" — for a key spec §2g calls "PERSISTS, user-resettable" and the
+  registry marks ``set: cli+file``.  Telling a user to hand-edit a file the CLI can
+  write is not a safety property; it is the surface failing to keep a declared
+  promise, and the hand-edit had exactly the same lack of validation.
 
-    ⚑⚑ THE FILE IS ``{config.settings}`` SINCE 2026-08-26, and the invariant is
-    unchanged: every verb names the file ``read_setup_completed`` reads, because a
-    verb aimed anywhere else is accepted, persisted and INERT.  What moved was the
-    STORAGE — the delta spec §2g had recorded all along (a Layer-2 ``system.*``
-    settings key stored in the Layer-1 config file) was closed [Jei:2026-08-26] by
-    moving the marker to the global settings file, so ``setup``, the gate and all
-    three verbs now name the same file as ``system.agent`` does.
+  ⚑⚑ THE FILE IS ``{config.settings}`` SINCE 2026-08-26, and the invariant is
+  unchanged: every verb names the file ``read_setup_completed`` reads, because a
+  verb aimed anywhere else is accepted, persisted and INERT.  What moved was the
+  STORAGE — the delta spec §2g had recorded all along (a Layer-2 ``system.*``
+  settings key stored in the Layer-1 config file) was closed [Jei:2026-08-26] by
+  moving the marker to the global settings file, so ``setup``, the gate and all
+  three verbs now name the same file as ``system.agent`` does.
+  """
+
+  def test_set_writes_the_file_the_gate_reads(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.settings.config import read_setup_completed
+
+    rc = _set("system.setup_completed=1.7.0")
+    assert rc == 0, capsys.readouterr()
+    # The SHIPPED READER is the oracle: asserting a table exists would pass just
+    # as well for a write nobody consumes.
+    assert read_setup_completed(_std(config_file).settings) == "1.7.0"
+    # ...and the Layer-1 file did not take the write.
+    assert "setup_completed" not in load_doc(config_file).get("system", {})
+
+  def test_reset_clears_it_back_to_never_run(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.settings.config import read_setup_completed
+
+    _set("system.setup_completed=1.7.0")
+    capsys.readouterr()
+    rc = _reset("system.setup_completed")
+    assert rc == 0, capsys.readouterr()
+    assert read_setup_completed(_std(config_file).settings) is None
+
+  def test_hand_editing_the_named_file_is_still_honored(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The file stays a hand-editable surface, and ``get`` reads it back.
+
+    ⚑ The READ used to be REFUSED here (``rc == 1``, "structural config key"),
+    which meant a key the CLI now sets could not be read by the same CLI — the
+    get/set asymmetry the dest-parity module exists to prevent.
     """
+    ssp = _std(config_file).settings
+    write_nested_key(ssp, ("system",), "setup_completed", "1.7.0")
+    capsys.readouterr()
+    rc = _get("system.setup_completed")
+    assert rc == 0, capsys.readouterr()
+    assert "1.7.0" in capsys.readouterr().out
+    from kanibako.settings.config import read_setup_completed
 
-    def test_set_writes_the_file_the_gate_reads(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.settings.config import read_setup_completed
+    assert read_setup_completed(ssp) == "1.7.0"
 
-        rc = _set("system.setup_completed=1.7.0")
-        assert rc == 0, capsys.readouterr()
-        # The SHIPPED READER is the oracle: asserting a table exists would pass just
-        # as well for a write nobody consumes.
-        assert read_setup_completed(_std(config_file).settings) == "1.7.0"
-        # ...and the Layer-1 file did not take the write.
-        assert "setup_completed" not in load_doc(config_file).get("system", {})
+  def test_the_system_path_tier_is_settable_and_lands_in_the_settings_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """⚑ THE REPLACEMENT PIN (2026-08-23), and it asserts the OPPOSITE of what
+    stood here: spec §2g makes the ``SYSTEM_PATH_DEFAULTS`` family ordinary
+    settings keys, so ``system set`` writes them to ``global/settings.yaml``.
+    """
+    custom = str(tmp_home / "custom-cache")
+    rc = _set(f"system.cache={custom}")
+    assert rc == 0, capsys.readouterr()
+    std = _std(config_file)
+    assert load_doc(std.settings)["system"]["cache"] == custom
+    # ⚑ ``.get("system", {})``, not ``["system"]``: since 2026-08-26 the Layer-1
+    # file is written EMPTY at create time, so it has no ``system:`` table at all
+    # — which is a STRONGER statement of the same thing this line always asserted.
+    assert load_doc(config_file).get("system", {}).get("cache") != custom
+    capsys.readouterr()
+    assert _get("system.cache") == 0
+    assert custom in capsys.readouterr().out
 
-    def test_reset_clears_it_back_to_never_run(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.settings.config import read_setup_completed
+  def test_an_undeclared_config_key_is_refused_as_UNKNOWN(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Spec §0: an undeclared name is not a key, and the refusal says so.
 
-        _set("system.setup_completed=1.7.0")
-        capsys.readouterr()
-        rc = _reset("system.setup_completed")
-        assert rc == 0, capsys.readouterr()
-        assert read_setup_completed(_std(config_file).settings) is None
+    ⚑ THIS CASE REPLACES ``test_get_structural_key_refuses_with_a_READ_verb``
+    (2026-08-23), which pinned the VERB of a "structural config key" refusal on
+    ``system.setup_completed``.  That key is settable and readable now, and the
+    refusal it exercised was left with no subject but undeclared ``config.*``
+    spellings — for which "is a structural config key … its value lives in the
+    config file" asserts that a non-existent key exists.  The message is gone; the
+    assertions below are the ones its own mutation guard implied.
 
-    def test_hand_editing_the_named_file_is_still_honored(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The file stays a hand-editable surface, and ``get`` reads it back.
+    ⚑ THE WORDING MOVED ONCE MORE (2026-08-28) and the SUBJECT did not.  The
+    ``is_known_key`` pre-gate that answered "unknown config key" is gone — it was a
+    second vocabulary that refused seven DECLARED keys — so the §0 gate's own
+    refusal is what an undeclared name gets.  Pinned on what §0 actually demands:
+    rc 1, the offending key NAMED, and the declared alternatives listed.  It must
+    NOT be pinned on the whole string, which is ``key_validity``'s to word.
+    """
+    capsys.readouterr()  # drain
+    rc = _get("config.nope")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "config.nope" in err, err
+    assert "not a declared Layer-1 config key" in err, err
+    assert "config.settings" in err, err
+    assert "structural config key" not in err, err
 
-        ⚑ The READ used to be REFUSED here (``rc == 1``, "structural config key"),
-        which meant a key the CLI now sets could not be read by the same CLI — the
-        get/set asymmetry the dest-parity module exists to prevent.
-        """
-        ssp = _std(config_file).settings
-        write_nested_key(ssp, ("system",), "setup_completed", "1.7.0")
-        capsys.readouterr()
-        rc = _get("system.setup_completed")
-        assert rc == 0, capsys.readouterr()
-        assert "1.7.0" in capsys.readouterr().out
-        from kanibako.settings.config import read_setup_completed
-        assert read_setup_completed(ssp) == "1.7.0"
+  def test_a_declared_config_foundation_key_still_reads(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The other half: dropping the branch must not make a REAL key unreadable."""
+    capsys.readouterr()
+    assert _get("config.data") == 0
+    assert capsys.readouterr().out.strip() != ""
 
-    def test_the_system_path_tier_is_settable_and_lands_in_the_settings_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        """⚑ THE REPLACEMENT PIN (2026-08-23), and it asserts the OPPOSITE of what
-        stood here: spec §2g makes the ``SYSTEM_PATH_DEFAULTS`` family ordinary
-        settings keys, so ``system set`` writes them to ``global/settings.yaml``.
-        """
-        custom = str(tmp_home / "custom-cache")
-        rc = _set(f"system.cache={custom}")
-        assert rc == 0, capsys.readouterr()
-        std = _std(config_file)
-        assert load_doc(std.settings)["system"]["cache"] == custom
-        # ⚑ ``.get("system", {})``, not ``["system"]``: since 2026-08-26 the Layer-1
-        # file is written EMPTY at create time, so it has no ``system:`` table at all
-        # — which is a STRONGER statement of the same thing this line always asserted.
-        assert load_doc(config_file).get("system", {}).get("cache") != custom
-        capsys.readouterr()
-        assert _get("system.cache") == 0
-        assert custom in capsys.readouterr().out
+  def test_get_config_path_key_reads_kanibako_cfg(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """config.data (Layer-1 CONFIG) is read from kanibako.cfg — get
+    still works (the key moved system.data -> config.data in block #3a)."""
+    custom = str(tmp_home / "custom-data")
+    write_nested_key(config_file, ("config",), "data", custom)
+    capsys.readouterr()
+    rc = _get("config.data")
+    assert rc == 0
+    assert custom in capsys.readouterr().out
 
-    def test_an_undeclared_config_key_is_refused_as_UNKNOWN(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Spec §0: an undeclared name is not a key, and the refusal says so.
+  def test_non_system_key_still_settable(self, config_file, tmp_home):
+    """A regular (non-system.*) key still sets fine at the global tier."""
+    rc = _set("model=gpt-5")
+    assert rc == 0
+    std = _std(config_file)
+    assert load_doc(std.settings)["agent"]["default"]["model"] == "gpt-5"
 
-        ⚑ THIS CASE REPLACES ``test_get_structural_key_refuses_with_a_READ_verb``
-        (2026-08-23), which pinned the VERB of a "structural config key" refusal on
-        ``system.setup_completed``.  That key is settable and readable now, and the
-        refusal it exercised was left with no subject but undeclared ``config.*``
-        spellings — for which "is a structural config key … its value lives in the
-        config file" asserts that a non-existent key exists.  The message is gone; the
-        assertions below are the ones its own mutation guard implied.
+  def test_reset_all_clears_the_settings_auth_table(self, config_file, tmp_home):
+    """Residuals item 3: reset --all at the SYSTEM scope clears the settings file's
+    ``system.auth`` SETTINGS table.
 
-        ⚑ THE WORDING MOVED ONCE MORE (2026-08-28) and the SUBJECT did not.  The
-        ``is_known_key`` pre-gate that answered "unknown config key" is gone — it was a
-        second vocabulary that refused seven DECLARED keys — so the §0 gate's own
-        refusal is what an undeclared name gets.  Pinned on what §0 actually demands:
-        rc 1, the offending key NAMED, and the declared alternatives listed.  It must
-        NOT be pinned on the whole string, which is ``key_validity``'s to word.
-        """
-        capsys.readouterr()  # drain
-        rc = _get("config.nope")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "config.nope" in err, err
-        assert "not a declared Layer-1 config key" in err, err
-        assert "config.settings" in err, err
-        assert "structural config key" not in err, err
+    ⚑ CHANGED 2026-08-31. The other half — *"but NEVER the
+    ``kanibako_config.yaml [system]`` STRUCTURAL path table"* — was measured by
+    hand-writing ``system.cache`` into the config file, which no longer READS at
+    all: that table refuses (see the case below). The surviving question, whether
+    ``reset --all`` overreaches into a second file, is answered by the config file
+    staying byte-identical.
+    """
+    std = _std(config_file)
+    before = config_file.read_bytes()
+    # A settings-tier system.auth override in the SETTINGS file (ssp).
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(
+      std.settings,
+      ("system", "auth"),
+      "share_allowed",
+      False,
+    )
+    rc = _reset(all_keys=True)
+    assert rc == 0
+    # The SETTINGS system.auth table was cleared (item 3).
+    settings_doc = load_doc(std.settings)
+    assert "auth" not in settings_doc.get("system", {}), settings_doc
+    # The CONFIG file was not written at all (condition i).
+    assert config_file.read_bytes() == before
 
-    def test_a_declared_config_foundation_key_still_reads(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The other half: dropping the branch must not make a REAL key unreadable."""
-        capsys.readouterr()
-        assert _get("config.data") == 0
-        assert capsys.readouterr().out.strip() != ""
+  def test_a_structural_table_in_the_config_file_refuses(self, config_file, tmp_home):
+    """🛑 A ``system:`` path table hand-written into ``kanibako.cfg`` is not
+    "file-only, not an override" — it is not readable there at all (keyspec §1).
+    """
+    from kanibako.errors import ConfigError
 
-    def test_get_config_path_key_reads_kanibako_cfg(
-        self, config_file, tmp_home, capsys,
-    ):
-        """config.data (Layer-1 CONFIG) is read from kanibako.cfg — get
-        still works (the key moved system.data -> config.data in block #3a)."""
-        custom = str(tmp_home / "custom-data")
-        write_nested_key(config_file, ("config",), "data", custom)
-        capsys.readouterr()
-        rc = _get("config.data")
-        assert rc == 0
-        assert custom in capsys.readouterr().out
-
-    def test_non_system_key_still_settable(self, config_file, tmp_home):
-        """A regular (non-system.*) key still sets fine at the global tier."""
-        rc = _set("model=gpt-5")
-        assert rc == 0
-        std = _std(config_file)
-        assert load_doc(std.settings)["agent"]["default"]["model"] == "gpt-5"
-
-    def test_reset_all_clears_the_settings_auth_table(self, config_file, tmp_home):
-        """Residuals item 3: reset --all at the SYSTEM scope clears the settings file's
-        ``system.auth`` SETTINGS table.
-
-        ⚑ CHANGED 2026-08-31. The other half — *"but NEVER the
-        ``kanibako_config.yaml [system]`` STRUCTURAL path table"* — was measured by
-        hand-writing ``system.cache`` into the config file, which no longer READS at
-        all: that table refuses (see the case below). The surviving question, whether
-        ``reset --all`` overreaches into a second file, is answered by the config file
-        staying byte-identical.
-        """
-        std = _std(config_file)
-        before = config_file.read_bytes()
-        # A settings-tier system.auth override in the SETTINGS file (ssp).
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(
-            std.settings, ("system", "auth"), "share_allowed", False,
-        )
-        rc = _reset(all_keys=True)
-        assert rc == 0
-        # The SETTINGS system.auth table was cleared (item 3).
-        settings_doc = load_doc(std.settings)
-        assert "auth" not in settings_doc.get("system", {}), settings_doc
-        # The CONFIG file was not written at all (condition i).
-        assert config_file.read_bytes() == before
-
-    def test_a_structural_table_in_the_config_file_refuses(self, config_file, tmp_home):
-        """🛑 A ``system:`` path table hand-written into ``kanibako.cfg`` is not
-        "file-only, not an override" — it is not readable there at all (keyspec §1).
-        """
-        from kanibako.errors import ConfigError
-
-        write_nested_key(config_file, ("system",), "cache", "/custom/cache")
-        with pytest.raises(ConfigError) as exc:
-            _std(config_file)
-        assert str(config_file) in str(exc.value)
-        assert "system.cache" in str(exc.value)
+    write_nested_key(config_file, ("system",), "cache", "/custom/cache")
+    with pytest.raises(ConfigError) as exc:
+      _std(config_file)
+    assert str(config_file) in str(exc.value)
+    assert "system.cache" in str(exc.value)
 
 
 class TestSystemPersonaAgentKeys:
-    """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable personas,
-    stored in the SYSTEM settings file's ``agent: <node>:`` table (spec §2a: the
-    command's scope file), end-to-end through the ``system`` verbs.  The node's own
-    ``agents/<node>/agent.yaml`` is the ``agent`` verb's file, never touched here.
-    """
+  """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable personas,
+  stored in the SYSTEM settings file's ``agent: <node>:`` table (spec §2a: the
+  command's scope file), end-to-end through the ``system`` verbs.  The node's own
+  ``agents/<node>/agent.yaml`` is the ``agent`` verb's file, never touched here.
+  """
 
-    def _file(self, std):
-        return std.settings
+  def _file(self, std):
+    return std.settings
 
-    def test_set_endpoint_writes_the_system_file(self, config_file, tmp_home):
-        rc = _set("agent.navigator+claude.endpoint=https://ep")
-        assert rc == 0
-        std = _std(config_file)
-        assert load_doc(std.settings) == {
-            "agent": {"navigator+claude": {"endpoint": "https://ep"}},
+  def test_set_endpoint_writes_the_system_file(self, config_file, tmp_home):
+    rc = _set("agent.navigator+claude.endpoint=https://ep")
+    assert rc == 0
+    std = _std(config_file)
+    assert load_doc(std.settings) == {
+      "agent": {"navigator+claude": {"endpoint": "https://ep"}},
+    }
+    # ⚑ NO ``℘`` REACHES THE DISK, and no node store is made for a system write.
+    assert not (std.agents / "navigator℘claude").exists()
+    assert not (std.agents / "navigator+claude").exists()
+
+  def test_get_reads_back_via_plus_and_script_p(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    _set("agent.navigator+claude.model=gemma-4-31b-it")
+    capsys.readouterr()
+    # get with the ℘form hits the SAME store the +form set wrote.
+    rc = _get("agent.navigator℘claude.model")
+    assert rc == 0
+    assert "agent.navigator℘claude.model=gemma-4-31b-it" in (capsys.readouterr().out)
+
+  def test_reset_removes_and_prunes_sparse(self, config_file, tmp_home):
+    _set("agent.navigator+claude.endpoint=https://ep")
+    rc = _reset("agent.navigator+claude.endpoint")
+    assert rc == 0
+    std = _std(config_file)
+    # The now-empty agent table is pruned → the file stays sparse (empty doc).
+    assert self._file(std).exists()
+    assert load_doc(self._file(std)) == {}
+
+  def test_secret_path_token_lands_in_the_node_table(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    rc = _set("agent.navigator+claude.secret_path.ANTHROPIC_AUTH_TOKEN=/t/tok")
+    assert rc == 0
+    std = _std(config_file)
+    assert load_doc(self._file(std)) == {
+      "agent": {
+        "navigator+claude": {
+          "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
         }
-        # ⚑ NO ``℘`` REACHES THE DISK, and no node store is made for a system write.
-        assert not (std.agents / "navigator℘claude").exists()
-        assert not (std.agents / "navigator+claude").exists()
+      }
+    }
 
-    def test_get_reads_back_via_plus_and_script_p(
-        self, config_file, tmp_home, capsys,
-    ):
-        _set("agent.navigator+claude.model=gemma-4-31b-it")
-        capsys.readouterr()
-        # get with the ℘form hits the SAME store the +form set wrote.
-        rc = _get("agent.navigator℘claude.model")
-        assert rc == 0
-        assert "agent.navigator℘claude.model=gemma-4-31b-it" in (
-            capsys.readouterr().out
-        )
-
-    def test_reset_removes_and_prunes_sparse(self, config_file, tmp_home):
-        _set("agent.navigator+claude.endpoint=https://ep")
-        rc = _reset("agent.navigator+claude.endpoint")
-        assert rc == 0
-        std = _std(config_file)
-        # The now-empty agent table is pruned → the file stays sparse (empty doc).
-        assert self._file(std).exists()
-        assert load_doc(self._file(std)) == {}
-
-    def test_secret_path_token_lands_in_the_node_table(
-        self, config_file, tmp_home,
-    ):
-        rc = _set("agent.navigator+claude.secret_path.ANTHROPIC_AUTH_TOKEN=/t/tok")
-        assert rc == 0
-        std = _std(config_file)
-        assert load_doc(self._file(std)) == {"agent": {"navigator+claude": {
-            "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
-        }}}
-
-    def test_default_only_persona_file_stays_sparse(self, config_file, tmp_home):
-        _set("agent.navigator+claude.endpoint=https://ep")
-        std = _std(config_file)
-        data = load_doc(self._file(std))
-        assert data == {"agent": {"navigator+claude": {"endpoint": "https://ep"}}}
+  def test_default_only_persona_file_stays_sparse(self, config_file, tmp_home):
+    _set("agent.navigator+claude.endpoint=https://ep")
+    std = _std(config_file)
+    data = load_doc(self._file(std))
+    assert data == {"agent": {"navigator+claude": {"endpoint": "https://ep"}}}
 
 
 class TestSystemVerbsTouchOnlyTheSystemFile:
-    """``system set/get/reset agent.<node>.*`` work on the SYSTEM settings file alone.
+  """``system set/get/reset agent.<node>.*`` work on the SYSTEM settings file alone.
 
-    Spec §2a: ``config set`` edits the file at the COMMAND's scope, and plain ``get``
-    returns the value stored at that scope's file, never another tier's.  The system
-    scope's file is ``{config.settings}`` (ladder L2.2); the node's own
-    ``agents/<node>/agent.yaml`` is the agent scope's (L3.1), reached by ``agent set``.
-    """
+  Spec §2a: ``config set`` edits the file at the COMMAND's scope, and plain ``get``
+  returns the value stored at that scope's file, never another tier's.  The system
+  scope's file is ``{config.settings}`` (ladder L2.2); the node's own
+  ``agents/<node>/agent.yaml`` is the agent scope's (L3.1), reached by ``agent set``.
+  """
 
-    KEY = "agent.claude.env.Y"
+  KEY = "agent.claude.env.Y"
 
-    def _node_file(self, std):
-        path = agent_settings_path(std.agents, "claude")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(path, {"self": {"env": {"A": "agent-file-value"}}})
-        return path
+  def _node_file(self, std):
+    path = agent_settings_path(std.agents, "claude")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(path, {"self": {"env": {"A": "agent-file-value"}}})
+    return path
 
-    def test_round_trip_never_touches_the_node_file(self, config_file, tmp_home, capsys):
-        import hashlib
+  def test_round_trip_never_touches_the_node_file(self, config_file, tmp_home, capsys):
+    import hashlib
 
-        std = _std(config_file)
-        node_file = self._node_file(std)
-        before = hashlib.sha256(node_file.read_bytes()).hexdigest()
+    std = _std(config_file)
+    node_file = self._node_file(std)
+    before = hashlib.sha256(node_file.read_bytes()).hexdigest()
 
-        assert _set(f"{self.KEY}=1") == 0
-        assert load_doc(std.settings) == {"agent": {"claude": {"env": {"Y": "1"}}}}
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert capsys.readouterr().out == f"{self.KEY}=1\n"
-        assert _reset(self.KEY) == 0
-        assert load_doc(std.settings) == {}
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert capsys.readouterr().out == f"{self.KEY}: (not set)\n"
+    assert _set(f"{self.KEY}=1") == 0
+    assert load_doc(std.settings) == {"agent": {"claude": {"env": {"Y": "1"}}}}
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    assert capsys.readouterr().out == f"{self.KEY}=1\n"
+    assert _reset(self.KEY) == 0
+    assert load_doc(std.settings) == {}
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    assert capsys.readouterr().out == f"{self.KEY}: (not set)\n"
 
-        assert hashlib.sha256(node_file.read_bytes()).hexdigest() == before
+    assert hashlib.sha256(node_file.read_bytes()).hexdigest() == before
 
-    def test_get_does_not_answer_from_the_node_file(self, config_file, tmp_home, capsys):
-        self._node_file(_std(config_file))
-        capsys.readouterr()
-        assert _get("agent.claude.env.A") == 0
-        assert capsys.readouterr().out == "agent.claude.env.A: (not set)\n"
+  def test_get_does_not_answer_from_the_node_file(self, config_file, tmp_home, capsys):
+    self._node_file(_std(config_file))
+    capsys.readouterr()
+    assert _get("agent.claude.env.A") == 0
+    assert capsys.readouterr().out == "agent.claude.env.A: (not set)\n"
 
-    def test_the_agent_verb_still_owns_the_node_file(self, config_file, tmp_home, capsys):
-        from kanibako.commands.agent_cmd import run_get as agent_get
-        from kanibako.commands.agent_cmd import run_set as agent_set
+  def test_the_agent_verb_still_owns_the_node_file(self, config_file, tmp_home, capsys):
+    from kanibako.commands.agent_cmd import run_get as agent_get
+    from kanibako.commands.agent_cmd import run_set as agent_set
 
-        std = _std(config_file)
-        node_file = self._node_file(std)
-        assert agent_set(argparse.Namespace(
-            agent_id="claude", key_value="env.Y=2", force=True,
-        )) == 0
-        assert load_doc(node_file)["self"]["env"]["Y"] == "2"
-        assert not std.settings.exists() or "agent" not in load_doc(std.settings)
-        capsys.readouterr()
-        assert agent_get(argparse.Namespace(agent_id="claude", key="env.Y")) == 0
-        assert capsys.readouterr().out == "2\n"
+    std = _std(config_file)
+    node_file = self._node_file(std)
+    assert (
+      agent_set(
+        argparse.Namespace(
+          agent_id="claude",
+          key_value="env.Y=2",
+          force=True,
+        )
+      )
+      == 0
+    )
+    assert load_doc(node_file)["self"]["env"]["Y"] == "2"
+    assert not std.settings.exists() or "agent" not in load_doc(std.settings)
+    capsys.readouterr()
+    assert agent_get(argparse.Namespace(agent_id="claude", key="env.Y")) == 0
+    assert capsys.readouterr().out == "2\n"
 
 
 class TestSystemSetJudgesTheNodeAsGetDoes:
-    """Spec §0: ``system set`` refuses a node ``system get`` refuses, and writes nothing."""
+  """Spec §0: ``system set`` refuses a node ``system get`` refuses, and writes nothing."""
 
-    @pytest.mark.parametrize("key, value", [
-        ("agent.nav+zzz.model", "=x"),
-        ("agent.nav+zzz.secret_path.ANTHROPIC_AUTH_TOKEN", "=/t/tok"),
-        ("agent.nav+zzz.env.FOO", "=1"),
-        ("agent.zzz.model", "=x"),
-    ])
-    def test_unknown_node_is_refused_by_the_get_verdict_and_nothing_is_written(
-        self, config_file, tmp_home, capsys, key, value,
-    ):
-        rc = _set(key + value)
-        set_err = capsys.readouterr().err
-        assert rc == 1
-        assert set_err.startswith(f"Error: '{key}' cannot be set: ")
-        assert _get(key) == 1
-        get_err = capsys.readouterr().err
-        reason = set_err.split(" cannot be set: ", 1)[1].strip()
-        assert reason.rstrip(".") in get_err
-        agents = _std(config_file).agents
-        assert not agents.exists() or [
-            p.name for p in agents.iterdir() if "zzz" in p.name
-        ] == []
+  @pytest.mark.parametrize(
+    "key, value",
+    [
+      ("agent.nav+zzz.model", "=x"),
+      ("agent.nav+zzz.secret_path.ANTHROPIC_AUTH_TOKEN", "=/t/tok"),
+      ("agent.nav+zzz.env.FOO", "=1"),
+      ("agent.zzz.model", "=x"),
+    ],
+  )
+  def test_unknown_node_is_refused_by_the_get_verdict_and_nothing_is_written(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    key,
+    value,
+  ):
+    rc = _set(key + value)
+    set_err = capsys.readouterr().err
+    assert rc == 1
+    assert set_err.startswith(f"Error: '{key}' cannot be set: ")
+    assert _get(key) == 1
+    get_err = capsys.readouterr().err
+    reason = set_err.split(" cannot be set: ", 1)[1].strip()
+    assert reason.rstrip(".") in get_err
+    agents = _std(config_file).agents
+    assert not agents.exists() or [p.name for p in agents.iterdir() if "zzz" in p.name] == []
 
-    def test_null_at_an_unknown_node_is_refused(self, config_file, tmp_home, capsys):
-        rc = run_set(argparse.Namespace(
-            key_value="agent.nav+zzz.model", force=True, null=True,
-        ))
-        assert rc == 1
-        assert "is not a valid agent" in capsys.readouterr().err
+  def test_null_at_an_unknown_node_is_refused(self, config_file, tmp_home, capsys):
+    rc = run_set(
+      argparse.Namespace(
+        key_value="agent.nav+zzz.model",
+        force=True,
+        null=True,
+      )
+    )
+    assert rc == 1
+    assert "is not a valid agent" in capsys.readouterr().err
 
-    def test_reset_at_an_unknown_node_is_refused_on_a_fresh_home(
-        self, config_file, tmp_home, capsys,
-    ):
-        key = "agent.nav+rrr.model"
-        assert _reset(key) == 1
-        assert capsys.readouterr().err.startswith(f"Error: '{key}' cannot be reset: ")
-        agents = _std(config_file).agents
-        assert not (agents / "nav+rrr").exists()
+  def test_reset_at_an_unknown_node_is_refused_on_a_fresh_home(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    key = "agent.nav+rrr.model"
+    assert _reset(key) == 1
+    assert capsys.readouterr().err.startswith(f"Error: '{key}' cannot be reset: ")
+    agents = _std(config_file).agents
+    assert not (agents / "nav+rrr").exists()
 
-    def test_reset_at_an_unknown_node_leaves_an_existing_store_untouched(
-        self, config_file, tmp_home, capsys,
-    ):
-        node_file = agent_settings_path(_std(config_file).agents, "nav+zzz")
-        node_file.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(node_file, {"self": {"model": "x"}})
-        assert _reset("agent.nav+zzz.model") == 1
-        assert "is not a valid agent" in capsys.readouterr().err
-        assert load_doc(node_file) == {"self": {"model": "x"}}
+  def test_reset_at_an_unknown_node_leaves_an_existing_store_untouched(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    node_file = agent_settings_path(_std(config_file).agents, "nav+zzz")
+    node_file.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(node_file, {"self": {"model": "x"}})
+    assert _reset("agent.nav+zzz.model") == 1
+    assert "is not a valid agent" in capsys.readouterr().err
+    assert load_doc(node_file) == {"self": {"model": "x"}}
 
-    @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
-    def test_a_valid_node_still_resets(self, config_file, tmp_home, capsys, key):
-        assert _set(f"{key}=x") == 0
-        assert _reset(key) == 0
-        capsys.readouterr()
-        assert _get(key) == 0
-        assert capsys.readouterr().out == f"{key}: (not set)\n"
+  @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
+  def test_a_valid_node_still_resets(self, config_file, tmp_home, capsys, key):
+    assert _set(f"{key}=x") == 0
+    assert _reset(key) == 0
+    capsys.readouterr()
+    assert _get(key) == 0
+    assert capsys.readouterr().out == f"{key}: (not set)\n"
 
-    @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
-    def test_a_valid_node_still_sets(self, config_file, tmp_home, capsys, key):
-        assert _set(f"{key}=x") == 0
-        assert _get(key) == 0
-        assert f"{key}=x" in capsys.readouterr().out
+  @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
+  def test_a_valid_node_still_sets(self, config_file, tmp_home, capsys, key):
+    assert _set(f"{key}=x") == 0
+    assert _get(key) == 0
+    assert f"{key}=x" in capsys.readouterr().out
 
 
 class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
-    """Plain ``system get`` answers for a per-node key stored in the NOUN's own file.
+  """Plain ``system get`` answers for a per-node key stored in the NOUN's own file.
 
-    THE DEFECT: a per-node ``agent.<node>.<tail>`` is stored in EITHER the node's own
-    ``agents/<node>/agent.yaml`` OR the ``agent: <node>:`` map of the system settings
-    file — the agent level outranks the system level (spec §2), so the system file's
-    row is a downward key it stores, and the launch cascade reads both. The read
-    resolved the node's own file alone, so a value the system file holds came back
-    ``(not set)`` at rc 0: a ``get`` reader that did not read what the launch delivers.
+  THE DEFECT: a per-node ``agent.<node>.<tail>`` is stored in EITHER the node's own
+  ``agents/<node>/agent.yaml`` OR the ``agent: <node>:`` map of the system settings
+  file — the agent level outranks the system level (spec §2), so the system file's
+  row is a downward key it stores, and the launch cascade reads both. The read
+  resolved the node's own file alone, so a value the system file holds came back
+  ``(not set)`` at rc 0: a ``get`` reader that did not read what the launch delivers.
 
-    ⚑ ONE KEY, TWO HOMES, AND THE SECOND IS ASKED ONLY ON A MISS — so the node's own
-    file keeps the precedence the cascade settles it by. The engine half of this, and the
-    scope the second home stands down outside, are ``test_config_interface``'s
-    ``TestPerNodeGetReadsTheNounFileOnlyWhereTheCascadeKeepsIt``; this class is the
-    ``system`` verb the row names, driven through ``run_get``.
-    """
+  ⚑ ONE KEY, TWO HOMES, AND THE SECOND IS ASKED ONLY ON A MISS — so the node's own
+  file keeps the precedence the cascade settles it by. The engine half of this, and the
+  scope the second home stands down outside, are ``test_config_interface``'s
+  ``TestPerNodeGetReadsTheNounFileOnlyWhereTheCascadeKeepsIt``; this class is the
+  ``system`` verb the row names, driven through ``run_get``.
+  """
 
-    def _seed_noun_file(self, std, sections, leaf, value):
-        """The NOUN's settings file, at the address the keyspace declares."""
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(std.settings, sections, leaf, value)
+  def _seed_noun_file(self, std, sections, leaf, value):
+    """The NOUN's settings file, at the address the keyspace declares."""
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(std.settings, sections, leaf, value)
 
-    def _node_store_get(self, config_file, key):
-        """The engine's read of the node's OWN file (``node_store`` left at its default)."""
-        from kanibako.settings.config_interface import get_config_value
+  def _node_store_get(self, config_file, key):
+    """The engine's read of the node's OWN file (``node_store`` left at its default)."""
+    from kanibako.settings.config_interface import get_config_value
 
-        std = _std(config_file)
-        return get_config_value(
-            key, global_config_path=config_file, system_settings_path=std.settings,
-            agents_root=std.agents, command_scope=ConfigLevel.system,
-        )
-
-    def _seed_node_file(self, std, node, sections, leaf, value):
-        """The node's OWN store, at the address ``agent_file._read_address`` produces."""
-        path = agent_settings_path(std.agents, node)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(path, ("self", *sections), leaf, value)
-
-    def test_the_env_value_the_system_file_holds_is_read_not_faked(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The reported key, through the real handler with the args the CLI passes."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
-        capsys.readouterr()
-        assert _get("agent.claude.env.X") == 0
-        assert capsys.readouterr().out == "agent.claude.env.X=from-system-file\n"
-
-    @pytest.mark.parametrize(
-        ("node_table", "key"),
-        [
-            ({"env": {"X": "the-system-file-value"}}, "agent.claude.env.X"),
-            ({"model": "the-system-file-value"}, "agent.claude.model"),
-            ({"label": "the-system-file-value"}, "agent.claude.label"),
-            (
-                {"secret_path": {"TOK": "the-system-file-value"}},
-                "agent.claude.secret_path.TOK",
-            ),
-            (
-                {"bindings": {"ro": {"/box/share": ["the-system-file-value"]}}},
-                "agent.claude.bindings.ro./box/share",
-            ),
-        ],
+    std = _std(config_file)
+    return get_config_value(
+      key,
+      global_config_path=config_file,
+      system_settings_path=std.settings,
+      agents_root=std.agents,
+      command_scope=ConfigLevel.system,
     )
-    def test_every_family_of_that_one_source_is_read_too(
-        self, config_file, tmp_home, capsys, node_table, key,
-    ):
-        """ONE SOURCE, EVERY FAMILY — the two scalar categories, a flat state leaf, and
-        the R-9 bind read, all of which the node-file-only read refused alike."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"agent": {"claude": node_table}})
-        capsys.readouterr()
-        assert _get(key) == 0
-        out = capsys.readouterr().out
-        assert "(not set)" not in out, out
-        assert "the-system-file-value" in out, out
 
-    def test_the_node_own_file_is_not_this_verb_s_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Plain ``get`` answers for THIS scope's file (spec §2a), never another tier's:
-        the node's own file is the ``agent`` verb's, so its value is not reported here,
-        whether or not the system file holds the key too."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "claude", "env"), "BOTH", "from-system-file")
-        self._seed_node_file(std, "claude", ("env",), "BOTH", "from-agent-file")
-        self._seed_node_file(std, "claude", ("env",), "ONLY", "from-agent-file")
-        capsys.readouterr()
-        assert _get("agent.claude.env.BOTH") == 0
-        assert capsys.readouterr().out == "agent.claude.env.BOTH=from-system-file\n"
-        assert _get("agent.claude.env.ONLY") == 0
-        assert capsys.readouterr().out == "agent.claude.env.ONLY: (not set)\n"
+  def _seed_node_file(self, std, node, sections, leaf, value):
+    """The node's OWN store, at the address ``agent_file._read_address`` produces."""
+    path = agent_settings_path(std.agents, node)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(path, ("self", *sections), leaf, value)
 
-    def test_a_key_neither_file_holds_is_still_reported_unset(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The second home adds an ANSWER, never a default: nothing stored anywhere is
-        still ``(not set)``, which is the one spelling spec §2a reserves for it."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
-        capsys.readouterr()
-        assert _get("agent.claude.env.OTHER") == 0
-        assert capsys.readouterr().out == "agent.claude.env.OTHER: (not set)\n"
+  def test_the_env_value_the_system_file_holds_is_read_not_faked(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The reported key, through the real handler with the args the CLI passes."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
+    capsys.readouterr()
+    assert _get("agent.claude.env.X") == 0
+    assert capsys.readouterr().out == "agent.claude.env.X=from-system-file\n"
 
-    @pytest.mark.parametrize(
-        "stored", ["", None, True, "a.b.c"],
-        ids=["empty-string", "null", "bool", "dotted-value"],
-    )
-    def test_both_homes_render_one_stored_value_the_same_way(
-        self, config_file, tmp_home, capsys, stored,
-    ):
-        """⚑ THE PAIRING ``agent_cmd``'s D-6 block pins, measured over the two HOMES
-        instead of the record and the file: a stored ``""`` and a stored null each have
-        their own spelling (spec §2h), so a value that read one way through one home and
-        another way through the other would be two vocabularies for one key.  ``system
-        get`` reads the system file only, so the node's own file is read through the
-        engine's node-store route, which the box and workset ``get`` still use."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "claude", "env"), "V", stored)
-        self._seed_node_file(std, "codex", ("env",), "V", stored)
-        capsys.readouterr()
-        assert _get("agent.claude.env.V") == 0
-        from_noun_file = capsys.readouterr().out
-        from_node_file = f"{self._node_store_get(config_file, 'agent.codex.env.V')}\n"
-        assert from_noun_file.split("=", 1)[1] == from_node_file, (
-            from_noun_file, from_node_file
-        )
+  @pytest.mark.parametrize(
+    ("node_table", "key"),
+    [
+      ({"env": {"X": "the-system-file-value"}}, "agent.claude.env.X"),
+      ({"model": "the-system-file-value"}, "agent.claude.model"),
+      ({"label": "the-system-file-value"}, "agent.claude.label"),
+      (
+        {"secret_path": {"TOK": "the-system-file-value"}},
+        "agent.claude.secret_path.TOK",
+      ),
+      (
+        {"bindings": {"ro": {"/box/share": ["the-system-file-value"]}}},
+        "agent.claude.bindings.ro./box/share",
+      ),
+    ],
+  )
+  def test_every_family_of_that_one_source_is_read_too(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    node_table,
+    key,
+  ):
+    """ONE SOURCE, EVERY FAMILY — the two scalar categories, a flat state leaf, and
+    the R-9 bind read, all of which the node-file-only read refused alike."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(std.settings, {"agent": {"claude": node_table}})
+    capsys.readouterr()
+    assert _get(key) == 0
+    out = capsys.readouterr().out
+    assert "(not set)" not in out, out
+    assert "the-system-file-value" in out, out
 
-    def test_both_homes_render_an_argv_list_as_the_command_line(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``run_args`` is the one stored shape that is not a scalar, so it is the one
-        where a second renderer would show the Python repr at the user. The two homes are
-        handed the SAME argv in the two shapes the two write routes store it in, and both
-        must read back as the one command line."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "claude"), "run_args", "--sys --two")
-        self._seed_node_file(std, "codex", (), "run_args", ["--sys", "--two"])
-        capsys.readouterr()
-        assert _get("agent.claude.run_args") == 0
-        from_noun_file = capsys.readouterr().out
-        from_node_file = self._node_store_get(config_file, "agent.codex.run_args")
-        assert from_noun_file == "agent.claude.run_args=--sys --two\n", from_noun_file
-        assert from_node_file == "--sys --two", from_node_file
+  def test_the_node_own_file_is_not_this_verb_s_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Plain ``get`` answers for THIS scope's file (spec §2a), never another tier's:
+    the node's own file is the ``agent`` verb's, so its value is not reported here,
+    whether or not the system file holds the key too."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "claude", "env"), "BOTH", "from-system-file")
+    self._seed_node_file(std, "claude", ("env",), "BOTH", "from-agent-file")
+    self._seed_node_file(std, "claude", ("env",), "ONLY", "from-agent-file")
+    capsys.readouterr()
+    assert _get("agent.claude.env.BOTH") == 0
+    assert capsys.readouterr().out == "agent.claude.env.BOTH=from-system-file\n"
+    assert _get("agent.claude.env.ONLY") == 0
+    assert capsys.readouterr().out == "agent.claude.env.ONLY: (not set)\n"
 
-    def test_the_reserved_any_agent_tier_is_read_where_it_already_was(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``agent.default.*`` is the any-agent TIER, not a persona node, and
-        ``config_dest._key_slot`` already gives it its slot in this same file — so the
-        second home stands aside rather than answering a key that already has an answer."""
-        std = _std(config_file)
-        self._seed_noun_file(std, ("agent", "default", "env"), "T", "from-the-tier")
-        capsys.readouterr()
-        assert _get("agent.default.env.T") == 0
-        assert capsys.readouterr().out == "agent.default.env.T=from-the-tier\n"
+  def test_a_key_neither_file_holds_is_still_reported_unset(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The second home adds an ANSWER, never a default: nothing stored anywhere is
+    still ``(not set)``, which is the one spelling spec §2a reserves for it."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
+    capsys.readouterr()
+    assert _get("agent.claude.env.OTHER") == 0
+    assert capsys.readouterr().out == "agent.claude.env.OTHER: (not set)\n"
 
-    def test_a_persona_spelled_node_is_read_from_the_noun_file_too(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The node may be spelled ``nav+claude``; the file's own table may spell it either
-        way, which is the slot's business and not this verb's."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"agent": {"nav+claude": {"env": {"X": "from-noun-file"}}}})
-        capsys.readouterr()
-        assert _get("agent.nav+claude.env.X") == 0
-        assert capsys.readouterr().out == "agent.nav+claude.env.X=from-noun-file\n"
+  @pytest.mark.parametrize(
+    "stored",
+    ["", None, True, "a.b.c"],
+    ids=["empty-string", "null", "bool", "dotted-value"],
+  )
+  def test_both_homes_render_one_stored_value_the_same_way(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    stored,
+  ):
+    """⚑ THE PAIRING ``agent_cmd``'s D-6 block pins, measured over the two HOMES
+    instead of the record and the file: a stored ``""`` and a stored null each have
+    their own spelling (spec §2h), so a value that read one way through one home and
+    another way through the other would be two vocabularies for one key.  ``system
+    get`` reads the system file only, so the node's own file is read through the
+    engine's node-store route, which the box and workset ``get`` still use."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "claude", "env"), "V", stored)
+    self._seed_node_file(std, "codex", ("env",), "V", stored)
+    capsys.readouterr()
+    assert _get("agent.claude.env.V") == 0
+    from_noun_file = capsys.readouterr().out
+    from_node_file = f"{self._node_store_get(config_file, 'agent.codex.env.V')}\n"
+    assert from_noun_file.split("=", 1)[1] == from_node_file, (from_noun_file, from_node_file)
 
+  def test_both_homes_render_an_argv_list_as_the_command_line(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``run_args`` is the one stored shape that is not a scalar, so it is the one
+    where a second renderer would show the Python repr at the user. The two homes are
+    handed the SAME argv in the two shapes the two write routes store it in, and both
+    must read back as the one command line."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "claude"), "run_args", "--sys --two")
+    self._seed_node_file(std, "codex", (), "run_args", ["--sys", "--two"])
+    capsys.readouterr()
+    assert _get("agent.claude.run_args") == 0
+    from_noun_file = capsys.readouterr().out
+    from_node_file = self._node_store_get(config_file, "agent.codex.run_args")
+    assert from_noun_file == "agent.claude.run_args=--sys --two\n", from_noun_file
+    assert from_node_file == "--sys --two", from_node_file
 
-    def test_a_self_table_in_the_system_file_is_not_read(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``self`` is the per-agent file's root and nowhere else's (spec §0): in the
-        system file it is not a key, so a value under it is no home for any node."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"self": {"env": {"S": "in-self-of-system-file"}}})
-        capsys.readouterr()
-        assert _get("agent.claude.env.S") == 0
-        assert capsys.readouterr().out == "agent.claude.env.S: (not set)\n"
+  def test_the_reserved_any_agent_tier_is_read_where_it_already_was(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``agent.default.*`` is the any-agent TIER, not a persona node, and
+    ``config_dest._key_slot`` already gives it its slot in this same file — so the
+    second home stands aside rather than answering a key that already has an answer."""
+    std = _std(config_file)
+    self._seed_noun_file(std, ("agent", "default", "env"), "T", "from-the-tier")
+    capsys.readouterr()
+    assert _get("agent.default.env.T") == 0
+    assert capsys.readouterr().out == "agent.default.env.T=from-the-tier\n"
+
+  def test_a_persona_spelled_node_is_read_from_the_noun_file_too(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The node may be spelled ``nav+claude``; the file's own table may spell it either
+    way, which is the slot's business and not this verb's."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(std.settings, {"agent": {"nav+claude": {"env": {"X": "from-noun-file"}}}})
+    capsys.readouterr()
+    assert _get("agent.nav+claude.env.X") == 0
+    assert capsys.readouterr().out == "agent.nav+claude.env.X=from-noun-file\n"
+
+  def test_a_self_table_in_the_system_file_is_not_read(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``self`` is the per-agent file's root and nowhere else's (spec §0): in the
+    system file it is not a key, so a value under it is no home for any node."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(std.settings, {"self": {"env": {"S": "in-self-of-system-file"}}})
+    capsys.readouterr()
+    assert _get("agent.claude.env.S") == 0
+    assert capsys.readouterr().out == "agent.claude.env.S: (not set)\n"
 
 
 class TestSystemAgentNodeBindWriteRouteRetired:
-    """R-9 — through the REAL ``system config`` CLI, not the engine: the per-node
-    descriptor bind write route is refused, and the refusal reaches the user's
-    terminal naming the key they typed.
+  """R-9 — through the REAL ``system config`` CLI, not the engine: the per-node
+  descriptor bind write route is refused, and the refusal reaches the user's
+  terminal naming the key they typed.
 
-    This class REPLACES ``TestSystemAgentNodeBindRepoint``, which pinned the
-    opposite end-to-end behavior (``system config set
-    agent.<node>.bindings.{ro,rw}.<name> /new`` writing a RAW tuple into
-    ``agents/<node>/agent.yaml``). That surface is an ACCEPTED LOSS, boarded as
-    DS-BL1. The end-to-end value of the tests is unchanged: they prove the refusal
-    is what the USER meets at the CLI, not just what the engine returns."""
+  This class REPLACES ``TestSystemAgentNodeBindRepoint``, which pinned the
+  opposite end-to-end behavior (``system config set
+  agent.<node>.bindings.{ro,rw}.<name> /new`` writing a RAW tuple into
+  ``agents/<node>/agent.yaml``). That surface is an ACCEPTED LOSS, boarded as
+  DS-BL1. The end-to-end value of the tests is unchanged: they prove the refusal
+  is what the USER meets at the CLI, not just what the engine returns."""
 
-    KEY = "agent.claude.bindings.ro.launcher"
+  KEY = "agent.claude.bindings.ro.launcher"
 
-    def _file(self, std, node="claude"):
-        return agent_settings_path(std.agents, node)
+  def _file(self, std, node="claude"):
+    return agent_settings_path(std.agents, node)
 
-    def test_set_exits_nonzero_and_names_the_key_on_stderr(
-        self, config_file, tmp_home, capsys,
-    ):
-        rc = _set(f"{self.KEY}=/newsrc")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert self.KEY in err, err
-        assert "RETIRED" in err, err
+  def test_set_exits_nonzero_and_names_the_key_on_stderr(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    rc = _set(f"{self.KEY}=/newsrc")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert self.KEY in err, err
+    assert "RETIRED" in err, err
 
-    def test_no_node_directory_is_created_for_a_refused_write(
-        self, config_file, tmp_home, capsys,
-    ):
-        """⚑ The handler used to ``mkdir`` the node dir BEFORE handing the key to
-        the engine. With the write refused, that would leave an
-        ``agents/<node>/`` directory behind for an operation that did nothing —
-        which is why the routing block was removed rather than left inert."""
-        rc = _set(f"{self.KEY}=/newsrc")
-        assert rc == 1
-        std = _std(config_file)
-        assert not (std.agents / "claude").exists()
-        # ...and nothing leaked into the CONFIG file either.
-        assert "agent" not in load_doc(config_file)
+  def test_no_node_directory_is_created_for_a_refused_write(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """⚑ The handler used to ``mkdir`` the node dir BEFORE handing the key to
+    the engine. With the write refused, that would leave an
+    ``agents/<node>/`` directory behind for an operation that did nothing —
+    which is why the routing block was removed rather than left inert."""
+    rc = _set(f"{self.KEY}=/newsrc")
+    assert rc == 1
+    std = _std(config_file)
+    assert not (std.agents / "claude").exists()
+    # ...and nothing leaked into the CONFIG file either.
+    assert "agent" not in load_doc(config_file)
 
-    def test_reset_exits_nonzero_and_keeps_the_tuple(
-        self, config_file, tmp_home, capsys,
-    ):
-        std = _std(config_file)
-        node_file = self._file(std)
-        node_file.parent.mkdir(parents=True, exist_ok=True)
-        # ⚑ FLAT since S2/S3: ``self`` IS ``agent.claude``, so the bindings table sits
-        # DIRECTLY under the root; the nested ``self: claude:`` shape is now refused.
-        seeded = {"self": {"bindings": {"ro": {
-            "launcher": ["/old/src", "/box/launcher", "ro"]}}}}
-        dump_doc(node_file, seeded)
-        rc = _reset(self.KEY)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert self.KEY in err and "RETIRED" in err, err
-        assert load_doc(node_file) == seeded
+  def test_reset_exits_nonzero_and_keeps_the_tuple(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    std = _std(config_file)
+    node_file = self._file(std)
+    node_file.parent.mkdir(parents=True, exist_ok=True)
+    # ⚑ FLAT since S2/S3: ``self`` IS ``agent.claude``, so the bindings table sits
+    # DIRECTLY under the root; the nested ``self: claude:`` shape is now refused.
+    seeded = {"self": {"bindings": {"ro": {"launcher": ["/old/src", "/box/launcher", "ro"]}}}}
+    dump_doc(node_file, seeded)
+    rc = _reset(self.KEY)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert self.KEY in err and "RETIRED" in err, err
+    assert load_doc(node_file) == seeded
 
-    def test_bind_named_model_is_still_claimed_as_a_bind(
-        self, config_file, tmp_home, capsys,
-    ):
-        """COLLISION: a bind NAMED ``model`` must meet the bind RETIREMENT, not the
-        persona scalar branch — which would have written the verbatim string
-        ``/x`` into ``self.model``. The preamble refusal runs before every branch,
-        so this is the ordering guarantee it inherits."""
-        rc = _set("agent.claude.bindings.ro.model=/x")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "RETIRED" in err, err
-        # And the persona-scalar model still writes verbatim, to the system file.
-        assert _set("agent.claude.model=opus") == 0
-        std = _std(config_file)
-        assert load_doc(std.settings)["agent"]["claude"]["model"] == "opus"
+  def test_bind_named_model_is_still_claimed_as_a_bind(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """COLLISION: a bind NAMED ``model`` must meet the bind RETIREMENT, not the
+    persona scalar branch — which would have written the verbatim string
+    ``/x`` into ``self.model``. The preamble refusal runs before every branch,
+    so this is the ordering guarantee it inherits."""
+    rc = _set("agent.claude.bindings.ro.model=/x")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "RETIRED" in err, err
+    # And the persona-scalar model still writes verbatim, to the system file.
+    assert _set("agent.claude.model=opus") == 0
+    std = _std(config_file)
+    assert load_doc(std.settings)["agent"]["claude"]["model"] == "opus"
 
-    def test_get_still_reads_a_hand_authored_bind(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The read survives for a bind hand-authored in THIS scope's file, the system
-        settings file's ``agent: <node>:`` table (spec §2a)."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"agent": {"claude": {"bindings": {"ro": {
-            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
-        capsys.readouterr()
-        rc = _get(self.KEY)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "(not set)" not in out, out
-        assert "/newsrc" in out, out
+  def test_get_still_reads_a_hand_authored_bind(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The read survives for a bind hand-authored in THIS scope's file, the system
+    settings file's ``agent: <node>:`` table (spec §2a)."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(
+      std.settings,
+      {
+        "agent": {"claude": {"bindings": {"ro": {"launcher": ["/newsrc", "/box/launcher", "ro"]}}}}
+      },
+    )
+    capsys.readouterr()
+    rc = _get(self.KEY)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "(not set)" not in out, out
+    assert "/newsrc" in out, out
 
-    def test_get_unset_bind_is_not_set(self, config_file, tmp_home, capsys):
-        rc = _get(self.KEY)
-        assert rc == 0
-        assert "(not set)" in capsys.readouterr().out
-
+  def test_get_unset_bind_is_not_set(self, config_file, tmp_home, capsys):
+    rc = _get(self.KEY)
+    assert rc == 0
+    assert "(not set)" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -996,1079 +1127,1232 @@ class TestSystemAgentNodeBindWriteRouteRetired:
 
 
 class TestSystemSecretPathVerbSymmetry:
-    """F1 — ``system set/get/reset <scope>.secret_path.<VAR>`` through the real
-    verbs.  ``set`` wrote (and ``reset`` removed) the system SETTINGS file while
-    ``get`` read ``project_toml`` — a path this handler never threads — so a
-    secret pointer set at the system scope read back "(not set)" forever."""
+  """F1 — ``system set/get/reset <scope>.secret_path.<VAR>`` through the real
+  verbs.  ``set`` wrote (and ``reset`` removed) the system SETTINGS file while
+  ``get`` read ``project_toml`` — a path this handler never threads — so a
+  secret pointer set at the system scope read back "(not set)" forever."""
 
-    KEY = "system.secret_path.ANTHROPIC_AUTH_TOKEN"
+  KEY = "system.secret_path.ANTHROPIC_AUTH_TOKEN"
 
-    def test_set_then_get_then_reset(self, config_file, tmp_home, capsys):
-        assert _set(f"{self.KEY}=/t/tok") == 0
-        std = _std(config_file)
-        assert load_doc(std.settings)["system"]["secret_path"][
-            "ANTHROPIC_AUTH_TOKEN"
-        ] == "/t/tok"
-        capsys.readouterr()
+  def test_set_then_get_then_reset(self, config_file, tmp_home, capsys):
+    assert _set(f"{self.KEY}=/t/tok") == 0
+    std = _std(config_file)
+    assert load_doc(std.settings)["system"]["secret_path"]["ANTHROPIC_AUTH_TOKEN"] == "/t/tok"
+    capsys.readouterr()
 
-        assert _get(self.KEY) == 0
-        out = capsys.readouterr().out
-        assert "(not set)" not in out
-        assert "/t/tok" in out
+    assert _get(self.KEY) == 0
+    out = capsys.readouterr().out
+    assert "(not set)" not in out
+    assert "/t/tok" in out
 
-        assert _reset(self.KEY) == 0
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "(not set)" in capsys.readouterr().out
+    assert _reset(self.KEY) == 0
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    assert "(not set)" in capsys.readouterr().out
 
 
 class TestSystemCategoryFileRouting:
-    """F2 — a SYSTEM-scope category key must live in ONE file: the system SETTINGS
-    file, which is what the launch cascade's system tier reads.
+  """F2 — a SYSTEM-scope category key must live in ONE file: the system SETTINGS
+  file, which is what the launch cascade's system tier reads.
 
-    ⚑⚑ THE SET HALF IS GONE (DS-BL1 = (a)), so the get/set disagreement this class
-    was built around cannot recur — one of its two sides no longer exists. What is
-    pinned now, through the REAL ``system config`` CLI: the surviving READ names the
-    settings file, a tuple parked in the CONFIG file is NOT read, and both write
-    verbs refuse by name without touching either store.
+  ⚑⚑ THE SET HALF IS GONE (DS-BL1 = (a)), so the get/set disagreement this class
+  was built around cannot recur — one of its two sides no longer exists. What is
+  pinned now, through the REAL ``system config`` CLI: the surviving READ names the
+  settings file, a tuple parked in the CONFIG file is NOT read, and both write
+  verbs refuse by name without touching either store.
 
-    ⚑ The VEHICLE stays ``synced`` (CONCRETE — no declaration root), unchanged.
+  ⚑ The VEHICLE stays ``synced`` (CONCRETE — no declaration root), unchanged.
+  """
+
+  KEY = "system.synced.helper"
+  SEEDED = ["/old/src", "/home/agent/helper", "ro"]
+
+  def _seed(self, path):
+    write_nested_key(path, ("system", "synced"), "helper", list(self.SEEDED))
+
+  def test_get_reads_the_settings_file_and_the_verbs_refuse(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    std = _std(config_file)
+    self._seed(std.settings)
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    assert "/old/src" in capsys.readouterr().out
+
+    # SET and RESET both refuse BY NAME, and neither store changes.
+    assert _set(f"{self.KEY}={tmp_home}") != 0
+    assert "RETIRED" in capsys.readouterr().err
+    assert _reset(self.KEY) != 0
+    assert "RETIRED" in capsys.readouterr().err
+    assert load_doc(std.settings)["system"]["synced"]["helper"] == self.SEEDED
+    assert "synced" not in load_doc(config_file).get("system", {})
+
+  def test_a_tuple_only_in_the_config_file_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The control: the same key hand-written into kanibako.cfg STOPS the
+    command, because that file may not carry a settings key at all.
+
+    ⚑ CHANGED 2026-08-31. It used to read back "(not set)" — true of the cascade and
+    useless to the user, who had written the entry in front of them and was told
+    nothing about it.
     """
+    from kanibako.errors import ConfigError
 
-    KEY = "system.synced.helper"
-    SEEDED = ["/old/src", "/home/agent/helper", "ro"]
+    std = _std(config_file)
+    self._seed(config_file)
+    capsys.readouterr()
+    with pytest.raises(ConfigError) as exc:
+      _get(self.KEY)
+    assert str(config_file) in str(exc.value)
+    assert "system.synced.helper" in str(exc.value)
+    assert not load_doc(std.settings).get("system", {}).get("synced")
 
-    def _seed(self, path):
-        write_nested_key(path, ("system", "synced"), "helper", list(self.SEEDED))
-
-    def test_get_reads_the_settings_file_and_the_verbs_refuse(
-        self, config_file, tmp_home, capsys,
-    ):
-        std = _std(config_file)
-        self._seed(std.settings)
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "/old/src" in capsys.readouterr().out
-
-        # SET and RESET both refuse BY NAME, and neither store changes.
-        assert _set(f"{self.KEY}={tmp_home}") != 0
-        assert "RETIRED" in capsys.readouterr().err
-        assert _reset(self.KEY) != 0
-        assert "RETIRED" in capsys.readouterr().err
-        assert load_doc(std.settings)["system"]["synced"]["helper"] == self.SEEDED
-        assert "synced" not in load_doc(config_file).get("system", {})
-
-    def test_a_tuple_only_in_the_config_file_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The control: the same key hand-written into kanibako.cfg STOPS the
-        command, because that file may not carry a settings key at all.
-
-        ⚑ CHANGED 2026-08-31. It used to read back "(not set)" — true of the cascade and
-        useless to the user, who had written the entry in front of them and was told
-        nothing about it.
-        """
-        from kanibako.errors import ConfigError
-
-        std = _std(config_file)
-        self._seed(config_file)
-        capsys.readouterr()
-        with pytest.raises(ConfigError) as exc:
-            _get(self.KEY)
-        assert str(config_file) in str(exc.value)
-        assert "system.synced.helper" in str(exc.value)
-        assert not load_doc(std.settings).get("system", {}).get("synced")
-
-    def test_reset_all_still_sweeps_the_scope_table(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``reset --all`` clears the SETTINGS file's scope tables wholesale, so a
-        hand-authored category tuple goes with them — a DELIBERATE asymmetry with
-        the per-key reset above (a table sweep is not a per-key write, and it does
-        not consult the per-key retirement doors). Pre-existing; pinned so the
-        difference is recorded rather than surprising."""
-        std = _std(config_file)
-        self._seed(std.settings)
-        assert _reset(all_keys=True) == 0
-        assert "system" not in load_doc(std.settings)
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "(not set)" in capsys.readouterr().out
+  def test_reset_all_still_sweeps_the_scope_table(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``reset --all`` clears the SETTINGS file's scope tables wholesale, so a
+    hand-authored category tuple goes with them — a DELIBERATE asymmetry with
+    the per-key reset above (a table sweep is not a per-key write, and it does
+    not consult the per-key retirement doors). Pre-existing; pinned so the
+    difference is recorded rather than surprising."""
+    std = _std(config_file)
+    self._seed(std.settings)
+    assert _reset(all_keys=True) == 0
+    assert "system" not in load_doc(std.settings)
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    assert "(not set)" in capsys.readouterr().out
 
 
 class TestRetiredScopeBindRoute:
-    """R-9 — through the REAL ``system config`` CLI, not the engine: the
-    scope-level bind route is refused, and the refusal reaches the user's
-    terminal naming the key they typed."""
+  """R-9 — through the REAL ``system config`` CLI, not the engine: the
+  scope-level bind route is refused, and the refusal reaches the user's
+  terminal naming the key they typed."""
 
-    KEY = "system.bindings.ro.helper"
+  KEY = "system.bindings.ro.helper"
 
-    def _seed(self, path):
-        write_nested_key(
-            path, ("system", "bindings", "ro"), "helper",
-            ["/old/src", "/home/agent/helper", "ro"],
-        )
+  def _seed(self, path):
+    write_nested_key(
+      path,
+      ("system", "bindings", "ro"),
+      "helper",
+      ["/old/src", "/home/agent/helper", "ro"],
+    )
 
-    def test_set_exits_nonzero_and_names_the_key_on_stderr(
-        self, config_file, tmp_home, capsys,
-    ):
-        std = _std(config_file)
-        self._seed(std.settings)
-        rc = _set(f"{self.KEY}={tmp_home}")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert self.KEY in err, err
-        assert "RETIRED" in err, err
-        # The hand-authored tuple is untouched by the refusal.
-        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
-            "/old/src", "/home/agent/helper", "ro",
-        ]
+  def test_set_exits_nonzero_and_names_the_key_on_stderr(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    std = _std(config_file)
+    self._seed(std.settings)
+    rc = _set(f"{self.KEY}={tmp_home}")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert self.KEY in err, err
+    assert "RETIRED" in err, err
+    # The hand-authored tuple is untouched by the refusal.
+    assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+      "/old/src",
+      "/home/agent/helper",
+      "ro",
+    ]
 
-    def test_reset_exits_nonzero_and_keeps_the_tuple(
-        self, config_file, tmp_home, capsys,
-    ):
-        std = _std(config_file)
-        self._seed(std.settings)
-        rc = _reset(self.KEY)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert self.KEY in err and "RETIRED" in err, err
-        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
-            "/old/src", "/home/agent/helper", "ro",
-        ]
+  def test_reset_exits_nonzero_and_keeps_the_tuple(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    std = _std(config_file)
+    self._seed(std.settings)
+    rc = _reset(self.KEY)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert self.KEY in err and "RETIRED" in err, err
+    assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+      "/old/src",
+      "/home/agent/helper",
+      "ro",
+    ]
 
-    def test_get_still_prints_the_stored_tuple(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The read survives — the refusal tells the user to edit the settings
-        file, and this is how they check that the edit took."""
-        std = _std(config_file)
-        self._seed(std.settings)
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        out = capsys.readouterr().out
-        assert "(not set)" not in out, out
-        assert "/old/src" in out, out
+  def test_get_still_prints_the_stored_tuple(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The read survives — the refusal tells the user to edit the settings
+    file, and this is how they check that the edit took."""
+    std = _std(config_file)
+    self._seed(std.settings)
+    capsys.readouterr()
+    assert _get(self.KEY) == 0
+    out = capsys.readouterr().out
+    assert "(not set)" not in out, out
+    assert "/old/src" in out, out
 
 
 class TestSystemAgentNodeBindSeamSuperseded:
-    """F3's ``system set`` node-routing seam is GONE, and what replaced it refuses
-    EARLIER and just as loudly.
+  """F3's ``system set`` node-routing seam is GONE, and what replaced it refuses
+  EARLIER and just as loudly.
 
-    The seam swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the
-    write pointed at the kanibako.cfg CONFIG file, and it let the RESERVED
-    ``default`` node through as far as ``mkdir`` — creating an ``agents/default/``
-    dir for a key the launch never reads as a node. R-9 retired the whole write
-    route, so the handler no longer parses a node at all and the engine refuses in
-    its preamble. The PROPERTIES those tests protected are unchanged and are what
-    is pinned here: nonzero exit, nothing written to either store, no stray node
-    directory. Only the message changed — it names the retirement, not the node.
-    """
+  The seam swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the
+  write pointed at the kanibako.cfg CONFIG file, and it let the RESERVED
+  ``default`` node through as far as ``mkdir`` — creating an ``agents/default/``
+  dir for a key the launch never reads as a node. R-9 retired the whole write
+  route, so the handler no longer parses a node at all and the engine refuses in
+  its preamble. The PROPERTIES those tests protected are unchanged and are what
+  is pinned here: nonzero exit, nothing written to either store, no stray node
+  directory. Only the message changed — it names the retirement, not the node.
+  """
 
-    @pytest.mark.parametrize(
-        "key",
-        [
-            "agent.default.bindings.ro.share",   # the RESERVED any-agent tier
-            "agent.a+b+c.bindings.ro.share",     # a MALFORMED node ref
-            "agent.claude.bindings.ro.share",    # a GOOD node
-        ],
-    )
-    def test_every_node_shape_is_refused_and_writes_nothing(
-        self, config_file, tmp_home, capsys, key,
-    ):
-        rc = _set(f"{key}=/x")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert err.startswith("Error:"), err
-        assert "RETIRED" in err, err
-        # Neither store was written, and no node directory was created.
-        assert "agent" not in load_doc(config_file)
-        assert list(_std(config_file).agents.glob("*")) == []
+  @pytest.mark.parametrize(
+    "key",
+    [
+      "agent.default.bindings.ro.share",  # the RESERVED any-agent tier
+      "agent.a+b+c.bindings.ro.share",  # a MALFORMED node ref
+      "agent.claude.bindings.ro.share",  # a GOOD node
+    ],
+  )
+  def test_every_node_shape_is_refused_and_writes_nothing(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    key,
+  ):
+    rc = _set(f"{key}=/x")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("Error:"), err
+    assert "RETIRED" in err, err
+    # Neither store was written, and no node directory was created.
+    assert "agent" not in load_doc(config_file)
+    assert list(_std(config_file).agents.glob("*")) == []
 
 
 class TestSystemGetClosedKeyspaceReadGate:
-    """``system get`` refuses a name this scope cannot serve, instead of faking it.
+  """``system get`` refuses a name this scope cannot serve, instead of faking it.
 
-    THE DEFECT: ``system get`` gated on ``is_known_key`` alone — a WIDER predicate that
-    answers "is this key-SHAPED", not "is this a DECLARED key readable HERE".  A name it
-    admitted but the scope cannot serve fell through to an ordinary read, found nothing,
-    and printed "(not set)" at rc 0: the fabricated answer spec §0 forbids in the same
-    breath as the write, and the one ``box get``/``workset get`` were already fixed to
-    refuse.  [Jei:2026-08-27]: *"the system one's answer is wrong; it should also be an
-    error."*
+  THE DEFECT: ``system get`` gated on ``is_known_key`` alone — a WIDER predicate that
+  answers "is this key-SHAPED", not "is this a DECLARED key readable HERE".  A name it
+  admitted but the scope cannot serve fell through to an ordinary read, found nothing,
+  and printed "(not set)" at rc 0: the fabricated answer spec §0 forbids in the same
+  breath as the write, and the one ``box get``/``workset get`` were already fixed to
+  refuse.  [Jei:2026-08-27]: *"the system one's answer is wrong; it should also be an
+  error."*
 
-    THE CURE IS A DIFFERENT SURFACE, NOT A WIDER PREDICATE — the handler's own comment
-    says so and ``is_known_key`` is deliberately untouched, quarantined answers and all.
-    ``system get`` now calls ``scope_read_key_error``, the SAME function the sibling
-    nouns call, so three nouns cannot drift into three answers for one key.
+  THE CURE IS A DIFFERENT SURFACE, NOT A WIDER PREDICATE — the handler's own comment
+  says so and ``is_known_key`` is deliberately untouched, quarantined answers and all.
+  ``system get`` now calls ``scope_read_key_error``, the SAME function the sibling
+  nouns call, so three nouns cannot drift into three answers for one key.
 
-    ⚑ THE SCOPE DIFFERENCE IS REAL AND IS NOT A CARVE-OUT: at box and workset scope a
-    BARE agent leaf names no key, but at system scope it IS the any-agent tier's key
-    (``system set model=opus`` writes ``agent.default.model``).  The gate admits it via
-    ``_is_agent_setting``, which is SCALAR-only by construction — so the single leaf it
-    withholds is the TABLE-valued one, which is exactly the key that must still refuse.
+  ⚑ THE SCOPE DIFFERENCE IS REAL AND IS NOT A CARVE-OUT: at box and workset scope a
+  BARE agent leaf names no key, but at system scope it IS the any-agent tier's key
+  (``system set model=opus`` writes ``agent.default.model``).  The gate admits it via
+  ``_is_agent_setting``, which is SCALAR-only by construction — so the single leaf it
+  withholds is the TABLE-valued one, which is exactly the key that must still refuse.
+  """
+
+  def test_the_table_valued_agent_leaf_is_refused_WITH_AN_ADDRESS(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The reported defect: it printed "(not set)" at rc 0 for a key no scalar
+    read can carry (spec §2d), and named nowhere to go instead."""
+    capsys.readouterr()
+    assert _get("transform_settings") == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
+    assert "transform_settings" in cap.err, cap.err
+    assert "kanibako agent get" in cap.err, cap.err
+
+  def test_the_refusal_IS_the_sibling_nouns_refusal_not_a_lookalike(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Byte-identical to what ``workset get`` prints, because it is the same
+    construction — the guard against someone re-minting a parallel message here."""
+    from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
+
+    capsys.readouterr()
+    assert _get("transform_settings") == 1
+    printed = capsys.readouterr().err.strip()
+    assert printed == scope_read_key_error(
+      "transform_settings",
+      ConfigLevel.workset,
+    ), printed
+
+  @pytest.mark.parametrize(
+    "key",
+    [
+      "agent.claude.caches.foo",  # an ENTRY of a terminal dest-keyed key
+      "agent.claude.synced.foo",  # ditto, a second category
+      "box.agent.model",  # the RETIRED box-scoped agent mirror
+      "agent.nosuchagent.model",  # a MISSPELLED node — the likeliest typo of the four
+    ],
+  )
+  def test_the_rest_of_the_class_is_refused_too(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    key,
+  ):
+    """ONE DEFECT, NOT ONE KEY.  Every name ``is_known_key`` admits and this scope
+    cannot serve was answered "(not set)" at rc 0; the gate names each of them."""
+    capsys.readouterr()
+    assert _get(key) == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
+    assert key in cap.err, cap.err
+
+  def test_the_R9_bind_read_is_NOT_in_that_class_and_survives(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """THE LINE BETWEEN THE TWO, and it is drawn by MEASUREMENT, not by shape.
+
+    ``agent.<node>.caches.<name>`` and ``agent.<node>.bindings.ro.<name>`` look alike
+    and are NOT alike: the engine serves the second and not the first.  A
+    hand-authored ``caches`` entry reads "(not set)" — a fabrication, hence the
+    refusal above — while a hand-authored BIND reads back its tuple, because R-9 kept
+    that read alive on purpose (*"the read survived the write"*): it is the only way
+    to check the hand edit the write refusal prescribes.
+
+    ⚑ So the gate takes the NARROW ``_is_agent_node_bind_key``, not the wide
+    ``_is_agent_scope_bind_key`` that spans all six categories.  Applying the wide one
+    re-fabricates the answer; applying neither breaks this read — which is how the
+    first draft of this fix was caught, by ``test_get_still_reads_a_hand_authored_bind``
+    in ``TestSystemAgentNodeBindWriteRouteRetired``.
     """
-
-    def test_the_table_valued_agent_leaf_is_refused_WITH_AN_ADDRESS(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The reported defect: it printed "(not set)" at rc 0 for a key no scalar
-        read can carry (spec §2d), and named nowhere to go instead."""
-        capsys.readouterr()
-        assert _get("transform_settings") == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-        assert "transform_settings" in cap.err, cap.err
-        assert "kanibako agent get" in cap.err, cap.err
-
-    def test_the_refusal_IS_the_sibling_nouns_refusal_not_a_lookalike(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Byte-identical to what ``workset get`` prints, because it is the same
-        construction — the guard against someone re-minting a parallel message here."""
-        from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
-
-        capsys.readouterr()
-        assert _get("transform_settings") == 1
-        printed = capsys.readouterr().err.strip()
-        assert printed == scope_read_key_error(
-            "transform_settings", ConfigLevel.workset,
-        ), printed
-
-    @pytest.mark.parametrize(
-        "key",
-        [
-            "agent.claude.caches.foo",   # an ENTRY of a terminal dest-keyed key
-            "agent.claude.synced.foo",   # ditto, a second category
-            "box.agent.model",           # the RETIRED box-scoped agent mirror
-            "agent.nosuchagent.model",   # a MISSPELLED node — the likeliest typo of the four
-        ],
-    )
-    def test_the_rest_of_the_class_is_refused_too(
-        self, config_file, tmp_home, capsys, key,
-    ):
-        """ONE DEFECT, NOT ONE KEY.  Every name ``is_known_key`` admits and this scope
-        cannot serve was answered "(not set)" at rc 0; the gate names each of them."""
-        capsys.readouterr()
-        assert _get(key) == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-        assert key in cap.err, cap.err
-
-    def test_the_R9_bind_read_is_NOT_in_that_class_and_survives(
-        self, config_file, tmp_home, capsys,
-    ):
-        """THE LINE BETWEEN THE TWO, and it is drawn by MEASUREMENT, not by shape.
-
-        ``agent.<node>.caches.<name>`` and ``agent.<node>.bindings.ro.<name>`` look alike
-        and are NOT alike: the engine serves the second and not the first.  A
-        hand-authored ``caches`` entry reads "(not set)" — a fabrication, hence the
-        refusal above — while a hand-authored BIND reads back its tuple, because R-9 kept
-        that read alive on purpose (*"the read survived the write"*): it is the only way
-        to check the hand edit the write refusal prescribes.
-
-        ⚑ So the gate takes the NARROW ``_is_agent_node_bind_key``, not the wide
-        ``_is_agent_scope_bind_key`` that spans all six categories.  Applying the wide one
-        re-fabricates the answer; applying neither breaks this read — which is how the
-        first draft of this fix was caught, by ``test_get_still_reads_a_hand_authored_bind``
-        in ``TestSystemAgentNodeBindWriteRouteRetired``.
-        """
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(std.settings, {"agent": {"claude": {
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(
+      std.settings,
+      {
+        "agent": {
+          "claude": {
             "bindings": {"ro": {"launcher": ["/newsrc", "/box/launcher", "ro"]}},
             "caches": {"cachey": ["/csrc", "/box/cache", "rw"]},
-        }}})
-        capsys.readouterr()
-        # The BIND reads back its tuple ...
-        assert _get("agent.claude.bindings.ro.launcher") == 0
-        assert "/newsrc" in capsys.readouterr().out
-        # ... while the CACHES entry beside it in the same file is refused, not faked.
-        assert _get("agent.claude.caches.cachey") == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-
-    @pytest.mark.parametrize(
-        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+          }
+        }
+      },
     )
-    def test_a_per_agent_category_TABLE_is_refused_here_not_faked(
-        self, config_file, tmp_home, capsys, tail,
-    ):
-        """THE WHOLE-TABLE TWIN of the per-entry case above, and it went RED on
-        2026-08-28 the moment the ``is_known_key`` pre-gate came out of ``system get``.
+    capsys.readouterr()
+    # The BIND reads back its tuple ...
+    assert _get("agent.claude.bindings.ro.launcher") == 0
+    assert "/newsrc" in capsys.readouterr().out
+    # ... while the CACHES entry beside it in the same file is refused, not faked.
+    assert _get("agent.claude.caches.cachey") == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
 
-        That pre-gate was incidentally holding this line: it answered False for
-        ``agent.<node>.caches``, so the verb refused it as "unknown". With the pre-gate
-        gone, ``key_validity`` DECLARES the key, the §0 gate has no complaint, and the
-        read fell through to an engine that has no route to an agent's own file —
-        printing "(not set)" over the seven tables this fixture just wrote. A fabricated
-        answer for a key whose value is sitting on disk is the fault §0 names, so the
-        gate now refuses it and names the noun that DOES read it.
+  @pytest.mark.parametrize(
+    "tail",
+    sorted(TERMINAL_CATEGORY_TAILS),
+    ids=lambda t: ".".join(t),
+  )
+  def test_a_per_agent_category_TABLE_is_refused_here_not_faked(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    tail,
+  ):
+    """THE WHOLE-TABLE TWIN of the per-entry case above, and it went RED on
+    2026-08-28 the moment the ``is_known_key`` pre-gate came out of ``system get``.
 
-        ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the same SoT the file-scope
-        case above uses; the two differ only in scope, which is the real distinction.
-        """
-        std = _std(config_file)
-        node_file = agent_settings_path(std.agents, "claude")
-        node_file.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(node_file, {"self": {
-            "masks": ["~/.m"],
-            "caches": {"~/.cache/uv": "/host/uv"},
-            "seeded": {"~/.s": "/host/s"},
-            "synced": {"~/.y": "/host/y"},
-            "common": {"~/.c": "/host/c"},
-            "bindings": {"ro": {"~/.r": "/host/r"}, "rw": {"~/.w": "/host/w"}},
-        }})
-        key = ".".join(("agent", "claude", *tail))
-        capsys.readouterr()
-        assert _get(key) == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-        assert key in cap.err, cap.err
-        # The cure names the noun that answers — and it really does answer.
-        assert f"kanibako agent get claude {'.'.join(tail)}" in cap.err, cap.err
+    That pre-gate was incidentally holding this line: it answered False for
+    ``agent.<node>.caches``, so the verb refused it as "unknown". With the pre-gate
+    gone, ``key_validity`` DECLARES the key, the §0 gate has no complaint, and the
+    read fell through to an engine that has no route to an agent's own file —
+    printing "(not set)" over the seven tables this fixture just wrote. A fabricated
+    answer for a key whose value is sitting on disk is the fault §0 names, so the
+    gate now refuses it and names the noun that DOES read it.
 
-    @pytest.mark.parametrize(
-        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the same SoT the file-scope
+    case above uses; the two differ only in scope, which is the real distinction.
+    """
+    std = _std(config_file)
+    node_file = agent_settings_path(std.agents, "claude")
+    node_file.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(
+      node_file,
+      {
+        "self": {
+          "masks": ["~/.m"],
+          "caches": {"~/.cache/uv": "/host/uv"},
+          "seeded": {"~/.s": "/host/s"},
+          "synced": {"~/.y": "/host/y"},
+          "common": {"~/.c": "/host/c"},
+          "bindings": {"ro": {"~/.r": "/host/r"}, "rw": {"~/.w": "/host/w"}},
+        }
+      },
     )
-    def test_the_any_agent_DEFAULT_tier_is_NOT_swept_into_that_refusal(
-        self, config_file, tmp_home, capsys, tail,
-    ):
-        """THE CARVE-OUT THAT IS NOT ONE: ``agent.default.<category>`` is a different
-        STORE, not an exception to a rule.
+    key = ".".join(("agent", "claude", *tail))
+    capsys.readouterr()
+    assert _get(key) == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
+    assert key in cap.err, cap.err
+    # The cure names the noun that answers — and it really does answer.
+    assert f"kanibako agent get claude {'.'.join(tail)}" in cap.err, cap.err
 
-        The any-agent tier lives in the SYSTEM settings file, which this noun does read,
-        so the refusal above would break a working read — and its cure would be a lie,
-        because there is no ``agents/default/agent.yaml`` and ``kanibako agent get
-        default …`` exits 1 on "agent 'default' not found" (measured 2026-08-28).
-        """
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        # ⚑ ``bindings`` is a TWO-segment tail, so the arm is a SECTION and only the last
-        # segment is the leaf — spelling it any other way writes ``agent.default.ro``.
-        write_nested_key(
-            std.settings, ("agent", "default", *tail[:-1]), tail[-1],
-            ["/x"] if tail[-1] == "masks" else {"~/.d": "/host/d"},
-        )
-        key = ".".join(("agent", "default", *tail))
-        capsys.readouterr()
-        assert _get(key) == 0, capsys.readouterr().err
+  @pytest.mark.parametrize(
+    "tail",
+    sorted(TERMINAL_CATEGORY_TAILS),
+    ids=lambda t: ".".join(t),
+  )
+  def test_the_any_agent_DEFAULT_tier_is_NOT_swept_into_that_refusal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    tail,
+  ):
+    """THE CARVE-OUT THAT IS NOT ONE: ``agent.default.<category>`` is a different
+    STORE, not an exception to a rule.
 
-    @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
-    def test_every_scalar_agent_leaf_still_READS(
-        self, config_file, tmp_home, capsys, leaf,
-    ):
-        """THE REGRESSION HALF, and the reason the gate is not applied flat.
-
-        ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13): the corpus is
-        ``SCALAR_AGENT_LEAVES`` itself, so declaring a new scalar leaf extends this pin
-        for free, and moving a leaf into ``TABLE_VALUED_AGENT_LEAVES`` moves it out of
-        here and into the refusal above — which is the shape change, stated as a test.
-        """
-        capsys.readouterr()
-        assert _get(leaf) == 0, capsys.readouterr().err
-
-    def test_a_bare_leaf_set_at_this_scope_reads_BACK(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The concrete regression the flat gate would have caused: ``system set
-        model=opus`` is this verb's own documented example, and its read-back must
-        survive the refusal added beside it."""
-        assert _set("model=opus") == 0
-        capsys.readouterr()
-        assert _get("model") == 0
-        assert "opus" in capsys.readouterr().out
-
-    def test_a_hand_authored_scope_bind_entry_still_reads(
-        self, config_file, tmp_home, capsys,
-    ):
-        """§0 keeps these READABLE though it refuses the write — *"Refuse the write;
-        keep the read honest"*.  The gate carves them out, so adding it must not turn
-        the honest read into a refusal."""
-        write_nested_key(
-            _std(config_file).settings, ("system", "caches"), "helper",
-            ["/src", "/dst", "rw"],
-        )
-        capsys.readouterr()
-        assert _get("system.caches.helper") == 0
-        assert "/src" in capsys.readouterr().out
-
-    def test_is_known_key_was_NOT_widened(self):
-        """THE CONSTRAINT THIS FIX WAS WRITTEN UNDER, pinned so it cannot be undone
-        quietly.  ``transform_settings`` must stay key-SHAPED — that is what stops the
-        ``box`` positional parser reading it as a project name.  Widening the predicate
-        instead of adding the gate would have made this False.
-
-        ⚑ It no longer carries anything to a READ gate (2026-08-28): ``system get`` is
-        on ``key_validity`` now and asks this predicate nothing.  The pin survives on
-        the DISAMBIGUATION consumers, which are the only ones left."""
-        from kanibako.settings.config_keys import is_known_key
-
-        assert is_known_key("transform_settings") is True
-
-    @pytest.mark.parametrize(
-        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    The any-agent tier lives in the SYSTEM settings file, which this noun does read,
+    so the refusal above would break a working read — and its cure would be a lie,
+    because there is no ``agents/default/agent.yaml`` and ``kanibako agent get
+    default …`` exits 1 on "agent 'default' not found" (measured 2026-08-28).
+    """
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    # ⚑ ``bindings`` is a TWO-segment tail, so the arm is a SECTION and only the last
+    # segment is the leaf — spelling it any other way writes ``agent.default.ro``.
+    write_nested_key(
+      std.settings,
+      ("agent", "default", *tail[:-1]),
+      tail[-1],
+      ["/x"] if tail[-1] == "masks" else {"~/.d": "/host/d"},
     )
-    def test_a_declared_terminal_category_key_is_NOT_refused_as_unknown(
-        self, config_file, tmp_home, capsys, tail,
-    ):
-        """THE SEVEN THE ``is_known_key`` PRE-GATE ANSWERED WRONG, pinned (2026-08-28).
+    key = ".".join(("agent", "default", *tail))
+    capsys.readouterr()
+    assert _get(key) == 0, capsys.readouterr().err
 
-        ``system.masks`` and the six bind-shaped category terminals are DECLARED,
-        ``get_config_value`` reads every one of them, and both sibling nouns already
-        served them — yet ``system get`` refused all seven "unknown config key" because
-        a SECOND vocabulary (``is_known_key``) gated the read ahead of the §0 one.  §0
-        forbids answering that a declared key does not exist quite as firmly as it
-        forbids fabricating a value for one that does not.
+  @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
+  def test_every_scalar_agent_leaf_still_READS(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    leaf,
+  ):
+    """THE REGRESSION HALF, and the reason the gate is not applied flat.
 
-        ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the declaration SoT for the
-        set — an eighth terminal category is pinned here the day it is declared, and a
-        retired one leaves without an edit.
-        """
-        capsys.readouterr()
-        key = ".".join(("system", *tail))
-        assert _get(key) == 0, capsys.readouterr().err
-        assert "unknown config key" not in capsys.readouterr().err
+    ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13): the corpus is
+    ``SCALAR_AGENT_LEAVES`` itself, so declaring a new scalar leaf extends this pin
+    for free, and moving a leaf into ``TABLE_VALUED_AGENT_LEAVES`` moves it out of
+    here and into the refusal above — which is the shape change, stated as a test.
+    """
+    capsys.readouterr()
+    assert _get(leaf) == 0, capsys.readouterr().err
 
-    @pytest.mark.parametrize(
-        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+  def test_a_bare_leaf_set_at_this_scope_reads_BACK(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The concrete regression the flat gate would have caused: ``system set
+    model=opus`` is this verb's own documented example, and its read-back must
+    survive the refusal added beside it."""
+    assert _set("model=opus") == 0
+    capsys.readouterr()
+    assert _get("model") == 0
+    assert "opus" in capsys.readouterr().out
+
+  def test_a_hand_authored_scope_bind_entry_still_reads(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """§0 keeps these READABLE though it refuses the write — *"Refuse the write;
+    keep the read honest"*.  The gate carves them out, so adding it must not turn
+    the honest read into a refusal."""
+    write_nested_key(
+      _std(config_file).settings,
+      ("system", "caches"),
+      "helper",
+      ["/src", "/dst", "rw"],
     )
-    @pytest.mark.parametrize("scope", ["box", "workset"])
-    def test_a_FOREIGN_scope_category_key_is_refused_at_this_noun(
-        self, config_file, tmp_home, capsys, scope, tail,
-    ):
-        """[Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'.
-        it makes no sense at the cli."*
+    capsys.readouterr()
+    assert _get("system.caches.helper") == 0
+    assert "/src" in capsys.readouterr().out
 
-        ⚑ The refusal must NOT demote the key: it IS declared, and saying "unknown config
-        key" about it is the same §0 fault the same-scope case above fixes.  It names the
-        key, says whose scope it is, and points at the noun that reads it.
-        """
-        key = ".".join((scope, *tail))
-        capsys.readouterr()
-        assert _get(key) == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-        assert "unknown config key" not in cap.err, cap.err
-        assert key in cap.err, cap.err
-        assert f"kanibako {scope} get" in cap.err, cap.err
+  def test_is_known_key_was_NOT_widened(self):
+    """THE CONSTRAINT THIS FIX WAS WRITTEN UNDER, pinned so it cannot be undone
+    quietly.  ``transform_settings`` must stay key-SHAPED — that is what stops the
+    ``box`` positional parser reading it as a project name.  Widening the predicate
+    instead of adding the gate would have made this False.
 
-    def test_a_foreign_scope_SCALAR_still_reads(
-        self, config_file, tmp_home, capsys,
-    ):
-        """THE LINE THE RULING DOES *NOT* CROSS, and it is drawn by MEASUREMENT.
+    ⚑ It no longer carries anything to a READ gate (2026-08-28): ``system get`` is
+    on ``key_validity`` now and asks this predicate nothing.  The pin survives on
+    the DISAMBIGUATION consumers, which are the only ones left."""
+    from kanibako.settings.config_keys import is_known_key
 
-        A flat "the key's scope must equal the noun's scope" gate refuses 86 reads that
-        answer today (29 here, 23 at ``workset``, 34 at ``box`` — counted over the
-        manifest, 2026-08-28).  They are DOWNWARD DEFAULTS: ``kanibako system set
-        box.image=…`` lands in THIS noun's file and reaches a box through the cascade.
+    assert is_known_key("transform_settings") is True
 
-        ⚑ WHAT SEPARATES THIS FROM ``box.caches`` IS THE VALUE'S SHAPE, NOT THE VERB.  A
-        SCALAR is held whole by one tier, so this read is a complete answer; a terminal
-        category is merged ENTRY BY ENTRY across tiers (spec ``:1085``), so a foreign
-        noun holds only a fragment — see :func:`foreign_scope_read_error`, which records
-        the two bases that were tried and rejected before that one, including why "does
-        this noun's own file carry it" cannot tell these two apart.
-        """
-        assert _set("box.image=myimg") == 0
-        capsys.readouterr()
-        assert _get("box.image") == 0
-        assert "myimg" in capsys.readouterr().out
+  @pytest.mark.parametrize(
+    "tail",
+    sorted(TERMINAL_CATEGORY_TAILS),
+    ids=lambda t: ".".join(t),
+  )
+  def test_a_declared_terminal_category_key_is_NOT_refused_as_unknown(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    tail,
+  ):
+    """THE SEVEN THE ``is_known_key`` PRE-GATE ANSWERED WRONG, pinned (2026-08-28).
 
-    @pytest.mark.parametrize(
-        "key", ["meta.box.path", "meta.runtime.ws_root", "meta.workset.name"],
+    ``system.masks`` and the six bind-shaped category terminals are DECLARED,
+    ``get_config_value`` reads every one of them, and both sibling nouns already
+    served them — yet ``system get`` refused all seven "unknown config key" because
+    a SECOND vocabulary (``is_known_key``) gated the read ahead of the §0 one.  §0
+    forbids answering that a declared key does not exist quite as firmly as it
+    forbids fabricating a value for one that does not.
+
+    ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the declaration SoT for the
+    set — an eighth terminal category is pinned here the day it is declared, and a
+    retired one leaves without an edit.
+    """
+    capsys.readouterr()
+    key = ".".join(("system", *tail))
+    assert _get(key) == 0, capsys.readouterr().err
+    assert "unknown config key" not in capsys.readouterr().err
+
+  @pytest.mark.parametrize(
+    "tail",
+    sorted(TERMINAL_CATEGORY_TAILS),
+    ids=lambda t: ".".join(t),
+  )
+  @pytest.mark.parametrize("scope", ["box", "workset"])
+  def test_a_FOREIGN_scope_category_key_is_refused_at_this_noun(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    scope,
+    tail,
+  ):
+    """[Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'.
+    it makes no sense at the cli."*
+
+    ⚑ The refusal must NOT demote the key: it IS declared, and saying "unknown config
+    key" about it is the same §0 fault the same-scope case above fixes.  It names the
+    key, says whose scope it is, and points at the noun that reads it.
+    """
+    key = ".".join((scope, *tail))
+    capsys.readouterr()
+    assert _get(key) == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
+    assert "unknown config key" not in cap.err, cap.err
+    assert key in cap.err, cap.err
+    assert f"kanibako {scope} get" in cap.err, cap.err
+
+  def test_a_foreign_scope_SCALAR_still_reads(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """THE LINE THE RULING DOES *NOT* CROSS, and it is drawn by MEASUREMENT.
+
+    A flat "the key's scope must equal the noun's scope" gate refuses 86 reads that
+    answer today (29 here, 23 at ``workset``, 34 at ``box`` — counted over the
+    manifest, 2026-08-28).  They are DOWNWARD DEFAULTS: ``kanibako system set
+    box.image=…`` lands in THIS noun's file and reaches a box through the cascade.
+
+    ⚑ WHAT SEPARATES THIS FROM ``box.caches`` IS THE VALUE'S SHAPE, NOT THE VERB.  A
+    SCALAR is held whole by one tier, so this read is a complete answer; a terminal
+    category is merged ENTRY BY ENTRY across tiers (spec ``:1085``), so a foreign
+    noun holds only a fragment — see :func:`foreign_scope_read_error`, which records
+    the two bases that were tried and rejected before that one, including why "does
+    this noun's own file carry it" cannot tell these two apart.
+    """
+    assert _set("box.image=myimg") == 0
+    capsys.readouterr()
+    assert _get("box.image") == 0
+    assert "myimg" in capsys.readouterr().out
+
+  @pytest.mark.parametrize(
+    "key",
+    ["meta.box.path", "meta.runtime.ws_root", "meta.workset.name"],
+  )
+  def test_a_meta_key_is_refused_not_reported_unset(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    key,
+  ):
+    """``meta.*`` is DERIVED per box at launch and stored in no settings file, so a
+    file-scope noun has nothing to report — and "(not set)" would be a fabrication
+    rather than an answer.  The cure names the surface that DOES resolve them."""
+    capsys.readouterr()
+    assert _get(key) == 1
+    cap = capsys.readouterr()
+    assert "(not set)" not in cap.out + cap.err, cap
+    assert key in cap.err, cap.err
+    assert "--effective" in cap.err, cap.err
+
+  def test_a_hand_authored_terminal_category_VALUE_reads_back(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The other half: admitting the seven has to make the read HONEST, not merely
+    quiet.  A refusal traded for a permanent "(not set)" would be the fabricated
+    answer §0 names, wearing rc 0."""
+    write_nested_key(
+      _std(config_file).settings,
+      ("system",),
+      "masks",
+      ["/a/b"],
     )
-    def test_a_meta_key_is_refused_not_reported_unset(
-        self, config_file, tmp_home, capsys, key,
-    ):
-        """``meta.*`` is DERIVED per box at launch and stored in no settings file, so a
-        file-scope noun has nothing to report — and "(not set)" would be a fabrication
-        rather than an answer.  The cure names the surface that DOES resolve them."""
-        capsys.readouterr()
-        assert _get(key) == 1
-        cap = capsys.readouterr()
-        assert "(not set)" not in cap.out + cap.err, cap
-        assert key in cap.err, cap.err
-        assert "--effective" in cap.err, cap.err
-
-    def test_a_hand_authored_terminal_category_VALUE_reads_back(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The other half: admitting the seven has to make the read HONEST, not merely
-        quiet.  A refusal traded for a permanent "(not set)" would be the fabricated
-        answer §0 names, wearing rc 0."""
-        write_nested_key(
-            _std(config_file).settings, ("system",), "masks", ["/a/b"],
-        )
-        capsys.readouterr()
-        assert _get("system.masks") == 0
-        assert "/a/b" in capsys.readouterr().out
+    capsys.readouterr()
+    assert _get("system.masks") == 0
+    assert "/a/b" in capsys.readouterr().out
 
 
 class TestSystemSetAnchorsTheNodeItWrites:
-    """``system set agent.<node>.canon=@meta.agent.<node>.path/canon`` was refused as a
-    dangling ``@``-reference, though ``meta.agent.<node>.path`` is a declared key.
+  """``system set agent.<node>.canon=@meta.agent.<node>.path/canon`` was refused as a
+  dangling ``@``-reference, though ``meta.agent.<node>.path`` is a declared key.
 
-    The set-time snapshot floors the agent STORE-ROOT anchor only for the agent the
-    COMMAND names (``_set_time_anchor``'s ``meta_agent_path_floor`` fold).  ``agent set``
-    names it because the verb is handed the node; this verb was handing over nothing, so
-    the one anchor a per-node key is spelled against was absent and its own store root
-    read as a dangling dependency.  ``agent set claude canon=…`` accepted the value and
-    ``system set agent.claude.canon=…`` — the same key, the other spelling — refused it.
+  The set-time snapshot floors the agent STORE-ROOT anchor only for the agent the
+  COMMAND names (``_set_time_anchor``'s ``meta_agent_path_floor`` fold).  ``agent set``
+  names it because the verb is handed the node; this verb was handing over nothing, so
+  the one anchor a per-node key is spelled against was absent and its own store root
+  read as a dangling dependency.  ``agent set claude canon=…`` accepted the value and
+  ``system set agent.claude.canon=…`` — the same key, the other spelling — refused it.
+  """
+
+  KEY = "agent.claude.canon"
+  VALUE = "{meta.agent.claude.path}/canon"
+
+  def _stored(self, config_file):
+    return load_doc(_std(config_file).settings)["agent"]["claude"]
+
+  def test_the_node_s_own_store_root_resolves(self, config_file, tmp_home, capsys):
+    """MUTATION PROOF: drop ``cascade_agent_name`` from ``system_cmd``'s
+    ``set_config_value`` call and this reddens with
+    ``dangling reference '{meta.agent.claude.path}'`` — while the two refusals below
+    stay green, so the fix cannot be a blanket accept wearing a pass."""
+    capsys.readouterr()
+    rc = _set(f"{self.KEY}={self.VALUE}")
+    assert rc == 0, capsys.readouterr().err
+    assert self._stored(config_file)["canon"] == self.VALUE
+
+  def test_a_bogus_ref_is_still_refused_by_name(self, config_file, tmp_home, capsys):
+    """The floor anchors ONE node, so it cannot become a blanket accept."""
+    capsys.readouterr()
+    assert _set(f"{self.KEY}={{bogus.ref}}") == 1
+    assert "dangling reference '{bogus.ref}'" in capsys.readouterr().err
+
+  def test_the_secret_family_is_anchored_too(self, config_file, tmp_home, capsys):
+    """THE SECOND ARM, and it is the reason ``agent_node_of`` reads TWO parsers.
+
+    ``agent.<node>.secret_path.<VAR>`` is a per-node PATH key anchored at the same
+    store root (``path_key_anchor``'s first arm), but it is parsed by
+    ``_parse_agent_node_secret_key`` — ``_parse_persona_agent_key`` does NOT match it.
+    A one-parser ``agent_node_of`` would leave this half refused while every other
+    test in this class stayed green, so this is the row that pins the choice.
+
+    MUTATION PROOF: drop ``_parse_agent_node_secret_key`` from ``agent_node_of`` and
+    THIS test reds alone — the three ``canon`` rows above do not move.
     """
+    capsys.readouterr()
+    value = "{meta.agent.claude.path}/tok"
+    rc = _set(f"agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN={value}")
+    assert rc == 0, capsys.readouterr().err
+    assert self._stored(config_file)["secret_path"]["ANTHROPIC_AUTH_TOKEN"] == value
 
-    KEY = "agent.claude.canon"
-    VALUE = "{meta.agent.claude.path}/canon"
-
-    def _stored(self, config_file):
-        return load_doc(_std(config_file).settings)["agent"]["claude"]
-
-    def test_the_node_s_own_store_root_resolves(self, config_file, tmp_home, capsys):
-        """MUTATION PROOF: drop ``cascade_agent_name`` from ``system_cmd``'s
-        ``set_config_value`` call and this reddens with
-        ``dangling reference '{meta.agent.claude.path}'`` — while the two refusals below
-        stay green, so the fix cannot be a blanket accept wearing a pass."""
-        capsys.readouterr()
-        rc = _set(f"{self.KEY}={self.VALUE}")
-        assert rc == 0, capsys.readouterr().err
-        assert self._stored(config_file)["canon"] == self.VALUE
-
-    def test_a_bogus_ref_is_still_refused_by_name(self, config_file, tmp_home, capsys):
-        """The floor anchors ONE node, so it cannot become a blanket accept."""
-        capsys.readouterr()
-        assert _set(f"{self.KEY}={{bogus.ref}}") == 1
-        assert "dangling reference '{bogus.ref}'" in capsys.readouterr().err
-
-    def test_the_secret_family_is_anchored_too(self, config_file, tmp_home, capsys):
-        """THE SECOND ARM, and it is the reason ``agent_node_of`` reads TWO parsers.
-
-        ``agent.<node>.secret_path.<VAR>`` is a per-node PATH key anchored at the same
-        store root (``path_key_anchor``'s first arm), but it is parsed by
-        ``_parse_agent_node_secret_key`` — ``_parse_persona_agent_key`` does NOT match it.
-        A one-parser ``agent_node_of`` would leave this half refused while every other
-        test in this class stayed green, so this is the row that pins the choice.
-
-        MUTATION PROOF: drop ``_parse_agent_node_secret_key`` from ``agent_node_of`` and
-        THIS test reds alone — the three ``canon`` rows above do not move.
-        """
-        capsys.readouterr()
-        value = "{meta.agent.claude.path}/tok"
-        rc = _set(f"agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN={value}")
-        assert rc == 0, capsys.readouterr().err
-        assert self._stored(config_file)["secret_path"][
-            "ANTHROPIC_AUTH_TOKEN"
-        ] == value
-
-    def test_another_node_s_root_still_dangles(self, config_file, tmp_home, capsys):
-        """WHAT "THE NODE EXISTS" MEANS HERE: the node this write ADDRESSES.  A ref
-        spelled against a DIFFERENT node's store root is not anchored by this write and
-        is refused, so the shape ``{meta.agent.*.path}`` is never accepted on sight."""
-        capsys.readouterr()
-        assert _set(f"{self.KEY}={{meta.agent.goose.path}}/canon") == 1
-        assert "meta.agent.goose.path" in capsys.readouterr().err
+  def test_another_node_s_root_still_dangles(self, config_file, tmp_home, capsys):
+    """WHAT "THE NODE EXISTS" MEANS HERE: the node this write ADDRESSES.  A ref
+    spelled against a DIFFERENT node's store root is not anchored by this write and
+    is refused, so the shape ``{meta.agent.*.path}`` is never accepted on sight."""
+    capsys.readouterr()
+    assert _set(f"{self.KEY}={{meta.agent.goose.path}}/canon") == 1
+    assert "meta.agent.goose.path" in capsys.readouterr().err
 
 
 def _argv_leaves() -> list[str]:
-    """The leaves whose STORED shape is a list, read off the predicate that decides it.
+  """The leaves whose STORED shape is a list, read off the predicate that decides it.
 
-    ⚑ P13 — never ``run_args`` by name.  A leaf joining ``agent_file._LIST_VALUED_KEYS``
-    becomes a display hazard at every entry point below on the day it is added, and these
-    pins must red THEN rather than after someone remembers to widen them.
-    """
-    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+  ⚑ P13 — never ``run_args`` by name.  A leaf joining ``agent_file._LIST_VALUED_KEYS``
+  becomes a display hazard at every entry point below on the day it is added, and these
+  pins must red THEN rather than after someone remembers to widen them.
+  """
+  from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
-    assert _LIST_VALUED_KEYS, "an empty predicate would make every pin below vacuous"
-    return sorted(_LIST_VALUED_KEYS)
+  assert _LIST_VALUED_KEYS, "an empty predicate would make every pin below vacuous"
+  return sorted(_LIST_VALUED_KEYS)
 
 
 @pytest.mark.parametrize("effective", [False, True])
 def test_show_names_a_dropped_pref_table_ONCE(
-    config_file, tmp_home, capsys, caplog, effective,
+  config_file,
+  tmp_home,
+  capsys,
+  caplog,
+  effective,
 ):
-    """A ``pref:`` table in the SYSTEM settings file is dropped (spec §2h), and §0 says a dropped
-    table is announced *"with a warning naming the file and key"*.  The plain view printed
-    nothing; ``--effective`` reads the file through several resolves.  Both name it once, in
-    ``refuse_pref_table``'s own words.
-    MUTATION: make ``settings_prefs.refuse_pref_table`` warn without asking
-    ``announce_drop_once`` and the ``--effective`` case reds; drop the ``refuse_pref_table``
-    call from ``settings_assemble._file_view`` and the plain case reds."""
-    std = _std(config_file)
-    std.settings.parent.mkdir(parents=True, exist_ok=True)
-    write_nested_key(std.settings, ("pref", "agent", "default"), "model", "opus")
-    with caplog.at_level("WARNING"):
-        assert _show(effective=effective) == 0
-    drops = [
-        m for m in caplog.messages
-        if m.startswith(
-            f"Dropping top-level 'pref' table from system settings file {std.settings}: "
-            "a pref is a REQUEST"
-        )
-    ]
-    assert len(drops) == 1, caplog.messages
+  """A ``pref:`` table in the SYSTEM settings file is dropped (spec §2h), and §0 says a dropped
+  table is announced *"with a warning naming the file and key"*.  The plain view printed
+  nothing; ``--effective`` reads the file through several resolves.  Both name it once, in
+  ``refuse_pref_table``'s own words.
+  MUTATION: make ``settings_prefs.refuse_pref_table`` warn without asking
+  ``announce_drop_once`` and the ``--effective`` case reds; drop the ``refuse_pref_table``
+  call from ``settings_assemble._file_view`` and the plain case reds."""
+  std = _std(config_file)
+  std.settings.parent.mkdir(parents=True, exist_ok=True)
+  write_nested_key(std.settings, ("pref", "agent", "default"), "model", "opus")
+  with caplog.at_level("WARNING"):
+    assert _show(effective=effective) == 0
+  drops = [
+    m
+    for m in caplog.messages
+    if m.startswith(
+      f"Dropping top-level 'pref' table from system settings file {std.settings}: "
+      "a pref is a REQUEST"
+    )
+  ]
+  assert len(drops) == 1, caplog.messages
 
 
 class TestAListValuedLeafReadsBackAsItsCommandLine:
-    """A stored leaf whose shape is a LIST comes back as the command line it was split
-    from — never as the Python repr ``['--a', '--b']``, a spelling no user can type back.
+  """A stored leaf whose shape is a LIST comes back as the command line it was split
+  from — never as the Python repr ``['--a', '--b']``, a spelling no user can type back.
 
-    ⚑⚑ ONE PIN PER ENTRY POINT, NOT PER SURFACE, and the distinction is the point.  The
-    rendering itself is one function (``agent_file.stored_leaf_text``) and is pinned beside
-    its owner in ``test_settings/test_agent_file.py``; what each row here proves is that the
-    entry point ASKS IT — which is exactly what a surface written later forgets to do.  A
-    census of these taken by READING the code found four of them; the rest answered a probe.
+  ⚑⚑ ONE PIN PER ENTRY POINT, NOT PER SURFACE, and the distinction is the point.  The
+  rendering itself is one function (``agent_file.stored_leaf_text``) and is pinned beside
+  its owner in ``test_settings/test_agent_file.py``; what each row here proves is that the
+  entry point ASKS IT — which is exactly what a surface written later forgets to do.  A
+  census of these taken by READING the code found four of them; the rest answered a probe.
 
-    ⚑ THE ``"['"`` ASSERTION IS THE ORACLE, not the equality: a surface that renders the
-    right words while leaking brackets somewhere ELSE in the same output is the failure this
-    class exists for, and an equality on one line cannot see it.
+  ⚑ THE ``"['"`` ASSERTION IS THE ORACLE, not the equality: a surface that renders the
+  right words while leaking brackets somewhere ELSE in the same output is the failure this
+  class exists for, and an equality on one line cannot see it.
+  """
+
+  def _seed(self, config_file, leaf, *, pref=False):
+    """Plant the list at ``agent.default.<leaf>`` in the system SETTINGS file."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    doc = load_doc(std.settings) if std.settings.exists() else {}
+    doc.setdefault("agent", {}).setdefault("default", {})[leaf] = ["--a", "--b"]
+    if pref:
+      doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
+        "default",
+        {},
+      )[leaf] = ["--p", "--q"]
+    dump_doc(std.settings, doc)
+    return std
+
+  def test_get_the_bare_spelling(self, config_file, tmp_home, capsys):
+    """``config.read_agent_settings`` — the bare agent-setting read."""
+    for leaf in _argv_leaves():
+      self._seed(config_file, leaf)
+      capsys.readouterr()
+      assert _get(leaf) == 0
+      out = capsys.readouterr().out
+      assert f"{leaf}=--a --b" in out
+      assert "['" not in out, out
+
+  def test_get_the_agent_default_spelling(self, config_file, tmp_home, capsys):
+    """The ROUTED read — and the reason it is its own row.
+
+    ``agent.default.<leaf>`` is NOT a persona key: the reserved ``default`` node has no
+    ``agents/default/agent.yaml``, so the read falls through to ``_read_dest`` +
+    ``read_stored_leaf`` and never meets ``agent_file.read_leaf``'s renderer.  One
+    settings file, two spellings of one value, and they answered differently.
     """
+    for leaf in _argv_leaves():
+      self._seed(config_file, leaf)
+      capsys.readouterr()
+      assert _get(f"agent.default.{leaf}") == 0
+      out = capsys.readouterr().out
+      assert f"agent.default.{leaf}=--a --b" in out
+      assert "['" not in out, out
 
-    def _seed(self, config_file, leaf, *, pref=False):
-        """Plant the list at ``agent.default.<leaf>`` in the system SETTINGS file."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        doc = load_doc(std.settings) if std.settings.exists() else {}
-        doc.setdefault("agent", {}).setdefault("default", {})[leaf] = ["--a", "--b"]
-        if pref:
-            doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
-                "default", {},
-            )[leaf] = ["--p", "--q"]
-        dump_doc(std.settings, doc)
-        return std
+  def test_get_the_pref_spelling(self, config_file, tmp_home, capsys):
+    """``config_io.read_stored_pref`` — a §2h REQUEST carries its TARGET's shape."""
+    for leaf in _argv_leaves():
+      self._seed(config_file, leaf, pref=True)
+      capsys.readouterr()
+      assert _get(f"pref.agent.default.{leaf}") == 0
+      out = capsys.readouterr().out
+      assert f"pref.agent.default.{leaf}=--p --q" in out
+      assert "['" not in out, out
 
-    def test_get_the_bare_spelling(self, config_file, tmp_home, capsys):
-        """``config.read_agent_settings`` — the bare agent-setting read."""
-        for leaf in _argv_leaves():
-            self._seed(config_file, leaf)
-            capsys.readouterr()
-            assert _get(leaf) == 0
-            out = capsys.readouterr().out
-            assert f"{leaf}=--a --b" in out
-            assert "['" not in out, out
+  def test_show_renders_the_agent_table_and_drops_the_pref_table(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``config.agent_settings_of`` prints the bare row; the ``pref`` table gets NONE.
 
-    def test_get_the_agent_default_spelling(self, config_file, tmp_home, capsys):
-        """The ROUTED read — and the reason it is its own row.
+    ⚑ A ``pref:`` table in the SYSTEM settings file is one the launch DROPS (spec §2h:
+    a request is written only in a workset or box file — ``refuse_pref_table``), so the
+    stored view, which reads the file as the cascade does, lists nothing from it.  The
+    list rendering of a ``pref`` row is pinned at a noun where one is legal, below.
+    """
+    for leaf in _argv_leaves():
+      self._seed(config_file, leaf, pref=True)
+      capsys.readouterr()
+      assert _show() == 0
+      out = capsys.readouterr().out
+      assert f"{leaf} = --a --b" in out
+      assert "--p --q" not in out, out
+      assert "['" not in out, out
 
-        ``agent.default.<leaf>`` is NOT a persona key: the reserved ``default`` node has no
-        ``agents/default/agent.yaml``, so the read falls through to ``_read_dest`` +
-        ``read_stored_leaf`` and never meets ``agent_file.read_leaf``'s renderer.  One
-        settings file, two spellings of one value, and they answered differently.
-        """
-        for leaf in _argv_leaves():
-            self._seed(config_file, leaf)
-            capsys.readouterr()
-            assert _get(f"agent.default.{leaf}") == 0
-            out = capsys.readouterr().out
-            assert f"agent.default.{leaf}=--a --b" in out
-            assert "['" not in out, out
+  def test_show_renders_a_pref_list_through_the_nested_flatten_at_the_workset(
+    self,
+    tmp_path,
+    capsys,
+  ):
+    """``config_display._nested_settings_overrides`` — the ``pref`` row's producer where a
+    request is LEGAL (spec §2h) and so survives the cascade view: the workset noun, which
+    hands its settings file over as *system_settings_path*.
+    """
+    from kanibako.settings.config_interface import show_config
 
-    def test_get_the_pref_spelling(self, config_file, tmp_home, capsys):
-        """``config_io.read_stored_pref`` — a §2h REQUEST carries its TARGET's shape."""
-        for leaf in _argv_leaves():
-            self._seed(config_file, leaf, pref=True)
-            capsys.readouterr()
-            assert _get(f"pref.agent.default.{leaf}") == 0
-            out = capsys.readouterr().out
-            assert f"pref.agent.default.{leaf}=--p --q" in out
-            assert "['" not in out, out
+    cf = tmp_path / "kanibako.cfg"
+    cf.write_text("")
+    for leaf in _argv_leaves():
+      ws_file = tmp_path / f"workset-{leaf}.yaml"
+      dump_doc(ws_file, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
+      capsys.readouterr()
+      show_config(
+        command_scope=ConfigLevel.workset,
+        global_config_path=cf,
+        config_path=cf,
+        system_settings_path=ws_file,
+      )
+      out = capsys.readouterr().out
+      assert f"pref.agent.default.{leaf} = --p --q" in out, out
+      assert "['" not in out, out
 
-    def test_show_renders_the_agent_table_and_drops_the_pref_table(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``config.agent_settings_of`` prints the bare row; the ``pref`` table gets NONE.
+  def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
+    """``config_display._nested_settings_overrides`` — the one ``pref`` route, reached
+    through the ``config_path`` noun file a box ``show`` is handed.
+    """
+    from kanibako.settings.config_interface import show_config
 
-        ⚑ A ``pref:`` table in the SYSTEM settings file is one the launch DROPS (spec §2h:
-        a request is written only in a workset or box file — ``refuse_pref_table``), so the
-        stored view, which reads the file as the cascade does, lists nothing from it.  The
-        list rendering of a ``pref`` row is pinned at a noun where one is legal, below.
-        """
-        for leaf in _argv_leaves():
-            self._seed(config_file, leaf, pref=True)
-            capsys.readouterr()
-            assert _show() == 0
-            out = capsys.readouterr().out
-            assert f"{leaf} = --a --b" in out
-            assert "--p --q" not in out, out
-            assert "['" not in out, out
+    for leaf in _argv_leaves():
+      noun = tmp_path / f"noun-{leaf}.yaml"
+      dump_doc(noun, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
+      capsys.readouterr()
+      show_config(
+        command_scope=ConfigLevel.box,
+        global_config_path=tmp_path / "g.yaml",
+        config_path=noun,
+        effective=False,
+      )
+      out = capsys.readouterr().out
+      assert f"pref.agent.default.{leaf} = --p --q" in out
+      assert "['" not in out, out
 
-    def test_show_renders_a_pref_list_through_the_nested_flatten_at_the_workset(
-        self, tmp_path, capsys,
-    ):
-        """``config_display._nested_settings_overrides`` — the ``pref`` row's producer where a
-        request is LEGAL (spec §2h) and so survives the cascade view: the workset noun, which
-        hands its settings file over as *system_settings_path*.
-        """
-        from kanibako.settings.config_interface import show_config
+  def test_effective_behavior_hands_the_launch_a_command_line(self):
+    """``settings_launch.effective_behavior`` — the table the DESCRIPTOR ASSEMBLY reads.
 
-        cf = tmp_path / "kanibako.cfg"
-        cf.write_text("")
-        for leaf in _argv_leaves():
-            ws_file = tmp_path / f"workset-{leaf}.yaml"
-            dump_doc(ws_file, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
-            capsys.readouterr()
-            show_config(
-                command_scope=ConfigLevel.workset, global_config_path=cf,
-                config_path=cf, system_settings_path=ws_file,
-            )
-            out = capsys.readouterr().out
-            assert f"pref.agent.default.{leaf} = --p --q" in out, out
-            assert "['" not in out, out
+    ⚑ NOT A DISPLAY PIN, though ``box show --effective`` prints it: this table is handed
+    to ``targets/assembly.py`` as ``setting_values=``, which realizes any ``SettingArg``
+    by ``setting_key``.  So the emitted string is a VALUE leaving the display layer, and
+    a plugin declaring this leaf would put it in a container's argv.
+    """
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_launch import effective_behavior
 
-    def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
-        """``config_display._nested_settings_overrides`` — the one ``pref`` route, reached
-        through the ``config_path`` noun file a box ``show`` is handed.
-        """
-        from kanibako.settings.config_interface import show_config
+    for leaf in _argv_leaves():
+      snap = KeyStore({"agent": {"default": {leaf: ["--a", "--b"]}}})
+      assert effective_behavior(snap, active_agent="claude")[leaf] == "--a --b"
 
-        for leaf in _argv_leaves():
-            noun = tmp_path / f"noun-{leaf}.yaml"
-            dump_doc(noun, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
-            capsys.readouterr()
-            show_config(
-                command_scope=ConfigLevel.box,
-                global_config_path=tmp_path / "g.yaml",
-                config_path=noun, effective=False,
-            )
-            out = capsys.readouterr().out
-            assert f"pref.agent.default.{leaf} = --p --q" in out
-            assert "['" not in out, out
+  def test_the_effective_pref_block_renders_BOTH_halves(self, tmp_path, capsys):
+    """``config_display._print_pref_block`` — the REQUEST and the RESULT it produced.
 
-    def test_effective_behavior_hands_the_launch_a_command_line(self):
-        """``settings_launch.effective_behavior`` — the table the DESCRIPTOR ASSEMBLY reads.
+    Both halves run through the one ``_render`` closure, so a cure applied to the
+    request alone leaves the arrow line printing a repr.  The leaf handed to that
+    closure is the TARGET's tail, never the row's: a dest-keyed row's tail is a
+    DESTINATION, which is data and contains dots.
+    """
+    from kanibako.settings.config_interface import show_config
+    from kanibako.settings.keystore import KeyStore
 
-        ⚑ NOT A DISPLAY PIN, though ``box show --effective`` prints it: this table is handed
-        to ``targets/assembly.py`` as ``setting_values=``, which realizes any ``SettingArg``
-        by ``setting_key``.  So the emitted string is a VALUE leaving the display layer, and
-        a plugin declaring this leaf would put it in a container's argv.
-        """
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_launch import effective_behavior
-
-        for leaf in _argv_leaves():
-            snap = KeyStore({"agent": {"default": {leaf: ["--a", "--b"]}}})
-            assert effective_behavior(snap, active_agent="claude")[leaf] == "--a --b"
-
-    def test_the_effective_pref_block_renders_BOTH_halves(self, tmp_path, capsys):
-        """``config_display._print_pref_block`` — the REQUEST and the RESULT it produced.
-
-        Both halves run through the one ``_render`` closure, so a cure applied to the
-        request alone leaves the arrow line printing a repr.  The leaf handed to that
-        closure is the TARGET's tail, never the row's: a dest-keyed row's tail is a
-        DESTINATION, which is data and contains dots.
-        """
-        from kanibako.settings.config_interface import show_config
-        from kanibako.settings.keystore import KeyStore
-
-        for leaf in _argv_leaves():
-            snap = KeyStore({
-                "pref": {"agent": {"default": {leaf: ["--p", "--q"]}}},
-                "agent": {"default": {leaf: ["--a", "--b"]}},
-            })
-            capsys.readouterr()
-            show_config(
-                command_scope=ConfigLevel.box,
-                global_config_path=tmp_path / "g.yaml",
-                config_path=tmp_path / "s.yaml",
-                effective=True, category_snapshot=snap,
-            )
-            out = capsys.readouterr().out
-            assert f"pref.agent.default.{leaf} = --p --q" in out
-            assert f"-> agent.default.{leaf} = --a --b" in out
-            assert "['" not in out, out
+    for leaf in _argv_leaves():
+      snap = KeyStore(
+        {
+          "pref": {"agent": {"default": {leaf: ["--p", "--q"]}}},
+          "agent": {"default": {leaf: ["--a", "--b"]}},
+        }
+      )
+      capsys.readouterr()
+      show_config(
+        command_scope=ConfigLevel.box,
+        global_config_path=tmp_path / "g.yaml",
+        config_path=tmp_path / "s.yaml",
+        effective=True,
+        category_snapshot=snap,
+      )
+      out = capsys.readouterr().out
+      assert f"pref.agent.default.{leaf} = --p --q" in out
+      assert f"-> agent.default.{leaf} = --a --b" in out
+      assert "['" not in out, out
 
 
 class TestTheEmptyIdiomsReadBackAsThemselves:
-    """Spec §2h's three empty idioms stay apart at every door that prints a stored value:
-    a present-``None`` is ``null``, a terminal ``""`` is ``""``, and only an ABSENT key
-    answers "(not set)".
+  """Spec §2h's three empty idioms stay apart at every door that prints a stored value:
+  a present-``None`` is ``null``, a terminal ``""`` is ``""``, and only an ABSENT key
+  answers "(not set)".
 
-    ⚑⚑ ONE PIN PER ENTRY POINT, the sibling discipline of the class above and for the same
-    reason: the rendering is one function (``config_io.render_stored_scalar``) and the thing
-    a surface written later forgets is to ASK IT.  Four doors printed ``str(None)`` — two
-    ``get`` doors among them, which is why "fix the renderer" was not the whole cure.
+  ⚑⚑ ONE PIN PER ENTRY POINT, the sibling discipline of the class above and for the same
+  reason: the rendering is one function (``config_io.render_stored_scalar``) and the thing
+  a surface written later forgets is to ASK IT.  Four doors printed ``str(None)`` — two
+  ``get`` doors among them, which is why "fix the renderer" was not the whole cure.
 
-    ⚑ THE ``"None"`` ASSERTION IS THE ORACLE, not the equality: the failure is a repr
-    leaking somewhere ELSE in the same output, which an equality on one line cannot see.
+  ⚑ THE ``"None"`` ASSERTION IS THE ORACLE, not the equality: the failure is a repr
+  leaking somewhere ELSE in the same output, which an equality on one line cannot see.
 
-    🛑 AND THE ABSENT ROW IS NOT FILLER.  Teaching the renderer to answer ``null`` is
-    exactly how "not set" gets collapsed into "set to null", so the state this fix could
-    have destroyed is pinned beside the ones it fixed.
-    """
+  🛑 AND THE ABSENT ROW IS NOT FILLER.  Teaching the renderer to answer ``null`` is
+  exactly how "not set" gets collapsed into "set to null", so the state this fix could
+  have destroyed is pinned beside the ones it fixed.
+  """
 
-    def _seed(self, config_file):
-        """A scope table and an agent table, each holding a null and an empty string."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        doc = load_doc(std.settings) if std.settings.exists() else {}
-        doc.setdefault("system", {}).setdefault("env", {}).update(
-            {"NULLV": None, "EMPTY": "", "PLAIN": "x"},
-        )
-        doc.setdefault("agent", {}).setdefault("default", {}).update(
-            {"model": None, "access": ""},
-        )
-        dump_doc(std.settings, doc)
-        return std
+  def _seed(self, config_file):
+    """A scope table and an agent table, each holding a null and an empty string."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    doc = load_doc(std.settings) if std.settings.exists() else {}
+    doc.setdefault("system", {}).setdefault("env", {}).update(
+      {"NULLV": None, "EMPTY": "", "PLAIN": "x"},
+    )
+    doc.setdefault("agent", {}).setdefault("default", {}).update(
+      {"model": None, "access": ""},
+    )
+    dump_doc(std.settings, doc)
+    return std
 
-    def test_get_through_the_routed_stored_read(self, config_file, tmp_home, capsys):
-        """``config_io.read_stored_leaf`` — the ``<scope>.env.<VAR>`` scalar family."""
-        self._seed(config_file)
+  def test_get_through_the_routed_stored_read(self, config_file, tmp_home, capsys):
+    """``config_io.read_stored_leaf`` — the ``<scope>.env.<VAR>`` scalar family."""
+    self._seed(config_file)
+    capsys.readouterr()
+    assert _get("system.env.NULLV") == 0
+    assert "system.env.NULLV=null" in capsys.readouterr().out
+    assert _get("system.env.EMPTY") == 0
+    assert 'system.env.EMPTY=""' in capsys.readouterr().out
+
+  def test_get_through_the_bare_agent_setting_read(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``config.read_agent_settings`` — THE SECOND ``get`` DOOR, and the one a writer
+    told only about the renderer leaves behind.  Its routed twin reads the same stored
+    value through ``read_stored_leaf``; the two must not answer differently.
+
+    ⚑ BOTH HALVES OF THE SEED, because the two idioms fail in OPPOSITE directions and a
+    door can get one right while getting the other wrong: the null leaks Python's repr,
+    the empty string collapses into "(not set)".  ``access: ""`` sat in ``_seed``
+    unasserted, which is the shape of a corpus that reads complete and is not."""
+    self._seed(config_file)
+    for leaf, expected in (("model", "null"), ("access", '""')):
+      for key in (leaf, f"agent.default.{leaf}"):
         capsys.readouterr()
-        assert _get("system.env.NULLV") == 0
-        assert "system.env.NULLV=null" in capsys.readouterr().out
-        assert _get("system.env.EMPTY") == 0
-        assert 'system.env.EMPTY=""' in capsys.readouterr().out
-
-    def test_get_through_the_bare_agent_setting_read(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``config.read_agent_settings`` — THE SECOND ``get`` DOOR, and the one a writer
-        told only about the renderer leaves behind.  Its routed twin reads the same stored
-        value through ``read_stored_leaf``; the two must not answer differently.
-
-        ⚑ BOTH HALVES OF THE SEED, because the two idioms fail in OPPOSITE directions and a
-        door can get one right while getting the other wrong: the null leaks Python's repr,
-        the empty string collapses into "(not set)".  ``access: ""`` sat in ``_seed``
-        unasserted, which is the shape of a corpus that reads complete and is not."""
-        self._seed(config_file)
-        for leaf, expected in (("model", "null"), ("access", '""')):
-            for key in (leaf, f"agent.default.{leaf}"):
-                capsys.readouterr()
-                assert _get(key) == 0
-                out = capsys.readouterr().out
-                assert out.strip().endswith(f"={expected}"), (key, out)
-                assert "None" not in out, (key, out)
-                assert "(not set)" not in out, (key, out)
-
-    def test_an_ABSENT_key_still_answers_not_set(self, config_file, tmp_home, capsys):
-        """The state the cure could have destroyed: absence is reported ABOVE the render."""
-        self._seed(config_file)
-        capsys.readouterr()
-        assert _get("system.env.NOSUCH") == 0
+        assert _get(key) == 0
         out = capsys.readouterr().out
-        assert "(not set)" in out, out
-        assert "null" not in out, out
+        assert out.strip().endswith(f"={expected}"), (key, out)
+        assert "None" not in out, (key, out)
+        assert "(not set)" not in out, (key, out)
 
-    def test_show_renders_the_scope_table_and_the_agent_table(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``config_display._flatten_table`` under ``_nested_settings_overrides``, plus the
-        agent rows ``read_agent_settings`` produces — one output, two producers."""
-        self._seed(config_file)
-        capsys.readouterr()
-        assert _show() == 0
-        out = capsys.readouterr().out
-        assert "system.env.NULLV = null" in out, out
-        assert 'system.env.EMPTY = ""' in out, out
-        assert "model = null" in out, out
-        assert "None" not in out, out
+  def test_an_ABSENT_key_still_answers_not_set(self, config_file, tmp_home, capsys):
+    """The state the cure could have destroyed: absence is reported ABOVE the render."""
+    self._seed(config_file)
+    capsys.readouterr()
+    assert _get("system.env.NOSUCH") == 0
+    out = capsys.readouterr().out
+    assert "(not set)" in out, out
+    assert "null" not in out, out
 
-    def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
-        """A box's ``pref:`` table renders through ``_nested_settings_overrides``, the one
-        route, and a present-``None`` request prints ``null``."""
-        from kanibako.settings.config_interface import show_config
+  def test_show_renders_the_scope_table_and_the_agent_table(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``config_display._flatten_table`` under ``_nested_settings_overrides``, plus the
+    agent rows ``read_agent_settings`` produces — one output, two producers."""
+    self._seed(config_file)
+    capsys.readouterr()
+    assert _show() == 0
+    out = capsys.readouterr().out
+    assert "system.env.NULLV = null" in out, out
+    assert 'system.env.EMPTY = ""' in out, out
+    assert "model = null" in out, out
+    assert "None" not in out, out
 
-        noun = tmp_path / "noun.yaml"
-        dump_doc(noun, {"pref": {"agent": {"default": {"model": None}}}})
-        capsys.readouterr()
-        show_config(
-            command_scope=ConfigLevel.box,
-            global_config_path=tmp_path / "g.yaml", config_path=noun, effective=False,
-        )
-        out = capsys.readouterr().out
-        assert "pref.agent.default.model = null" in out, out
+  def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
+    """A box's ``pref:`` table renders through ``_nested_settings_overrides``, the one
+    route, and a present-``None`` request prints ``null``."""
+    from kanibako.settings.config_interface import show_config
 
-    def test_the_effective_pref_block_renders_a_null_REQUEST(self, tmp_path, capsys):
-        """``config_display._print_pref_block``'s ``_render`` — a fourth hand-kept copy of
-        the same rule until it was routed through the one renderer."""
-        from kanibako.settings.config_interface import show_config
-        from kanibako.settings.keystore import KeyStore
+    noun = tmp_path / "noun.yaml"
+    dump_doc(noun, {"pref": {"agent": {"default": {"model": None}}}})
+    capsys.readouterr()
+    show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / "g.yaml",
+      config_path=noun,
+      effective=False,
+    )
+    out = capsys.readouterr().out
+    assert "pref.agent.default.model = null" in out, out
 
-        snap = KeyStore({"pref": {"agent": {"default": {"model": None}}}})
-        capsys.readouterr()
-        show_config(
-            command_scope=ConfigLevel.box,
-            global_config_path=tmp_path / "g.yaml", config_path=tmp_path / "s.yaml",
-            effective=True, category_snapshot=snap,
-        )
-        out = capsys.readouterr().out
-        assert "pref.agent.default.model = null" in out, out
-        assert "None" not in out, out
+  def test_the_effective_pref_block_renders_a_null_REQUEST(self, tmp_path, capsys):
+    """``config_display._print_pref_block``'s ``_render`` — a fourth hand-kept copy of
+    the same rule until it was routed through the one renderer."""
+    from kanibako.settings.config_interface import show_config
+    from kanibako.settings.keystore import KeyStore
 
-    def test_an_undeclared_stored_entry_renders_the_same_way(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``_undeclared_stored_entries`` — not a key, but the same one spelling.  §0 is
-        untouched: this REPORTS a line in the user's file, it does not resolve one."""
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        doc = load_doc(std.settings) if std.settings.exists() else {}
-        doc.setdefault("system", {})["bogus_leaf"] = None
-        dump_doc(std.settings, doc)
-        capsys.readouterr()
-        assert _show() == 0
-        out = capsys.readouterr().out
-        assert "system.bogus_leaf = null" in out, out
-        assert "None" not in out, out
+    snap = KeyStore({"pref": {"agent": {"default": {"model": None}}}})
+    capsys.readouterr()
+    show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / "g.yaml",
+      config_path=tmp_path / "s.yaml",
+      effective=True,
+      category_snapshot=snap,
+    )
+    out = capsys.readouterr().out
+    assert "pref.agent.default.model = null" in out, out
+    assert "None" not in out, out
 
-    def test_a_config_table_in_the_settings_file_is_marked_not_listed_as_an_override(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Spec §1: ``config.*`` lives only in the ``.cfg`` files. The stored view lists a
-        ``config:`` table under its OWN heading, naming where it belongs — never among the
-        overrides, which the flat nested flatten would otherwise make it — each entry with
-        the launch refusal's cure: a declared key moves, anything else is deleted.
-        MUTATION: drop the ``misplaced`` subtraction and ``config.registry`` prints twice."""
-        from kanibako.settings.config import user_config_file
+  def test_an_undeclared_stored_entry_renders_the_same_way(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``_undeclared_stored_entries`` — not a key, but the same one spelling.  §0 is
+    untouched: this REPORTS a line in the user's file, it does not resolve one."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    doc = load_doc(std.settings) if std.settings.exists() else {}
+    doc.setdefault("system", {})["bogus_leaf"] = None
+    dump_doc(std.settings, doc)
+    capsys.readouterr()
+    assert _show() == 0
+    out = capsys.readouterr().out
+    assert "system.bogus_leaf = null" in out, out
+    assert "None" not in out, out
 
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        doc = load_doc(std.settings) if std.settings.exists() else {}
-        doc["config"] = {"registry": "/x/registry.yaml", "zzz": "/x"}
-        dump_doc(std.settings, doc)
-        capsys.readouterr()
-        assert _show() == 0
-        out = capsys.readouterr().out
-        assert out.count("config.registry = /x/registry.yaml") == 1, out
-        head, _, tail = out.partition("(config.* — stored in ")
-        assert "config.registry" not in head and "config.zzz" not in head, out
-        moved, _, deleted = tail.partition("    config.zzz = /x\n")
-        assert "    config.registry = /x/registry.yaml\n" in moved, out
-        assert f"Fix: move under 'config:' in {user_config_file()}" in moved, out
-        assert "Fix: not a key anywhere" in deleted, out
+  def test_a_config_table_in_the_settings_file_is_marked_not_listed_as_an_override(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Spec §1: ``config.*`` lives only in the ``.cfg`` files. The stored view lists a
+    ``config:`` table under its OWN heading, naming where it belongs — never among the
+    overrides, which the flat nested flatten would otherwise make it — each entry with
+    the launch refusal's cure: a declared key moves, anything else is deleted.
+    MUTATION: drop the ``misplaced`` subtraction and ``config.registry`` prints twice."""
+    from kanibako.settings.config import user_config_file
+
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    doc = load_doc(std.settings) if std.settings.exists() else {}
+    doc["config"] = {"registry": "/x/registry.yaml", "zzz": "/x"}
+    dump_doc(std.settings, doc)
+    capsys.readouterr()
+    assert _show() == 0
+    out = capsys.readouterr().out
+    assert out.count("config.registry = /x/registry.yaml") == 1, out
+    head, _, tail = out.partition("(config.* — stored in ")
+    assert "config.registry" not in head and "config.zzz" not in head, out
+    moved, _, deleted = tail.partition("    config.zzz = /x\n")
+    assert "    config.registry = /x/registry.yaml\n" in moved, out
+    assert f"Fix: move under 'config:' in {user_config_file()}" in moved, out
+    assert "Fix: not a key anywhere" in deleted, out
 
 
 class TestSystemStateSetRefusal:
-    """Q16 — ``system set system.state=<unusable>`` is refused AT SET TIME.
+  """Q16 — ``system set system.state=<unusable>`` is refused AT SET TIME.
 
-    *"A path we cannot use is not a path we should store."* [Jei:2026-09-19] Scoped to
-    the door Q16 names (``system.state`` alone — §2a's WARN-proceed arm still governs
-    host SOURCE paths, and ``system.cache`` takes no refusal here); box creation is
-    exempt by construction (it never routes through ``set_config_value``).
-    """
+  *"A path we cannot use is not a path we should store."* [Jei:2026-09-19] Scoped to
+  the door Q16 names (``system.state`` alone — §2a's WARN-proceed arm still governs
+  host SOURCE paths, and ``system.cache`` takes no refusal here); box creation is
+  exempt by construction (it never routes through ``set_config_value``).
+  """
 
-    def _settings_file(self, config_file):
-        std = _std(config_file)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        return std.settings
+  def _settings_file(self, config_file):
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    return std.settings
 
-    def test_refuses_a_path_that_does_not_exist(self, config_file, tmp_home, capsys):
-        capsys.readouterr()
-        rc = _set("system.state=/srv/no-such-state")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "system.state" in err, err
-        assert "does not exist" in err, err
-        # Nothing stored: the refusal happens BEFORE the write.
-        assert _get("system.state") == 0
-        assert "not set" in capsys.readouterr().out
+  def test_refuses_a_path_that_does_not_exist(self, config_file, tmp_home, capsys):
+    capsys.readouterr()
+    rc = _set("system.state=/srv/no-such-state")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "system.state" in err, err
+    assert "does not exist" in err, err
+    # Nothing stored: the refusal happens BEFORE the write.
+    assert _get("system.state") == 0
+    assert "not set" in capsys.readouterr().out
 
-    def test_refuses_an_unwritable_directory(self, config_file, tmp_home, capsys):
-        locked = tmp_home / "locked"
-        locked.mkdir()
-        locked.chmod(0o500)
-        try:
-            capsys.readouterr()
-            rc = _set(f"system.state={locked}")
-        finally:
-            locked.chmod(0o700)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "system.state" in err, err
-        assert "not writable" in err, err
-        assert _get("system.state") == 0
-        assert "not set" in capsys.readouterr().out
+  def test_refuses_an_unwritable_directory(self, config_file, tmp_home, capsys):
+    locked = tmp_home / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+      capsys.readouterr()
+      rc = _set(f"system.state={locked}")
+    finally:
+      locked.chmod(0o700)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "system.state" in err, err
+    assert "not writable" in err, err
+    assert _get("system.state") == 0
+    assert "not set" in capsys.readouterr().out
 
-    def test_refuses_a_file_where_a_directory_belongs(
-        self, config_file, tmp_home, capsys,
-    ):
-        afile = tmp_home / "afile"
-        afile.write_text("not a directory")
-        capsys.readouterr()
-        rc = _set(f"system.state={afile}")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "system.state" in err, err
-        assert "not a directory" in err, err
-        assert _get("system.state") == 0
-        assert "not set" in capsys.readouterr().out
+  def test_refuses_a_file_where_a_directory_belongs(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    afile = tmp_home / "afile"
+    afile.write_text("not a directory")
+    capsys.readouterr()
+    rc = _set(f"system.state={afile}")
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "system.state" in err, err
+    assert "not a directory" in err, err
+    assert _get("system.state") == 0
+    assert "not set" in capsys.readouterr().out
 
-    def test_accepts_an_existing_writable_directory(
-        self, config_file, tmp_home, capsys,
-    ):
-        good = tmp_home / "state" / "custom"
-        good.mkdir()
-        capsys.readouterr()
-        assert _set(f"system.state={good}") == 0
-        assert f"Set system.state={good}" in capsys.readouterr().out
-        assert _get("system.state") == 0
-        assert f"system.state={good}" in capsys.readouterr().out
+  def test_accepts_an_existing_writable_directory(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    good = tmp_home / "state" / "custom"
+    good.mkdir()
+    capsys.readouterr()
+    assert _set(f"system.state={good}") == 0
+    assert f"Set system.state={good}" in capsys.readouterr().out
+    assert _get("system.state") == 0
+    assert f"system.state={good}" in capsys.readouterr().out
 
-    def test_a_handwritten_missing_path_stays_recoverable_by_the_cli(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The read door never materializes, so a value the set door never saw
-        (hand edit, a path that stopped being writable later) is still
-        un-storable by the CLI: get, show, reset and a correcting set all run."""
-        ssp = self._settings_file(config_file)
-        dump_doc(ssp, {"system": {"state": "/srv/handwritten-missing"}})
-        capsys.readouterr()
-        assert _get("system.state") == 0
-        assert "system.state=/srv/handwritten-missing" in capsys.readouterr().out
-        assert _show() == 0
-        assert "system.state = /srv/handwritten-missing" in capsys.readouterr().out
-        assert _reset("system.state") == 0
-        assert "Cleared system.state" in capsys.readouterr().out
-        assert _get("system.state") == 0
-        assert "not set" in capsys.readouterr().out
+  def test_a_handwritten_missing_path_stays_recoverable_by_the_cli(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The read door never materializes, so a value the set door never saw
+    (hand edit, a path that stopped being writable later) is still
+    un-storable by the CLI: get, show, reset and a correcting set all run."""
+    ssp = self._settings_file(config_file)
+    dump_doc(ssp, {"system": {"state": "/srv/handwritten-missing"}})
+    capsys.readouterr()
+    assert _get("system.state") == 0
+    assert "system.state=/srv/handwritten-missing" in capsys.readouterr().out
+    assert _show() == 0
+    assert "system.state = /srv/handwritten-missing" in capsys.readouterr().out
+    assert _reset("system.state") == 0
+    assert "Cleared system.state" in capsys.readouterr().out
+    assert _get("system.state") == 0
+    assert "not set" in capsys.readouterr().out
 
-    def test_a_handwritten_bare_relative_value_stays_recoverable_by_the_cli(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The read-time refusal (keyspec §2a "A path key's stored value") names the
-        defect AND leaves the doors open: a clean refusal is recoverable, a traceback
-        was not."""
-        ssp = self._settings_file(config_file)
-        dump_doc(ssp, {"system": {"state": "rel/dir"}})
-        capsys.readouterr()
-        assert _get("system.state") == 0
-        assert "system.state=rel/dir" in capsys.readouterr().out
-        assert _show() == 0
-        assert "system.state = rel/dir" in capsys.readouterr().out
-        assert _reset("system.state") == 0
-        assert "Cleared system.state" in capsys.readouterr().out
+  def test_a_handwritten_bare_relative_value_stays_recoverable_by_the_cli(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The read-time refusal (keyspec §2a "A path key's stored value") names the
+    defect AND leaves the doors open: a clean refusal is recoverable, a traceback
+    was not."""
+    ssp = self._settings_file(config_file)
+    dump_doc(ssp, {"system": {"state": "rel/dir"}})
+    capsys.readouterr()
+    assert _get("system.state") == 0
+    assert "system.state=rel/dir" in capsys.readouterr().out
+    assert _show() == 0
+    assert "system.state = rel/dir" in capsys.readouterr().out
+    assert _reset("system.state") == 0
+    assert "Cleared system.state" in capsys.readouterr().out
 
-    def test_system_cache_takes_no_set_time_refusal(
-        self, config_file, tmp_home, capsys,
-    ):
-        """SCOPE PIN: the ruling names ``system.state``; ``system.cache`` accepts
-        a not-yet-existing path (a mount not yet up is a lawful intent there) and
-        stays recoverable because the resolve no longer materializes."""
-        capsys.readouterr()
-        assert _set("system.cache=/srv/not-yet-a-cache") == 0
-        assert _get("system.cache") == 0
-        assert "system.cache=/srv/not-yet-a-cache" in capsys.readouterr().out
-        assert _reset("system.cache") == 0
-        assert "Cleared system.cache" in capsys.readouterr().out
+  def test_system_cache_takes_no_set_time_refusal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """SCOPE PIN: the ruling names ``system.state``; ``system.cache`` accepts
+    a not-yet-existing path (a mount not yet up is a lawful intent there) and
+    stays recoverable because the resolve no longer materializes."""
+    capsys.readouterr()
+    assert _set("system.cache=/srv/not-yet-a-cache") == 0
+    assert _get("system.cache") == 0
+    assert "system.cache=/srv/not-yet-a-cache" in capsys.readouterr().out
+    assert _reset("system.cache") == 0
+    assert "Cleared system.cache" in capsys.readouterr().out
 
-    def test_verbs_run_with_no_config_file(self, tmp_home, capsys):
-        """The Layer-1-only route: with no ``kanibako.cfg`` at all, the verbs
-        resolve defaults and read absence — they never touch Layer 2."""
-        capsys.readouterr()
-        assert _get("system.state") == 0
-        assert "not set" in capsys.readouterr().out
-        assert _show() == 0
+  def test_verbs_run_with_no_config_file(self, tmp_home, capsys):
+    """The Layer-1-only route: with no ``kanibako.cfg`` at all, the verbs
+    resolve defaults and read absence — they never touch Layer 2."""
+    capsys.readouterr()
+    assert _get("system.state") == 0
+    assert "not set" in capsys.readouterr().out
+    assert _show() == 0
 
 
 def test_show_effective_reads_a_legal_config_table_as_layer_1(
-    config_file, tmp_home, capsys,
+  config_file,
+  tmp_home,
+  capsys,
 ):
-    """A ``config:`` table is legal in ``kanibako.cfg`` (keyspec §1), and ``--effective`` must not
-    read that file as the BOX tier, which refuses the table with a cure that is already true.
-    MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and this reds."""
-    with config_file.open("a") as fh:
-        fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
-    assert _set("box.image=sys/img:1") == 0
-    capsys.readouterr()
-    assert _show(effective=True) == 0
-    cap = capsys.readouterr()
-    assert "config.* entries" not in cap.err, cap.err
-    assert "box_image = sys/img:1" in cap.out, cap.out
+  """A ``config:`` table is legal in ``kanibako.cfg`` (keyspec §1), and ``--effective`` must not
+  read that file as the BOX tier, which refuses the table with a cure that is already true.
+  MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and this reds."""
+  with config_file.open("a") as fh:
+    fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+  assert _set("box.image=sys/img:1") == 0
+  capsys.readouterr()
+  assert _show(effective=True) == 0
+  cap = capsys.readouterr()
+  assert "config.* entries" not in cap.err, cap.err
+  assert "box_image = sys/img:1" in cap.out, cap.out

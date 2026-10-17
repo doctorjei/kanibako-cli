@@ -17,17 +17,17 @@ from unittest.mock import MagicMock
 import pytest
 
 from kanibako.commands.start import (
-    _UNIX_SOCKET_PATH_LIMIT,
-    _validate_mounts,
-    bounded_hub_dir_name,
-    helper_socket_path,
-    validate_socket_path,
+  _UNIX_SOCKET_PATH_LIMIT,
+  _validate_mounts,
+  bounded_hub_dir_name,
+  helper_socket_path,
+  validate_socket_path,
 )
 from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
-    detect_project_mode,
-    load_std_paths,
+  BoxMode,
+  _early_scope,
+  detect_project_mode,
+  load_std_paths,
 )
 from kanibako.utils import WORKSET_SEGMENT_PRIMARY
 from kanibako.settings.config import load_config
@@ -39,365 +39,386 @@ from tests.support.filenames import CONFIG_FILENAME
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def config_file(tmp_path, monkeypatch):
-    """Minimal kanibako config for detection tests."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local" / "share"))
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".local" / "state"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
+  """Minimal kanibako config for detection tests."""
+  monkeypatch.setenv("HOME", str(tmp_path))
+  monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+  monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local" / "share"))
+  monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".local" / "state"))
+  monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
 
-    # ⚑ AT ``config_file_path($XDG_CONFIG_HOME)`` — the file the product opens.  It used
-    # to be written a directory deeper, in the LEGACY ``.config/kanibako/`` location that
-    # ``config_file_path`` deliberately no longer recognizes (pinned by
-    # ``test_ignores_legacy_old_subdir_location``).  So ``load_std_paths`` resolved its
-    # path tier from a file that did not exist while the tests read one the product never
-    # saw.
-    cfg_dir = tmp_path / ".config"
-    cfg_dir.mkdir(parents=True)
-    cfg_file = cfg_dir / CONFIG_FILENAME
-    # EMPTY is what MINIMAL means here, and it is what the product writes on first run:
-    # ``settings.config.write_global_config`` does ``atomic_write_text(path, "")``, called
-    # by ``cli._ensure_initialized`` when the file is absent.  The ``box: image:`` table
-    # this used to hold was not minimal, it was a settings table the Layer-1 file cannot
-    # carry — and no detection path reads ``box_image`` anyway.
-    cfg_file.write_text("")
-    return cfg_file
+  # ⚑ AT ``config_file_path($XDG_CONFIG_HOME)`` — the file the product opens.  It used
+  # to be written a directory deeper, in the LEGACY ``.config/kanibako/`` location that
+  # ``config_file_path`` deliberately no longer recognizes (pinned by
+  # ``test_ignores_legacy_old_subdir_location``).  So ``load_std_paths`` resolved its
+  # path tier from a file that did not exist while the tests read one the product never
+  # saw.
+  cfg_dir = tmp_path / ".config"
+  cfg_dir.mkdir(parents=True)
+  cfg_file = cfg_dir / CONFIG_FILENAME
+  # EMPTY is what MINIMAL means here, and it is what the product writes on first run:
+  # ``settings.config.write_global_config`` does ``atomic_write_text(path, "")``, called
+  # by ``cli._ensure_initialized`` when the file is absent.  The ``box: image:`` table
+  # this used to hold was not minimal, it was a settings table the Layer-1 file cannot
+  # carry — and no detection path reads ``box_image`` anyway.
+  cfg_file.write_text("")
+  return cfg_file
 
 
 @pytest.fixture
 def tmp_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    return tmp_path
+  monkeypatch.setenv("HOME", str(tmp_path))
+  return tmp_path
 
 
 # ── Boundary tests: AF_UNIX socket path ──────────────────────────────
 
+
 class TestSocketPathBoundary:
-    """Socket path must stay under the AF_UNIX sun_path limit."""
+  """Socket path must stay under the AF_UNIX sun_path limit."""
 
-    def test_short_hash_socket_under_limit(self):
-        """Socket in /run/user/$UID/kanibako/ with short_hash stays under limit."""
-        # Simulate a realistic path.
-        long_hash = hashlib.sha256(b"/home/user/some/deep/project/path").hexdigest()
-        shash = short_hash(long_hash)
-        socket_path = Path(f"/run/user/1000/kanibako/{shash}.sock")
-        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+  def test_short_hash_socket_under_limit(self):
+    """Socket in /run/user/$UID/kanibako/ with short_hash stays under limit."""
+    # Simulate a realistic path.
+    long_hash = hashlib.sha256(b"/home/user/some/deep/project/path").hexdigest()
+    shash = short_hash(long_hash)
+    socket_path = Path(f"/run/user/1000/kanibako/{shash}.sock")
+    assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
-    def test_name_based_socket_under_limit(self):
-        """Socket with project name stays under limit for typical names."""
-        socket_path = Path("/run/user/1000/kanibako/my-long-project-name.sock")
-        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+  def test_name_based_socket_under_limit(self):
+    """Socket with project name stays under limit for typical names."""
+    socket_path = Path("/run/user/1000/kanibako/my-long-project-name.sock")
+    assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
-    def test_metadata_path_socket_exceeds_limit(self):
-        """Socket in metadata_path (old location) would exceed the limit."""
-        long_hash = hashlib.sha256(b"/home/user/project").hexdigest()
-        # This is the OLD location that caused the bug.
-        socket_path = Path(f"/home/user/.local/share/kanibako/boxes/{long_hash}/helper.sock")
-        assert len(str(socket_path)) >= _UNIX_SOCKET_PATH_LIMIT
+  def test_metadata_path_socket_exceeds_limit(self):
+    """Socket in metadata_path (old location) would exceed the limit."""
+    long_hash = hashlib.sha256(b"/home/user/project").hexdigest()
+    # This is the OLD location that caused the bug.
+    socket_path = Path(f"/home/user/.local/share/kanibako/boxes/{long_hash}/helper.sock")
+    assert len(str(socket_path)) >= _UNIX_SOCKET_PATH_LIMIT
 
-    def test_validate_socket_path_raises_on_long_path(self):
-        """validate_socket_path raises ValueError for paths at the limit."""
-        long_path = Path("/tmp/" + "x" * 100 + ".sock")
-        assert len(str(long_path)) >= _UNIX_SOCKET_PATH_LIMIT
-        with pytest.raises(ValueError, match="Socket path too long"):
-            validate_socket_path(long_path)
+  def test_validate_socket_path_raises_on_long_path(self):
+    """validate_socket_path raises ValueError for paths at the limit."""
+    long_path = Path("/tmp/" + "x" * 100 + ".sock")
+    assert len(str(long_path)) >= _UNIX_SOCKET_PATH_LIMIT
+    with pytest.raises(ValueError, match="Socket path too long"):
+      validate_socket_path(long_path)
 
-    def test_validate_socket_path_accepts_short_path(self):
-        """validate_socket_path accepts paths under the limit."""
-        short_path = Path("/run/user/1000/kanibako/abc123.sock")
-        validate_socket_path(short_path)  # Should not raise.
+  def test_validate_socket_path_accepts_short_path(self):
+    """validate_socket_path accepts paths under the limit."""
+    short_path = Path("/run/user/1000/kanibako/abc123.sock")
+    validate_socket_path(short_path)  # Should not raise.
 
-    def test_worst_case_xdg_runtime_dir(self):
-        """Even with a long XDG_RUNTIME_DIR, socket stays under limit."""
-        # Some systems have longer runtime dirs.
-        long_hash = hashlib.sha256(b"/very/deep/path").hexdigest()
-        shash = short_hash(long_hash)
-        # Simulate a long-ish runtime dir.
-        socket_path = Path(f"/run/user/1000000/kanibako/{shash}.sock")
-        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+  def test_worst_case_xdg_runtime_dir(self):
+    """Even with a long XDG_RUNTIME_DIR, socket stays under limit."""
+    # Some systems have longer runtime dirs.
+    long_hash = hashlib.sha256(b"/very/deep/path").hexdigest()
+    shash = short_hash(long_hash)
+    # Simulate a long-ish runtime dir.
+    socket_path = Path(f"/run/user/1000000/kanibako/{shash}.sock")
+    assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
-    def test_tmp_fallback_under_limit(self):
-        """Fallback /tmp/kanibako-$UID/ path stays under limit."""
-        long_hash = hashlib.sha256(b"/home/user/deep/project").hexdigest()
-        shash = short_hash(long_hash)
-        socket_path = Path(f"/tmp/kanibako-1000000/{shash}.sock")
-        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+  def test_tmp_fallback_under_limit(self):
+    """Fallback /tmp/kanibako-$UID/ path stays under limit."""
+    long_hash = hashlib.sha256(b"/home/user/deep/project").hexdigest()
+    shash = short_hash(long_hash)
+    socket_path = Path(f"/tmp/kanibako-1000000/{shash}.sock")
+    assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
 
 class TestBoundedHubDirName:
-    """``bounded_hub_dir_name`` keeps ``<run_dir>/<name>/helper.sock`` under the AF_UNIX
-    limit; the DIRECTORY is the bind source (184-S2 (a) [Jei:2026-10-13])."""
+  """``bounded_hub_dir_name`` keeps ``<run_dir>/<name>/helper.sock`` under the AF_UNIX
+  limit; the DIRECTORY is the bind source (184-S2 (a) [Jei:2026-10-13])."""
 
-    SOCK = "/helper.sock"
+  SOCK = "/helper.sock"
 
-    @classmethod
-    def _identity_of_bytes(cls, run_dir: Path, total: int) -> str:
-        """An ASCII identity whose ``run_dir/<identity>/helper.sock`` is *total* bytes."""
-        return "n" * (total - len(str(run_dir)) - 1 - len(cls.SOCK))
+  @classmethod
+  def _identity_of_bytes(cls, run_dir: Path, total: int) -> str:
+    """An ASCII identity whose ``run_dir/<identity>/helper.sock`` is *total* bytes."""
+    return "n" * (total - len(str(run_dir)) - 1 - len(cls.SOCK))
 
-    @staticmethod
-    def _hashed(identity: str) -> str:
-        """The companion's hashed name: 16 hex chars of SHA-256 over UTF-8."""
-        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+  @staticmethod
+  def _hashed(identity: str) -> str:
+    """The companion's hashed name: 16 hex chars of SHA-256 over UTF-8."""
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
-    def _sock(self, run_dir: Path, name: str) -> Path:
-        return run_dir / name / "helper.sock"
+  def _sock(self, run_dir: Path, name: str) -> Path:
+    return run_dir / name / "helper.sock"
 
-    def test_short_name_verbatim(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        assert bounded_hub_dir_name("myproj", run_dir) == "myproj"
+  def test_short_name_verbatim(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    assert bounded_hub_dir_name("myproj", run_dir) == "myproj"
 
-    def test_combined_box_ws_identity_verbatim(self):
-        """The host hub directory is ``<box>-<ws>`` (FIX K)."""
-        run_dir = Path("/run/user/1000/kanibako")
-        assert bounded_hub_dir_name("myproj-__PRIMARY__", run_dir) == "myproj-__PRIMARY__"
+  def test_combined_box_ws_identity_verbatim(self):
+    """The host hub directory is ``<box>-<ws>`` (FIX K)."""
+    run_dir = Path("/run/user/1000/kanibako")
+    assert bounded_hub_dir_name("myproj-__PRIMARY__", run_dir) == "myproj-__PRIMARY__"
 
-    def test_same_box_distinct_ws_distinct_dirs(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        assert (bounded_hub_dir_name("app-__PRIMARY__", run_dir)
-                != bounded_hub_dir_name("app-myset", run_dir))
+  def test_same_box_distinct_ws_distinct_dirs(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    assert bounded_hub_dir_name("app-__PRIMARY__", run_dir) != bounded_hub_dir_name(
+      "app-myset", run_dir
+    )
 
-    def test_worst_case_standalone_name_under_limit(self):
-        """A ``<kuid>_<32-char-leaf>`` name in a deep runtime dir fits."""
-        box_name = "abcde_" + "x" * 32
-        run_dir = Path("/run/user/4000000/kanibako")
-        socket_path = self._sock(run_dir, bounded_hub_dir_name(box_name, run_dir))
-        assert len(os.fsencode(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+  def test_worst_case_standalone_name_under_limit(self):
+    """A ``<kuid>_<32-char-leaf>`` name in a deep runtime dir fits."""
+    box_name = "abcde_" + "x" * 32
+    run_dir = Path("/run/user/4000000/kanibako")
+    socket_path = self._sock(run_dir, bounded_hub_dir_name(box_name, run_dir))
+    assert len(os.fsencode(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
-    def test_very_long_name_falls_back_to_hash(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        name = bounded_hub_dir_name("z" * 200, run_dir)
-        assert name == self._hashed("z" * 200)
-        assert len(os.fsencode(self._sock(run_dir, name))) < _UNIX_SOCKET_PATH_LIMIT
+  def test_very_long_name_falls_back_to_hash(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    name = bounded_hub_dir_name("z" * 200, run_dir)
+    assert name == self._hashed("z" * 200)
+    assert len(os.fsencode(self._sock(run_dir, name))) < _UNIX_SOCKET_PATH_LIMIT
 
-    def test_deterministic(self):
-        """A pure function of the identity, so every start and stop finds one hub."""
-        run_dir = Path("/run/user/1000/kanibako")
-        identity = "箱" * 40 + "-myset"
-        assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
-        assert bounded_hub_dir_name("a" * 200, run_dir) != bounded_hub_dir_name(
-            "b" * 200, run_dir)
+  def test_deterministic(self):
+    """A pure function of the identity, so every start and stop finds one hub."""
+    run_dir = Path("/run/user/1000/kanibako")
+    identity = "箱" * 40 + "-myset"
+    assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
+    assert bounded_hub_dir_name("a" * 200, run_dir) != bounded_hub_dir_name("b" * 200, run_dir)
 
-    def test_103_bytes_keeps_the_plain_name(self):
-        """A socket path of 103 bytes is under the limit, so the directory is ``I``."""
-        run_dir = Path("/run/user/1000/kanibako")
-        identity = self._identity_of_bytes(run_dir, 103)
-        assert len(os.fsencode(self._sock(run_dir, identity))) == 103
-        assert bounded_hub_dir_name(identity, run_dir) == identity
+  def test_103_bytes_keeps_the_plain_name(self):
+    """A socket path of 103 bytes is under the limit, so the directory is ``I``."""
+    run_dir = Path("/run/user/1000/kanibako")
+    identity = self._identity_of_bytes(run_dir, 103)
+    assert len(os.fsencode(self._sock(run_dir, identity))) == 103
+    assert bounded_hub_dir_name(identity, run_dir) == identity
 
-    def test_boundary_triggers_fallback(self):
-        """The SOCKET's path is what is measured: exactly 104 bytes is hashed.
-        (Mutation: measure the directory alone -> plain name -> RED.)"""
-        run_dir = Path("/run/user/1000/kanibako")
-        identity = self._identity_of_bytes(run_dir, _UNIX_SOCKET_PATH_LIMIT)
-        assert len(os.fsencode(self._sock(run_dir, identity))) == _UNIX_SOCKET_PATH_LIMIT
-        result = bounded_hub_dir_name(identity, run_dir)
-        assert result == self._hashed(identity)
-        validate_socket_path(self._sock(run_dir, result))  # Should not raise.
+  def test_boundary_triggers_fallback(self):
+    """The SOCKET's path is what is measured: exactly 104 bytes is hashed.
+    (Mutation: measure the directory alone -> plain name -> RED.)"""
+    run_dir = Path("/run/user/1000/kanibako")
+    identity = self._identity_of_bytes(run_dir, _UNIX_SOCKET_PATH_LIMIT)
+    assert len(os.fsencode(self._sock(run_dir, identity))) == _UNIX_SOCKET_PATH_LIMIT
+    result = bounded_hub_dir_name(identity, run_dir)
+    assert result == self._hashed(identity)
+    validate_socket_path(self._sock(run_dir, result))  # Should not raise.
 
-    def test_multibyte_name_is_measured_in_bytes(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        identity = "箱" * 25 + "-__PRIMARY__"
-        verbatim = str(self._sock(run_dir, identity))
-        assert len(verbatim) < _UNIX_SOCKET_PATH_LIMIT
-        assert len(os.fsencode(verbatim)) >= _UNIX_SOCKET_PATH_LIMIT
-        assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
+  def test_multibyte_name_is_measured_in_bytes(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    identity = "箱" * 25 + "-__PRIMARY__"
+    verbatim = str(self._sock(run_dir, identity))
+    assert len(verbatim) < _UNIX_SOCKET_PATH_LIMIT
+    assert len(os.fsencode(verbatim)) >= _UNIX_SOCKET_PATH_LIMIT
+    assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
 
-    def test_short_multibyte_name_stays_plain(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        assert bounded_hub_dir_name("箱-__PRIMARY__", run_dir) == "箱-__PRIMARY__"
+  def test_short_multibyte_name_stays_plain(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    assert bounded_hub_dir_name("箱-__PRIMARY__", run_dir) == "箱-__PRIMARY__"
 
-    def test_validate_counts_bytes(self):
-        """A path under 104 characters but not under 104 bytes is refused."""
-        path = Path("/run/user/1000/kanibako/" + "箱" * 25 + ".sock")
-        assert len(str(path)) < _UNIX_SOCKET_PATH_LIMIT
-        with pytest.raises(ValueError, match="Socket path too long"):
-            validate_socket_path(path)
+  def test_validate_counts_bytes(self):
+    """A path under 104 characters but not under 104 bytes is refused."""
+    path = Path("/run/user/1000/kanibako/" + "箱" * 25 + ".sock")
+    assert len(str(path)) < _UNIX_SOCKET_PATH_LIMIT
+    with pytest.raises(ValueError, match="Socket path too long"):
+      validate_socket_path(path)
 
 
 class TestHelperSocketPath:
-    """``helper_socket_path`` names the socket from ``<box name>-<workset name>``."""
+  """``helper_socket_path`` names the socket from ``<box name>-<workset name>``."""
 
-    def test_primary_box_gets_box_and_workset_name(self):
-        run_dir = Path("/run/user/1000/kanibako")
-        proj = MagicMock(mode=BoxMode.primary, group=None)
-        proj.name = "app"
-        # The ``<W>`` segment is the bare word, not the ``__PRIMARY__`` partition
-        # directory name — the socket names a box, it does not address a path.
-        assert (helper_socket_path(proj, run_dir)
-                == run_dir / f"app-{WORKSET_SEGMENT_PRIMARY}" / "helper.sock")
+  def test_primary_box_gets_box_and_workset_name(self):
+    run_dir = Path("/run/user/1000/kanibako")
+    proj = MagicMock(mode=BoxMode.primary, group=None)
+    proj.name = "app"
+    # The ``<W>`` segment is the bare word, not the ``__PRIMARY__`` partition
+    # directory name — the socket names a box, it does not address a path.
+    assert (
+      helper_socket_path(proj, run_dir)
+      == run_dir / f"app-{WORKSET_SEGMENT_PRIMARY}" / "helper.sock"
+    )
 
-    def test_nameless_box_is_refused(self):
-        """A box without ``meta.box.name`` has no identity to render."""
-        proj = MagicMock(mode=BoxMode.primary, group=None)
-        proj.name = ""
-        with pytest.raises(ValueError, match="box has no name"):
-            helper_socket_path(proj, Path("/run/user/1000/kanibako"))
+  def test_nameless_box_is_refused(self):
+    """A box without ``meta.box.name`` has no identity to render."""
+    proj = MagicMock(mode=BoxMode.primary, group=None)
+    proj.name = ""
+    with pytest.raises(ValueError, match="box has no name"):
+      helper_socket_path(proj, Path("/run/user/1000/kanibako"))
 
 
 # ── Negative tests: detection false positives ─────────────────────────
 
+
 class TestDetectionFalsePositives:
-    """Project mode detection must not false-positive on common directory names."""
+  """Project mode detection must not false-positive on common directory names."""
 
-    COMMON_NAMES = [
-        "kanibako",      # The project itself being named kanibako.
-        "src",
-        "build",
-        "dist",
-        "node_modules",
-        ".git",
-    ]
+  COMMON_NAMES = [
+    "kanibako",  # The project itself being named kanibako.
+    "src",
+    "build",
+    "dist",
+    "node_modules",
+    ".git",
+  ]
 
-    @pytest.mark.parametrize("dirname", COMMON_NAMES)
-    def test_subdirectory_name_does_not_trigger_standalone(
-        self, config_file, tmp_home, dirname,
-    ):
-        """A subdirectory named '{dirname}' should not trigger standalone mode."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "myproject"
-        project_dir.mkdir()
-        (project_dir / dirname).mkdir()
+  @pytest.mark.parametrize("dirname", COMMON_NAMES)
+  def test_subdirectory_name_does_not_trigger_standalone(
+    self,
+    config_file,
+    tmp_home,
+    dirname,
+  ):
+    """A subdirectory named '{dirname}' should not trigger standalone mode."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "myproject"
+    project_dir.mkdir()
+    (project_dir / dirname).mkdir()
 
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        # Should fall through to local (default), NOT standalone.  A bare
-        # directory (even ``.kanibako``) is not a marker on its own: a real
-        # standalone workset.yaml is required.
-        assert result.mode is not BoxMode.standalone
+    result = detect_project_mode(project_dir.resolve(), std, config)
+    # Should fall through to local (default), NOT standalone.  A bare
+    # directory (even ``.kanibako``) is not a marker on its own: a real
+    # standalone workset.yaml is required.
+    assert result.mode is not BoxMode.standalone
 
-    def test_ancestor_named_kanibako_no_false_positive(
-        self, config_file, tmp_home,
-    ):
-        """A project inside a directory named 'kanibako' should not detect as standalone."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        # Simulate: ~/workspaces/kanibako/src/ — running from src/
-        workspaces = tmp_home / "workspaces"
-        kanibako_dir = workspaces / "kanibako"
-        src_dir = kanibako_dir / "src"
-        src_dir.mkdir(parents=True)
+  def test_ancestor_named_kanibako_no_false_positive(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """A project inside a directory named 'kanibako' should not detect as standalone."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    # Simulate: ~/workspaces/kanibako/src/ — running from src/
+    workspaces = tmp_home / "workspaces"
+    kanibako_dir = workspaces / "kanibako"
+    src_dir = kanibako_dir / "src"
+    src_dir.mkdir(parents=True)
 
-        result = detect_project_mode(src_dir.resolve(), std, config)
-        assert result.mode is not BoxMode.standalone
+    result = detect_project_mode(src_dir.resolve(), std, config)
+    assert result.mode is not BoxMode.standalone
 
-    def test_legacy_kanibako_dirs_are_not_markers(
-        self, config_file, tmp_home,
-    ):
-        """The legacy ``.kanibako``/``kanibako`` dirs are no longer markers."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        for idx, dirname in enumerate((".kanibako", "kanibako")):
-            project_dir = tmp_home / f"proj_{idx}"
-            project_dir.mkdir()
-            (project_dir / dirname).mkdir()
-            (project_dir / dirname / "settings.yaml").write_text(
-                'project:\n  mode: "standalone"\n'
-            )
-            result = detect_project_mode(project_dir.resolve(), std, config)
-            assert result.mode is not BoxMode.standalone
+  def test_legacy_kanibako_dirs_are_not_markers(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """The legacy ``.kanibako``/``kanibako`` dirs are no longer markers."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    for idx, dirname in enumerate((".kanibako", "kanibako")):
+      project_dir = tmp_home / f"proj_{idx}"
+      project_dir.mkdir()
+      (project_dir / dirname).mkdir()
+      (project_dir / dirname / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
+      result = detect_project_mode(project_dir.resolve(), std, config)
+      assert result.mode is not BoxMode.standalone
 
-    def test_box_data_marker_with_toml_is_valid(
-        self, config_file, tmp_home,
-    ):
-        """A ROOT workset.yaml storing workset.registry as null is a valid marker."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "myproject"
-        project_dir.mkdir()
-        (project_dir / "box_data").mkdir()
-        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
+  def test_box_data_marker_with_toml_is_valid(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """A ROOT workset.yaml storing workset.registry as null is a valid marker."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "myproject"
+    project_dir.mkdir()
+    (project_dir / "box_data").mkdir()
+    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
 
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is BoxMode.standalone
+    result = detect_project_mode(project_dir.resolve(), std, config)
+    assert result.mode is BoxMode.standalone
 
-    def test_box_data_marker_without_toml_is_not_standalone(
-        self, config_file, tmp_home,
-    ):
-        """A bare box_data/ (no metadata file) is NOT a marker."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "myproject"
-        project_dir.mkdir()
-        (project_dir / "box_data").mkdir()
+  def test_box_data_marker_without_toml_is_not_standalone(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """A bare box_data/ (no metadata file) is NOT a marker."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = tmp_home / "myproject"
+    project_dir.mkdir()
+    (project_dir / "box_data").mkdir()
 
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is not BoxMode.standalone
+    result = detect_project_mode(project_dir.resolve(), std, config)
+    assert result.mode is not BoxMode.standalone
 
 
 # ── Stale primary-workset box-list safety ──────────────────────────────
 
+
 class TestStalePrimaryWorksetBoxListSafety:
-    """A stale default-workset box-list entry pointing at $HOME must not trigger local detection."""
+  """A stale default-workset box-list entry pointing at $HOME must not trigger local detection."""
 
-    def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
-        """Stale entry at $HOME (no boxes dir) → detection falls through to default."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        home = tmp_home / "home"  # $HOME set by fixture
+  def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
+    """Stale entry at $HOME (no boxes dir) → detection falls through to default."""
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    home = tmp_home / "home"  # $HOME set by fixture
 
-        # Register a stale PRIMARY-membership entry pointing at $HOME (direct
-        # write, bypassing the $HOME guard, to simulate a stale/legacy entry).
-        from kanibako.project import workset_registry
-        prim_reg = workset_registry.resolve_workset_registry_path(
-            std.primary_workset, None,
-            early=_early_scope(std, BoxMode.primary),
-        )
-        workset_registry.register_workset_box(prim_reg, "jjb", home.resolve())
-        # Intentionally do NOT create boxes/jjb/
+    # Register a stale PRIMARY-membership entry pointing at $HOME (direct
+    # write, bypassing the $HOME guard, to simulate a stale/legacy entry).
+    from kanibako.project import workset_registry
 
-        # Run detection from a subdirectory of $HOME.
-        project_dir = home / "myproject"
-        project_dir.mkdir(parents=True, exist_ok=True)
-        result = detect_project_mode(project_dir.resolve(), std, config)
+    prim_reg = workset_registry.resolve_workset_registry_path(
+      std.primary_workset,
+      None,
+      early=_early_scope(std, BoxMode.primary),
+    )
+    workset_registry.register_workset_box(prim_reg, "jjb", home.resolve())
+    # Intentionally do NOT create boxes/jjb/
 
-        # Should fall through to the default mode at project_dir, NOT match $HOME.
-        assert result.project_root == project_dir.resolve()
-        assert result.mode is BoxMode.primary
+    # Run detection from a subdirectory of $HOME.
+    project_dir = home / "myproject"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    result = detect_project_mode(project_dir.resolve(), std, config)
+
+    # Should fall through to the default mode at project_dir, NOT match $HOME.
+    assert result.project_root == project_dir.resolve()
+    assert result.mode is BoxMode.primary
 
 
 # ── Contract tests: mount source validation ───────────────────────────
 
+
 class TestMountValidation:
-    """All mount sources must exist before being passed to the container runtime."""
+  """All mount sources must exist before being passed to the container runtime."""
 
-    def test_validate_mounts_warns_on_missing_source(self, tmp_path, capsys):
-        """_validate_mounts prints a warning for non-existent source."""
-        import logging
-        logger = logging.getLogger("test")
+  def test_validate_mounts_warns_on_missing_source(self, tmp_path, capsys):
+    """_validate_mounts prints a warning for non-existent source."""
+    import logging
 
-        mounts = [
-            Mount(
-                source=tmp_path / "nonexistent" / "file",
-                destination="/home/agent/.local/bin/claude",
-                options="ro",
-            ),
-        ]
-        _validate_mounts(mounts, logger)
-        captured = capsys.readouterr()
-        assert "mount source does not exist" in captured.err
+    logger = logging.getLogger("test")
 
-    def test_validate_mounts_silent_on_existing_source(self, tmp_path, capsys):
-        """_validate_mounts is silent when all sources exist."""
-        import logging
-        logger = logging.getLogger("test")
+    mounts = [
+      Mount(
+        source=tmp_path / "nonexistent" / "file",
+        destination="/home/agent/.local/bin/claude",
+        options="ro",
+      ),
+    ]
+    _validate_mounts(mounts, logger)
+    captured = capsys.readouterr()
+    assert "mount source does not exist" in captured.err
 
-        existing = tmp_path / "real_file"
-        existing.touch()
-        mounts = [
-            Mount(source=existing, destination="/home/agent/file", options="ro"),
-        ]
-        _validate_mounts(mounts, logger)
-        captured = capsys.readouterr()
-        assert captured.err == ""
+  def test_validate_mounts_silent_on_existing_source(self, tmp_path, capsys):
+    """_validate_mounts is silent when all sources exist."""
+    import logging
 
-    def test_validate_mounts_handles_empty_list(self):
-        """_validate_mounts handles empty mount list without error."""
-        import logging
-        logger = logging.getLogger("test")
-        _validate_mounts([], logger)  # Should not raise.
+    logger = logging.getLogger("test")
+
+    existing = tmp_path / "real_file"
+    existing.touch()
+    mounts = [
+      Mount(source=existing, destination="/home/agent/file", options="ro"),
+    ]
+    _validate_mounts(mounts, logger)
+    captured = capsys.readouterr()
+    assert captured.err == ""
+
+  def test_validate_mounts_handles_empty_list(self):
+    """_validate_mounts handles empty mount list without error."""
+    import logging
+
+    logger = logging.getLogger("test")
+    _validate_mounts([], logger)  # Should not raise.
 
 
 # ── Contract tests: binary mount sources ──────────────────────────────
@@ -411,50 +432,50 @@ class TestMountValidation:
 
 
 class TestBinaryMountContract:
-    """Delivery binds: existing sources are delivered ro; a missing one safe-fails."""
+  """Delivery binds: existing sources are delivered ro; a missing one safe-fails."""
 
-    def _install(self, tmp_path, *, make_share=True, make_launcher=True):
-        from kanibako.targets.base import AgentInstall
+  def _install(self, tmp_path, *, make_share=True, make_launcher=True):
+    from kanibako.targets.base import AgentInstall
 
-        install_dir = tmp_path / "share" / "claude"
-        launcher = tmp_path / "bin" / "claude"
-        if make_share:
-            install_dir.mkdir(parents=True)
-        if make_launcher:
-            launcher.parent.mkdir(parents=True, exist_ok=True)
-            launcher.write_bytes(b"binary")
-        return AgentInstall(
-            name="claude",
-            binary=launcher,
-            install_dir=install_dir,
-            launcher=launcher,
-        )
+    install_dir = tmp_path / "share" / "claude"
+    launcher = tmp_path / "bin" / "claude"
+    if make_share:
+      install_dir.mkdir(parents=True)
+    if make_launcher:
+      launcher.parent.mkdir(parents=True, exist_ok=True)
+      launcher.write_bytes(b"binary")
+    return AgentInstall(
+      name="claude",
+      binary=launcher,
+      install_dir=install_dir,
+      launcher=launcher,
+    )
 
-    def test_delivery_mounts_all_exist(self, tmp_path):
-        """When sources exist, all ro delivery binds are returned.
+  def test_delivery_mounts_all_exist(self, tmp_path):
+    """When sources exist, all ro delivery binds are returned.
 
-        Two AGENT_CRITICAL delivery binds (share + launcher) plus the best-effort
-        kickoff-loader SEED (its shipped source exists).
-        """
-        from kanibako.targets.assembly import descriptor_mounts
+    Two AGENT_CRITICAL delivery binds (share + launcher) plus the best-effort
+    kickoff-loader SEED (its shipped source exists).
+    """
+    from kanibako.targets.assembly import descriptor_mounts
 
-        t = ClaudeTarget()
-        install = self._install(tmp_path)
-        mounts = descriptor_mounts(t.descriptor, install)
+    t = ClaudeTarget()
+    install = self._install(tmp_path)
+    mounts = descriptor_mounts(t.descriptor, install)
 
-        assert len(mounts) == 3
-        for m in mounts:
-            assert m.source.exists(), f"Mount source does not exist: {m.source}"
-            assert m.options == "ro"
+    assert len(mounts) == 3
+    for m in mounts:
+      assert m.source.exists(), f"Mount source does not exist: {m.source}"
+      assert m.options == "ro"
 
-    def test_missing_critical_source_safe_fails(self, tmp_path):
-        """A missing AGENT_CRITICAL source raises BindingSourceError (no dangling bind)."""
-        from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+  def test_missing_critical_source_safe_fails(self, tmp_path):
+    """A missing AGENT_CRITICAL source raises BindingSourceError (no dangling bind)."""
+    from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 
-        t = ClaudeTarget()
-        install = self._install(tmp_path, make_launcher=False)
-        with pytest.raises(BindingSourceError):
-            descriptor_mounts(t.descriptor, install)
+    t = ClaudeTarget()
+    install = self._install(tmp_path, make_launcher=False)
+    with pytest.raises(BindingSourceError):
+      descriptor_mounts(t.descriptor, install)
 
 
 # ── Contract tests: CLI args invariants ───────────────────────────────
@@ -466,117 +487,149 @@ class TestBinaryMountContract:
 
 
 def _claude_argv(
-    *, safe_mode, resume_mode, new_session, is_new_project, extra_args,
-    access=None,
+  *,
+  safe_mode,
+  resume_mode,
+  new_session,
+  is_new_project,
+  extra_args,
+  access=None,
 ):
-    from kanibako.settings.settings_cli_level import build_cli_level
-    from kanibako.settings.settings_launch import meta_agent_grammar_floor
-    from kanibako.targets import assembly
+  from kanibako.settings.settings_cli_level import build_cli_level
+  from kanibako.settings.settings_launch import meta_agent_grammar_floor
+  from kanibako.targets import assembly
 
-    desc = ClaudeTarget().descriptor
-    # The persisted ``access`` tier defaults to ``full`` when unset (R-41);
-    # mirror the launch: ``-S`` rides the §1A CLI level, which outranks the stored key.
-    level = build_cli_level(active_agent="claude", secure=safe_mode) or {}
-    launch_access = assembly.resolve_access_tier(level.get("agent.claude.access", access))
-    # B5: mirror start.py — the launch grammar is materialized into the keyspace
-    # (same single builder) and the composition reads the table, not the
-    # descriptor.
-    mode_table = meta_agent_grammar_floor("claude", desc)["meta.agent.claude.mode"]
-    mode_key = assembly.resolve_mode(
-        resume_mode=resume_mode,
-        new_session=new_session,
-        is_new_project=is_new_project,
-        extra_args=extra_args,
-        available_modes=mode_table.keys(),
-    )
-    return assembly.assemble_argv(
-        desc,
-        mode_fragment=mode_table[mode_key],
-        access=launch_access,
-        setting_values={"model": "opus"},
-        op_fragment=None,
-        extra_args=extra_args,
-    )
+  desc = ClaudeTarget().descriptor
+  # The persisted ``access`` tier defaults to ``full`` when unset (R-41);
+  # mirror the launch: ``-S`` rides the §1A CLI level, which outranks the stored key.
+  level = build_cli_level(active_agent="claude", secure=safe_mode) or {}
+  launch_access = assembly.resolve_access_tier(level.get("agent.claude.access", access))
+  # B5: mirror start.py — the launch grammar is materialized into the keyspace
+  # (same single builder) and the composition reads the table, not the
+  # descriptor.
+  mode_table = meta_agent_grammar_floor("claude", desc)["meta.agent.claude.mode"]
+  mode_key = assembly.resolve_mode(
+    resume_mode=resume_mode,
+    new_session=new_session,
+    is_new_project=is_new_project,
+    extra_args=extra_args,
+    available_modes=mode_table.keys(),
+  )
+  return assembly.assemble_argv(
+    desc,
+    mode_fragment=mode_table[mode_key],
+    access=launch_access,
+    setting_values={"model": "opus"},
+    op_fragment=None,
+    extra_args=extra_args,
+  )
 
 
 class TestCLIArgsContract:
-    """CLI args must include expected flags for common scenarios."""
+  """CLI args must include expected flags for common scenarios."""
 
-    def test_existing_project_gets_continue(self):
-        """An existing (non-new) project must get --continue."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=[],
-        )
-        assert "--continue" in args
+  def test_existing_project_gets_continue(self):
+    """An existing (non-new) project must get --continue."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+    )
+    assert "--continue" in args
 
-    def test_new_project_skips_continue(self):
-        """A new project must NOT get --continue."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=True, extra_args=[],
-        )
-        assert "--continue" not in args
+  def test_new_project_skips_continue(self):
+    """A new project must NOT get --continue."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=True,
+      extra_args=[],
+    )
+    assert "--continue" not in args
 
-    def test_default_includes_dangerous_skip(self):
-        """Default (non-safe) mode must include --dangerously-skip-permissions."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=[],
-        )
-        assert "--dangerously-skip-permissions" in args
+  def test_default_includes_dangerous_skip(self):
+    """Default (non-safe) mode must include --dangerously-skip-permissions."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+    )
+    assert "--dangerously-skip-permissions" in args
 
-    def test_safe_mode_excludes_dangerous_skip(self):
-        """Safe mode (-S ⇒ the ``restricted`` tier) must NOT include
-        --dangerously-skip-permissions."""
-        args = _claude_argv(
-            safe_mode=True, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=[],
-        )
-        assert "--dangerously-skip-permissions" not in args
+  def test_safe_mode_excludes_dangerous_skip(self):
+    """Safe mode (-S ⇒ the ``restricted`` tier) must NOT include
+    --dangerously-skip-permissions."""
+    args = _claude_argv(
+      safe_mode=True,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+    )
+    assert "--dangerously-skip-permissions" not in args
 
-    def test_editing_tier_excludes_dangerous_skip(self):
-        """SAFETY INVARIANT for the new middle tier (R-41): ``editing`` must
-        NEVER emit the full bypass — the whole point of the tier is that it is
-        NOT ``full``."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=[], access="editing",
-        )
-        assert "--dangerously-skip-permissions" not in args
-        assert "--permission-mode" in args
-        assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+  def test_editing_tier_excludes_dangerous_skip(self):
+    """SAFETY INVARIANT for the new middle tier (R-41): ``editing`` must
+    NEVER emit the full bypass — the whole point of the tier is that it is
+    NOT ``full``."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      access="editing",
+    )
+    assert "--dangerously-skip-permissions" not in args
+    assert "--permission-mode" in args
+    assert args[args.index("--permission-mode") + 1] == "acceptEdits"
 
-    def test_restricted_tier_is_the_prompting_mode(self):
-        """SAFETY INVARIANT: the stored ``restricted`` tier emits
-        ``--permission-mode default`` (everything prompts) — never the bypass
-        nor the edit mode.  The flag overrides a settings file's defaultMode."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=[], access="restricted",
-        )
-        assert "--dangerously-skip-permissions" not in args
-        assert "acceptEdits" not in args
-        assert args.count("--permission-mode") == 1
-        assert args[args.index("--permission-mode") + 1] == "default"
+  def test_restricted_tier_is_the_prompting_mode(self):
+    """SAFETY INVARIANT: the stored ``restricted`` tier emits
+    ``--permission-mode default`` (everything prompts) — never the bypass
+    nor the edit mode.  The flag overrides a settings file's defaultMode."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      access="restricted",
+    )
+    assert "--dangerously-skip-permissions" not in args
+    assert "acceptEdits" not in args
+    assert args.count("--permission-mode") == 1
+    assert args[args.index("--permission-mode") + 1] == "default"
 
-    def test_unknown_stored_tier_refuses_rather_than_running_permissive(self):
-        """SAFETY INVARIANT (R-41's inversion): an unrecognized stored value
-        RAISES.  The retired boolean coerced junk to the PERMISSIVE default —
-        i.e. a typo used to grant the bypass."""
-        from kanibako.errors import ConfigError
+  def test_unknown_stored_tier_refuses_rather_than_running_permissive(self):
+    """SAFETY INVARIANT (R-41's inversion): an unrecognized stored value
+    RAISES.  The retired boolean coerced junk to the PERMISSIVE default —
+    i.e. a typo used to grant the bypass."""
+    from kanibako.errors import ConfigError
 
-        with pytest.raises(ConfigError):
-            _claude_argv(
-                safe_mode=False, resume_mode=False, new_session=False,
-                is_new_project=False, extra_args=[], access="bogus",
-            )
+    with pytest.raises(ConfigError):
+      _claude_argv(
+        safe_mode=False,
+        resume_mode=False,
+        new_session=False,
+        is_new_project=False,
+        extra_args=[],
+        access="bogus",
+      )
 
-    def test_extra_args_with_resume_skips_continue(self):
-        """Passing --resume in extra_args must skip --continue."""
-        args = _claude_argv(
-            safe_mode=False, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=["--resume"],
-        )
-        assert "--continue" not in args
-        assert "--resume" in args
+  def test_extra_args_with_resume_skips_continue(self):
+    """Passing --resume in extra_args must skip --continue."""
+    args = _claude_argv(
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=["--resume"],
+    )
+    assert "--continue" not in args
+    assert "--resume" in args

@@ -96,6 +96,7 @@ instruction slot instead of sitting stale until the next launch.
 
 Usage: import-directives.py SOURCE DEST [--manifest PATH]
 """
+
 from __future__ import annotations
 
 import ast
@@ -175,194 +176,196 @@ _TRAILING_PUNCT = ".,;:!?)]}'\""
 
 
 def atomic_write_text(path: Path, data: str, mode: int = 0o644) -> None:
-    """Write *data* to *path* via a same-directory temp file + ``os.replace``.
+  """Write *data* to *path* via a same-directory temp file + ``os.replace``.
 
-    A harness reading a half-written instruction file is strictly worse than one
-    reading a stale file, so neither the flattened output nor its manifest is ever
-    visible partially written: a reader sees the old file or the new one.
+  A harness reading a half-written instruction file is strictly worse than one
+  reading a stale file, so neither the flattened output nor its manifest is ever
+  visible partially written: a reader sees the old file or the new one.
 
-    ⚑ This duplicates :func:`kanibako._atomic.atomic_write_text` on purpose. This
-    script is a STANDALONE box-side artifact -- it runs as ``python3 <path>`` inside
-    the box, where the kanibako package is a read-only bind that is deliberately NOT
-    on ``PYTHONPATH`` (``box_supervisor.scrub_bootstrap_pythonpath`` strips it before
-    any child starts), so it can import nothing from kanibako. Keep the two in step.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
-    )
-    tmp_path = Path(tmp_name)
+  ⚑ This duplicates :func:`kanibako._atomic.atomic_write_text` on purpose. This
+  script is a STANDALONE box-side artifact -- it runs as ``python3 <path>`` inside
+  the box, where the kanibako package is a read-only bind that is deliberately NOT
+  on ``PYTHONPATH`` (``box_supervisor.scrub_bootstrap_pythonpath`` strips it before
+  any child starts), so it can import nothing from kanibako. Keep the two in step.
+  """
+  path.parent.mkdir(parents=True, exist_ok=True)
+  fd, tmp_name = tempfile.mkstemp(
+    prefix=f".{path.name}.",
+    suffix=".tmp",
+    dir=str(path.parent),
+  )
+  tmp_path = Path(tmp_name)
+  try:
+    with os.fdopen(fd, "wb") as fh:
+      fh.write(data.encode("utf-8"))
+      fh.flush()
+      os.fsync(fh.fileno())
+    # mkstemp creates 0600; the instruction slot is read by the agent under this
+    # same uid but has always been 0644 -- keep it.
+    os.chmod(tmp_path, mode)
+    os.replace(tmp_path, path)
+  except BaseException:
     try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data.encode("utf-8"))
-            fh.flush()
-            os.fsync(fh.fileno())
-        # mkstemp creates 0600; the instruction slot is read by the agent under this
-        # same uid but has always been 0644 -- keep it.
-        os.chmod(tmp_path, mode)
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-        raise
+      tmp_path.unlink()
+    except OSError:
+      pass
+    raise
 
 
 def code_span_ranges(line: str) -> list[tuple[int, int]]:
-    """Character ranges covered by inline code spans on a line.
+  """Character ranges covered by inline code spans on a line.
 
-    Follows the CommonMark rule: a run of N backticks opens a span that closes at
-    the next run of exactly N backticks. Unclosed runs are treated as literal.
-    """
-    ranges: list[tuple[int, int]] = []
-    i, n = 0, len(line)
-    while i < n:
-        if line[i] != "`":
-            i += 1
-            continue
-        j = i
-        while j < n and line[j] == "`":
-            j += 1
-        ticks = j - i
-        k = j
-        closed = False
-        while k < n:
-            if line[k] == "`":
-                m = k
-                while m < n and line[m] == "`":
-                    m += 1
-                if m - k == ticks:
-                    ranges.append((i, m))
-                    i = m
-                    closed = True
-                    break
-                k = m
-            else:
-                k += 1
-        if not closed:
-            i = j
-    return ranges
+  Follows the CommonMark rule: a run of N backticks opens a span that closes at
+  the next run of exactly N backticks. Unclosed runs are treated as literal.
+  """
+  ranges: list[tuple[int, int]] = []
+  i, n = 0, len(line)
+  while i < n:
+    if line[i] != "`":
+      i += 1
+      continue
+    j = i
+    while j < n and line[j] == "`":
+      j += 1
+    ticks = j - i
+    k = j
+    closed = False
+    while k < n:
+      if line[k] == "`":
+        m = k
+        while m < n and line[m] == "`":
+          m += 1
+        if m - k == ticks:
+          ranges.append((i, m))
+          i = m
+          closed = True
+          break
+        k = m
+      else:
+        k += 1
+    if not closed:
+      i = j
+  return ranges
 
 
 def strip_comments(line: str, in_comment: bool) -> tuple[str, bool]:
-    """Remove HTML-comment spans from *line*.
+  """Remove HTML-comment spans from *line*.
 
-    Returns the surviving text plus the comment state at end of line. Handles a
-    comment that opens and/or closes mid-line, several comments on one line, and
-    a comment that spans lines (via the carried ``in_comment`` flag).
-    """
-    out: list[str] = []
-    i, n = 0, len(line)
-    while i < n:
-        if in_comment:
-            j = line.find(COMMENT_CLOSE, i)
-            if j < 0:
-                break                      # rest of the line is inside the comment
-            i = j + len(COMMENT_CLOSE)
-            in_comment = False
-        else:
-            j = line.find(COMMENT_OPEN, i)
-            if j < 0:
-                out.append(line[i:])
-                break
-            out.append(line[i:j])
-            i = j + len(COMMENT_OPEN)
-            in_comment = True
-    return "".join(out), in_comment
+  Returns the surviving text plus the comment state at end of line. Handles a
+  comment that opens and/or closes mid-line, several comments on one line, and
+  a comment that spans lines (via the carried ``in_comment`` flag).
+  """
+  out: list[str] = []
+  i, n = 0, len(line)
+  while i < n:
+    if in_comment:
+      j = line.find(COMMENT_CLOSE, i)
+      if j < 0:
+        break  # rest of the line is inside the comment
+      i = j + len(COMMENT_CLOSE)
+      in_comment = False
+    else:
+      j = line.find(COMMENT_OPEN, i)
+      if j < 0:
+        out.append(line[i:])
+        break
+      out.append(line[i:j])
+      i = j + len(COMMENT_OPEN)
+      in_comment = True
+  return "".join(out), in_comment
 
 
 def first_real_line(text: str) -> str | None:
-    """The first line of REAL text in *text*, or ``None`` if there is none.
+  """The first line of REAL text in *text*, or ``None`` if there is none.
 
-    🛑 A COMMENT IS NOT REAL TEXT. That is the whole point of this function, and
-    it is why it carries :func:`strip_comments`' state across lines instead of
-    testing each line on its own: every shipped canon file opens with a ``[STOCK]``
-    authoring block that runs to sixteen lines, and those blocks CONTAIN
-    HEADING-SHAPED LINES. ``COLLECTION.md`` has ``# Entrypoint to Canon`` at line
-    3, INSIDE the comment -- a naive "first line starting with ``#``" picks it and
-    titles the whole canon wrongly.
+  🛑 A COMMENT IS NOT REAL TEXT. That is the whole point of this function, and
+  it is why it carries :func:`strip_comments`' state across lines instead of
+  testing each line on its own: every shipped canon file opens with a ``[STOCK]``
+  authoring block that runs to sixteen lines, and those blocks CONTAIN
+  HEADING-SHAPED LINES. ``COLLECTION.md`` has ``# Entrypoint to Canon`` at line
+  3, INSIDE the comment -- a naive "first line starting with ``#``" picks it and
+  titles the whole canon wrongly.
 
-    ``None`` is the EMPTY verdict: a file with nothing but comments and whitespace
-    has no title to offer and contributes no row.
-    """
-    in_comment = False
-    for raw_line in text.splitlines():
-        line, in_comment = strip_comments(raw_line, in_comment)
-        if line.strip():
-            return line.strip()
-    return None
+  ``None`` is the EMPTY verdict: a file with nothing but comments and whitespace
+  has no title to offer and contributes no row.
+  """
+  in_comment = False
+  for raw_line in text.splitlines():
+    line, in_comment = strip_comments(raw_line, in_comment)
+    if line.strip():
+      return line.strip()
+  return None
 
 
 def gfm_anchor(text: str) -> str:
-    """Derive a heading's fragment id the way a GitHub-flavored renderer does.
+  """Derive a heading's fragment id the way a GitHub-flavored renderer does.
 
-    Measured against GitHub, and reproduced exactly: lowercase, spaces to ``-``,
-    then drop every character that is neither a word character nor ``-``.
+  Measured against GitHub, and reproduced exactly: lowercase, spaces to ``-``,
+  then drop every character that is neither a word character nor ``-``.
 
-    🛑 We control the TARGET we write but NOT the id the renderer computes -- an
-    id cannot be declared, only derived from the heading text -- so this function
-    is the whole reason a generated link resolves at all. Three consequences that
-    look like defects and are not:
+  🛑 We control the TARGET we write but NOT the id the renderer computes -- an
+  id cannot be declared, only derived from the heading text -- so this function
+  is the whole reason a generated link resolves at all. Three consequences that
+  look like defects and are not:
 
-      * ``.`` VANISHES, so depth is invisible in the id: ``1.1.2 Baz Man`` and
-        ``11.2 Baz Man`` both derive ``112-baz-man`` (see :func:`Flattener._unique_anchor`).
-      * ``&`` yields a DOUBLE hyphen -- ``1.1 Identity & Environment`` ->
-        ``11-identity--environment`` -- because the spaces around it become
-        hyphens and the ``&`` itself is dropped. That is GitHub's behavior; the
-        link resolves.
-      * Parentheses are dropped: ``1. Charter (Core)`` -> ``1-charter-core``.
-    """
-    return re.sub(r"[^\w-]", "", text.strip().lower().replace(" ", "-"))
+    * ``.`` VANISHES, so depth is invisible in the id: ``1.1.2 Baz Man`` and
+      ``11.2 Baz Man`` both derive ``112-baz-man`` (see :func:`Flattener._unique_anchor`).
+    * ``&`` yields a DOUBLE hyphen -- ``1.1 Identity & Environment`` ->
+      ``11-identity--environment`` -- because the spaces around it become
+      hyphens and the ``&`` itself is dropped. That is GitHub's behavior; the
+      link resolves.
+    * Parentheses are dropped: ``1. Charter (Core)`` -> ``1-charter-core``.
+  """
+  return re.sub(r"[^\w-]", "", text.strip().lower().replace(" ", "-"))
 
 
 def home_relative(path: Path) -> str:
-    """*path* spelled from HOME -- ``~/canon/...`` -- instead of as a host path.
+  """*path* spelled from HOME -- ``~/canon/...`` -- instead of as a host path.
 
-    🛑 SECURITY, NOT COSMETICS. The flattened artifact is SHIPPED
-    TEXT in the agent's instruction slot and travels wherever it is read or pasted, so a
-    host-absolute target in it hands every reader the host's layout and account name.
-    Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__`` sites
-    spell ``procedures/*``, the kickoff spells ``@~/canon/COLLECTION.md`` -- so a host
-    path is one this script INVENTED while resolving. Only RESOLVED paths reach here: an
-    authored ``~/`` link that is not an ``@`` ref never becomes a row at all (``LINK_RE``
-    skips it) and ships as written.
+  🛑 SECURITY, NOT COSMETICS. The flattened artifact is SHIPPED
+  TEXT in the agent's instruction slot and travels wherever it is read or pasted, so a
+  host-absolute target in it hands every reader the host's layout and account name.
+  Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__`` sites
+  spell ``procedures/*``, the kickoff spells ``@~/canon/COLLECTION.md`` -- so a host
+  path is one this script INVENTED while resolving. Only RESOLVED paths reach here: an
+  authored ``~/`` link that is not an ``@`` ref never becomes a row at all (``LINK_RE``
+  skips it) and ships as written.
 
-    ⚑ HOME IS THE ANCHOR because it is the only fixed point the three delivery modes
-    share: two (``--additional-context``, stdout) write no DEST, and the third -- the
-    SOURCE->DEST file mode the launch shim runs -- has the instruction slot as its DEST,
-    so a DEST-relative target would spell one path three ways. Canon reaches the box at
-    ``~/canon`` by the home bind in every mode.
+  ⚑ HOME IS THE ANCHOR because it is the only fixed point the three delivery modes
+  share: two (``--additional-context``, stdout) write no DEST, and the third -- the
+  SOURCE->DEST file mode the launch shim runs -- has the instruction slot as its DEST,
+  so a DEST-relative target would spell one path three ways. Canon reaches the box at
+  ``~/canon`` by the home bind in every mode.
 
-    ⚑ THE ``~/`` IS KEPT, not stripped: a bare ``canon/...`` claims "relative to the file
-    you are reading", false wherever this lands. It is the spelling canon itself uses, and
-    every home-anchored ``box_dest:`` in ``core-defaults.yaml``. A path OUTSIDE home comes
-    back UNCHANGED -- there is no true relative spelling, and this function never invents
-    one.
-    """
-    try:
-        return "~/" + path.relative_to(Path.home()).as_posix()
-    except ValueError:
-        return path.as_posix()
+  ⚑ THE ``~/`` IS KEPT, not stripped: a bare ``canon/...`` claims "relative to the file
+  you are reading", false wherever this lands. It is the spelling canon itself uses, and
+  every home-anchored ``box_dest:`` in ``core-defaults.yaml``. A path OUTSIDE home comes
+  back UNCHANGED -- there is no true relative spelling, and this function never invents
+  one.
+  """
+  try:
+    return "~/" + path.relative_to(Path.home()).as_posix()
+  except ValueError:
+    return path.as_posix()
 
 
 def _in_plugin_chapter(path: Path) -> bool:
-    """True when *path* is at or under the plugin chapter root."""
-    try:
-        chapter_root = Path.home() / PLUGIN_CHAPTER_REL
-        resolved = path.resolve()
-        resolved.relative_to(chapter_root.resolve())
-        return True
-    except ValueError:
-        return False
+  """True when *path* is at or under the plugin chapter root."""
+  try:
+    chapter_root = Path.home() / PLUGIN_CHAPTER_REL
+    resolved = path.resolve()
+    resolved.relative_to(chapter_root.resolve())
+    return True
+  except ValueError:
+    return False
 
 
 def _anchor(raw: str, importing_file: Path) -> Path:
-    """*raw* with ``~`` expanded, made absolute, or joined onto *importing_file*."""
-    text = os.path.expanduser(raw)
-    if os.path.isabs(text):
-        return Path(text)
-    return importing_file.parent / text
+  """*raw* with ``~`` expanded, made absolute, or joined onto *importing_file*."""
+  text = os.path.expanduser(raw)
+  if os.path.isabs(text):
+    return Path(text)
+  return importing_file.parent / text
 
 
 #: Markdown has no ``#######``. A generated heading is clamped here rather than
@@ -379,109 +382,110 @@ PLUGIN_CHAPTER_REL = "canon/charter/agent"
 
 
 def assign_section_numbers(
-    rows: list[tuple[str | None, bool]],
-    enclosing_level: int = 1,
+  rows: list[tuple[str | None, bool]],
+  enclosing_level: int = 1,
 ) -> list[tuple[str | None, int] | None]:
-    """THE one place a section number is parsed, renumbered or formatted.
+  """THE one place a section number is parsed, renumbered or formatted.
 
-    *rows* are ONE LIST's generated rows in document order -- the run of rows
-    under a single enclosing heading -- each ``(authored number or None,
-    dropped)``; ``None`` marks a link that sits outside a list.
-    *enclosing_level* is the level of the markdown heading that list was written
-    under. Returns one entry per row: ``None`` if the row is dropped, else
-    ``(number text or None, heading depth)``.
+  *rows* are ONE LIST's generated rows in document order -- the run of rows
+  under a single enclosing heading -- each ``(authored number or None,
+  dropped)``; ``None`` marks a link that sits outside a list.
+  *enclosing_level* is the level of the markdown heading that list was written
+  under. Returns one entry per row: ``None`` if the row is dropped, else
+  ``(number text or None, heading depth)``.
 
-    ⚑ SINGLE SEAM, DELIBERATELY (design §5d). The numbers are AUTHORED today and
-    may later be COMPUTED from list nesting instead; every caller here asks only
-    "what number and what depth does this row get", so that change replaces this
-    function's body and touches nothing else. Do not parse, split, join or format
-    a number anywhere outside it.
+  ⚑ SINGLE SEAM, DELIBERATELY (design §5d). The numbers are AUTHORED today and
+  may later be COMPUTED from list nesting instead; every caller here asks only
+  "what number and what depth does this row get", so that change replaces this
+  function's body and touches nothing else. Do not parse, split, join or format
+  a number anywhere outside it.
 
-    Four rules live here:
+  Four rules live here:
 
-    * **Depth is the ENCLOSING HEADING LEVEL plus the row's nesting RELATIVE to
-      the shallowest row in the same list** -- ``enclosing + parts(row) -
-      min(parts)``. Clamped to 1..:data:`MAX_HEADING_DEPTH`.
-      🛑 RELATIVE, never absolute. Directive numbering is FILE-LOCAL and restarts
-      inside every file, so an absolute reading breaks in BOTH directions: a file
-      whose table of contents reads ``1.`` ``2.`` ``3.`` under a ``## Library``
-      heading would head its includes at H1, ABOVE the section they came from,
-      while a ``1.1`` list under a ``## Contents`` heading would be buried at H3
-      when its author put it at H2. Subtracting the list's own shallowest depth
-      makes the number express nesting WITHIN the list and nothing else.
-      ⚑ **Composition is carried by the AUTHORED headings, not computed here.**
-      An included file's body is emitted verbatim, so the ``### Rules`` it wrote
-      is still ``###`` in the flattened document; measuring against that heading
-      is what makes an include from a file that was itself included land at the
-      right depth. The one thing this function cannot read off the page is the
-      enclosing level for a link with NO heading above it -- there the caller
-      supplies the file's OWN base level (see :meth:`Flattener._finalize_links`),
-      which is the same section-level rule applied one frame out.
-      ⚑ ``min(parts)`` is taken over the list AS AUTHORED, dropped rows included,
-      so excluding a chapter never silently promotes its siblings a level.
-    * **The terminal dot is a depth MARKER, not inconsistency** -- a single-part
-      number carries one (``1.`` ``2.`` ``3.``), a multi-part number does not
-      (``1.1`` ``2.4``). It is FORMATTING, applied to whatever number a row ends
-      up with, which is what keeps it right across a renumber.
-    * **Renumbering is minimal, not positional.** A survivor's last part drops by
-      the number of siblings dropped BEFORE it, and descendants follow their
-      parent's new number. Authored gaps therefore survive untouched when nothing
-      is dropped (``1.1`` beside ``1.1.2`` and ``11.2`` all keep their numbers),
-      which a positional resequence would silently rewrite.
+  * **Depth is the ENCLOSING HEADING LEVEL plus the row's nesting RELATIVE to
+    the shallowest row in the same list** -- ``enclosing + parts(row) -
+    min(parts)``. Clamped to 1..:data:`MAX_HEADING_DEPTH`.
+    🛑 RELATIVE, never absolute. Directive numbering is FILE-LOCAL and restarts
+    inside every file, so an absolute reading breaks in BOTH directions: a file
+    whose table of contents reads ``1.`` ``2.`` ``3.`` under a ``## Library``
+    heading would head its includes at H1, ABOVE the section they came from,
+    while a ``1.1`` list under a ``## Contents`` heading would be buried at H3
+    when its author put it at H2. Subtracting the list's own shallowest depth
+    makes the number express nesting WITHIN the list and nothing else.
+    ⚑ **Composition is carried by the AUTHORED headings, not computed here.**
+    An included file's body is emitted verbatim, so the ``### Rules`` it wrote
+    is still ``###`` in the flattened document; measuring against that heading
+    is what makes an include from a file that was itself included land at the
+    right depth. The one thing this function cannot read off the page is the
+    enclosing level for a link with NO heading above it -- there the caller
+    supplies the file's OWN base level (see :meth:`Flattener._finalize_links`),
+    which is the same section-level rule applied one frame out.
+    ⚑ ``min(parts)`` is taken over the list AS AUTHORED, dropped rows included,
+    so excluding a chapter never silently promotes its siblings a level.
+  * **The terminal dot is a depth MARKER, not inconsistency** -- a single-part
+    number carries one (``1.`` ``2.`` ``3.``), a multi-part number does not
+    (``1.1`` ``2.4``). It is FORMATTING, applied to whatever number a row ends
+    up with, which is what keeps it right across a renumber.
+  * **Renumbering is minimal, not positional.** A survivor's last part drops by
+    the number of siblings dropped BEFORE it, and descendants follow their
+    parent's new number. Authored gaps therefore survive untouched when nothing
+    is dropped (``1.1`` beside ``1.1.2`` and ``11.2`` all keep their numbers),
+    which a positional resequence would silently rewrite.
 
-    A row outside a list takes the ENCLOSING LEVEL exactly (its relative term is
-    zero), so a loose include is headed as a sibling of the section it was
-    written in -- which is also what the numbered rows of that same list get when
-    they are at its shallowest depth.
+  A row outside a list takes the ENCLOSING LEVEL exactly (its relative term is
+  zero), so a loose include is headed as a sibling of the section it was
+  written in -- which is also what the numbered rows of that same list get when
+  they are at its shallowest depth.
 
-    ⚑ RE-DERIVED under this rule, and it still holds: a renumber changes a row's
-    DIGITS, never its part COUNT, and ``min(parts)`` is taken over the authored
-    list, so **no surviving row's depth moves when a sibling drops** -- the
-    terminal dot is right by construction rather than by a rule applied after the
-    fact. What DOES move depth is the enclosing level: the identical list read
-    under a ``###`` heading heads one level deeper than under a ``##`` one. Depth
-    never reaches an id, so no target changes either way. Promoting
-    a row whose parent dropped WOULD change depth -- it is deliberately not done,
-    because nothing in the design says what number the promoted row should take
-    and two survivors would compete for the same one. The formatter is also what
-    normalizes a malformed authored number: ``1.1.`` renders as ``1.1``.
-    """
-    def parse(text: str) -> list[int]:
-        return [int(part) for part in text.rstrip(".").split(".")]
+  ⚑ RE-DERIVED under this rule, and it still holds: a renumber changes a row's
+  DIGITS, never its part COUNT, and ``min(parts)`` is taken over the authored
+  list, so **no surviving row's depth moves when a sibling drops** -- the
+  terminal dot is right by construction rather than by a rule applied after the
+  fact. What DOES move depth is the enclosing level: the identical list read
+  under a ``###`` heading heads one level deeper than under a ``##`` one. Depth
+  never reaches an id, so no target changes either way. Promoting
+  a row whose parent dropped WOULD change depth -- it is deliberately not done,
+  because nothing in the design says what number the promoted row should take
+  and two survivors would compete for the same one. The formatter is also what
+  normalizes a malformed authored number: ``1.1.`` renders as ``1.1``.
+  """
 
-    def form(parts: list[int]) -> str:
-        # The terminal dot, and the only place it is written.
-        body = ".".join(str(part) for part in parts)
-        return f"{body}." if len(parts) == 1 else body
+  def parse(text: str) -> list[int]:
+    return [int(part) for part in text.rstrip(".").split(".")]
 
-    parsed = [None if number is None else parse(number) for number, _ in rows]
-    depths = [len(parts) for parts in parsed if parts is not None]
-    shallowest = min(depths) if depths else 1
+  def form(parts: list[int]) -> str:
+    # The terminal dot, and the only place it is written.
+    body = ".".join(str(part) for part in parts)
+    return f"{body}." if len(parts) == 1 else body
 
-    def level(parts_count: int) -> int:
-        return min(max(enclosing_level + parts_count - shallowest, 1), MAX_HEADING_DEPTH)
+  parsed = [None if number is None else parse(number) for number, _ in rows]
+  depths = [len(parts) for parts in parsed if parts is not None]
+  shallowest = min(depths) if depths else 1
 
-    dropped_before: dict[tuple[int, ...], int] = {}   # parent key -> drops so far
-    renumbered: dict[tuple[int, ...], tuple[int, ...]] = {}  # authored -> final
-    out: list[tuple[str | None, int] | None] = []
-    for (_, dropped), parts in zip(rows, parsed):
-        if parts is None:
-            out.append(None if dropped else (None, level(shallowest)))
-            continue
-        parent = tuple(parts[:-1])
-        if dropped:
-            dropped_before[parent] = dropped_before.get(parent, 0) + 1
-            out.append(None)
-            continue
-        # The parent's FINAL number if the parent row is itself a row of this
-        # file that survived; its authored one otherwise (a top-level row has no
-        # parent row, and a row whose parent was dropped keeps what it was given
-        # rather than inventing a promotion nobody specified).
-        final = list(renumbered.get(parent, parent))
-        final.append(parts[-1] - dropped_before.get(parent, 0))
-        renumbered[tuple(parts)] = tuple(final)
-        out.append((form(final), level(len(final))))
-    return out
+  def level(parts_count: int) -> int:
+    return min(max(enclosing_level + parts_count - shallowest, 1), MAX_HEADING_DEPTH)
+
+  dropped_before: dict[tuple[int, ...], int] = {}  # parent key -> drops so far
+  renumbered: dict[tuple[int, ...], tuple[int, ...]] = {}  # authored -> final
+  out: list[tuple[str | None, int] | None] = []
+  for (_, dropped), parts in zip(rows, parsed):
+    if parts is None:
+      out.append(None if dropped else (None, level(shallowest)))
+      continue
+    parent = tuple(parts[:-1])
+    if dropped:
+      dropped_before[parent] = dropped_before.get(parent, 0) + 1
+      out.append(None)
+      continue
+    # The parent's FINAL number if the parent row is itself a row of this
+    # file that survived; its authored one otherwise (a top-level row has no
+    # parent row, and a row whose parent was dropped keeps what it was given
+    # rather than inventing a promotion nobody specified).
+    final = list(renumbered.get(parent, parent))
+    final.append(parts[-1] - dropped_before.get(parent, 0))
+    renumbered[tuple(parts)] = tuple(final)
+    out.append((form(final), level(len(final))))
+  return out
 
 
 # ==========================================================================
@@ -497,48 +501,48 @@ def assign_section_numbers(
 
 
 class FormatError(Exception):
-    """A ``title_fmt`` that cannot name its title slot.
+  """A ``title_fmt`` that cannot name its title slot.
 
-    Raised when the format string does not carry EXACTLY ONE unescaped ``@``, or
-    when its braces do not balance. ⚑ ``@@`` is a LITERAL ``@`` and is not a
-    slot, so ``@@@@`` carries zero of them and is refused exactly as ``""`` is.
-    """
+  Raised when the format string does not carry EXACTLY ONE unescaped ``@``, or
+  when its braces do not balance. ⚑ ``@@`` is a LITERAL ``@`` and is not a
+  slot, so ``@@@@`` carries zero of them and is refused exactly as ``""`` is.
+  """
 
 
 def super_of(entry: str, sep: str = ".") -> str:
-    """The element of which *entry* is a section -- the ``__SUPER__`` identifier.
+  """The element of which *entry* is a section -- the ``__SUPER__`` identifier.
 
-    ``sep`` is the separator to read *entry* with; the OTHER separator is
-    ordinary text inside a part, which is what makes ``1.2-3`` (with ``.``) yield
-    ``1`` while ``1-2.3`` yields ``1-2``.
+  ``sep`` is the separator to read *entry* with; the OTHER separator is
+  ordinary text inside a part, which is what makes ``1.2-3`` (with ``.``) yield
+  ``1`` while ``1-2.3`` yields ``1-2``.
 
-    🛑 NO SEPARATOR MEANS NO PARENT. ``rpartition`` puts an unsplit string in its
-    TAIL, so the head it returns is already ``""`` -- ``super_of("1")`` is ``""``
-    and not ``"1"``, which is what stops a root element being its own parent.
-    """
-    head, found, _tail = entry.rpartition(sep)
-    return head if found else ""
+  🛑 NO SEPARATOR MEANS NO PARENT. ``rpartition`` puts an unsplit string in its
+  TAIL, so the head it returns is already ``""`` -- ``super_of("1")`` is ``""``
+  and not ``"1"``, which is what stops a root element being its own parent.
+  """
+  head, found, _tail = entry.rpartition(sep)
+  return head if found else ""
 
 
 def evaluate_expression(expr: str, scope: dict[str, object]) -> object:
-    """Evaluate ONE ``{expr}`` token of a title format. THE EVALUATOR SEAM.
+  """Evaluate ONE ``{expr}`` token of a title format. THE EVALUATOR SEAM.
 
-    🛑 The mini-language *"is just python (at least for now)"* [Jei:2026-09-12],
-    and *"at least for now"* is the whole reason this is a function rather than an
-    ``eval`` inlined in :func:`render_format`'s scanner: changing the language
-    replaces this body and touches nothing else.
+  🛑 The mini-language *"is just python (at least for now)"* [Jei:2026-09-12],
+  and *"at least for now"* is the whole reason this is a function rather than an
+  ``eval`` inlined in :func:`render_format`'s scanner: changing the language
+  replaces this body and touches nothing else.
 
-    ⚑ NOT A SANDBOX, and not pretending to be one. Every assembly invocation runs
-    IN-BOX -- the SessionStart hook, the launch-time shim before ``exec``, and the
-    PID-1 re-flatten -- so an agent whose prose reaches this evaluator already
-    holds a shell there. A stripped ``__builtins__`` would buy no safety and would
-    break an expression as ordinary as ``str(...)``.
+  ⚑ NOT A SANDBOX, and not pretending to be one. Every assembly invocation runs
+  IN-BOX -- the SessionStart hook, the launch-time shim before ``exec``, and the
+  PID-1 re-flatten -- so an agent whose prose reaches this evaluator already
+  holds a shell there. A stripped ``__builtins__`` would buy no safety and would
+  break an expression as ordinary as ``str(...)``.
 
-    The scope is COPIED before it is handed over: ``eval`` writes ``__builtins__``
-    into the globals mapping it is given, and the caller's scope is reused across
-    every entry of one :meth:`Flattener.preplink` call.
-    """
-    return eval(expr, dict(scope))
+  The scope is COPIED before it is handed over: ``eval`` writes ``__builtins__``
+  into the globals mapping it is given, and the caller's scope is reused across
+  every entry of one :meth:`Flattener.preplink` call.
+  """
+  return eval(expr, dict(scope))
 
 
 #: What a caller means by "no format": the title, alone. ⚑ Spelled ``@`` rather
@@ -548,101 +552,99 @@ DEFAULT_TITLE_FMT = "@"
 
 
 def _count_title_slots(fmt: str) -> int:
-    """Unescaped ``@`` in *fmt*, counted in ONE left-to-right walk.
+  """Unescaped ``@`` in *fmt*, counted in ONE left-to-right walk.
 
-    ⚑ Walks the ORIGINAL string, never a partly-rewritten copy of it: an escape
-    that has already been consumed cannot be told from one the author wrote, which
-    is the trap that makes ``@@@`` and ``@@@@`` differ for non-obvious reasons
-    under chained ``.replace()``.
-    """
-    count = 0
-    i, n = 0, len(fmt)
-    while i < n:
-        if fmt[i] != "@":
-            i += 1
-        elif fmt.startswith("@@", i):
-            i += 2                      # an escaped literal: not a slot
-        else:
-            count += 1
-            i += 1
-    return count
+  ⚑ Walks the ORIGINAL string, never a partly-rewritten copy of it: an escape
+  that has already been consumed cannot be told from one the author wrote, which
+  is the trap that makes ``@@@`` and ``@@@@`` differ for non-obvious reasons
+  under chained ``.replace()``.
+  """
+  count = 0
+  i, n = 0, len(fmt)
+  while i < n:
+    if fmt[i] != "@":
+      i += 1
+    elif fmt.startswith("@@", i):
+      i += 2  # an escaped literal: not a slot
+    else:
+      count += 1
+      i += 1
+  return count
 
 
 def render_format(fmt: str, title: str, scope: dict[str, object]) -> str:
-    """Render one ``title_fmt``. 🛑 THIS IS NOT ``str.format``.
+  """Render one ``title_fmt``. 🛑 THIS IS NOT ``str.format``.
 
-    Measured, which is why it has its own name: ``"{__SECTION__(source, sep)}
-    {}".format("Foobar Info")`` raises ``KeyError``. The braces here are an
-    EVALUATION MARKER, not a ``str.format`` field.
+  Measured, which is why it has its own name: ``"{__SECTION__(source, sep)}
+  {}".format("Foobar Info")`` raises ``KeyError``. The braces here are an
+  EVALUATION MARKER, not a ``str.format`` field.
 
-    TWO STAGES, in that order:
+  TWO STAGES, in that order:
 
-    1. **Validate.** ``@`` is the title placeholder and ``@@`` is a literal ``@``
-       that does not count toward it; a format with zero unescaped ``@``, or more
-       than one, is a :exc:`FormatError`.
-    2. **Render**, in ONE left-to-right scan over the ORIGINAL format string.
-       Five tokens: ``{{`` -> ``{`` · ``}}`` -> ``}`` · ``@@`` -> ``@`` · ``{}``
-       and ``@`` -> the title · ``{expr}`` -> :func:`evaluate_expression` with
-       *scope* as its namespace.
+  1. **Validate.** ``@`` is the title placeholder and ``@@`` is a literal ``@``
+     that does not count toward it; a format with zero unescaped ``@``, or more
+     than one, is a :exc:`FormatError`.
+  2. **Render**, in ONE left-to-right scan over the ORIGINAL format string.
+     Five tokens: ``{{`` -> ``{`` · ``}}`` -> ``}`` · ``@@`` -> ``@`` · ``{}``
+     and ``@`` -> the title · ``{expr}`` -> :func:`evaluate_expression` with
+     *scope* as its namespace.
 
-    Three rules the scanner exists to hold, each one a failure already measured:
+  Three rules the scanner exists to hold, each one a failure already measured:
 
-    * **SUBSTITUTED VALUES ARE INERT.** Nothing appended to the output is ever
-      read again, so a title carrying a brace -- titles come from arbitrary
-      markdown -- is emitted, not parsed.
-    * **UNESCAPE EXACTLY ONCE.** Recognition and resolution happen in the same
-      pass and the result is final. 🛑 Never re-run this on its own output: pass
-      one consumed ``{{``, so pass two would read the ``{`` it left as an
-      expression.
-    * **ONE SCANNER, NOT CHAINED ``.replace()``.** Chained replaces make their own
-      ordering load-bearing; every token here is decided by position in a single
-      walk, so no token can be seen through another one's leavings.
+  * **SUBSTITUTED VALUES ARE INERT.** Nothing appended to the output is ever
+    read again, so a title carrying a brace -- titles come from arbitrary
+    markdown -- is emitted, not parsed.
+  * **UNESCAPE EXACTLY ONCE.** Recognition and resolution happen in the same
+    pass and the result is final. 🛑 Never re-run this on its own output: pass
+    one consumed ``{{``, so pass two would read the ``{`` it left as an
+    expression.
+  * **ONE SCANNER, NOT CHAINED ``.replace()``.** Chained replaces make their own
+    ordering load-bearing; every token here is decided by position in a single
+    walk, so no token can be seen through another one's leavings.
 
-    🛑 ``{}`` is DEFINED as the title slot rather than left to fall out as an
-    expression that happens to be empty -- otherwise ``{ }`` would behave
-    surprisingly (it is an expression, and an invalid one).
+  🛑 ``{}`` is DEFINED as the title slot rather than left to fall out as an
+  expression that happens to be empty -- otherwise ``{ }`` would behave
+  surprisingly (it is an expression, and an invalid one).
 
-    An unclosed ``{`` and a lone ``}`` are refused, which is what ``str.format``
-    does with the same input; the ``{{``/``}}`` escapes are that convention
-    adopted, not a competing one. A consequence of the same simple scan: an
-    expression may not itself contain ``}``.
-    """
-    slots = _count_title_slots(fmt)
-    if slots != 1:
-        raise FormatError(
-            f"link format must contain exactly one '@' symbol (found {slots}): {fmt!r}"
-        )
-    out: list[str] = []
-    i, n = 0, len(fmt)
-    while i < n:
-        pair = fmt[i:i + 2]
-        if pair == "{{":
-            out.append("{")
-            i += 2
-        elif pair == "}}":
-            out.append("}")
-            i += 2
-        elif pair == "@@":
-            out.append("@")
-            i += 2
-        elif pair == "{}":
-            out.append(title)
-            i += 2
-        elif fmt[i] == "@":
-            out.append(title)
-            i += 1
-        elif fmt[i] == "{":
-            close = fmt.find("}", i + 1)
-            if close < 0:
-                raise FormatError(f"unclosed '{{' in link format: {fmt!r}")
-            out.append(str(evaluate_expression(fmt[i + 1:close], scope)))
-            i = close + 1
-        elif fmt[i] == "}":
-            raise FormatError(f"single '}}' in link format: {fmt!r}")
-        else:
-            out.append(fmt[i])
-            i += 1
-    return "".join(out)
+  An unclosed ``{`` and a lone ``}`` are refused, which is what ``str.format``
+  does with the same input; the ``{{``/``}}`` escapes are that convention
+  adopted, not a competing one. A consequence of the same simple scan: an
+  expression may not itself contain ``}``.
+  """
+  slots = _count_title_slots(fmt)
+  if slots != 1:
+    raise FormatError(f"link format must contain exactly one '@' symbol (found {slots}): {fmt!r}")
+  out: list[str] = []
+  i, n = 0, len(fmt)
+  while i < n:
+    pair = fmt[i : i + 2]
+    if pair == "{{":
+      out.append("{")
+      i += 2
+    elif pair == "}}":
+      out.append("}")
+      i += 2
+    elif pair == "@@":
+      out.append("@")
+      i += 2
+    elif pair == "{}":
+      out.append(title)
+      i += 2
+    elif fmt[i] == "@":
+      out.append(title)
+      i += 1
+    elif fmt[i] == "{":
+      close = fmt.find("}", i + 1)
+      if close < 0:
+        raise FormatError(f"unclosed '{{' in link format: {fmt!r}")
+      out.append(str(evaluate_expression(fmt[i + 1 : close], scope)))
+      i = close + 1
+    elif fmt[i] == "}":
+      raise FormatError(f"single '}}' in link format: {fmt!r}")
+    else:
+      out.append(fmt[i])
+      i += 1
+  return "".join(out)
 
 
 #: A path that is a PATTERN rather than a single file. The three characters
@@ -662,12 +664,12 @@ _GLOB_MAGIC_RE = re.compile(r"[*?\[]")
 
 
 class TemplateCallError(Exception):
-    """A line SHAPED like a template call that cannot be read as one.
+  """A line SHAPED like a template call that cannot be read as one.
 
-    Separate from :exc:`FormatError`, which is about a format string's title
-    slot: this one is about the CALL -- a syntax error, an unknown keyword, too
-    many arguments, or an argument that is not a literal.
-    """
+  Separate from :exc:`FormatError`, which is about a format string's title
+  slot: this one is about the CALL -- a syntax error, an unknown keyword, too
+  many arguments, or an argument that is not a literal.
+  """
 
 
 #: The default ``title_fmt`` of the two SECTION wrappers: the id ``__SECTION__``
@@ -682,10 +684,10 @@ _TEMPLATE_PARAMS = ("target", "source", "sep", "title_fmt")
 #: ⚑ THE WRAPPER RELATION, held as data rather than as two methods that would
 #: differ in nothing but a default.
 _TEMPLATE_CALLS: dict[str, tuple[bool, str | None]] = {
-    "__IMPORT__":        (True,  None),
-    "__LINK__":          (False, None),
-    "__IMPORTSECTION__": (True,  SECTION_TITLE_FMT),
-    "__LINKSECTION__":   (False, SECTION_TITLE_FMT),
+  "__IMPORT__": (True, None),
+  "__LINK__": (False, None),
+  "__IMPORTSECTION__": (True, SECTION_TITLE_FMT),
+  "__LINKSECTION__": (False, SECTION_TITLE_FMT),
 }
 
 # A line that is ONE call and nothing else. ⚑ WHOLE-LINE, deliberately: every
@@ -693,1256 +695,1250 @@ _TEMPLATE_CALLS: dict[str, tuple[bool, str | None]] = {
 # prose, a table row or a quoted example for a call. Leading whitespace is kept
 # and put back in front of every line the call expands to.
 _TEMPLATE_NAME = "(?:" + "|".join(map(re.escape, _TEMPLATE_CALLS)) + ")"
-_TEMPLATE_CALL_RE = re.compile(
-    rf"^(?P<indent>[ \t]*)(?P<name>{_TEMPLATE_NAME})\s*\(.*\)\s*$"
-)
+_TEMPLATE_CALL_RE = re.compile(rf"^(?P<indent>[ \t]*)(?P<name>{_TEMPLATE_NAME})\s*\(.*\)\s*$")
 _TEMPLATE_MENTION_RE = re.compile(rf"(?P<name>{_TEMPLATE_NAME})\s*\(")
 
 
 def _template_literal(node: ast.expr, param: str, name: str) -> object:
-    """One argument of a template call, which must be a LITERAL.
+  """One argument of a template call, which must be a LITERAL.
 
-    ⚑ :func:`ast.literal_eval`, never the ``{expr}`` evaluator: a call's
-    arguments are authored path and format strings, not a second expression
-    surface. A ``title_fmt`` may be ``None`` (meaning "the form's default");
-    every other argument is a string.
-    """
-    try:
-        value = ast.literal_eval(node)
-    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
-        raise TemplateCallError(
-            f"{name}: {param} must be a literal, not an expression"
-        ) from None
-    if param == "title_fmt":
-        if value is not None and not isinstance(value, str):
-            raise TemplateCallError(f"{name}: title_fmt must be a string or None")
-    elif not isinstance(value, str):
-        raise TemplateCallError(f"{name}: {param} must be a string")
-    return value
+  ⚑ :func:`ast.literal_eval`, never the ``{expr}`` evaluator: a call's
+  arguments are authored path and format strings, not a second expression
+  surface. A ``title_fmt`` may be ``None`` (meaning "the form's default");
+  every other argument is a string.
+  """
+  try:
+    value = ast.literal_eval(node)
+  except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+    raise TemplateCallError(f"{name}: {param} must be a literal, not an expression") from None
+  if param == "title_fmt":
+    if value is not None and not isinstance(value, str):
+      raise TemplateCallError(f"{name}: title_fmt must be a string or None")
+  elif not isinstance(value, str):
+    raise TemplateCallError(f"{name}: {param} must be a string")
+  return value
 
 
 def parse_template_call(line: str) -> tuple[str, str, dict[str, object]] | None:
-    """Read *line* as one template call: ``(name, indent, arguments)``.
+  """Read *line* as one template call: ``(name, indent, arguments)``.
 
-    ``None`` means the line is not a call at all and must be left alone;
-    :exc:`TemplateCallError` means it is shaped like one and is malformed, which
-    the caller reports rather than dying on.
+  ``None`` means the line is not a call at all and must be left alone;
+  :exc:`TemplateCallError` means it is shaped like one and is malformed, which
+  the caller reports rather than dying on.
 
-    🛑 PARSED WITH :mod:`ast`, never with a regex over the argument text. A regex
-    that split on commas would break on the first path or format containing one,
-    and KEYWORD arguments are supported here even though no call site uses one
-    yet -- the signature has four parameters and a source is entitled to name
-    them.
-    """
-    m = _TEMPLATE_CALL_RE.match(line)
-    if m is None:
-        return None
-    name = m.group("name")
-    try:
-        node = ast.parse(line.strip(), mode="eval").body
-    except (SyntaxError, ValueError):
-        raise TemplateCallError(f"{name}: cannot parse call: {line.strip()!r}") from None
-    if (
-        not isinstance(node, ast.Call)
-        or not isinstance(node.func, ast.Name)
-        or node.func.id != name
-    ):
-        raise TemplateCallError(f"{name}: not a single call: {line.strip()!r}")
-    if len(node.args) > len(_TEMPLATE_PARAMS):
-        raise TemplateCallError(
-            f"{name} takes at most {len(_TEMPLATE_PARAMS)} arguments, "
-            f"got {len(node.args)}"
-        )
-    args: dict[str, object] = {}
-    for param, value in zip(_TEMPLATE_PARAMS, node.args):
-        args[param] = _template_literal(value, param, name)
-    for kw in node.keywords:
-        if kw.arg is None:
-            raise TemplateCallError(f"{name}: ** arguments are not supported")
-        if kw.arg not in _TEMPLATE_PARAMS:
-            raise TemplateCallError(f"{name}: unknown argument {kw.arg!r}")
-        if kw.arg in args:
-            raise TemplateCallError(f"{name}: {kw.arg!r} given twice")
-        args[kw.arg] = _template_literal(kw.value, kw.arg, name)
-    if "target" not in args:
-        raise TemplateCallError(f"{name}: no target")
-    return name, m.group("indent"), args
+  🛑 PARSED WITH :mod:`ast`, never with a regex over the argument text. A regex
+  that split on commas would break on the first path or format containing one,
+  and KEYWORD arguments are supported here even though no call site uses one
+  yet -- the signature has four parameters and a source is entitled to name
+  them.
+  """
+  m = _TEMPLATE_CALL_RE.match(line)
+  if m is None:
+    return None
+  name = m.group("name")
+  try:
+    node = ast.parse(line.strip(), mode="eval").body
+  except (SyntaxError, ValueError):
+    raise TemplateCallError(f"{name}: cannot parse call: {line.strip()!r}") from None
+  if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != name:
+    raise TemplateCallError(f"{name}: not a single call: {line.strip()!r}")
+  if len(node.args) > len(_TEMPLATE_PARAMS):
+    raise TemplateCallError(
+      f"{name} takes at most {len(_TEMPLATE_PARAMS)} arguments, got {len(node.args)}"
+    )
+  args: dict[str, object] = {}
+  for param, value in zip(_TEMPLATE_PARAMS, node.args):
+    args[param] = _template_literal(value, param, name)
+  for kw in node.keywords:
+    if kw.arg is None:
+      raise TemplateCallError(f"{name}: ** arguments are not supported")
+    if kw.arg not in _TEMPLATE_PARAMS:
+      raise TemplateCallError(f"{name}: unknown argument {kw.arg!r}")
+    if kw.arg in args:
+      raise TemplateCallError(f"{name}: {kw.arg!r} given twice")
+    args[kw.arg] = _template_literal(kw.value, kw.arg, name)
+  if "target" not in args:
+    raise TemplateCallError(f"{name}: no target")
+  return name, m.group("indent"), args
 
 
 def misplaced_template_call(line: str) -> str | None:
-    """The name of a call on *line* that is NOT the whole line, else ``None``.
+  """The name of a call on *line* that is NOT the whole line, else ``None``.
 
-    Such a call is never run -- only a whole-line call is -- so it would pass
-    through as literal prose with the content it names silently missing. One
-    inside a code span is a QUOTED example and does not count.
-    """
-    if _TEMPLATE_CALL_RE.match(line):
-        return None
-    spans = code_span_ranges(line)
-    for m in _TEMPLATE_MENTION_RE.finditer(line):
-        if not any(s <= m.start() < e for s, e in spans):
-            return m.group("name")
+  Such a call is never run -- only a whole-line call is -- so it would pass
+  through as literal prose with the content it names silently missing. One
+  inside a code span is a QUOTED example and does not count.
+  """
+  if _TEMPLATE_CALL_RE.match(line):
     return None
+  spans = code_span_ranges(line)
+  for m in _TEMPLATE_MENTION_RE.finditer(line):
+    if not any(s <= m.start() < e for s, e in spans):
+      return m.group("name")
+  return None
 
 
 def split_trailing_punct(text: str) -> tuple[str, str]:
-    """Split sentence punctuation off the end of a path, e.g. ``foo.md.``."""
-    trailing = ""
-    while text and text[-1] in _TRAILING_PUNCT:
-        trailing = text[-1] + trailing
-        text = text[:-1]
-    return text, trailing
+  """Split sentence punctuation off the end of a path, e.g. ``foo.md.``."""
+  trailing = ""
+  while text and text[-1] in _TRAILING_PUNCT:
+    trailing = text[-1] + trailing
+    text = text[:-1]
+  return text, trailing
 
 
 class _Row:
-    """One ``[text](@path)`` occurrence, recorded in pass one, resolved in pass two.
+  """One ``[text](@path)`` occurrence, recorded in pass one, resolved in pass two.
 
-    ⚑ Written out by hand rather than as a ``@dataclass``: this script is loaded
-    from its FILE (``spec_from_file_location`` in the box and in the tests), and a
-    module loaded that way is not in ``sys.modules``, which is where
-    ``dataclasses`` looks its own annotations up -- decorating a class here raises
-    ``AttributeError`` before the script can run at all. Measured, not guessed.
+  ⚑ Written out by hand rather than as a ``@dataclass``: this script is loaded
+  from its FILE (``spec_from_file_location`` in the box and in the tests), and a
+  module loaded that way is not in ``sys.modules``, which is where
+  ``dataclasses`` looks its own annotations up -- decorating a class here raises
+  ``AttributeError`` before the script can run at all. Measured, not guessed.
 
-    ⚑ THREE KINDS SHARE THIS ROW, and they share it on purpose -- one
-    placeholder mechanism, one substitution pass, one list to audit:
+  ⚑ THREE KINDS SHARE THIS ROW, and they share it on purpose -- one
+  placeholder mechanism, one substitution pass, one list to audit:
 
-      * ``authored`` -- a ``[text](@path)`` row. Its number is READ off the page
-        and renumbered by :func:`assign_section_numbers`; its target gets a
-        GENERATED heading.
-      * ``import`` -- an ``__IMPORT__`` entry. Its number was MINTED by
-        ``__SECTION__`` and is already inside its target's own re-titled
-        heading, so it takes no authored number and generates no heading.
-        🛑 Its link TEXT is read from :attr:`Flattener.import_title` at
-        substitution time, never from :attr:`text` -- a file is imported ONCE,
-        so the FIRST call to import it owns the title, and reading it back is
-        what keeps the row's text and the heading it points at identical.
-        :attr:`text` records what THIS call minted, for the record only.
-      * ``link`` -- a ``__LINK__`` entry. Nothing is imported, so the target is
-        a file path to point AT rather than a section to point INTO.
-    """
-    __slots__ = (
-        "container", "target", "text", "number", "gap", "enclosing", "listing", "kind",
-    )
+    * ``authored`` -- a ``[text](@path)`` row. Its number is READ off the page
+      and renumbered by :func:`assign_section_numbers`; its target gets a
+      GENERATED heading.
+    * ``import`` -- an ``__IMPORT__`` entry. Its number was MINTED by
+      ``__SECTION__`` and is already inside its target's own re-titled
+      heading, so it takes no authored number and generates no heading.
+      🛑 Its link TEXT is read from :attr:`Flattener.import_title` at
+      substitution time, never from :attr:`text` -- a file is imported ONCE,
+      so the FIRST call to import it owns the title, and reading it back is
+      what keeps the row's text and the heading it points at identical.
+      :attr:`text` records what THIS call minted, for the record only.
+    * ``link`` -- a ``__LINK__`` entry. Nothing is imported, so the target is
+      a file path to point AT rather than a section to point INTO.
+  """
 
-    def __init__(
-        self,
-        container: Path,   # the file the row was written in
-        target: Path,      # the file it includes
-        text: str,         # display text, as authored
-        number: str | None,  # authored list number; None if it is not in a list
-        gap: str,          # the whitespace between number and link, as authored
-        enclosing: int | None,  # level of the heading above it; None = no heading yet
-        listing: int,      # which heading's section it sits in, counted per file
-        kind: str = "authored",   # "authored" | "import" | "link"
-    ) -> None:
-        self.container = container
-        self.target = target
-        self.text = text
-        self.number = number
-        self.gap = gap
-        self.enclosing = enclosing
-        self.listing = listing
-        self.kind = kind
+  __slots__ = (
+    "container",
+    "target",
+    "text",
+    "number",
+    "gap",
+    "enclosing",
+    "listing",
+    "kind",
+  )
+
+  def __init__(
+    self,
+    container: Path,  # the file the row was written in
+    target: Path,  # the file it includes
+    text: str,  # display text, as authored
+    number: str | None,  # authored list number; None if it is not in a list
+    gap: str,  # the whitespace between number and link, as authored
+    enclosing: int | None,  # level of the heading above it; None = no heading yet
+    listing: int,  # which heading's section it sits in, counted per file
+    kind: str = "authored",  # "authored" | "import" | "link"
+  ) -> None:
+    self.container = container
+    self.target = target
+    self.text = text
+    self.number = number
+    self.gap = gap
+    self.enclosing = enclosing
+    self.listing = listing
+    self.kind = kind
 
 
 class Flattener:
-    def __init__(self) -> None:
-        self.sections: dict[Path, str] = {}   # resolved path -> flattened body
-        self.order: list[Path] = []           # resolved path, first-reference order
-        self.started: set[Path] = set()        # collection begun (import-once + cycle guard)
-        self.slug_for: dict[Path, str] = {}    # resolved path -> slug
-        self.slug_owner: dict[str, Path] = {}  # slug -> resolved path
-        self.warnings: list[str] = []
-        # Per-file CLASSIFICATION, decided during processing (see _process_text):
-        # "content" gets a section in the render; "empty" and "imports_only"
-        # contribute their imports but no section.
-        self.kind: dict[Path, str] = {}
-        # -- generated rows/headings (the ``[text](@path)`` form) --------------
-        # Recorded in pass one, in discovery order, and left as placeholders in
-        # the bodies; pass two (:meth:`_finalize_links`) fills the three maps.
-        self.rows: list[_Row] = []
-        self.replacements: list[str | None] = []      # row index -> text, None = dropped
-        self.heading_of: dict[Path, tuple[int, str, str]] = {}  # path -> (depth, text, anchor)
-        # First file to name each collected file. It is what a file with no
-        # generated heading of its own inherits its base level from, so a bare
-        # ``@path`` index sitting deep in the tree does not reset nesting to zero.
-        self.included_by: dict[Path, Path] = {}
-        self._anchor_seen: dict[str, int] = {}
-        self._finalized = False
-        # -- manifest bookkeeping (the RECEIPT this render leaves behind) ------
-        # ``digests`` is keyed by the SAME resolved path as ``order`` and holds the
-        # sha256 of the bytes THIS run read -- taken at read time, not re-read
-        # afterwards, so the receipt cannot describe content the render never saw.
-        # ``misses`` is the other side: paths an import named that yielded nothing.
-        self.digests: dict[Path, str] = {}
-        self.misses: list[Path] = []
-        # -- the ``__SECTION__`` allocator's state -----------------------------
-        # source -> how many sections have been minted under it. ⚑ ON THE
-        # INSTANCE, never module-level: the counter's reset boundary is ONE
-        # assembly run, so a fresh render starts at 1 and repeated runs of the
-        # same tree are reproducible. A module global would make the second run
-        # of a process disagree with the first.
-        # 🛑 KEYED ON *source* ALONE, not on ``(source, sep)``. That is not an
-        # oversight: ``__SECTION__("1")`` then ``__SECTION__("1", "-")`` yields
-        # ``1.1`` then ``1-2`` in the worked examples -- one sequence per
-        # source, whatever separator each call asks to render it with.
-        self._section_counter: dict[str, int] = {}
-        # resolved path -> that document's OWN ``__CURRENT__`` while it is being
-        # processed. ⚑ ABSENT MEANS ROOT: ``__CURRENT__`` is ``""`` at the top of
-        # the tree, which is what ``COLLECTION.md`` is, so the lookup defaults to
-        # ``""`` rather than being seeded. A file imported under id ``X`` has its
-        # entry written BEFORE it is collected, so the nested calls inside it
-        # mint ``X.1``, ``X.2``, ...
-        self.current_id: dict[Path, str] = {}
-        # resolved path -> the title its own heading line was RE-TITLED to by the
-        # first ``__IMPORT__`` that named it, and the fragment id that heading
-        # derives. Import-once means one file has one heading however many calls
-        # point at it, so the first writer owns both.
-        self.import_title: dict[Path, str] = {}
-        self.import_anchor: dict[Path, str] = {}
-        # Scratch state of ONE :meth:`preplink` call: the id ``__SECTION__``
-        # minted for each returned entry, or ``None`` where the format minted
-        # none. ⚑ The id is minted INSIDE the format expression and only the
-        # RENDERED title comes back, so this is how a caller learns what
-        # ``__CURRENT__`` an entry's own document should carry.
-        self.last_minted: list[str | None] = []
+  def __init__(self) -> None:
+    self.sections: dict[Path, str] = {}  # resolved path -> flattened body
+    self.order: list[Path] = []  # resolved path, first-reference order
+    self.started: set[Path] = set()  # collection begun (import-once + cycle guard)
+    self.slug_for: dict[Path, str] = {}  # resolved path -> slug
+    self.slug_owner: dict[str, Path] = {}  # slug -> resolved path
+    self.warnings: list[str] = []
+    # Per-file CLASSIFICATION, decided during processing (see _process_text):
+    # "content" gets a section in the render; "empty" and "imports_only"
+    # contribute their imports but no section.
+    self.kind: dict[Path, str] = {}
+    # -- generated rows/headings (the ``[text](@path)`` form) --------------
+    # Recorded in pass one, in discovery order, and left as placeholders in
+    # the bodies; pass two (:meth:`_finalize_links`) fills the three maps.
+    self.rows: list[_Row] = []
+    self.replacements: list[str | None] = []  # row index -> text, None = dropped
+    self.heading_of: dict[Path, tuple[int, str, str]] = {}  # path -> (depth, text, anchor)
+    # First file to name each collected file. It is what a file with no
+    # generated heading of its own inherits its base level from, so a bare
+    # ``@path`` index sitting deep in the tree does not reset nesting to zero.
+    self.included_by: dict[Path, Path] = {}
+    self._anchor_seen: dict[str, int] = {}
+    self._finalized = False
+    # -- manifest bookkeeping (the RECEIPT this render leaves behind) ------
+    # ``digests`` is keyed by the SAME resolved path as ``order`` and holds the
+    # sha256 of the bytes THIS run read -- taken at read time, not re-read
+    # afterwards, so the receipt cannot describe content the render never saw.
+    # ``misses`` is the other side: paths an import named that yielded nothing.
+    self.digests: dict[Path, str] = {}
+    self.misses: list[Path] = []
+    # -- the ``__SECTION__`` allocator's state -----------------------------
+    # source -> how many sections have been minted under it. ⚑ ON THE
+    # INSTANCE, never module-level: the counter's reset boundary is ONE
+    # assembly run, so a fresh render starts at 1 and repeated runs of the
+    # same tree are reproducible. A module global would make the second run
+    # of a process disagree with the first.
+    # 🛑 KEYED ON *source* ALONE, not on ``(source, sep)``. That is not an
+    # oversight: ``__SECTION__("1")`` then ``__SECTION__("1", "-")`` yields
+    # ``1.1`` then ``1-2`` in the worked examples -- one sequence per
+    # source, whatever separator each call asks to render it with.
+    self._section_counter: dict[str, int] = {}
+    # resolved path -> that document's OWN ``__CURRENT__`` while it is being
+    # processed. ⚑ ABSENT MEANS ROOT: ``__CURRENT__`` is ``""`` at the top of
+    # the tree, which is what ``COLLECTION.md`` is, so the lookup defaults to
+    # ``""`` rather than being seeded. A file imported under id ``X`` has its
+    # entry written BEFORE it is collected, so the nested calls inside it
+    # mint ``X.1``, ``X.2``, ...
+    self.current_id: dict[Path, str] = {}
+    # resolved path -> the title its own heading line was RE-TITLED to by the
+    # first ``__IMPORT__`` that named it, and the fragment id that heading
+    # derives. Import-once means one file has one heading however many calls
+    # point at it, so the first writer owns both.
+    self.import_title: dict[Path, str] = {}
+    self.import_anchor: dict[Path, str] = {}
+    # Scratch state of ONE :meth:`preplink` call: the id ``__SECTION__``
+    # minted for each returned entry, or ``None`` where the format minted
+    # none. ⚑ The id is minted INSIDE the format expression and only the
+    # RENDERED title comes back, so this is how a caller learns what
+    # ``__CURRENT__`` an entry's own document should carry.
+    self.last_minted: list[str | None] = []
 
-    # -- section ids -------------------------------------------------------
-    def next_section(self, source: str = "", sep: str = ".") -> str:
-        """ALLOCATE the next section id under *source* -- the ``__SECTION__`` identifier.
+  # -- section ids -------------------------------------------------------
+  def next_section(self, source: str = "", sep: str = ".") -> str:
+    """ALLOCATE the next section id under *source* -- the ``__SECTION__`` identifier.
 
-        Each call for a given *source* returns the next number, counting from 1,
-        joined to *source* by *sep*.
+    Each call for a given *source* returns the next number, counting from 1,
+    joined to *source* by *sep*.
 
-        🛑 IT ALLOCATES. Nothing recovers an id once minted, so a caller that
-        wants an EXISTING section's number must not come here for it.
+    🛑 IT ALLOCATES. Nothing recovers an id once minted, so a caller that
+    wants an EXISTING section's number must not come here for it.
 
-        ⚑ A root source (``""``, which is what ``__CURRENT__`` is at the top of
-        the tree, and the top of the tree is the common case) carries NO leading
-        separator: ``"1"``, ``"2"``, ... rather than ``".1"``. Join only the
-        non-empty parts.
-        """
-        n = self._section_counter.get(source, 0) + 1
-        self._section_counter[source] = n
-        return f"{source}{sep}{n}" if source else str(n)
+    ⚑ A root source (``""``, which is what ``__CURRENT__`` is at the top of
+    the tree, and the top of the tree is the common case) carries NO leading
+    separator: ``"1"``, ``"2"``, ... rather than ``".1"``. Join only the
+    non-empty parts.
+    """
+    n = self._section_counter.get(source, 0) + 1
+    self._section_counter[source] = n
+    return f"{source}{sep}{n}" if source else str(n)
 
-    def preplink(
-        self,
-        target: str,
-        source: str = "",
-        sep: str = ".",
-        title_fmt: str | None = None,
-        base: Path | None = None,
-        current: str = "",
-    ) -> list[tuple[Path, str, str, str]]:
-        """THE WORKHORSE. Work out what each target of one call is to be TITLED.
+  def preplink(
+    self,
+    target: str,
+    source: str = "",
+    sep: str = ".",
+    title_fmt: str | None = None,
+    base: Path | None = None,
+    current: str = "",
+  ) -> list[tuple[Path, str, str, str]]:
+    """THE WORKHORSE. Work out what each target of one call is to be TITLED.
 
-        *target* is a single path or a glob. Returns one 4-tuple per surviving
-        entry -- ``(entry, old_title, new_title, header)`` -- e.g.
-        ``(Path("general/ROM_GENERAL.md"), "## The Canon", "1.2 The Canon", "## ")``.
-        🛑 THE ARITY IS LOAD-BEARING: both callers unpack exactly four, one taking
-        the pair it needs to REWRITE a heading and the other the pair it needs to
-        WRITE A LINK.
+    *target* is a single path or a glob. Returns one 4-tuple per surviving
+    entry -- ``(entry, old_title, new_title, header)`` -- e.g.
+    ``(Path("general/ROM_GENERAL.md"), "## The Canon", "1.2 The Canon", "## ")``.
+    🛑 THE ARITY IS LOAD-BEARING: both callers unpack exactly four, one taking
+    the pair it needs to REWRITE a heading and the other the pair it needs to
+    WRITE A LINK.
 
-        ⚑ It decides titles and nothing else -- it neither reads nor collects the
-        content behind an entry. That is what lets ``__LINK__``, which never
-        imports anything, share it with ``__IMPORT__``, which does.
+    ⚑ It decides titles and nothing else -- it neither reads nor collects the
+    content behind an entry. That is what lets ``__LINK__``, which never
+    imports anything, share it with ``__IMPORT__``, which does.
 
-        **GLOB ORDER IS SORTED**, lexicographically, on the POSIX form of the path
-        -- every result of one pattern shares its prefix, so that is its relative
-        path ordered. Canon order is law and the reading order of a chapter cannot
-        be left to a directory walk.
+    **GLOB ORDER IS SORTED**, lexicographically, on the POSIX form of the path
+    -- every result of one pattern shares its prefix, so that is its relative
+    path ordered. Canon order is law and the reading order of a chapter cannot
+    be left to a directory walk.
 
-        **A TARGET THAT IS MISSING OR EMPTY IS SKIPPED SILENTLY.** ⚑ This is not
-        the fail-open the required-material tests forbid: REQUIRED-vs-OPTIONAL is
-        a different layer entirely (``settings/core_defaults.py``), and the
-        flattener has no notion of it. A glob that matches a file which turns out
-        to hold only comments must simply not produce a row.
+    **A TARGET THAT IS MISSING OR EMPTY IS SKIPPED SILENTLY.** ⚑ This is not
+    the fail-open the required-material tests forbid: REQUIRED-vs-OPTIONAL is
+    a different layer entirely (``settings/core_defaults.py``), and the
+    flattener has no notion of it. A glob that matches a file which turns out
+    to hold only comments must simply not produce a row.
 
-        *old_title* is the file's FIRST LINE OF REAL TEXT. 🛑 A COMMENT IS NOT
-        REAL TEXT, and the comment blocks in shipped canon run to
-        sixteen lines and CONTAIN HEADING-SHAPED DECOYS -- ``COLLECTION.md`` has
-        ``# Entrypoint to Canon`` inside the block that its real title precedes.
-        So the search runs through :func:`strip_comments` with its carried state,
-        never a per-line ``startswith("<!--")``.
+    *old_title* is the file's FIRST LINE OF REAL TEXT. 🛑 A COMMENT IS NOT
+    REAL TEXT, and the comment blocks in shipped canon run to
+    sixteen lines and CONTAIN HEADING-SHAPED DECOYS -- ``COLLECTION.md`` has
+    ``# Entrypoint to Canon`` inside the block that its real title precedes.
+    So the search runs through :func:`strip_comments` with its carried state,
+    never a per-line ``startswith("<!--")``.
 
-        If that line is an ATX heading it is SPLIT: *header* is the hashes plus
-        their space (``"#### "``) and *new_title* is the text after it, rendered
-        through :func:`render_format`. Otherwise *header* is ``""`` and the whole
-        line is the title. Either way the caller can rebuild the line as
-        ``header + new_title``.
+    If that line is an ATX heading it is SPLIT: *header* is the hashes plus
+    their space (``"#### "``) and *new_title* is the text after it, rendered
+    through :func:`render_format`. Otherwise *header* is ``""`` and the whole
+    line is the title. Either way the caller can rebuild the line as
+    ``header + new_title``.
 
-        *base* is the directory a RELATIVE target is anchored at -- the
-        CONTAINING FILE's directory at every real call site, which is exactly
-        what :meth:`resolve` does with a bare ``@path``. ⚑ Without it a relative
-        pattern would be read against the process CWD, which in a box is wherever
-        the agent happened to be standing. ``None`` keeps the CWD-relative
-        behavior, for a caller that has already made the target absolute.
+    *base* is the directory a RELATIVE target is anchored at -- the
+    CONTAINING FILE's directory at every real call site, which is exactly
+    what :meth:`resolve` does with a bare ``@path``. ⚑ Without it a relative
+    pattern would be read against the process CWD, which in a box is wherever
+    the agent happened to be standing. ``None`` keeps the CWD-relative
+    behavior, for a caller that has already made the target absolute.
 
-        *current* is the calling document's own ``__CURRENT__``, bound into the
-        expression namespace and used as the default of a bare ``__SECTION__()``
-        or ``__SUPER__()``.
-        """
-        fmt = title_fmt or DEFAULT_TITLE_FMT
-        pattern = os.path.expanduser(target)
-        is_glob = bool(_GLOB_MAGIC_RE.search(pattern))
-        if base is not None and not os.path.isabs(pattern):
-            # ``glob.escape`` ONLY on the glob branch: it wraps every magic
-            # character in ``[]``, which is what stops a directory whose own name
-            # holds a ``[`` from becoming part of the pattern -- and is exactly
-            # the wrong thing to do to a path that is about to be taken literally.
-            prefix = glob.escape(str(base)) if is_glob else str(base)
-            pattern = os.path.join(prefix, pattern)
-        if is_glob:
-            entries = sorted(
-                (Path(hit) for hit in glob.glob(pattern)), key=Path.as_posix
-            )
-        else:
-            entries = [Path(pattern)]
+    *current* is the calling document's own ``__CURRENT__``, bound into the
+    expression namespace and used as the default of a bare ``__SECTION__()``
+    or ``__SUPER__()``.
+    """
+    fmt = title_fmt or DEFAULT_TITLE_FMT
+    pattern = os.path.expanduser(target)
+    is_glob = bool(_GLOB_MAGIC_RE.search(pattern))
+    if base is not None and not os.path.isabs(pattern):
+      # ``glob.escape`` ONLY on the glob branch: it wraps every magic
+      # character in ``[]``, which is what stops a directory whose own name
+      # holds a ``[`` from becoming part of the pattern -- and is exactly
+      # the wrong thing to do to a path that is about to be taken literally.
+      prefix = glob.escape(str(base)) if is_glob else str(base)
+      pattern = os.path.join(prefix, pattern)
+    if is_glob:
+      entries = sorted((Path(hit) for hit in glob.glob(pattern)), key=Path.as_posix)
+    else:
+      entries = [Path(pattern)]
 
-        # The ids this call mints, recorded in allocation order so the per-entry
-        # answer survives: the format renders to a STRING, and picking an id back
-        # out of rendered prose is not something to attempt.
-        minted: list[str] = []
+    # The ids this call mints, recorded in allocation order so the per-entry
+    # answer survives: the format renders to a STRING, and picking an id back
+    # out of rendered prose is not something to attempt.
+    minted: list[str] = []
 
-        def section(src: str = current, s: str = ".") -> str:
-            """``__SECTION__`` as a document calls it, with the signature's own
-            defaults (``__CURRENT__`` and ``"."``). Wrapped only to RECORD."""
-            sid = self.next_section(src, s)
-            minted.append(sid)
-            return sid
+    def section(src: str = current, s: str = ".") -> str:
+      """``__SECTION__`` as a document calls it, with the signature's own
+      defaults (``__CURRENT__`` and ``"."``). Wrapped only to RECORD."""
+      sid = self.next_section(src, s)
+      minted.append(sid)
+      return sid
 
-        def super_(entry: str = current, s: str = ".") -> str:
-            """``__SUPER__`` as a document calls it -- ``entry=__CURRENT__``."""
-            return super_of(entry, s)
+    def super_(entry: str = current, s: str = ".") -> str:
+      """``__SUPER__`` as a document calls it -- ``entry=__CURRENT__``."""
+      return super_of(entry, s)
 
-        # ONE scope for the whole call, holding this function's own parameters
-        # (which is why ``source`` and ``sep`` look unused below -- the shipped
-        # default format is what uses them) plus the three identifiers an
-        # expression may name. ``__SECTION__`` allocates against THIS render's
-        # counters and increments once per entry.
-        scope: dict[str, object] = {
-            "target": target,
-            "source": source,
-            "sep": sep,
-            "title_fmt": title_fmt,
-            "__CURRENT__": current,
-            "__SECTION__": section,
-            "__SUPER__": super_,
-        }
+    # ONE scope for the whole call, holding this function's own parameters
+    # (which is why ``source`` and ``sep`` look unused below -- the shipped
+    # default format is what uses them) plus the three identifiers an
+    # expression may name. ``__SECTION__`` allocates against THIS render's
+    # counters and increments once per entry.
+    scope: dict[str, object] = {
+      "target": target,
+      "source": source,
+      "sep": sep,
+      "title_fmt": title_fmt,
+      "__CURRENT__": current,
+      "__SECTION__": section,
+      "__SUPER__": super_,
+    }
 
-        self.last_minted = []
-        results: list[tuple[Path, str, str, str]] = []
-        for entry in entries:
-            if not entry.is_file():
-                continue
-            try:
-                text = entry.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue         # nothing readable here: the same skip, same reason
-            old_title = first_real_line(text)
-            if old_title is None:
-                continue         # comments and whitespace only -- an EMPTY file
-            hm = ATX_HEADING_RE.match(old_title)
-            if hm:
-                header = old_title[:hm.end()]
-                new_title = old_title[hm.end():].strip()
-            else:
-                header = ""
-                new_title = old_title
-            seen = len(minted)
-            rendered = render_format(fmt, new_title, scope)
-            # The FIRST id this entry minted is the id it was given; a format
-            # that mints none leaves the entry without one.
-            self.last_minted.append(minted[seen] if len(minted) > seen else None)
-            results.append((entry, old_title, rendered, header))
-        return results
+    self.last_minted = []
+    results: list[tuple[Path, str, str, str]] = []
+    for entry in entries:
+      if not entry.is_file():
+        continue
+      try:
+        text = entry.read_text(encoding="utf-8")
+      except (OSError, UnicodeDecodeError):
+        continue  # nothing readable here: the same skip, same reason
+      old_title = first_real_line(text)
+      if old_title is None:
+        continue  # comments and whitespace only -- an EMPTY file
+      hm = ATX_HEADING_RE.match(old_title)
+      if hm:
+        header = old_title[: hm.end()]
+        new_title = old_title[hm.end() :].strip()
+      else:
+        header = ""
+        new_title = old_title
+      seen = len(minted)
+      rendered = render_format(fmt, new_title, scope)
+      # The FIRST id this entry minted is the id it was given; a format
+      # that mints none leaves the entry without one.
+      self.last_minted.append(minted[seen] if len(minted) > seen else None)
+      results.append((entry, old_title, rendered, header))
+    return results
 
-    # -- the four call forms -----------------------------------------------
-    def _template_entries(
-        self,
-        target: str,
-        source: str,
-        sep: str,
-        title_fmt: str | None,
-        importing_file: Path,
-        current: str,
-        lineno: int = 0,
-        name: str = "",
-    ) -> list[tuple[tuple[Path, str, str, str], str | None]]:
-        """:meth:`preplink`'s entries, each paired with the id it was minted.
+  # -- the four call forms -----------------------------------------------
+  def _template_entries(
+    self,
+    target: str,
+    source: str,
+    sep: str,
+    title_fmt: str | None,
+    importing_file: Path,
+    current: str,
+    lineno: int = 0,
+    name: str = "",
+  ) -> list[tuple[tuple[Path, str, str, str], str | None]]:
+    """:meth:`preplink`'s entries, each paired with the id it was minted.
 
-        Two things happen here that :meth:`preplink` deliberately does not do.
+    Two things happen here that :meth:`preplink` deliberately does not do.
 
-        **The target is anchored at the CONTAINING FILE**, like a bare ``@path``.
+    **The target is anchored at the CONTAINING FILE**, like a bare ``@path``.
 
-        **A NAMED path that is not there is recorded as a MISS**, through the one
-        existing miss machinery (:meth:`resolve`). 🛑 Skipping it silently is
-        right -- required-vs-optional is a different layer entirely -- but the
-        manifest's absent side exists precisely so a path contributing nothing
-        TODAY is still watched, and a chapter that starts existing is exactly the
-        edit a user expects to land. ⚑ A GLOB that matches nothing is NOT a miss
-        of a named path: no path was named, so there is nothing to watch and no
-        spelling to invent for it.
-        """
-        if not _GLOB_MAGIC_RE.search(target) and self.resolve(target, importing_file) is None:
-            # Warn when inside the plugin chapter AND the missing target is also
-            # inside the chapter AND the call form is an import (D6).
-            if name and _in_plugin_chapter(importing_file):
-                missing = _anchor(target, importing_file)
-                if _in_plugin_chapter(missing):
-                    does_import, _ = _TEMPLATE_CALLS[name]
-                    if does_import:
-                        self.warnings.append(
-                            f"{name} in {importing_file} line {lineno}: {missing} "
-                            "does not exist; the plugin chapter imports a file "
-                            "it does not ship"
-                        )
-            return []
-        results = self.preplink(
-            target, source, sep, title_fmt,
-            base=importing_file.parent, current=current,
-        )
-        return list(zip(results, self.last_minted))
-
-    def template_import(
-        self,
-        entries: list[tuple[tuple[Path, str, str, str], str | None]],
-        importing_file: Path,
-        enclosing: int | None,
-        listing: int,
-    ) -> list[str]:
-        """``__IMPORT__``: re-title each entry, collect it, leave a row.
-
-        Each entry's own heading line is rewritten IN PLACE to carry the title it
-        was given (``## The Canon`` -> ``## 1.1 The Canon``) and its body joins
-        the collapsed file as a section; the call itself becomes a row pointing
-        at that heading, per the ``[text](@path)`` link procedure.
-
-        ⚑ The entry's minted id becomes its document's own ``__CURRENT__``,
-        written BEFORE it is collected so that the calls nested inside it mint
-        under it.
-        """
-        out: list[str] = []
-        for (entry, old_title, new_title, header), section_id in entries:
-            path = entry.resolve()
-            self.current_id.setdefault(path, section_id or "")
-            self.included_by.setdefault(path, importing_file)
-            self.collect(path)
-            if path not in self.import_title:
-                if path in self.sections:
-                    # 🛑 RECORDED ONLY IF THE REWRITE LANDED. The row below points
-                    # at the fragment this title derives, so a title that was
-                    # never written would be a link pointing at nothing.
-                    if self._retitle(path, old_title, header + new_title):
-                        self.import_title[path] = new_title
-                else:
-                    # Collection of this path is still UNDERWAY -- it is an
-                    # ancestor of the file we are in, i.e. a cycle, and its body
-                    # does not exist to re-title yet. The existing import-once
-                    # guard has already made the tree terminate; what is left is
-                    # to say so, because the row below then has no heading to
-                    # point at and disappears.
-                    self.warnings.append(
-                        f"import cycle: {importing_file} imports {path}, which is "
-                        "still being collected; no section row for it"
-                    )
-            self.rows.append(
-                _Row(importing_file, path, new_title, None, "", enclosing, listing,
-                     kind="import")
-            )
-            out.append(_TOKEN.format(len(self.rows) - 1))
-        return out
-
-    def template_link(
-        self,
-        entries: list[tuple[tuple[Path, str, str, str], str | None]],
-        importing_file: Path,
-        enclosing: int | None,
-        listing: int,
-    ) -> list[str]:
-        """``__LINK__``: a row per entry and NOTHING ELSE -- no import.
-
-        The target is therefore a FILE to point at, not a section to point into:
-        the entry is never collected, gets no heading and contributes no body.
-        That is the whole reason the two forms are paired in one document -- a
-        chapter is IMPORTED, a load-on-demand procedure is LINKED -- and why they
-        share one ``__SECTION__`` sequence.
-        """
-        out: list[str] = []
-        for (entry, _old_title, new_title, _header), _section_id in entries:
-            self.rows.append(
-                _Row(importing_file, entry, new_title, None, "", enclosing, listing,
-                     kind="link")
-            )
-            out.append(_TOKEN.format(len(self.rows) - 1))
-        return out
-
-    def _retitle(self, path: Path, old_title: str, new_line: str) -> bool:
-        """Rewrite ONE line of *path*'s body -- the title line, at its own offset.
-
-        Returns whether the line was found and rewritten.
-
-        🛑 NOT ``body.replace(old_title, ...)``. That rewrites EVERY occurrence:
-        the same heading text repeated in a contents block, quoted in an example
-        or sitting inside a code fence would all be renumbered, and only one of
-        them is the title.
-
-        ⚑ *old_title* is STRIPPED (:func:`first_real_line` strips it), while the
-        line in the body is as authored -- an ATX heading may carry up to three
-        leading spaces -- so the match is on the stripped line and the authored
-        indentation is put back.
-        """
-        lines = self.sections[path].split("\n")
-        for i, line in enumerate(lines):
-            if line.strip() == old_title:
-                indent = line[:len(line) - len(line.lstrip())]
-                lines[i] = indent + new_line
-                self.sections[path] = "\n".join(lines)
-                return True
-        # The title was read from the file as it is on DISK and the body is the
-        # PROCESSED text, so a title line that processing rewrote (one carrying a
-        # live ``@path``, say) is not there to re-title. Invisible in the
-        # artifact -- the section simply keeps its old heading and the row that
-        # points at it is dropped -- so say it out loud.
-        self.warnings.append(
-            f"could not re-title {path}: {old_title!r} did not survive processing"
-        )
-        return False
-
-    def _run_template_call(
-        self,
-        line: str,
-        call: tuple[str, str, dict[str, object]],
-        importing_file: Path,
-        enclosing: int | None,
-        listing: int,
-        lineno: int = 0,
-    ) -> str:
-        """Run one recognized call; return the text that replaces its line.
-
-        One call expands to ONE LINE PER ENTRY, each keeping the call's own
-        indentation. A call that yields no entry yields no text.
-        """
-        name, indent, args = call
-        imports, default_fmt = _TEMPLATE_CALLS[name]
-        # ``source=__CURRENT__`` and ``title_fmt=<the form's default>`` are the
-        # signature's defaults, applied HERE because that is where the calling
-        # document's own identity is known.
-        current = self.current_id.get(importing_file, "")
-        target = str(args["target"])
-        source = str(args.get("source", current))
-        sep = str(args.get("sep", "."))
-        fmt = args.get("title_fmt", default_fmt)
-        try:
-            entries = self._template_entries(
-                target, source, sep, None if fmt is None else str(fmt),
-                importing_file, current, lineno, name,
-            )
-        except Exception as exc:
-            # SAY SO and leave the line as written. A flatten that died here would
-            # leave the box with NO canon at all -- the launch shim's ``|| true``
-            # swallows the exit status -- which is strictly worse than one visibly
-            # unexpanded call plus a warning.
-            # 🛑 BROAD ON PURPOSE, and this is the one place that earns it: a
-            # ``{expr}`` is arbitrary authored code (:func:`evaluate_expression`),
-            # so it can raise anything at all, and phase 3 is what first lets a
-            # DOCUMENT reach that evaluator. The cost is real and is stated here
-            # rather than hidden: a defect in the machinery below surfaces as a
-            # warning rather than a traceback.
-            self.warnings.append(f"{name} in {importing_file}: {exc!r}")
-            return line
-        run = self.template_import if imports else self.template_link
-        return "\n".join(
-            indent + text for text in run(entries, importing_file, enclosing, listing)
-        )
-
-    # -- slugs -------------------------------------------------------------
-    def _slugify(self, path: Path) -> str:
-        """A slug for *path*, off the SAME home-relative spelling a link target uses.
-
-        ⚑ ONE CARRIER for "a path written without the host prefix"
-        (:func:`home_relative`); this is the second reader of it, and the mangling
-        below is all that separates the two. Every non-alphanumeric run collapses to
-        ``_`` and the ends are stripped, so the leading ``~/`` -- or the leading
-        ``/`` of a path outside home -- contributes nothing either way.
-        """
-        token = re.sub(r"[^A-Za-z0-9]+", "_", home_relative(path)).strip("_")
-        return token or "section"
-
-    def slug(self, path: Path) -> str:
-        if path in self.slug_for:
-            return self.slug_for[path]
-        base = self._slugify(path)
-        candidate = base
-        n = 2
-        while candidate in self.slug_owner and self.slug_owner[candidate] != path:
-            candidate = f"{base}_{n}"
-            n += 1
-        self.slug_for[path] = candidate
-        self.slug_owner[candidate] = path
-        return candidate
-
-    def _unique_anchor(self, base: str) -> str:
-        """Deduplicate a derived id exactly as a GFM renderer does.
-
-        🛑 THE COUNTER STARTS AT 1, NOT 2: the FIRST heading keeps the bare id and
-        the SECOND takes ``-1``. Off by one here yields a link that dangles
-        silently -- it points at an id the renderer gave to nobody.
-
-        Called in the order the HEADINGS reach the output, because that is the
-        order the renderer counts in; it is not the order the rows were found.
-        """
-        n = self._anchor_seen.get(base, 0)
-        self._anchor_seen[base] = n + 1
-        return base if n == 0 else f"{base}-{n}"
-
-    def anchor(self, path: Path) -> str:
-        """The fragment a BARE ``@path`` mention points at.
-
-        GitHub-flavored renderers derive a heading's fragment id by lowercasing,
-        and the slug is already restricted to ``[A-Za-z0-9_]``, so lowercasing is
-        the whole rule. ⚑ Nothing GENERATES a heading with this id -- the bare
-        form creates no heading, by design -- so the fragment does not in fact
-        resolve; the link text still names the source the section came from,
-        which is what the artifact needs. A ``[text](@path)`` row is the form that
-        gets a resolving target (:meth:`_finalize_links`).
-        """
-        return self.slug(path).lower()
-
-    # -- resolution --------------------------------------------------------
-    def resolve(self, raw: str, importing_file: Path):
-        """Return (resolved_path, effective_text, trailing) or None.
-
-        ``trailing`` is any sentence punctuation trimmed off the end so that a
-        mention like ``@foo.md.`` at the end of a sentence still resolves.
-
-        On a TOTAL miss every candidate path tried is recorded in :attr:`misses`
-        (the manifest's absent side). Candidates tried before a HIT are not: only
-        the spelling that actually resolved feeds the render, so only it can change
-        it. A miss is recorded even though it contributes no content precisely
-        because it may LATER contribute some -- see :func:`build_manifest`.
-        """
-        text = raw
-        trailing = ""
-        tried: list[Path] = []
-        while True:
-            p = _anchor(text, importing_file)
-            if p.is_file():
-                return p.resolve(), text, trailing
-            tried.append(p)
-            if text and text[-1] in _TRAILING_PUNCT:
-                trailing = text[-1] + trailing
-                text = text[:-1]
-                continue
-            self._record_misses(tried)
-            return None
-
-    def _record_misses(self, tried: list[Path]) -> None:
-        """Record every candidate of one unresolved import, deduped, in first-seen order."""
-        for p in tried:
-            # ``resolve()`` on a non-existent path still normalizes it (and follows
-            # symlinks on the ancestors that DO exist), which is what makes the
-            # dedup and the watcher's later probe agree on one spelling.
-            resolved = p.resolve()
-            if resolved not in self.misses:
-                self.misses.append(resolved)
-
-    # -- collection --------------------------------------------------------
-    def collect(self, path: Path) -> None:
-        if path in self.started:
-            return
-        self.started.add(path)
-        self.order.append(path)
-        self.slug(path)  # reserve the slug now so links resolve during recursion
-        try:
-            # BYTES, hashed once, then decoded: the receipt must describe exactly the
-            # content that fed this render, and a second read to hash it could see a
-            # different file.  ``str.splitlines`` (below) breaks on \r\n and \r just
-            # as text mode's newline translation would, so the output is unchanged.
-            raw_bytes = path.read_bytes()
-        except OSError as exc:
-            self.warnings.append(f"unreadable: {path}: {exc}")
-            self.sections[path] = f"<!-- kanibako: could not read {path}: {exc} -->"
-            # The placeholder is comment-only, so the file is excluded from the
-            # output like any other functionally-empty file -- deliberate: the
-            # stderr warning above is the failure's carrier (SAY-SO), and the
-            # manifest still records the path as absent for the watcher.
-            self.kind[path] = "empty"
-            return
-        self.digests[path] = hashlib.sha256(raw_bytes).hexdigest()
-        body, kind = self._process_text(raw_bytes.decode("utf-8"), path)
-        self.sections[path] = body
-        self.kind[path] = kind
-
-    def _process_text(self, text: str, importing_file: Path) -> tuple[str, str]:
-        """Process one file's text; return ``(body, kind)``.
-
-        ``kind`` is the file's CLASSIFICATION, decided here -- during processing,
-        never by a regex over the rendered output: ``empty`` (no surviving
-        non-blank line), ``imports_only`` (>=1 import-only line and nothing
-        else) or ``content`` (anything else, including any literal fenced
-        line). Only ``content`` files get a section in the render; the other
-        two still have their imports collected.
-        """
-        out: list[str] = []
-        in_fence = False
-        fence_char = ""
-        fence_len = 0
-        in_comment = False
-        has_content = False
-        has_import_only = False
-        # The heading a generated row's depth is measured against, tracked as the
-        # file is read (never re-parsed off the rendered output). ``None`` until
-        # the file's first heading: a row above it has no enclosing section here,
-        # and takes the level of the section this FILE was included under instead.
-        # ``listing`` counts headings so two lists in one file stay separate --
-        # they neither share a shallowest depth nor renumber into each other.
-        enclosing: int | None = None
-        listing = 0
-        for lineno, raw_line in enumerate(text.splitlines(), 1):
-            if in_fence:
-                # Inside a fence everything is literal -- including any comment
-                # delimiters, which is why comment state is not touched here --
-                # and a non-blank literal line makes the file CONTENT.
-                out.append(raw_line)
-                if raw_line.strip():
-                    has_content = True
-                fm = FENCE_RE.match(raw_line)
-                if (
-                    fm
-                    and fm.group("fence")[0] == fence_char
-                    and len(fm.group("fence")) >= fence_len
-                    and not fm.group("info").strip()
-                ):
-                    in_fence = False
-                continue
-            # Outside a fence, drop comment content BEFORE anything else, so an
-            # example ``@path`` inside a comment never reaches import parsing.
-            was_in_comment = in_comment
-            line, in_comment = strip_comments(raw_line, in_comment)
-            if (was_in_comment or line != raw_line) and not line.strip():
-                continue          # the whole line was comment -> emit nothing
-            fm = FENCE_RE.match(line)
-            if fm:
-                in_fence = True
-                fence_char = fm.group("fence")[0]
-                fence_len = len(fm.group("fence"))
-                out.append(line)
-                has_content = True  # the fence opener itself is literal content
-                continue
-            hm = ATX_HEADING_RE.match(line)
-            if hm:
-                enclosing = len(hm.group("hashes"))
-                listing += 1
-            misplaced = misplaced_template_call(line)
-            if misplaced is not None:
-                self.warnings.append(
-                    f"{misplaced} in {importing_file} line {lineno} was NOT run: "
-                    "a template call must stand alone on its line"
-                )
-            processed, import_only = self._process_line(
-                line, importing_file, enclosing, listing, lineno
-            )
-            out.append(processed)
-            if import_only:
-                has_import_only = True
-            elif processed.strip():
-                has_content = True
-        if in_comment:
-            # An unterminated ``<!--`` swallows the file to EOF: comment state is
-            # carried ACROSS lines, so everything after the stray opener -- headings,
-            # rules, live imports -- is silently dropped from the flattened output.
-            # That is invisible in the artifact (the content simply is not there), so
-            # say it out loud rather than let a future directive edit lose a chapter.
+    **A NAMED path that is not there is recorded as a MISS**, through the one
+    existing miss machinery (:meth:`resolve`). 🛑 Skipping it silently is
+    right -- required-vs-optional is a different layer entirely -- but the
+    manifest's absent side exists precisely so a path contributing nothing
+    TODAY is still watched, and a chapter that starts existing is exactly the
+    edit a user expects to land. ⚑ A GLOB that matches nothing is NOT a miss
+    of a named path: no path was named, so there is nothing to watch and no
+    spelling to invent for it.
+    """
+    if not _GLOB_MAGIC_RE.search(target) and self.resolve(target, importing_file) is None:
+      # Warn when inside the plugin chapter AND the missing target is also
+      # inside the chapter AND the call form is an import (D6).
+      if name and _in_plugin_chapter(importing_file):
+        missing = _anchor(target, importing_file)
+        if _in_plugin_chapter(missing):
+          does_import, _ = _TEMPLATE_CALLS[name]
+          if does_import:
             self.warnings.append(
-                f"unterminated HTML comment in {importing_file}: everything after "
-                "the last '<!--' was dropped (add the closing '-->')"
+              f"{name} in {importing_file} line {lineno}: {missing} "
+              "does not exist; the plugin chapter imports a file "
+              "it does not ship"
             )
-        if has_content:
-            kind = "content"
-        elif has_import_only:
-            kind = "imports_only"
+      return []
+    results = self.preplink(
+      target,
+      source,
+      sep,
+      title_fmt,
+      base=importing_file.parent,
+      current=current,
+    )
+    return list(zip(results, self.last_minted))
+
+  def template_import(
+    self,
+    entries: list[tuple[tuple[Path, str, str, str], str | None]],
+    importing_file: Path,
+    enclosing: int | None,
+    listing: int,
+  ) -> list[str]:
+    """``__IMPORT__``: re-title each entry, collect it, leave a row.
+
+    Each entry's own heading line is rewritten IN PLACE to carry the title it
+    was given (``## The Canon`` -> ``## 1.1 The Canon``) and its body joins
+    the collapsed file as a section; the call itself becomes a row pointing
+    at that heading, per the ``[text](@path)`` link procedure.
+
+    ⚑ The entry's minted id becomes its document's own ``__CURRENT__``,
+    written BEFORE it is collected so that the calls nested inside it mint
+    under it.
+    """
+    out: list[str] = []
+    for (entry, old_title, new_title, header), section_id in entries:
+      path = entry.resolve()
+      self.current_id.setdefault(path, section_id or "")
+      self.included_by.setdefault(path, importing_file)
+      self.collect(path)
+      if path not in self.import_title:
+        if path in self.sections:
+          # 🛑 RECORDED ONLY IF THE REWRITE LANDED. The row below points
+          # at the fragment this title derives, so a title that was
+          # never written would be a link pointing at nothing.
+          if self._retitle(path, old_title, header + new_title):
+            self.import_title[path] = new_title
         else:
-            kind = "empty"
-        return "\n".join(out), kind
+          # Collection of this path is still UNDERWAY -- it is an
+          # ancestor of the file we are in, i.e. a cycle, and its body
+          # does not exist to re-title yet. The existing import-once
+          # guard has already made the tree terminate; what is left is
+          # to say so, because the row below then has no heading to
+          # point at and disappears.
+          self.warnings.append(
+            f"import cycle: {importing_file} imports {path}, which is "
+            "still being collected; no section row for it"
+          )
+      self.rows.append(
+        _Row(importing_file, path, new_title, None, "", enclosing, listing, kind="import")
+      )
+      out.append(_TOKEN.format(len(self.rows) - 1))
+    return out
 
-    def _process_line(
-        self,
-        line: str,
-        importing_file: Path,
-        enclosing: int | None = None,
-        listing: int = 0,
-        lineno: int = 0,
-    ) -> tuple[str, bool]:
-        """Rewrite the imports in *line*; report whether the line is IMPORT-ONLY.
+  def template_link(
+    self,
+    entries: list[tuple[tuple[Path, str, str, str], str | None]],
+    importing_file: Path,
+    enclosing: int | None,
+    listing: int,
+  ) -> list[str]:
+    """``__LINK__``: a row per entry and NOTHING ELSE -- no import.
 
-        *enclosing* / *listing* are the heading context :meth:`_process_text`
-        carries for this line -- the level of the heading above it and which
-        heading's section it is -- recorded on any row found here and consumed by
-        :meth:`_finalize_links`. They do not affect import resolution at all.
+    The target is therefore a FILE to point at, not a section to point into:
+    the entry is never collected, gets no heading and contributes no body.
+    That is the whole reason the two forms are paired in one document -- a
+    chapter is IMPORTED, a load-on-demand procedure is LINKED -- and why they
+    share one ``__SECTION__`` sequence.
+    """
+    out: list[str] = []
+    for (entry, _old_title, new_title, _header), _section_id in entries:
+      self.rows.append(
+        _Row(importing_file, entry, new_title, None, "", enclosing, listing, kind="link")
+      )
+      out.append(_TOKEN.format(len(self.rows) - 1))
+    return out
 
-        Import-only means >=1 RESOLVED BARE import and nothing else: removing the
-        resolved mentions (their spans in the ORIGINAL line) leaves only
-        whitespace. A line whose import is UNRESOLVED is content -- the
-        neutralized `` `@path` `` is the only in-artifact sign of the miss, so a
-        collapsed index must not hide it -- and a ``@mention`` inside a code
-        span is literal text, hence content too.
+  def _retitle(self, path: Path, old_title: str, new_line: str) -> bool:
+    """Rewrite ONE line of *path*'s body -- the title line, at its own offset.
 
-        ⚑ A ``[text](@path)`` link is CONTENT, never import-only: the author
-        supplied display text, and that text becomes a table-of-contents row in
-        the output. Collapsing the file that carries it would delete the very
-        table of contents the link form exists to produce.
+    Returns whether the line was found and rewritten.
 
-        ⚑ A TEMPLATE CALL IS RECOGNIZED FIRST and returns immediately, so the
-        ``@`` inside a call's own argument is never read as a bare import. Like
-        the link form it is CONTENT, never import-only: what it leaves behind is
-        a table-of-contents row carrying display text.
-        """
-        try:
-            call = parse_template_call(line)
-        except TemplateCallError as exc:
-            self.warnings.append(f"{exc} in {importing_file}")
-            call = None
-        if call is not None:
-            return self._run_template_call(
-                line, call, importing_file, enclosing, listing, lineno
-            ), False
+    🛑 NOT ``body.replace(old_title, ...)``. That rewrites EVERY occurrence:
+    the same heading text repeated in a contents block, quoted in an example
+    or sitting inside a code fence would all be renumbered, and only one of
+    them is the title.
 
-        spans = code_span_ranges(line)
-        row = NUMBERED_ROW_RE.match(line)
-        resolved_spans: list[tuple[int, int]] = []
-        unresolved = False
+    ⚑ *old_title* is STRIPPED (:func:`first_real_line` strips it), while the
+    line in the body is as authored -- an ATX heading may carry up to three
+    leading spaces -- so the match is on the stripped line and the authored
+    indentation is put back.
+    """
+    lines = self.sections[path].split("\n")
+    for i, line in enumerate(lines):
+      if line.strip() == old_title:
+        indent = line[: len(line) - len(line.lstrip())]
+        lines[i] = indent + new_line
+        self.sections[path] = "\n".join(lines)
+        return True
+    # The title was read from the file as it is on DISK and the body is the
+    # PROCESSED text, so a title line that processing rewrote (one carrying a
+    # live ``@path``, say) is not there to re-title. Invisible in the
+    # artifact -- the section simply keeps its old heading and the row that
+    # points at it is dropped -- so say it out loud.
+    self.warnings.append(f"could not re-title {path}: {old_title!r} did not survive processing")
+    return False
 
-        out: list[str] = []
-        pos = 0
-        for m in MENTION_RE.finditer(line):
-            out.append(line[pos:m.start()])
-            pos = m.end()
-            if any(s <= m.start() < e for s, e in spans):
-                out.append(m.group(0))  # inside a code span -> literal
-                continue
-            is_link = m.group("lpath") is not None
-            raw = m.group("lpath") if is_link else m.group("path")
-            resolved = self.resolve(raw, importing_file)
-            if resolved is None:
-                unresolved = True
-                # Target file missing. Neutralize the mention rather than leave a
-                # raw live ``@path`` in the flat output: wrap it in backticks so no
-                # agent -- including a claude re-reading the flattened file -- can
-                # treat it as a live import, while the path stays visible to the
-                # reader. Keeps flattening idempotent (a second pass changes
-                # nothing). Trailing sentence punctuation stays outside the ticks.
-                # A LINK with a dead target keeps its brackets around the same
-                # neutralized mention, so it is inert in exactly the same way.
-                as_written, trailing = split_trailing_punct(raw)
-                # SAY SO. Neutralizing the mention makes the failure invisible in the
-                # artifact -- the flat file simply lacks the content, and the launch
-                # shim's ``|| true`` swallows the exit status -- so a mis-pathed
-                # directive tree would otherwise degrade in total silence. This is
-                # the only signal that an import went nowhere.
-                self.warnings.append(
-                    f"unresolved import @{as_written} in {importing_file}"
-                )
-                neutral = f"`@{as_written}`{trailing}"
-                out.append(f"[{m.group('text')}]({neutral})" if is_link else neutral)
-                continue
-            path, as_written, trailing = resolved
-            self.included_by.setdefault(path, importing_file)
-            self.collect(path)
-            if is_link:
-                # Neither the row's final number nor the target's fragment id is
-                # knowable yet -- both depend on which files end up excluded, and
-                # that is only settled once everything is read. Leave a
-                # placeholder for pass two. The number, when there is one, is
-                # taken over WITH the row (it is rewritten on renumber), so the
-                # placeholder swallows it and only the indent stays.
-                number = gap = None
-                if row is not None and row.end() == m.start():
-                    number, gap = row.group("num"), row.group("gap")
-                    out[-1] = line[:row.start("num")]
-                self.rows.append(
-                    _Row(
-                        importing_file, path, m.group("text"), number, gap or "",
-                        enclosing, listing,
-                    )
-                )
-                out.append(_TOKEN.format(len(self.rows) - 1) + trailing)
-                continue
-            resolved_spans.append((m.start(), m.end()))
-            out.append(f"[{as_written}](#{self.anchor(path)}){trailing}")
-        out.append(line[pos:])
-        if unresolved or not resolved_spans:
-            return "".join(out), False
-        remainder = line
-        for start, end in reversed(resolved_spans):
-            remainder = remainder[:start] + remainder[end:]
-        return "".join(out), not remainder.strip()
+  def _run_template_call(
+    self,
+    line: str,
+    call: tuple[str, str, dict[str, object]],
+    importing_file: Path,
+    enclosing: int | None,
+    listing: int,
+    lineno: int = 0,
+  ) -> str:
+    """Run one recognized call; return the text that replaces its line.
 
-    # -- assembly ----------------------------------------------------------
-    def _finalize_links(self) -> None:
-        """PASS TWO: number the surviving rows, head their targets, assign ids.
+    One call expands to ONE LINE PER ENTRY, each keeping the call's own
+    indentation. A call that yields no entry yields no text.
+    """
+    name, indent, args = call
+    imports, default_fmt = _TEMPLATE_CALLS[name]
+    # ``source=__CURRENT__`` and ``title_fmt=<the form's default>`` are the
+    # signature's defaults, applied HERE because that is where the calling
+    # document's own identity is known.
+    current = self.current_id.get(importing_file, "")
+    target = str(args["target"])
+    source = str(args.get("source", current))
+    sep = str(args.get("sep", "."))
+    fmt = args.get("title_fmt", default_fmt)
+    try:
+      entries = self._template_entries(
+        target,
+        source,
+        sep,
+        None if fmt is None else str(fmt),
+        importing_file,
+        current,
+        lineno,
+        name,
+      )
+    except Exception as exc:
+      # SAY SO and leave the line as written. A flatten that died here would
+      # leave the box with NO canon at all -- the launch shim's ``|| true``
+      # swallows the exit status -- which is strictly worse than one visibly
+      # unexpanded call plus a warning.
+      # 🛑 BROAD ON PURPOSE, and this is the one place that earns it: a
+      # ``{expr}`` is arbitrary authored code (:func:`evaluate_expression`),
+      # so it can raise anything at all, and phase 3 is what first lets a
+      # DOCUMENT reach that evaluator. The cost is real and is stated here
+      # rather than hidden: a defect in the machinery below surfaces as a
+      # warning rather than a traceback.
+      self.warnings.append(f"{name} in {importing_file}: {exc!r}")
+      return line
+    run = self.template_import if imports else self.template_link
+    return "\n".join(indent + text for text in run(entries, importing_file, enclosing, listing))
 
-        Runs once, after collection, because every one of those three answers
-        depends on the full classification: a row whose target is excluded
-        disappears, which RENUMBERS its surviving siblings, which changes their
-        heading text, which changes the fragment id the row must point at. Doing
-        any of it inline would emit headings that disagree with their own table
-        of contents.
-        """
-        if self._finalized:
-            return
-        self._finalized = True
+  # -- slugs -------------------------------------------------------------
+  def _slugify(self, path: Path) -> str:
+    """A slug for *path*, off the SAME home-relative spelling a link target uses.
 
-        # (1) NUMBERS AND DEPTHS, one LIST at a time, walking COLLECTION ORDER.
-        #     Per list, because both answers are list-relative: rows renumber
-        #     against their own siblings and take their depth from their own
-        #     shallowest row, so two lists in one file must not be pooled.
-        #     Collection order is what makes a file's own base level available
-        #     before its rows come up -- a file is always collected from the file
-        #     that names it, so the row carrying its heading is numbered first.
-        # (2) HEADING OWNERS, assigned in the same walk. A file is imported ONCE
-        #     however many rows point at it, so it gets ONE heading: the first
-        #     surviving row to name it. A row inside a file that is itself excluded
-        #     never reaches the output, so it cannot own one.
-        #     ⚑ AUTHORED ROWS ONLY. A template row's number was MINTED rather
-        #     than read off the page, so it neither renumbers against its
-        #     neighbors nor generates a heading -- pooling the two kinds would
-        #     let a minted row shift an authored one's number.
-        by_container: dict[Path, dict[int, list[int]]] = {}
-        for i, row in enumerate(self.rows):
-            if row.kind != "authored":
-                continue
-            by_container.setdefault(row.container, {}).setdefault(row.listing, []).append(i)
-        assigned: list[tuple[str | None, int] | None] = [None] * len(self.rows)
-        owner: dict[Path, tuple[str, str | None, int]] = {}   # (text, number, depth)
-        base_level: dict[Path, int] = {}
-        for path in self.order:
-            held = owner.get(path)
-            if held is not None:
-                base_level[path] = held[2]        # the level its own heading takes
-            else:
-                # No generated heading of its own: its content sits where the file
-                # that pulled it in sits. The source has no includer, hence 0.
-                includer = self.included_by.get(path)
-                base_level[path] = base_level.get(includer, 0) if includer else 0
-            listings = by_container.get(path, {})
-            for idxs in listings.values():
-                # A row with no heading above it in its own file measures against
-                # the section THIS FILE was included under -- the same "level of
-                # the enclosing section" rule, one frame out. Floored at 1 because
-                # the source sits at level 0 and a heading cannot.
-                enclosing = self.rows[idxs[0]].enclosing
-                if enclosing is None:
-                    enclosing = max(base_level[path], 1)
-                batch = [
-                    (self.rows[i].number, self.kind.get(self.rows[i].target) != "content")
-                    for i in idxs
-                ]
-                for i, result in zip(idxs, assign_section_numbers(batch, enclosing)):
-                    assigned[i] = result
-            if self.kind.get(path) != "content":
-                continue
-            for idxs in listings.values():
-                for i in idxs:
-                    entry = assigned[i]
-                    if entry is not None:
-                        owner.setdefault(
-                            self.rows[i].target, (self.rows[i].text, entry[0], entry[1])
-                        )
+    ⚑ ONE CARRIER for "a path written without the host prefix"
+    (:func:`home_relative`); this is the second reader of it, and the mangling
+    below is all that separates the two. Every non-alphanumeric run collapses to
+    ``_`` and the ends are stripped, so the leading ``~/`` -- or the leading
+    ``/`` of a path outside home -- contributes nothing either way.
+    """
+    token = re.sub(r"[^A-Za-z0-9]+", "_", home_relative(path)).strip("_")
+    return token or "section"
 
-        # (3) IDS, in the order the headings REACH THE OUTPUT -- which is section
-        #     order, not the order the rows were discovered. A renderer counts
-        #     duplicates down the rendered document, so a counter assigned in any
-        #     other order would disagree with it on the second ``-1``.
-        #     An ``__IMPORT__``ed file's heading is its OWN re-titled line rather
-        #     than a generated one, and it sits inside the body -- below any
-        #     generated heading the same file might also have -- so its id is
-        #     taken in that order, at the same point of the same walk. A file
-        #     that contributes no section contributes no heading either, and the
-        #     rows pointing at it drop.
-        for path in self.order:
-            held = owner.get(path)
-            if held is not None:
-                display, number, depth = held
-                text = f"{number} {display}" if number else display
-                self.heading_of[path] = (depth, text, self._unique_anchor(gfm_anchor(text)))
-            title = self.import_title.get(path)
-            if title is not None and self.kind.get(path) == "content":
-                self.import_anchor[path] = self._unique_anchor(gfm_anchor(title))
+  def slug(self, path: Path) -> str:
+    if path in self.slug_for:
+      return self.slug_for[path]
+    base = self._slugify(path)
+    candidate = base
+    n = 2
+    while candidate in self.slug_owner and self.slug_owner[candidate] != path:
+      candidate = f"{base}_{n}"
+      n += 1
+    self.slug_for[path] = candidate
+    self.slug_owner[candidate] = path
+    return candidate
 
-        # (4) ROW TEXT. ``None`` means the row is dropped: its target contributes
-        #     no section, so there is nothing for it to point at.
-        #     A template row carries its number INSIDE its title, so it takes no
-        #     prefix: an ``import`` row points at its target's re-titled heading
-        #     and reads its text back from :attr:`import_title`, so the row and
-        #     the heading can never disagree; a ``link`` row points at the FILE,
-        #     which is not in this document at all.
-        for row, entry in zip(self.rows, assigned):
-            if row.kind == "link":
-                # 🛑 HOME-RELATIVE, NEVER ``as_posix()``. The target was resolved
-                # against the containing file's directory and is therefore absolute
-                # however the author spelled it -- writing it out raw is what put a
-                # host path into shipped text. See :func:`home_relative`.
-                self.replacements.append(f"[{row.text}]({home_relative(row.target)})")
-                continue
-            if row.kind == "import":
-                title = self.import_title.get(row.target)
-                anchor = self.import_anchor.get(row.target)
-                self.replacements.append(
-                    None if title is None or anchor is None else f"[{title}](#{anchor})"
-                )
-                continue
-            head = self.heading_of.get(row.target)
-            if entry is None or head is None:
-                self.replacements.append(None)
-                continue
-            prefix = f"{entry[0]}{row.gap}" if entry[0] else ""
-            self.replacements.append(f"{prefix}[{row.text}](#{head[2]})")
+  def _unique_anchor(self, base: str) -> str:
+    """Deduplicate a derived id exactly as a GFM renderer does.
 
-    def _emit(self, path: Path) -> str:
-        """One file's body with its rows substituted and its heading prepended."""
-        lines: list[str] = []
-        for line in self.sections[path].split("\n"):
-            if _TOKEN_RE.search(line) is None:
-                lines.append(line)
-                continue
-            dropped = False
+    🛑 THE COUNTER STARTS AT 1, NOT 2: the FIRST heading keeps the bare id and
+    the SECOND takes ``-1``. Off by one here yields a link that dangles
+    silently -- it points at an id the renderer gave to nobody.
 
-            def replace(m: re.Match[str]) -> str:
-                nonlocal dropped
-                text = self.replacements[int(m.group(1))]
-                if text is None:
-                    dropped = True
-                    return ""
-                return text
+    Called in the order the HEADINGS reach the output, because that is the
+    order the renderer counts in; it is not the order the rows were found.
+    """
+    n = self._anchor_seen.get(base, 0)
+    self._anchor_seen[base] = n + 1
+    return base if n == 0 else f"{base}-{n}"
 
-            rendered = _TOKEN_RE.sub(replace, line)
-            if dropped and not rendered.strip():
-                continue     # the whole row was that link: the row DISAPPEARS
-            lines.append(rendered)
-        body = "\n".join(lines)
-        head = self.heading_of.get(path)
-        if head is None:
-            return body
-        depth, text, _anchor = head
-        # ALWAYS the hashes THEN a space (CommonMark 4.2): ``##1.1 Foo`` renders
-        # as a literal paragraph, not a heading.
-        return f"{'#' * depth} {text}\n\n{body.lstrip()}"
+  def anchor(self, path: Path) -> str:
+    """The fragment a BARE ``@path`` mention points at.
 
-    def render(self, source: Path) -> str:
-        self._finalize_links()
-        header = "<!-- GENERATED by Kanibako on load; DO NOT EDIT. See ~/canon for details. -->\n"
-        # Each surviving file is emitted under its own content, ``---`` between
-        # sections, headed only if a ``[text](@path)`` row named it -- a file
-        # reached by bare ``@path`` alone gets no generated heading, as before.
-        # Files classified ``empty`` or ``imports_only`` contribute their imports
-        # (collected above) but no section; the source is subject to the same
-        # rule, so a collapsed source yields the generated header comment plus
-        # the surviving children only.
-        bodies: list[str] = []
-        if self.kind[source] == "content":
-            bodies.append(self._emit(source).rstrip())
-        for path in self.order:
-            if path == source or self.kind[path] != "content":
-                continue
-            bodies.append(self._emit(path).strip())
-        parts: list[str] = []
-        for i, body in enumerate(bodies):
-            if i:
-                parts.extend(["", "---", ""])
-            parts.append(body)
-        return header + "\n".join(parts).rstrip() + "\n"
+    GitHub-flavored renderers derive a heading's fragment id by lowercasing,
+    and the slug is already restricted to ``[A-Za-z0-9_]``, so lowercasing is
+    the whole rule. ⚑ Nothing GENERATES a heading with this id -- the bare
+    form creates no heading, by design -- so the fragment does not in fact
+    resolve; the link text still names the source the section came from,
+    which is what the artifact needs. A ``[text](@path)`` row is the form that
+    gets a resolving target (:meth:`_finalize_links`).
+    """
+    return self.slug(path).lower()
+
+  # -- resolution --------------------------------------------------------
+  def resolve(self, raw: str, importing_file: Path):
+    """Return (resolved_path, effective_text, trailing) or None.
+
+    ``trailing`` is any sentence punctuation trimmed off the end so that a
+    mention like ``@foo.md.`` at the end of a sentence still resolves.
+
+    On a TOTAL miss every candidate path tried is recorded in :attr:`misses`
+    (the manifest's absent side). Candidates tried before a HIT are not: only
+    the spelling that actually resolved feeds the render, so only it can change
+    it. A miss is recorded even though it contributes no content precisely
+    because it may LATER contribute some -- see :func:`build_manifest`.
+    """
+    text = raw
+    trailing = ""
+    tried: list[Path] = []
+    while True:
+      p = _anchor(text, importing_file)
+      if p.is_file():
+        return p.resolve(), text, trailing
+      tried.append(p)
+      if text and text[-1] in _TRAILING_PUNCT:
+        trailing = text[-1] + trailing
+        text = text[:-1]
+        continue
+      self._record_misses(tried)
+      return None
+
+  def _record_misses(self, tried: list[Path]) -> None:
+    """Record every candidate of one unresolved import, deduped, in first-seen order."""
+    for p in tried:
+      # ``resolve()`` on a non-existent path still normalizes it (and follows
+      # symlinks on the ancestors that DO exist), which is what makes the
+      # dedup and the watcher's later probe agree on one spelling.
+      resolved = p.resolve()
+      if resolved not in self.misses:
+        self.misses.append(resolved)
+
+  # -- collection --------------------------------------------------------
+  def collect(self, path: Path) -> None:
+    if path in self.started:
+      return
+    self.started.add(path)
+    self.order.append(path)
+    self.slug(path)  # reserve the slug now so links resolve during recursion
+    try:
+      # BYTES, hashed once, then decoded: the receipt must describe exactly the
+      # content that fed this render, and a second read to hash it could see a
+      # different file.  ``str.splitlines`` (below) breaks on \r\n and \r just
+      # as text mode's newline translation would, so the output is unchanged.
+      raw_bytes = path.read_bytes()
+    except OSError as exc:
+      self.warnings.append(f"unreadable: {path}: {exc}")
+      self.sections[path] = f"<!-- kanibako: could not read {path}: {exc} -->"
+      # The placeholder is comment-only, so the file is excluded from the
+      # output like any other functionally-empty file -- deliberate: the
+      # stderr warning above is the failure's carrier (SAY-SO), and the
+      # manifest still records the path as absent for the watcher.
+      self.kind[path] = "empty"
+      return
+    self.digests[path] = hashlib.sha256(raw_bytes).hexdigest()
+    body, kind = self._process_text(raw_bytes.decode("utf-8"), path)
+    self.sections[path] = body
+    self.kind[path] = kind
+
+  def _process_text(self, text: str, importing_file: Path) -> tuple[str, str]:
+    """Process one file's text; return ``(body, kind)``.
+
+    ``kind`` is the file's CLASSIFICATION, decided here -- during processing,
+    never by a regex over the rendered output: ``empty`` (no surviving
+    non-blank line), ``imports_only`` (>=1 import-only line and nothing
+    else) or ``content`` (anything else, including any literal fenced
+    line). Only ``content`` files get a section in the render; the other
+    two still have their imports collected.
+    """
+    out: list[str] = []
+    in_fence = False
+    fence_char = ""
+    fence_len = 0
+    in_comment = False
+    has_content = False
+    has_import_only = False
+    # The heading a generated row's depth is measured against, tracked as the
+    # file is read (never re-parsed off the rendered output). ``None`` until
+    # the file's first heading: a row above it has no enclosing section here,
+    # and takes the level of the section this FILE was included under instead.
+    # ``listing`` counts headings so two lists in one file stay separate --
+    # they neither share a shallowest depth nor renumber into each other.
+    enclosing: int | None = None
+    listing = 0
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
+      if in_fence:
+        # Inside a fence everything is literal -- including any comment
+        # delimiters, which is why comment state is not touched here --
+        # and a non-blank literal line makes the file CONTENT.
+        out.append(raw_line)
+        if raw_line.strip():
+          has_content = True
+        fm = FENCE_RE.match(raw_line)
+        if (
+          fm
+          and fm.group("fence")[0] == fence_char
+          and len(fm.group("fence")) >= fence_len
+          and not fm.group("info").strip()
+        ):
+          in_fence = False
+        continue
+      # Outside a fence, drop comment content BEFORE anything else, so an
+      # example ``@path`` inside a comment never reaches import parsing.
+      was_in_comment = in_comment
+      line, in_comment = strip_comments(raw_line, in_comment)
+      if (was_in_comment or line != raw_line) and not line.strip():
+        continue  # the whole line was comment -> emit nothing
+      fm = FENCE_RE.match(line)
+      if fm:
+        in_fence = True
+        fence_char = fm.group("fence")[0]
+        fence_len = len(fm.group("fence"))
+        out.append(line)
+        has_content = True  # the fence opener itself is literal content
+        continue
+      hm = ATX_HEADING_RE.match(line)
+      if hm:
+        enclosing = len(hm.group("hashes"))
+        listing += 1
+      misplaced = misplaced_template_call(line)
+      if misplaced is not None:
+        self.warnings.append(
+          f"{misplaced} in {importing_file} line {lineno} was NOT run: "
+          "a template call must stand alone on its line"
+        )
+      processed, import_only = self._process_line(line, importing_file, enclosing, listing, lineno)
+      out.append(processed)
+      if import_only:
+        has_import_only = True
+      elif processed.strip():
+        has_content = True
+    if in_comment:
+      # An unterminated ``<!--`` swallows the file to EOF: comment state is
+      # carried ACROSS lines, so everything after the stray opener -- headings,
+      # rules, live imports -- is silently dropped from the flattened output.
+      # That is invisible in the artifact (the content simply is not there), so
+      # say it out loud rather than let a future directive edit lose a chapter.
+      self.warnings.append(
+        f"unterminated HTML comment in {importing_file}: everything after "
+        "the last '<!--' was dropped (add the closing '-->')"
+      )
+    if has_content:
+      kind = "content"
+    elif has_import_only:
+      kind = "imports_only"
+    else:
+      kind = "empty"
+    return "\n".join(out), kind
+
+  def _process_line(
+    self,
+    line: str,
+    importing_file: Path,
+    enclosing: int | None = None,
+    listing: int = 0,
+    lineno: int = 0,
+  ) -> tuple[str, bool]:
+    """Rewrite the imports in *line*; report whether the line is IMPORT-ONLY.
+
+    *enclosing* / *listing* are the heading context :meth:`_process_text`
+    carries for this line -- the level of the heading above it and which
+    heading's section it is -- recorded on any row found here and consumed by
+    :meth:`_finalize_links`. They do not affect import resolution at all.
+
+    Import-only means >=1 RESOLVED BARE import and nothing else: removing the
+    resolved mentions (their spans in the ORIGINAL line) leaves only
+    whitespace. A line whose import is UNRESOLVED is content -- the
+    neutralized `` `@path` `` is the only in-artifact sign of the miss, so a
+    collapsed index must not hide it -- and a ``@mention`` inside a code
+    span is literal text, hence content too.
+
+    ⚑ A ``[text](@path)`` link is CONTENT, never import-only: the author
+    supplied display text, and that text becomes a table-of-contents row in
+    the output. Collapsing the file that carries it would delete the very
+    table of contents the link form exists to produce.
+
+    ⚑ A TEMPLATE CALL IS RECOGNIZED FIRST and returns immediately, so the
+    ``@`` inside a call's own argument is never read as a bare import. Like
+    the link form it is CONTENT, never import-only: what it leaves behind is
+    a table-of-contents row carrying display text.
+    """
+    try:
+      call = parse_template_call(line)
+    except TemplateCallError as exc:
+      self.warnings.append(f"{exc} in {importing_file}")
+      call = None
+    if call is not None:
+      return self._run_template_call(line, call, importing_file, enclosing, listing, lineno), False
+
+    spans = code_span_ranges(line)
+    row = NUMBERED_ROW_RE.match(line)
+    resolved_spans: list[tuple[int, int]] = []
+    unresolved = False
+
+    out: list[str] = []
+    pos = 0
+    for m in MENTION_RE.finditer(line):
+      out.append(line[pos : m.start()])
+      pos = m.end()
+      if any(s <= m.start() < e for s, e in spans):
+        out.append(m.group(0))  # inside a code span -> literal
+        continue
+      is_link = m.group("lpath") is not None
+      raw = m.group("lpath") if is_link else m.group("path")
+      resolved = self.resolve(raw, importing_file)
+      if resolved is None:
+        unresolved = True
+        # Target file missing. Neutralize the mention rather than leave a
+        # raw live ``@path`` in the flat output: wrap it in backticks so no
+        # agent -- including a claude re-reading the flattened file -- can
+        # treat it as a live import, while the path stays visible to the
+        # reader. Keeps flattening idempotent (a second pass changes
+        # nothing). Trailing sentence punctuation stays outside the ticks.
+        # A LINK with a dead target keeps its brackets around the same
+        # neutralized mention, so it is inert in exactly the same way.
+        as_written, trailing = split_trailing_punct(raw)
+        # SAY SO. Neutralizing the mention makes the failure invisible in the
+        # artifact -- the flat file simply lacks the content, and the launch
+        # shim's ``|| true`` swallows the exit status -- so a mis-pathed
+        # directive tree would otherwise degrade in total silence. This is
+        # the only signal that an import went nowhere.
+        self.warnings.append(f"unresolved import @{as_written} in {importing_file}")
+        neutral = f"`@{as_written}`{trailing}"
+        out.append(f"[{m.group('text')}]({neutral})" if is_link else neutral)
+        continue
+      path, as_written, trailing = resolved
+      self.included_by.setdefault(path, importing_file)
+      self.collect(path)
+      if is_link:
+        # Neither the row's final number nor the target's fragment id is
+        # knowable yet -- both depend on which files end up excluded, and
+        # that is only settled once everything is read. Leave a
+        # placeholder for pass two. The number, when there is one, is
+        # taken over WITH the row (it is rewritten on renumber), so the
+        # placeholder swallows it and only the indent stays.
+        number = gap = None
+        if row is not None and row.end() == m.start():
+          number, gap = row.group("num"), row.group("gap")
+          out[-1] = line[: row.start("num")]
+        self.rows.append(
+          _Row(
+            importing_file,
+            path,
+            m.group("text"),
+            number,
+            gap or "",
+            enclosing,
+            listing,
+          )
+        )
+        out.append(_TOKEN.format(len(self.rows) - 1) + trailing)
+        continue
+      resolved_spans.append((m.start(), m.end()))
+      out.append(f"[{as_written}](#{self.anchor(path)}){trailing}")
+    out.append(line[pos:])
+    if unresolved or not resolved_spans:
+      return "".join(out), False
+    remainder = line
+    for start, end in reversed(resolved_spans):
+      remainder = remainder[:start] + remainder[end:]
+    return "".join(out), not remainder.strip()
+
+  # -- assembly ----------------------------------------------------------
+  def _finalize_links(self) -> None:
+    """PASS TWO: number the surviving rows, head their targets, assign ids.
+
+    Runs once, after collection, because every one of those three answers
+    depends on the full classification: a row whose target is excluded
+    disappears, which RENUMBERS its surviving siblings, which changes their
+    heading text, which changes the fragment id the row must point at. Doing
+    any of it inline would emit headings that disagree with their own table
+    of contents.
+    """
+    if self._finalized:
+      return
+    self._finalized = True
+
+    # (1) NUMBERS AND DEPTHS, one LIST at a time, walking COLLECTION ORDER.
+    #     Per list, because both answers are list-relative: rows renumber
+    #     against their own siblings and take their depth from their own
+    #     shallowest row, so two lists in one file must not be pooled.
+    #     Collection order is what makes a file's own base level available
+    #     before its rows come up -- a file is always collected from the file
+    #     that names it, so the row carrying its heading is numbered first.
+    # (2) HEADING OWNERS, assigned in the same walk. A file is imported ONCE
+    #     however many rows point at it, so it gets ONE heading: the first
+    #     surviving row to name it. A row inside a file that is itself excluded
+    #     never reaches the output, so it cannot own one.
+    #     ⚑ AUTHORED ROWS ONLY. A template row's number was MINTED rather
+    #     than read off the page, so it neither renumbers against its
+    #     neighbors nor generates a heading -- pooling the two kinds would
+    #     let a minted row shift an authored one's number.
+    by_container: dict[Path, dict[int, list[int]]] = {}
+    for i, row in enumerate(self.rows):
+      if row.kind != "authored":
+        continue
+      by_container.setdefault(row.container, {}).setdefault(row.listing, []).append(i)
+    assigned: list[tuple[str | None, int] | None] = [None] * len(self.rows)
+    owner: dict[Path, tuple[str, str | None, int]] = {}  # (text, number, depth)
+    base_level: dict[Path, int] = {}
+    for path in self.order:
+      held = owner.get(path)
+      if held is not None:
+        base_level[path] = held[2]  # the level its own heading takes
+      else:
+        # No generated heading of its own: its content sits where the file
+        # that pulled it in sits. The source has no includer, hence 0.
+        includer = self.included_by.get(path)
+        base_level[path] = base_level.get(includer, 0) if includer else 0
+      listings = by_container.get(path, {})
+      for idxs in listings.values():
+        # A row with no heading above it in its own file measures against
+        # the section THIS FILE was included under -- the same "level of
+        # the enclosing section" rule, one frame out. Floored at 1 because
+        # the source sits at level 0 and a heading cannot.
+        enclosing = self.rows[idxs[0]].enclosing
+        if enclosing is None:
+          enclosing = max(base_level[path], 1)
+        batch = [
+          (self.rows[i].number, self.kind.get(self.rows[i].target) != "content") for i in idxs
+        ]
+        for i, result in zip(idxs, assign_section_numbers(batch, enclosing)):
+          assigned[i] = result
+      if self.kind.get(path) != "content":
+        continue
+      for idxs in listings.values():
+        for i in idxs:
+          entry = assigned[i]
+          if entry is not None:
+            owner.setdefault(self.rows[i].target, (self.rows[i].text, entry[0], entry[1]))
+
+    # (3) IDS, in the order the headings REACH THE OUTPUT -- which is section
+    #     order, not the order the rows were discovered. A renderer counts
+    #     duplicates down the rendered document, so a counter assigned in any
+    #     other order would disagree with it on the second ``-1``.
+    #     An ``__IMPORT__``ed file's heading is its OWN re-titled line rather
+    #     than a generated one, and it sits inside the body -- below any
+    #     generated heading the same file might also have -- so its id is
+    #     taken in that order, at the same point of the same walk. A file
+    #     that contributes no section contributes no heading either, and the
+    #     rows pointing at it drop.
+    for path in self.order:
+      held = owner.get(path)
+      if held is not None:
+        display, number, depth = held
+        text = f"{number} {display}" if number else display
+        self.heading_of[path] = (depth, text, self._unique_anchor(gfm_anchor(text)))
+      title = self.import_title.get(path)
+      if title is not None and self.kind.get(path) == "content":
+        self.import_anchor[path] = self._unique_anchor(gfm_anchor(title))
+
+    # (4) ROW TEXT. ``None`` means the row is dropped: its target contributes
+    #     no section, so there is nothing for it to point at.
+    #     A template row carries its number INSIDE its title, so it takes no
+    #     prefix: an ``import`` row points at its target's re-titled heading
+    #     and reads its text back from :attr:`import_title`, so the row and
+    #     the heading can never disagree; a ``link`` row points at the FILE,
+    #     which is not in this document at all.
+    for row, entry in zip(self.rows, assigned):
+      if row.kind == "link":
+        # 🛑 HOME-RELATIVE, NEVER ``as_posix()``. The target was resolved
+        # against the containing file's directory and is therefore absolute
+        # however the author spelled it -- writing it out raw is what put a
+        # host path into shipped text. See :func:`home_relative`.
+        self.replacements.append(f"[{row.text}]({home_relative(row.target)})")
+        continue
+      if row.kind == "import":
+        title = self.import_title.get(row.target)
+        anchor = self.import_anchor.get(row.target)
+        self.replacements.append(
+          None if title is None or anchor is None else f"[{title}](#{anchor})"
+        )
+        continue
+      head = self.heading_of.get(row.target)
+      if entry is None or head is None:
+        self.replacements.append(None)
+        continue
+      prefix = f"{entry[0]}{row.gap}" if entry[0] else ""
+      self.replacements.append(f"{prefix}[{row.text}](#{head[2]})")
+
+  def _emit(self, path: Path) -> str:
+    """One file's body with its rows substituted and its heading prepended."""
+    lines: list[str] = []
+    for line in self.sections[path].split("\n"):
+      if _TOKEN_RE.search(line) is None:
+        lines.append(line)
+        continue
+      dropped = False
+
+      def replace(m: re.Match[str]) -> str:
+        nonlocal dropped
+        text = self.replacements[int(m.group(1))]
+        if text is None:
+          dropped = True
+          return ""
+        return text
+
+      rendered = _TOKEN_RE.sub(replace, line)
+      if dropped and not rendered.strip():
+        continue  # the whole row was that link: the row DISAPPEARS
+      lines.append(rendered)
+    body = "\n".join(lines)
+    head = self.heading_of.get(path)
+    if head is None:
+      return body
+    depth, text, _anchor = head
+    # ALWAYS the hashes THEN a space (CommonMark 4.2): ``##1.1 Foo`` renders
+    # as a literal paragraph, not a heading.
+    return f"{'#' * depth} {text}\n\n{body.lstrip()}"
+
+  def render(self, source: Path) -> str:
+    self._finalize_links()
+    header = "<!-- GENERATED by Kanibako on load; DO NOT EDIT. See ~/canon for details. -->\n"
+    # Each surviving file is emitted under its own content, ``---`` between
+    # sections, headed only if a ``[text](@path)`` row named it -- a file
+    # reached by bare ``@path`` alone gets no generated heading, as before.
+    # Files classified ``empty`` or ``imports_only`` contribute their imports
+    # (collected above) but no section; the source is subject to the same
+    # rule, so a collapsed source yields the generated header comment plus
+    # the surviving children only.
+    bodies: list[str] = []
+    if self.kind[source] == "content":
+      bodies.append(self._emit(source).rstrip())
+    for path in self.order:
+      if path == source or self.kind[path] != "content":
+        continue
+      bodies.append(self._emit(path).strip())
+    parts: list[str] = []
+    for i, body in enumerate(bodies):
+      if i:
+        parts.extend(["", "---", ""])
+      parts.append(body)
+    return header + "\n".join(parts).rstrip() + "\n"
 
 
 def build_manifest(fl: Flattener, seed: Path, dest: Path, output: str) -> dict:
-    """The RECEIPT for one render: what it read, and what it produced.
+  """The RECEIPT for one render: what it read, and what it produced.
 
-    Derived, never authoritative -- losing it costs exactly one re-flatten, and every
-    way of failing to read it means the same thing ("re-flatten"), which is what makes
-    a watcher safe to run inside PID 1.
+  Derived, never authoritative -- losing it costs exactly one re-flatten, and every
+  way of failing to read it means the same thing ("re-flatten"), which is what makes
+  a watcher safe to run inside PID 1.
 
-    ``inputs`` carries BOTH sides of the collection:
+  ``inputs`` carries BOTH sides of the collection:
 
-    * a file that contributed content -> ``{path, sha256}`` (the bytes THIS run read);
-    * an import that yielded nothing -> ``{path, absent: true}``.
+  * a file that contributed content -> ``{path, sha256}`` (the bytes THIS run read);
+  * an import that yielded nothing -> ``{path, absent: true}``.
 
-    🛑 The absent side is load-bearing, not decoration. A watcher that re-checks only
-    the files it found can never notice a MISSING file appearing, because nothing it
-    watches moved -- and a directive that starts existing is exactly the edit a user
-    expects to take effect. ``absent`` means "no content was obtained from this path",
-    so the watcher's test is "can it be read NOW", which keeps a directory or a
-    still-unreadable file from firing every tick forever.
+  🛑 The absent side is load-bearing, not decoration. A watcher that re-checks only
+  the files it found can never notice a MISSING file appearing, because nothing it
+  watches moved -- and a directive that starts existing is exactly the edit a user
+  expects to take effect. ``absent`` means "no content was obtained from this path",
+  so the watcher's test is "can it be read NOW", which keeps a directory or a
+  still-unreadable file from firing every tick forever.
 
-    🛑 No mtime and no size, deliberately: sources span an NFS home and read-only
-    package binds, where mtime is not comparable across the boundary and a package
-    upgrade can land new content under a preserved one. Recording only what the check
-    uses is what stops a later reader reaching for a field that lies.
+  🛑 No mtime and no size, deliberately: sources span an NFS home and read-only
+  package binds, where mtime is not comparable across the boundary and a package
+  upgrade can land new content under a preserved one. Recording only what the check
+  uses is what stops a later reader reaching for a field that lies.
 
-    ⚑ ``seed``/``dest`` are the paths AS GIVEN (expanded, not symlink-resolved), so
-    they compare equal to what the launcher passes the watcher. The seed's resolved
-    form appears in ``inputs`` like any other file.
-    """
-    resolved = set(fl.order)
-    inputs: list[dict] = []
-    for path in fl.order:
-        digest = fl.digests.get(path)
-        if digest is None:
-            # Collected but unreadable: it contributed no content, so it is an
-            # absence that may end -- the same shape, and the same watch, as an
-            # import that pointed nowhere.
-            inputs.append({"path": str(path), "absent": True})
-        else:
-            inputs.append({"path": str(path), "sha256": digest})
-    for path in fl.misses:
-        if path in resolved:
-            continue   # the same path resolved elsewhere in this run; it is a hit
-        inputs.append({"path": str(path), "absent": True})
-    return {
-        "version": MANIFEST_VERSION,
-        "seed": str(seed),
-        "dest": str(dest),
-        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
-        "inputs": inputs,
-    }
+  ⚑ ``seed``/``dest`` are the paths AS GIVEN (expanded, not symlink-resolved), so
+  they compare equal to what the launcher passes the watcher. The seed's resolved
+  form appears in ``inputs`` like any other file.
+  """
+  resolved = set(fl.order)
+  inputs: list[dict] = []
+  for path in fl.order:
+    digest = fl.digests.get(path)
+    if digest is None:
+      # Collected but unreadable: it contributed no content, so it is an
+      # absence that may end -- the same shape, and the same watch, as an
+      # import that pointed nowhere.
+      inputs.append({"path": str(path), "absent": True})
+    else:
+      inputs.append({"path": str(path), "sha256": digest})
+  for path in fl.misses:
+    if path in resolved:
+      continue  # the same path resolved elsewhere in this run; it is a hit
+    inputs.append({"path": str(path), "absent": True})
+  return {
+    "version": MANIFEST_VERSION,
+    "seed": str(seed),
+    "dest": str(dest),
+    "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    "inputs": inputs,
+  }
 
 
 def flatten(
-    source: str,
-    dest: str | None,
-    *,
-    additional_context: bool = False,
-    manifest: str | None = None,
+  source: str,
+  dest: str | None,
+  *,
+  additional_context: bool = False,
+  manifest: str | None = None,
 ) -> int:
-    """Flatten *source* and deliver the result.
+  """Flatten *source* and deliver the result.
 
-    Three output modes:
-      * ``additional_context=True`` — print the flattened content as a Claude/Codex
-        ``SessionStart`` hook payload (``hookSpecificOutput.additionalContext``) to
-        stdout, for injection into the session (claude/codex delivery).
-      * ``dest`` is ``"-"`` or ``None`` — print the raw flattened markdown to stdout.
-      * otherwise — write the flattened markdown to the *dest* file, mode 644
-        (goose delivery: its ``.additionalContext.md`` context file).
+  Three output modes:
+    * ``additional_context=True`` — print the flattened content as a Claude/Codex
+      ``SessionStart`` hook payload (``hookSpecificOutput.additionalContext``) to
+      stdout, for injection into the session (claude/codex delivery).
+    * ``dest`` is ``"-"`` or ``None`` — print the raw flattened markdown to stdout.
+    * otherwise — write the flattened markdown to the *dest* file, mode 644
+      (goose delivery: its ``.additionalContext.md`` context file).
 
-    *manifest* (FILE mode only) is where the render's RECEIPT is written; see
-    :func:`build_manifest`. The other two modes write no DEST, so they have no
-    receipt to leave.
-    """
-    given = Path(os.path.expanduser(source))
-    if not given.is_file():
-        sys.stderr.write(f"import-directives: source not found: {given}\n")
-        return 2
-    src = given.resolve()
+  *manifest* (FILE mode only) is where the render's RECEIPT is written; see
+  :func:`build_manifest`. The other two modes write no DEST, so they have no
+  receipt to leave.
+  """
+  given = Path(os.path.expanduser(source))
+  if not given.is_file():
+    sys.stderr.write(f"import-directives: source not found: {given}\n")
+    return 2
+  src = given.resolve()
 
-    failed = False
-    fl = Flattener()
-    fl.collect(src)
-    result = fl.render(src)
+  failed = False
+  fl = Flattener()
+  fl.collect(src)
+  result = fl.render(src)
 
-    size = len(result.encode("utf-8"))
-    if size > DIRECTIVE_SIZE_WARN_LIMIT:
-        # Advisory only: the artifact is still written in full. We cannot know which
-        # harness will read it, so the message names none -- see
-        # :data:`DIRECTIVE_SIZE_WARN_LIMIT`. Delivered like every other warning:
-        # appended here, printed to stderr with the ``import-directives: `` prefix.
-        fl.warnings.append(
-            "WARNING: agent directives file exceeds 32KiB, the limit for some "
-            "harnesses / agents."
+  size = len(result.encode("utf-8"))
+  if size > DIRECTIVE_SIZE_WARN_LIMIT:
+    # Advisory only: the artifact is still written in full. We cannot know which
+    # harness will read it, so the message names none -- see
+    # :data:`DIRECTIVE_SIZE_WARN_LIMIT`. Delivered like every other warning:
+    # appended here, printed to stderr with the ``import-directives: `` prefix.
+    fl.warnings.append(
+      "WARNING: agent directives file exceeds 32KiB, the limit for some harnesses / agents."
+    )
+
+  if additional_context:
+    sys.stdout.write(
+      json.dumps(
+        {
+          "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": result,
+          }
+        }
+      )
+    )
+  elif dest is None or dest == "-":
+    if manifest is not None:
+      fl.warnings.append("--manifest needs a DEST file to describe; nothing written")
+    sys.stdout.write(result)
+  else:
+    dest_path = Path(os.path.expanduser(dest))
+    # RENDERED-OUTPUT GATE: a re-flatten whose result is byte-identical to what is
+    # already there writes NOTHING.  A directive edit that does not survive into the
+    # flattened form (a comment, whitespace) moves the input hashes but not the
+    # artifact, and rewriting an unchanged instruction file only invites a harness
+    # to reload it for no reason.  The MANIFEST is still refreshed below — its input
+    # hashes DID move, and a receipt left describing the old ones would make every
+    # later check read "stale" forever.
+    try:
+      unchanged = dest_path.read_text(encoding="utf-8") == result
+    except (OSError, UnicodeDecodeError):
+      unchanged = False
+    what, target = "directives not flattened", dest_path
+    try:
+      if not unchanged:
+        atomic_write_text(dest_path, result)
+      if manifest is not None:
+        # DEST FIRST, receipt second, always.  The reverse order can strand a
+        # receipt that claims an output which was never written: the watcher
+        # would then read "inputs unchanged, DEST differs" -- its hand-edited
+        # verdict -- and leave the wrong file in place indefinitely.
+        what, target = "manifest not written", Path(os.path.expanduser(manifest))
+        atomic_write_text(
+          target,
+          json.dumps(build_manifest(fl, given, dest_path, result), indent=2) + "\n",
         )
+    except OSError as exc:
+      # One line, not a traceback: the launch shim runs this on every start.
+      fl.warnings.append(f"{what}: {exc.filename or target}: {exc.strerror or exc}")
+      failed = True
 
-    if additional_context:
-        sys.stdout.write(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "SessionStart",
-                        "additionalContext": result,
-                    }
-                }
-            )
-        )
-    elif dest is None or dest == "-":
-        if manifest is not None:
-            fl.warnings.append(
-                "--manifest needs a DEST file to describe; nothing written"
-            )
-        sys.stdout.write(result)
-    else:
-        dest_path = Path(os.path.expanduser(dest))
-        # RENDERED-OUTPUT GATE: a re-flatten whose result is byte-identical to what is
-        # already there writes NOTHING.  A directive edit that does not survive into the
-        # flattened form (a comment, whitespace) moves the input hashes but not the
-        # artifact, and rewriting an unchanged instruction file only invites a harness
-        # to reload it for no reason.  The MANIFEST is still refreshed below — its input
-        # hashes DID move, and a receipt left describing the old ones would make every
-        # later check read "stale" forever.
-        try:
-            unchanged = dest_path.read_text(encoding="utf-8") == result
-        except (OSError, UnicodeDecodeError):
-            unchanged = False
-        what, target = "directives not flattened", dest_path
-        try:
-            if not unchanged:
-                atomic_write_text(dest_path, result)
-            if manifest is not None:
-                # DEST FIRST, receipt second, always.  The reverse order can strand a
-                # receipt that claims an output which was never written: the watcher
-                # would then read "inputs unchanged, DEST differs" -- its hand-edited
-                # verdict -- and leave the wrong file in place indefinitely.
-                what, target = "manifest not written", Path(os.path.expanduser(manifest))
-                atomic_write_text(
-                    target,
-                    json.dumps(build_manifest(fl, given, dest_path, result), indent=2) + "\n",
-                )
-        except OSError as exc:
-            # One line, not a traceback: the launch shim runs this on every start.
-            fl.warnings.append(f"{what}: {exc.filename or target}: {exc.strerror or exc}")
-            failed = True
-
-    for w in fl.warnings:
-        sys.stderr.write(f"import-directives: {w}\n")
-    return 1 if failed else 0
+  for w in fl.warnings:
+    sys.stderr.write(f"import-directives: {w}\n")
+  return 1 if failed else 0
 
 
 _USAGE = (
-    "usage: import-directives.py SOURCE DEST [--manifest PATH]   (DEST '-' = stdout)\n"
-    "       import-directives.py --additional-context SOURCE\n"
+  "usage: import-directives.py SOURCE DEST [--manifest PATH]   (DEST '-' = stdout)\n"
+  "       import-directives.py --additional-context SOURCE\n"
 )
 
 
 def main(argv: list[str]) -> int:
-    rest = argv[1:]
-    additional_context = False
-    manifest: str | None = None
-    args: list[str] = []
-    i = 0
-    while i < len(rest):
-        arg = rest[i]
-        if arg == "--additional-context":
-            additional_context = True
-        elif arg == "--manifest":
-            if i + 1 >= len(rest):
-                sys.stderr.write("import-directives: --manifest needs a path\n")
-                sys.stderr.write(_USAGE)
-                return 2
-            manifest = rest[i + 1]
-            i += 1
-        else:
-            args.append(arg)
-        i += 1
-    if additional_context:
-        # REFUSED, not ignored: the hook mode writes no DEST, so a receipt for it
-        # would describe a file nobody maintains.  Say so rather than accept a
-        # combination that cannot mean anything.
-        if manifest is not None or len(args) != 1:
-            sys.stderr.write(_USAGE)
-            return 2
-        return flatten(args[0], None, additional_context=True)
-    if len(args) != 2:
+  rest = argv[1:]
+  additional_context = False
+  manifest: str | None = None
+  args: list[str] = []
+  i = 0
+  while i < len(rest):
+    arg = rest[i]
+    if arg == "--additional-context":
+      additional_context = True
+    elif arg == "--manifest":
+      if i + 1 >= len(rest):
+        sys.stderr.write("import-directives: --manifest needs a path\n")
         sys.stderr.write(_USAGE)
         return 2
-    return flatten(args[0], args[1], manifest=manifest)
+      manifest = rest[i + 1]
+      i += 1
+    else:
+      args.append(arg)
+    i += 1
+  if additional_context:
+    # REFUSED, not ignored: the hook mode writes no DEST, so a receipt for it
+    # would describe a file nobody maintains.  Say so rather than accept a
+    # combination that cannot mean anything.
+    if manifest is not None or len(args) != 1:
+      sys.stderr.write(_USAGE)
+      return 2
+    return flatten(args[0], None, additional_context=True)
+  if len(args) != 2:
+    sys.stderr.write(_USAGE)
+    return 2
+  return flatten(args[0], args[1], manifest=manifest)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+  raise SystemExit(main(sys.argv))

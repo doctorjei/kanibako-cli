@@ -31,19 +31,19 @@ import pytest
 
 from kanibako.settings import core_defaults
 from kanibako.settings.defaults_inventory import (
-    DefaultRow,
-    bind_rows,
-    env_rows,
-    key_rows,
-    manifest_default_rows,
-    print_defaults,
-    source_groups,
+  DefaultRow,
+  bind_rows,
+  env_rows,
+  key_rows,
+  manifest_default_rows,
+  print_defaults,
+  source_groups,
 )
 from kanibako.settings.keyspace_manifest import manifest_doc
 from tests.test_settings.test_manifest_conformance import (
-    CARRIED_DEFAULT_KEYS,
-    EXEMPT_DEFAULT_KEYS,
-    PINNED_DEFAULT_KEYS,
+  CARRIED_DEFAULT_KEYS,
+  EXEMPT_DEFAULT_KEYS,
+  PINNED_DEFAULT_KEYS,
 )
 
 #: Which conformance class each SOURCE label partitions.  ⚑ THE CORRESPONDENCE LIVES
@@ -55,521 +55,527 @@ from tests.test_settings.test_manifest_conformance import (
 #: Several labels refine one conformance class (the two canon-producer arms, the two
 #: ``bootstrap`` tiers), so the assertion below is per-class UNION, never 1:1.
 LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
-    "bootstrap.py (config tier)": "pinned",
-    "bootstrap.py (system tier)": "pinned",
-    "settings_launch.py (anchor floor)": "pinned",
-    "settings_launch.py (auth floor)": "pinned",
-    "core-defaults.yaml (agent_default:)": "pinned",
-    # ⚑ The shell tier's own values (D2) — pinned against the new floor, exactly
-    # like the default arm above.
-    "core-defaults.yaml (agent_shell:)": "pinned",
-    "core-defaults.yaml (env:)": "pinned",
-    "config.py (KanibakoConfig field)": "pinned",
-    # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29) and its
-    # ``"pinned"`` line with it. Its last member, ``box.enable_vault``, became a
-    # ``KanibakoConfig`` field, so it is claimed by the label above — and a key in two
-    # groups raises out of ``key_rows``. Both labels are "pinned", so the class unions
-    # below are unchanged and the move is invisible to the provenance case, which is why
-    # it is written down here.
-    # ⚑ The reader ``config.read_box_enable_vault`` did NOT go: it is still the
-    # pre-snapshot route and still returns the same ``True``. What it stopped being is the
-    # only carrier — the same shape ``workset.skip_kuid_check`` had one commit earlier.
-    "core_defaults.py (canon producer)": "pinned",
-    # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
-    # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
-    # class unions below are unchanged and the move is invisible to the provenance case —
-    # which is why it is written down here instead.
-    # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
-    # join and started being seven resolved keys; the conformance file pins it now.
-    "channels/channels.py (channel key derivation)": "pinned",
-    # ⚑⚑ THE ``built-in (path join at use)`` AND ``project/workset.py (workspaces key
-    # resolution)`` LABELS ARE GONE. ``workset.workspaces`` left the second 2026-09-27,
-    # when the anchor floor started supplying its PRIMARY ``<None>`` (Q82), so the
-    # derived anchor-floor group holds it. **No "exempt" survives either label.**
-    # The helper-hub SPAWN BUDGET pair (2026-09-19) — PINNED: the floor installs a real
-    # literal and the in-box spawn fallback derives from the same table, so there are two
-    # values to compare and a reason to assert they are one.
-    "settings_launch.py (system scalar floor)": "pinned",
-    "runtime-probed (podman graphroot)": "exempt",
-    # The §2d shell fence's ``agent.shell.template`` (2026-09-24) — PINNED: its
-    # ``<None>`` is floored as a PRESENT ``None`` by ``agent_template_defaults``, so
-    # there is a carrier to read, and it left "nothing declares it" for that reason.
-    "launch/templates.py (shell fence, present None)": "pinned",
-    "(nothing declares it — unset until you set it)": "exempt",
-    "(empty — the category starts with no entries)": "exempt",
-    # ⚑ The per-NODE canon and layer-2 arms were "exempt" (E5, one ``@``-hop from the
-    # registry) until 2026-09-25, when the ``canon-defaults`` / ``agent-template-source``
-    # kinemata views were counted as their carriers.
-    "core_defaults.py (canon producer, per node)": "pinned",
-    "launch/templates.py (layer-2 seed, default arm)": "pinned",
-    "launch/templates.py (layer-2 seed)": "pinned",
-    # ⚑ THE ``launch/templates.py (layer-3 seed)`` LABEL IS GONE (2026-08-29, same day it
-    # was added) and its ``"exempt"`` line with it. ``workset.template`` now reaches the
-    # ANCHOR FLOOR, whose group is derived, so it is claimed there — and a key in two
-    # groups raises out of ``key_rows``.
-    # ⚑⚑ THE EXEMPTION THAT LINE MIRRORED IS ALSO GONE, WHICH IS THE POINT: it carried a
-    # note saying the key "most likely belongs in the pinned set beside
-    # ``agent.default.template``" because ``NO_ORACLE_PATH_JOIN``'s stated reason ("no
-    # literal anywhere to compare the manifest to") was FALSE of it. That note was right,
-    # and the pin was written — the key moved to ``test_manifest_conformance``'s
-    # primary/named anchor-scalar pins, whose carrier since 2026-09-25 is the
-    # ``workset-anchor-floor`` kinemata view. **No "exempt" survives this arc.**
+  "bootstrap.py (config tier)": "pinned",
+  "bootstrap.py (system tier)": "pinned",
+  "settings_launch.py (anchor floor)": "pinned",
+  "settings_launch.py (auth floor)": "pinned",
+  "core-defaults.yaml (agent_default:)": "pinned",
+  # ⚑ The shell tier's own values (D2) — pinned against the new floor, exactly
+  # like the default arm above.
+  "core-defaults.yaml (agent_shell:)": "pinned",
+  "core-defaults.yaml (env:)": "pinned",
+  "config.py (KanibakoConfig field)": "pinned",
+  # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29) and its
+  # ``"pinned"`` line with it. Its last member, ``box.enable_vault``, became a
+  # ``KanibakoConfig`` field, so it is claimed by the label above — and a key in two
+  # groups raises out of ``key_rows``. Both labels are "pinned", so the class unions
+  # below are unchanged and the move is invisible to the provenance case, which is why
+  # it is written down here.
+  # ⚑ The reader ``config.read_box_enable_vault`` did NOT go: it is still the
+  # pre-snapshot route and still returns the same ``True``. What it stopped being is the
+  # only carrier — the same shape ``workset.skip_kuid_check`` had one commit earlier.
+  "core_defaults.py (canon producer)": "pinned",
+  # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
+  # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
+  # class unions below are unchanged and the move is invisible to the provenance case —
+  # which is why it is written down here instead.
+  # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
+  # join and started being seven resolved keys; the conformance file pins it now.
+  "channels/channels.py (channel key derivation)": "pinned",
+  # ⚑⚑ THE ``built-in (path join at use)`` AND ``project/workset.py (workspaces key
+  # resolution)`` LABELS ARE GONE. ``workset.workspaces`` left the second 2026-09-27,
+  # when the anchor floor started supplying its PRIMARY ``<None>`` (Q82), so the
+  # derived anchor-floor group holds it. **No "exempt" survives either label.**
+  # The helper-hub SPAWN BUDGET pair (2026-09-19) — PINNED: the floor installs a real
+  # literal and the in-box spawn fallback derives from the same table, so there are two
+  # values to compare and a reason to assert they are one.
+  "settings_launch.py (system scalar floor)": "pinned",
+  "runtime-probed (podman graphroot)": "exempt",
+  # The §2d shell fence's ``agent.shell.template`` (2026-09-24) — PINNED: its
+  # ``<None>`` is floored as a PRESENT ``None`` by ``agent_template_defaults``, so
+  # there is a carrier to read, and it left "nothing declares it" for that reason.
+  "launch/templates.py (shell fence, present None)": "pinned",
+  "(nothing declares it — unset until you set it)": "exempt",
+  "(empty — the category starts with no entries)": "exempt",
+  # ⚑ The per-NODE canon and layer-2 arms were "exempt" (E5, one ``@``-hop from the
+  # registry) until 2026-09-25, when the ``canon-defaults`` / ``agent-template-source``
+  # kinemata views were counted as their carriers.
+  "core_defaults.py (canon producer, per node)": "pinned",
+  "launch/templates.py (layer-2 seed, default arm)": "pinned",
+  "launch/templates.py (layer-2 seed)": "pinned",
+  # ⚑ THE ``launch/templates.py (layer-3 seed)`` LABEL IS GONE (2026-08-29, same day it
+  # was added) and its ``"exempt"`` line with it. ``workset.template`` now reaches the
+  # ANCHOR FLOOR, whose group is derived, so it is claimed there — and a key in two
+  # groups raises out of ``key_rows``.
+  # ⚑⚑ THE EXEMPTION THAT LINE MIRRORED IS ALSO GONE, WHICH IS THE POINT: it carried a
+  # note saying the key "most likely belongs in the pinned set beside
+  # ``agent.default.template``" because ``NO_ORACLE_PATH_JOIN``'s stated reason ("no
+  # literal anywhere to compare the manifest to") was FALSE of it. That note was right,
+  # and the pin was written — the key moved to ``test_manifest_conformance``'s
+  # primary/named anchor-scalar pins, whose carrier since 2026-09-25 is the
+  # ``workset-anchor-floor`` kinemata view. **No "exempt" survives this arc.**
 }
 
 
 class TestSourcePartition:
-    """The SOURCE column is a true, total, non-overlapping partition of the registry."""
+  """The SOURCE column is a true, total, non-overlapping partition of the registry."""
 
-    def test_every_label_is_classified_by_this_file(self):
-        """Anti-vacuity: a NEW source label must land here before the pins below mean anything."""
-        labels = {label for label, _ in source_groups()}
-        assert labels == set(LABEL_TO_CONFORMANCE_CLASS), (
-            f"labels in source_groups() with no conformance class here: "
-            f"{sorted(labels - set(LABEL_TO_CONFORMANCE_CLASS))}; classes named here "
-            f"for labels that no longer exist: "
-            f"{sorted(set(LABEL_TO_CONFORMANCE_CLASS) - labels)}"
-        )
+  def test_every_label_is_classified_by_this_file(self):
+    """Anti-vacuity: a NEW source label must land here before the pins below mean anything."""
+    labels = {label for label, _ in source_groups()}
+    assert labels == set(LABEL_TO_CONFORMANCE_CLASS), (
+      f"labels in source_groups() with no conformance class here: "
+      f"{sorted(labels - set(LABEL_TO_CONFORMANCE_CLASS))}; classes named here "
+      f"for labels that no longer exist: "
+      f"{sorted(set(LABEL_TO_CONFORMANCE_CLASS) - labels)}"
+    )
 
-    def test_the_groups_are_disjoint(self):
-        seen: dict[str, str] = {}
-        for label, keys in source_groups():
-            for key in keys:
-                assert key not in seen, f"{key} is in both {seen[key]!r} and {label!r}"
-                seen[key] = label
+  def test_the_groups_are_disjoint(self):
+    seen: dict[str, str] = {}
+    for label, keys in source_groups():
+      for key in keys:
+        assert key not in seen, f"{key} is in both {seen[key]!r} and {label!r}"
+        seen[key] = label
 
-    def test_the_partition_covers_the_manifest_default_rows(self):
-        """⚑ THE COMPLETENESS CASE, against the MANIFEST — not against the listing.
+  def test_the_partition_covers_the_manifest_default_rows(self):
+    """⚑ THE COMPLETENESS CASE, against the MANIFEST — not against the listing.
 
-        The independent oracle is the registry's own count of rows carrying a
-        ``default:``.  Drop an enumeration source and this reds NAMING what vanished,
-        which is what a count alone could not say.
-        """
-        covered = set().union(*(keys for _, keys in source_groups()))
-        declared = set(manifest_default_rows())
-        assert covered == declared, (
-            f"registry defaults with no source: {sorted(declared - covered)}; "
-            f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
-        )
-        assert len(declared) == 75, (
-            f"the manifest gives {len(declared)} rows a default, not the 75 measured"
-        )
+    The independent oracle is the registry's own count of rows carrying a
+    ``default:``.  Drop an enumeration source and this reds NAMING what vanished,
+    which is what a count alone could not say.
+    """
+    covered = set().union(*(keys for _, keys in source_groups()))
+    declared = set(manifest_default_rows())
+    assert covered == declared, (
+      f"registry defaults with no source: {sorted(declared - covered)}; "
+      f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
+    )
+    assert len(declared) == 75, (
+      f"the manifest gives {len(declared)} rows a default, not the 75 measured"
+    )
 
-    def test_the_partition_agrees_with_the_conformance_classification(self):
-        """⚑⚑ THE PROVENANCE CASE.  Two carriers, asserted equal.
+  def test_the_partition_agrees_with_the_conformance_classification(self):
+    """⚑⚑ THE PROVENANCE CASE.  Two carriers, asserted equal.
 
-        A row that moves between "has a code oracle" and "does not" over in
-        ``test_manifest_conformance`` reds HERE, because its SOURCE label would then be
-        describing an artifact that no longer carries it.
+    A row that moves between "has a code oracle" and "does not" over in
+    ``test_manifest_conformance`` reds HERE, because its SOURCE label would then be
+    describing an artifact that no longer carries it.
 
-        ⚑ AN ORACLE IS A PIN OR A KINEMATA VIEW — ``PINNED_DEFAULT_KEYS`` or
-        ``CARRIED_DEFAULT_KEYS``, which the conformance file keeps disjoint.
-        """
-        by_class: dict[str, set[str]] = {"pinned": set(), "exempt": set()}
-        for label, keys in source_groups():
-            by_class[LABEL_TO_CONFORMANCE_CLASS[label]] |= set(keys)
-        oracled = set(PINNED_DEFAULT_KEYS) | set(CARRIED_DEFAULT_KEYS)
-        assert by_class["pinned"] == oracled, (
-            f"labeled as having a declaring artifact but conformance exempts: "
-            f"{sorted(by_class['pinned'] - oracled)}; conformance pins or carries "
-            f"but this file classes as source-less: "
-            f"{sorted(oracled - by_class['pinned'])}"
-        )
-        assert by_class["exempt"] == set(EXEMPT_DEFAULT_KEYS)
+    ⚑ AN ORACLE IS A PIN OR A KINEMATA VIEW — ``PINNED_DEFAULT_KEYS`` or
+    ``CARRIED_DEFAULT_KEYS``, which the conformance file keeps disjoint.
+    """
+    by_class: dict[str, set[str]] = {"pinned": set(), "exempt": set()}
+    for label, keys in source_groups():
+      by_class[LABEL_TO_CONFORMANCE_CLASS[label]] |= set(keys)
+    oracled = set(PINNED_DEFAULT_KEYS) | set(CARRIED_DEFAULT_KEYS)
+    assert by_class["pinned"] == oracled, (
+      f"labeled as having a declaring artifact but conformance exempts: "
+      f"{sorted(by_class['pinned'] - oracled)}; conformance pins or carries "
+      f"but this file classes as source-less: "
+      f"{sorted(oracled - by_class['pinned'])}"
+    )
+    assert by_class["exempt"] == set(EXEMPT_DEFAULT_KEYS)
 
-    def test_the_derived_groups_really_are_read_off_their_carriers(self):
-        """The five DERIVED groups must be non-empty, or "derived" is hiding an outage.
+  def test_the_derived_groups_really_are_read_off_their_carriers(self):
+    """The five DERIVED groups must be non-empty, or "derived" is hiding an outage.
 
-        A floor builder that stopped declaring anything would leave an EMPTY group, and
-        the coverage case above would then red somewhere else entirely — here it reds
-        naming the carrier.
-        """
-        sizes = {label: len(keys) for label, keys in source_groups()}
-        assert sizes["bootstrap.py (config tier)"] == 6
-        assert sizes["bootstrap.py (system tier)"] == 12
-        # ⚑ WIDENED 6 → 9 (2026-08-29). The floor gained ``workset.skip_kuid_check``
-        # (every mode) plus ``workset.registry`` / ``workset.kuid`` (primary/named), three
-        # declared rows that no floor emitted, so each dangled as ``__MISSING__`` at
-        # launch — the ``workset.channelroot`` defect (R-35, "fix the CODE") applied to the
-        # rows it left behind. The probe is ``mode="primary"``, so it sees all three.
-        # ⚑ CONSUMERS CHECKED BEFORE WIDENING, and the measured answer is that NO
-        # user-facing listing grows a row: ``commands/start.py``'s
-        # ``_merge_default_categories`` never sees the floor (the anchor floor is its own
-        # ``build_launch_snapshot`` kwarg, not a ``default_categories`` table) ·
-        # ``_refuse_undeclared_snapshot`` has nothing new to refuse (all three are
-        # DECLARED rows) · ``config show --effective`` / ``box show --effective`` /
-        # ``workset show --effective`` render ``KanibakoConfig`` fields, agent behavior and
-        # the category snapshot — not the ``workset.*`` floor · ``config get`` reads what is
-        # STORED at the noun and never resolves the floor · ``system defaults`` still lists
-        # 65 rows, three of them relabeled to this group.
-        # What DID change is the launch snapshot itself: ``{workset.registry}`` /
-        # ``{workset.kuid}`` / ``{workset.skip_kuid_check}`` resolve where they used to be
-        # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
-        # ⚑ WIDENED AGAIN 9 → 10 (2026-08-29, same day): ``workset.template``.
-        # ⚑⚑ ITS DEFECT WAS A DIFFERENT SHAPE FROM THE OTHER THREE, and the distinction is
-        # the whole reason it is here. The other three were emitted by NO floor. This one
-        # WAS emitted — but only into the CREATE-time seed resolve, which an existing box
-        # never runs again (``_seed_box_home``'s only two callers are ``run_create`` and
-        # ``_run_container``'s ``if proj.is_new:`` block). Under [Jei:2026-08-29] —
-        # *"for any box that exists"* — reachability that happens only at create is not
-        # reachability. ⇒ **"a floor emits it somewhere" is not the test; "an existing box
-        # can resolve it" is.**
-        # ⚑ Its standalone arm is ``<None>`` and stays an ABSENCE, so this ``mode="primary"``
-        # probe sees it while standalone does not.
-        # ⚑ 10 → 11 (2026-09-27): ``workset.workspaces`` joined, because the anchor floor
-        # now supplies its PRIMARY ``<None>`` as a present ``None`` (Q82) and this probe
-        # runs at ``mode="primary"``. Its NAMED/STANDALONE arms are still the resolved dir
-        # the launch hands the floor.
-        assert sizes["settings_launch.py (anchor floor)"] == 11
-        assert sizes["settings_launch.py (auth floor)"] == 6
-        # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
-        # leaf, declared in ``agent_default:`` beside the other four behavior scalars.
-        # ⚑ WIDENED 5 → 9: the four §2d ``<None>`` rows (``model``, ``endpoint``,
-        # ``run_args``, ``transform``), floored as a present ``None``.
-        assert sizes["core-defaults.yaml (agent_default:)"] == 9
+    A floor builder that stopped declaring anything would leave an EMPTY group, and
+    the coverage case above would then red somewhere else entirely — here it reds
+    naming the carrier.
+    """
+    sizes = {label: len(keys) for label, keys in source_groups()}
+    assert sizes["bootstrap.py (config tier)"] == 6
+    assert sizes["bootstrap.py (system tier)"] == 12
+    # ⚑ WIDENED 6 → 9 (2026-08-29). The floor gained ``workset.skip_kuid_check``
+    # (every mode) plus ``workset.registry`` / ``workset.kuid`` (primary/named), three
+    # declared rows that no floor emitted, so each dangled as ``__MISSING__`` at
+    # launch — the ``workset.channelroot`` defect (R-35, "fix the CODE") applied to the
+    # rows it left behind. The probe is ``mode="primary"``, so it sees all three.
+    # ⚑ CONSUMERS CHECKED BEFORE WIDENING, and the measured answer is that NO
+    # user-facing listing grows a row: ``commands/start.py``'s
+    # ``_merge_default_categories`` never sees the floor (the anchor floor is its own
+    # ``build_launch_snapshot`` kwarg, not a ``default_categories`` table) ·
+    # ``_refuse_undeclared_snapshot`` has nothing new to refuse (all three are
+    # DECLARED rows) · ``config show --effective`` / ``box show --effective`` /
+    # ``workset show --effective`` render ``KanibakoConfig`` fields, agent behavior and
+    # the category snapshot — not the ``workset.*`` floor · ``config get`` reads what is
+    # STORED at the noun and never resolves the floor · ``system defaults`` still lists
+    # 65 rows, three of them relabeled to this group.
+    # What DID change is the launch snapshot itself: ``{workset.registry}`` /
+    # ``{workset.kuid}`` / ``{workset.skip_kuid_check}`` resolve where they used to be
+    # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
+    # ⚑ WIDENED AGAIN 9 → 10 (2026-08-29, same day): ``workset.template``.
+    # ⚑⚑ ITS DEFECT WAS A DIFFERENT SHAPE FROM THE OTHER THREE, and the distinction is
+    # the whole reason it is here. The other three were emitted by NO floor. This one
+    # WAS emitted — but only into the CREATE-time seed resolve, which an existing box
+    # never runs again (``_seed_box_home``'s only two callers are ``run_create`` and
+    # ``_run_container``'s ``if proj.is_new:`` block). Under [Jei:2026-08-29] —
+    # *"for any box that exists"* — reachability that happens only at create is not
+    # reachability. ⇒ **"a floor emits it somewhere" is not the test; "an existing box
+    # can resolve it" is.**
+    # ⚑ Its standalone arm is ``<None>`` and stays an ABSENCE, so this ``mode="primary"``
+    # probe sees it while standalone does not.
+    # ⚑ 10 → 11 (2026-09-27): ``workset.workspaces`` joined, because the anchor floor
+    # now supplies its PRIMARY ``<None>`` as a present ``None`` (Q82) and this probe
+    # runs at ``mode="primary"``. Its NAMED/STANDALONE arms are still the resolved dir
+    # the launch hands the floor.
+    assert sizes["settings_launch.py (anchor floor)"] == 11
+    assert sizes["settings_launch.py (auth floor)"] == 6
+    # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
+    # leaf, declared in ``agent_default:`` beside the other four behavior scalars.
+    # ⚑ WIDENED 5 → 9: the four §2d ``<None>`` rows (``model``, ``endpoint``,
+    # ``run_args``, ``transform``), floored as a present ``None``.
+    assert sizes["core-defaults.yaml (agent_default:)"] == 9
 
-    def test_the_auth_floor_key_set_does_not_depend_on_the_probe_agent(self):
-        """The probe agent name is inert for the six auth rows — pinned, not assumed.
+  def test_the_auth_floor_key_set_does_not_depend_on_the_probe_agent(self):
+    """The probe agent name is inert for the six auth rows — pinned, not assumed.
 
-        ``source_groups`` calls ``auth_chain_floor`` with a placeholder name purely to
-        enumerate keys.  If a future floor ever spelled an agent INTO one of the six,
-        the label would start depending on a fabricated value; this case makes that
-        visible instead of silent.
-        """
-        from kanibako.settings.settings_launch import auth_chain_floor
+    ``source_groups`` calls ``auth_chain_floor`` with a placeholder name purely to
+    enumerate keys.  If a future floor ever spelled an agent INTO one of the six,
+    the label would start depending on a fabricated value; this case makes that
+    visible instead of silent.
+    """
+    from kanibako.settings.settings_launch import auth_chain_floor
 
-        declared = set(manifest_default_rows())
-        first = set(auth_chain_floor(mode="primary", agent_name="default")) & declared
-        second = set(auth_chain_floor(mode="primary", agent_name="goose")) & declared
-        assert first == second and len(first) == 6
+    declared = set(manifest_default_rows())
+    first = set(auth_chain_floor(mode="primary", agent_name="default")) & declared
+    second = set(auth_chain_floor(mode="primary", agent_name="goose")) & declared
+    assert first == second and len(first) == 6
 
 
 class TestKeyRows:
-    """Section 1's rendered rows."""
+  """Section 1's rendered rows."""
 
-    def test_every_registry_default_gets_exactly_one_row(self):
-        rows = key_rows()
-        assert len(rows) == len(manifest_default_rows())
-        assert len({r.key for r in rows}) == len(rows)
+  def test_every_registry_default_gets_exactly_one_row(self):
+    rows = key_rows()
+    assert len(rows) == len(manifest_default_rows())
+    assert len({r.key for r in rows}) == len(rows)
 
-    def test_no_row_has_an_empty_cell(self):
-        """The whole point is CLARITY: a blank SOURCE or SCOPE would be worse than nothing."""
-        for row in key_rows():
-            assert row.key and row.scope and row.source, row
-            assert row.value or row.per_mode, row
+  def test_no_row_has_an_empty_cell(self):
+    """The whole point is CLARITY: a blank SOURCE or SCOPE would be worse than nothing."""
+    for row in key_rows():
+      assert row.key and row.scope and row.source, row
+      assert row.value or row.per_mode, row
 
-    def test_the_scope_fallback_fires_only_for_the_layer_1_config_tier(self):
-        """Anti-vacuity for ``_scope_of``'s fallback — it must not absorb a scopeless row.
+  def test_the_scope_fallback_fires_only_for_the_layer_1_config_tier(self):
+    """Anti-vacuity for ``_scope_of``'s fallback — it must not absorb a scopeless row.
 
-        Exactly six rows carry ``layer: 1`` instead of a ``scope:``, and their head IS
-        their scope.  A seventh would mean a row lost its scope, which this catches.
-        """
-        rows = manifest_default_rows()
-        scopeless = {key for key, row in rows.items() if not row.get("scope")}
-        assert scopeless == {
-            "config.data", "config.settings", "config.agents",
-            "config.primary_workset", "config.registry", "config.journal",
-        }, "a default row lost its scope, or a seventh layer-1 row appeared"
-        by_key = {r.key: r for r in key_rows()}
-        assert all(by_key[key].scope == "config" for key in scopeless)
+    Exactly six rows carry ``layer: 1`` instead of a ``scope:``, and their head IS
+    their scope.  A seventh would mean a row lost its scope, which this catches.
+    """
+    rows = manifest_default_rows()
+    scopeless = {key for key, row in rows.items() if not row.get("scope")}
+    assert scopeless == {
+      "config.data",
+      "config.settings",
+      "config.agents",
+      "config.primary_workset",
+      "config.registry",
+      "config.journal",
+    }, "a default row lost its scope, or a seventh layer-1 row appeared"
+    by_key = {r.key: r for r in key_rows()}
+    assert all(by_key[key].scope == "config" for key in scopeless)
 
-    def test_the_per_mode_rows_are_the_manifest_per_mode_rows(self):
-        """14 rows default per box MODE; each renders as continuation lines, not a cell."""
-        per_mode = [r for r in key_rows() if r.per_mode]
-        assert len(per_mode) == 14
-        assert all(r.value == "(varies by box mode)" for r in per_mode)
-        assert all(not r.per_mode for r in key_rows() if r.value != "(varies by box mode)")
+  def test_the_per_mode_rows_are_the_manifest_per_mode_rows(self):
+    """14 rows default per box MODE; each renders as continuation lines, not a cell."""
+    per_mode = [r for r in key_rows() if r.per_mode]
+    assert len(per_mode) == 14
+    assert all(r.value == "(varies by box mode)" for r in per_mode)
+    assert all(not r.per_mode for r in key_rows() if r.value != "(varies by box mode)")
 
-    def test_equal_mode_arms_collapse(self):
-        """``workset.boxes`` agrees for primary/named and differs for standalone."""
-        row = next(r for r in key_rows() if r.key == "workset.boxes")
-        assert row.per_mode == (
-            ("primary, named", "{meta.workset.path}/boxes"),
-            ("standalone", "{meta.workset.path}/box_data"),
-        )
+  def test_equal_mode_arms_collapse(self):
+    """``workset.boxes`` agrees for primary/named and differs for standalone."""
+    row = next(r for r in key_rows() if r.key == "workset.boxes")
+    assert row.per_mode == (
+      ("primary, named", "{meta.workset.path}/boxes"),
+      ("standalone", "{meta.workset.path}/box_data"),
+    )
 
-    def test_an_unclassified_row_is_refused_rather_than_printed_blank(self, monkeypatch):
-        """⚑ MUTATION PROOF 1 — drop an enumeration source; the listing REFUSES, naming it.
+  def test_an_unclassified_row_is_refused_rather_than_printed_blank(self, monkeypatch):
+    """⚑ MUTATION PROOF 1 — drop an enumeration source; the listing REFUSES, naming it.
 
-        This is the failure the command must never have: a default printed with no
-        source.  Removing one group makes 17 rows unclassified, and ``key_rows`` raises
-        naming them rather than rendering empty cells.
-        """
-        import kanibako.settings.defaults_inventory as inv
+    This is the failure the command must never have: a default printed with no
+    source.  Removing one group makes 17 rows unclassified, and ``key_rows`` raises
+    naming them rather than rendering empty cells.
+    """
+    import kanibako.settings.defaults_inventory as inv
 
-        full = inv.source_groups()
-        monkeypatch.setattr(
-            inv, "source_groups",
-            lambda: tuple(g for g in full if not g[0].startswith("bootstrap.py")),
-        )
-        with pytest.raises(RuntimeError) as exc:
-            inv.key_rows()
-        assert "no source classification" in str(exc.value)
-        assert "config.data" in str(exc.value)
+    full = inv.source_groups()
+    monkeypatch.setattr(
+      inv,
+      "source_groups",
+      lambda: tuple(g for g in full if not g[0].startswith("bootstrap.py")),
+    )
+    with pytest.raises(RuntimeError) as exc:
+      inv.key_rows()
+    assert "no source classification" in str(exc.value)
+    assert "config.data" in str(exc.value)
 
-    def test_a_doubly_classified_row_is_refused(self, monkeypatch):
-        """⚑ MUTATION PROOF 2 — two SOURCES for one key is a contradiction, not a pick-one."""
-        import kanibako.settings.defaults_inventory as inv
+  def test_a_doubly_classified_row_is_refused(self, monkeypatch):
+    """⚑ MUTATION PROOF 2 — two SOURCES for one key is a contradiction, not a pick-one."""
+    import kanibako.settings.defaults_inventory as inv
 
-        clash = (*inv.source_groups(), ("a second opinion", frozenset({"box.image"})))
-        monkeypatch.setattr(inv, "source_groups", lambda: clash)
-        with pytest.raises(RuntimeError, match="classified twice"):
-            inv.key_rows()
+    clash = (*inv.source_groups(), ("a second opinion", frozenset({"box.image"})))
+    monkeypatch.setattr(inv, "source_groups", lambda: clash)
+    with pytest.raises(RuntimeError, match="classified twice"):
+      inv.key_rows()
 
 
 class TestBindRows:
-    """Section 2 — the dest-keyed bind and copy entries."""
+  """Section 2 — the dest-keyed bind and copy entries."""
 
-    def test_every_manifest_bind_and_category_entry_gets_a_row(self):
-        """Counted against the MANIFEST's arms, not against the section's own length."""
-        doc = manifest_doc()
-        binds = sum(len(arm) for arm in doc["bind_default_entries"].values())
-        cats = sum(
-            len(arm) for name, arm in doc["category_default_entries"].items()
-            if name != "parametric_keys"
-        )
-        assert binds == 31 and cats == 3
-        assert len(bind_rows()) == binds + cats
+  def test_every_manifest_bind_and_category_entry_gets_a_row(self):
+    """Counted against the MANIFEST's arms, not against the section's own length."""
+    doc = manifest_doc()
+    binds = sum(len(arm) for arm in doc["bind_default_entries"].values())
+    cats = sum(
+      len(arm)
+      for name, arm in doc["category_default_entries"].items()
+      if name != "parametric_keys"
+    )
+    assert binds == 31 and cats == 3
+    assert len(bind_rows()) == binds + cats
 
-    def test_the_internal_entries_are_marked_and_are_the_manifest_s(self):
-        """``user_key: false`` rows are INCLUDED (a box gets them) and flagged as internal."""
-        doc = manifest_doc()
-        internal = {
-            f"{arm}[{dest}]"
-            for arm, entries in doc["bind_default_entries"].items()
-            for dest, entry in entries.items()
-            if entry.get("user_key") is False
-        }
-        assert len(internal) == 11
-        assert {r.key for r in bind_rows() if r.internal} == internal
+  def test_the_internal_entries_are_marked_and_are_the_manifest_s(self):
+    """``user_key: false`` rows are INCLUDED (a box gets them) and flagged as internal."""
+    doc = manifest_doc()
+    internal = {
+      f"{arm}[{dest}]"
+      for arm, entries in doc["bind_default_entries"].items()
+      for dest, entry in entries.items()
+      if entry.get("user_key") is False
+    }
+    assert len(internal) == 11
+    assert {r.key for r in bind_rows() if r.internal} == internal
 
-    def test_a_dest_renders_bracketed_and_is_never_split_on_a_dot(self):
-        """A dest is DATA and contains dots; it must survive whole into the key cell."""
-        row = next(
-            r for r in bind_rows()
-            if r.key == "box.bindings.ro[~/canon/charter/ROM_CONTENTS.md]"
-        )
-        assert row.scope == "box"
-        assert "ROM_CONTENTS.md" in row.key
+  def test_a_dest_renders_bracketed_and_is_never_split_on_a_dot(self):
+    """A dest is DATA and contains dots; it must survive whole into the key cell."""
+    row = next(
+      r for r in bind_rows() if r.key == "box.bindings.ro[~/canon/charter/ROM_CONTENTS.md]"
+    )
+    assert row.scope == "box"
+    assert "ROM_CONTENTS.md" in row.key
 
-    def test_the_family_labels_come_from_the_file_the_binds_live_in(self):
-        """The dest→section read is ``core_defaults``' own, so a moved dest re-labels itself."""
-        families = core_defaults.bind_dest_families()
-        assert families["~/workspace"] == "core"
-        assert families["~/channels/chat"] == "channels"
-        by_key = {r.key: r for r in bind_rows()}
-        assert by_key["box.bindings.rw[~/workspace]"].source == "core-defaults.yaml (core:)"
-        assert (
-            by_key["box.bindings.rw[~/channels/chat]"].source
-            == "core-defaults.yaml (channels:)"
-        )
+  def test_the_family_labels_come_from_the_file_the_binds_live_in(self):
+    """The dest→section read is ``core_defaults``' own, so a moved dest re-labels itself."""
+    families = core_defaults.bind_dest_families()
+    assert families["~/workspace"] == "core"
+    assert families["~/channels/chat"] == "channels"
+    by_key = {r.key: r for r in bind_rows()}
+    assert by_key["box.bindings.rw[~/workspace]"].source == "core-defaults.yaml (core:)"
+    assert by_key["box.bindings.rw[~/channels/chat]"].source == "core-defaults.yaml (channels:)"
 
-    def test_every_named_outside_source_still_names_a_live_manifest_row(self):
-        """A stale hand-written label silently mis-attributes a bind — so it must red."""
-        import kanibako.settings.defaults_inventory as inv
+  def test_every_named_outside_source_still_names_a_live_manifest_row(self):
+    """A stale hand-written label silently mis-attributes a bind — so it must red."""
+    import kanibako.settings.defaults_inventory as inv
 
-        dests = {
-            dest
-            for entries in manifest_doc()["bind_default_entries"].values()
-            for dest in entries
-        }
-        for dest in inv._BIND_SOURCES_OUTSIDE_THE_FILE:
-            assert dest in dests, f"{dest!r} is no longer a manifest bind entry"
+    dests = {
+      dest for entries in manifest_doc()["bind_default_entries"].values() for dest in entries
+    }
+    for dest in inv._BIND_SOURCES_OUTSIDE_THE_FILE:
+      assert dest in dests, f"{dest!r} is no longer a manifest bind entry"
 
-    def test_a_dest_with_no_declaring_artifact_is_refused(self, monkeypatch):
-        """⚑ MUTATION PROOF 3 — a bind whose source cannot be found REFUSES, naming it."""
-        import kanibako.settings.defaults_inventory as inv
+  def test_a_dest_with_no_declaring_artifact_is_refused(self, monkeypatch):
+    """⚑ MUTATION PROOF 3 — a bind whose source cannot be found REFUSES, naming it."""
+    import kanibako.settings.defaults_inventory as inv
 
-        monkeypatch.setattr(inv, "_BIND_SOURCES_OUTSIDE_THE_FILE", {})
-        monkeypatch.setattr(core_defaults, "bind_dest_families", dict)
-        with pytest.raises(RuntimeError) as exc:
-            inv.bind_rows()
-        assert "no declaring artifact" in str(exc.value)
+    monkeypatch.setattr(inv, "_BIND_SOURCES_OUTSIDE_THE_FILE", {})
+    monkeypatch.setattr(core_defaults, "bind_dest_families", dict)
+    with pytest.raises(RuntimeError) as exc:
+      inv.bind_rows()
+    assert "no declaring artifact" in str(exc.value)
 
 
 class TestEnvRows:
-    """Section 3 — the env instances a box gets, registry-enumerated or not."""
+  """Section 3 — the env instances a box gets, registry-enumerated or not."""
 
-    def test_the_registry_enumerates_exactly_the_core_env_defaults(self):
-        """⚑ THE REGISTRY CARRIES THREE env INSTANCES, and section 3 still lists them.
+  def test_the_registry_enumerates_exactly_the_core_env_defaults(self):
+    """⚑ THE REGISTRY CARRIES THREE env INSTANCES, and section 3 still lists them.
 
-        This case used to assert the registry carried NONE, and said that a red here
-        meant per-VAR rows had been ratified and the section had to be re-derived.  They
-        were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and §2d
-        declares ``agent.default.env.TERM`` (all-agents, [Jei:2026-09-19]).  The
-        re-derivation the old text demanded is NOT a removal — section 3 reports the
-        live env floor a box gets, so the vars kanibako ships belong in it, and it is
-        section 1 that grew the DECLARED KEY rows.
-        The shell fence's ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``)
-        is the third; a shell box inherits ``agent.default.env.TERM`` (§2d).
-        What this pins is that the overlap is exactly those three keys: a FOURTH registry
-        env row would be a new ratification and must be read before it prints.
-        """
-        registry_env = [str(k) for k in manifest_doc()["keys"] if ".env." in str(k)]
-        assert sorted(registry_env) == [
-            "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "box.env.COLORTERM",
-        ]
-        assert set(registry_env) <= {r.key for r in env_rows()[0]}
+    This case used to assert the registry carried NONE, and said that a red here
+    meant per-VAR rows had been ratified and the section had to be re-derived.  They
+    were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and §2d
+    declares ``agent.default.env.TERM`` (all-agents, [Jei:2026-09-19]).  The
+    re-derivation the old text demanded is NOT a removal — section 3 reports the
+    live env floor a box gets, so the vars kanibako ships belong in it, and it is
+    section 1 that grew the DECLARED KEY rows.
+    The shell fence's ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``)
+    is the third; a shell box inherits ``agent.default.env.TERM`` (§2d).
+    What this pins is that the overlap is exactly those three keys: a FOURTH registry
+    env row would be a new ratification and must be read before it prints.
+    """
+    registry_env = [str(k) for k in manifest_doc()["keys"] if ".env." in str(k)]
+    assert sorted(registry_env) == [
+      "agent.default.env.TERM",
+      "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
+      "box.env.COLORTERM",
+    ]
+    assert set(registry_env) <= {r.key for r in env_rows()[0]}
 
-    def test_the_core_env_floor_is_the_shipped_emitter_s(self):
-        """The listing prints the emitter's table AS EMITTED — the VALUES are not pinned here.
+  def test_the_core_env_floor_is_the_shipped_emitter_s(self):
+    """The listing prints the emitter's table AS EMITTED — the VALUES are not pinned here.
 
-        ⚑ AN UNRESOLVED EXPRESSION (``{$TERM}``) IS THE CORRECT CELL, not a leak of the
-        declaration.  This listing is the install-wide STATIC view (module docstring) — no
-        box, no resolution — so printing this host's terminal type would be answering a
-        question the section does not ask, and would differ per reader; resolving here
-        reds this equality.  What the emitter emits is the ``env-defaults`` kinemata
-        view's: it holds ``env_default_categories`` to the manifest's ``.env.`` cells, so
-        a literal copy of them here was a second carrier and was retired (2026-09-25).
-        """
-        rows, _ = env_rows()
-        core = {r.key: r.value for r in rows if r.source == "core-defaults.yaml (env:)"}
-        assert core == core_defaults.env_default_categories()
+    ⚑ AN UNRESOLVED EXPRESSION (``{$TERM}``) IS THE CORRECT CELL, not a leak of the
+    declaration.  This listing is the install-wide STATIC view (module docstring) — no
+    box, no resolution — so printing this host's terminal type would be answering a
+    question the section does not ask, and would differ per reader; resolving here
+    reds this equality.  What the emitter emits is the ``env-defaults`` kinemata
+    view's: it holds ``env_default_categories`` to the manifest's ``.env.`` cells, so
+    a literal copy of them here was a second carrier and was retired (2026-09-25).
+    """
+    rows, _ = env_rows()
+    core = {r.key: r.value for r in rows if r.source == "core-defaults.yaml (env:)"}
+    assert core == core_defaults.env_default_categories()
 
-    def test_every_installed_target_is_consulted_and_its_vars_listed(self):
-        """Counted against ``discover_targets`` + each target's own ``default_envs``."""
-        from kanibako.targets import discover_targets
+  def test_every_installed_target_is_consulted_and_its_vars_listed(self):
+    """Counted against ``discover_targets`` + each target's own ``default_envs``."""
+    from kanibako.targets import discover_targets
 
-        targets = discover_targets()
-        rows, plugins = env_rows()
-        assert set(plugins.consulted) == set(targets)
-        expected: dict[str, str] = {}
-        for name, cls in targets.items():
-            expected.update(cls().default_envs())
-        listed = {r.key: r.value for r in rows if r.source.endswith("plugin defaults (env:)")}
-        assert listed == expected
-        assert set(plugins.declaring) == {
-            name for name, cls in targets.items() if cls().default_envs()
-        }
+    targets = discover_targets()
+    rows, plugins = env_rows()
+    assert set(plugins.consulted) == set(targets)
+    expected: dict[str, str] = {}
+    for name, cls in targets.items():
+      expected.update(cls().default_envs())
+    listed = {r.key: r.value for r in rows if r.source.endswith("plugin defaults (env:)")}
+    assert listed == expected
+    assert set(plugins.declaring) == {
+      name for name, cls in targets.items() if cls().default_envs()
+    }
 
-    def test_an_empty_discovery_lists_no_plugin_vars_and_does_not_crash(self, monkeypatch):
-        """⚑ MUTATION PROOF 4 — discovery returning NOTHING is legible, never a traceback.
+  def test_an_empty_discovery_lists_no_plugin_vars_and_does_not_crash(self, monkeypatch):
+    """⚑ MUTATION PROOF 4 — discovery returning NOTHING is legible, never a traceback.
 
-        ⚑ This is the DISCOVERY-FAILED case, NOT a cli-only install: ``shell`` is
-        kanibako-cli's own SEEDED target, so a working cli-only install still consults
-        one target and takes the other branch.
-        """
-        import kanibako.targets as targets_pkg
+    ⚑ This is the DISCOVERY-FAILED case, NOT a cli-only install: ``shell`` is
+    kanibako-cli's own SEEDED target, so a working cli-only install still consults
+    one target and takes the other branch.
+    """
+    import kanibako.targets as targets_pkg
 
-        monkeypatch.setattr(targets_pkg, "discover_targets", lambda *a, **k: {})
-        rows, plugins = env_rows()
-        assert plugins.consulted == () and plugins.declaring == ()
-        assert [r.key for r in rows] == [
-            "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "box.env.COLORTERM",
-        ]
-        out = io.StringIO()
-        print_defaults(out)
-        assert "No agent targets could be discovered" in out.getvalue()
+    monkeypatch.setattr(targets_pkg, "discover_targets", lambda *a, **k: {})
+    rows, plugins = env_rows()
+    assert plugins.consulted == () and plugins.declaring == ()
+    assert [r.key for r in rows] == [
+      "agent.default.env.TERM",
+      "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
+      "box.env.COLORTERM",
+    ]
+    out = io.StringIO()
+    print_defaults(out)
+    assert "No agent targets could be discovered" in out.getvalue()
 
-    def test_a_target_that_cannot_load_is_named_but_takes_nothing_down(self, monkeypatch):
-        """``system defaults`` must work on a BROKEN install — that is when it is needed."""
-        import kanibako.targets as targets_pkg
+  def test_a_target_that_cannot_load_is_named_but_takes_nothing_down(self, monkeypatch):
+    """``system defaults`` must work on a BROKEN install — that is when it is needed."""
+    import kanibako.targets as targets_pkg
 
-        class _Exploding:
-            def __init__(self):
-                raise RuntimeError("boom")
+    class _Exploding:
+      def __init__(self):
+        raise RuntimeError("boom")
 
-        monkeypatch.setattr(
-            targets_pkg, "discover_targets", lambda *a, **k: {"broken": _Exploding},
-        )
-        rows, plugins = env_rows()
-        assert plugins.consulted == ("broken",) and plugins.declaring == ()
-        assert [r.key for r in rows] == [
-            "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "box.env.COLORTERM",
-        ]
+    monkeypatch.setattr(
+      targets_pkg,
+      "discover_targets",
+      lambda *a, **k: {"broken": _Exploding},
+    )
+    rows, plugins = env_rows()
+    assert plugins.consulted == ("broken",) and plugins.declaring == ()
+    assert [r.key for r in rows] == [
+      "agent.default.env.TERM",
+      "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
+      "box.env.COLORTERM",
+    ]
 
-    def test_a_refused_plugin_shows_its_error_instead_of_no_rows(self, monkeypatch):
-        """A plugin whose defaults file this release refuses is named WITH the refusal.
+  def test_a_refused_plugin_shows_its_error_instead_of_no_rows(self, monkeypatch):
+    """A plugin whose defaults file this release refuses is named WITH the refusal.
 
-        ``system defaults`` still lists everything else; showing the plugin as merely
-        "declaring nothing" would hide the one message that says what to fix.
-        """
-        import kanibako.targets as targets_pkg
-        from kanibako.settings.agent_defaults import _guest_path
+    ``system defaults`` still lists everything else; showing the plugin as merely
+    "declaring nothing" would hide the one message that says what to fix.
+    """
+    import kanibako.targets as targets_pkg
+    from kanibako.settings.agent_defaults import _guest_path
 
-        class _Refused:
-            def default_envs(self):
-                return {"agent.refused.env.X": _guest_path("$GUEST_HOME/x", "refused-defaults.yaml")}
+    class _Refused:
+      def default_envs(self):
+        return {"agent.refused.env.X": _guest_path("$GUEST_HOME/x", "refused-defaults.yaml")}
 
-        monkeypatch.setattr(
-            targets_pkg, "discover_targets", lambda *a, **k: {"refused": _Refused},
-        )
-        rows, plugins = env_rows()
-        assert plugins.consulted == ("refused",) and plugins.declaring == ()
-        out = io.StringIO()
-        print_defaults(out)
-        text = out.getvalue()
-        assert "refused-defaults.yaml" in text, text
-        assert "{$GUEST_HOME}" in text, text
+    monkeypatch.setattr(
+      targets_pkg,
+      "discover_targets",
+      lambda *a, **k: {"refused": _Refused},
+    )
+    rows, plugins = env_rows()
+    assert plugins.consulted == ("refused",) and plugins.declaring == ()
+    out = io.StringIO()
+    print_defaults(out)
+    text = out.getvalue()
+    assert "refused-defaults.yaml" in text, text
+    assert "{$GUEST_HOME}" in text, text
 
 
 class TestRendering:
-    """The printed surface — what a reader actually gets."""
+  """The printed surface — what a reader actually gets."""
 
-    @staticmethod
-    def _output() -> str:
-        out = io.StringIO()
-        print_defaults(out)
-        return out.getvalue()
+  @staticmethod
+  def _output() -> str:
+    out = io.StringIO()
+    print_defaults(out)
+    return out.getvalue()
 
-    def test_it_prints_every_row_of_every_section(self):
-        """Each section's own rows must all appear — the listing is not a sample."""
-        text = self._output()
-        for row in (*key_rows(), *bind_rows(), *env_rows()[0]):
-            assert row.key in text, f"{row.key} is enumerated but not printed"
+  def test_it_prints_every_row_of_every_section(self):
+    """Each section's own rows must all appear — the listing is not a sample."""
+    text = self._output()
+    for row in (*key_rows(), *bind_rows(), *env_rows()[0]):
+      assert row.key in text, f"{row.key} is enumerated but not printed"
 
-    def test_the_columns_are_headed_and_aligned(self):
-        text = self._output()
-        assert text.count("KEY ") >= 3, "each of the three sections carries a header"
-        for column in ("DEFAULT", "SCOPE", "SOURCE"):
-            assert column in text
+  def test_the_columns_are_headed_and_aligned(self):
+    text = self._output()
+    assert text.count("KEY ") >= 3, "each of the three sections carries a header"
+    for column in ("DEFAULT", "SCOPE", "SOURCE"):
+      assert column in text
 
-    def test_the_section_counts_are_stated_and_true(self):
-        text = self._output()
-        assert f"DECLARED KEYS ({len(key_rows())})" in text
-        assert f"BIND AND COPY ENTRIES ({len(bind_rows())})" in text
-        assert f"ENVIRONMENT VARIABLES ({len(env_rows()[0])})" in text
+  def test_the_section_counts_are_stated_and_true(self):
+    text = self._output()
+    assert f"DECLARED KEYS ({len(key_rows())})" in text
+    assert f"BIND AND COPY ENTRIES ({len(bind_rows())})" in text
+    assert f"ENVIRONMENT VARIABLES ({len(env_rows()[0])})" in text
 
-    def test_the_derived_stamps_are_excluded_out_loud(self):
-        """The one class deliberately not listed says so, and says where to look."""
-        text = self._output()
-        assert "KANIBAKO_*" in text
-        assert "box show --effective" in text
+  def test_the_derived_stamps_are_excluded_out_loud(self):
+    """The one class deliberately not listed says so, and says where to look."""
+    text = self._output()
+    assert "KANIBAKO_*" in text
+    assert "box show --effective" in text
 
-    def test_it_says_nothing_here_is_stored(self):
-        """The distinction the command exists for: declared default vs stored value."""
-        assert "Nothing here is stored in your settings" in self._output()
+  def test_it_says_nothing_here_is_stored(self):
+    """The distinction the command exists for: declared default vs stored value."""
+    assert "Nothing here is stored in your settings" in self._output()
 
-    def test_a_source_label_flip_reds_the_pin(self, monkeypatch):
-        """⚑ MUTATION PROOF 5 — the SOURCE cell is pinned, so a wrong label cannot ship.
+  def test_a_source_label_flip_reds_the_pin(self, monkeypatch):
+    """⚑ MUTATION PROOF 5 — the SOURCE cell is pinned, so a wrong label cannot ship.
 
-        The pin is ``test_the_partition_agrees_with_the_conformance_classification`` and
-        ``test_every_label_is_classified_by_this_file``: both key off the LABEL, so a
-        relabeled group reds there.  This case proves the label reaches the printed
-        cell at all — without it, "the label is pinned" would be a claim about a string
-        nobody renders.
-        """
-        import kanibako.settings.defaults_inventory as inv
+    The pin is ``test_the_partition_agrees_with_the_conformance_classification`` and
+    ``test_every_label_is_classified_by_this_file``: both key off the LABEL, so a
+    relabeled group reds there.  This case proves the label reaches the printed
+    cell at all — without it, "the label is pinned" would be a claim about a string
+    nobody renders.
+    """
+    import kanibako.settings.defaults_inventory as inv
 
-        flipped = tuple(
-            ("A WRONG LABEL", keys) if label == "bootstrap.py (config tier)"
-            else (label, keys)
-            for label, keys in inv.source_groups()
-        )
-        monkeypatch.setattr(inv, "source_groups", lambda: flipped)
-        row = next(r for r in inv.key_rows() if r.key == "config.data")
-        assert row.source == "A WRONG LABEL"
-        assert "A WRONG LABEL" in self._output()
-        # And the flipped label is NOT one this file classifies — the partition case
-        # above is exactly what would red on a real relabeling.
-        assert "A WRONG LABEL" not in LABEL_TO_CONFORMANCE_CLASS
+    flipped = tuple(
+      ("A WRONG LABEL", keys) if label == "bootstrap.py (config tier)" else (label, keys)
+      for label, keys in inv.source_groups()
+    )
+    monkeypatch.setattr(inv, "source_groups", lambda: flipped)
+    row = next(r for r in inv.key_rows() if r.key == "config.data")
+    assert row.source == "A WRONG LABEL"
+    assert "A WRONG LABEL" in self._output()
+    # And the flipped label is NOT one this file classifies — the partition case
+    # above is exactly what would red on a real relabeling.
+    assert "A WRONG LABEL" not in LABEL_TO_CONFORMANCE_CLASS
 
 
 class TestRowShape:
-    """The row type itself — the contract the renderer relies on."""
+  """The row type itself — the contract the renderer relies on."""
 
-    def test_a_row_defaults_to_scalar_and_not_internal(self):
-        row = DefaultRow(key="k", value="v", scope="box", source="s")
-        assert row.per_mode == () and row.internal is False
+  def test_a_row_defaults_to_scalar_and_not_internal(self):
+    row = DefaultRow(key="k", value="v", scope="box", source="s")
+    assert row.per_mode == () and row.internal is False

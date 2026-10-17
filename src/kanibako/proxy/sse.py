@@ -41,10 +41,10 @@ logger = get_logger("proxy.sse")
 class _DeltaShape(NamedTuple):
   """How one content-block type splits into a ``content_block_start`` plus its delta."""
 
-  source_field: str            # block field holding the value that arrives incrementally
-  start_value: Any             # what that field holds in content_block_start (empty accumulator)
-  delta_type: str              # ``type`` of the content_block_delta payload
-  delta_field: str             # the delta payload's field carrying the value
+  source_field: str  # block field holding the value that arrives incrementally
+  start_value: Any  # what that field holds in content_block_start (empty accumulator)
+  delta_type: str  # ``type`` of the content_block_delta payload
+  delta_field: str  # the delta payload's field carrying the value
   encode: Callable[[Any], Any]  # block value -> delta value
 
 

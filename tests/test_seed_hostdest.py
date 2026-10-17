@@ -66,12 +66,12 @@ from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 
 
 def _ctx() -> ResolveCtx:
-    return ResolveCtx(
-        agent_name="claude",
-        workset_name=None,
-        host_home="/home/host",
-        xdg={"XDG_DATA_HOME": "/data"},
-    )
+  return ResolveCtx(
+    agent_name="claude",
+    workset_name=None,
+    host_home="/home/host",
+    xdg={"XDG_DATA_HOME": "/data"},
+  )
 
 
 # ===========================================================================
@@ -80,143 +80,161 @@ def _ctx() -> ResolveCtx:
 
 
 class TestHostCopyDest:
-    """``commands.start._host_copy_dest`` — the host arm and its §2a containment."""
+  """``commands.start._host_copy_dest`` — the host arm and its §2a containment."""
 
-    def test_a_host_dest_under_slash_home_agent_is_NOT_mapped_into_the_box_home(
-        self, tmp_path,
-    ):
-        """⚑⚑ THE COLLISION, pinned.
+  def test_a_host_dest_under_slash_home_agent_is_NOT_mapped_into_the_box_home(
+    self,
+    tmp_path,
+  ):
+    """⚑⚑ THE COLLISION, pinned.
 
-        A box store whose path begins with ``/home/agent/`` (the dev box, a seadog
-        LXC) produces host dests that START WITH THE GUEST HOME PREFIX.  The guest
-        translator would map such a dest to ``shell_path/<remainder>`` — inside the
-        box home — and report success.  The host arm must return the path VERBATIM.
-        """
-        from kanibako.commands.start import _host_copy_dest
+    A box store whose path begins with ``/home/agent/`` (the dev box, a seadog
+    LXC) produces host dests that START WITH THE GUEST HOME PREFIX.  The guest
+    translator would map such a dest to ``shell_path/<remainder>`` — inside the
+    box home — and report success.  The host arm must return the path VERBATIM.
+    """
+    from kanibako.commands.start import _host_copy_dest
 
-        # A box store spelled exactly like the collision case.
-        box_root = Path(GUEST_HOME) / ".local/share/kanibako/boxes/demo"
-        dest = _host_copy_dest(
-            str(box_root / "canon" / "handbook"), box_root,
-            label="handbook template", name="{box.canon}/handbook",
-            logger=logging.getLogger("t"),
-        )
-        assert dest == box_root / "canon" / "handbook"
-        # Specifically: NOT re-rooted anywhere, and still under the box STORE.
-        assert str(dest).startswith(str(box_root))
+    # A box store spelled exactly like the collision case.
+    box_root = Path(GUEST_HOME) / ".local/share/kanibako/boxes/demo"
+    dest = _host_copy_dest(
+      str(box_root / "canon" / "handbook"),
+      box_root,
+      label="handbook template",
+      name="{box.canon}/handbook",
+      logger=logging.getLogger("t"),
+    )
+    assert dest == box_root / "canon" / "handbook"
+    # Specifically: NOT re-rooted anywhere, and still under the box STORE.
+    assert str(dest).startswith(str(box_root))
 
-    def test_a_dest_outside_the_box_store_is_refused(self, tmp_path, caplog):
-        """§2a enforcement point 2: the ``..`` escape.  A mis-declared dest costs its
-        own seed, not the box's other seeds — hence a warning + None, not a raise."""
-        from kanibako.commands.start import _host_copy_dest
+  def test_a_dest_outside_the_box_store_is_refused(self, tmp_path, caplog):
+    """§2a enforcement point 2: the ``..`` escape.  A mis-declared dest costs its
+    own seed, not the box's other seeds — hence a warning + None, not a raise."""
+    from kanibako.commands.start import _host_copy_dest
 
-        box_root = tmp_path / "boxes" / "demo"
-        box_root.mkdir(parents=True)
-        with caplog.at_level(logging.WARNING):
-            dest = _host_copy_dest(
-                str(tmp_path / "elsewhere"), box_root,
-                label="seed", name="handbook", logger=logging.getLogger("t"),
-            )
-        assert dest is None
-        assert "outside the box store" in caplog.text
+    box_root = tmp_path / "boxes" / "demo"
+    box_root.mkdir(parents=True)
+    with caplog.at_level(logging.WARNING):
+      dest = _host_copy_dest(
+        str(tmp_path / "elsewhere"),
+        box_root,
+        label="seed",
+        name="handbook",
+        logger=logging.getLogger("t"),
+      )
+    assert dest is None
+    assert "outside the box store" in caplog.text
 
-    def test_the_box_store_root_itself_is_contained(self, tmp_path):
-        from kanibako.commands.start import _host_copy_dest
+  def test_the_box_store_root_itself_is_contained(self, tmp_path):
+    from kanibako.commands.start import _host_copy_dest
 
-        box_root = tmp_path / "boxes" / "demo"
-        box_root.mkdir(parents=True)
-        assert _host_copy_dest(
-            str(box_root), box_root,
-            label="seed", name="x", logger=logging.getLogger("t"),
-        ) == box_root
+    box_root = tmp_path / "boxes" / "demo"
+    box_root.mkdir(parents=True)
+    assert (
+      _host_copy_dest(
+        str(box_root),
+        box_root,
+        label="seed",
+        name="x",
+        logger=logging.getLogger("t"),
+      )
+      == box_root
+    )
 
 
 class TestSeedRoutesThroughTheOneGuestTranslator:
-    """End-to-end through the REAL seed seam: the §2a seed dests are GUEST-spelled
-    and go THROUGH ``container._guest_dest_to_host``, which is the ONE thing that
-    decides where a seed lands.
+  """End-to-end through the REAL seed seam: the §2a seed dests are GUEST-spelled
+  and go THROUGH ``container._guest_dest_to_host``, which is the ONE thing that
+  decides where a seed lands.
 
-    ⚑⚑ INVERTED 2026-08-08c, deliberately.  This class used to guarantee the
-    OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
-    true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
-    which the translator would have re-rooted under the box home.  The respell to
-    the guest ``~/`` made routing through the translator the CORRECT behavior, so
-    the guarantee is replaced rather than dropped: the same mis-landing bug is now
-    pinned by asserting the translator is asked AND answers with the box home.
+  ⚑⚑ INVERTED 2026-08-08c, deliberately.  This class used to guarantee the
+  OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
+  true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
+  which the translator would have re-rooted under the box home.  The respell to
+  the guest ``~/`` made routing through the translator the CORRECT behavior, so
+  the guarantee is replaced rather than dropped: the same mis-landing bug is now
+  pinned by asserting the translator is asked AND answers with the box home.
+  """
+
+  def test_the_seed_dest_routes_through_the_translator_onto_the_box_home(
+    self,
+    std,
+    config,
+    project_dir,
+    monkeypatch,
+  ):
+    """⚑⚑ THE COLLISION, pinned from the guest side.
+
+    Three assertions, and all three are needed:
+
+    1. the §2a seed dest REACHES the one translator (the opposite of the
+       pre-respell guarantee), with ``map_home_root=True`` — without that flag
+       the bare guest home returns ``None`` and the seed is skipped;
+    2. the translator ANSWERS with ``proj.shell_path`` — the box home — and
+       not ``None``, not a path re-rooted a level deeper;
+    3. the seeded content actually lands on disk at that path.
+
+    ⚑ WHY THIS IS NON-VACUOUS.  The spy DELEGATES to the real translator and
+    asserts its RETURN VALUE, so every way the original bug manifests fails
+    here: ``None`` fails (2) and skips the copy, so (3) fails too; the
+    host-home re-rooting (``shell_path/.local/share/kanibako/boxes/…/home``,
+    what a host-spelled dest produced on a ``/home/agent`` host) fails (2) on
+    inequality and (3) because nothing is at the real home; an off-by-one
+    ``shell_path/home`` fails (2) and is caught again by the explicit check
+    below.  A spy that merely RECORDED calls, or an assertion that only
+    checked the content landed, would each miss one of those.  The failure
+    mode being excluded is the one that REPORTS SUCCESS.
     """
+    from kanibako.commands import start as start_mod
+    from kanibako.settings.paths import resolve_project
+    from kanibako.launch.templates import install_packaged_templates
 
-    def test_the_seed_dest_routes_through_the_translator_onto_the_box_home(
-        self, std, config, project_dir, monkeypatch,
-    ):
-        """⚑⚑ THE COLLISION, pinned from the guest side.
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    install_packaged_templates(std, ["claude"])
 
-        Three assertions, and all three are needed:
+    real = start_mod._guest_dest_to_host
+    calls: list[tuple[str, bool, Path | None]] = []
 
-        1. the §2a seed dest REACHES the one translator (the opposite of the
-           pre-respell guarantee), with ``map_home_root=True`` — without that flag
-           the bare guest home returns ``None`` and the seed is skipped;
-        2. the translator ANSWERS with ``proj.shell_path`` — the box home — and
-           not ``None``, not a path re-rooted a level deeper;
-        3. the seeded content actually lands on disk at that path.
+    def _spy(dest, shell_path, project_path, *, map_home_root=False):
+      out = real(dest, shell_path, project_path, map_home_root=map_home_root)
+      calls.append((dest, map_home_root, out))
+      return out
 
-        ⚑ WHY THIS IS NON-VACUOUS.  The spy DELEGATES to the real translator and
-        asserts its RETURN VALUE, so every way the original bug manifests fails
-        here: ``None`` fails (2) and skips the copy, so (3) fails too; the
-        host-home re-rooting (``shell_path/.local/share/kanibako/boxes/…/home``,
-        what a host-spelled dest produced on a ``/home/agent`` host) fails (2) on
-        inequality and (3) because nothing is at the real home; an off-by-one
-        ``shell_path/home`` fails (2) and is caught again by the explicit check
-        below.  A spy that merely RECORDED calls, or an assertion that only
-        checked the content landed, would each miss one of those.  The failure
-        mode being excluded is the one that REPORTS SUCCESS.
-        """
-        from kanibako.commands import start as start_mod
-        from kanibako.settings.paths import resolve_project
-        from kanibako.launch.templates import install_packaged_templates
+    monkeypatch.setattr(start_mod, "_guest_dest_to_host", _spy)
 
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        install_packaged_templates(std, ["claude"])
+    class _T:
+      name = "claude"
 
-        real = start_mod._guest_dest_to_host
-        calls: list[tuple[str, bool, Path | None]] = []
+      def default_seeds(self):
+        return {}
 
-        def _spy(dest, shell_path, project_path, *, map_home_root=False):
-            out = real(dest, shell_path, project_path, map_home_root=map_home_root)
-            calls.append((dest, map_home_root, out))
-            return out
+    start_mod._apply_init_seeds(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      target=_T(),
+      global_config_path=std.settings,
+      agent_config_path=agent_settings_path(std.agents, "claude"),
+      logger=logging.getLogger("t"),
+      deliver_creds=True,
+      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+    )
 
-        monkeypatch.setattr(start_mod, "_guest_dest_to_host", _spy)
+    # (1) The seed dest reached the ONE translator, guest-spelled as the bare
+    # box home, with the home-root mapping enabled.
+    home_calls = [c for c in calls if c[0].rstrip("/") == GUEST_HOME]
+    assert home_calls, [c[0] for c in calls]
+    assert all(map_home_root for _d, map_home_root, _o in home_calls), calls
 
-        class _T:
-            name = "claude"
+    # (2) ...and it answered with the box home ITSELF.
+    assert {out for _d, _m, out in home_calls} == {proj.shell_path}, calls
+    # Named separately because it is the exact shape of the old bug: a dest
+    # the translator recognized but re-rooted one level too deep.
+    assert not (proj.shell_path / "home").exists()
 
-            def default_seeds(self):
-                return {}
-
-        start_mod._apply_init_seeds(
-            std=std, proj=proj, agent_name="claude", target=_T(),
-            global_config_path=std.settings,
-            agent_config_path=agent_settings_path(std.agents, "claude"),
-            logger=logging.getLogger("t"), deliver_creds=True,
-            selection_level=AgentSelection(node="claude", source="settings").selection_level,
-        )
-
-        # (1) The seed dest reached the ONE translator, guest-spelled as the bare
-        # box home, with the home-root mapping enabled.
-        home_calls = [c for c in calls if c[0].rstrip("/") == GUEST_HOME]
-        assert home_calls, [c[0] for c in calls]
-        assert all(map_home_root for _d, map_home_root, _o in home_calls), calls
-
-        # (2) ...and it answered with the box home ITSELF.
-        assert {out for _d, _m, out in home_calls} == {proj.shell_path}, calls
-        # Named separately because it is the exact shape of the old bug: a dest
-        # the translator recognized but re-rooted one level too deep.
-        assert not (proj.shell_path / "home").exists()
-
-        # (3) ...and the seed content is on disk there.
-        assert (
-            proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
-        ).is_file()
+    # (3) ...and the seed content is on disk there.
+    assert (proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
 
 # ===========================================================================
@@ -225,15 +243,20 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
 
 
 def _entry(**kw) -> CategoryEntry:
-    # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and the key
-    # is the arm plus that dest. Callers that care override both.
-    base = dict(
-        category="seeded", scope="system", box_dest="/x", host_src="/src",
-        delivery="COPY", options="", name="/x",
-        key_segments=("system", "seeded", "/x"),
-    )
-    base.update(kw)
-    return CategoryEntry(**base)  # type: ignore[arg-type]
+  # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and the key
+  # is the arm plus that dest. Callers that care override both.
+  base = dict(
+    category="seeded",
+    scope="system",
+    box_dest="/x",
+    host_src="/src",
+    delivery="COPY",
+    options="",
+    name="/x",
+    key_segments=("system", "seeded", "/x"),
+  )
+  base.update(kw)
+  return CategoryEntry(**base)  # type: ignore[arg-type]
 
 
 # 🕯️ ``TestReconcileAtOneDestination`` DIED AT 6-R3, with the cross-delivery ladder
@@ -257,173 +280,205 @@ def _entry(**kw) -> CategoryEntry:
 
 
 class TestSkipIfAbsentEmission:
-    """The skip-if-absent policy reaches the emitter as a DEST SET, not as a field.
+  """The skip-if-absent policy reaches the emitter as a DEST SET, not as a field.
 
-    A collapsed bind is ``CollapsedBind(src, opts)``, so the decision travels in the
-    one thing the collapsed map keeps — the destination.
+  A collapsed bind is ``CollapsedBind(src, opts)``, so the decision travels in the
+  one thing the collapsed map keeps — the destination.
+  """
+
+  _DEST = f"{GUEST_HOME}/canon/x"
+
+  def _emit(self, *, skip_if_absent, caplog):
+    from kanibako.commands.start import (
+      _bind_map_from_mounts,
+      _emit_category_mounts,
+    )
+
+    entry = _entry(
+      category="bindings.ro",
+      scope="box",
+      box_dest=self._DEST,
+      host_src="/definitely/not/here",
+      delivery="MOUNT",
+      options="ro",
+      # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and
+      # the key is the arm plus that dest. The retired ``canon_hb_box``
+      # spelling is kept out of even a hand-built fixture — a stale form in a
+      # test reads as precedent (CONVENTIONS §0).
+      name=self._DEST,
+      key_segments=("box", "bindings", "ro", self._DEST),
+    )
+    with caplog.at_level(logging.WARNING):
+      mounts = _emit_category_mounts(
+        _bind_map_from_mounts([entry]),
+        label="category",
+        skip_if_absent=skip_if_absent,
+      )
+    return mounts
+
+  def test_a_dest_in_the_skip_set_emits_no_mount_and_no_warning(self, caplog):
+    emitted = self._emit(skip_if_absent=frozenset({self._DEST}), caplog=caplog)
+    assert emitted == []
+    assert caplog.records == [], [r.message for r in caplog.records]
+
+  def test_a_dest_outside_the_skip_set_still_warns(self, caplog):
+    assert self._emit(skip_if_absent=frozenset(), caplog=caplog) == []
+    assert any("does not exist" in r.message for r in caplog.records)
+
+  def test_the_default_is_EMPTY_so_an_unpassed_policy_never_softens_a_drop(
+    self,
+    caplog,
+  ):
+    """⚑ The parameter defaults empty deliberately: warn-and-drop is L7's
+    answer, and a caller that states no policy must get it."""
+    from kanibako.commands.start import (
+      _bind_map_from_mounts,
+      _emit_category_mounts,
+    )
+
+    entry = _entry(
+      category="bindings.ro",
+      scope="box",
+      box_dest=self._DEST,
+      host_src="/definitely/not/here",
+      delivery="MOUNT",
+      options="ro",
+      name=self._DEST,
+      key_segments=("box", "bindings", "ro", self._DEST),
+    )
+    with caplog.at_level(logging.WARNING):
+      assert (
+        _emit_category_mounts(
+          _bind_map_from_mounts([entry]),
+          label="category",
+        )
+        == []
+      )
+    assert any("does not exist" in r.message for r in caplog.records)
+
+  def test_category_entry_carries_no_optional_field(self):
+    """⚑ THE KEY-FORM CARRIER IS GONE.  The skip-if-absent decision is made ONCE,
+    over the ``canon:`` rows, at the destination policy; nothing carries it on the
+    entry or through the snapshot.  RED if either half comes back.
     """
+    assert "optional" not in {f.name for f in dataclasses.fields(CategoryEntry)}
+    assert "optional_keys" not in inspect.signature(snapshot_category_entries).parameters
 
-    _DEST = f"{GUEST_HOME}/canon/x"
-
-    def _emit(self, *, skip_if_absent, caplog):
-        from kanibako.commands.start import (
-            _bind_map_from_mounts,
-            _emit_category_mounts,
-        )
-
-        entry = _entry(
-            category="bindings.ro", scope="box", box_dest=self._DEST,
-            host_src="/definitely/not/here", delivery="MOUNT", options="ro",
-            # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and
-            # the key is the arm plus that dest. The retired ``canon_hb_box``
-            # spelling is kept out of even a hand-built fixture — a stale form in a
-            # test reads as precedent (CONVENTIONS §0).
-            name=self._DEST,
-            key_segments=("box", "bindings", "ro", self._DEST),
-        )
-        with caplog.at_level(logging.WARNING):
-            mounts = _emit_category_mounts(
-                _bind_map_from_mounts([entry]), label="category",
-                skip_if_absent=skip_if_absent,
-            )
-        return mounts
-
-    def test_a_dest_in_the_skip_set_emits_no_mount_and_no_warning(self, caplog):
-        emitted = self._emit(skip_if_absent=frozenset({self._DEST}), caplog=caplog)
-        assert emitted == []
-        assert caplog.records == [], [r.message for r in caplog.records]
-
-    def test_a_dest_outside_the_skip_set_still_warns(self, caplog):
-        assert self._emit(skip_if_absent=frozenset(), caplog=caplog) == []
-        assert any("does not exist" in r.message for r in caplog.records)
-
-    def test_the_default_is_EMPTY_so_an_unpassed_policy_never_softens_a_drop(
-        self, caplog,
-    ):
-        """⚑ The parameter defaults empty deliberately: warn-and-drop is L7's
-        answer, and a caller that states no policy must get it."""
-        from kanibako.commands.start import (
-            _bind_map_from_mounts,
-            _emit_category_mounts,
-        )
-
-        entry = _entry(
-            category="bindings.ro", scope="box", box_dest=self._DEST,
-            host_src="/definitely/not/here", delivery="MOUNT", options="ro",
-            name=self._DEST,
-            key_segments=("box", "bindings", "ro", self._DEST),
-        )
-        with caplog.at_level(logging.WARNING):
-            assert _emit_category_mounts(
-                _bind_map_from_mounts([entry]), label="category",
-            ) == []
-        assert any("does not exist" in r.message for r in caplog.records)
-
-    def test_category_entry_carries_no_optional_field(self):
-        """⚑ THE KEY-FORM CARRIER IS GONE.  The skip-if-absent decision is made ONCE,
-        over the ``canon:`` rows, at the destination policy; nothing carries it on the
-        entry or through the snapshot.  RED if either half comes back.
-        """
-        assert "optional" not in {f.name for f in dataclasses.fields(CategoryEntry)}
-        assert "optional_keys" not in inspect.signature(
-            snapshot_category_entries
-        ).parameters
-
-    def test_a_key_spelled_skip_set_matches_NOTHING(self, caplog):
-        """⚑⚑ THE HISTORICAL BUG, in its second home. ``critical_keys`` was once
-        built from key NAMES and matched nothing, silently degrading every critical
-        bind. A key-spelled ``skip_if_absent`` fails the same way — loudly here."""
-        emitted = self._emit(
-            skip_if_absent=frozenset({f"box.bindings.ro.{self._DEST}"}),
-            caplog=caplog,
-        )
-        assert emitted == []
-        assert any("does not exist" in r.message for r in caplog.records)
+  def test_a_key_spelled_skip_set_matches_NOTHING(self, caplog):
+    """⚑⚑ THE HISTORICAL BUG, in its second home. ``critical_keys`` was once
+    built from key NAMES and matched nothing, silently degrading every critical
+    bind. A key-spelled ``skip_if_absent`` fails the same way — loudly here."""
+    emitted = self._emit(
+      skip_if_absent=frozenset({f"box.bindings.ro.{self._DEST}"}),
+      caplog=caplog,
+    )
+    assert emitted == []
+    assert any("does not exist" in r.message for r in caplog.records)
 
 
 class TestUncreatableReadWriteSourceIsDropped:
-    """An rw source the guarantee-create cannot make is dropped with a warning, like a
-    missing ro source, never handed to podman. RED before: the failed ``mkdir`` was
-    swallowed and the bind emitted."""
+  """An rw source the guarantee-create cannot make is dropped with a warning, like a
+  missing ro source, never handed to podman. RED before: the failed ``mkdir`` was
+  swallowed and the bind emitted."""
 
-    _DEST = f"{GUEST_HOME}/data"
+  _DEST = f"{GUEST_HOME}/data"
 
-    def test_a_dangling_link_source_is_dropped_and_named(self, tmp_path, caplog):
-        import os
+  def test_a_dangling_link_source_is_dropped_and_named(self, tmp_path, caplog):
+    import os
 
-        from kanibako.commands.start import (
-            _bind_map_from_mounts,
-            _emit_category_mounts,
-        )
+    from kanibako.commands.start import (
+      _bind_map_from_mounts,
+      _emit_category_mounts,
+    )
 
-        src = tmp_path / "link"
-        src.symlink_to(tmp_path / "gone")
-        entry = _entry(
-            category="bindings.rw", scope="box", box_dest=self._DEST,
-            host_src=str(src), delivery="MOUNT", options="Z,U",
-            name=self._DEST, key_segments=("box", "bindings", "rw", self._DEST),
-        )
-        with caplog.at_level(logging.WARNING):
-            mounts = _emit_category_mounts(
-                _bind_map_from_mounts([entry]), label="category",
-            )
-        assert mounts == []
-        assert any(f"is a dangling link to {tmp_path / 'gone'}; dropping mount"
-                   in r.message for r in caplog.records), [r.message for r in caplog.records]
-        assert os.readlink(src) == str(tmp_path / "gone")
+    src = tmp_path / "link"
+    src.symlink_to(tmp_path / "gone")
+    entry = _entry(
+      category="bindings.rw",
+      scope="box",
+      box_dest=self._DEST,
+      host_src=str(src),
+      delivery="MOUNT",
+      options="Z,U",
+      name=self._DEST,
+      key_segments=("box", "bindings", "rw", self._DEST),
+    )
+    with caplog.at_level(logging.WARNING):
+      mounts = _emit_category_mounts(
+        _bind_map_from_mounts([entry]),
+        label="category",
+      )
+    assert mounts == []
+    assert any(
+      f"is a dangling link to {tmp_path / 'gone'}; dropping mount" in r.message
+      for r in caplog.records
+    ), [r.message for r in caplog.records]
+    assert os.readlink(src) == str(tmp_path / "gone")
 
 
 class TestReadOnlyIsDecidedByTokenNotEquality:
-    """A ``ro`` entry is DROPPED when its source is missing — however options are spelled.
+  """A ``ro`` entry is DROPPED when its source is missing — however options are spelled.
 
-    ⚑ THIS IS THE LIVE LAUNCH PATH.  ``_emit_category_mounts`` used to ask
-    ``e.options != "ro"``, which is a rw answer for any FOLDED read-only spelling
-    (``"ro,Z"``).  A rw answer here does not merely mis-label: it takes the
-    guarantee-create arm and ``mkdir``s a host directory the user never declared,
-    in place of the ro-drop.  The fold keeps ARITY, so nothing else goes red.
+  ⚑ THIS IS THE LIVE LAUNCH PATH.  ``_emit_category_mounts`` used to ask
+  ``e.options != "ro"``, which is a rw answer for any FOLDED read-only spelling
+  (``"ro,Z"``).  A rw answer here does not merely mis-label: it takes the
+  guarantee-create arm and ``mkdir``s a host directory the user never declared,
+  in place of the ro-drop.  The fold keeps ARITY, so nothing else goes red.
 
-    ⚑ The arm is chosen from OPTIONS, never from the category name — each fixture
-    below spells the category that matches its options so the two never disagree.
-    """
+  ⚑ The arm is chosen from OPTIONS, never from the category name — each fixture
+  below spells the category that matches its options so the two never disagree.
+  """
 
-    def _emit(self, *, category: str, options: str, host_src: str, caplog):
-        from kanibako.commands.start import (
-            _bind_map_from_mounts,
-            _emit_category_mounts,
-        )
+  def _emit(self, *, category: str, options: str, host_src: str, caplog):
+    from kanibako.commands.start import (
+      _bind_map_from_mounts,
+      _emit_category_mounts,
+    )
 
-        dest = f"{GUEST_HOME}/folded"
-        arm = category.rsplit(".", 1)[-1]
-        entry = _entry(
-            category=category, scope="box", box_dest=dest,
-            host_src=host_src, delivery="MOUNT", options=options, name=dest,
-            key_segments=("box", "bindings", arm, dest),
-        )
-        with caplog.at_level(logging.WARNING):
-            return _emit_category_mounts(
-                _bind_map_from_mounts([entry]), label="folded",
-            )
+    dest = f"{GUEST_HOME}/folded"
+    arm = category.rsplit(".", 1)[-1]
+    entry = _entry(
+      category=category,
+      scope="box",
+      box_dest=dest,
+      host_src=host_src,
+      delivery="MOUNT",
+      options=options,
+      name=dest,
+      key_segments=("box", "bindings", arm, dest),
+    )
+    with caplog.at_level(logging.WARNING):
+      return _emit_category_mounts(
+        _bind_map_from_mounts([entry]),
+        label="folded",
+      )
 
-    @pytest.mark.parametrize("options", ["ro", "ro,Z", "Z,U,ro", " ro "])
-    def test_missing_source_is_dropped_for_every_ro_spelling(self, options, tmp_path, caplog):
-        absent = tmp_path / "never-created"
-        mounts = self._emit(
-            category="bindings.ro", options=options, host_src=str(absent), caplog=caplog,
-        )
-        assert mounts == []
-        assert any("does not exist" in r.message for r in caplog.records)
-        assert not absent.exists(), "a ro source must be DROPPED, never guarantee-created"
+  @pytest.mark.parametrize("options", ["ro", "ro,Z", "Z,U,ro", " ro "])
+  def test_missing_source_is_dropped_for_every_ro_spelling(self, options, tmp_path, caplog):
+    absent = tmp_path / "never-created"
+    mounts = self._emit(
+      category="bindings.ro",
+      options=options,
+      host_src=str(absent),
+      caplog=caplog,
+    )
+    assert mounts == []
+    assert any("does not exist" in r.message for r in caplog.records)
+    assert not absent.exists(), "a ro source must be DROPPED, never guarantee-created"
 
-    # ⚑ ``nodirop`` CONTAINS ``ro``; a substring test would call it read-only and
-    # skip the guarantee-create.  That is why the predicate is a token test.
-    @pytest.mark.parametrize("options", ["Z,U", "", "nodirop"])
-    def test_a_non_ro_entry_still_takes_the_guarantee_create_arm(self, options, tmp_path, caplog):
-        absent = tmp_path / "made-by-l7"
-        mounts = self._emit(
-            category="bindings.rw", options=options, host_src=str(absent), caplog=caplog,
-        )
-        assert len(mounts) == 1
-        assert absent.is_dir(), "a rw source is created by L7 guarantee-create"
+  # ⚑ ``nodirop`` CONTAINS ``ro``; a substring test would call it read-only and
+  # skip the guarantee-create.  That is why the predicate is a token test.
+  @pytest.mark.parametrize("options", ["Z,U", "", "nodirop"])
+  def test_a_non_ro_entry_still_takes_the_guarantee_create_arm(self, options, tmp_path, caplog):
+    absent = tmp_path / "made-by-l7"
+    mounts = self._emit(
+      category="bindings.rw",
+      options=options,
+      host_src=str(absent),
+      caplog=caplog,
+    )
+    assert len(mounts) == 1
+    assert absent.is_dir(), "a rw source is created by L7 guarantee-create"
 
 
 # ===========================================================================
@@ -432,236 +487,246 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
 
 
 class TestCanonDefaultCategories:
-    def test_declares_the_five_sibling_binds(self, tmp_path):
-        """⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6).
+  def test_declares_the_five_sibling_binds(self, tmp_path):
+    """⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6).
 
-        The five binds are now ENTRIES of the ONE terminal ``box.bindings.ro``
-        arm, keyed by their absolutized guest DESTINATIONS — the ``canon_hb_*``
-        names are retired outright (R-10), so the destination is what identifies a
-        chapter and the assertion is re-derived onto it rather than weakened.
-        """
-        cats = core_defaults.canon_default_categories("claude")
-        assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro"}
-        assert set(cats["box.bindings.ro"]) == {
-            f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
-            f"{GUEST_HOME}/canon/handbook/general",
-            f"{GUEST_HOME}/canon/handbook/agent",
-            f"{GUEST_HOME}/canon/handbook/workset",
-            f"{GUEST_HOME}/canon/handbook/box",
-        }
-        # The retired whole-dir spelling must never come back (J-7). Under
-        # dest-keying that is no longer a NAME that could reappear — it is the
-        # handbook ROOT, and a bind there is what would swallow the five siblings.
-        assert f"{GUEST_HOME}/canon/handbook" not in cats["box.bindings.ro"]
+    The five binds are now ENTRIES of the ONE terminal ``box.bindings.ro``
+    arm, keyed by their absolutized guest DESTINATIONS — the ``canon_hb_*``
+    names are retired outright (R-10), so the destination is what identifies a
+    chapter and the assertion is re-derived onto it rather than weakened.
+    """
+    cats = core_defaults.canon_default_categories("claude")
+    assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro"}
+    assert set(cats["box.bindings.ro"]) == {
+      f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
+      f"{GUEST_HOME}/canon/handbook/general",
+      f"{GUEST_HOME}/canon/handbook/agent",
+      f"{GUEST_HOME}/canon/handbook/workset",
+      f"{GUEST_HOME}/canon/handbook/box",
+    }
+    # The retired whole-dir spelling must never come back (J-7). Under
+    # dest-keying that is no longer a NAME that could reappear — it is the
+    # handbook ROOT, and a bind there is what would swallow the five siblings.
+    assert f"{GUEST_HOME}/canon/handbook" not in cats["box.bindings.ro"]
 
-    def test_sources_are_the_scope_canon_keys(self, tmp_path):
-        arm = core_defaults.canon_default_categories(
-            "claude",
-        )["box.bindings.ro"]
-        # Slot 0 is still the host_src; only the destination moved out of the tuple.
-        assert arm[f"{GUEST_HOME}/canon/handbook/workset"][0] == (
-            "{workset.canon}/handbook"
-        )
-        assert arm[f"{GUEST_HOME}/canon/handbook/box"][0] == "{box.canon}/handbook"
-        assert arm[f"{GUEST_HOME}/canon/handbook/general"][0] == (
-            "{system.canon}/handbook/general"
-        )
+  def test_sources_are_the_scope_canon_keys(self, tmp_path):
+    arm = core_defaults.canon_default_categories(
+      "claude",
+    )["box.bindings.ro"]
+    # Slot 0 is still the host_src; only the destination moved out of the tuple.
+    assert arm[f"{GUEST_HOME}/canon/handbook/workset"][0] == ("{workset.canon}/handbook")
+    assert arm[f"{GUEST_HOME}/canon/handbook/box"][0] == "{box.canon}/handbook"
+    assert arm[f"{GUEST_HOME}/canon/handbook/general"][0] == ("{system.canon}/handbook/general")
 
-    def test_the_guest_dests_carry_no_node_segment(self, tmp_path):
-        """§2d "storage is varied, binding is not": the agent chapter is stored per
-        agent node but always ARRIVES at ``~/canon/handbook/agent``.
+  def test_the_guest_dests_carry_no_node_segment(self, tmp_path):
+    """§2d "storage is varied, binding is not": the agent chapter is stored per
+    agent node but always ARRIVES at ``~/canon/handbook/agent``.
 
-        ⚑ Re-derived: the destination is the arm's map KEY now (with the ``~``
-        absolutized by R-11), so this is a property of the KEY — and the whole arm
-        can be swept for a leaked node segment rather than one entry checked.
-        """
-        arm = core_defaults.canon_default_categories(
-            "raiju℘claude",
-        )["box.bindings.ro"]
-        assert f"{GUEST_HOME}/canon/handbook/agent" in arm
-        assert not [
-            d for d in arm if "raiju" in d or "claude" in d or "℘" in d
-        ], arm
+    ⚑ Re-derived: the destination is the arm's map KEY now (with the ``~``
+    absolutized by R-11), so this is a property of the KEY — and the whole arm
+    can be swept for a leaked node segment rather than one entry checked.
+    """
+    arm = core_defaults.canon_default_categories(
+      "raiju℘claude",
+    )["box.bindings.ro"]
+    assert f"{GUEST_HOME}/canon/handbook/agent" in arm
+    assert not [d for d in arm if "raiju" in d or "claude" in d or "℘" in d], arm
 
-    def test_core_seeds_the_nodes_own_store_at_the_default_tier(self, tmp_path):
-        """R1 + his C3 ruling: ``agent.default.canon`` is ``{meta.self.path}/canon`` —
-        the ACTIVE NODE's own store, with or without a ``canon/`` dir there — and the
-        node row only forwards, so a user's ``agent.default.canon`` reaches it."""
-        cats = core_defaults.canon_default_categories("claude")
-        assert cats["agent.default.canon"] == "{config.agents}/claude/canon"
-        assert cats["agent.claude.canon"] == "{agent.default.canon}"
-        (tmp_path / "claude" / "canon").mkdir(parents=True)
-        again = core_defaults.canon_default_categories("claude")
-        assert again["agent.default.canon"] == "{config.agents}/claude/canon"
+  def test_core_seeds_the_nodes_own_store_at_the_default_tier(self, tmp_path):
+    """R1 + his C3 ruling: ``agent.default.canon`` is ``{meta.self.path}/canon`` —
+    the ACTIVE NODE's own store, with or without a ``canon/`` dir there — and the
+    node row only forwards, so a user's ``agent.default.canon`` reaches it."""
+    cats = core_defaults.canon_default_categories("claude")
+    assert cats["agent.default.canon"] == "{config.agents}/claude/canon"
+    assert cats["agent.claude.canon"] == "{agent.default.canon}"
+    (tmp_path / "claude" / "canon").mkdir(parents=True)
+    again = core_defaults.canon_default_categories("claude")
+    assert again["agent.default.canon"] == "{config.agents}/claude/canon"
 
-    def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
-        """⚑ THE SPELLING PIN for the canon arm — literal, and a bare agent cannot
-        show it (node == harness ⇒ one string).
+  def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
+    """⚑ THE SPELLING PIN for the canon arm — literal, and a bare agent cannot
+    show it (node == harness ⇒ one string).
 
-        The KEY keeps the canonical node because it is a key path; the VALUE is a
-        DIRECTORY and takes the ``+`` form.  Left on ``℘`` it names a dir that is
-        not there: the chapter's source is absent, it drops silently, and NOTHING
-        reports an error.
-        """
-        cats = core_defaults.canon_default_categories("raiju℘claude")
-        assert cats["agent.default.canon"] == "{config.agents}/raiju+claude/canon"
-        assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
+    The KEY keeps the canonical node because it is a key path; the VALUE is a
+    DIRECTORY and takes the ``+`` form.  Left on ``℘`` it names a dir that is
+    not there: the chapter's source is absent, it drops silently, and NOTHING
+    reports an error.
+    """
+    cats = core_defaults.canon_default_categories("raiju℘claude")
+    assert cats["agent.default.canon"] == "{config.agents}/raiju+claude/canon"
+    assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
 
-    def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
-        """A dangling embedded ref would coerce to ``""`` and yield the degenerate
-        host path ``/handbook`` (spec §0) — so the entry is OMITTED, not emptied."""
-        cats = core_defaults.canon_default_categories(None)
-        # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: with
-        # the ``canon_hb_agent`` NAME retired (R-10) there is no
-        # ``box.bindings.ro.canon_hb_agent`` key for ANY box, so the assertion
-        # passed whether or not the chapter was emitted. The live property is the
-        # absence of the chapter's DESTINATION from the arm.
-        assert f"{GUEST_HOME}/canon/handbook/agent" not in cats["box.bindings.ro"]
-        # ...and the four non-agent chapters are still there, so this is proving an
-        # omission rather than an empty table.
-        assert len(cats["box.bindings.ro"]) == 4
-        assert not any(k.startswith("agent.") for k in cats)
+  def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
+    """A dangling embedded ref would coerce to ``""`` and yield the degenerate
+    host path ``/handbook`` (spec §0) — so the entry is OMITTED, not emptied."""
+    cats = core_defaults.canon_default_categories(None)
+    # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: with
+    # the ``canon_hb_agent`` NAME retired (R-10) there is no
+    # ``box.bindings.ro.canon_hb_agent`` key for ANY box, so the assertion
+    # passed whether or not the chapter was emitted. The live property is the
+    # absence of the chapter's DESTINATION from the arm.
+    assert f"{GUEST_HOME}/canon/handbook/agent" not in cats["box.bindings.ro"]
+    # ...and the four non-agent chapters are still there, so this is proving an
+    # omission rather than an empty table.
+    assert len(cats["box.bindings.ro"]) == 4
+    assert not any(k.startswith("agent.") for k in cats)
 
-    def test_no_canon_row_carries_optional(self):
-        """⚑⚑ MISSING SOURCES IS A PROPERTY OF THE SOURCE FAMILY, not a per-row flag.
+  def test_no_canon_row_carries_optional(self):
+    """⚑⚑ MISSING SOURCES IS A PROPERTY OF THE SOURCE FAMILY, not a per-row flag.
 
-        Neither declaration that used to spell the policy is left: no ``canon:`` row
-        carries ``optional``, and no handbook entry in the manifest does either.  The
-        outcome is read off the ROWS by :func:`canon_silent_dests` and
-        :func:`rom_must_exist_dests`, so a row added tomorrow cannot opt out of it.
+    Neither declaration that used to spell the policy is left: no ``canon:`` row
+    carries ``optional``, and no handbook entry in the manifest does either.  The
+    outcome is read off the ROWS by :func:`canon_silent_dests` and
+    :func:`rom_must_exist_dests`, so a row added tomorrow cannot opt out of it.
 
-        ⚑ The manifest's ``workset.seeded`` KEEPS ``skip_if_absent``: that is the
-        seed/copy LAYER's own skip, over a different source family, and retiring the
-        canon rows' flag does not reach it.
-        """
-        from kanibako.settings.keyspace_manifest import manifest_doc
+    ⚑ The manifest's ``workset.seeded`` KEEPS ``skip_if_absent``: that is the
+    seed/copy LAYER's own skip, over a different source family, and retiring the
+    canon rows' flag does not reach it.
+    """
+    from kanibako.settings.keyspace_manifest import manifest_doc
 
-        assert not [e for e in core_defaults._load_doc()["canon"] if "optional" in e]
+    assert not [e for e in core_defaults._load_doc()["canon"] if "optional" in e]
 
-        entries = manifest_doc()["bind_default_entries"]["box.bindings.ro"]
-        handbook = {
-            dest: entry for dest, entry in entries.items()
-            if dest.startswith("~/canon/handbook/")
-        }
-        assert set(handbook) == {"~/canon/handbook/SYS_CONTENTS.md"} | {
-            f"~/canon/handbook/{chapter}" for chapter in core_defaults.HANDBOOK_CHAPTERS
-        }, sorted(handbook)
-        assert not [d for d, e in handbook.items() if "optional" in e], sorted(handbook)
+    entries = manifest_doc()["bind_default_entries"]["box.bindings.ro"]
+    handbook = {
+      dest: entry for dest, entry in entries.items() if dest.startswith("~/canon/handbook/")
+    }
+    assert set(handbook) == {"~/canon/handbook/SYS_CONTENTS.md"} | {
+      f"~/canon/handbook/{chapter}" for chapter in core_defaults.HANDBOOK_CHAPTERS
+    }, sorted(handbook)
+    assert not [d for d, e in handbook.items() if "optional" in e], sorted(handbook)
 
-        seeded = manifest_doc()["category_default_entries"]["workset.seeded"]
-        assert seeded["~/"]["optional"] == "skip_if_absent", seeded
+    seeded = manifest_doc()["category_default_entries"]["workset.seeded"]
+    assert seeded["~/"]["optional"] == "skip_if_absent", seeded
 
-    def test_the_silent_set_is_every_handbook_dest_but_SYS_CONTENTS_plus_the_plugin_chapter(
-        self,
-    ):
-        """⚑ The silent set is DERIVED, so ``general`` is in it — a flag could never
-        put the global handbook there, which is what it takes to keep the per-launch
-        warning off every box that ships no chapter."""
-        from kanibako.settings.settings_resolve import normalize_bind_dest
+  def test_the_silent_set_is_every_handbook_dest_but_SYS_CONTENTS_plus_the_plugin_chapter(
+    self,
+  ):
+    """⚑ The silent set is DERIVED, so ``general`` is in it — a flag could never
+    put the global handbook there, which is what it takes to keep the per-launch
+    warning off every box that ships no chapter."""
+    from kanibako.settings.settings_resolve import normalize_bind_dest
 
-        assert core_defaults.canon_silent_dests() == {
-            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
-            for chapter in core_defaults.HANDBOOK_CHAPTERS
-        } | {normalize_bind_dest(f"{GUEST_HOME}/canon/charter/agent")}
+    assert core_defaults.canon_silent_dests() == {
+      normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
+      for chapter in core_defaults.HANDBOOK_CHAPTERS
+    } | {normalize_bind_dest(f"{GUEST_HOME}/canon/charter/agent")}
 
-    def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):
-        """Decision 3: the user's repoint route is the ``<scope>.canon`` KEY, never
-        the handbook bind, because two spellings for one repoint is the shape
-        convention 0 forbids.
+  def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):
+    """Decision 3: the user's repoint route is the ``<scope>.canon`` KEY, never
+    the handbook bind, because two spellings for one repoint is the shape
+    convention 0 forbids.
 
-        ⚑⚑ RE-DERIVED, because the old form went VACUOUS AND THEN UNBUILDABLE. It
-        asserted that no key of ``core_defaults.core_default_bind_keys()`` contained
-        the substring ``canon_hb`` — already tautological once R-10 retired the
-        ``canon_hb_*`` NAMES (no key of any producer could contain it), and the
-        registry itself is now gone with the set-time floor thread. Pin the LIVE
-        pair instead: the bind spelling is REFUSED and the ``canon`` key WORKS. Both
-        halves are needed — a refusal with no working alternative would just be a
-        removed feature.
-        """
-        from kanibako.settings.config_interface import set_config_value
-        from kanibako.settings.config_keys import ConfigLevel
+    ⚑⚑ RE-DERIVED, because the old form went VACUOUS AND THEN UNBUILDABLE. It
+    asserted that no key of ``core_defaults.core_default_bind_keys()`` contained
+    the substring ``canon_hb`` — already tautological once R-10 retired the
+    ``canon_hb_*`` NAMES (no key of any producer could contain it), and the
+    registry itself is now gone with the set-time floor thread. Pin the LIVE
+    pair instead: the bind spelling is REFUSED and the ``canon`` key WORKS. Both
+    halves are needed — a refusal with no working alternative would just be a
+    removed feature.
+    """
+    from kanibako.settings.config_interface import set_config_value
+    from kanibako.settings.config_keys import ConfigLevel
 
-        box_f = tmp_path / "box-settings.yaml"
-        dest = f"{GUEST_HOME}/canon/handbook/box"
-        refused = set_config_value(
-            f"box.bindings.ro.{dest}", "/elsewhere",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_box_path=box_f,
-        )
-        assert refused.startswith("Error:"), refused
-        assert "RETIRED" in refused, refused
-        assert not box_f.exists()  # a refused write creates nothing
+    box_f = tmp_path / "box-settings.yaml"
+    dest = f"{GUEST_HOME}/canon/handbook/box"
+    refused = set_config_value(
+      f"box.bindings.ro.{dest}",
+      "/elsewhere",
+      config_path=box_f,
+      command_scope=ConfigLevel.box,
+      cascade_box_path=box_f,
+    )
+    assert refused.startswith("Error:"), refused
+    assert "RETIRED" in refused, refused
+    assert not box_f.exists()  # a refused write creates nothing
 
-        ok = set_config_value(
-            "box.canon", "/my/contribution/root",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_box_path=box_f,
-        )
-        assert not ok.startswith("Error:"), ok
+    ok = set_config_value(
+      "box.canon",
+      "/my/contribution/root",
+      config_path=box_f,
+      command_scope=ConfigLevel.box,
+      cascade_box_path=box_f,
+    )
+    assert not ok.startswith("Error:"), ok
 
 
 class TestHandbookMountOrdering:
-    def test_contents_and_chapters_are_EMITTED_in_ascending_depth(self, tmp_path):
-        """A depth-sort regression is otherwise SILENT. Under J-7 the chapters are
-        siblings rather than nested, so ordering is no longer load-bearing for
-        correctness — but the ordering itself is still what a future non-sibling
-        layout would depend on, and it is free to pin.
+  def test_contents_and_chapters_are_EMITTED_in_ascending_depth(self, tmp_path):
+    """A depth-sort regression is otherwise SILENT. Under J-7 the chapters are
+    siblings rather than nested, so ordering is no longer load-bearing for
+    correctness — but the ordering itself is still what a future non-sibling
+    layout would depend on, and it is free to pin.
 
-        ⚑ ASSERTED AT THE EMITTER since 6-R3. A dest-keyed map carries NO order, so
-        EMISSION owns the depth-sort (``_emit_category_mounts``); the retired by-dest
-        reconcile used to hand a sorted list over instead, and that is the list this
-        used to read."""
-        arm = core_defaults.canon_default_categories(
-            "claude",
-        )["box.bindings.ro"]
-        # Give every source a real dir/file so nothing is dropped at emission.
-        # ⚑ Re-derived for dest-keying: the floor entry is ``dest -> (src, opts)``,
-        # so the per-entry stand-in dir is named from the DESTINATION's last
-        # segment (the five are siblings, so those are unique) rather than from a
-        # retired ``canon_hb_*`` key tail.
-        resolved: dict = {"box.bindings.ro": {}}
-        for dest, (_ref, opts) in arm.items():
-            src = tmp_path / "src" / dest.rsplit("/", 1)[-1]
-            src.mkdir(parents=True, exist_ok=True)
-            resolved["box.bindings.ro"][dest] = (str(src), opts)
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-            default_categories=resolved,
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=_ctx(),
-        )
-        from kanibako.commands.start import (
-            _bind_map_from_mounts,
-            _emit_category_mounts,
-        )
+    ⚑ ASSERTED AT THE EMITTER since 6-R3. A dest-keyed map carries NO order, so
+    EMISSION owns the depth-sort (``_emit_category_mounts``); the retired by-dest
+    reconcile used to hand a sorted list over instead, and that is the list this
+    used to read."""
+    arm = core_defaults.canon_default_categories(
+      "claude",
+    )["box.bindings.ro"]
+    # Give every source a real dir/file so nothing is dropped at emission.
+    # ⚑ Re-derived for dest-keying: the floor entry is ``dest -> (src, opts)``,
+    # so the per-entry stand-in dir is named from the DESTINATION's last
+    # segment (the five are siblings, so those are unique) rather than from a
+    # retired ``canon_hb_*`` key tail.
+    resolved: dict = {"box.bindings.ro": {}}
+    for dest, (_ref, opts) in arm.items():
+      src = tmp_path / "src" / dest.rsplit("/", 1)[-1]
+      src.mkdir(parents=True, exist_ok=True)
+      resolved["box.bindings.ro"][dest] = (str(src), opts)
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=resolved,
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent="claude",
+      box_ctx=_ctx(),
+    )
+    from kanibako.commands.start import (
+      _bind_map_from_mounts,
+      _emit_category_mounts,
+    )
 
-        dests = [
-            m.destination for m in _emit_category_mounts(
-                _bind_map_from_mounts(entries), label="handbook-order",
-            )
-        ]
-        depths = [d.count("/") for d in dests]
-        assert depths == sorted(depths), dests
-        assert f"{GUEST_HOME}/canon/handbook/box" in dests
+    dests = [
+      m.destination
+      for m in _emit_category_mounts(
+        _bind_map_from_mounts(entries),
+        label="handbook-order",
+      )
+    ]
+    depths = [d.count("/") for d in dests]
+    assert depths == sorted(depths), dests
+    assert f"{GUEST_HOME}/canon/handbook/box" in dests
 
 
-@pytest.mark.parametrize("scope,leaf", [
-    ("box", "box.yaml"), ("agent", "agent.yaml"), ("workset", "workset.yaml"),
-])
+@pytest.mark.parametrize(
+  "scope,leaf",
+  [
+    ("box", "box.yaml"),
+    ("agent", "agent.yaml"),
+    ("workset", "workset.yaml"),
+  ],
+)
 def test_every_scope_whitelist_denies_its_own_settings_file(scope, leaf, tmp_path):
-    """The one DENY that is a CORRECTNESS property at EVERY scope: the scope's own
-    settings file IS that scope's cascade level.  ⚑ Each tier names its own file
-    now, so the denied leaf is per-scope — one shared ``settings.yaml`` would test
-    the box arm three times."""
-    from kanibako.errors import TemplateScopeError
-    from kanibako.launch.templates import copy_tree
+  """The one DENY that is a CORRECTNESS property at EVERY scope: the scope's own
+  settings file IS that scope's cascade level.  ⚑ Each tier names its own file
+  now, so the denied leaf is per-scope — one shared ``settings.yaml`` would test
+  the box arm three times."""
+  from kanibako.errors import TemplateScopeError
+  from kanibako.launch.templates import copy_tree
 
-    src = tmp_path / "src"
-    src.mkdir()
-    (src / leaf).write_text("x: 1\n")
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    with pytest.raises(TemplateScopeError):
-        copy_tree(src, dest, scope=scope)
+  src = tmp_path / "src"
+  src.mkdir()
+  (src / leaf).write_text("x: 1\n")
+  dest = tmp_path / "dest"
+  dest.mkdir()
+  with pytest.raises(TemplateScopeError):
+    copy_tree(src, dest, scope=scope)

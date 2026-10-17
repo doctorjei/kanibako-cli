@@ -24,12 +24,22 @@ from pathlib import Path
 
 from kanibako import kuid
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
-from kanibako.identifiers import (LEADING_DIGIT_FLAW, NAME_CHAR_CLASS, find_identifier,
-                                  name_flaw, underscore_spelling)
+from kanibako.identifiers import (
+  LEADING_DIGIT_FLAW,
+  NAME_CHAR_CLASS,
+  find_identifier,
+  name_flaw,
+  underscore_spelling,
+)
 from kanibako.launch.romanize import to_ascii
-from kanibako.settings.messages import (CURE_BOX_NAME_ASCII, CURE_BOX_NAME_UNDERSCORE,
-                                        CURE_DERIVED_BOX_NAME, ERR_DERIVED_BOX_NAME,
-                                        ERR_LEAF_NOT_ASCII, NAME_CHARSET)
+from kanibako.settings.messages import (
+  CURE_BOX_NAME_ASCII,
+  CURE_BOX_NAME_UNDERSCORE,
+  CURE_DERIVED_BOX_NAME,
+  ERR_DERIVED_BOX_NAME,
+  ERR_LEAF_NOT_ASCII,
+  NAME_CHARSET,
+)
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
@@ -71,351 +81,358 @@ _NAME_CHAR_RE = re.compile(rf"[{_LEAF_CHARS}]")
 
 
 def _box_name_violation(name: str) -> str | None:
-    """Return a human-readable reason *name* is an invalid box name, else ``None``.
+  """Return a human-readable reason *name* is an invalid box name, else ``None``.
 
-    ⚑ A STANDALONE box's ``<kuid>_<leaf>`` is GENERATED (keyspec §2c ``meta.box.name``),
-    and a kuid may begin with a digit; such a name is held to the rule's charset and
-    length but not to its first character, which kanibako chose, not the user.
-    """
-    flaw = name_flaw(name)
-    if flaw == LEADING_DIGIT_FLAW and is_canonical_standalone_name(name):
-        return None
-    if flaw is None:
-        return None
-    return f"box name {flaw}; {NAME_CHARSET}"
+  ⚑ A STANDALONE box's ``<kuid>_<leaf>`` is GENERATED (keyspec §2c ``meta.box.name``),
+  and a kuid may begin with a digit; such a name is held to the rule's charset and
+  length but not to its first character, which kanibako chose, not the user.
+  """
+  flaw = name_flaw(name)
+  if flaw == LEADING_DIGIT_FLAW and is_canonical_standalone_name(name):
+    return None
+  if flaw is None:
+    return None
+  return f"box name {flaw}; {NAME_CHARSET}"
 
 
 def is_valid_box_name(name: str) -> bool:
-    """Return ``True`` when *name* passes the box-name allowlist (non-raising).
+  """Return ``True`` when *name* passes the box-name allowlist (non-raising).
 
-    The "flag, don't reject" companion to :func:`validate_box_name`: a
-    pre-existing non-conforming box still resolves, it just gets warned about.
-    """
-    return _box_name_violation(name) is None
+  The "flag, don't reject" companion to :func:`validate_box_name`: a
+  pre-existing non-conforming box still resolves, it just gets warned about.
+  """
+  return _box_name_violation(name) is None
 
 
 class Designation(enum.Enum):
-    """What a command's box designation is, by its shape alone."""
+  """What a command's box designation is, by its shape alone."""
 
-    ABSENT = "absent"
-    """No designation: the current directory is the box's path."""
-    PATH = "path"
-    """Cannot be a box name but can be a path, so it is resolved as a path."""
-    IDENTIFIER = "identifier"
-    """A valid box name, which is also a relative path: ambiguous between the two."""
-    INVALID = "invalid"
-    """Neither a valid box name nor a valid path."""
+  ABSENT = "absent"
+  """No designation: the current directory is the box's path."""
+  PATH = "path"
+  """Cannot be a box name but can be a path, so it is resolved as a path."""
+  IDENTIFIER = "identifier"
+  """A valid box name, which is also a relative path: ambiguous between the two."""
+  INVALID = "invalid"
+  """Neither a valid box name nor a valid path."""
 
 
 def classify_designation(value: str | None) -> Designation:
-    """Classify a box designation (system-design § Detection & import).
+  """Classify a box designation (system-design § Detection & import).
 
-    Every valid box name is also a relative path, never the reverse, so a string
-    that fails the box-name rule but can name a path is a PATH.  Shape only: the
-    filesystem is not consulted.  An empty string is ABSENT, like ``None``.
-    """
-    if not value:
-        return Designation.ABSENT
-    if "\0" in value:
-        return Designation.INVALID
-    if is_valid_box_name(value):
-        return Designation.IDENTIFIER
-    return Designation.PATH
+  Every valid box name is also a relative path, never the reverse, so a string
+  that fails the box-name rule but can name a path is a PATH.  Shape only: the
+  filesystem is not consulted.  An empty string is ABSENT, like ``None``.
+  """
+  if not value:
+    return Designation.ABSENT
+  if "\0" in value:
+    return Designation.INVALID
+  if is_valid_box_name(value):
+    return Designation.IDENTIFIER
+  return Designation.PATH
 
 
 def box_name_reason(name: str) -> str | None:
-    """Return the reason *name* is invalid (for a warning message), else ``None``."""
-    return _box_name_violation(name)
+  """Return the reason *name* is invalid (for a warning message), else ``None``."""
+  return _box_name_violation(name)
 
 
 def validate_box_name(name: str) -> None:
-    """Raise :class:`~kanibako.errors.BoxNameError` if *name* is an invalid box name.
+  """Raise :class:`~kanibako.errors.BoxNameError` if *name* is an invalid box name.
 
-    Enforced at creation and at ``--name`` — i.e. on NEW names only.
-    """
-    reason = _box_name_violation(name)
-    if reason is not None:
-        raise BoxNameError(f"Invalid box name '{name}': {reason}.", name)
+  Enforced at creation and at ``--name`` — i.e. on NEW names only.
+  """
+  reason = _box_name_violation(name)
+  if reason is not None:
+    raise BoxNameError(f"Invalid box name '{name}': {reason}.", name)
 
 
 def name_spelling(name: str) -> tuple[str, bool] | None:
-    """The spelling a refusal of *name* offers, and whether it is the ASCII one — or ``None``.
+  """The spelling a refusal of *name* offers, and whether it is the ASCII one — or ``None``.
 
-    ONE answer for every kind of name (spec §0): an ASCII name is offered its ``_``
-    spelling; a non-ASCII name its ASCII spelling (:func:`to_ascii`), written in
-    ``_`` too, when one exists.
-    """
-    if name.isascii():
-        spelled = underscore_spelling(name)
-        return None if spelled is None or spelled == name else (spelled, False)
-    ascii_name = to_ascii(name)
-    if ascii_name is None:
-        return None
-    spelled = underscore_spelling(ascii_name)
-    return None if spelled is None else (spelled, True)
+  ONE answer for every kind of name (spec §0): an ASCII name is offered its ``_``
+  spelling; a non-ASCII name its ASCII spelling (:func:`to_ascii`), written in
+  ``_`` too, when one exists.
+  """
+  if name.isascii():
+    spelled = underscore_spelling(name)
+    return None if spelled is None or spelled == name else (spelled, False)
+  ascii_name = to_ascii(name)
+  if ascii_name is None:
+    return None
+  spelled = underscore_spelling(ascii_name)
+  return None if spelled is None else (spelled, True)
 
 
 def box_name_cure(command: str, name: str) -> str:
-    """The cure for refused *name*: *command* ``--name`` its spelling, else ``<new-name>``.
+  """The cure for refused *name*: *command* ``--name`` its spelling, else ``<new-name>``.
 
-    The spelling is offered, never applied: a typed name is the user's.
-    """
-    offer = name_spelling(name)
-    if offer is not None:
-        spelled, is_ascii = offer
-        cure = CURE_BOX_NAME_ASCII if is_ascii else CURE_BOX_NAME_UNDERSCORE
-        return cure % f"{command} --name {shlex.quote(spelled)}"
-    return CURE_DERIVED_BOX_NAME % f"{command} --name <new-name>"
+  The spelling is offered, never applied: a typed name is the user's.
+  """
+  offer = name_spelling(name)
+  if offer is not None:
+    spelled, is_ascii = offer
+    cure = CURE_BOX_NAME_ASCII if is_ascii else CURE_BOX_NAME_UNDERSCORE
+    return cure % f"{command} --name {shlex.quote(spelled)}"
+  return CURE_DERIVED_BOX_NAME % f"{command} --name <new-name>"
 
 
 def sanitize_cap(leaf: str) -> str:
-    """Sanitize and cap a project-basename *leaf* for a box name, KEEPING its case.
+  """Sanitize and cap a project-basename *leaf* for a box name, KEEPING its case.
 
-    The leaf is written in its ASCII spelling (:func:`~kanibako.launch.romanize.to_ascii`);
-    whitespace, ASCII punctuation, and Unicode punctuation and separators are
-    separators (``-`` and ``.`` among them), and each run becomes one ``_``.  The ends lose ``_``,
-    and an empty result falls back to ``"box"``.  Raises
-    :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
-    with no ASCII spelling, such as kanji; each caller adds its cure.
+  The leaf is written in its ASCII spelling (:func:`~kanibako.launch.romanize.to_ascii`);
+  whitespace, ASCII punctuation, and Unicode punctuation and separators are
+  separators (``-`` and ``.`` among them), and each run becomes one ``_``.  The ends lose ``_``,
+  and an empty result falls back to ``"box"``.  Raises
+  :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
+  with no ASCII spelling, such as kanji; each caller adds its cure.
 
-    ⚑ The source directory's case is the user's, and it is kept (spec §0,
-    ⚑ NAMING RULES).  Only the kuid half of ``<kuid>_<leaf>`` is lowercase; the
-    two halves are opposite by design and must not be unified.
-    """
-    parts = []
-    for ch in to_ascii(leaf, strict=False):
-        if _NAME_CHAR_RE.fullmatch(ch):
-            parts.append(ch)
-        elif ch.isascii() or ch.isspace() or unicodedata.category(ch)[0] in "PZ":
-            parts.append(_SEP)
-        else:
-            raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (
-                leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"), leaf)
-    collapsed = _SEPARATOR_RUN_RE.sub("_", "".join(parts)).strip(_LEAF_END_CHARS)
-    return collapsed[:_LEAF_CAP].strip(_LEAF_END_CHARS) or _EMPTY_LEAF_FALLBACK
+  ⚑ The source directory's case is the user's, and it is kept (spec §0,
+  ⚑ NAMING RULES).  Only the kuid half of ``<kuid>_<leaf>`` is lowercase; the
+  two halves are opposite by design and must not be unified.
+  """
+  parts = []
+  for ch in to_ascii(leaf, strict=False):
+    if _NAME_CHAR_RE.fullmatch(ch):
+      parts.append(ch)
+    elif ch.isascii() or ch.isspace() or unicodedata.category(ch)[0] in "PZ":
+      parts.append(_SEP)
+    else:
+      raise DerivedBoxNameError(
+        ERR_DERIVED_BOX_NAME % (leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"), leaf
+      )
+  collapsed = _SEPARATOR_RUN_RE.sub("_", "".join(parts)).strip(_LEAF_END_CHARS)
+  return collapsed[:_LEAF_CAP].strip(_LEAF_END_CHARS) or _EMPTY_LEAF_FALLBACK
 
 
 def is_canonical_standalone_name(name: str) -> bool:
-    """True when *name* matches the canonical ``<kuid>_<leaf>`` SHAPE.
+  """True when *name* matches the canonical ``<kuid>_<leaf>`` SHAPE.
 
-    ⚑ A shape test only.  The leaf is case-preserving and the kuid is not
-    (:func:`kanibako.kuid.is_valid` canonicalizes what it is handed), so
-    ``K3XY0_Foo`` is a canonical shape whose STORED spelling — a canonical kuid,
-    the leaf untouched — is :func:`_canonical_name`'s answer rather than this one's.
-    """
-    prefix, sep, leaf = name.partition("_")
-    if not sep:
-        return False
-    return kuid.is_valid(prefix) and _LEAF_RE.match(leaf) is not None
+  ⚑ A shape test only.  The leaf is case-preserving and the kuid is not
+  (:func:`kanibako.kuid.is_valid` canonicalizes what it is handed), so
+  ``K3XY0_Foo`` is a canonical shape whose STORED spelling — a canonical kuid,
+  the leaf untouched — is :func:`_canonical_name`'s answer rather than this one's.
+  """
+  prefix, sep, leaf = name.partition("_")
+  if not sep:
+    return False
+  return kuid.is_valid(prefix) and _LEAF_RE.match(leaf) is not None
 
 
 def _canonical_name(supplied: str) -> str:
-    """A canonical-shaped *supplied* name as it would be STORED.
+  """A canonical-shaped *supplied* name as it would be STORED.
 
-    The kuid half goes through :func:`kanibako.kuid.canonicalize` — the kuid module's
-    own one spelling per id, which is lowercase — and the leaf is left exactly as
-    typed.  Precondition: :func:`is_canonical_standalone_name` is true of *supplied*.
-    """
-    prefix, _, leaf = supplied.partition("_")
-    return f"{kuid.canonicalize(prefix)}_{leaf}"
+  The kuid half goes through :func:`kanibako.kuid.canonicalize` — the kuid module's
+  own one spelling per id, which is lowercase — and the leaf is left exactly as
+  typed.  Precondition: :func:`is_canonical_standalone_name` is true of *supplied*.
+  """
+  prefix, _, leaf = supplied.partition("_")
+  return f"{kuid.canonicalize(prefix)}_{leaf}"
 
 
 def _refuse_taken(stored: str) -> ProjectError:
-    """The ONE refusal for a verbatim canonical id already in use, reported AS STORED.
+  """The ONE refusal for a verbatim canonical id already in use, reported AS STORED.
 
-    Built here rather than raised at each site so :func:`validate_standalone_name`'s
-    pre-flight and :func:`resolve_standalone_name`'s refusal cannot drift apart — the
-    pre-flight exists precisely to predict the other's message.
-    """
-    prefix = stored.partition("_")[0]
-    return ProjectError(
-        f"already a box with that name '{stored}' — try without the "
-        f"'{prefix}_' prefix to generate a fresh one"
-    )
+  Built here rather than raised at each site so :func:`validate_standalone_name`'s
+  pre-flight and :func:`resolve_standalone_name`'s refusal cannot drift apart — the
+  pre-flight exists precisely to predict the other's message.
+  """
+  prefix = stored.partition("_")[0]
+  return ProjectError(
+    f"already a box with that name '{stored}' — try without the "
+    f"'{prefix}_' prefix to generate a fresh one"
+  )
 
 
 def _refuse_directory_name(shown: str) -> ProjectError:
-    """The ONE refusal for a ``--name`` that tries to SET a standalone identity.
+  """The ONE refusal for a ``--name`` that tries to SET a standalone identity.
 
-    Shared so the ROOT-shaped and the NAME-shaped doors cannot word one rule twice.
-    """
-    return ProjectError(
-        f"a standalone box is named '{shown}' after its directory; "
-        f"rename the directory to rename the box"
-    )
+  Shared so the ROOT-shaped and the NAME-shaped doors cannot word one rule twice.
+  """
+  return ProjectError(
+    f"a standalone box is named '{shown}' after its directory; "
+    f"rename the directory to rename the box"
+  )
 
 
 def standalone_kuid(name: str) -> str:
-    """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``)."""
-    # Everything up to the FIRST ``_``: unambiguous even when the leaf holds one,
-    # because the kuid alphabet never contains ``_``.
-    return name.partition("_")[0]
+  """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``)."""
+  # Everything up to the FIRST ``_``: unambiguous even when the leaf holds one,
+  # because the kuid alphabet never contains ``_``.
+  return name.partition("_")[0]
 
 
 def standalone_names_with_leaf(leaf: str, names: Iterable[str]) -> list[str]:
-    """The canonical standalone names among *names* whose leaf half is *leaf*, case-blind (§0)."""
-    return [n for n in names
-            if is_canonical_standalone_name(n)
-            and find_identifier(leaf, (n.partition("_")[2],)) is not None]
+  """The canonical standalone names among *names* whose leaf half is *leaf*, case-blind (§0)."""
+  return [
+    n
+    for n in names
+    if is_canonical_standalone_name(n)
+    and find_identifier(leaf, (n.partition("_")[2],)) is not None
+  ]
 
 
 def compose_standalone_name(box_kuid: str, root: Path) -> str:
-    """Compose the LIVE standalone box name ``<box_kuid>_<leaf>`` for *root*.
+  """Compose the LIVE standalone box name ``<box_kuid>_<leaf>`` for *root*.
 
-    The stored kuid stays put; the leaf is re-derived from the current basename,
-    so a moved box re-composes to a new name.  Mirrors :func:`_generate_with_leaf`.
-    """
-    return f"{box_kuid}_{sanitize_cap(root.name)}"
+  The stored kuid stays put; the leaf is re-derived from the current basename,
+  so a moved box re-composes to a new name.  Mirrors :func:`_generate_with_leaf`.
+  """
+  return f"{box_kuid}_{sanitize_cap(root.name)}"
 
 
-def carry_standalone_name(carried_kuid: str, root: Path, existing: set[str],
-                         *, own_name: str | None = None) -> str:
-    """Re-compose a MOVING standalone box's name without re-minting its kuid.
+def carry_standalone_name(
+  carried_kuid: str, root: Path, existing: set[str], *, own_name: str | None = None
+) -> str:
+  """Re-compose a MOVING standalone box's name without re-minting its kuid.
 
-    Keyspec ``:811``: "kuid = stable stored prefix; the leaf tracks dir moves" — the
-    prefix is the persistent identity, and the leaf re-derives itself from *root*.
-    Re-mint only when the WHOLE composed name is taken, and "taken" means by ANOTHER
-    box: *own_name* is excluded, since a leaf-preserving move composes the box's own
-    registered name and calling that a collision would discard a good kuid for a
-    conflict that does not exist.  Case-blind via :func:`find_identifier` (§0).
-    """
-    leaf = sanitize_cap(root.name)
-    others = existing
-    if own_name:
-        others = {n for n in existing if find_identifier(n, {own_name}) is None}
-    composed = f"{carried_kuid}_{leaf}"
-    if find_identifier(composed, others) is None:
-        return composed
-    return _generate_with_leaf(leaf, others)
+  Keyspec ``:811``: "kuid = stable stored prefix; the leaf tracks dir moves" — the
+  prefix is the persistent identity, and the leaf re-derives itself from *root*.
+  Re-mint only when the WHOLE composed name is taken, and "taken" means by ANOTHER
+  box: *own_name* is excluded, since a leaf-preserving move composes the box's own
+  registered name and calling that a collision would discard a good kuid for a
+  conflict that does not exist.  Case-blind via :func:`find_identifier` (§0).
+  """
+  leaf = sanitize_cap(root.name)
+  others = existing
+  if own_name:
+    others = {n for n in existing if find_identifier(n, {own_name}) is None}
+  composed = f"{carried_kuid}_{leaf}"
+  if find_identifier(composed, others) is None:
+    return composed
+  return _generate_with_leaf(leaf, others)
 
 
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
-    """Build ``<kuid>_<leaf>``, regenerating the kuid until the WHOLE name is free.
+  """Build ``<kuid>_<leaf>``, regenerating the kuid until the WHOLE name is free.
 
-    *leaf* must already be sanitized.  Raises :class:`RuntimeError` once
-    :data:`_MAX_REGEN_ATTEMPTS` is exhausted.
-    """
-    for _ in range(_MAX_REGEN_ATTEMPTS):
-        name = f"{kuid.generate()}_{leaf}"
-        # ⚑ Case-blind (spec §0): the leaf now carries the directory's case, so an
-        # exact test would call ``k3xy0_Foo`` free while ``k3xy0_foo`` is registered.
-        if find_identifier(name, existing) is None:
-            return name
-    raise RuntimeError(
-        "Could not generate a unique standalone box name after "
-        f"{_MAX_REGEN_ATTEMPTS} attempts."
-    )
+  *leaf* must already be sanitized.  Raises :class:`RuntimeError` once
+  :data:`_MAX_REGEN_ATTEMPTS` is exhausted.
+  """
+  for _ in range(_MAX_REGEN_ATTEMPTS):
+    name = f"{kuid.generate()}_{leaf}"
+    # ⚑ Case-blind (spec §0): the leaf now carries the directory's case, so an
+    # exact test would call ``k3xy0_Foo`` free while ``k3xy0_foo`` is registered.
+    if find_identifier(name, existing) is None:
+      return name
+  raise RuntimeError(
+    f"Could not generate a unique standalone box name after {_MAX_REGEN_ATTEMPTS} attempts."
+  )
 
 
 def make_standalone_box_name(root: Path, existing: set[str]) -> str:
-    """Generate a unique standalone box name for project *root*.
+  """Generate a unique standalone box name for project *root*.
 
-    *existing* is the set of standalone box names currently registered (see
-    ``registry.standalone``).
-    """
-    return _generate_with_leaf(sanitize_cap(root.name), existing)
+  *existing* is the set of standalone box names currently registered (see
+  ``registry.standalone``).
+  """
+  return _generate_with_leaf(sanitize_cap(root.name), existing)
 
 
 def validate_standalone_name(supplied: str, existing: set[str]) -> None:
-    """Pre-flight a user-supplied standalone ``--name`` for a refusable collision.
+  """Pre-flight a user-supplied standalone ``--name`` for a refusable collision.
 
-    Raises the SAME :class:`~kanibako.errors.ProjectError` that
-    :func:`resolve_standalone_name` would, on the one refusable case: a verbatim
-    canonical id already in *existing*.  Every other input is satisfiable, so
-    this is a no-op for them.  ⚑ Keep the two refusal messages identical.
+  Raises the SAME :class:`~kanibako.errors.ProjectError` that
+  :func:`resolve_standalone_name` would, on the one refusable case: a verbatim
+  canonical id already in *existing*.  Every other input is satisfiable, so
+  this is a no-op for them.  ⚑ Keep the two refusal messages identical.
 
-    ⚑ Callers run this BEFORE any filesystem mutation so a doomed standalone
-    ``create`` refuses up front instead of leaving a half-created tree (BUG-A).
-    """
-    if not supplied:
-        return
-    if not is_canonical_standalone_name(supplied):
-        return
-    stored = find_identifier(_canonical_name(supplied), existing)
-    if stored is not None:
-        raise _refuse_taken(stored)
+  ⚑ Callers run this BEFORE any filesystem mutation so a doomed standalone
+  ``create`` refuses up front instead of leaving a half-created tree (BUG-A).
+  """
+  if not supplied:
+    return
+  if not is_canonical_standalone_name(supplied):
+    return
+  stored = find_identifier(_canonical_name(supplied), existing)
+  if stored is not None:
+    raise _refuse_taken(stored)
 
 
 def refuse_nonleaf_standalone_name(
-    supplied: str, root: Path, *, box_kuid: str | None = None,
+  supplied: str,
+  root: Path,
+  *,
+  box_kuid: str | None = None,
 ) -> None:
-    """Refuse a standalone ``--name`` that is not the name the box already carries.
+  """Refuse a standalone ``--name`` that is not the name the box already carries.
 
-    Standalone identity is not user-settable: keyspec §2c STANDALONE defines
-    ``meta.box.name`` as ``{workset.kuid}_%leaf({meta.workset.path})%``, and
-    system-design §"Detection & import" calls those names machine-generated.  A
-    typed ``--name`` has nothing to set, and 1.8.0 never silently ignores a flag
-    the user typed — so every standalone door refuses it.
+  Standalone identity is not user-settable: keyspec §2c STANDALONE defines
+  ``meta.box.name`` as ``{workset.kuid}_%leaf({meta.workset.path})%``, and
+  system-design §"Detection & import" calls those names machine-generated.  A
+  typed ``--name`` has nothing to set, and 1.8.0 never silently ignores a flag
+  the user typed — so every standalone door refuses it.
 
-    No-ops, each asking for what the box gets anyway: the bare leaf (``proj`` for
-    ``/x/proj``) and, where *box_kuid* is known, the composed ``<kuid>_<leaf>``.
+  No-ops, each asking for what the box gets anyway: the bare leaf (``proj`` for
+  ``/x/proj``) and, where *box_kuid* is known, the composed ``<kuid>_<leaf>``.
 
-    ⚑ Every standalone door routes through here so the wording cannot drift.
-    """
-    if not supplied:
-        return
-    leaf = sanitize_cap(root.name)
-    if supplied == leaf:
-        return
-    if (
-        box_kuid is not None
-        and is_canonical_standalone_name(supplied)
-        and _canonical_name(supplied) == compose_standalone_name(box_kuid, root)
-    ):
-        return
-    shown = (
-        compose_standalone_name(box_kuid, root)
-        if box_kuid is not None
-        else f"<kuid>_{leaf}"
-    )
-    raise _refuse_directory_name(shown)
+  ⚑ Every standalone door routes through here so the wording cannot drift.
+  """
+  if not supplied:
+    return
+  leaf = sanitize_cap(root.name)
+  if supplied == leaf:
+    return
+  if (
+    box_kuid is not None
+    and is_canonical_standalone_name(supplied)
+    and _canonical_name(supplied) == compose_standalone_name(box_kuid, root)
+  ):
+    return
+  shown = compose_standalone_name(box_kuid, root) if box_kuid is not None else f"<kuid>_{leaf}"
+  raise _refuse_directory_name(shown)
 
 
 def refuse_standalone_rename(supplied: str, current_name: str) -> None:
-    """Refuse a ``--name`` that would RENAME an existing standalone box.
+  """Refuse a ``--name`` that would RENAME an existing standalone box.
 
-    :func:`refuse_nonleaf_standalone_name`'s rule for a door that holds the box's
-    composed *current_name* rather than a root to re-derive a leaf from — extract
-    is the one.  No-ops: that name, and its leaf half.  ⚑ EXACT equality;
-    ``PROJ`` is not what directory ``proj`` composes, so it is refused rather
-    than accepted as close enough.
-    """
-    if not supplied:
-        return
-    if supplied == current_name:
-        return
-    leaf = current_name.partition("_")[2]
-    if leaf and supplied == leaf:
-        return
-    raise _refuse_directory_name(current_name)
+  :func:`refuse_nonleaf_standalone_name`'s rule for a door that holds the box's
+  composed *current_name* rather than a root to re-derive a leaf from — extract
+  is the one.  No-ops: that name, and its leaf half.  ⚑ EXACT equality;
+  ``PROJ`` is not what directory ``proj`` composes, so it is refused rather
+  than accepted as close enough.
+  """
+  if not supplied:
+    return
+  if supplied == current_name:
+    return
+  leaf = current_name.partition("_")[2]
+  if leaf and supplied == leaf:
+    return
+  raise _refuse_directory_name(current_name)
 
 
 def resolve_standalone_name(
-    root: Path, supplied: str, existing: set[str], *, box_kuid: str | None = None,
+  root: Path,
+  supplied: str,
+  existing: set[str],
+  *,
+  box_kuid: str | None = None,
 ) -> str:
-    """Resolve the standalone box name for *root* given a user *supplied* name.
+  """Resolve the standalone box name for *root* given a user *supplied* name.
 
-    Three branches: empty → a fresh name; a non-canonical string → its whole
-    text becomes the leaf; a verbatim canonical id → honored if free, refused if
-    taken.  The last is the only refusable input.  *box_kuid*, a box's STORED kuid,
-    is the kuid half of a non-canonical name instead of a fresh one.
+  Three branches: empty → a fresh name; a non-canonical string → its whole
+  text becomes the leaf; a verbatim canonical id → honored if free, refused if
+  taken.  The last is the only refusable input.  *box_kuid*, a box's STORED kuid,
+  is the kuid half of a non-canonical name instead of a fresh one.
 
-    ⚑ The case the user typed survives every branch (spec §0), because
-    :func:`sanitize_cap` no longer folds; the kuid half is canonicalized, never the
-    leaf.
-    """
-    if not supplied:
-        return make_standalone_box_name(root, existing)
+  ⚑ The case the user typed survives every branch (spec §0), because
+  :func:`sanitize_cap` no longer folds; the kuid half is canonicalized, never the
+  leaf.
+  """
+  if not supplied:
+    return make_standalone_box_name(root, existing)
 
-    if not is_canonical_standalone_name(supplied):
-        # Not a canonical id: use the whole supplied string as the leaf source.
-        if box_kuid is not None:
-            return f"{box_kuid}_{sanitize_cap(supplied)}"
-        return _generate_with_leaf(sanitize_cap(supplied), existing)
+  if not is_canonical_standalone_name(supplied):
+    # Not a canonical id: use the whole supplied string as the leaf source.
+    if box_kuid is not None:
+      return f"{box_kuid}_{sanitize_cap(supplied)}"
+    return _generate_with_leaf(sanitize_cap(supplied), existing)
 
-    # A verbatim canonical id: honor it if free, else refuse with guidance.
-    name = _canonical_name(supplied)
-    stored = find_identifier(name, existing)
-    if stored is not None:
-        raise _refuse_taken(stored)
-    return name
+  # A verbatim canonical id: honor it if free, else refuse with guidance.
+  name = _canonical_name(supplied)
+  stored = find_identifier(name, existing)
+  if stored is not None:
+    raise _refuse_taken(stored)
+  return name

@@ -38,11 +38,11 @@ never relative — §4.4 of that plan.
 """
 
 __all__ = [
-    "box_identity",
-    "box_resolve",
-    "creds_watcher",
-    "hygiene",
-    "journal",
-    "shells",
-    "templates",
+  "box_identity",
+  "box_resolve",
+  "creds_watcher",
+  "hygiene",
+  "journal",
+  "shells",
+  "templates",
 ]

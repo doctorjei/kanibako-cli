@@ -27,10 +27,11 @@ XDG_CACHE_HOME = "XDG_CACHE_HOME"
 # Spec defaults for the XDG base dirs that HAVE one (home-relative suffixes).
 # ⚑ ``XDG_RUNTIME_DIR`` is deliberately ABSENT — no spec default; :func:`resolve_xdg` handles it.
 XDG_SPEC_DEFAULTS: dict[str, str] = {
-    XDG_DATA_HOME:             '.local/share',
-    XDG_CONFIG_HOME:           '.config',
-    XDG_STATE_HOME:            '.local/state',
-    XDG_CACHE_HOME:            '.cache'}
+  XDG_DATA_HOME: ".local/share",
+  XDG_CONFIG_HOME: ".config",
+  XDG_STATE_HOME: ".local/state",
+  XDG_CACHE_HOME: ".cache",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -53,13 +54,14 @@ SITE_SETTINGS_FILE = "settings_base.yaml"
 # Bootstrap keys from ``kanibako.cfg``, resolved FLAT — not by the keyspace pipeline.
 # ⚑ The set may GROW; spec §1 states no count. Its SIZE is pinned by test_manifest_conformance.
 CONFIG_PATH_DEFAULTS: dict[str, str] = {
-    "config.data":                  "{$XDG_DATA_HOME}/kanibako",
-    "config.settings":              "{config.data}/global/settings.yaml",
-    "config.agents":                "{config.data}/agents",
-    "config.primary_workset":       "{config.data}/primary_workset",
-    "config.registry":              "{config.data}/global/registry.yaml",
-    # The LIFECYCLE JOURNAL — the TRANSIENT truth beside the steady-state registry.
-    "config.journal":               "{config.data}/global/journal.yaml"}
+  "config.data": "{$XDG_DATA_HOME}/kanibako",
+  "config.settings": "{config.data}/global/settings.yaml",
+  "config.agents": "{config.data}/agents",
+  "config.primary_workset": "{config.data}/primary_workset",
+  "config.registry": "{config.data}/global/registry.yaml",
+  # The LIFECYCLE JOURNAL — the TRANSIENT truth beside the steady-state registry.
+  "config.journal": "{config.data}/global/journal.yaml",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -70,19 +72,20 @@ CONFIG_PATH_DEFAULTS: dict[str, str] = {
 # CLI-settable at the system scope (``config_keys._KEY_ROUTES``) and a set lands in the ``system:``
 # table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults.
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-   "system.backup":                 "{config.data}/backup",
-   "system.channelroot":            "{config.data}/channels",
-   "system.template":               "{config.data}/global/template",
-   "system.canon":                  "{config.data}/global/canon",
-   "system.cache":                  "{$XDG_CACHE_HOME}/kanibako",
-   "system.state":                  "{$XDG_STATE_HOME}/kanibako",
-   "system.runtime":                "{$XDG_RUNTIME_DIR}/kanibako",
-   # Channels skeleton.  ⚑ ORDER-DEPENDENT: broadcast refs chat, the rest ref channelroot.
-   "system.channels.common":        "{system.channelroot}/common",
-   "system.channels.chat":          "{system.channelroot}/chat",
-   "system.channels.broadcast":     "{system.channels.chat}/broadcast.md",
-   "system.channels.mailboxes":     "{system.channelroot}/mailboxes",
-   "system.channels.share":         "{system.channelroot}/share"}
+  "system.backup": "{config.data}/backup",
+  "system.channelroot": "{config.data}/channels",
+  "system.template": "{config.data}/global/template",
+  "system.canon": "{config.data}/global/canon",
+  "system.cache": "{$XDG_CACHE_HOME}/kanibako",
+  "system.state": "{$XDG_STATE_HOME}/kanibako",
+  "system.runtime": "{$XDG_RUNTIME_DIR}/kanibako",
+  # Channels skeleton.  ⚑ ORDER-DEPENDENT: broadcast refs chat, the rest ref channelroot.
+  "system.channels.common": "{system.channelroot}/common",
+  "system.channels.chat": "{system.channelroot}/chat",
+  "system.channels.broadcast": "{system.channels.chat}/broadcast.md",
+  "system.channels.mailboxes": "{system.channelroot}/mailboxes",
+  "system.channels.share": "{system.channelroot}/share",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +140,7 @@ CREDS_LOCK_KEPT_WHY = "a live creds watcher holds it, so kanibako does not remov
 # ⚑ THE only carrier in path code: import it, here or through ``paths``' re-export;
 # never re-spell the string.  Prose and help text name the dir; ``kinemata_views``'
 # retired-file list names a retired path under it.
-STANDALONE_META_DIR = 'box_data'
+STANDALONE_META_DIR = "box_data"
 
 
 # The two PROJECT KINDS. Fundamental to kanibako's core, and path-shaped in practice:

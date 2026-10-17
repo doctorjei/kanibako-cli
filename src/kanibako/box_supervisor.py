@@ -47,11 +47,11 @@ from pathlib import Path
 from types import FrameType
 
 from kanibako.box_lifecycle import (
-    AttachState,
-    LifecycleEvent,
-    classify_transition,
-    snapshot_attach_state,
-    tmux_run,
+  AttachState,
+  LifecycleEvent,
+  classify_transition,
+  snapshot_attach_state,
+  tmux_run,
 )
 from kanibako.log import get_logger, setup_logging
 from kanibako.settings.bootstrap import XDG_SPEC_DEFAULTS, XDG_STATE_HOME
@@ -65,8 +65,8 @@ CONTINUE_MARKER = "[Agent handoff - Continue prior task(s)]"
 #: (design §346).  ⚑ Injection is feasible ONLY toward the tmux (CLI) agent — the
 #: DIRECTIONAL limit — so this is used only in the CRITICAL direction.
 TAKEOVER_HEADS_UP = (
-    "[Session takeover - another surface is taking over this session; "
-    "wind down and checkpoint now if you have work in progress]"
+  "[Session takeover - another surface is taking over this session; "
+  "wind down and checkpoint now if you have work in progress]"
 )
 
 #: How the agent pane's process ended: EMPTY while it lives, else ``status=N signal=S``
@@ -103,7 +103,7 @@ PINNED_ROOT_RELPATH = ".kanibako"
 #: ⚑ ONE ROW TODAY, deliberately a TABLE — a second facet is a ROW here, never a
 #: second mechanism.
 XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (
-    (XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME], "state"),
+  (XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME], "state"),
 )
 
 #: The link's own basename under each projected XDG base — ``$XDG_STATE_HOME/kanibako``.
@@ -114,85 +114,89 @@ log = get_logger("box_supervisor")
 
 
 def project_pinned_xdg(
-    home: Path | None = None,
-    environ: Mapping[str, str] | None = None,
+  home: Path | None = None,
+  environ: Mapping[str, str] | None = None,
 ) -> list[str]:
-    """Serve the box's real XDG locations from the pinned root — the POST-BOOT half."""
-    base = Path.home() if home is None else home
-    env = os.environ if environ is None else environ
-    created: list[str] = []
-    for var, default_suffix, facet in XDG_PROJECTIONS:
-        pinned = base / PINNED_ROOT_RELPATH / facet
-        raw = env.get(var, "")
-        # XDG spec: honor the var iff set AND absolute; else the default under $HOME.
-        xdg_base = Path(raw) if raw and os.path.isabs(raw) else base / default_suffix
-        link = xdg_base / XDG_LINK_NAME
-        if os.path.normpath(link) == os.path.normpath(pinned):
-            continue
-        try:
-            pinned.mkdir(parents=True, exist_ok=True)
-            if link.is_symlink():
-                if os.path.realpath(link) != os.path.realpath(pinned):
-                    log.warning(
-                        "%s is a symlink to something else (%s); leaving it alone. "
-                        "kanibako state lives at %s.",
-                        link, os.path.realpath(link), pinned,
-                    )
-                continue
-            if link.exists():
-                log.warning(
-                    "%s already exists as a real path; leaving it alone. kanibako "
-                    "state lives at %s — remove %s to have it served there too.",
-                    link, pinned, link,
-                )
-                continue
-            link.parent.mkdir(parents=True, exist_ok=True)
-            link.symlink_to(pinned, target_is_directory=True)
-            created.append(str(link))
-            log.info("projected %s -> %s", link, pinned)
-        except OSError as exc:
-            log.warning("could not project %s onto %s: %s", link, pinned, exc)
-    return created
+  """Serve the box's real XDG locations from the pinned root — the POST-BOOT half."""
+  base = Path.home() if home is None else home
+  env = os.environ if environ is None else environ
+  created: list[str] = []
+  for var, default_suffix, facet in XDG_PROJECTIONS:
+    pinned = base / PINNED_ROOT_RELPATH / facet
+    raw = env.get(var, "")
+    # XDG spec: honor the var iff set AND absolute; else the default under $HOME.
+    xdg_base = Path(raw) if raw and os.path.isabs(raw) else base / default_suffix
+    link = xdg_base / XDG_LINK_NAME
+    if os.path.normpath(link) == os.path.normpath(pinned):
+      continue
+    try:
+      pinned.mkdir(parents=True, exist_ok=True)
+      if link.is_symlink():
+        if os.path.realpath(link) != os.path.realpath(pinned):
+          log.warning(
+            "%s is a symlink to something else (%s); leaving it alone. "
+            "kanibako state lives at %s.",
+            link,
+            os.path.realpath(link),
+            pinned,
+          )
+        continue
+      if link.exists():
+        log.warning(
+          "%s already exists as a real path; leaving it alone. kanibako "
+          "state lives at %s — remove %s to have it served there too.",
+          link,
+          pinned,
+          link,
+        )
+        continue
+      link.parent.mkdir(parents=True, exist_ok=True)
+      link.symlink_to(pinned, target_is_directory=True)
+      created.append(str(link))
+      log.info("projected %s -> %s", link, pinned)
+    except OSError as exc:
+      log.warning("could not project %s onto %s: %s", link, pinned, exc)
+  return created
 
 
 def xdg_projection_sh() -> str:
-    """The POSIX-``sh`` twin of :func:`project_pinned_xdg`, GENERATED from the table."""
-    blocks: list[str] = []
-    for var, default_suffix, facet in XDG_PROJECTIONS:
-        blocks.append(
-            f'_kb_pin="$HOME/{PINNED_ROOT_RELPATH}/{facet}"\n'
-            f'_kb_xdg="${{{var}:-}}"\n'
-            # XDG spec: honor the var iff set AND absolute (the `/*` arm); else the default.
-            f'case "$_kb_xdg" in /*) ;; *) _kb_xdg="$HOME/{default_suffix}" ;; esac\n'
-            f'_kb_link="$_kb_xdg/{XDG_LINK_NAME}"\n'
-            # ⚑ The NESTING mirrors the Python's statement order exactly and each rung is
-            # observable; flattening it would quietly stop creating the pinned dir on a box
-            # that declines the link.  ⚑ `-L` before `-e`: `-e` is FALSE for a dangling link.
-            'if [ "$_kb_link" != "$_kb_pin" ]; then\n'
-            '    mkdir -p "$_kb_pin" 2>/dev/null || true\n'
-            '    if [ ! -L "$_kb_link" ] && [ ! -e "$_kb_link" ]; then\n'
-            '        mkdir -p "$_kb_xdg" 2>/dev/null '
-            '&& ln -s "$_kb_pin" "$_kb_link" 2>/dev/null || true\n'
-            '    fi\n'
-            'fi'
-        )
-    blocks.append("unset _kb_pin _kb_xdg _kb_link")
-    return "\n".join(blocks)
+  """The POSIX-``sh`` twin of :func:`project_pinned_xdg`, GENERATED from the table."""
+  blocks: list[str] = []
+  for var, default_suffix, facet in XDG_PROJECTIONS:
+    blocks.append(
+      f'_kb_pin="$HOME/{PINNED_ROOT_RELPATH}/{facet}"\n'
+      f'_kb_xdg="${{{var}:-}}"\n'
+      # XDG spec: honor the var iff set AND absolute (the `/*` arm); else the default.
+      f'case "$_kb_xdg" in /*) ;; *) _kb_xdg="$HOME/{default_suffix}" ;; esac\n'
+      f'_kb_link="$_kb_xdg/{XDG_LINK_NAME}"\n'
+      # ⚑ The NESTING mirrors the Python's statement order exactly and each rung is
+      # observable; flattening it would quietly stop creating the pinned dir on a box
+      # that declines the link.  ⚑ `-L` before `-e`: `-e` is FALSE for a dangling link.
+      'if [ "$_kb_link" != "$_kb_pin" ]; then\n'
+      '    mkdir -p "$_kb_pin" 2>/dev/null || true\n'
+      '    if [ ! -L "$_kb_link" ] && [ ! -e "$_kb_link" ]; then\n'
+      '        mkdir -p "$_kb_xdg" 2>/dev/null '
+      '&& ln -s "$_kb_pin" "$_kb_link" 2>/dev/null || true\n'
+      "    fi\n"
+      "fi"
+    )
+  blocks.append("unset _kb_pin _kb_xdg _kb_link")
+  return "\n".join(blocks)
 
 
 def scrub_bootstrap_pythonpath(
-    environ: MutableMapping[str, str] | None = None,
+  environ: MutableMapping[str, str] | None = None,
 ) -> None:
-    """Strip the injected :data:`KANIBAKO_PKG_MOUNT_ROOT` entry from PYTHONPATH."""
-    env = os.environ if environ is None else environ
-    raw = env.get("PYTHONPATH")
-    if raw is None:
-        return
-    kept = [p for p in raw.split(os.pathsep) if p != KANIBAKO_PKG_MOUNT_ROOT]
-    if kept:
-        env["PYTHONPATH"] = os.pathsep.join(kept)
-    else:
-        env.pop("PYTHONPATH", None)
+  """Strip the injected :data:`KANIBAKO_PKG_MOUNT_ROOT` entry from PYTHONPATH."""
+  env = os.environ if environ is None else environ
+  raw = env.get("PYTHONPATH")
+  if raw is None:
+    return
+  kept = [p for p in raw.split(os.pathsep) if p != KANIBAKO_PKG_MOUNT_ROOT]
+  if kept:
+    env["PYTHONPATH"] = os.pathsep.join(kept)
+  else:
+    env.pop("PYTHONPATH", None)
 
 
 # The subprocess-runner signature the tmux actions call; tests inject a fake so
@@ -216,304 +220,301 @@ _MarkerRemover = Callable[[str, int], None]
 # The PROCESS-CONTROL primitives — the 4b takeover signals, the pane-group evict and the
 # PID-1 reap duty.  Injectable exactly like ``run`` / ``sleep``, so a unit test can never
 # signal a REAL process; the defaults are the stdlib ops (and the module reaper) below.
-_Signaler = Callable[[int, int], None]   # os.kill / os.killpg
-_GroupOf = Callable[[int], int]           # os.getpgid
-_OwnGroup = Callable[[], int]             # os.getpgrp
-_Reaper = Callable[[], int]               # reap_zombie_children
+_Signaler = Callable[[int, int], None]  # os.kill / os.killpg
+_GroupOf = Callable[[int], int]  # os.getpgid
+_OwnGroup = Callable[[], int]  # os.getpgrp
+_Reaper = Callable[[], int]  # reap_zombie_children
 
 
 def _parse_stat_state(stat_text: str) -> str | None:
-    """PURE: the process STATE character from a ``/proc/<pid>/stat`` line."""
-    _, sep, tail = stat_text.rpartition(")")
-    if not sep:
-        return None
-    fields = tail.split()
-    return fields[0] if fields else None
+  """PURE: the process STATE character from a ``/proc/<pid>/stat`` line."""
+  _, sep, tail = stat_text.rpartition(")")
+  if not sep:
+    return None
+  fields = tail.split()
+  return fields[0] if fields else None
 
 
 def _proc_stat_state(pid: int) -> str | None:
-    """The kernel state char for *pid* from ``/proc/<pid>/stat``, or ``None``."""
-    try:
-        text = Path(f"/proc/{pid}/stat").read_text()
-    except OSError:
-        return None
-    return _parse_stat_state(text)
+  """The kernel state char for *pid* from ``/proc/<pid>/stat``, or ``None``."""
+  try:
+    text = Path(f"/proc/{pid}/stat").read_text()
+  except OSError:
+    return None
+  return _parse_stat_state(text)
 
 
 def _proc_cmdline(pid: int) -> list[str] | None:
-    """Real ``_CmdlineOf``: *pid*'s ARGV, or ``None`` if it cannot be read."""
-    try:
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
-    except OSError:
-        return None
-    # NUL-delimited argv with a trailing NUL; decode leniently, as
-    # ``box_lifecycle._collect_proc_cmdlines`` does for the whole-table read.  ⚑ Kept
-    # SPLIT, not joined: which token is argv[0] and which is argv[1] is what separates
-    # an agent's session from its helpers, and joining throws that away.  A kernel
-    # thread's EMPTY cmdline is ``None`` — unreadable, not "not an agent".
-    text = raw.rstrip(b"\x00").decode("utf-8", "replace")
-    if not text:
-        return None
-    return text.split("\x00")
+  """Real ``_CmdlineOf``: *pid*'s ARGV, or ``None`` if it cannot be read."""
+  try:
+    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+  except OSError:
+    return None
+  # NUL-delimited argv with a trailing NUL; decode leniently, as
+  # ``box_lifecycle._collect_proc_cmdlines`` does for the whole-table read.  ⚑ Kept
+  # SPLIT, not joined: which token is argv[0] and which is argv[1] is what separates
+  # an agent's session from its helpers, and joining throws that away.  A kernel
+  # thread's EMPTY cmdline is ``None`` — unreadable, not "not an agent".
+  text = raw.rstrip(b"\x00").decode("utf-8", "replace")
+  if not text:
+    return None
+  return text.split("\x00")
 
 
 def _default_pid_alive(pid: int) -> bool:
-    """Real ``_PidAlive``: is *pid* a live (non-zombie) process?"""
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return _proc_stat_state(pid) != "Z"
+  """Real ``_PidAlive``: is *pid* a live (non-zombie) process?"""
+  try:
+    os.kill(pid, 0)
+  except ProcessLookupError:
+    return False
+  except PermissionError:
+    return True
+  except OSError:
+    return False
+  return _proc_stat_state(pid) != "Z"
 
 
 def reap_zombie_children(max_reaps: int = 32) -> int:
-    """Bounded non-blocking reap of this process's exited children (PID-1 duty)."""
-    reaped = 0
-    for _ in range(max_reaps):
-        try:
-            pid, _status = os.waitpid(-1, os.WNOHANG)
-        except ChildProcessError:
-            break
-        except OSError:
-            log.debug("reap_zombie_children: waitpid raised; ending sweep", exc_info=True)
-            break
-        if pid == 0:  # children exist but none exited — done this tick
-            break
-        reaped += 1
-        log.debug("reaped exited child pid %d", pid)
-    return reaped
+  """Bounded non-blocking reap of this process's exited children (PID-1 duty)."""
+  reaped = 0
+  for _ in range(max_reaps):
+    try:
+      pid, _status = os.waitpid(-1, os.WNOHANG)
+    except ChildProcessError:
+      break
+    except OSError:
+      log.debug("reap_zombie_children: waitpid raised; ending sweep", exc_info=True)
+      break
+    if pid == 0:  # children exist but none exited — done this tick
+      break
+    reaped += 1
+    log.debug("reaped exited child pid %d", pid)
+  return reaped
 
 
 def _default_list_marker_pids(markers_dir: str) -> list[int]:
-    """Real ``_MarkersLister``: the PIDs named by the marker FILES in *markers_dir*."""
+  """Real ``_MarkersLister``: the PIDs named by the marker FILES in *markers_dir*."""
+  try:
+    names = os.listdir(markers_dir)
+  except OSError:
+    return []
+  pids: list[int] = []
+  for name in names:
     try:
-        names = os.listdir(markers_dir)
-    except OSError:
-        return []
-    pids: list[int] = []
-    for name in names:
-        try:
-            pids.append(int(name))
-        except ValueError:
-            continue
-    return pids
+      pids.append(int(name))
+    except ValueError:
+      continue
+  return pids
 
 
 def _default_remove_marker(markers_dir: str, pid: int) -> None:
-    """Real ``_MarkerRemover``: REAP the marker file naming *pid*; race-tolerant."""
-    try:
-        os.unlink(os.path.join(markers_dir, str(pid)))
-    except FileNotFoundError:
-        # The agent's own ``pid-rm.sh``, or a concurrent scan, got there first.  Two
-        # removers agreeing on one file is the NORMAL case, not a failure.
-        pass
-    except OSError as exc:
-        log.debug("could not reap marker %s/%d: %s", markers_dir, pid, exc)
+  """Real ``_MarkerRemover``: REAP the marker file naming *pid*; race-tolerant."""
+  try:
+    os.unlink(os.path.join(markers_dir, str(pid)))
+  except FileNotFoundError:
+    # The agent's own ``pid-rm.sh``, or a concurrent scan, got there first.  Two
+    # removers agreeing on one file is the NORMAL case, not a failure.
+    pass
+  except OSError as exc:
+    log.debug("could not reap marker %s/%d: %s", markers_dir, pid, exc)
 
 
 def _argv_head(argv: Iterable[str]) -> tuple[str, str | None] | None:
-    """PURE: an argv's ``(PROGRAM basename, SUBCOMMAND)`` head, or ``None`` if it has none.
+  """PURE: an argv's ``(PROGRAM basename, SUBCOMMAND)`` head, or ``None`` if it has none.
 
-    ⚑ ``argv[0]`` is SPLIT ON WHITESPACE first.  A harness that rewrites its process
-    TITLE packs the subcommand into argv[0] rather than argv[1] — measured on a live
-    box, ``claude bg-spare`` arrives as a single argv entry — so reading argv[1] alone
-    would miss the very distinction this head exists to draw.
+  ⚑ ``argv[0]`` is SPLIT ON WHITESPACE first.  A harness that rewrites its process
+  TITLE packs the subcommand into argv[0] rather than argv[1] — measured on a live
+  box, ``claude bg-spare`` arrives as a single argv entry — so reading argv[1] alone
+  would miss the very distinction this head exists to draw.
 
-    The SUBCOMMAND slot is the first following token that is not an option; an argv
-    that goes straight to flags has ``None``, which is itself the head shape a bare
-    agent launch has.  Only the head is read: everything after it (session ids,
-    permission flags, a model) is where a launch and the process it became DISAGREE.
-    """
-    parts = list(argv)
-    if not parts:
-        return None
-    words = parts[0].split()
-    if not words:
-        return None
-    program = os.path.basename(words[0])
-    # A leading OPTION means the front of this argv is not a program at all.
-    if not program or program.startswith("-"):
-        return None
-    rest = words[1:] + parts[1:]
-    sub = rest[0] if rest and not rest[0].startswith("-") else None
-    return program, sub
+  The SUBCOMMAND slot is the first following token that is not an option; an argv
+  that goes straight to flags has ``None``, which is itself the head shape a bare
+  agent launch has.  Only the head is read: everything after it (session ids,
+  permission flags, a model) is where a launch and the process it became DISAGREE.
+  """
+  parts = list(argv)
+  if not parts:
+    return None
+  words = parts[0].split()
+  if not words:
+    return None
+  program = os.path.basename(words[0])
+  # A leading OPTION means the front of this argv is not a program at all.
+  if not program or program.startswith("-"):
+    return None
+  rest = words[1:] + parts[1:]
+  sub = rest[0] if rest and not rest[0].startswith("-") else None
+  return program, sub
 
 
 def agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]:
-    """PURE: the ``(PROGRAM, SUBCOMMAND)`` heads the supervisor was launched to run.
+  """PURE: the ``(PROGRAM, SUBCOMMAND)`` heads the supervisor was launched to run.
 
-    The launch grammars in :class:`SupervisorConfig` are the ONLY thing PID 1 knows
-    about which agent this box runs, so they are what an "is this pid the agent" test
-    has to be built from — never a hardcoded ``claude`` / ``codex`` / ``goose``, and
-    never a list of the helper subcommands to exclude.
+  The launch grammars in :class:`SupervisorConfig` are the ONLY thing PID 1 knows
+  about which agent this box runs, so they are what an "is this pid the agent" test
+  has to be built from — never a hardcoded ``claude`` / ``codex`` / ``goose``, and
+  never a list of the helper subcommands to exclude.
 
-    ``commands/start.py`` wraps an agent launch in one ``sh -c <script> sh <program>
-    <args...>`` shim per concern (secret export, directive flatten), nesting outward;
-    every layer sets ``$0=sh`` and ``exec "$@"``s the next, so the agent is what
-    remains once the layers are peeled off the front.
+  ``commands/start.py`` wraps an agent launch in one ``sh -c <script> sh <program>
+  <args...>`` shim per concern (secret export, directive flatten), nesting outward;
+  every layer sets ``$0=sh`` and ``exec "$@"``s the next, so the agent is what
+  remains once the layers are peeled off the front.
 
-    BOTH grammars contribute, because start and continue modes may differ in the
-    subcommand slot (``codex`` starts bare and continues as ``codex resume``), and the
-    process may be either.
+  BOTH grammars contribute, because start and continue modes may differ in the
+  subcommand slot (``codex`` starts bare and continues as ``codex resume``), and the
+  process may be either.
 
-    ⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately not
-    imported: PID 1 is stdlib-only, and importing the CLI would put every marker scan
-    at the mercy of the whole command package importing cleanly.  ⚑ It is SAFE UNDER
-    SKEW — a shim shape this does not recognize leaves the wrapper's own ``sh`` as the
-    head, which matches no real agent, so :func:`agent_session_verdict` falls through
-    to ``None`` and KEEPS the marker rather than reaping on a misread.
-    """
-    heads: set[tuple[str, str | None]] = set()
-    for argv in argvs:
-        rest = list(argv)
-        while len(rest) >= 5 and rest[0] == "sh" and rest[1] == "-c" and rest[3] == "sh":
-            rest = rest[4:]
-        head = _argv_head(rest)
-        if head is not None:
-            heads.add(head)
-    return heads
+  ⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately not
+  imported: PID 1 is stdlib-only, and importing the CLI would put every marker scan
+  at the mercy of the whole command package importing cleanly.  ⚑ It is SAFE UNDER
+  SKEW — a shim shape this does not recognize leaves the wrapper's own ``sh`` as the
+  head, which matches no real agent, so :func:`agent_session_verdict` falls through
+  to ``None`` and KEEPS the marker rather than reaping on a misread.
+  """
+  heads: set[tuple[str, str | None]] = set()
+  for argv in argvs:
+    rest = list(argv)
+    while len(rest) >= 5 and rest[0] == "sh" and rest[1] == "-c" and rest[3] == "sh":
+      rest = rest[4:]
+    head = _argv_head(rest)
+    if head is not None:
+      heads.add(head)
+  return heads
 
 
 def agent_session_verdict(
-    argv: Iterable[str], heads: set[tuple[str, str | None]],
+  argv: Iterable[str],
+  heads: set[tuple[str, str | None]],
 ) -> bool | None:
-    """PURE: is *argv* the agent SESSION this supervisor supervises?  ``None`` ⇒ unjudgeable.
+  """PURE: is *argv* the agent SESSION this supervisor supervises?  ``None`` ⇒ unjudgeable.
 
-    ⚑ THE PROGRAM NAME ALONE IS NOT ENOUGH.  An agent runs its own helpers under its
-    own binary — a daemon, a background pty host, a spare — and a basename test calls
-    every one of them the agent, which is how a helper's marker reads as a second
-    agent holding the session.  The HEAD is what separates them: the session's argv
-    begins the way the launch grammar begins, and a helper's begins with a subcommand
-    the supervisor was never launched to run.
+  ⚑ THE PROGRAM NAME ALONE IS NOT ENOUGH.  An agent runs its own helpers under its
+  own binary — a daemon, a background pty host, a spare — and a basename test calls
+  every one of them the agent, which is how a helper's marker reads as a second
+  agent holding the session.  The HEAD is what separates them: the session's argv
+  begins the way the launch grammar begins, and a helper's begins with a subcommand
+  the supervisor was never launched to run.
 
-    Only the head is compared, because the rest of the argv legitimately DIVERGES — a
-    box launched ``claude --continue --dangerously-skip-permissions --model opus`` was
-    measured running as ``claude --resume <uuid> --allow-dangerously-skip-permissions
-    --model opus --permission-mode bypassPermissions``.  Matching further would reject
-    real sessions, and rejecting a real session deletes its marker.
+  Only the head is compared, because the rest of the argv legitimately DIVERGES — a
+  box launched ``claude --continue --dangerously-skip-permissions --model opus`` was
+  measured running as ``claude --resume <uuid> --allow-dangerously-skip-permissions
+  --model opus --permission-mode bypassPermissions``.  Matching further would reject
+  real sessions, and rejecting a real session deletes its marker.
 
-    ``None`` — CANNOT JUDGE — covers the two ways this can be wrong rather than
-    guessing: nothing to match against, and a DIFFERENT program whose argv still names
-    the agent (an interpreter launching it, a shell holding its path).
-    """
-    if not heads:
-        return None
-    head = _argv_head(argv)
-    if head is None:
-        return None
-    if head in heads:
-        return True
-    if head[0] in {program for program, _ in heads}:
-        return False        # the agent's binary, but not the session's subcommand
-    if _names_an_agent(argv, heads):
-        return None
-    return False
+  ``None`` — CANNOT JUDGE — covers the two ways this can be wrong rather than
+  guessing: nothing to match against, and a DIFFERENT program whose argv still names
+  the agent (an interpreter launching it, a shell holding its path).
+  """
+  if not heads:
+    return None
+  head = _argv_head(argv)
+  if head is None:
+    return None
+  if head in heads:
+    return True
+  if head[0] in {program for program, _ in heads}:
+    return False  # the agent's binary, but not the session's subcommand
+  if _names_an_agent(argv, heads):
+    return None
+  return False
 
 
 def _names_an_agent(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool:
-    """PURE: does *argv* NAME an agent program anywhere, without being one?
+  """PURE: does *argv* NAME an agent program anywhere, without being one?
 
-    The loose test :func:`agent_session_verdict` falls back on, mirroring
-    :func:`kanibako.box_lifecycle.vscode_server_present`: PREFIX-test every
-    ``/``-delimited segment.  It exists to catch the shapes a head cannot judge — an
-    interpreted install (``node …/claude-code/cli.js``), a shell whose argv carries an
-    agent path — and it answers only INCONCLUSIVE, never "agent".
-    """
-    names = {program for program, _ in heads}
-    return any(
-        part.startswith(name)
-        for part in " ".join(argv).split("/")
-        for name in names
-    )
+  The loose test :func:`agent_session_verdict` falls back on, mirroring
+  :func:`kanibako.box_lifecycle.vscode_server_present`: PREFIX-test every
+  ``/``-delimited segment.  It exists to catch the shapes a head cannot judge — an
+  interpreted install (``node …/claude-code/cli.js``), a shell whose argv carries an
+  agent path — and it answers only INCONCLUSIVE, never "agent".
+  """
+  names = {program for program, _ in heads}
+  return any(part.startswith(name) for part in " ".join(argv).split("/") for name in names)
 
 
 def scan_marker_pids(
-    markers_dir: str,
-    *,
-    list_pids: _MarkersLister,
-    pid_alive: _PidAlive,
-    is_agent: _AgentCheck | None = None,
-    remove: _MarkerRemover | None = None,
+  markers_dir: str,
+  *,
+  list_pids: _MarkersLister,
+  pid_alive: _PidAlive,
+  is_agent: _AgentCheck | None = None,
+  remove: _MarkerRemover | None = None,
 ) -> tuple[set[int], set[int]]:
-    """Partition the markers dir into (LIVE pids, STALE pids), REAPING the stale ones.
+  """Partition the markers dir into (LIVE pids, STALE pids), REAPING the stale ones.
 
-    A marker is STALE when the pid it names is not alive — or, when *is_agent* is
-    given, is alive but is not the agent SESSION.  That second case covers both a
-    leaked marker whose pid the kernel has REISSUED, and a marker naming one of the
-    agent's OWN helper processes, which is not a second agent holding the session.
+  A marker is STALE when the pid it names is not alive — or, when *is_agent* is
+  given, is alive but is not the agent SESSION.  That second case covers both a
+  leaked marker whose pid the kernel has REISSUED, and a marker naming one of the
+  agent's OWN helper processes, which is not a second agent holding the session.
 
-    Both are handed to *remove*, so a stale marker becomes an EDGE the supervisor
-    sees once instead of a level it sees forever: this call still RETURNS the stale
-    pid, so the panel agent's death still reaches :func:`decide_panel` on the tick
-    that noticed it, and no later tick re-decides on the same corpse.
+  Both are handed to *remove*, so a stale marker becomes an EDGE the supervisor
+  sees once instead of a level it sees forever: this call still RETURNS the stale
+  pid, so the panel agent's death still reaches :func:`decide_panel` on the tick
+  that noticed it, and no later tick re-decides on the same corpse.
 
-    ⚑ NEVER REAP WHAT YOU CANNOT JUDGE.  A probe that raises, and an *is_agent* that
-    answers ``None`` (nothing to match against, or ``/proc`` unreadable), both leave
-    the marker alone — a pid that is genuinely gone reads dead on a later scan, while
-    a wrongly deleted marker is a live agent the supervisor has stopped seeing.
-    """
-    live: set[int] = set()
-    stale: set[int] = set()
-    for pid in list_pids(markers_dir):
-        if pid <= 0:
-            continue
-        try:
-            alive = pid_alive(pid)
-            # ⚑ The two stale reasons take the SAME branch but are not the same event:
-            # a gone process is hygiene, a live one judged not-the-session is what can
-            # silently unsee a running agent.  A reap read back off ``podman logs`` is
-            # useless if it cannot tell them apart.
-            reason = "the pid it names is not alive"
-            if alive and is_agent is not None and is_agent(pid) is False:
-                alive = False
-                reason = "the pid it names is LIVE but is not the agent session"
-        except Exception:
-            log.debug("scan_marker_pids: a probe raised for pid %d; skipping", pid)
-            continue
-        if alive:
-            live.add(pid)
-            continue
-        stale.add(pid)
-        log.info("marker %s/%d is STALE: %s", markers_dir, pid, reason)
-        if remove is not None:
-            remove(markers_dir, pid)
-    return live, stale
+  ⚑ NEVER REAP WHAT YOU CANNOT JUDGE.  A probe that raises, and an *is_agent* that
+  answers ``None`` (nothing to match against, or ``/proc`` unreadable), both leave
+  the marker alone — a pid that is genuinely gone reads dead on a later scan, while
+  a wrongly deleted marker is a live agent the supervisor has stopped seeing.
+  """
+  live: set[int] = set()
+  stale: set[int] = set()
+  for pid in list_pids(markers_dir):
+    if pid <= 0:
+      continue
+    try:
+      alive = pid_alive(pid)
+      # ⚑ The two stale reasons take the SAME branch but are not the same event:
+      # a gone process is hygiene, a live one judged not-the-session is what can
+      # silently unsee a running agent.  A reap read back off ``podman logs`` is
+      # useless if it cannot tell them apart.
+      reason = "the pid it names is not alive"
+      if alive and is_agent is not None and is_agent(pid) is False:
+        alive = False
+        reason = "the pid it names is LIVE but is not the agent session"
+    except Exception:
+      log.debug("scan_marker_pids: a probe raised for pid %d; skipping", pid)
+      continue
+    if alive:
+      live.add(pid)
+      continue
+    stale.add(pid)
+    log.info("marker %s/%d is STALE: %s", markers_dir, pid, reason)
+    if remove is not None:
+      remove(markers_dir, pid)
+  return live, stale
 
 
 def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
-    """PURE: the LIVE marker PIDs that are NOT the supervisor's OWN agent."""
-    return live_pids - own_pids
+  """PURE: the LIVE marker PIDs that are NOT the supervisor's OWN agent."""
+  return live_pids - own_pids
 
 
 def _trim_capture(text: str | None) -> str | None:
-    """A pane capture without tmux's trailing padding and "Pane is dead" line; ``None`` if empty."""
-    if text is None:
-        return None
-    lines = text.rstrip().splitlines()
-    if lines and lines[-1].startswith("Pane is dead"):
-        lines.pop()
-    return "\n".join(lines).rstrip() or None
+  """A pane capture without tmux's trailing padding and "Pane is dead" line; ``None`` if empty."""
+  if text is None:
+    return None
+  lines = text.rstrip().splitlines()
+  if lines and lines[-1].startswith("Pane is dead"):
+    lines.pop()
+  return "\n".join(lines).rstrip() or None
 
 
 def agent_exit_code(death: str) -> int:
-    """PURE: the shell-convention code of a :data:`PANE_DEATH_FORMAT` record.
+  """PURE: the shell-convention code of a :data:`PANE_DEATH_FORMAT` record.
 
-    ``status=N`` ⇒ N; ``signal=S`` ⇒ 128+S; neither ⇒ :data:`UNDETERMINED_AGENT_EXIT`.
-    """
-    fields: dict[str, str] = {}
-    for field in death.split():
-        name, _, value = field.partition("=")
-        fields[name] = value
-    status, sig = fields.get("status", ""), fields.get("signal", "")
-    if status.isdigit():
-        return int(status)
-    if sig.isdigit():
-        return 128 + int(sig)
-    return UNDETERMINED_AGENT_EXIT
+  ``status=N`` ⇒ N; ``signal=S`` ⇒ 128+S; neither ⇒ :data:`UNDETERMINED_AGENT_EXIT`.
+  """
+  fields: dict[str, str] = {}
+  for field in death.split():
+    name, _, value = field.partition("=")
+    fields[name] = value
+  status, sig = fields.get("status", ""), fields.get("signal", "")
+  if status.isdigit():
+    return int(status)
+  if sig.isdigit():
+    return 128 + int(sig)
+  return UNDETERMINED_AGENT_EXIT
 
 
 # ---------------------------------------------------------------------------
@@ -536,1229 +537,1238 @@ FLATTEN_TIMEOUT = 60.0
 
 @dataclass(frozen=True)
 class DirectiveWatch:
-    """What PID 1 needs to keep the flattened instruction slot FRESH — all four, or none.
+  """What PID 1 needs to keep the flattened instruction slot FRESH — all four, or none.
 
-    The launch shim flattens the directive chain into the agent's native slot ONCE
-    per agent launch, so a source edited mid-container-life leaves that file stale
-    and silent.  PID 1 outlives every session and every harness, so it is where the
-    file becomes continuously true rather than true-at-launch.
+  The launch shim flattens the directive chain into the agent's native slot ONCE
+  per agent launch, so a source edited mid-container-life leaves that file stale
+  and silent.  PID 1 outlives every session and every harness, so it is where the
+  file becomes continuously true rather than true-at-launch.
 
-    Every path is DECIDED BY THE LAUNCHER and arrives in argv; the supervisor derives
-    none of them.  Grouping them in one value is the guard: a half-wired watcher (a
-    manifest with no flattener to run, a dest with no seed to render it from) cannot
-    be represented, so no loop has to check for one.
+  Every path is DECIDED BY THE LAUNCHER and arrives in argv; the supervisor derives
+  none of them.  Grouping them in one value is the guard: a half-wired watcher (a
+  manifest with no flattener to run, a dest with no seed to render it from) cannot
+  be represented, so no loop has to check for one.
 
-    * *seed* / *dest* — the flattener's SOURCE and the agent's native slot, exactly as
-      the launch shim spells them (``$KANIBAKO_DIRECTIVE_SEED`` / ``_FINAL``).
-    * *manifest* — the receipt the flattener leaves; see the flattener's
-      ``build_manifest``.
-    * *flattener* — in-box path of the flattener script.  ⚑ PASSED, never spelled
-      here: that literal is already carried twice (``start._directive_flatten_shim``
-      and ``vscode.vscode_config``), and a third copy would be a third thing to move
-      in step, silently, when the script moves.
-    * *interval* — target seconds between checks, converted to whole ticks against
-      ``poll_interval``.  Cheap enough (a few sha256 of small files) to run often and
-      far below any human edit-to-read gap.
-    """
+  * *seed* / *dest* — the flattener's SOURCE and the agent's native slot, exactly as
+    the launch shim spells them (``$KANIBAKO_DIRECTIVE_SEED`` / ``_FINAL``).
+  * *manifest* — the receipt the flattener leaves; see the flattener's
+    ``build_manifest``.
+  * *flattener* — in-box path of the flattener script.  ⚑ PASSED, never spelled
+    here: that literal is already carried twice (``start._directive_flatten_shim``
+    and ``vscode.vscode_config``), and a third copy would be a third thing to move
+    in step, silently, when the script moves.
+  * *interval* — target seconds between checks, converted to whole ticks against
+    ``poll_interval``.  Cheap enough (a few sha256 of small files) to run often and
+    far below any human edit-to-read gap.
+  """
 
-    seed: str
-    dest: str
-    manifest: str
-    flattener: str
-    interval: float = 5.0
+  seed: str
+  dest: str
+  manifest: str
+  flattener: str
+  interval: float = 5.0
 
 
 @dataclass(frozen=True)
 class SupervisorConfig:
-    """Immutable configuration for a :class:`BoxSupervisor`."""
+  """Immutable configuration for a :class:`BoxSupervisor`."""
 
-    session: str
-    start_argv: list[str]
-    continue_argv: list[str]
-    marker: str
-    poll_interval: float = 2.0
-    max_restart_retries: int = 3
-    backoff_base: float = 0.5
-    send_keys_retries: int = 3
-    send_keys_delay: float = 0.1
-    on_agent_exit: str = "self-heal"
-    session_takeover: bool = False
-    takeover_grace: float = 5.0
-    panel_watch: bool = False
-    agent_markers_dir: str | None = None
-    creds_flag: str | None = None
-    #: Directive-freshness watch, or ``None`` (the watcher is then inert and every
-    #: tick is byte-unchanged) — a launch with no directive slot threads nothing.
-    directives: DirectiveWatch | None = None
-    # Bounded scrollback echoed to PID-1's stdout so ``podman logs`` surfaces the dead
-    # agent's final output to the host (:meth:`BoxSupervisor.capture_agent_output`).
-    capture_history: int = 200
+  session: str
+  start_argv: list[str]
+  continue_argv: list[str]
+  marker: str
+  poll_interval: float = 2.0
+  max_restart_retries: int = 3
+  backoff_base: float = 0.5
+  send_keys_retries: int = 3
+  send_keys_delay: float = 0.1
+  on_agent_exit: str = "self-heal"
+  session_takeover: bool = False
+  takeover_grace: float = 5.0
+  panel_watch: bool = False
+  agent_markers_dir: str | None = None
+  creds_flag: str | None = None
+  #: Directive-freshness watch, or ``None`` (the watcher is then inert and every
+  #: tick is byte-unchanged) — a launch with no directive slot threads nothing.
+  directives: DirectiveWatch | None = None
+  # Bounded scrollback echoed to PID-1's stdout so ``podman logs`` surfaces the dead
+  # agent's final output to the host (:meth:`BoxSupervisor.capture_agent_output`).
+  capture_history: int = 200
 
 
 # ---------------------------------------------------------------------------
 # Action model + the PURE decision function (the heart of the unit tests).
 # ---------------------------------------------------------------------------
 
-class ActionKind(Enum):
-    """What the supervisor must DO for a tick (besides the detach hook)."""
 
-    NONE = "none"
-    SELF_HEAL = "self_heal"
-    #: The agent exited cleanly with a terminal attached: end it, start no other.
-    END = "end"
+class ActionKind(Enum):
+  """What the supervisor must DO for a tick (besides the detach hook)."""
+
+  NONE = "none"
+  SELF_HEAL = "self_heal"
+  #: The agent exited cleanly with a terminal attached: end it, start no other.
+  END = "end"
 
 
 @dataclass(frozen=True)
 class SupervisorAction:
-    """The decision a single watch-loop tick produces."""
+  """The decision a single watch-loop tick produces."""
 
-    kind: ActionKind = ActionKind.NONE
-    fire_detach_hook: bool = False
+  kind: ActionKind = ActionKind.NONE
+  fire_detach_hook: bool = False
 
 
 def decide(
-    prev_state: AttachState,
-    cur_state: AttachState,
-    agent_alive: bool,
-    exit_code: int | None = None,
+  prev_state: AttachState,
+  cur_state: AttachState,
+  agent_alive: bool,
+  exit_code: int | None = None,
 ) -> SupervisorAction:
-    """PURE: decide a tick's action from the attach-state transition + agent liveness.
+  """PURE: decide a tick's action from the attach-state transition + agent liveness.
 
-    A dead agent whose *exit_code* is 0 while a terminal is still attached to its
-    session ENDS (the user exited it); any other death self-heals.
-    """
-    fire_detach_hook = classify_transition(prev_state, cur_state) is LifecycleEvent.DETACH
-    if agent_alive:
-        kind = ActionKind.NONE
-    elif exit_code == 0 and cur_state.tmux_terminal:
-        kind = ActionKind.END
-    else:
-        kind = ActionKind.SELF_HEAL
-    return SupervisorAction(kind=kind, fire_detach_hook=fire_detach_hook)
+  A dead agent whose *exit_code* is 0 while a terminal is still attached to its
+  session ENDS (the user exited it); any other death self-heals.
+  """
+  fire_detach_hook = classify_transition(prev_state, cur_state) is LifecycleEvent.DETACH
+  if agent_alive:
+    kind = ActionKind.NONE
+  elif exit_code == 0 and cur_state.tmux_terminal:
+    kind = ActionKind.END
+  else:
+    kind = ActionKind.SELF_HEAL
+  return SupervisorAction(kind=kind, fire_detach_hook=fire_detach_hook)
 
 
 # ---------------------------------------------------------------------------
 # PANEL-WATCH model (E2f) — the agent-independent `code` warm-up path.
 # ---------------------------------------------------------------------------
 
-class PanelAgentState(Enum):
-    """Liveness of the PANEL-launched agent, from the per-PID markers dir (E2f)."""
 
-    NONE = "none"
-    ALIVE = "alive"
-    DEAD = "dead"
+class PanelAgentState(Enum):
+  """Liveness of the PANEL-launched agent, from the per-PID markers dir (E2f)."""
+
+  NONE = "none"
+  ALIVE = "alive"
+  DEAD = "dead"
 
 
 class PanelActionKind(Enum):
-    """What a PANEL-WATCH tick must DO (besides the detach hook)."""
+  """What a PANEL-WATCH tick must DO (besides the detach hook)."""
 
-    NONE = "none"
-    SELF_HEAL_CLI = "self_heal_cli"
-    TEARDOWN = "teardown"
+  NONE = "none"
+  SELF_HEAL_CLI = "self_heal_cli"
+  TEARDOWN = "teardown"
 
 
 @dataclass(frozen=True)
 class PanelAction:
-    """The decision a single panel-watch tick produces."""
+  """The decision a single panel-watch tick produces."""
 
-    kind: PanelActionKind = PanelActionKind.NONE
+  kind: PanelActionKind = PanelActionKind.NONE
 
 
 def decide_panel(
-    tmux_alive: bool,
-    panel: PanelAgentState,
-    vscode_server: bool,
-    any_attached: bool,
-    seen_surface: bool,
+  tmux_alive: bool,
+  panel: PanelAgentState,
+  vscode_server: bool,
+  any_attached: bool,
+  seen_surface: bool,
 ) -> PanelAction:
-    """PURE: decide a panel-watch tick's action (E2f state machine, design 3a/3b)."""
-    if tmux_alive or panel is PanelAgentState.ALIVE:
-        return PanelAction(PanelActionKind.NONE)
-    if panel is PanelAgentState.DEAD and vscode_server:
-        return PanelAction(PanelActionKind.SELF_HEAL_CLI)
-    if any_attached:
-        return PanelAction(PanelActionKind.NONE)
-    if seen_surface:
-        return PanelAction(PanelActionKind.TEARDOWN)
+  """PURE: decide a panel-watch tick's action (E2f state machine, design 3a/3b)."""
+  if tmux_alive or panel is PanelAgentState.ALIVE:
     return PanelAction(PanelActionKind.NONE)
+  if panel is PanelAgentState.DEAD and vscode_server:
+    return PanelAction(PanelActionKind.SELF_HEAL_CLI)
+  if any_attached:
+    return PanelAction(PanelActionKind.NONE)
+  if seen_surface:
+    return PanelAction(PanelActionKind.TEARDOWN)
+  return PanelAction(PanelActionKind.NONE)
 
 
 # ---------------------------------------------------------------------------
 # DIRECTIVE FRESHNESS model — is the flattened instruction slot still true?
 # ---------------------------------------------------------------------------
 
-class DirectiveVerdict(Enum):
-    """What one freshness check found."""
 
-    FRESH = "fresh"              # the slot still matches its receipt — do nothing
-    STALE = "stale"              # re-render and rewrite the slot
-    HAND_EDITED = "hand_edited"  # inputs unchanged, slot changed — LEAVE IT ALONE
+class DirectiveVerdict(Enum):
+  """What one freshness check found."""
+
+  FRESH = "fresh"  # the slot still matches its receipt — do nothing
+  STALE = "stale"  # re-render and rewrite the slot
+  HAND_EDITED = "hand_edited"  # inputs unchanged, slot changed — LEAVE IT ALONE
 
 
 def decide_directives(
-    manifest: object,
-    seed: str,
-    dest: str,
-    probe: Mapping[str, str | None],
+  manifest: object,
+  seed: str,
+  dest: str,
+  probe: Mapping[str, str | None],
 ) -> DirectiveVerdict:
-    """PURE: read a flatten receipt against the current world and decide.
+  """PURE: read a flatten receipt against the current world and decide.
 
-    *manifest* is the parsed receipt (or ``None`` / anything unparseable). *probe*
-    maps every path this verdict may consult — each of the receipt's inputs, plus
-    *dest* — to the sha256 of its content NOW, or ``None`` when nothing can be read
-    from it.  Hashes, never mtimes: the sources span an NFS home and read-only
-    package binds, where mtime is not comparable and an upgrade can land new content
-    under an old timestamp.
+  *manifest* is the parsed receipt (or ``None`` / anything unparseable). *probe*
+  maps every path this verdict may consult — each of the receipt's inputs, plus
+  *dest* — to the sha256 of its content NOW, or ``None`` when nothing can be read
+  from it.  Hashes, never mtimes: the sources span an NFS home and read-only
+  package binds, where mtime is not comparable and an upgrade can land new content
+  under an old timestamp.
 
-    Every way of not understanding the receipt returns ``STALE``.  That is the
-    property which makes this safe inside PID 1: the worst outcome of any confusion
-    is one unnecessary re-render, and there is no state in which the watcher can do
-    something worse.
+  Every way of not understanding the receipt returns ``STALE``.  That is the
+  property which makes this safe inside PID 1: the worst outcome of any confusion
+  is one unnecessary re-render, and there is no state in which the watcher can do
+  something worse.
 
-    The two verdicts that are NOT "stale" both exist to protect a user:
+  The two verdicts that are NOT "stale" both exist to protect a user:
 
-    * ``HAND_EDITED`` — the inputs are untouched but the generated file is not, so
-      someone edited it by hand.  Rewriting it would be the seed-clobber class of
-      data loss; refreshing it on the next real source change is not.
-    * ``FRESH`` — nothing to do, which must stay the common case: this runs every
-      few seconds for the life of the box.
-    """
-    if not isinstance(manifest, dict):
+  * ``HAND_EDITED`` — the inputs are untouched but the generated file is not, so
+    someone edited it by hand.  Rewriting it would be the seed-clobber class of
+    data loss; refreshing it on the next real source change is not.
+  * ``FRESH`` — nothing to do, which must stay the common case: this runs every
+    few seconds for the life of the box.
+  """
+  if not isinstance(manifest, dict):
+    return DirectiveVerdict.STALE
+  if manifest.get("version") != DIRECTIVE_MANIFEST_VERSION:
+    return DirectiveVerdict.STALE
+  if manifest.get("seed") != seed or manifest.get("dest") != dest:
+    return DirectiveVerdict.STALE  # it describes a different job than ours
+  inputs = manifest.get("inputs")
+  if not isinstance(inputs, list):
+    return DirectiveVerdict.STALE
+  for entry in inputs:
+    if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+      return DirectiveVerdict.STALE
+    current = probe.get(entry["path"])
+    if entry.get("absent"):
+      # 🛑 THE MISS SIDE.  An import that pointed nowhere and now yields
+      # content changes the render, and NOTHING on the hit side moved — a
+      # watcher that only re-checks what it found would never fire.  The test
+      # is "can it be read", not "does it exist", so a directory or a still
+      # unreadable file does not re-trigger every tick forever.
+      if current is not None:
         return DirectiveVerdict.STALE
-    if manifest.get("version") != DIRECTIVE_MANIFEST_VERSION:
-        return DirectiveVerdict.STALE
-    if manifest.get("seed") != seed or manifest.get("dest") != dest:
-        return DirectiveVerdict.STALE   # it describes a different job than ours
-    inputs = manifest.get("inputs")
-    if not isinstance(inputs, list):
-        return DirectiveVerdict.STALE
-    for entry in inputs:
-        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
-            return DirectiveVerdict.STALE
-        current = probe.get(entry["path"])
-        if entry.get("absent"):
-            # 🛑 THE MISS SIDE.  An import that pointed nowhere and now yields
-            # content changes the render, and NOTHING on the hit side moved — a
-            # watcher that only re-checks what it found would never fire.  The test
-            # is "can it be read", not "does it exist", so a directory or a still
-            # unreadable file does not re-trigger every tick forever.
-            if current is not None:
-                return DirectiveVerdict.STALE
-        elif current != entry.get("sha256"):
-            # Content changed, or the source can no longer be read (``None``).
-            # Both change what a re-render produces.
-            return DirectiveVerdict.STALE
-    output = probe.get(dest)
-    if output is None:
-        return DirectiveVerdict.STALE   # the artifact is gone; DEST beats the receipt
-    if output != manifest.get("output_sha256"):
-        return DirectiveVerdict.HAND_EDITED
-    return DirectiveVerdict.FRESH
+    elif current != entry.get("sha256"):
+      # Content changed, or the source can no longer be read (``None``).
+      # Both change what a re-render produces.
+      return DirectiveVerdict.STALE
+  output = probe.get(dest)
+  if output is None:
+    return DirectiveVerdict.STALE  # the artifact is gone; DEST beats the receipt
+  if output != manifest.get("output_sha256"):
+    return DirectiveVerdict.HAND_EDITED
+  return DirectiveVerdict.FRESH
 
 
 # ---------------------------------------------------------------------------
 # The supervisor.
 # ---------------------------------------------------------------------------
 
+
 class BoxSupervisor:
-    """PID-1 keep-alive that supervises an agent in a detached tmux session."""
+  """PID-1 keep-alive that supervises an agent in a detached tmux session."""
 
-    def __init__(
-        self,
-        config: SupervisorConfig,
-        *,
-        run: _Runner = subprocess.run,
-        sleep: _Sleeper = time.sleep,
-        proc_cmdlines: Iterable[str] | None = None,
-        pid_alive: _PidAlive = _default_pid_alive,
-        list_marker_pids: _MarkersLister = _default_list_marker_pids,
-        cmdline_of: _CmdlineOf = _proc_cmdline,
-        remove_marker: _MarkerRemover = _default_remove_marker,
-        kill: _Signaler = os.kill,
-        killpg: _Signaler = os.killpg,
-        getpgid: _GroupOf = os.getpgid,
-        getpgrp: _OwnGroup = os.getpgrp,
-        reap: _Reaper = reap_zombie_children,
-        exit_record: str | None = None,
-    ) -> None:
-        self.config = config
-        # The ``pane-died`` hook's record (:meth:`_exit_hook`); ``None`` ⇒ a temp dir
-        # under ``/tmp`` made on first arm, and removed once read.
-        self._exit_record = exit_record
-        self._exit_record_dir: str | None = None
-        self._run = run
-        self._sleep = sleep
-        # A fixed process-cmdline listing for snapshot_attach_state (tests skip /proc);
-        # ``None`` ⇒ each snapshot collects fresh from ``/proc`` (the real PID-1 path).
-        self._proc_cmdlines = None if proc_cmdlines is None else list(proc_cmdlines)
-        # Agent-marker probes, injectable; defaults are the real PID-1 implementations.
-        self._pid_alive = pid_alive
-        self._list_marker_pids = list_marker_pids
-        self._cmdline_of = cmdline_of
-        self._remove_marker = remove_marker
-        # The agent launch HEADS this box runs, recovered from the launch grammars —
-        # the only thing PID 1 knows about WHICH agent it supervises.  Config-derived
-        # and immutable, so they are computed once; EMPTY disarms the identity half of
-        # the marker scan entirely (see :meth:`_is_agent_pid`).
-        self._agent_heads = agent_launch_heads(
-            config.start_argv, config.continue_argv,
-        )
-        # Process-control primitives, injectable; NOTHING here may reach ``os`` directly,
-        # or a unit test would signal a REAL process.  Defaults are the stdlib ops.
-        self._kill = kill
-        self._killpg = killpg
-        self._getpgid = getpgid
-        self._getpgrp = getpgrp
-        self._reap = reap
-        # 4a: newcomers already logged, so each is announced ONCE.  Re-pinned to the
-        # current newcomer set each tick, so a departed-then-returning PID re-logs.
-        self._reported_newcomers: set[int] = set()
-        # Directive-freshness cadence + a ONE-SHOT latch for the hand-edit notice, so a
-        # user's edited instruction file says so once instead of every few seconds.
-        # Cleared whenever the slot is fresh again or gets re-rendered.
-        self._ticks = 0
-        self._directive_hand_edit_logged = False
-        self._stop = False
+  def __init__(
+    self,
+    config: SupervisorConfig,
+    *,
+    run: _Runner = subprocess.run,
+    sleep: _Sleeper = time.sleep,
+    proc_cmdlines: Iterable[str] | None = None,
+    pid_alive: _PidAlive = _default_pid_alive,
+    list_marker_pids: _MarkersLister = _default_list_marker_pids,
+    cmdline_of: _CmdlineOf = _proc_cmdline,
+    remove_marker: _MarkerRemover = _default_remove_marker,
+    kill: _Signaler = os.kill,
+    killpg: _Signaler = os.killpg,
+    getpgid: _GroupOf = os.getpgid,
+    getpgrp: _OwnGroup = os.getpgrp,
+    reap: _Reaper = reap_zombie_children,
+    exit_record: str | None = None,
+  ) -> None:
+    self.config = config
+    # The ``pane-died`` hook's record (:meth:`_exit_hook`); ``None`` ⇒ a temp dir
+    # under ``/tmp`` made on first arm, and removed once read.
+    self._exit_record = exit_record
+    self._exit_record_dir: str | None = None
+    self._run = run
+    self._sleep = sleep
+    # A fixed process-cmdline listing for snapshot_attach_state (tests skip /proc);
+    # ``None`` ⇒ each snapshot collects fresh from ``/proc`` (the real PID-1 path).
+    self._proc_cmdlines = None if proc_cmdlines is None else list(proc_cmdlines)
+    # Agent-marker probes, injectable; defaults are the real PID-1 implementations.
+    self._pid_alive = pid_alive
+    self._list_marker_pids = list_marker_pids
+    self._cmdline_of = cmdline_of
+    self._remove_marker = remove_marker
+    # The agent launch HEADS this box runs, recovered from the launch grammars —
+    # the only thing PID 1 knows about WHICH agent it supervises.  Config-derived
+    # and immutable, so they are computed once; EMPTY disarms the identity half of
+    # the marker scan entirely (see :meth:`_is_agent_pid`).
+    self._agent_heads = agent_launch_heads(
+      config.start_argv,
+      config.continue_argv,
+    )
+    # Process-control primitives, injectable; NOTHING here may reach ``os`` directly,
+    # or a unit test would signal a REAL process.  Defaults are the stdlib ops.
+    self._kill = kill
+    self._killpg = killpg
+    self._getpgid = getpgid
+    self._getpgrp = getpgrp
+    self._reap = reap
+    # 4a: newcomers already logged, so each is announced ONCE.  Re-pinned to the
+    # current newcomer set each tick, so a departed-then-returning PID re-logs.
+    self._reported_newcomers: set[int] = set()
+    # Directive-freshness cadence + a ONE-SHOT latch for the hand-edit notice, so a
+    # user's edited instruction file says so once instead of every few seconds.
+    # Cleared whenever the slot is fresh again or gets re-rendered.
+    self._ticks = 0
+    self._directive_hand_edit_logged = False
+    self._stop = False
 
-    # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
+  # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
 
-    def _tmux(self, args: list[str]) -> subprocess.CompletedProcess[str] | None:
-        """Run ``tmux <args>`` via the injected runner; ``None`` if tmux could not run."""
+  def _tmux(self, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Run ``tmux <args>`` via the injected runner; ``None`` if tmux could not run."""
 
-        def _log(exc: OSError) -> None:
-            log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
+    def _log(exc: OSError) -> None:
+      log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
 
-        return tmux_run(self._run, args, on_error=_log)
+    return tmux_run(self._run, args, on_error=_log)
 
-    def _run_tmux(self, args: list[str]) -> int | None:
-        """Run ``tmux <args>``; return its rc, or ``None``."""
-        proc = self._tmux(args)
-        return None if proc is None else proc.returncode
+  def _run_tmux(self, args: list[str]) -> int | None:
+    """Run ``tmux <args>``; return its rc, or ``None``."""
+    proc = self._tmux(args)
+    return None if proc is None else proc.returncode
 
-    def _tmux_output(self, args: list[str]) -> str | None:
-        """Run ``tmux <args>``; return its STDOUT, or ``None`` on failure or a nonzero rc."""
-        proc = self._tmux(args)
-        if proc is None or proc.returncode != 0:
-            return None
-        return proc.stdout
+  def _tmux_output(self, args: list[str]) -> str | None:
+    """Run ``tmux <args>``; return its STDOUT, or ``None`` on failure or a nonzero rc."""
+    proc = self._tmux(args)
+    if proc is None or proc.returncode != 0:
+      return None
+    return proc.stdout
 
-    def _exit_record_path(self) -> str:
-        """The exit-record path, creating its private temp dir on first use.
+  def _exit_record_path(self) -> str:
+    """The exit-record path, creating its private temp dir on first use.
 
-        ⚑ Under a FIXED ``/tmp``, never ``$TMPDIR``: a user's ``env`` sets that.
-        """
-        if self._exit_record is None:
-            self._exit_record_dir = tempfile.mkdtemp(prefix="kanibako-agent-exit-", dir="/tmp")
-            self._exit_record = os.path.join(self._exit_record_dir, "record")
-        return self._exit_record
+    ⚑ Under a FIXED ``/tmp``, never ``$TMPDIR``: a user's ``env`` sets that.
+    """
+    if self._exit_record is None:
+      self._exit_record_dir = tempfile.mkdtemp(prefix="kanibako-agent-exit-", dir="/tmp")
+      self._exit_record = os.path.join(self._exit_record_dir, "record")
+    return self._exit_record
 
-    def _exit_hook(self) -> str | None:
-        """A teardown launch's ``pane-died`` hook: save the agent's output and end, then close its pane.
+  def _exit_hook(self) -> str | None:
+    """A teardown launch's ``pane-died`` hook: save the agent's output and end, then close its pane.
 
-        ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the output
-        (``<record>.out``) and the record exist; closing it spares an attached user the
-        "Pane is dead" screen.  The capture runs in the job's shell, so its failure
-        cannot skip the record or the close.
-        """
-        record = self._exit_record_path()
-        if not _HOOK_SAFE_PATH.fullmatch(record):
-            # Never fail the agent start over it: the pane probe still answers.
-            log.warning("exit record path %r is not shell-safe; arming no exit hook", record)
-            return None
-        capture = " ".join(["tmux", *self._capture_argv("#{pane_id}")])
-        return (
-            f"run-shell '{capture} >{record}.out 2>/dev/null ;"
-            f" echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
-            " ; kill-pane"
-        )
+    ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the output
+    (``<record>.out``) and the record exist; closing it spares an attached user the
+    "Pane is dead" screen.  The capture runs in the job's shell, so its failure
+    cannot skip the record or the close.
+    """
+    record = self._exit_record_path()
+    if not _HOOK_SAFE_PATH.fullmatch(record):
+      # Never fail the agent start over it: the pane probe still answers.
+      log.warning("exit record path %r is not shell-safe; arming no exit hook", record)
+      return None
+    capture = " ".join(["tmux", *self._capture_argv("#{pane_id}")])
+    return (
+      f"run-shell '{capture} >{record}.out 2>/dev/null ;"
+      f" echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
+      " ; kill-pane"
+    )
 
-    def _session_arms(self) -> list[tuple[str, str, str]]:
-        """``(command, name, value)`` per tmux option/hook armed on the agent session."""
-        arms = [("set-option", "remain-on-exit", "on")]
-        hook = self._exit_hook() if self.config.on_agent_exit == "teardown" else None
-        if hook is not None:
-            arms.append(("set-hook", "pane-died", hook))
-        return arms
+  def _session_arms(self) -> list[tuple[str, str, str]]:
+    """``(command, name, value)`` per tmux option/hook armed on the agent session."""
+    arms = [("set-option", "remain-on-exit", "on")]
+    hook = self._exit_hook() if self.config.on_agent_exit == "teardown" else None
+    if hook is not None:
+      arms.append(("set-hook", "pane-died", hook))
+    return arms
 
-    def _start_session_argv(self, session_argv: list[str]) -> list[str]:
-        """ONE tmux argv: arm globally, start the session, scope each arm to it, unset globals.
+  def _start_session_argv(self, session_argv: list[str]) -> list[str]:
+    """ONE tmux argv: arm globally, start the session, scope each arm to it, unset globals.
 
-        One invocation, so an agent that exits at once still dies armed.
-        """
-        arms = self._session_arms()
-        argv: list[str] = []
-        for command, name, value in arms:
-            argv += [command, "-g", name, value, ";"]
-        argv += ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
-        for command, name, value in arms:
-            argv += [";", command, "-t", self.config.session, name, value]
-        for command, name, _value in arms:
-            argv += [";", command, "-gu", name]
-        return argv
+    One invocation, so an agent that exits at once still dies armed.
+    """
+    arms = self._session_arms()
+    argv: list[str] = []
+    for command, name, value in arms:
+      argv += [command, "-g", name, value, ";"]
+    argv += ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
+    for command, name, value in arms:
+      argv += [";", command, "-t", self.config.session, name, value]
+    for command, name, _value in arms:
+      argv += [";", command, "-gu", name]
+    return argv
 
-    def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
-        """Start the session with :meth:`_session_arms` armed; return the rc."""
-        if ";" not in session_argv:
-            return self._run_tmux(self._start_session_argv(session_argv))
-        rc = self._run_tmux(
-            ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
-        )
-        if rc == 0:
-            for command, name, value in self._session_arms():
-                self._run_tmux([command, "-t", self.config.session, name, value])
-        return rc
+  def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
+    """Start the session with :meth:`_session_arms` armed; return the rc."""
+    if ";" not in session_argv:
+      return self._run_tmux(self._start_session_argv(session_argv))
+    rc = self._run_tmux(["new-session", "-d", "-s", self.config.session, "--", *session_argv])
+    if rc == 0:
+      for command, name, value in self._session_arms():
+        self._run_tmux([command, "-t", self.config.session, name, value])
+    return rc
 
-    def start_agent_session(self) -> bool:
-        """Start the agent DETACHED via :meth:`_arm_and_start_session`; ``True`` on rc 0."""
-        rc = self._arm_and_start_session(self.config.start_argv)
-        if rc != 0:
-            log.warning("start_agent_session: tmux new-session rc=%s", rc)
-            return False
+  def start_agent_session(self) -> bool:
+    """Start the agent DETACHED via :meth:`_arm_and_start_session`; ``True`` on rc 0."""
+    rc = self._arm_and_start_session(self.config.start_argv)
+    if rc != 0:
+      log.warning("start_agent_session: tmux new-session rc=%s", rc)
+      return False
+    return True
+
+  def restart_agent_session(self) -> bool:
+    """Restart the agent for self-heal, with the CONTINUE grammar + marker."""
+    self.kill_agent_session()
+    rc = self._arm_and_start_session(self.config.continue_argv)
+    if rc != 0:
+      log.warning("restart_agent_session: tmux new-session rc=%s", rc)
+      return False
+    if not self._send_marker():
+      log.warning("restart_agent_session: continue-marker send-keys did not land")
+    return True
+
+  def _send_keys_text(self, text: str) -> bool:
+    """Send *text* to the session as a real user turn via ``tmux send-keys`` (bounded retry)."""
+    for attempt in range(1, self.config.send_keys_retries + 1):
+      rc = self._run_tmux(["send-keys", "-t", self.config.session, text, "Enter"])
+      if rc == 0:
         return True
+      if attempt < self.config.send_keys_retries:
+        self._sleep(self.config.send_keys_delay)
+    return False
 
-    def restart_agent_session(self) -> bool:
-        """Restart the agent for self-heal, with the CONTINUE grammar + marker."""
-        self.kill_agent_session()
-        rc = self._arm_and_start_session(self.config.continue_argv)
-        if rc != 0:
-            log.warning("restart_agent_session: tmux new-session rc=%s", rc)
-            return False
-        if not self._send_marker():
-            log.warning("restart_agent_session: continue-marker send-keys did not land")
-        return True
+  def _send_marker(self) -> bool:
+    """Send the continue-marker to the session (self-heal restart); see :meth:`_send_keys_text`."""
+    return self._send_keys_text(self.config.marker)
 
-    def _send_keys_text(self, text: str) -> bool:
-        """Send *text* to the session as a real user turn via ``tmux send-keys`` (bounded retry)."""
-        for attempt in range(1, self.config.send_keys_retries + 1):
-            rc = self._run_tmux(
-                ["send-keys", "-t", self.config.session, text, "Enter"]
-            )
-            if rc == 0:
-                return True
-            if attempt < self.config.send_keys_retries:
-                self._sleep(self.config.send_keys_delay)
+  def _send_takeover_heads_up(self) -> bool:
+    """Send the 4b takeover heads-up (:data:`TAKEOVER_HEADS_UP`) to the CLI incumbent."""
+    return self._send_keys_text(TAKEOVER_HEADS_UP)
+
+  def agent_pane_exit_code(self) -> int | None:
+    """The DEAD agent pane's :func:`agent_exit_code`; ``None`` while it lives or is gone."""
+    out = self._tmux_output(
+      ["display-message", "-p", "-t", self.config.session, PANE_DEATH_FORMAT]
+    )
+    if out is None or not out.strip():
+      return None
+    return agent_exit_code(out)
+
+  def recorded_agent_exit(self) -> int | None:
+    """The :func:`agent_exit_code` the ``pane-died`` hook recorded, or ``None``."""
+    if self._exit_record is None:
+      return None
+    try:
+      return agent_exit_code(Path(self._exit_record).read_text())
+    except OSError:
+      return None
+    finally:
+      if self._exit_record_dir is not None:
+        shutil.rmtree(self._exit_record_dir, ignore_errors=True)
+
+  def _capture_argv(self, target: str) -> list[str]:
+    """The ``capture-pane`` argv for *target*: the pane's last ``capture_history`` lines."""
+    return [
+      "capture-pane",
+      "-p",
+      "-S",
+      f"-{self.config.capture_history}",
+      # ``-E -`` ends the capture at the end of history.  A dead pane's
+      # "Pane is dead" line is ordinary pane text; ``_trim_capture`` drops it.
+      "-E",
+      "-",
+      "-t",
+      target,
+    ]
+
+  def capture_agent_output(self) -> str | None:
+    """Return the agent pane's captured MAIN-screen text (scrollback), or None."""
+    return _trim_capture(self._tmux_output(self._capture_argv(self.config.session)))
+
+  def recorded_agent_output(self) -> str | None:
+    """The pane text the ``pane-died`` hook saved before closing the pane, or ``None``."""
+    if self._exit_record is None:
+      return None
+    try:
+      return _trim_capture(Path(f"{self._exit_record}.out").read_text(errors="replace"))
+    except OSError:
+      return None
+
+  def agent_session_alive(self) -> bool:
+    """True iff the agent session EXISTS and its pane is NOT dead."""
+    if self._run_tmux(["has-session", "-t", self.config.session]) != 0:
+      return False
+    return self.agent_pane_exit_code() is None
+
+  def _kill_process_group(self, pid: int, sig: int) -> bool:
+    """Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant."""
+    if pid <= 1:
+      log.warning("kill process group: refusing unsafe pid %d (would risk PID-1)", pid)
+      return False
+    try:
+      pgid = self._getpgid(pid)
+    except OSError:
+      pgid = pid
+    try:
+      own_pgrp = self._getpgrp()
+    except OSError:
+      own_pgrp = -1
+    if pgid <= 1 or pgid == own_pgrp:
+      log.warning(
+        "kill process group: refusing unsafe target pgid %d for pid %d "
+        "(0/1/supervisor group → would risk PID-1 / the box)",
+        pgid,
+        pid,
+      )
+      return False
+    try:
+      self._killpg(pgid, sig)
+    except ProcessLookupError:
+      return False
+    except OSError as exc:
+      log.debug("kill process group %d (pid %d) failed: %s", pgid, pid, exc)
+      return False
+    return True
+
+  def kill_agent_session(self) -> None:
+    """Evict the supervised agent: process-group kill each pane agent, then the session."""
+    for pid in sorted(self._own_agent_pids()):
+      self._kill_process_group(pid, signal.SIGTERM)
+    rc = self._run_tmux(["kill-session", "-t", self.config.session])
+    if rc not in (0, None):
+      log.debug("kill_agent_session: tmux kill-session rc=%s", rc)
+
+  # -- signal-handler install ----------------------------------------------
+
+  def install_signal_handlers(self) -> None:
+    """Install the SIGTERM handler (best-effort; a no-op off the main thread)."""
+    try:
+      signal.signal(signal.SIGTERM, self._handle_sigterm)
+    except (ValueError, OSError) as exc:
+      log.debug("could not install SIGTERM handler: %s", exc)
+
+  # -- snapshot ------------------------------------------------------------
+
+  def _snapshot(self) -> AttachState:
+    """Probe the current client-attach state (delegates to box_lifecycle)."""
+    return snapshot_attach_state(
+      self.config.session,
+      run=self._run,
+      proc_cmdlines=self._proc_cmdlines,
+    )
+
+  def _other_surface_attached(self, state: AttachState) -> bool:
+    """True when a surface OTHER than the foreground CLI's own terminal is attached."""
+    return state.vscode_server
+
+  # -- agent markers: liveness (E2f) + newcomer detection (4a) -------------
+
+  def _is_agent_pid(self, pid: int) -> bool | None:
+    """Is the LIVE *pid* the agent SESSION?  ``None`` when it cannot be judged."""
+    if not self._agent_heads:
+      # No launch grammar to match against.  Judging nothing is right; judging
+      # everything a non-agent would reap every marker in the dir.
+      return None
+    argv = self._cmdline_of(pid)
+    if argv is None:
+      # ``/proc`` unreadable, or the pid went away between the two probes.
+      # Keep the marker — the NEXT scan sees a dead pid and reaps it then.
+      return None
+    verdict = agent_session_verdict(argv, self._agent_heads)
+    if verdict is False:
+      # ⚑ ONLY ``False`` is logged: it is the only verdict that DELETES anything,
+      # and it retires itself (the marker is gone by the next scan), so a healthy
+      # box stays silent while every reap of a LIVE process's marker records the
+      # head that failed and the heads it lost to — the whole question when an
+      # agent stops being seen.
+      log.info(
+        "pid %d is not the agent SESSION: argv head %r matches none of the "
+        "launch heads %s; argv was %s",
+        pid,
+        _argv_head(argv),
+        sorted(str(head) for head in self._agent_heads),
+        shlex.join(argv),
+      )
+    return verdict
+
+  def _scan_markers(self) -> tuple[set[int], set[int]]:
+    """Enumerate the markers dir → (LIVE pids, STALE pids), REAPING the stale."""
+    markers_dir = self.config.agent_markers_dir
+    if not markers_dir:
+      return set(), set()
+    try:
+      return scan_marker_pids(
+        markers_dir,
+        list_pids=self._list_marker_pids,
+        pid_alive=self._pid_alive,
+        is_agent=self._is_agent_pid,
+        remove=self._remove_marker,
+      )
+    except Exception:
+      log.debug("_scan_markers: enumeration raised; treating as no markers")
+      return set(), set()
+
+  def _own_agent_pids(self) -> set[int]:
+    """The PIDs of the agent(s) the supervisor itself launched in its tmux session."""
+    out = self._tmux_output(["list-panes", "-s", "-t", self.config.session, "-F", "#{pane_pid}"])
+    if not out:
+      return set()
+    pids: set[int] = set()
+    for tok in out.split():
+      try:
+        pids.add(int(tok))
+      except ValueError:
+        continue
+    return pids
+
+  def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None:
+    """LOG-ONLY (increment 4a): warn once per newcomer; take NO action."""
+    newcomers = newcomer_pids(live_pids, own_pids)
+    for pid in sorted(newcomers - self._reported_newcomers):
+      log.warning(
+        "newcomer agent PID %s detected on session (increment 4a: detection only, no action)",
+        pid,
+      )
+    self._reported_newcomers = newcomers
+
+  # -- 4b ENFORCEMENT: single-writer takeover (grace + pause + evict) -------
+
+  def _signal_pid(self, pid: int, sig: int) -> bool:
+    """A tolerant SINGLE-process signal (SIGSTOP/SIGCONT) via the injected ``kill``."""
+    try:
+      self._kill(pid, sig)
+    except ProcessLookupError:
+      log.debug("session takeover: pid %d gone before signal %s", pid, sig)
+      return False
+    except OSError as exc:
+      log.debug("session takeover: signal %s to pid %d failed: %s", sig, pid, exc)
+      return False
+    return True
+
+  def _resume(self, pids: list[int]) -> None:
+    """``SIGCONT`` every PID in *pids* — the reversible undo of the newcomer PAUSE."""
+    for pid in pids:
+      self._signal_pid(pid, signal.SIGCONT)
+
+  def _takeover(self, own_pids: set[int], newcomers: set[int]) -> bool:
+    """4b ENFORCEMENT: pause the newcomer, grace the incumbent, evict it, resume (NEW-wins)."""
+    log.warning(
+      "session takeover (4b): panel newcomer(s) %s over live CLI incumbent(s) %s "
+      "— pausing newcomer, gracing + evicting incumbent (NEW-wins)",
+      sorted(newcomers),
+      sorted(own_pids),
+    )
+    paused: list[int] = []
+    try:
+      # 1. PAUSE the newcomer(s) BEFORE they can write (reversible).
+      for pid in sorted(newcomers):
+        if self._signal_pid(pid, signal.SIGSTOP):
+          paused.append(pid)
+      if not paused:
+        # Every newcomer vanished before it could be paused → nothing to hand
+        # the session to; do NOT evict the legitimate incumbent.
+        log.warning("session takeover: no newcomer could be paused; aborting (no eviction)")
         return False
+      # 2. HEADS-UP to the incumbent (best-effort) + 3. GRACE (reversible).
+      self._send_takeover_heads_up()
+      self._sleep(self.config.takeover_grace)
+    except Exception:
+      log.exception(
+        "session takeover: a pre-evict step failed; "
+        "resuming newcomer(s), NOT evicting the incumbent"
+      )
+      self._resume(paused)
+      return False
+    # 4. EVICT (the single DESTRUCTIVE op): process-group kill the pane incumbent.
+    log.warning(
+      "session takeover: grace elapsed; evicting incumbent process group(s) %s",
+      sorted(own_pids),
+    )
+    try:
+      self.kill_agent_session()
+    finally:
+      # 5. RESUME the newcomer — single-writer is now guaranteed (incumbent gone).
+      self._resume(paused)
+    return True
 
-    def _send_marker(self) -> bool:
-        """Send the continue-marker to the session (self-heal restart); see :meth:`_send_keys_text`."""
-        return self._send_keys_text(self.config.marker)
+  def panel_agent_state(self) -> PanelAgentState:
+    """Liveness of the PANEL-launched agent from the per-PID markers dir (E2f)."""
+    if not self.config.agent_markers_dir:
+      return PanelAgentState.NONE
+    own = self._own_agent_pids()
+    live, stale = self._scan_markers()
+    if live - own:
+      return PanelAgentState.ALIVE
+    if stale - own:
+      return PanelAgentState.DEAD
+    return PanelAgentState.NONE
 
-    def _send_takeover_heads_up(self) -> bool:
-        """Send the 4b takeover heads-up (:data:`TAKEOVER_HEADS_UP`) to the CLI incumbent."""
-        return self._send_keys_text(TAKEOVER_HEADS_UP)
+  # -- self-heal -----------------------------------------------------------
 
-    def agent_pane_exit_code(self) -> int | None:
-        """The DEAD agent pane's :func:`agent_exit_code`; ``None`` while it lives or is gone."""
-        out = self._tmux_output(
-            ["display-message", "-p", "-t", self.config.session, PANE_DEATH_FORMAT]
-        )
-        if out is None or not out.strip():
-            return None
-        return agent_exit_code(out)
-
-    def recorded_agent_exit(self) -> int | None:
-        """The :func:`agent_exit_code` the ``pane-died`` hook recorded, or ``None``."""
-        if self._exit_record is None:
-            return None
-        try:
-            return agent_exit_code(Path(self._exit_record).read_text())
-        except OSError:
-            return None
-        finally:
-            if self._exit_record_dir is not None:
-                shutil.rmtree(self._exit_record_dir, ignore_errors=True)
-
-    def _capture_argv(self, target: str) -> list[str]:
-        """The ``capture-pane`` argv for *target*: the pane's last ``capture_history`` lines."""
-        return [
-            "capture-pane", "-p",
-            "-S", f"-{self.config.capture_history}",
-            # ``-E -`` ends the capture at the end of history.  A dead pane's
-            # "Pane is dead" line is ordinary pane text; ``_trim_capture`` drops it.
-            "-E", "-",
-            "-t", target,
-        ]
-
-    def capture_agent_output(self) -> str | None:
-        """Return the agent pane's captured MAIN-screen text (scrollback), or None."""
-        return _trim_capture(self._tmux_output(self._capture_argv(self.config.session)))
-
-    def recorded_agent_output(self) -> str | None:
-        """The pane text the ``pane-died`` hook saved before closing the pane, or ``None``."""
-        if self._exit_record is None:
-            return None
-        try:
-            return _trim_capture(Path(f"{self._exit_record}.out").read_text(errors="replace"))
-        except OSError:
-            return None
-
-    def agent_session_alive(self) -> bool:
-        """True iff the agent session EXISTS and its pane is NOT dead."""
-        if self._run_tmux(["has-session", "-t", self.config.session]) != 0:
-            return False
-        return self.agent_pane_exit_code() is None
-
-    def _kill_process_group(self, pid: int, sig: int) -> bool:
-        """Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant."""
-        if pid <= 1:
-            log.warning("kill process group: refusing unsafe pid %d (would risk PID-1)", pid)
-            return False
-        try:
-            pgid = self._getpgid(pid)
-        except OSError:
-            pgid = pid
-        try:
-            own_pgrp = self._getpgrp()
-        except OSError:
-            own_pgrp = -1
-        if pgid <= 1 or pgid == own_pgrp:
-            log.warning(
-                "kill process group: refusing unsafe target pgid %d for pid %d "
-                "(0/1/supervisor group → would risk PID-1 / the box)",
-                pgid, pid,
-            )
-            return False
-        try:
-            self._killpg(pgid, sig)
-        except ProcessLookupError:
-            return False
-        except OSError as exc:
-            log.debug("kill process group %d (pid %d) failed: %s", pgid, pid, exc)
-            return False
+  def _self_heal(self) -> bool:
+    """Restart a dead agent with bounded retry + exponential backoff."""
+    for attempt in range(1, self.config.max_restart_retries + 1):
+      log.info("self-heal: restart attempt %d/%d", attempt, self.config.max_restart_retries)
+      self.restart_agent_session()
+      if self.agent_session_alive():
+        log.info("self-heal: agent session live after attempt %d", attempt)
         return True
+      if attempt < self.config.max_restart_retries:
+        self._sleep(self.config.backoff_base * (2 ** (attempt - 1)))
+    log.error(
+      "self-heal: exhausted %d restart attempts; giving up",
+      self.config.max_restart_retries,
+    )
+    return False
 
-    def kill_agent_session(self) -> None:
-        """Evict the supervised agent: process-group kill each pane agent, then the session."""
-        for pid in sorted(self._own_agent_pids()):
-            self._kill_process_group(pid, signal.SIGTERM)
-        rc = self._run_tmux(["kill-session", "-t", self.config.session])
-        if rc not in (0, None):
-            log.debug("kill_agent_session: tmux kill-session rc=%s", rc)
+  # -- detach hook (best-effort POINT filled by increment D) ---------------
 
-    # -- signal-handler install ----------------------------------------------
+  def _on_detach(self) -> None:
+    """Best-effort HOOK fired on a DETACH tick — write the creds-dirty SIGNAL flag."""
+    path = self.config.creds_flag
+    if not path:
+      log.debug("on-detach: no creds-flag configured; nothing to signal")
+      return
+    try:
+      flag = Path(path)
+      flag.parent.mkdir(parents=True, exist_ok=True)
+      # A tiny edge-trigger MARKER — the host watcher only checks EXISTENCE, so
+      # the contents are immaterial; a single byte keeps it a non-empty file.
+      flag.write_text("1")
+      log.debug("on-detach: wrote creds-dirty flag %s", path)
+    except OSError as exc:
+      log.debug("on-detach: could not write creds-dirty flag %r: %s", path, exc)
 
-    def install_signal_handlers(self) -> None:
-        """Install the SIGTERM handler (best-effort; a no-op off the main thread)."""
-        try:
-            signal.signal(signal.SIGTERM, self._handle_sigterm)
-        except (ValueError, OSError) as exc:
-            log.debug("could not install SIGTERM handler: %s", exc)
+  def _safe_on_detach(self) -> None:
+    """Call :meth:`_on_detach`, swallowing ANY exception (the loop must not die)."""
+    try:
+      self._on_detach()
+    except Exception:
+      log.exception("on-detach hook raised; ignored (supervisor loop continues)")
 
-    # -- snapshot ------------------------------------------------------------
+  # -- directive freshness (the flattened instruction slot) ----------------
 
-    def _snapshot(self) -> AttachState:
-        """Probe the current client-attach state (delegates to box_lifecycle)."""
-        return snapshot_attach_state(
-            self.config.session,
-            run=self._run,
-            proc_cmdlines=self._proc_cmdlines,
-        )
+  @staticmethod
+  def _sha256_of(path: str) -> str | None:
+    """sha256 of *path*'s content, or ``None`` if nothing can be read from it."""
+    try:
+      digest = hashlib.sha256()
+      with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 16), b""):
+          digest.update(chunk)
+    except OSError:
+      return None
+    return digest.hexdigest()
 
-    def _other_surface_attached(self, state: AttachState) -> bool:
-        """True when a surface OTHER than the foreground CLI's own terminal is attached."""
-        return state.vscode_server
+  def _read_directive_manifest(self, path: str) -> object:
+    """Parse the flatten receipt at *path*; ``None`` if it cannot be read as JSON."""
+    try:
+      with open(path, "rb") as fh:
+        return json.loads(fh.read().decode("utf-8"))
+    except (OSError, ValueError) as exc:
+      log.debug("directive manifest %s unusable (%s); treating as stale", path, exc)
+      return None
 
-    # -- agent markers: liveness (E2f) + newcomer detection (4a) -------------
+  def _probe_directives(self, manifest: object, dest: str) -> dict[str, str | None]:
+    """Hash every path :func:`decide_directives` may consult for this receipt."""
+    paths = [dest]
+    if isinstance(manifest, dict) and isinstance(manifest.get("inputs"), list):
+      for entry in manifest["inputs"]:
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+          paths.append(entry["path"])
+    return {path: self._sha256_of(path) for path in paths}
 
-    def _is_agent_pid(self, pid: int) -> bool | None:
-        """Is the LIVE *pid* the agent SESSION?  ``None`` when it cannot be judged."""
-        if not self._agent_heads:
-            # No launch grammar to match against.  Judging nothing is right; judging
-            # everything a non-agent would reap every marker in the dir.
-            return None
-        argv = self._cmdline_of(pid)
-        if argv is None:
-            # ``/proc`` unreadable, or the pid went away between the two probes.
-            # Keep the marker — the NEXT scan sees a dead pid and reaps it then.
-            return None
-        verdict = agent_session_verdict(argv, self._agent_heads)
-        if verdict is False:
-            # ⚑ ONLY ``False`` is logged: it is the only verdict that DELETES anything,
-            # and it retires itself (the marker is gone by the next scan), so a healthy
-            # box stays silent while every reap of a LIVE process's marker records the
-            # head that failed and the heads it lost to — the whole question when an
-            # agent stops being seen.
-            log.info(
-                "pid %d is not the agent SESSION: argv head %r matches none of the "
-                "launch heads %s; argv was %s",
-                pid,
-                _argv_head(argv),
-                sorted(str(head) for head in self._agent_heads),
-                shlex.join(argv),
-            )
-        return verdict
+  def _reflatten_directives(self, watch: DirectiveWatch) -> bool:
+    """Re-run the flattener as a SUBPROCESS; ``True`` iff it reported success.
 
-    def _scan_markers(self) -> tuple[set[int], set[int]]:
-        """Enumerate the markers dir → (LIVE pids, STALE pids), REAPING the stale."""
-        markers_dir = self.config.agent_markers_dir
-        if not markers_dir:
-            return set(), set()
-        try:
-            return scan_marker_pids(
-                markers_dir,
-                list_pids=self._list_marker_pids,
-                pid_alive=self._pid_alive,
-                is_agent=self._is_agent_pid,
-                remove=self._remove_marker,
-            )
-        except Exception:
-            log.debug("_scan_markers: enumeration raised; treating as no markers")
-            return set(), set()
+    The flattener owns the write (atomically, receipt included) — the supervisor
+    never renders or writes the slot itself, so there is exactly one producer of
+    both the artifact and its receipt.  A failure here is logged and dropped: an
+    instruction file left stale is bad, PID 1 dying is fatal.
 
-    def _own_agent_pids(self) -> set[int]:
-        """The PIDs of the agent(s) the supervisor itself launched in its tmux session."""
-        out = self._tmux_output(
-            ["list-panes", "-s", "-t", self.config.session, "-F", "#{pane_pid}"]
-        )
-        if not out:
-            return set()
-        pids: set[int] = set()
-        for tok in out.split():
-            try:
-                pids.add(int(tok))
-            except ValueError:
-                continue
-        return pids
+    ⚑ BOUNDED.  This is a synchronous call inside PID 1's tick, and the directive
+    sources sit on an NFS home — a stalled mount would otherwise wedge the reap,
+    the detach hook and self-heal behind a read.  The bound is enormous next to a
+    real flatten (tens of milliseconds); it exists to cap a HANG, not to time work.
+    """
+    argv = [
+      sys.executable or "python3",
+      watch.flattener,
+      watch.seed,
+      watch.dest,
+      "--manifest",
+      watch.manifest,
+    ]
+    try:
+      proc = self._run(
+        argv,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=FLATTEN_TIMEOUT,
+      )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+      log.warning("directive re-flatten could not run %r: %s", watch.flattener, exc)
+      return False
+    stderr = (getattr(proc, "stderr", "") or "").strip()
+    if proc.returncode != 0:
+      log.warning(
+        "directive re-flatten failed (rc=%s): %s",
+        proc.returncode,
+        stderr,
+      )
+      return False
+    if stderr:
+      # The flattener warns on stderr about unresolved imports and unterminated
+      # comments; that is diagnostic, not failure.
+      log.debug("directive re-flatten warnings: %s", stderr)
+    log.info("directive sources changed; re-flattened %s", watch.dest)
+    return True
 
-    def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None:
-        """LOG-ONLY (increment 4a): warn once per newcomer; take NO action."""
-        newcomers = newcomer_pids(live_pids, own_pids)
-        for pid in sorted(newcomers - self._reported_newcomers):
-            log.warning(
-                "newcomer agent PID %s detected on session "
-                "(increment 4a: detection only, no action)",
-                pid,
-            )
-        self._reported_newcomers = newcomers
-
-    # -- 4b ENFORCEMENT: single-writer takeover (grace + pause + evict) -------
-
-    def _signal_pid(self, pid: int, sig: int) -> bool:
-        """A tolerant SINGLE-process signal (SIGSTOP/SIGCONT) via the injected ``kill``."""
-        try:
-            self._kill(pid, sig)
-        except ProcessLookupError:
-            log.debug("session takeover: pid %d gone before signal %s", pid, sig)
-            return False
-        except OSError as exc:
-            log.debug("session takeover: signal %s to pid %d failed: %s", sig, pid, exc)
-            return False
-        return True
-
-    def _resume(self, pids: list[int]) -> None:
-        """``SIGCONT`` every PID in *pids* — the reversible undo of the newcomer PAUSE."""
-        for pid in pids:
-            self._signal_pid(pid, signal.SIGCONT)
-
-    def _takeover(self, own_pids: set[int], newcomers: set[int]) -> bool:
-        """4b ENFORCEMENT: pause the newcomer, grace the incumbent, evict it, resume (NEW-wins)."""
+  def check_directives(self) -> DirectiveVerdict | None:
+    """One freshness check of the flattened instruction slot; ``None`` when unwatched."""
+    watch = self.config.directives
+    if watch is None:
+      return None
+    manifest = self._read_directive_manifest(watch.manifest)
+    verdict = decide_directives(
+      manifest,
+      watch.seed,
+      watch.dest,
+      self._probe_directives(manifest, watch.dest),
+    )
+    if verdict is DirectiveVerdict.HAND_EDITED:
+      if not self._directive_hand_edit_logged:
         log.warning(
-            "session takeover (4b): panel newcomer(s) %s over live CLI incumbent(s) %s "
-            "— pausing newcomer, gracing + evicting incumbent (NEW-wins)",
-            sorted(newcomers), sorted(own_pids),
+          "%s differs from the flatten that produced it while its sources are "
+          "unchanged — leaving the hand-edited file alone (it will refresh on "
+          "the next directive-source change)",
+          watch.dest,
         )
-        paused: list[int] = []
-        try:
-            # 1. PAUSE the newcomer(s) BEFORE they can write (reversible).
-            for pid in sorted(newcomers):
-                if self._signal_pid(pid, signal.SIGSTOP):
-                    paused.append(pid)
-            if not paused:
-                # Every newcomer vanished before it could be paused → nothing to hand
-                # the session to; do NOT evict the legitimate incumbent.
-                log.warning(
-                    "session takeover: no newcomer could be paused; aborting (no eviction)"
-                )
-                return False
-            # 2. HEADS-UP to the incumbent (best-effort) + 3. GRACE (reversible).
-            self._send_takeover_heads_up()
-            self._sleep(self.config.takeover_grace)
-        except Exception:
-            log.exception(
-                "session takeover: a pre-evict step failed; "
-                "resuming newcomer(s), NOT evicting the incumbent"
-            )
-            self._resume(paused)
-            return False
-        # 4. EVICT (the single DESTRUCTIVE op): process-group kill the pane incumbent.
-        log.warning(
-            "session takeover: grace elapsed; evicting incumbent process group(s) %s",
-            sorted(own_pids),
+        self._directive_hand_edit_logged = True
+      return verdict
+    self._directive_hand_edit_logged = False
+    if verdict is DirectiveVerdict.STALE:
+      self._reflatten_directives(watch)
+    return verdict
+
+  def _safe_check_directives(self) -> None:
+    """Call :meth:`check_directives`, swallowing ANY exception (the loop must not die)."""
+    try:
+      self.check_directives()
+    except Exception:
+      log.exception("directive freshness check raised; ignored (loop continues)")
+
+  def _directive_tick_period(self) -> int:
+    """Ticks between freshness checks — the cadence is in SECONDS, converted here."""
+    watch = self.config.directives
+    if watch is None:
+      return 1
+    poll = self.config.poll_interval if self.config.poll_interval > 0 else 1.0
+    return max(1, round(watch.interval / poll))
+
+  def _directive_tick(self) -> None:
+    """Advance the tick counter and run a freshness check on the Nth one."""
+    self._ticks += 1
+    if self.config.directives is None:
+      return
+    if self._ticks % self._directive_tick_period() == 0:
+      self._safe_check_directives()
+
+  # -- the SIGTERM handler -------------------------------------------------
+
+  def _handle_sigterm(self, signum: int, frame: FrameType | None) -> None:
+    """SIGTERM handler → :meth:`teardown` (factored out so tests call it directly)."""
+    log.info("received signal %s", signum)
+    self.teardown()
+
+  # -- the watch loop ------------------------------------------------------
+
+  def run_forever(self) -> int:
+    """Run the supervise loop until teardown, agent-exit, or self-heal exhaustion."""
+    self.install_signal_handlers()
+    if self.config.panel_watch:
+      # ⚑ E2f runs a DISTINCT loop that starts no CLI agent; the E2b-E2e path below
+      # is untouched (only reached when NOT panel_watch).
+      return self._run_panel_watch()
+    teardown_on_exit = self.config.on_agent_exit == "teardown"
+    # Latched once an attached user exits the agent cleanly: from then on the box
+    # only waits out any other surface, then stops — it never restarts the agent.
+    ended = False
+    # One-shot guard so the agentless keep-alive state logs ONCE on entry, not per tick.
+    keepalive_announced = False
+    # Startup runs BEFORE the per-tick guard, so guard it too — a raising probe must
+    # not kill PID-1 before the loop begins; degrade to "no attach" and enter it.
+    # ⚑ ``started`` = did the agent ever COME UP?  It separates a NEVER-STARTED
+    # failure (rc 1) from an agent that ran and ended in the teardown branch.
+    started = True
+    try:
+      if not self.agent_session_alive():
+        log.info("no live agent session at startup; starting one detached")
+        started = self.start_agent_session()
+        if not started:
+          # ⚑ NO special-case return: a failed INITIAL start is handled
+          # UNIFORMLY by the loop's first tick, which keeps the teardown
+          # decision in exactly ONE place (design §86-88).
+          log.warning("initial agent start failed; deferring to the loop policy")
+      prev = self._snapshot()
+    except Exception:
+      log.exception("supervisor startup probe raised; entering loop defensively")
+      prev = AttachState()
+
+    while not self._stop:
+      try:
+        # ⚑ PID-1 duty FIRST: reap orphan-reparented children so a dead panel
+        # cannot sit as a zombie and read ALIVE to the marker probes below.
+        self._reap()
+        # Keep the flattened instruction slot TRUE while the box lives (every
+        # Nth tick; inert unless the launcher threaded a watch).  Independent
+        # of the agent — a source edit must land whether or not one is running.
+        self._directive_tick()
+        cur = self._snapshot()
+        alive = self.agent_session_alive()
+        # Newcomer detection, gated on a configured markers dir so an old launcher
+        # (or a test) that threads none is byte-unchanged.
+        if self.config.agent_markers_dir:
+          live_markers, _stale = self._scan_markers()
+          own = self._own_agent_pids()
+          if self.config.session_takeover:
+            # ⚑ 4b: act ONLY when there IS a pane incumbent to evict (own
+            # non-empty) — never evict on a bare marker PID.  On success
+            # hand off to the agentless panel-watch keep-alive.
+            newcomers = newcomer_pids(live_markers, own)
+            if newcomers and own and self._takeover(own, newcomers):
+              return self._run_panel_watch()
+          else:
+            # Flag OFF (default): 4a LOG-ONLY — no signals, no kills.
+            self._log_newcomers(live_markers, own)
+        # The dead pane's status, read only where it can change the decision:
+        # a self-heal box with a terminal still on the pane (remain-on-exit).
+        exit_code = (
+          self.agent_pane_exit_code()
+          if not alive and not teardown_on_exit and cur.tmux_terminal
+          else None
         )
-        try:
-            self.kill_agent_session()
-        finally:
-            # 5. RESUME the newcomer — single-writer is now guaranteed (incumbent gone).
-            self._resume(paused)
-        return True
+        action = decide(prev, cur, alive, exit_code)
+        if action.fire_detach_hook:
+          self._safe_on_detach()
+        if action.kind is ActionKind.END and not ended:
+          log.info("agent exited cleanly with a terminal attached; not restarting it")
+          ended = True
+        if action.kind is not ActionKind.NONE:
+          if teardown_on_exit or ended:
+            # ⚑ SURFACE-AWARE teardown: the agent is dead, but a box must
+            # PERSIST while any OTHER surface (a panel) is still attached.
+            if self._other_surface_attached(cur):
+              # Stay an AGENTLESS keep-alive: do NOT tear down, and do NOT
+              # self-heal a CLI while the panel is live (one-agent
+              # invariant).  A LATER tick tears down once it detaches.
+              if not keepalive_announced:
+                log.info(
+                  "agent exited but another client surface (panel) "
+                  "is attached; staying up as an agentless keep-alive"
+                )
+                keepalive_announced = True
+            else:
+              # ⚑ Pane FIRST, record SECOND: the ``pane-died`` hook
+              # writes the output and the record BEFORE it closes the
+              # pane, so a pane already gone means both are written.
+              # The output is read first: reading the record removes it.
+              captured = self.capture_agent_output() or self.recorded_agent_output()
+              # An ended agent's code was read as 0 on the tick it ended.
+              code = 0 if ended else self.agent_pane_exit_code()
+              if code is None:
+                code = self.recorded_agent_exit()
+              if code is None:
+                code = UNDETERMINED_AGENT_EXIT if started else 1
+              # A failed agent's last output goes to ``podman logs``, which
+              # the host prints on a non-zero exit; a clean exit adds none.
+              if captured and code != 0:
+                print(captured, flush=True)
+              log.info(
+                "agent exited under %s policy; no other surface attached — closing box with rc %d",
+                "teardown" if teardown_on_exit else "end",
+                code,
+              )
+              return code
+          elif not self._self_heal():
+            return 0
+        prev = cur
+      except Exception:
+        log.exception("supervisor tick failed; continuing")
+      self._sleep(self.config.poll_interval)
+    return 0
 
-    def panel_agent_state(self) -> PanelAgentState:
-        """Liveness of the PANEL-launched agent from the per-PID markers dir (E2f)."""
-        if not self.config.agent_markers_dir:
-            return PanelAgentState.NONE
-        own = self._own_agent_pids()
-        live, stale = self._scan_markers()
-        if live - own:
-            return PanelAgentState.ALIVE
-        if stale - own:
-            return PanelAgentState.DEAD
-        return PanelAgentState.NONE
+  def _run_panel_watch(self) -> int:
+    """The PANEL-WATCH loop (E2f): agent-independent ``code`` warm-up."""
+    log.info("panel-watch mode: agentless keep-alive fronting the VS Code panel")
+    # ``seen_surface`` LATCHES True once any surface has EVER attached, so an
+    # attached-then-detached box tears down while a never-attached one stays up
+    # through the startup grace.  The pre-loop snapshot is guarded like above.
+    seen_surface = False
+    # 4a: the fronted panel incumbent PID (first live non-own marker).  Latched so
+    # the fronted panel is not itself flagged; cleared when it departs the live set.
+    panel_incumbent: int | None = None
+    try:
+      prev = self._snapshot()
+      if prev.any_attached:
+        seen_surface = True
+    except Exception:
+      log.exception("panel-watch startup snapshot raised; entering loop defensively")
+      prev = AttachState()
 
-    # -- self-heal -----------------------------------------------------------
-
-    def _self_heal(self) -> bool:
-        """Restart a dead agent with bounded retry + exponential backoff."""
-        for attempt in range(1, self.config.max_restart_retries + 1):
-            log.info("self-heal: restart attempt %d/%d", attempt, self.config.max_restart_retries)
-            self.restart_agent_session()
-            if self.agent_session_alive():
-                log.info("self-heal: agent session live after attempt %d", attempt)
-                return True
-            if attempt < self.config.max_restart_retries:
-                self._sleep(self.config.backoff_base * (2 ** (attempt - 1)))
-        log.error(
-            "self-heal: exhausted %d restart attempts; giving up",
-            self.config.max_restart_retries,
+    while not self._stop:
+      try:
+        # ⚑ PID-1 duty FIRST: a dead panel agent must not sit as a zombie and hold
+        # panel_agent_state at ALIVE forever, wedging SELF_HEAL_CLI and TEARDOWN.
+        self._reap()
+        # A warm-only box has directives and a panel agent reading them, so the
+        # freshness watch belongs in BOTH loops — the slot must not go stale
+        # just because this box was fronted by the panel instead of a CLI.
+        self._directive_tick()
+        cur = self._snapshot()
+        if cur.any_attached:
+          seen_surface = True
+        if classify_transition(prev, cur) is LifecycleEvent.DETACH:
+          self._safe_on_detach()
+        tmux_alive = self.agent_session_alive()
+        panel = self.panel_agent_state()
+        # 4a LOG-ONLY: own = the self-healed CLI's pane(s) PLUS the latched fronted
+        # panel incumbent; a live marker outside that set is a newcomer.
+        if self.config.agent_markers_dir:
+          own = self._own_agent_pids()
+          live_markers, _stale = self._scan_markers()
+          non_own_live = live_markers - own
+          if panel_incumbent is not None and panel_incumbent not in non_own_live:
+            panel_incumbent = None
+          if panel_incumbent is None and non_own_live:
+            panel_incumbent = min(non_own_live)
+          incumbent = {panel_incumbent} if panel_incumbent is not None else set()
+          self._log_newcomers(live_markers, own | incumbent)
+        action = decide_panel(
+          tmux_alive,
+          panel,
+          cur.vscode_server,
+          cur.any_attached,
+          seen_surface,
         )
-        return False
+        if action.kind is PanelActionKind.SELF_HEAL_CLI:
+          log.info(
+            "panel agent died with the panel still connected; "
+            "self-healing a CLI agent in tmux (the §89-96 fallback)"
+          )
+          if not self._self_heal():
+            return 0
+        elif action.kind is PanelActionKind.TEARDOWN:
+          log.info("all client surfaces and agents gone; tearing down the warmed panel-watch box")
+          return 0
+        prev = cur
+      except Exception:
+        log.exception("panel-watch tick failed; continuing")
+      self._sleep(self.config.poll_interval)
+    return 0
 
-    # -- detach hook (best-effort POINT filled by increment D) ---------------
+  # -- teardown ------------------------------------------------------------
 
-    def _on_detach(self) -> None:
-        """Best-effort HOOK fired on a DETACH tick — write the creds-dirty SIGNAL flag."""
-        path = self.config.creds_flag
-        if not path:
-            log.debug("on-detach: no creds-flag configured; nothing to signal")
-            return
-        try:
-            flag = Path(path)
-            flag.parent.mkdir(parents=True, exist_ok=True)
-            # A tiny edge-trigger MARKER — the host watcher only checks EXISTENCE, so
-            # the contents are immaterial; a single byte keeps it a non-empty file.
-            flag.write_text("1")
-            log.debug("on-detach: wrote creds-dirty flag %s", path)
-        except OSError as exc:
-            log.debug("on-detach: could not write creds-dirty flag %r: %s", path, exc)
-
-    def _safe_on_detach(self) -> None:
-        """Call :meth:`_on_detach`, swallowing ANY exception (the loop must not die)."""
-        try:
-            self._on_detach()
-        except Exception:
-            log.exception("on-detach hook raised; ignored (supervisor loop continues)")
-
-    # -- directive freshness (the flattened instruction slot) ----------------
-
-    @staticmethod
-    def _sha256_of(path: str) -> str | None:
-        """sha256 of *path*'s content, or ``None`` if nothing can be read from it."""
-        try:
-            digest = hashlib.sha256()
-            with open(path, "rb") as fh:
-                for chunk in iter(lambda: fh.read(1 << 16), b""):
-                    digest.update(chunk)
-        except OSError:
-            return None
-        return digest.hexdigest()
-
-    def _read_directive_manifest(self, path: str) -> object:
-        """Parse the flatten receipt at *path*; ``None`` if it cannot be read as JSON."""
-        try:
-            with open(path, "rb") as fh:
-                return json.loads(fh.read().decode("utf-8"))
-        except (OSError, ValueError) as exc:
-            log.debug("directive manifest %s unusable (%s); treating as stale", path, exc)
-            return None
-
-    def _probe_directives(self, manifest: object, dest: str) -> dict[str, str | None]:
-        """Hash every path :func:`decide_directives` may consult for this receipt."""
-        paths = [dest]
-        if isinstance(manifest, dict) and isinstance(manifest.get("inputs"), list):
-            for entry in manifest["inputs"]:
-                if isinstance(entry, dict) and isinstance(entry.get("path"), str):
-                    paths.append(entry["path"])
-        return {path: self._sha256_of(path) for path in paths}
-
-    def _reflatten_directives(self, watch: DirectiveWatch) -> bool:
-        """Re-run the flattener as a SUBPROCESS; ``True`` iff it reported success.
-
-        The flattener owns the write (atomically, receipt included) — the supervisor
-        never renders or writes the slot itself, so there is exactly one producer of
-        both the artifact and its receipt.  A failure here is logged and dropped: an
-        instruction file left stale is bad, PID 1 dying is fatal.
-
-        ⚑ BOUNDED.  This is a synchronous call inside PID 1's tick, and the directive
-        sources sit on an NFS home — a stalled mount would otherwise wedge the reap,
-        the detach hook and self-heal behind a read.  The bound is enormous next to a
-        real flatten (tens of milliseconds); it exists to cap a HANG, not to time work.
-        """
-        argv = [
-            sys.executable or "python3", watch.flattener, watch.seed, watch.dest,
-            "--manifest", watch.manifest,
-        ]
-        try:
-            proc = self._run(
-                argv, capture_output=True, text=True, check=False,
-                timeout=FLATTEN_TIMEOUT,
-            )
-        except (OSError, ValueError, subprocess.SubprocessError) as exc:
-            log.warning("directive re-flatten could not run %r: %s", watch.flattener, exc)
-            return False
-        stderr = (getattr(proc, "stderr", "") or "").strip()
-        if proc.returncode != 0:
-            log.warning(
-                "directive re-flatten failed (rc=%s): %s", proc.returncode, stderr,
-            )
-            return False
-        if stderr:
-            # The flattener warns on stderr about unresolved imports and unterminated
-            # comments; that is diagnostic, not failure.
-            log.debug("directive re-flatten warnings: %s", stderr)
-        log.info("directive sources changed; re-flattened %s", watch.dest)
-        return True
-
-    def check_directives(self) -> DirectiveVerdict | None:
-        """One freshness check of the flattened instruction slot; ``None`` when unwatched."""
-        watch = self.config.directives
-        if watch is None:
-            return None
-        manifest = self._read_directive_manifest(watch.manifest)
-        verdict = decide_directives(
-            manifest, watch.seed, watch.dest, self._probe_directives(manifest, watch.dest),
-        )
-        if verdict is DirectiveVerdict.HAND_EDITED:
-            if not self._directive_hand_edit_logged:
-                log.warning(
-                    "%s differs from the flatten that produced it while its sources are "
-                    "unchanged — leaving the hand-edited file alone (it will refresh on "
-                    "the next directive-source change)",
-                    watch.dest,
-                )
-                self._directive_hand_edit_logged = True
-            return verdict
-        self._directive_hand_edit_logged = False
-        if verdict is DirectiveVerdict.STALE:
-            self._reflatten_directives(watch)
-        return verdict
-
-    def _safe_check_directives(self) -> None:
-        """Call :meth:`check_directives`, swallowing ANY exception (the loop must not die)."""
-        try:
-            self.check_directives()
-        except Exception:
-            log.exception("directive freshness check raised; ignored (loop continues)")
-
-    def _directive_tick_period(self) -> int:
-        """Ticks between freshness checks — the cadence is in SECONDS, converted here."""
-        watch = self.config.directives
-        if watch is None:
-            return 1
-        poll = self.config.poll_interval if self.config.poll_interval > 0 else 1.0
-        return max(1, round(watch.interval / poll))
-
-    def _directive_tick(self) -> None:
-        """Advance the tick counter and run a freshness check on the Nth one."""
-        self._ticks += 1
-        if self.config.directives is None:
-            return
-        if self._ticks % self._directive_tick_period() == 0:
-            self._safe_check_directives()
-
-    # -- the SIGTERM handler -------------------------------------------------
-
-    def _handle_sigterm(self, signum: int, frame: FrameType | None) -> None:
-        """SIGTERM handler → :meth:`teardown` (factored out so tests call it directly)."""
-        log.info("received signal %s", signum)
-        self.teardown()
-
-    # -- the watch loop ------------------------------------------------------
-
-    def run_forever(self) -> int:
-        """Run the supervise loop until teardown, agent-exit, or self-heal exhaustion."""
-        self.install_signal_handlers()
-        if self.config.panel_watch:
-            # ⚑ E2f runs a DISTINCT loop that starts no CLI agent; the E2b-E2e path below
-            # is untouched (only reached when NOT panel_watch).
-            return self._run_panel_watch()
-        teardown_on_exit = self.config.on_agent_exit == "teardown"
-        # Latched once an attached user exits the agent cleanly: from then on the box
-        # only waits out any other surface, then stops — it never restarts the agent.
-        ended = False
-        # One-shot guard so the agentless keep-alive state logs ONCE on entry, not per tick.
-        keepalive_announced = False
-        # Startup runs BEFORE the per-tick guard, so guard it too — a raising probe must
-        # not kill PID-1 before the loop begins; degrade to "no attach" and enter it.
-        # ⚑ ``started`` = did the agent ever COME UP?  It separates a NEVER-STARTED
-        # failure (rc 1) from an agent that ran and ended in the teardown branch.
-        started = True
-        try:
-            if not self.agent_session_alive():
-                log.info("no live agent session at startup; starting one detached")
-                started = self.start_agent_session()
-                if not started:
-                    # ⚑ NO special-case return: a failed INITIAL start is handled
-                    # UNIFORMLY by the loop's first tick, which keeps the teardown
-                    # decision in exactly ONE place (design §86-88).
-                    log.warning("initial agent start failed; deferring to the loop policy")
-            prev = self._snapshot()
-        except Exception:
-            log.exception("supervisor startup probe raised; entering loop defensively")
-            prev = AttachState()
-
-        while not self._stop:
-            try:
-                # ⚑ PID-1 duty FIRST: reap orphan-reparented children so a dead panel
-                # cannot sit as a zombie and read ALIVE to the marker probes below.
-                self._reap()
-                # Keep the flattened instruction slot TRUE while the box lives (every
-                # Nth tick; inert unless the launcher threaded a watch).  Independent
-                # of the agent — a source edit must land whether or not one is running.
-                self._directive_tick()
-                cur = self._snapshot()
-                alive = self.agent_session_alive()
-                # Newcomer detection, gated on a configured markers dir so an old launcher
-                # (or a test) that threads none is byte-unchanged.
-                if self.config.agent_markers_dir:
-                    live_markers, _stale = self._scan_markers()
-                    own = self._own_agent_pids()
-                    if self.config.session_takeover:
-                        # ⚑ 4b: act ONLY when there IS a pane incumbent to evict (own
-                        # non-empty) — never evict on a bare marker PID.  On success
-                        # hand off to the agentless panel-watch keep-alive.
-                        newcomers = newcomer_pids(live_markers, own)
-                        if newcomers and own and self._takeover(own, newcomers):
-                            return self._run_panel_watch()
-                    else:
-                        # Flag OFF (default): 4a LOG-ONLY — no signals, no kills.
-                        self._log_newcomers(live_markers, own)
-                # The dead pane's status, read only where it can change the decision:
-                # a self-heal box with a terminal still on the pane (remain-on-exit).
-                exit_code = (
-                    self.agent_pane_exit_code()
-                    if not alive and not teardown_on_exit and cur.tmux_terminal
-                    else None
-                )
-                action = decide(prev, cur, alive, exit_code)
-                if action.fire_detach_hook:
-                    self._safe_on_detach()
-                if action.kind is ActionKind.END and not ended:
-                    log.info("agent exited cleanly with a terminal attached; not restarting it")
-                    ended = True
-                if action.kind is not ActionKind.NONE:
-                    if teardown_on_exit or ended:
-                        # ⚑ SURFACE-AWARE teardown: the agent is dead, but a box must
-                        # PERSIST while any OTHER surface (a panel) is still attached.
-                        if self._other_surface_attached(cur):
-                            # Stay an AGENTLESS keep-alive: do NOT tear down, and do NOT
-                            # self-heal a CLI while the panel is live (one-agent
-                            # invariant).  A LATER tick tears down once it detaches.
-                            if not keepalive_announced:
-                                log.info(
-                                    "agent exited but another client surface (panel) "
-                                    "is attached; staying up as an agentless keep-alive"
-                                )
-                                keepalive_announced = True
-                        else:
-                            # ⚑ Pane FIRST, record SECOND: the ``pane-died`` hook
-                            # writes the output and the record BEFORE it closes the
-                            # pane, so a pane already gone means both are written.
-                            # The output is read first: reading the record removes it.
-                            captured = (
-                                self.capture_agent_output() or self.recorded_agent_output()
-                            )
-                            # An ended agent's code was read as 0 on the tick it ended.
-                            code = 0 if ended else self.agent_pane_exit_code()
-                            if code is None:
-                                code = self.recorded_agent_exit()
-                            if code is None:
-                                code = UNDETERMINED_AGENT_EXIT if started else 1
-                            # A failed agent's last output goes to ``podman logs``, which
-                            # the host prints on a non-zero exit; a clean exit adds none.
-                            if captured and code != 0:
-                                print(captured, flush=True)
-                            log.info(
-                                "agent exited under %s policy; "
-                                "no other surface attached — closing box with rc %d",
-                                "teardown" if teardown_on_exit else "end",
-                                code,
-                            )
-                            return code
-                    elif not self._self_heal():
-                        return 0
-                prev = cur
-            except Exception:
-                log.exception("supervisor tick failed; continuing")
-            self._sleep(self.config.poll_interval)
-        return 0
-
-    def _run_panel_watch(self) -> int:
-        """The PANEL-WATCH loop (E2f): agent-independent ``code`` warm-up."""
-        log.info("panel-watch mode: agentless keep-alive fronting the VS Code panel")
-        # ``seen_surface`` LATCHES True once any surface has EVER attached, so an
-        # attached-then-detached box tears down while a never-attached one stays up
-        # through the startup grace.  The pre-loop snapshot is guarded like above.
-        seen_surface = False
-        # 4a: the fronted panel incumbent PID (first live non-own marker).  Latched so
-        # the fronted panel is not itself flagged; cleared when it departs the live set.
-        panel_incumbent: int | None = None
-        try:
-            prev = self._snapshot()
-            if prev.any_attached:
-                seen_surface = True
-        except Exception:
-            log.exception("panel-watch startup snapshot raised; entering loop defensively")
-            prev = AttachState()
-
-        while not self._stop:
-            try:
-                # ⚑ PID-1 duty FIRST: a dead panel agent must not sit as a zombie and hold
-                # panel_agent_state at ALIVE forever, wedging SELF_HEAL_CLI and TEARDOWN.
-                self._reap()
-                # A warm-only box has directives and a panel agent reading them, so the
-                # freshness watch belongs in BOTH loops — the slot must not go stale
-                # just because this box was fronted by the panel instead of a CLI.
-                self._directive_tick()
-                cur = self._snapshot()
-                if cur.any_attached:
-                    seen_surface = True
-                if classify_transition(prev, cur) is LifecycleEvent.DETACH:
-                    self._safe_on_detach()
-                tmux_alive = self.agent_session_alive()
-                panel = self.panel_agent_state()
-                # 4a LOG-ONLY: own = the self-healed CLI's pane(s) PLUS the latched fronted
-                # panel incumbent; a live marker outside that set is a newcomer.
-                if self.config.agent_markers_dir:
-                    own = self._own_agent_pids()
-                    live_markers, _stale = self._scan_markers()
-                    non_own_live = live_markers - own
-                    if panel_incumbent is not None and panel_incumbent not in non_own_live:
-                        panel_incumbent = None
-                    if panel_incumbent is None and non_own_live:
-                        panel_incumbent = min(non_own_live)
-                    incumbent = (
-                        {panel_incumbent} if panel_incumbent is not None else set()
-                    )
-                    self._log_newcomers(live_markers, own | incumbent)
-                action = decide_panel(
-                    tmux_alive, panel, cur.vscode_server, cur.any_attached, seen_surface,
-                )
-                if action.kind is PanelActionKind.SELF_HEAL_CLI:
-                    log.info(
-                        "panel agent died with the panel still connected; "
-                        "self-healing a CLI agent in tmux (the §89-96 fallback)"
-                    )
-                    if not self._self_heal():
-                        return 0
-                elif action.kind is PanelActionKind.TEARDOWN:
-                    log.info(
-                        "all client surfaces and agents gone; "
-                        "tearing down the warmed panel-watch box"
-                    )
-                    return 0
-                prev = cur
-            except Exception:
-                log.exception("panel-watch tick failed; continuing")
-            self._sleep(self.config.poll_interval)
-        return 0
-
-    # -- teardown ------------------------------------------------------------
-
-    def teardown(self) -> None:
-        """Total teardown: signal the loop to exit and kill the agent session."""
-        log.info("teardown requested; killing agent session and exiting loop")
-        self._stop = True
-        self.kill_agent_session()
+  def teardown(self) -> None:
+    """Total teardown: signal the loop to exit and kill the agent session."""
+    log.info("teardown requested; killing agent session and exiting loop")
+    self._stop = True
+    self.kill_agent_session()
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point.
 # ---------------------------------------------------------------------------
 
+
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the ``python3 -m kanibako.box_supervisor`` argument parser (options only)."""
-    parser = argparse.ArgumentParser(
-        prog="python3 -m kanibako.box_supervisor",
-        description="Box always-on-agent supervisor (PID-1 keep-alive).",
-    )
-    parser.add_argument("--session", required=True, help="tmux session name for the agent")
-    parser.add_argument(
-        "--marker", required=True, help="continue-marker sent to a self-healed agent"
-    )
-    parser.add_argument(
-        "--poll", type=float, default=2.0, help="seconds between watch-loop ticks"
-    )
-    parser.add_argument(
-        "--max-retries", type=int, default=3, help="bounded self-heal restart attempts"
-    )
-    parser.add_argument(
-        "--continue-cmd",
-        default=None,
-        help="agent grammar (shlex) for a self-heal restart; defaults to the start argv",
-    )
-    parser.add_argument(
-        "--on-agent-exit",
-        choices=("self-heal", "teardown"),
-        default="self-heal",
-        help=(
-            "policy when the agent exits: 'self-heal' (default; detached — bounded-retry "
-            "restart, except that a clean exit with a terminal attached closes the box) "
-            "or 'teardown' (foreground CLI — close the box on agent exit)"
-        ),
-    )
-    parser.add_argument(
-        "--session-takeover",
-        action="store_true",
-        help=(
-            "4b ENFORCEMENT (default OFF): enable single-writer TAKEOVER — a panel "
-            "newcomer over a live CLI incumbent is paused, the incumbent graced + "
-            "process-group evicted, then the newcomer resumed.  Omit for 4a LOG-ONLY "
-            "(no signals/kills).  Threaded from the experimental KANIBAKO_SESSION_TAKEOVER"
-        ),
-    )
-    parser.add_argument(
-        "--takeover-grace",
-        type=float,
-        default=5.0,
-        help="seconds to grace the CLI incumbent before the 4b process-group evict",
-    )
-    parser.add_argument(
-        "--panel-watch",
-        action="store_true",
-        help=(
-            "PANEL-WATCH mode (E2f): start NO CLI agent; enumerate the per-agent markers "
-            "dir (--agent-markers-dir) + the VS Code server surface and self-heal a CLI "
-            "agent only when the panel agent dies with the panel still connected"
-        ),
-    )
-    parser.add_argument(
-        "--agent-markers-dir",
-        default=None,
-        help=(
-            "box-local per-agent liveness MARKERS dir (each agent writes <dir>/$PPID): "
-            "enumerated for panel-agent liveness (--panel-watch) and LOG-ONLY newcomer "
-            "detection (increment 4a) in both modes"
-        ),
-    )
-    parser.add_argument(
-        "--creds-flag",
-        default=None,
-        help=(
-            "box-local path to the credential-writeback SIGNAL flag (increment D): "
-            "written on EVERY detach so a trusted HOST watcher does the privileged "
-            "store writeback; omit to signal nothing"
-        ),
-    )
-    # DIRECTIVE FRESHNESS — all four or none (see :class:`DirectiveWatch`).  Every one
-    # is a path the LAUNCHER decided; the supervisor spells none of them, which is what
-    # keeps the flattener literal from gaining a third carrier.
-    parser.add_argument(
-        "--directive-seed",
-        default=None,
-        help="flattener SOURCE — the directive-chain entry slot ($KANIBAKO_DIRECTIVE_SEED)",
-    )
-    parser.add_argument(
-        "--directive-dest",
-        default=None,
-        help="agent's native instruction slot to keep fresh ($KANIBAKO_DIRECTIVE_FINAL)",
-    )
-    parser.add_argument(
-        "--directive-manifest",
-        default=None,
-        help=(
-            "box-local path of the flatten RECEIPT: the watcher re-hashes what it names "
-            "and re-flattens when any of it moves; the flattener rewrites it"
-        ),
-    )
-    parser.add_argument(
-        "--directive-flattener",
-        default=None,
-        help="in-box path of the flattener script to re-run (import-directives.py)",
-    )
-    return parser
+  """Build the ``python3 -m kanibako.box_supervisor`` argument parser (options only)."""
+  parser = argparse.ArgumentParser(
+    prog="python3 -m kanibako.box_supervisor",
+    description="Box always-on-agent supervisor (PID-1 keep-alive).",
+  )
+  parser.add_argument("--session", required=True, help="tmux session name for the agent")
+  parser.add_argument(
+    "--marker", required=True, help="continue-marker sent to a self-healed agent"
+  )
+  parser.add_argument("--poll", type=float, default=2.0, help="seconds between watch-loop ticks")
+  parser.add_argument(
+    "--max-retries", type=int, default=3, help="bounded self-heal restart attempts"
+  )
+  parser.add_argument(
+    "--continue-cmd",
+    default=None,
+    help="agent grammar (shlex) for a self-heal restart; defaults to the start argv",
+  )
+  parser.add_argument(
+    "--on-agent-exit",
+    choices=("self-heal", "teardown"),
+    default="self-heal",
+    help=(
+      "policy when the agent exits: 'self-heal' (default; detached — bounded-retry "
+      "restart, except that a clean exit with a terminal attached closes the box) "
+      "or 'teardown' (foreground CLI — close the box on agent exit)"
+    ),
+  )
+  parser.add_argument(
+    "--session-takeover",
+    action="store_true",
+    help=(
+      "4b ENFORCEMENT (default OFF): enable single-writer TAKEOVER — a panel "
+      "newcomer over a live CLI incumbent is paused, the incumbent graced + "
+      "process-group evicted, then the newcomer resumed.  Omit for 4a LOG-ONLY "
+      "(no signals/kills).  Threaded from the experimental KANIBAKO_SESSION_TAKEOVER"
+    ),
+  )
+  parser.add_argument(
+    "--takeover-grace",
+    type=float,
+    default=5.0,
+    help="seconds to grace the CLI incumbent before the 4b process-group evict",
+  )
+  parser.add_argument(
+    "--panel-watch",
+    action="store_true",
+    help=(
+      "PANEL-WATCH mode (E2f): start NO CLI agent; enumerate the per-agent markers "
+      "dir (--agent-markers-dir) + the VS Code server surface and self-heal a CLI "
+      "agent only when the panel agent dies with the panel still connected"
+    ),
+  )
+  parser.add_argument(
+    "--agent-markers-dir",
+    default=None,
+    help=(
+      "box-local per-agent liveness MARKERS dir (each agent writes <dir>/$PPID): "
+      "enumerated for panel-agent liveness (--panel-watch) and LOG-ONLY newcomer "
+      "detection (increment 4a) in both modes"
+    ),
+  )
+  parser.add_argument(
+    "--creds-flag",
+    default=None,
+    help=(
+      "box-local path to the credential-writeback SIGNAL flag (increment D): "
+      "written on EVERY detach so a trusted HOST watcher does the privileged "
+      "store writeback; omit to signal nothing"
+    ),
+  )
+  # DIRECTIVE FRESHNESS — all four or none (see :class:`DirectiveWatch`).  Every one
+  # is a path the LAUNCHER decided; the supervisor spells none of them, which is what
+  # keeps the flattener literal from gaining a third carrier.
+  parser.add_argument(
+    "--directive-seed",
+    default=None,
+    help="flattener SOURCE — the directive-chain entry slot ($KANIBAKO_DIRECTIVE_SEED)",
+  )
+  parser.add_argument(
+    "--directive-dest",
+    default=None,
+    help="agent's native instruction slot to keep fresh ($KANIBAKO_DIRECTIVE_FINAL)",
+  )
+  parser.add_argument(
+    "--directive-manifest",
+    default=None,
+    help=(
+      "box-local path of the flatten RECEIPT: the watcher re-hashes what it names "
+      "and re-flattens when any of it moves; the flattener rewrites it"
+    ),
+  )
+  parser.add_argument(
+    "--directive-flattener",
+    default=None,
+    help="in-box path of the flattener script to re-run (import-directives.py)",
+  )
+  return parser
 
 
 def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None:
-    """Assemble the four directive-freshness paths, or ``None``.
+  """Assemble the four directive-freshness paths, or ``None``.
 
-    A PARTIAL set is a launcher bug, and the only safe response inside PID 1 is to
-    say so and stay inert: erroring out would refuse to start a box over a watch that
-    is not the box's purpose, and guessing a missing path would put a path decision
-    back in the supervisor.
-    """
-    parts = {
-        "--directive-seed": ns.directive_seed,
-        "--directive-dest": ns.directive_dest,
-        "--directive-manifest": ns.directive_manifest,
-        "--directive-flattener": ns.directive_flattener,
-    }
-    if all(parts.values()):
-        return DirectiveWatch(
-            seed=ns.directive_seed,
-            dest=ns.directive_dest,
-            manifest=ns.directive_manifest,
-            flattener=ns.directive_flattener,
-        )
-    if any(parts.values()):
-        log.warning(
-            "directive freshness NOT armed: %s given without %s",
-            sorted(k for k, v in parts.items() if v),
-            sorted(k for k, v in parts.items() if not v),
-        )
-    return None
+  A PARTIAL set is a launcher bug, and the only safe response inside PID 1 is to
+  say so and stay inert: erroring out would refuse to start a box over a watch that
+  is not the box's purpose, and guessing a missing path would put a path decision
+  back in the supervisor.
+  """
+  parts = {
+    "--directive-seed": ns.directive_seed,
+    "--directive-dest": ns.directive_dest,
+    "--directive-manifest": ns.directive_manifest,
+    "--directive-flattener": ns.directive_flattener,
+  }
+  if all(parts.values()):
+    return DirectiveWatch(
+      seed=ns.directive_seed,
+      dest=ns.directive_dest,
+      manifest=ns.directive_manifest,
+      flattener=ns.directive_flattener,
+    )
+  if any(parts.values()):
+    log.warning(
+      "directive freshness NOT armed: %s given without %s",
+      sorted(k for k, v in parts.items() if v),
+      sorted(k for k, v in parts.items() if not v),
+    )
+  return None
 
 
 def config_from_argv(argv: list[str]) -> SupervisorConfig:
-    """Parse *argv* (without the program name) into a :class:`SupervisorConfig`."""
-    parser = _build_parser()
-    if "--" in argv:
-        idx = argv.index("--")
-        opt_args, start_argv = argv[:idx], argv[idx + 1 :]
-    else:
-        opt_args, start_argv = list(argv), []
-    ns = parser.parse_args(opt_args)
-    if not start_argv and not ns.panel_watch:
-        parser.error("no agent argv given after '--'")
-    continue_argv = shlex.split(ns.continue_cmd) if ns.continue_cmd else list(start_argv)
-    return SupervisorConfig(
-        directives=_directive_watch(ns),
-        session=ns.session,
-        start_argv=list(start_argv),
-        continue_argv=continue_argv,
-        marker=ns.marker,
-        poll_interval=ns.poll,
-        max_restart_retries=ns.max_retries,
-        on_agent_exit=ns.on_agent_exit,
-        session_takeover=ns.session_takeover,
-        takeover_grace=ns.takeover_grace,
-        panel_watch=ns.panel_watch,
-        agent_markers_dir=ns.agent_markers_dir,
-        creds_flag=ns.creds_flag,
-    )
+  """Parse *argv* (without the program name) into a :class:`SupervisorConfig`."""
+  parser = _build_parser()
+  if "--" in argv:
+    idx = argv.index("--")
+    opt_args, start_argv = argv[:idx], argv[idx + 1 :]
+  else:
+    opt_args, start_argv = list(argv), []
+  ns = parser.parse_args(opt_args)
+  if not start_argv and not ns.panel_watch:
+    parser.error("no agent argv given after '--'")
+  continue_argv = shlex.split(ns.continue_cmd) if ns.continue_cmd else list(start_argv)
+  return SupervisorConfig(
+    directives=_directive_watch(ns),
+    session=ns.session,
+    start_argv=list(start_argv),
+    continue_argv=continue_argv,
+    marker=ns.marker,
+    poll_interval=ns.poll,
+    max_restart_retries=ns.max_retries,
+    on_agent_exit=ns.on_agent_exit,
+    session_takeover=ns.session_takeover,
+    takeover_grace=ns.takeover_grace,
+    panel_watch=ns.panel_watch,
+    agent_markers_dir=ns.agent_markers_dir,
+    creds_flag=ns.creds_flag,
+  )
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: parse args, build the supervisor, run the watch loop forever."""
-    # ⚑ FIRST, ahead of the parse: ``config_from_argv`` itself logs (a half-armed
-    # directive watch), and PID-1's stderr IS the box's ``podman logs`` — unconfigured,
-    # every ``info``/``debug`` decision this module makes went nowhere.
-    # ⚑ HERE and not at module scope: ``commands/start.py`` imports this module on the
-    # HOST, where configuring at import would reconfigure the CLI's own logging.
-    # ⚑ ``verbose=True`` because it is the rung that emits what this module decides at;
-    # no tick logs unconditionally, so a healthy box stays quiet.  Nothing threads a
-    # level in from outside — the prose says why that was left alone.
-    setup_logging(verbose=True)
-    args = list(sys.argv[1:] if argv is None else argv)
-    config = config_from_argv(args)
-    # ⚑ Serve the box's XDG locations from the pinned root now that the box is LIVE.
-    # This is the earliest SAFE point and the only correct one: every podman mount is
-    # already in place, so the link is invisible to mount-time symlink resolution.
-    project_pinned_xdg()
-    # Strip the host-package mount from PYTHONPATH before the loop spawns tmux / the
-    # agent, so those children do not inherit our import path.
-    scrub_bootstrap_pythonpath()
-    supervisor = BoxSupervisor(config)
-    return supervisor.run_forever()
+  """CLI: parse args, build the supervisor, run the watch loop forever."""
+  # ⚑ FIRST, ahead of the parse: ``config_from_argv`` itself logs (a half-armed
+  # directive watch), and PID-1's stderr IS the box's ``podman logs`` — unconfigured,
+  # every ``info``/``debug`` decision this module makes went nowhere.
+  # ⚑ HERE and not at module scope: ``commands/start.py`` imports this module on the
+  # HOST, where configuring at import would reconfigure the CLI's own logging.
+  # ⚑ ``verbose=True`` because it is the rung that emits what this module decides at;
+  # no tick logs unconditionally, so a healthy box stays quiet.  Nothing threads a
+  # level in from outside — the prose says why that was left alone.
+  setup_logging(verbose=True)
+  args = list(sys.argv[1:] if argv is None else argv)
+  config = config_from_argv(args)
+  # ⚑ Serve the box's XDG locations from the pinned root now that the box is LIVE.
+  # This is the earliest SAFE point and the only correct one: every podman mount is
+  # already in place, so the link is invisible to mount-time symlink resolution.
+  project_pinned_xdg()
+  # Strip the host-package mount from PYTHONPATH before the loop spawns tmux / the
+  # agent, so those children do not inherit our import path.
+  scrub_bootstrap_pythonpath()
+  supervisor = BoxSupervisor(config)
+  return supervisor.run_forever()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+  raise SystemExit(main())

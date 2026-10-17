@@ -80,10 +80,14 @@ def _sources(tmp_path: Path, active: str = AGENT, **files: str) -> dict[str, str
     paths[level] = p
   ctx = _ctx(active)
   snap = build_launch_snapshot(
-    agent_name=active, ctx=ctx,
-    system_path=paths["system"], agent_path=paths["agent"],
-    workset_path=paths["workset"], box_path=paths["box"],
-    default_categories=_floor(active), valid_agents=(active,),
+    agent_name=active,
+    ctx=ctx,
+    system_path=paths["system"],
+    agent_path=paths["agent"],
+    workset_path=paths["workset"],
+    box_path=paths["box"],
+    default_categories=_floor(active),
+    valid_agents=(active,),
   )
   return {
     e.box_dest: e.host_src
@@ -100,20 +104,25 @@ def _sources(tmp_path: Path, active: str = AGENT, **files: str) -> dict[str, str
 #: spec's DECLARATION-ROOT table, each written the way a user writes it.
 #: ⚑ The agent row's file root table is ``self:`` — ``self`` IS ``agent.<node>``.
 _ROOTED = (
-  ("system", 'system:\n  seeded: {"~/s": ["leaf"]}\n',
-   "/home/agent/s", f"{DATA}/seeded/leaf"),
-  ("agent", 'self:\n  caches: {"~/a": ["leaf"]}\n',
-   "/home/agent/a", f"{AGENTS}/{AGENT}/caches/leaf"),
-  ("workset", 'workset:\n  common: {"~/w": ["leaf"]}\n',
-   "/home/agent/w", f"{WS}/common/leaf"),
-  ("box", 'box:\n  caches: {"~/x": ["leaf"]}\n',
-   "/home/agent/x", f"{BOX}/caches/leaf"),
+  ("system", 'system:\n  seeded: {"~/s": ["leaf"]}\n', "/home/agent/s", f"{DATA}/seeded/leaf"),
+  (
+    "agent",
+    'self:\n  caches: {"~/a": ["leaf"]}\n',
+    "/home/agent/a",
+    f"{AGENTS}/{AGENT}/caches/leaf",
+  ),
+  ("workset", 'workset:\n  common: {"~/w": ["leaf"]}\n', "/home/agent/w", f"{WS}/common/leaf"),
+  ("box", 'box:\n  caches: {"~/x": ["leaf"]}\n', "/home/agent/x", f"{BOX}/caches/leaf"),
 )
 
 
 @pytest.mark.parametrize(("level", "text", "dest", "expected"), _ROOTED)
 def test_a_bare_leaf_is_rooted_at_every_declaring_scope(
-  tmp_path: Path, level: str, text: str, dest: str, expected: str,
+  tmp_path: Path,
+  level: str,
+  text: str,
+  dest: str,
+  expected: str,
 ) -> None:
   """A bare LEAF in an abstract category resolves under ``<scope-root>/<category>/``.
 
@@ -127,17 +136,24 @@ def test_a_bare_leaf_is_rooted_at_every_declaring_scope(
 #: RELATIVE SOURCES, not a universal law (§2a), so each must pass through UNTOUCHED.
 _VERBATIM = (
   ("system", 'system:\n  seeded: {"~/s": ["/abs/dir"]}\n', "/home/agent/s", "/abs/dir"),
-  ("agent", 'self:\n  caches: {"~/a": ["{$XDG_DATA_HOME}/x"]}\n',
-   "/home/agent/a", f"{DATA}/x"),
-  ("workset", 'workset:\n  common: {"~/w": ["{meta.workset.path}/own"]}\n',
-   "/home/agent/w", f"{WS}/own"),
+  ("agent", 'self:\n  caches: {"~/a": ["{$XDG_DATA_HOME}/x"]}\n', "/home/agent/a", f"{DATA}/x"),
+  (
+    "workset",
+    'workset:\n  common: {"~/w": ["{meta.workset.path}/own"]}\n',
+    "/home/agent/w",
+    f"{WS}/own",
+  ),
   ("box", 'box:\n  caches: {"~/x": ["~/tdir"]}\n', "/home/agent/x", "/home/u/tdir"),
 )
 
 
 @pytest.mark.parametrize(("level", "text", "dest", "expected"), _VERBATIM)
 def test_a_self_resolving_source_is_stored_verbatim_at_every_scope(
-  tmp_path: Path, level: str, text: str, dest: str, expected: str,
+  tmp_path: Path,
+  level: str,
+  text: str,
+  dest: str,
+  expected: str,
 ) -> None:
   """No scope root is joined onto a source that already resolves on its own.
 
@@ -170,12 +186,7 @@ def test_a_pref_is_rooted_at_the_key_it_targets(tmp_path: Path) -> None:
   """
   sources = _sources(
     tmp_path,
-    box=(
-      "pref:\n"
-      "  agent:\n"
-      f"    {AGENT}:\n"
-      '      caches: {"~/p": ["leaf"]}\n'
-    ),
+    box=(f'pref:\n  agent:\n    {AGENT}:\n      caches: {{"~/p": ["leaf"]}}\n'),
   )
   assert sources["/home/agent/p"] == f"{AGENTS}/{AGENT}/caches/leaf"
 
@@ -195,7 +206,11 @@ _DEFAULT_TIER = (
 @pytest.mark.parametrize("agent", [AGENT, "codex"])
 @pytest.mark.parametrize(("level", "text", "category"), _DEFAULT_TIER)
 def test_the_all_agents_tier_roots_at_the_active_agents_store(
-  tmp_path: Path, agent: str, level: str, text: str, category: str,
+  tmp_path: Path,
+  agent: str,
+  level: str,
+  text: str,
+  category: str,
 ) -> None:
   """A bare leaf at ``agent.default.<abstract>`` lands under the ACTIVE agent's store.
 
@@ -222,7 +237,7 @@ def test_a_bare_all_agents_path_key_names_the_active_agents_store(tmp_path: Path
   ``{config.agents}/default`` is a directory no agent reads (keyspec §2d).
   """
   with pytest.raises(SettingsError) as exc:
-    _sources(tmp_path, system='agent:\n  default:\n    canon: relcanon\n')
+    _sources(tmp_path, system="agent:\n  default:\n    canon: relcanon\n")
   assert f"{AGENTS}/{AGENT}/relcanon" in str(exc.value)
   assert f"{AGENTS}/default/relcanon" not in str(exc.value)
 
@@ -243,7 +258,10 @@ _CONCRETE = (
 
 @pytest.mark.parametrize(("level", "text", "category"), _CONCRETE)
 def test_a_relative_concrete_source_is_refused_by_name(
-  tmp_path: Path, level: str, text: str, category: str,
+  tmp_path: Path,
+  level: str,
+  text: str,
+  category: str,
 ) -> None:
   """The refusal names the CATEGORY, the DESTINATION and the offending SOURCE.
 

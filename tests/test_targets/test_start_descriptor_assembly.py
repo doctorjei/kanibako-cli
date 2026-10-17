@@ -34,48 +34,50 @@ DEFAULT_STATE = {"model": "opus"}
 
 
 def _start_argv(
-    desc,
-    *,
-    safe_mode: bool,
-    autonomous: bool = False,
-    resume_mode: bool,
-    new_session: bool,
-    is_new_project: bool,
-    extra_args: list[str],
-    state: dict[str, str],
+  desc,
+  *,
+  safe_mode: bool,
+  autonomous: bool = False,
+  resume_mode: bool,
+  new_session: bool,
+  is_new_project: bool,
+  extra_args: list[str],
+  state: dict[str, str],
 ) -> list[str]:
-    """Reproduce start.py's descriptor argv assembly exactly.
+  """Reproduce start.py's descriptor argv assembly exactly.
 
-    Mirrors start.py: the launch TIER is the ``access`` key redeemed via
-    ``access_realization.setting_key`` (validated against the enum, DEFAULT
-    ``full`` when unset), with the per-launch -S (safe_mode) / -A (autonomous)
-    flags riding the §1A CLI level above the persisted value.
-    """
-    from kanibako.settings.settings_launch import meta_agent_grammar_floor
+  Mirrors start.py: the launch TIER is the ``access`` key redeemed via
+  ``access_realization.setting_key`` (validated against the enum, DEFAULT
+  ``full`` when unset), with the per-launch -S (safe_mode) / -A (autonomous)
+  flags riding the §1A CLI level above the persisted value.
+  """
+  from kanibako.settings.settings_launch import meta_agent_grammar_floor
 
-    launch_access = _launch_tier(
-        desc, secure=safe_mode, autonomous=autonomous,
-        persisted=state.get("access"),
-    )
-    # B5: mirror start.py — the launch grammar is MATERIALIZED into the keyspace
-    # (the same single descriptor→keyspace builder the launch uses) and the
-    # composition reads the table, never the descriptor directly.
-    mode_table = meta_agent_grammar_floor("claude", desc)["meta.agent.claude.mode"]
-    mode_key = assembly.resolve_mode(
-        resume_mode=resume_mode,
-        new_session=new_session,
-        is_new_project=is_new_project,
-        extra_args=extra_args,
-        available_modes=mode_table.keys(),
-    )
-    return assembly.assemble_argv(
-        desc,
-        mode_fragment=mode_table[mode_key],
-        access=launch_access,
-        setting_values=state,
-        op_fragment=None,
-        extra_args=extra_args,
-    )
+  launch_access = _launch_tier(
+    desc,
+    secure=safe_mode,
+    autonomous=autonomous,
+    persisted=state.get("access"),
+  )
+  # B5: mirror start.py — the launch grammar is MATERIALIZED into the keyspace
+  # (the same single descriptor→keyspace builder the launch uses) and the
+  # composition reads the table, never the descriptor directly.
+  mode_table = meta_agent_grammar_floor("claude", desc)["meta.agent.claude.mode"]
+  mode_key = assembly.resolve_mode(
+    resume_mode=resume_mode,
+    new_session=new_session,
+    is_new_project=is_new_project,
+    extra_args=extra_args,
+    available_modes=mode_table.keys(),
+  )
+  return assembly.assemble_argv(
+    desc,
+    mode_fragment=mode_table[mode_key],
+    access=launch_access,
+    setting_values=state,
+    op_fragment=None,
+    extra_args=extra_args,
+  )
 
 
 # --------------------------------------------------------------------------- #
@@ -84,412 +86,436 @@ def _start_argv(
 
 
 class TestDescriptorArgv:
-    def setup_method(self):
-        self.desc = ClaudeTarget().descriptor
-        assert self.desc is not None
+  def setup_method(self):
+    self.desc = ClaudeTarget().descriptor
+    assert self.desc is not None
 
-    def test_default_continue_and_model(self):
-        """Existing project, autonomous default: --continue + bypass + --model opus."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--continue" in argv
-        assert "--dangerously-skip-permissions" in argv
-        assert argv[argv.index("--model") + 1] == "opus"
-
-    def test_autonomous_default_includes_bypass(self):
-        """safe_off (-A / default) emits the skip-permissions flag."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--dangerously-skip-permissions" in argv
-
-    def test_secure_excludes_bypass(self):
-        """-S (safe_mode=True) omits the bypass flag."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=True,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--dangerously-skip-permissions" not in argv
-        assert "--continue" in argv
-
-    def test_new_session_skips_continue(self):
-        """-N (new_session) drops --continue and emits no resume."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=True,
-            is_new_project=False,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--continue" not in argv
-        assert "--resume" not in argv
-
-    def test_new_project_skips_continue(self):
-        """A brand-new project skips --continue."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=True,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--continue" not in argv
-
-    def test_resume_mode_falls_through_to_continue(self):
-        """-R (resume_mode) on claude falls through to --continue.
-
-        Resume was intentionally cut from claude's descriptor (user 2026-06-17:
-        nonstandard/unused; reachable from interactive mode), so the mode map is
-        {start, continue}. resolve_mode has no "resume" key to select, and -R does
-        not force a new session, so it resolves to continue-last (--continue).
-        """
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=True,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state=DEFAULT_STATE,
-        )
-        assert "--continue" in argv
-        assert "--resume" not in argv
-
-    def test_extra_resume_skips_continue(self):
-        """--resume passed through extra_args also skips --continue."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=["--resume"],
-            state=DEFAULT_STATE,
-        )
-        assert argv.count("--continue") == 0
-        assert "--resume" in argv
-
-    def test_no_model_when_unset(self):
-        """No model in state -> no --model flag."""
-        argv = _start_argv(
-            self.desc,
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state={},
-        )
-        assert "--model" not in argv
-
-    @pytest.mark.parametrize(
-        "safe_mode,resume_mode,new_session,is_new_project,extra",
-        [
-            (False, False, False, False, []),
-            (True, False, False, False, []),
-            (False, False, True, False, []),
-            (False, False, False, True, []),
-            (False, False, False, False, ["--resume"]),
-            (False, False, True, False, ["bar", "baz"]),
-        ],
+  def test_default_continue_and_model(self):
+    """Existing project, autonomous default: --continue + bypass + --model opus."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state=DEFAULT_STATE,
     )
-    def test_descriptor_argv_carries_expected_invariants(
-        self, safe_mode, resume_mode, new_session, is_new_project, extra
-    ):
-        """The descriptor argv carries the documented launch invariants.
+    assert "--continue" in argv
+    assert "--dangerously-skip-permissions" in argv
+    assert argv[argv.index("--model") + 1] == "opus"
 
-        Replaces the former legacy ``build_cli_args``/``apply_state`` equivalence
-        check (those hooks were removed for the descriptor-only public release).
-        Asserts the same invariants the legacy comparison guaranteed, directly
-        on the descriptor-assembled argv: ``--dangerously-skip-permissions`` iff
-        not secure; ``--continue`` iff continuing (no new-session forcing and no
-        ``--resume`` in extra); the ``--model opus`` setting flag; and that
-        ``*extra`` is passed through.
+  def test_autonomous_default_includes_bypass(self):
+    """safe_off (-A / default) emits the skip-permissions flag."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state=DEFAULT_STATE,
+    )
+    assert "--dangerously-skip-permissions" in argv
 
-        NOTE: ``resume_mode=True`` cases are excluded — resume was cut from
-        claude's descriptor (user 2026-06-17), so the descriptor emits
-        ``--continue`` where legacy emitted ``--resume`` (covered by
-        ``test_resume_mode_falls_through_to_continue``).
-        """
-        argv = _start_argv(
-            ClaudeTarget().descriptor,
-            safe_mode=safe_mode,
-            resume_mode=resume_mode,
-            new_session=new_session,
-            is_new_project=is_new_project,
-            extra_args=list(extra),
-            state=DEFAULT_STATE,
-        )
+  def test_secure_excludes_bypass(self):
+    """-S (safe_mode=True) omits the bypass flag."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=True,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state=DEFAULT_STATE,
+    )
+    assert "--dangerously-skip-permissions" not in argv
+    assert "--continue" in argv
 
-        # access realization: present iff NOT secure (-S).
-        assert ("--dangerously-skip-permissions" in argv) is (not safe_mode)
+  def test_new_session_skips_continue(self):
+    """-N (new_session) drops --continue and emits no resume."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=True,
+      is_new_project=False,
+      extra_args=[],
+      state=DEFAULT_STATE,
+    )
+    assert "--continue" not in argv
+    assert "--resume" not in argv
 
-        # continue: present iff continuing (not new-session/new-project and no
-        # --resume requested in extra).
-        skip_continue = (
-            new_session or is_new_project or "--resume" in extra
-        )
-        assert ("--continue" in argv) is (not skip_continue)
+  def test_new_project_skips_continue(self):
+    """A brand-new project skips --continue."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=True,
+      extra_args=[],
+      state=DEFAULT_STATE,
+    )
+    assert "--continue" not in argv
 
-        # model setting flag + passthrough of extra args.
-        assert argv[argv.index("--model") + 1] == "opus"
-        for a in extra:
-            assert a in argv
+  def test_resume_mode_falls_through_to_continue(self):
+    """-R (resume_mode) on claude falls through to --continue.
+
+    Resume was intentionally cut from claude's descriptor (user 2026-06-17:
+    nonstandard/unused; reachable from interactive mode), so the mode map is
+    {start, continue}. resolve_mode has no "resume" key to select, and -R does
+    not force a new session, so it resolves to continue-last (--continue).
+    """
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=True,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state=DEFAULT_STATE,
+    )
+    assert "--continue" in argv
+    assert "--resume" not in argv
+
+  def test_extra_resume_skips_continue(self):
+    """--resume passed through extra_args also skips --continue."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=["--resume"],
+      state=DEFAULT_STATE,
+    )
+    assert argv.count("--continue") == 0
+    assert "--resume" in argv
+
+  def test_no_model_when_unset(self):
+    """No model in state -> no --model flag."""
+    argv = _start_argv(
+      self.desc,
+      safe_mode=False,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state={},
+    )
+    assert "--model" not in argv
+
+  @pytest.mark.parametrize(
+    "safe_mode,resume_mode,new_session,is_new_project,extra",
+    [
+      (False, False, False, False, []),
+      (True, False, False, False, []),
+      (False, False, True, False, []),
+      (False, False, False, True, []),
+      (False, False, False, False, ["--resume"]),
+      (False, False, True, False, ["bar", "baz"]),
+    ],
+  )
+  def test_descriptor_argv_carries_expected_invariants(
+    self, safe_mode, resume_mode, new_session, is_new_project, extra
+  ):
+    """The descriptor argv carries the documented launch invariants.
+
+    Replaces the former legacy ``build_cli_args``/``apply_state`` equivalence
+    check (those hooks were removed for the descriptor-only public release).
+    Asserts the same invariants the legacy comparison guaranteed, directly
+    on the descriptor-assembled argv: ``--dangerously-skip-permissions`` iff
+    not secure; ``--continue`` iff continuing (no new-session forcing and no
+    ``--resume`` in extra); the ``--model opus`` setting flag; and that
+    ``*extra`` is passed through.
+
+    NOTE: ``resume_mode=True`` cases are excluded — resume was cut from
+    claude's descriptor (user 2026-06-17), so the descriptor emits
+    ``--continue`` where legacy emitted ``--resume`` (covered by
+    ``test_resume_mode_falls_through_to_continue``).
+    """
+    argv = _start_argv(
+      ClaudeTarget().descriptor,
+      safe_mode=safe_mode,
+      resume_mode=resume_mode,
+      new_session=new_session,
+      is_new_project=is_new_project,
+      extra_args=list(extra),
+      state=DEFAULT_STATE,
+    )
+
+    # access realization: present iff NOT secure (-S).
+    assert ("--dangerously-skip-permissions" in argv) is (not safe_mode)
+
+    # continue: present iff continuing (not new-session/new-project and no
+    # --resume requested in extra).
+    skip_continue = new_session or is_new_project or "--resume" in extra
+    assert ("--continue" in argv) is (not skip_continue)
+
+    # model setting flag + passthrough of extra args.
+    assert argv[argv.index("--model") + 1] == "opus"
+    for a in extra:
+      assert a in argv
 
 
 class TestPersistedAccessTierClaude:
-    """The persisted ``access`` TIER key (spec §2d, R-41) is LIVE for claude.
+  """The persisted ``access`` TIER key (spec §2d, R-41) is LIVE for claude.
 
-    The launch tier is the redeemed ``access`` key with the per-launch
-    -S/-A flags riding the §1A CLI level above it (validated against the enum,
-    DEFAULT ``full`` when unset); the rows below are the documented behavior
-    contract.  ``--dangerously-skip-permissions`` is claude's ``full`` row and
-    ``--permission-mode acceptEdits`` its ``editing`` row (FLAG-channel
-    ``access_realization``).
-    """
+  The launch tier is the redeemed ``access`` key with the per-launch
+  -S/-A flags riding the §1A CLI level above it (validated against the enum,
+  DEFAULT ``full`` when unset); the rows below are the documented behavior
+  contract.  ``--dangerously-skip-permissions`` is claude's ``full`` row and
+  ``--permission-mode acceptEdits`` its ``editing`` row (FLAG-channel
+  ``access_realization``).
+  """
 
-    BYPASS = "--dangerously-skip-permissions"
-    ACCEPT_EDITS = ("--permission-mode", "acceptEdits")
+  BYPASS = "--dangerously-skip-permissions"
+  ACCEPT_EDITS = ("--permission-mode", "acceptEdits")
 
-    def setup_method(self):
-        self.desc = ClaudeTarget().descriptor
-        assert self.desc is not None
+  def setup_method(self):
+    self.desc = ClaudeTarget().descriptor
+    assert self.desc is not None
 
-    def _argv(self, *, safe_mode, autonomous, access):
-        state = {"model": "opus"}
-        if access is not None:
-            state["access"] = access
-        return _start_argv(
-            self.desc,
-            safe_mode=safe_mode,
-            autonomous=autonomous,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-            state=state,
-        )
+  def _argv(self, *, safe_mode, autonomous, access):
+    state = {"model": "opus"}
+    if access is not None:
+      state["access"] = access
+    return _start_argv(
+      self.desc,
+      safe_mode=safe_mode,
+      autonomous=autonomous,
+      resume_mode=False,
+      new_session=False,
+      is_new_project=False,
+      extra_args=[],
+      state=state,
+    )
 
-    def _has_edits(self, argv):
-        return any(
-            argv[i:i + 2] == list(self.ACCEPT_EDITS) for i in range(len(argv))
-        )
+  def _has_edits(self, argv):
+    return any(argv[i : i + 2] == list(self.ACCEPT_EDITS) for i in range(len(argv)))
 
-    def test_default_full_includes_bypass(self):
-        """No -S/-A, access=full (the default) -> bypass PRESENT (critical)."""
-        argv = self._argv(safe_mode=False, autonomous=False, access="full")
-        assert self.BYPASS in argv
-        assert not self._has_edits(argv)
+  def test_default_full_includes_bypass(self):
+    """No -S/-A, access=full (the default) -> bypass PRESENT (critical)."""
+    argv = self._argv(safe_mode=False, autonomous=False, access="full")
+    assert self.BYPASS in argv
+    assert not self._has_edits(argv)
 
-    def test_editing_emits_accept_edits_and_not_the_bypass(self):
-        """The MIDDLE tier: acceptEdits PRESENT, bypass ABSENT."""
-        argv = self._argv(safe_mode=False, autonomous=False, access="editing")
-        assert self._has_edits(argv)
-        assert self.BYPASS not in argv
+  def test_editing_emits_accept_edits_and_not_the_bypass(self):
+    """The MIDDLE tier: acceptEdits PRESENT, bypass ABSENT."""
+    argv = self._argv(safe_mode=False, autonomous=False, access="editing")
+    assert self._has_edits(argv)
+    assert self.BYPASS not in argv
 
-    def test_restricted_emits_neither(self):
-        """No flags, access=restricted -> nothing emitted (claude prompts)."""
-        argv = self._argv(safe_mode=False, autonomous=False, access="restricted")
-        assert self.BYPASS not in argv
-        assert not self._has_edits(argv)
+  def test_restricted_emits_neither(self):
+    """No flags, access=restricted -> nothing emitted (claude prompts)."""
+    argv = self._argv(safe_mode=False, autonomous=False, access="restricted")
+    assert self.BYPASS not in argv
+    assert not self._has_edits(argv)
 
-    def test_secure_flag_beats_every_stored_tier(self):
-        """-S wins from ANY stored tier -> restricted (nothing emitted)."""
-        for stored in ("restricted", "editing", "full"):
-            argv = self._argv(safe_mode=True, autonomous=False, access=stored)
-            assert self.BYPASS not in argv, stored
-            assert not self._has_edits(argv), stored
+  def test_secure_flag_beats_every_stored_tier(self):
+    """-S wins from ANY stored tier -> restricted (nothing emitted)."""
+    for stored in ("restricted", "editing", "full"):
+      argv = self._argv(safe_mode=True, autonomous=False, access=stored)
+      assert self.BYPASS not in argv, stored
+      assert not self._has_edits(argv), stored
 
-    def test_autonomous_flag_beats_every_stored_tier(self):
-        """-A wins from ANY stored tier -> full (bypass present)."""
-        for stored in ("restricted", "editing", "full"):
-            argv = self._argv(safe_mode=False, autonomous=True, access=stored)
-            assert self.BYPASS in argv, stored
+  def test_autonomous_flag_beats_every_stored_tier(self):
+    """-A wins from ANY stored tier -> full (bypass present)."""
+    for stored in ("restricted", "editing", "full"):
+      argv = self._argv(safe_mode=False, autonomous=True, access=stored)
+      assert self.BYPASS in argv, stored
 
-    def test_unset_defaults_to_full(self):
-        """No flags, access unset -> bypass PRESENT (the ``full`` default)."""
-        assert self.BYPASS in self._argv(
-            safe_mode=False, autonomous=False, access=None,
-        )
+  def test_unset_defaults_to_full(self):
+    """No flags, access unset -> bypass PRESENT (the ``full`` default)."""
+    assert self.BYPASS in self._argv(
+      safe_mode=False,
+      autonomous=False,
+      access=None,
+    )
 
-    def test_unknown_stored_value_is_refused_not_permissive(self):
-        """⚑ THE inversion vs the retired boolean: a junk value used to
-        ``coerce_bool`` to None and fall back to PERMISSIVE.  It now RAISES."""
-        with pytest.raises(ConfigError):
-            self._argv(safe_mode=False, autonomous=False, access="bogus")
+  def test_unknown_stored_value_is_refused_not_permissive(self):
+    """⚑ THE inversion vs the retired boolean: a junk value used to
+    ``coerce_bool`` to None and fall back to PERMISSIVE.  It now RAISES."""
+    with pytest.raises(ConfigError):
+      self._argv(safe_mode=False, autonomous=False, access="bogus")
 
 
 def _launch_tier(desc, *, secure, autonomous, persisted):
-    """Mirror start.py's launch read: the per-launch flags ride the §1A CLI
-    level, which outranks the persisted ``access``; the winner is validated
-    (DEFAULT ``full`` when unset)."""
-    from kanibako.settings.settings_cli_level import build_cli_level
+  """Mirror start.py's launch read: the per-launch flags ride the §1A CLI
+  level, which outranks the persisted ``access``; the winner is validated
+  (DEFAULT ``full`` when unset)."""
+  from kanibako.settings.settings_cli_level import build_cli_level
 
-    ar = desc.access_realization
-    if ar is None or not ar.setting_key:
-        return assembly.resolve_access_tier(None)
-    level = build_cli_level(
-        active_agent="a", secure=secure, autonomous=autonomous,
-    ) or {}
-    return assembly.resolve_access_tier(level.get("agent.a.access", persisted))
+  ar = desc.access_realization
+  if ar is None or not ar.setting_key:
+    return assembly.resolve_access_tier(None)
+  level = (
+    build_cli_level(
+      active_agent="a",
+      secure=secure,
+      autonomous=autonomous,
+    )
+    or {}
+  )
+  return assembly.resolve_access_tier(level.get("agent.a.access", persisted))
 
 
 class TestUniformAccessAcrossAgents:
-    """``access`` is a UNIFORM persisted key across all 3 shipped agents: each
-    descriptor redeems it via ``access_realization.setting_key == "access"``
-    (claude/codex FLAG channel, goose ENV channel).  This class is the
-    3 tiers × 3 agents half of the R-41 matrix on the EPHEMERAL (argv/env)
-    consumer; the projected-surface half lives in the panel-delivery tests."""
+  """``access`` is a UNIFORM persisted key across all 3 shipped agents: each
+  descriptor redeems it via ``access_realization.setting_key == "access"``
+  (claude/codex FLAG channel, goose ENV channel).  This class is the
+  3 tiers × 3 agents half of the R-41 matrix on the EPHEMERAL (argv/env)
+  consumer; the projected-surface half lives in the panel-delivery tests."""
 
-    def test_all_descriptors_redeem_access(self):
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_all_descriptors_redeem_access(self):
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.plugins.goose.target import GooseTarget
 
-        for T in (ClaudeTarget, CodexTarget, GooseTarget):
-            ar = T().descriptor.access_realization
-            assert ar is not None and ar.setting_key == "access"
+    for T in (ClaudeTarget, CodexTarget, GooseTarget):
+      ar = T().descriptor.access_realization
+      assert ar is not None and ar.setting_key == "access"
 
-    def _argv_at(self, desc, *, secure=False, autonomous=False, persisted=None):
-        tier = _launch_tier(
-            desc, secure=secure, autonomous=autonomous, persisted=persisted,
-        )
-        return assembly.assemble_argv(
-            desc, mode_fragment=desc.mode["start"], access=tier,
-            setting_values={}, extra_args=[],
-        )
+  def _argv_at(self, desc, *, secure=False, autonomous=False, persisted=None):
+    tier = _launch_tier(
+      desc,
+      secure=secure,
+      autonomous=autonomous,
+      persisted=persisted,
+    )
+    return assembly.assemble_argv(
+      desc,
+      mode_fragment=desc.mode["start"],
+      access=tier,
+      setting_values={},
+      extra_args=[],
+    )
 
-    def test_claude_rows_per_tier(self):
-        desc = ClaudeTarget().descriptor
-        bypass = "--dangerously-skip-permissions"
-        assert self._argv_at(desc, persisted="full") == [bypass]
-        assert self._argv_at(desc, persisted="editing") == [
-            "--permission-mode", "acceptEdits",
-        ]
-        restricted = ["--permission-mode", "default"]
-        assert self._argv_at(desc, persisted="restricted") == restricted
-        # unset -> the ``full`` default
-        assert self._argv_at(desc, persisted=None) == [bypass]
-        # -A overrides a stored restricted -> full; -S overrides a stored full.
-        assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
-        assert self._argv_at(desc, secure=True, persisted="full") == restricted
+  def test_claude_rows_per_tier(self):
+    desc = ClaudeTarget().descriptor
+    bypass = "--dangerously-skip-permissions"
+    assert self._argv_at(desc, persisted="full") == [bypass]
+    assert self._argv_at(desc, persisted="editing") == [
+      "--permission-mode",
+      "acceptEdits",
+    ]
+    restricted = ["--permission-mode", "default"]
+    assert self._argv_at(desc, persisted="restricted") == restricted
+    # unset -> the ``full`` default
+    assert self._argv_at(desc, persisted=None) == [bypass]
+    # -A overrides a stored restricted -> full; -S overrides a stored full.
+    assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
+    assert self._argv_at(desc, secure=True, persisted="full") == restricted
 
-    def test_codex_rows_per_tier(self):
-        from kanibako.plugins.codex.target import CodexTarget
+  def test_codex_rows_per_tier(self):
+    from kanibako.plugins.codex.target import CodexTarget
 
-        desc = CodexTarget().descriptor
-        bypass = "--dangerously-bypass-approvals-and-sandbox"
-        assert self._argv_at(desc, persisted="full") == [bypass]
-        # ⚑ The approval half rides ``-c``, never ``-a``: ``codex exec`` rejects
-        # ``-a`` and shares this argv tail.
-        approval = ["-c", 'approval_policy="on-request"']
-        restricted = [*approval, "-s", "read-only"]
-        editing = self._argv_at(desc, persisted="editing")
-        assert editing == [*approval, "-s", "workspace-write"]
-        assert "-a" not in editing and "--ask-for-approval" not in editing
-        assert self._argv_at(desc, persisted="restricted") == restricted
-        assert self._argv_at(desc, persisted=None) == [bypass]
-        assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
-        assert self._argv_at(desc, secure=True, persisted="full") == restricted
+    desc = CodexTarget().descriptor
+    bypass = "--dangerously-bypass-approvals-and-sandbox"
+    assert self._argv_at(desc, persisted="full") == [bypass]
+    # ⚑ The approval half rides ``-c``, never ``-a``: ``codex exec`` rejects
+    # ``-a`` and shares this argv tail.
+    approval = ["-c", 'approval_policy="on-request"']
+    restricted = [*approval, "-s", "read-only"]
+    editing = self._argv_at(desc, persisted="editing")
+    assert editing == [*approval, "-s", "workspace-write"]
+    assert "-a" not in editing and "--ask-for-approval" not in editing
+    assert self._argv_at(desc, persisted="restricted") == restricted
+    assert self._argv_at(desc, persisted=None) == [bypass]
+    assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
+    assert self._argv_at(desc, secure=True, persisted="full") == restricted
 
-    def test_codex_never_emits_the_alias_bypass_flags(self):
-        """``--yolo`` / ``--full-auto`` are never emitted (D-7).
+  def test_codex_never_emits_the_alias_bypass_flags(self):
+    """``--yolo`` / ``--full-auto`` are never emitted (D-7).
 
-        ⚑ NOT because they are absent or undocumented — that justification was
-        false. Verified on codex-cli 0.141.0 (2026-08-02): neither is listed in
-        ``codex --help`` / ``codex exec --help``, but BOTH parse (``--yolo`` at
-        the top level, ``--full-auto`` on ``exec``), and OpenAI's own docs
-        reference ``--yolo`` in ordinary prose usage — it is a real user-facing
-        spelling.
+    ⚑ NOT because they are absent or undocumented — that justification was
+    false. Verified on codex-cli 0.141.0 (2026-08-02): neither is listed in
+    ``codex --help`` / ``codex exec --help``, but BOTH parse (``--yolo`` at
+    the top level, ``--full-auto`` on ``exec``), and OpenAI's own docs
+    reference ``--yolo`` in ordinary prose usage — it is a real user-facing
+    spelling.
 
-        The reason is positive: ``--dangerously-bypass-approvals-and-sandbox``
-        IS in ``--help`` with an unambiguous description, so the argv kanibako
-        emits says what it does to anyone reading a log or a process list. This
-        test pins the BEHAVIOR (which is unchanged); only its justification
-        was wrong.
-        """
-        from kanibako.plugins.codex.target import CodexTarget
+    The reason is positive: ``--dangerously-bypass-approvals-and-sandbox``
+    IS in ``--help`` with an unambiguous description, so the argv kanibako
+    emits says what it does to anyone reading a log or a process list. This
+    test pins the BEHAVIOR (which is unchanged); only its justification
+    was wrong.
+    """
+    from kanibako.plugins.codex.target import CodexTarget
 
-        desc = CodexTarget().descriptor
-        for tier in ("restricted", "editing", "full"):
-            argv = self._argv_at(desc, persisted=tier)
-            assert "--full-auto" not in argv
-            assert "--yolo" not in argv
+    desc = CodexTarget().descriptor
+    for tier in ("restricted", "editing", "full"):
+      argv = self._argv_at(desc, persisted=tier)
+      assert "--full-auto" not in argv
+      assert "--yolo" not in argv
 
-    def test_goose_env_per_tier(self):
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_goose_env_per_tier(self):
+    from kanibako.plugins.goose.target import GooseTarget
 
-        desc = GooseTarget().descriptor
+    desc = GooseTarget().descriptor
 
-        def _mode(*, secure=False, autonomous=False, persisted=None):
-            tier = _launch_tier(
-                desc, secure=secure, autonomous=autonomous, persisted=persisted,
-            )
-            return assembly.assemble_env(
-                desc, access=tier, setting_values={}, agent="goose",
-            )["GOOSE_MODE"]
+    def _mode(*, secure=False, autonomous=False, persisted=None):
+      tier = _launch_tier(
+        desc,
+        secure=secure,
+        autonomous=autonomous,
+        persisted=persisted,
+      )
+      return assembly.assemble_env(
+        desc,
+        access=tier,
+        setting_values={},
+        agent="goose",
+      )["GOOSE_MODE"]
 
-        assert _mode(persisted="restricted") == "approve"
-        assert _mode(persisted="full") == "auto"
-        # unset -> the ``full`` default
-        assert _mode(persisted=None) == "auto"
-        # -A overrides a stored restricted; -S overrides a stored full.
-        assert _mode(autonomous=True, persisted="restricted") == "auto"
-        assert _mode(secure=True, persisted="full") == "approve"
+    assert _mode(persisted="restricted") == "approve"
+    assert _mode(persisted="full") == "auto"
+    # unset -> the ``full`` default
+    assert _mode(persisted=None) == "auto"
+    # -A overrides a stored restricted; -S overrides a stored full.
+    assert _mode(autonomous=True, persisted="restricted") == "auto"
+    assert _mode(secure=True, persisted="full") == "approve"
 
-    def test_goose_editing_is_REFUSED_never_substituted(self):
-        """The goose-editing ruling [Jei:2026-08-02], on the ENV consumer.
+  def test_goose_editing_is_REFUSED_never_substituted(self):
+    """The goose-editing ruling [Jei:2026-08-02], on the ENV consumer.
 
-        ⚑ Non-vacuous in the dangerous direction: goose's UNSET GOOSE_MODE is
-        ``auto``, so a fall-through (emitting nothing) would deliver the FULL
-        bypass under the name ``editing``.
-        """
-        from kanibako.plugins.goose.target import GooseTarget
+    ⚑ Non-vacuous in the dangerous direction: goose's UNSET GOOSE_MODE is
+    ``auto``, so a fall-through (emitting nothing) would deliver the FULL
+    bypass under the name ``editing``.
+    """
+    from kanibako.plugins.goose.target import GooseTarget
 
-        desc = GooseTarget().descriptor
-        with pytest.raises(ConfigError) as exc:
-            assembly.assemble_env(
-                desc, access="editing", setting_values={}, agent="goose",
-            )
-        msg = str(exc.value)
-        assert "editing" in msg and "goose" in msg
-        assert "restricted | full" in msg
+    desc = GooseTarget().descriptor
+    with pytest.raises(ConfigError) as exc:
+      assembly.assemble_env(
+        desc,
+        access="editing",
+        setting_values={},
+        agent="goose",
+      )
+    msg = str(exc.value)
+    assert "editing" in msg and "goose" in msg
+    assert "restricted | full" in msg
 
-    def test_only_goose_lacks_the_editing_row(self):
-        """The refusal is goose-SPECIFIC, not a blanket middle-tier hole."""
-        from kanibako.plugins.codex.target import CodexTarget
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_only_goose_lacks_the_editing_row(self):
+    """The refusal is goose-SPECIFIC, not a blanket middle-tier hole."""
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.plugins.goose.target import GooseTarget
 
-        assert ClaudeTarget().descriptor.access_realization.rendered_tiers() == (
-            "restricted", "editing", "full",
-        )
-        assert CodexTarget().descriptor.access_realization.rendered_tiers() == (
-            "restricted", "editing", "full",
-        )
-        assert GooseTarget().descriptor.access_realization.rendered_tiers() == (
-            "restricted", "full",
-        )
+    assert ClaudeTarget().descriptor.access_realization.rendered_tiers() == (
+      "restricted",
+      "editing",
+      "full",
+    )
+    assert CodexTarget().descriptor.access_realization.rendered_tiers() == (
+      "restricted",
+      "editing",
+      "full",
+    )
+    assert GooseTarget().descriptor.access_realization.rendered_tiers() == (
+      "restricted",
+      "full",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -498,33 +524,35 @@ class TestUniformAccessAcrossAgents:
 
 
 class TestDescriptorEnv:
-    """claude's fixed variables are DECLARED KEYS; the assembly realizes, only.
+  """claude's fixed variables are DECLARED KEYS; the assembly realizes, only.
 
-    They used to be descriptor literals seeded into ``assemble_env``, i.e. a route
-    that ran above every settings file. They are ``agent.claude.env.*`` keys now
-    (``tests/test_targets/test_agent_envs.py`` owns their arrival), so what these
-    cases pin is the OTHER half — that the assembly no longer carries them, which is
-    what makes a user's override of one survive the launch.
-    """
+  They used to be descriptor literals seeded into ``assemble_env``, i.e. a route
+  that ran above every settings file. They are ``agent.claude.env.*`` keys now
+  (``tests/test_targets/test_agent_envs.py`` owns their arrival), so what these
+  cases pin is the OTHER half — that the assembly no longer carries them, which is
+  what makes a user's override of one survive the launch.
+  """
 
-    def setup_method(self):
-        self.desc = ClaudeTarget().descriptor
-        assert self.desc is not None
+  def setup_method(self):
+    self.desc = ClaudeTarget().descriptor
+    assert self.desc is not None
 
-    def test_the_fixed_variables_are_not_assembled_at_any_tier(self):
-        for tier in ("restricted", "editing", "full"):
-            env = assembly.assemble_env(
-                self.desc, access=tier, setting_values=DEFAULT_STATE,
-            )
-            assert "DISABLE_AUTOUPDATER" not in env
-            assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" not in env
+  def test_the_fixed_variables_are_not_assembled_at_any_tier(self):
+    for tier in ("restricted", "editing", "full"):
+      env = assembly.assemble_env(
+        self.desc,
+        access=tier,
+        setting_values=DEFAULT_STATE,
+      )
+      assert "DISABLE_AUTOUPDATER" not in env
+      assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" not in env
 
-    def test_they_are_declared_keys_instead(self):
-        assert ClaudeTarget().default_envs() == {
-            "agent.claude.env.DISABLE_AUTOUPDATER": "1",
-            "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
-        }
+  def test_they_are_declared_keys_instead(self):
+    assert ClaudeTarget().default_envs() == {
+      "agent.claude.env.DISABLE_AUTOUPDATER": "1",
+      "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -533,62 +561,64 @@ class TestDescriptorEnv:
 
 
 class TestDescriptorMounts:
-    def _install(self, tmp_path):
-        install_dir = tmp_path / "share" / "claude"
-        install_dir.mkdir(parents=True)
-        launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True)
-        launcher.write_text("#!/bin/sh\n")
-        return AgentInstall(
-            name="claude",
-            binary=launcher,
-            install_dir=install_dir,
-            launcher=launcher,
-        )
+  def _install(self, tmp_path):
+    install_dir = tmp_path / "share" / "claude"
+    install_dir.mkdir(parents=True)
+    launcher = tmp_path / "bin" / "claude"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n")
+    return AgentInstall(
+      name="claude",
+      binary=launcher,
+      install_dir=install_dir,
+      launcher=launcher,
+    )
 
-    def test_delivery_mounts_cover_share_and_launcher(self, tmp_path):
-        """descriptor_mounts delivers share + launcher + the loader (ro), skips plugins.
+  def test_delivery_mounts_cover_share_and_launcher(self, tmp_path):
+    """descriptor_mounts delivers share + launcher + the loader (ro), skips plugins.
 
-        Replaces the former equivalence-with-``binary_mounts`` check (the legacy
-        hook was removed for the descriptor-only public release).  Adds the
-        best-effort kickoff-loader SEED (shipped source exists).
-        """
-        target = ClaudeTarget()
-        install = self._install(tmp_path)
+    Replaces the former equivalence-with-``binary_mounts`` check (the legacy
+    hook was removed for the descriptor-only public release).  Adds the
+    best-effort kickoff-loader SEED (shipped source exists).
+    """
+    target = ClaudeTarget()
+    install = self._install(tmp_path)
 
-        new = descriptor_mounts(
-            target.descriptor, install,
-        )
+    new = descriptor_mounts(
+      target.descriptor,
+      install,
+    )
 
-        # Deliver the share (install_dir) + launcher + kickoff SEED, ro; SKIP plugins.
-        assert len(new) == 3
-        assert all(m.options == "ro" for m in new)
-        dests = {m.destination for m in new}
-        assert dests == {
-            "/home/agent/.local/share/claude",
-            "/home/agent/.local/bin/claude",
-            "/home/agent/.config/kanibako/kickoff.md",
-        }
+    # Deliver the share (install_dir) + launcher + kickoff SEED, ro; SKIP plugins.
+    assert len(new) == 3
+    assert all(m.options == "ro" for m in new)
+    dests = {m.destination for m in new}
+    assert dests == {
+      "/home/agent/.local/share/claude",
+      "/home/agent/.local/bin/claude",
+      "/home/agent/.config/kanibako/kickoff.md",
+    }
 
-    def test_plugins_not_a_descriptor_binding(self, tmp_path):
-        """Part 3a: plugins is an ``agent.<agent>.common`` category entry, not a binding.
+  def test_plugins_not_a_descriptor_binding(self, tmp_path):
+    """Part 3a: plugins is an ``agent.<agent>.common`` category entry, not a binding.
 
-        The descriptor's delivery binds no longer include plugins (or cache);
-        those flow through the category resolver from ``default_common()``.
-        """
-        target = ClaudeTarget()
-        install = self._install(tmp_path)
-        new = descriptor_mounts(
-            target.descriptor, install,
-        )
-        assert all("plugins" not in m.destination for m in new)
-        assert "plugins" not in {b.key for b in target.descriptor.bindings}
+    The descriptor's delivery binds no longer include plugins (or cache);
+    those flow through the category resolver from ``default_common()``.
+    """
+    target = ClaudeTarget()
+    install = self._install(tmp_path)
+    new = descriptor_mounts(
+      target.descriptor,
+      install,
+    )
+    assert all("plugins" not in m.destination for m in new)
+    assert "plugins" not in {b.key for b in target.descriptor.bindings}
 
-    def test_missing_source_raises_binding_source_error(self, tmp_path):
-        """A vanished AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
-        target = ClaudeTarget()
-        install = self._install(tmp_path)
-        # Remove the launcher source after building the install.
-        install.launcher.unlink()
-        with pytest.raises(BindingSourceError):
-            descriptor_mounts(target.descriptor, install)
+  def test_missing_source_raises_binding_source_error(self, tmp_path):
+    """A vanished AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
+    target = ClaudeTarget()
+    install = self._install(tmp_path)
+    # Remove the launcher source after building the install.
+    install.launcher.unlink()
+    with pytest.raises(BindingSourceError):
+      descriptor_mounts(target.descriptor, install)

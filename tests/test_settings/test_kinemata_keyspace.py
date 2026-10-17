@@ -168,7 +168,8 @@ _PREF_REFUSED = sorted("pref." + k for k in _CORPUS if not _allowlisted(k))
 #: no agent, so a key spelled through it is refused -- the reading the adapter once got
 #: wrong by taking the scope token as a real segment.
 _PLACEHOLDER_NODES = tuple(
-  node for scope in _DOC["category_scopes"]["tokens"]
+  node
+  for scope in _DOC["category_scopes"]["tokens"]
   for head, _, node in [scope.partition(".")]
   if head == _TIER_HEAD and node and node not in _CORE_NODES
 )
@@ -413,7 +414,10 @@ _ONCE_STRAYS = [
   ("*.meta.json", "meta.json"),
   (".meta.json", "meta.json"),
   ("SUBAGENTS, BY ROLE (agentType from sibling .meta.json)", "meta.json"),
-  (" section-<id>.meta.json per attempt: status, finish_reason, timing, byte count.\n", "meta.json"),
+  (
+    " section-<id>.meta.json per attempt: status, finish_reason, timing, byte count.\n",
+    "meta.json",
+  ),
 ]
 
 

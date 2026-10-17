@@ -13,8 +13,16 @@ SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
 # A ``meta.<scope>`` set is its own rung. Distinct from containment: ``meta.workset`` precedes
 # ``agent``, and ``box`` follows ``meta.box``.
 RESOLUTION_ORDER: tuple[str, ...] = (
-    "config", "meta.runtime", "meta.agent", "meta.workset", "base",
-    "system", "agent", "workset", "meta.box", "box",
+  "config",
+  "meta.runtime",
+  "meta.agent",
+  "meta.workset",
+  "base",
+  "system",
+  "agent",
+  "workset",
+  "meta.box",
+  "box",
 )
 BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"  # ⚑ Reserved internal node, NOT a key
 
@@ -23,34 +31,49 @@ BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"  # ⚑ Reserved int
 # ⚑ A per-owner key is itself an anchor of its level; ``reaches_identity`` adds those
 # from ``KEY_OWNERS``, so they are not listed here.
 IDENTITY_ANCHORS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
-    "workset": {"primary": ("meta.workset.path", "meta.workset.name"),
-                "named": ("meta.workset.path", "meta.workset.name"),
-                "standalone": ("meta.workset.path",)},
-    "partition": {"primary": ("meta.workset.name",), "named": ("meta.workset.name",),
-                  "standalone": ("meta.workset.name",)},
-    "box": {"primary": ("meta.box.name",), "named": ("meta.box.name",),
-            "standalone": ("meta.box.name",)},
-    "agent": {"primary": ("meta.agent.<agent>.name",), "named": ("meta.agent.<agent>.name",),
-              "standalone": ("meta.agent.<agent>.name",)},
+  "workset": {
+    "primary": ("meta.workset.path", "meta.workset.name"),
+    "named": ("meta.workset.path", "meta.workset.name"),
+    "standalone": ("meta.workset.path",),
+  },
+  "partition": {
+    "primary": ("meta.workset.name",),
+    "named": ("meta.workset.name",),
+    "standalone": ("meta.workset.name",),
+  },
+  "box": {
+    "primary": ("meta.box.name",),
+    "named": ("meta.box.name",),
+    "standalone": ("meta.box.name",),
+  },
+  "agent": {
+    "primary": ("meta.agent.<agent>.name",),
+    "named": ("meta.agent.<agent>.name",),
+    "standalone": ("meta.agent.<agent>.name",),
+  },
 }
 # Per mode, a level whose ``meta.*`` anchors count only with another level's anchor.
-IDENTITY_PAIRED: Final[dict[str, dict[str, str]]] = {"box": {"primary": "workset", "named": "workset"}}
+IDENTITY_PAIRED: Final[dict[str, dict[str, str]]] = {
+  "box": {"primary": "workset", "named": "workset"}
+}
 # Per mode, a level any of whose anchors alone reaches this one: a standalone workset holds one box.
 IDENTITY_IMPLIED: Final[dict[str, dict[str, str]]] = {"box": {"standalone": "workset"}}
 
 
 class Bind(NamedTuple):
-    """A binding value: ``(host_src, box_dest[, opts])``; never a colon-joined ``host:box`` str."""
-    host: str
-    box: str
-    opts: str | None = None  # ``None`` = the category's default mount options
+  """A binding value: ``(host_src, box_dest[, opts])``; never a colon-joined ``host:box`` str."""
+
+  host: str
+  box: str
+  opts: str | None = None  # ``None`` = the category's default mount options
 
 
 # ⚑ TEMPORARY NAME — becomes ``Bind`` once the conflict is gone; do NOT rename early.
 class BindEntry(NamedTuple):
-    """A destination-keyed binding entry: ``(src[, opts])`` — the destination is the key."""
-    src: str
-    opts: str | None = None
+  """A destination-keyed binding entry: ``(src[, opts])`` — the destination is the key."""
+
+  src: str
+  opts: str | None = None
 
 
 # ⚑ A plain ``dict`` & deliberately NOT a member of :data:`StoreValue`: inside a
@@ -59,23 +82,25 @@ BindMap = dict[str, BindEntry]
 
 #### The absence marker ####
 
+
 # ⚑ DUNDER-NAMED so a stored key can never shadow either name at a :class:`KeyStore` attribute
 # surface. NOT name-mangled, so importers spell both verbatim.
 class __Missing__:
-    """Sentinel TYPE for :data:`__MISSING__`; a distinct singleton type (not ``object``)."""
-    _instance: "__Missing__ | None" = None
+  """Sentinel TYPE for :data:`__MISSING__`; a distinct singleton type (not ``object``)."""
 
-    def __new__(cls) -> "__Missing__":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+  _instance: "__Missing__ | None" = None
 
-    def __repr__(self) -> str:
-        return "__MISSING__"
+  def __new__(cls) -> "__Missing__":
+    if cls._instance is None:
+      cls._instance = super().__new__(cls)
+    return cls._instance
 
-    # Defensive; __MISSING__ is never a real value. Test it via `is __MISSING__`.
-    def __bool__(self) -> bool:
-        return False
+  def __repr__(self) -> str:
+    return "__MISSING__"
+
+  # Defensive; __MISSING__ is never a real value. Test it via `is __MISSING__`.
+  def __bool__(self) -> bool:
+    return False
 
 
 # ABSENT key vs present-``None`` at the storage surface. Module-OWNED, not module-private.

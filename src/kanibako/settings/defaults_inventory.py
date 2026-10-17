@@ -87,6 +87,7 @@ class DefaultRow(NamedTuple):
 # Section 1 — the registry's default-carrying key rows
 # --------------------------------------------------------------------------- #
 
+
 def manifest_default_rows() -> dict[str, dict[str, Any]]:
   """The manifest ``keys:`` rows carrying a ``default:`` — section 1's whole corpus."""
   return {
@@ -114,10 +115,17 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     return frozenset(built) & declared
 
   # The channel family's one spelling: its group below, and the anchor-floor subtraction.
-  channel_family = frozenset({
-    "workset.channelroot", "workset.channels.common", "workset.channels.chat",
-    "workset.channels.broadcast", "workset.channels.share",
-    "workset.channels.mailboxes", "workset.channels.share_global"})
+  channel_family = frozenset(
+    {
+      "workset.channelroot",
+      "workset.channels.common",
+      "workset.channels.chat",
+      "workset.channels.broadcast",
+      "workset.channels.share",
+      "workset.channels.mailboxes",
+      "workset.channels.share_global",
+    }
+  )
 
   return (
     # --- carriers that enumerate their own keys (derived, self-correcting) --- #
@@ -138,26 +146,30 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # NULL-channel-root branch, which supplies the four workset-local leaves as
     # ``<None>``. That is a user override's consequence; the default is derived by
     # ``channels.py`` (its group below).
-    ("settings_launch.py (anchor floor)",
-     _floor(workset_anchor_floor(mode="primary")) - channel_family),
-    ("settings_launch.py (auth floor)", _floor(
-      auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
-    ("core-defaults.yaml (agent_default:)", frozenset(
-      f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults())),
+    (
+      "settings_launch.py (anchor floor)",
+      _floor(workset_anchor_floor(mode="primary")) - channel_family,
+    ),
+    (
+      "settings_launch.py (auth floor)",
+      _floor(auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT)),
+    ),
+    (
+      "core-defaults.yaml (agent_default:)",
+      frozenset(f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults()),
+    ),
     # The shell tier's OWN values — the fence rows no other tier carries, its
     # PRESENT-``None`` rows (``continue_mode``/``model``) included; every other shell
     # key inherits ``agent.default``. Derived off the emitter exactly like the default
     # arm above, so a new `agent_shell:` leaf arrives here on its own.
-    ("core-defaults.yaml (agent_shell:)", frozenset(
-      core_defaults.pseudo_tier_defaults())),
+    ("core-defaults.yaml (agent_shell:)", frozenset(core_defaults.pseudo_tier_defaults())),
     # The ``env:`` table's own keys, intersected with the registry: the file may ship an
     # env default the registry has not (yet) enumerated, and only the enumerated ones
     # are section-1 rows. ⚑ The label is the SAME string section 3 prints, deliberately
     # — ``box.env.COLORTERM`` and ``agent.default.env.TERM`` are each one fact reported
     # by two sections (a DECLARED KEY and a variable a box gets), not two opinions about
     # where they come from.
-    ("core-defaults.yaml (env:)", frozenset(core_defaults.env_default_categories())
-     & declared),
+    ("core-defaults.yaml (env:)", frozenset(core_defaults.env_default_categories()) & declared),
     # --- carriers with nothing to enumerate: named, one reason each --- #
     # Fields of the ``KanibakoConfig`` dataclass.
     # ⚑ WIDENED 2026-08-29, 2 keys to 3: ``box.enable_vault`` is a field now, and its
@@ -165,8 +177,10 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # box-scalar resolve — the same route ``box.image`` and ``box.share_images`` take.
     # ``box.shell`` joined 2026-09-27: its field default IS the declared ``<None>``, the
     # PRESENT ``None`` the floor publishes, so it has a carrier to name.
-    ("config.py (KanibakoConfig field)",
-     frozenset({"box.image", "box.share_images", "box.enable_vault", "box.shell"})),
+    (
+      "config.py (KanibakoConfig field)",
+      frozenset({"box.image", "box.share_images", "box.enable_vault", "box.shell"}),
+    ),
     # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29), and it was the
     # LAST of the "pre-cascade reader owns the default" group. Two keys had already left
     # it — ``workset.skip_kuid_check`` and ``workset.kuid``, to the anchor floor — and its
@@ -202,8 +216,10 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # `bootstrap.SPAWN_BUDGET_DEFAULTS` (the value table it derives from) for the same
     # reason the channel family above names its deriver: the floor is where a wrong
     # value would reach a box.
-    ("settings_launch.py (system scalar floor)",
-     frozenset({"system.helpers.depth", "system.helpers.breadth"})),
+    (
+      "settings_launch.py (system scalar floor)",
+      frozenset({"system.helpers.depth", "system.helpers.breadth"}),
+    ),
     # --- rows with no value-carrying artifact at all --- #
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # The §2d SHELL FENCE's ``agent.shell.template | <None>``, floored as a PRESENT
@@ -212,20 +228,28 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ``agent.default.template``, so it has a carrier to name — which is why it
     # is not in the "nothing declares it" group below.  Its layer is declared and SKIPPED
     # at resolve (spec §2a).
-    ("launch/templates.py (shell fence, present None)",
-     frozenset({"agent.shell.template"})),
+    ("launch/templates.py (shell fence, present None)", frozenset({"agent.shell.template"})),
     # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
     # other ``<None>`` rows, ``agent.shell.{continue_mode,model}``, are NOT here:
     # ``core-defaults.yaml``'s ``agent_shell:`` floors them as
     # PRESENT ``None``, so they arrive in that group above, derived off its emitter; so do
     # ``agent.default.{model,endpoint,run_args,transform}``, off ``agent_default:``.
-    ("(nothing declares it — unset until you set it)", frozenset({
-      "system.agent", SETUP_MARKER_KEY,
-    })),
+    (
+      "(nothing declares it — unset until you set it)",
+      frozenset(
+        {
+          "system.agent",
+          SETUP_MARKER_KEY,
+        }
+      ),
+    ),
     # ``default: {}`` — the resolver's own initial state for a category arm.
-    ("(empty — the category starts with no entries)", frozenset({
-      "box.bindings.ro", "box.bindings.rw", "box.masks",
-      "agent.default.transform_settings"})),
+    (
+      "(empty — the category starts with no entries)",
+      frozenset(
+        {"box.bindings.ro", "box.bindings.rw", "box.masks", "agent.default.transform_settings"}
+      ),
+    ),
     # The per-NODE arm of the same producer, spelled ONE ref hop differently from the
     # registry (``{meta.agent.<a>.path}`` IS ``{config.agents}/<a>``; both resolve to one
     # place). Labeled apart from the ``agent.default`` arm above because they are two
@@ -241,8 +265,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # AGENT arms and no ``seeded`` layer, so an ordinary launch can fold it in;
     # ``template_seed_defaults`` COMPOSES it and adds the create-time seed layer. The
     # label is unchanged because the FILE is unchanged — only the function moved.
-    ("launch/templates.py (layer-2 seed, default arm)",
-     frozenset({"agent.default.template"})),
+    ("launch/templates.py (layer-2 seed, default arm)", frozenset({"agent.default.template"})),
     ("launch/templates.py (layer-2 seed)", frozenset({"agent.<agent>.template"})),
   )
 
@@ -279,10 +302,15 @@ def key_rows() -> list[DefaultRow]:
   rows: list[DefaultRow] = []
   for key, row in declared.items():
     value, per_mode = _render_default(row["default"])
-    rows.append(DefaultRow(
-      key=key, value=value, scope=_scope_of(key, row),
-      source=by_key[key], per_mode=per_mode,
-    ))
+    rows.append(
+      DefaultRow(
+        key=key,
+        value=value,
+        scope=_scope_of(key, row),
+        source=by_key[key],
+        per_mode=per_mode,
+      )
+    )
   return rows
 
 
@@ -391,10 +419,16 @@ def bind_rows() -> list[DefaultRow]:
           f"{label} has no declaring artifact — add it to "
           f"_BIND_SOURCES_OUTSIDE_THE_FILE with a reason, or fix the dest"
         )
-      rows.append(DefaultRow(
-        key=label, value=value, scope=str(arm).split(".", 1)[0],
-        source=source, per_mode=per_mode, internal=internal,
-      ))
+      rows.append(
+        DefaultRow(
+          key=label,
+          value=value,
+          scope=str(arm).split(".", 1)[0],
+          source=source,
+          per_mode=per_mode,
+          internal=internal,
+        )
+      )
 
   # ``parametric_keys`` is a SHAPE declaration sitting beside the arms, not an arm.
   for arm, entries in doc["category_default_entries"].items():
@@ -404,10 +438,16 @@ def bind_rows() -> list[DefaultRow]:
       internal = entry.get("user_key") is False
       raw = entry["value"] if internal else entry["default"]
       value, per_mode = _render_default(raw)
-      rows.append(DefaultRow(
-        key=entry_label(str(arm), str(dest)), value=value, scope=str(arm).split(".", 1)[0],
-        source=_SEED_LAYER_SOURCE, per_mode=per_mode, internal=internal,
-      ))
+      rows.append(
+        DefaultRow(
+          key=entry_label(str(arm), str(dest)),
+          value=value,
+          scope=str(arm).split(".", 1)[0],
+          source=_SEED_LAYER_SOURCE,
+          per_mode=per_mode,
+          internal=internal,
+        )
+      )
   return rows
 
 
@@ -453,7 +493,9 @@ def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
   """
   rows = [
     DefaultRow(
-      key=key, value=value, scope=key.split(".", 1)[0],
+      key=key,
+      value=value,
+      scope=key.split(".", 1)[0],
       source="core-defaults.yaml (env:)",
     )
     for key, value in sorted(core_defaults.env_default_categories().items())
@@ -477,10 +519,14 @@ def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
       # Scope from the key HEAD like every other row here — ``load_envs`` builds these
       # already DISCRIMINATED (``agent.<agent>.env.<VAR>``), so the head is the answer
       # and a hardcoded "agent" would merely be the same answer that cannot be checked.
-      rows.append(DefaultRow(
-        key=key, value=str(value), scope=key.split(".", 1)[0],
-        source=f"{name} plugin defaults (env:)",
-      ))
+      rows.append(
+        DefaultRow(
+          key=key,
+          value=str(value),
+          scope=key.split(".", 1)[0],
+          source=f"{name} plugin defaults (env:)",
+        )
+      )
   return rows, PluginConsultation(tuple(consulted), tuple(declaring), tuple(failed))
 
 
@@ -516,8 +562,7 @@ def _print_table(rows: list[DefaultRow], out: Any) -> None:
   val_w = min(max(len(r.value) for r in rows), _VALUE_COLUMN_CAP)
   scope_w = max(len(r.scope) for r in rows)
   print(
-    f"  {'KEY'.ljust(key_w)}  {'DEFAULT'.ljust(val_w)}  "
-    f"{'SCOPE'.ljust(scope_w)}  SOURCE",
+    f"  {'KEY'.ljust(key_w)}  {'DEFAULT'.ljust(val_w)}  {'SCOPE'.ljust(scope_w)}  SOURCE",
     file=out,
   )
   for row in rows:

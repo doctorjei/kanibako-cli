@@ -15,19 +15,19 @@ from typing import Callable, Union
 
 from kanibako.settings.config_keys import KEY_TYPES, CoercionError, _coerce_value
 from kanibako.settings.settings_resolve import (
-    SettingsError,
-    is_verbatim_text,
-    iter_expr_tokens,
+  SettingsError,
+  is_verbatim_text,
+  iter_expr_tokens,
 )
 
 __all__ = [
-    "Verdict",
-    "OK",
-    "Error",
-    "scan_tokens",
-    "holds_verbatim_text",
-    "validate_config_set",
-    "ResolveProbe",
+  "Verdict",
+  "OK",
+  "Error",
+  "scan_tokens",
+  "holds_verbatim_text",
+  "validate_config_set",
+  "ResolveProbe",
 ]
 
 
@@ -36,14 +36,14 @@ __all__ = [
 
 @dataclass(frozen=True)
 class _OK:
-    """The value is valid; ``config set`` may proceed with no message."""
+  """The value is valid; ``config set`` may proceed with no message."""
 
 
 @dataclass(frozen=True)
 class Error:
-    """The value is invalid; ``config set`` must REFUSE to write (don't poison the file)."""
+  """The value is invalid; ``config set`` must REFUSE to write (don't poison the file)."""
 
-    message: str
+  message: str
 
 
 #: The single OK verdict; it carries no data.
@@ -64,86 +64,86 @@ ResolveProbe = Callable[[str, str], "str | None"]
 
 
 def scan_tokens(value: str) -> tuple[list[str], list[str]]:
-    """Scan *value* for key-reference and variable token NAMES, resolving nothing.
+  """Scan *value* for key-reference and variable token NAMES, resolving nothing.
 
-    ⚑ THE ONE grammar for a value: the tokens are the expander's own
-    (:func:`~kanibako.settings.settings_resolve.iter_expr_tokens`), so this scan
-    and the expansion cannot disagree. Malformed → ``ValueError``.
-    """
-    refs: list[str] = []
-    var_names: list[str] = []
-    try:
-        for tok in iter_expr_tokens(value):
-            if tok.kind == "ref":
-                refs.append(tok.value)
-            elif tok.kind == "var":
-                var_names.append(tok.value)
-    except SettingsError as exc:
-        raise ValueError(str(exc)) from None
-    return refs, var_names
+  ⚑ THE ONE grammar for a value: the tokens are the expander's own
+  (:func:`~kanibako.settings.settings_resolve.iter_expr_tokens`), so this scan
+  and the expansion cannot disagree. Malformed → ``ValueError``.
+  """
+  refs: list[str] = []
+  var_names: list[str] = []
+  try:
+    for tok in iter_expr_tokens(value):
+      if tok.kind == "ref":
+        refs.append(tok.value)
+      elif tok.kind == "var":
+        var_names.append(tok.value)
+  except SettingsError as exc:
+    raise ValueError(str(exc)) from None
+  return refs, var_names
 
 
 # ---- validate_config_set — the B5 set-time validation ---- #
 
 
 def holds_verbatim_text(key: str) -> bool:
-    """Whether the value at the CLI key *key* is TEXT (:func:`is_verbatim_text`).
+  """Whether the value at the CLI key *key* is TEXT (:func:`is_verbatim_text`).
 
-    Judged at the slot the value is WRITTEN to, so the bare ``endpoint`` is
-    ``agent.default.endpoint``; a ``pref.<target>`` request is judged at its target.
-    """
-    from kanibako.settings.config_dest import _key_slot
-    from kanibako.settings.settings_prefs import PREF_ROOT
+  Judged at the slot the value is WRITTEN to, so the bare ``endpoint`` is
+  ``agent.default.endpoint``; a ``pref.<target>`` request is judged at its target.
+  """
+  from kanibako.settings.config_dest import _key_slot
+  from kanibako.settings.settings_prefs import PREF_ROOT
 
-    if key.startswith(f"{PREF_ROOT}."):
-        key = key[len(PREF_ROOT) + 1:]
-    slot = _key_slot(key)
-    return is_verbatim_text((*slot[0], slot[1]) if slot is not None else key.split("."))
+  if key.startswith(f"{PREF_ROOT}."):
+    key = key[len(PREF_ROOT) + 1 :]
+  slot = _key_slot(key)
+  return is_verbatim_text((*slot[0], slot[1]) if slot is not None else key.split("."))
 
 
 def validate_config_set(
-    key: str,
-    value: str,
-    *,
-    resolves: ResolveProbe,
+  key: str,
+  value: str,
+  *,
+  resolves: ResolveProbe,
 ) -> Verdict:
-    """Validate a ``config set`` ``(key, value)`` at set-time, returning a :class:`Verdict`.
+  """Validate a ``config set`` ``(key, value)`` at set-time, returning a :class:`Verdict`.
 
-    PURE — no file / env / clock access; its snapshot reach is *resolves*. B5
-    severity: **Error** on malformed token syntax, a typed-scalar type mismatch, or an upstream
-    chain the edit leaves unresolvable; **OK** otherwise, a repoint included (B4).
+  PURE — no file / env / clock access; its snapshot reach is *resolves*. B5
+  severity: **Error** on malformed token syntax, a typed-scalar type mismatch, or an upstream
+  chain the edit leaves unresolvable; **OK** otherwise, a repoint included (B4).
 
-    ⚑ SCALAR KEYS ONLY — no ``is_category`` discrimination any more (module docstring).
-    ⚑ A COLON IS ORDINARY CONTENT HERE. The ``:`` ``src:dest`` refusal was a rule about the bind
-    SHAPE, which a scalar has not; ``endpoint = https://api.anthropic.com`` must pass. Do not
-    reintroduce a colon check on this path.
-    """
-    # 0. A TEXT key (:func:`holds_verbatim_text`) has no tokens and no upstream chain: steps
-    #    1 and 2 would refuse ``https://user:key@host/v1`` for a ref ``@host`` it does not
-    #    contain.
-    if holds_verbatim_text(key):
-        ref_names: list[str] = []
-        var_names: list[str] = []
-    else:
-        # 1. MALFORMED syntax only, before any snapshot work; it also tells us whether the
-        #    value bears tokens (step 3 needs that). Dangling / unknown / cycle is the E3
-        #    probe's job.
-        try:
-            ref_names, var_names = scan_tokens(value)
-        except ValueError as exc:
-            return Error(f"'{key}': malformed value {value!r}: {exc}")
+  ⚑ SCALAR KEYS ONLY — no ``is_category`` discrimination any more (module docstring).
+  ⚑ A COLON IS ORDINARY CONTENT HERE. The ``:`` ``src:dest`` refusal was a rule about the bind
+  SHAPE, which a scalar has not; ``endpoint = https://api.anthropic.com`` must pass. Do not
+  reintroduce a colon check on this path.
+  """
+  # 0. A TEXT key (:func:`holds_verbatim_text`) has no tokens and no upstream chain: steps
+  #    1 and 2 would refuse ``https://user:key@host/v1`` for a ref ``@host`` it does not
+  #    contain.
+  if holds_verbatim_text(key):
+    ref_names: list[str] = []
+    var_names: list[str] = []
+  else:
+    # 1. MALFORMED syntax only, before any snapshot work; it also tells us whether the
+    #    value bears tokens (step 3 needs that). Dangling / unknown / cycle is the E3
+    #    probe's job.
+    try:
+      ref_names, var_names = scan_tokens(value)
+    except ValueError as exc:
+      return Error(f"'{key}': malformed value {value!r}: {exc}")
 
-        # 2. E3 FULL-RESOLUTION check (Q9) — a reason BLOCKS.
-        reason = resolves(key, value)
-        if reason is not None:
-            return Error(f"'{key}': {reason}")
+    # 2. E3 FULL-RESOLUTION check (Q9) — a reason BLOCKS.
+    reason = resolves(key, value)
+    if reason is not None:
+      return Error(f"'{key}': {reason}")
 
-    # 3. Typed scalar keys — the H2 check, reusing the registry's coercion. A token-bearing
-    #    value has no terminal type until build, so it is NOT type-checked here.
-    if key in KEY_TYPES and not (ref_names or var_names):
-        coerced = _coerce_value(key, value)
-        # ⚑ THE FAILURE IS A TYPE, NOT A STRING: a ``path`` coerces to a ``str``.
-        if isinstance(coerced, CoercionError):
-            return Error(f"'{key}': {coerced.message}")
+  # 3. Typed scalar keys — the H2 check, reusing the registry's coercion. A token-bearing
+  #    value has no terminal type until build, so it is NOT type-checked here.
+  if key in KEY_TYPES and not (ref_names or var_names):
+    coerced = _coerce_value(key, value)
+    # ⚑ THE FAILURE IS A TYPE, NOT A STRING: a ``path`` coerces to a ``str``.
+    if isinstance(coerced, CoercionError):
+      return Error(f"'{key}': {coerced.message}")
 
-    return OK
+  return OK

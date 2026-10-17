@@ -11,362 +11,396 @@ from __future__ import annotations
 import pytest
 
 from kanibako.project.workset import (
-    add_project,
-    create_workset,
-    load_workset_settings_doc,
-    remove_project,
-    resolve_workset_vault_ro,
-    resolve_workset_vault_rw,
+  add_project,
+  create_workset,
+  load_workset_settings_doc,
+  remove_project,
+  resolve_workset_vault_ro,
+  resolve_workset_vault_rw,
 )
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
-    BoxMode,
-    WorksetSpec,
-    load_std_paths,
-    resolve_project,
-    resolve_standalone_project,
-    resolve_workset_project,
+  BoxMode,
+  WorksetSpec,
+  load_std_paths,
+  resolve_project,
+  resolve_standalone_project,
+  resolve_workset_project,
 )
 from kanibako.settings.settings_resolve import SettingsError
 from tests.support.early import early_record
 
 
 def _repoint(root, key, value):
-    """Write ``workset.<key> = value`` into *root*'s workset.yaml."""
-    write_nested_key(root / "workset.yaml", ("workset",), key, value)
+  """Write ``workset.<key> = value`` into *root*'s workset.yaml."""
+  write_nested_key(root / "workset.yaml", ("workset",), key, value)
 
 
 # ---------------------------------------------------------------------------
 # The two resolver faces
 # ---------------------------------------------------------------------------
 
+
 class TestVaultResolverFaces:
-    @pytest.fixture
-    def early(self, tmp_path):
-        """An early scope whose system tier is empty: no system file states a vault key."""
-        return early_record(tmp_path, mode=BoxMode.named, name="ws")
+  @pytest.fixture
+  def early(self, tmp_path):
+    """An early scope whose system tier is empty: no system file states a vault key."""
+    return early_record(tmp_path, mode=BoxMode.named, name="ws")
 
-    def test_unset_takes_the_declared_default_leaf(self, tmp_path, early):
-        assert resolve_workset_vault_ro(tmp_path, None, early=early) == tmp_path / "vault" / "ro"
-        assert resolve_workset_vault_rw(tmp_path, None, early=early) == tmp_path / "vault" / "rw"
+  def test_unset_takes_the_declared_default_leaf(self, tmp_path, early):
+    assert resolve_workset_vault_ro(tmp_path, None, early=early) == tmp_path / "vault" / "ro"
+    assert resolve_workset_vault_rw(tmp_path, None, early=early) == tmp_path / "vault" / "rw"
 
-    def test_declared_default_written_out_degenerates_to_the_default(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "{meta.workset.path}/vault/ro")
-        _repoint(tmp_path, "vault_rw", "{meta.workset.path}/vault/rw")
-        doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "vault" / "ro"
-        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_path / "vault" / "rw"
+  def test_declared_default_written_out_degenerates_to_the_default(self, tmp_path, early):
+    _repoint(tmp_path, "vault_ro", "{meta.workset.path}/vault/ro")
+    _repoint(tmp_path, "vault_rw", "{meta.workset.path}/vault/rw")
+    doc = load_workset_settings_doc(tmp_path)
+    assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "vault" / "ro"
+    assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_path / "vault" / "rw"
 
-    def test_absolute_repoint_is_honored(self, tmp_path, early):
-        elsewhere = tmp_path / "elsewhere"
-        _repoint(tmp_path, "vault_ro", str(elsewhere / "ro"))
-        _repoint(tmp_path, "vault_rw", str(elsewhere / "rw"))
-        doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == elsewhere / "ro"
-        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == elsewhere / "rw"
+  def test_absolute_repoint_is_honored(self, tmp_path, early):
+    elsewhere = tmp_path / "elsewhere"
+    _repoint(tmp_path, "vault_ro", str(elsewhere / "ro"))
+    _repoint(tmp_path, "vault_rw", str(elsewhere / "rw"))
+    doc = load_workset_settings_doc(tmp_path)
+    assert resolve_workset_vault_ro(tmp_path, doc, early=early) == elsewhere / "ro"
+    assert resolve_workset_vault_rw(tmp_path, doc, early=early) == elsewhere / "rw"
 
-    def test_bare_relative_repoint_is_refused_naming_both_readings(
-        self, tmp_path, early, monkeypatch,
-    ):
-        # ⚑ INVERTED BY keyspec §2a "A path key's stored value": this used to assert the value
-        # anchored under the workset root.  A vault is exactly the case the rule is about — the
-        # directory gets created and then holds the user's data.
-        # Run from a link, as a shell does: only ``$PWD`` names the link.
-        real, link = tmp_path / "run-real", tmp_path / "run-from"
-        real.mkdir()
-        link.symlink_to(real)
-        monkeypatch.chdir(link)
-        monkeypatch.setenv("PWD", str(link))
-        _repoint(tmp_path, "vault_ro", "store/readonly")
-        doc = load_workset_settings_doc(tmp_path)
-        with pytest.raises(SettingsError) as exc:
-            resolve_workset_vault_ro(tmp_path, doc, early=early)
-        message = str(exc.value)
-        assert "workset.vault_ro" in message
-        assert str(tmp_path / "store" / "readonly") in message
-        assert str(link / "store" / "readonly") in message
-        assert str(real.resolve() / "store" / "readonly") not in message
+  def test_bare_relative_repoint_is_refused_naming_both_readings(
+    self,
+    tmp_path,
+    early,
+    monkeypatch,
+  ):
+    # ⚑ INVERTED BY keyspec §2a "A path key's stored value": this used to assert the value
+    # anchored under the workset root.  A vault is exactly the case the rule is about — the
+    # directory gets created and then holds the user's data.
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
+    _repoint(tmp_path, "vault_ro", "store/readonly")
+    doc = load_workset_settings_doc(tmp_path)
+    with pytest.raises(SettingsError) as exc:
+      resolve_workset_vault_ro(tmp_path, doc, early=early)
+    message = str(exc.value)
+    assert "workset.vault_ro" in message
+    assert str(tmp_path / "store" / "readonly") in message
+    assert str(link / "store" / "readonly") in message
+    assert str(real.resolve() / "store" / "readonly") not in message
 
-    def test_tilde_repoint_expands_host_side(self, tmp_path, tmp_home, early):
-        _repoint(tmp_path, "vault_rw", "~/outside/rw")
-        doc = load_workset_settings_doc(tmp_path)
-        # ``tmp_home`` returns the tmp ROOT; the isolated $HOME is its ``home`` child.
-        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_home / "home" / "outside" / "rw"
+  def test_tilde_repoint_expands_host_side(self, tmp_path, tmp_home, early):
+    _repoint(tmp_path, "vault_rw", "~/outside/rw")
+    doc = load_workset_settings_doc(tmp_path)
+    # ``tmp_home`` returns the tmp ROOT; the isolated $HOME is its ``home`` child.
+    assert (
+      resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_home / "home" / "outside" / "rw"
+    )
 
-    def test_workset_path_ref_with_a_repointed_leaf(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "{meta.workset.path}/data/ro")
-        doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "data" / "ro"
+  def test_workset_path_ref_with_a_repointed_leaf(self, tmp_path, early):
+    _repoint(tmp_path, "vault_ro", "{meta.workset.path}/data/ro")
+    doc = load_workset_settings_doc(tmp_path)
+    assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "data" / "ro"
 
-    def test_unresolvable_ref_refuses_and_names_the_key(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "{config.registry}/ro")
-        doc = load_workset_settings_doc(tmp_path)
-        with pytest.raises(SettingsError) as exc:
-            resolve_workset_vault_ro(tmp_path, doc, early=early)
-        assert "workset.vault_ro" in str(exc.value)
-        assert "{config.registry}" in str(exc.value)
+  def test_unresolvable_ref_refuses_and_names_the_key(self, tmp_path, early):
+    _repoint(tmp_path, "vault_ro", "{config.registry}/ro")
+    doc = load_workset_settings_doc(tmp_path)
+    with pytest.raises(SettingsError) as exc:
+      resolve_workset_vault_ro(tmp_path, doc, early=early)
+    assert "workset.vault_ro" in str(exc.value)
+    assert "{config.registry}" in str(exc.value)
 
 
 class TestNullVaultArmFrontDoor:
-    """``workset.vault_ro: null`` must not stop ``load_std_paths`` — it stops EVERY command.
+  """``workset.vault_ro: null`` must not stop ``load_std_paths`` — it stops EVERY command.
 
-    MIGRATION "One of kanibako's own binds warns when only its entry or only its source is
-    `null`" tells users to write exactly this key: the RO bind is left out and the launch
-    warns only when ONE half of the bind is ``null``.  A refusal at the path table would
-    make the documented cure the one thing that cannot be done.
-    """
+  MIGRATION "One of kanibako's own binds warns when only its entry or only its source is
+  `null`" tells users to write exactly this key: the RO bind is left out and the launch
+  warns only when ONE half of the bind is ``null``.  A refusal at the path table would
+  make the documented cure the one thing that cannot be done.
+  """
 
-    def test_a_null_vault_ro_leaves_the_standard_paths_loadable(
-        self, std, config_file,
-    ):
-        _repoint(std.primary_workset, "vault_ro", None)
-        reloaded = load_std_paths(load_config(config_file))
-        # ⚑ CARRIES the null rather than answering with the default leaf.
-        assert reloaded.primary_vault_ro is None
-        assert reloaded.primary_vault_rw == std.primary_workset / "vault" / "rw"
+  def test_a_null_vault_ro_leaves_the_standard_paths_loadable(
+    self,
+    std,
+    config_file,
+  ):
+    _repoint(std.primary_workset, "vault_ro", None)
+    reloaded = load_std_paths(load_config(config_file))
+    # ⚑ CARRIES the null rather than answering with the default leaf.
+    assert reloaded.primary_vault_ro is None
+    assert reloaded.primary_vault_rw == std.primary_workset / "vault" / "rw"
 
-    def test_a_null_vault_rw_leaves_the_standard_paths_loadable(
-        self, std, config_file,
-    ):
-        _repoint(std.primary_workset, "vault_rw", None)
-        reloaded = load_std_paths(load_config(config_file))
-        assert reloaded.primary_vault_rw is None
-        assert reloaded.primary_vault_ro == std.primary_workset / "vault" / "ro"
+  def test_a_null_vault_rw_leaves_the_standard_paths_loadable(
+    self,
+    std,
+    config_file,
+  ):
+    _repoint(std.primary_workset, "vault_rw", None)
+    reloaded = load_std_paths(load_config(config_file))
+    assert reloaded.primary_vault_rw is None
+    assert reloaded.primary_vault_ro == std.primary_workset / "vault" / "ro"
 
-    def test_a_primary_box_is_still_created_and_gets_no_ro_vault_leaf(
-        self, std, config, config_file, tmp_home,
-    ):
-        """⚑ "No such dir" reaches the CREATE: no leaf is made, and nothing is invented."""
-        _repoint(std.primary_workset, "vault_ro", None)
-        reloaded = load_std_paths(load_config(config_file))
-        workspace = tmp_home / "code" / "nullro"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(reloaded, load_config(config_file), str(workspace),
-                               initialize=True)
-        assert proj.vault_ro_path is None
-        assert proj.vault_rw_path is not None
-        assert proj.vault_rw_path.is_dir()
-        assert not (std.primary_workset / "vault" / "ro" / proj.name).exists()
+  def test_a_primary_box_is_still_created_and_gets_no_ro_vault_leaf(
+    self,
+    std,
+    config,
+    config_file,
+    tmp_home,
+  ):
+    """⚑ "No such dir" reaches the CREATE: no leaf is made, and nothing is invented."""
+    _repoint(std.primary_workset, "vault_ro", None)
+    reloaded = load_std_paths(load_config(config_file))
+    workspace = tmp_home / "code" / "nullro"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(reloaded, load_config(config_file), str(workspace), initialize=True)
+    assert proj.vault_ro_path is None
+    assert proj.vault_rw_path is not None
+    assert proj.vault_rw_path.is_dir()
+    assert not (std.primary_workset / "vault" / "ro" / proj.name).exists()
 
 
 # ---------------------------------------------------------------------------
 # NAMED mode — the workset root's own workset.yaml
 # ---------------------------------------------------------------------------
 
+
 class TestNamedModeVault:
-    def test_unrepointed_lands_exactly_where_it_does_today(self, std, config, tmp_home):
-        ws = create_workset("plain", tmp_home / "worksets" / "plain", std)
-        source = tmp_home / "src-plain"
-        source.mkdir()
-        add_project(ws, "app", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
-        assert proj.vault_ro_path == ws.root / "vault" / "ro" / "app"
-        assert proj.vault_rw_path == ws.root / "vault" / "rw" / "app"
-        assert (ws.root / "vault" / "ro" / "app").is_dir()
-        assert (ws.root / "vault" / "rw" / "app").is_dir()
+  def test_unrepointed_lands_exactly_where_it_does_today(self, std, config, tmp_home):
+    ws = create_workset("plain", tmp_home / "worksets" / "plain", std)
+    source = tmp_home / "src-plain"
+    source.mkdir()
+    add_project(ws, "app", source)
+    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
+    assert proj.vault_ro_path == ws.root / "vault" / "ro" / "app"
+    assert proj.vault_rw_path == ws.root / "vault" / "rw" / "app"
+    assert (ws.root / "vault" / "ro" / "app").is_dir()
+    assert (ws.root / "vault" / "rw" / "app").is_dir()
 
-    def test_repoint_moves_both_the_resolved_path_and_the_created_dir(
-        self, std, config, tmp_home,
-    ):
-        ws_root = tmp_home / "worksets" / "moved"
-        ws = create_workset("moved", ws_root, std)
-        elsewhere = tmp_home / "vaultstore"
-        _repoint(ws_root, "vault_ro", str(elsewhere / "ro"))
-        _repoint(ws_root, "vault_rw", str(elsewhere / "rw"))
-        source = tmp_home / "src-moved"
-        source.mkdir()
-        add_project(ws, "app", source)
+  def test_repoint_moves_both_the_resolved_path_and_the_created_dir(
+    self,
+    std,
+    config,
+    tmp_home,
+  ):
+    ws_root = tmp_home / "worksets" / "moved"
+    ws = create_workset("moved", ws_root, std)
+    elsewhere = tmp_home / "vaultstore"
+    _repoint(ws_root, "vault_ro", str(elsewhere / "ro"))
+    _repoint(ws_root, "vault_rw", str(elsewhere / "rw"))
+    source = tmp_home / "src-moved"
+    source.mkdir()
+    add_project(ws, "app", source)
 
-        # The DIRECTORY landed at the repoint, and NOT at the default.
-        assert (elsewhere / "ro" / "app").is_dir()
-        assert (elsewhere / "rw" / "app").is_dir()
-        assert not (ws_root / "vault" / "ro" / "app").exists()
-        assert not (ws_root / "vault" / "rw" / "app").exists()
+    # The DIRECTORY landed at the repoint, and NOT at the default.
+    assert (elsewhere / "ro" / "app").is_dir()
+    assert (elsewhere / "rw" / "app").is_dir()
+    assert not (ws_root / "vault" / "ro" / "app").exists()
+    assert not (ws_root / "vault" / "rw" / "app").exists()
 
-        # And the launch-side path agrees with it.
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
-        assert proj.vault_ro_path == elsewhere / "ro" / "app"
-        assert proj.vault_rw_path == elsewhere / "rw" / "app"
+    # And the launch-side path agrees with it.
+    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
+    assert proj.vault_ro_path == elsewhere / "ro" / "app"
+    assert proj.vault_rw_path == elsewhere / "rw" / "app"
 
-    def test_one_arm_repointed_moves_only_that_arm(self, std, config, tmp_home):
-        ws_root = tmp_home / "worksets" / "half"
-        ws = create_workset("half", ws_root, std)
-        _repoint(ws_root, "vault_ro", str(tmp_home / "roonly"))
-        source = tmp_home / "src-half"
-        source.mkdir()
-        add_project(ws, "app", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
-        assert proj.vault_ro_path == tmp_home / "roonly" / "app"
-        assert proj.vault_rw_path == ws_root / "vault" / "rw" / "app"
+  def test_one_arm_repointed_moves_only_that_arm(self, std, config, tmp_home):
+    ws_root = tmp_home / "worksets" / "half"
+    ws = create_workset("half", ws_root, std)
+    _repoint(ws_root, "vault_ro", str(tmp_home / "roonly"))
+    source = tmp_home / "src-half"
+    source.mkdir()
+    add_project(ws, "app", source)
+    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "app", std, config)
+    assert proj.vault_ro_path == tmp_home / "roonly" / "app"
+    assert proj.vault_rw_path == ws_root / "vault" / "rw" / "app"
 
-    def test_remove_files_deletes_the_repointed_leaves(self, std, tmp_home):
-        ws_root = tmp_home / "worksets" / "rm"
-        ws = create_workset("rm", ws_root, std)
-        elsewhere = tmp_home / "rmstore"
-        _repoint(ws_root, "vault_ro", str(elsewhere / "ro"))
-        _repoint(ws_root, "vault_rw", str(elsewhere / "rw"))
-        source = tmp_home / "src-rm"
-        source.mkdir()
-        add_project(ws, "app", source)
-        assert (elsewhere / "ro" / "app").is_dir()
+  def test_remove_files_deletes_the_repointed_leaves(self, std, tmp_home):
+    ws_root = tmp_home / "worksets" / "rm"
+    ws = create_workset("rm", ws_root, std)
+    elsewhere = tmp_home / "rmstore"
+    _repoint(ws_root, "vault_ro", str(elsewhere / "ro"))
+    _repoint(ws_root, "vault_rw", str(elsewhere / "rw"))
+    source = tmp_home / "src-rm"
+    source.mkdir()
+    add_project(ws, "app", source)
+    assert (elsewhere / "ro" / "app").is_dir()
 
-        remove_project(ws, "app", remove_files=True, std=std)
-        assert not (elsewhere / "ro" / "app").exists()
-        assert not (elsewhere / "rw" / "app").exists()
-        # The shared arms themselves are never removed.
-        assert (elsewhere / "ro").is_dir()
+    remove_project(ws, "app", remove_files=True, std=std)
+    assert not (elsewhere / "ro" / "app").exists()
+    assert not (elsewhere / "rw" / "app").exists()
+    # The shared arms themselves are never removed.
+    assert (elsewhere / "ro").is_dir()
 
 
 # ---------------------------------------------------------------------------
 # PRIMARY mode — the PRIMARY workset's workset.yaml (there are no system.vault_* keys)
 # ---------------------------------------------------------------------------
 
+
 class TestPrimaryModeVault:
-    def test_unrepointed_std_paths_are_unchanged(self, std):
-        assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
-        assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
+  def test_unrepointed_std_paths_are_unchanged(self, std):
+    assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
+    assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
 
-    def test_primary_workset_repoint_moves_the_std_roots(self, std, config_file, tmp_home):
-        _repoint(std.primary_workset, "vault_ro", str(tmp_home / "pv" / "ro"))
-        _repoint(std.primary_workset, "vault_rw", str(tmp_home / "pv" / "rw"))
-        reloaded = load_std_paths(load_config(config_file))
-        assert reloaded.primary_vault_ro == tmp_home / "pv" / "ro"
-        assert reloaded.primary_vault_rw == tmp_home / "pv" / "rw"
+  def test_primary_workset_repoint_moves_the_std_roots(self, std, config_file, tmp_home):
+    _repoint(std.primary_workset, "vault_ro", str(tmp_home / "pv" / "ro"))
+    _repoint(std.primary_workset, "vault_rw", str(tmp_home / "pv" / "rw"))
+    reloaded = load_std_paths(load_config(config_file))
+    assert reloaded.primary_vault_ro == tmp_home / "pv" / "ro"
+    assert reloaded.primary_vault_rw == tmp_home / "pv" / "rw"
 
-    def test_primary_box_create_lands_at_the_repoint(self, config_file, tmp_home, std):
-        _repoint(std.primary_workset, "vault_ro", str(tmp_home / "pv" / "ro"))
-        _repoint(std.primary_workset, "vault_rw", str(tmp_home / "pv" / "rw"))
-        reloaded = load_std_paths(load_config(config_file))
-        workspace = tmp_home / "code" / "app"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(reloaded, load_config(config_file), str(workspace),
-                               initialize=True)
-        assert proj.vault_ro_path == tmp_home / "pv" / "ro" / proj.name
-        assert proj.vault_rw_path == tmp_home / "pv" / "rw" / proj.name
-        assert proj.vault_ro_path.is_dir()
-        assert proj.vault_rw_path.is_dir()
-        assert not (reloaded.primary_workset / "vault" / "ro" / proj.name).exists()
+  def test_primary_box_create_lands_at_the_repoint(self, config_file, tmp_home, std):
+    _repoint(std.primary_workset, "vault_ro", str(tmp_home / "pv" / "ro"))
+    _repoint(std.primary_workset, "vault_rw", str(tmp_home / "pv" / "rw"))
+    reloaded = load_std_paths(load_config(config_file))
+    workspace = tmp_home / "code" / "app"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(reloaded, load_config(config_file), str(workspace), initialize=True)
+    assert proj.vault_ro_path == tmp_home / "pv" / "ro" / proj.name
+    assert proj.vault_rw_path == tmp_home / "pv" / "rw" / proj.name
+    assert proj.vault_ro_path.is_dir()
+    assert proj.vault_rw_path.is_dir()
+    assert not (reloaded.primary_workset / "vault" / "ro" / proj.name).exists()
 
-    def test_primary_unrepointed_box_create_is_unchanged(self, std, config, tmp_home):
-        workspace = tmp_home / "code" / "plainapp"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(std, config, str(workspace), initialize=True)
-        assert proj.vault_ro_path == std.primary_workset / "vault" / "ro" / proj.name
-        assert proj.vault_rw_path == std.primary_workset / "vault" / "rw" / proj.name
-        assert proj.vault_ro_path.is_dir()
+  def test_primary_unrepointed_box_create_is_unchanged(self, std, config, tmp_home):
+    workspace = tmp_home / "code" / "plainapp"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(std, config, str(workspace), initialize=True)
+    assert proj.vault_ro_path == std.primary_workset / "vault" / "ro" / proj.name
+    assert proj.vault_rw_path == std.primary_workset / "vault" / "rw" / proj.name
+    assert proj.vault_ro_path.is_dir()
 
-    def test_gitignore_lands_in_the_skeleton_not_inside_the_ro_arm(self, std, config, tmp_home):
-        """⚑ PRIMARY's arm carries a ``{meta.box.name}`` leaf, so its PARENT is the arm itself."""
-        workspace = tmp_home / "code" / "giapp"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(std, config, str(workspace), initialize=True)
-        vault = std.primary_workset / "vault"
-        # Anti-vacuity: the default layout really is in play here.
-        assert proj.vault_ro_path == vault / "ro" / proj.name
-        assert (vault / ".gitignore").read_text() == "rw/\n"
-        # ``rw/`` names nothing from inside the ``ro`` arm.
-        assert not (vault / "ro" / ".gitignore").exists()
+  def test_gitignore_lands_in_the_skeleton_not_inside_the_ro_arm(self, std, config, tmp_home):
+    """⚑ PRIMARY's arm carries a ``{meta.box.name}`` leaf, so its PARENT is the arm itself."""
+    workspace = tmp_home / "code" / "giapp"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(std, config, str(workspace), initialize=True)
+    vault = std.primary_workset / "vault"
+    # Anti-vacuity: the default layout really is in play here.
+    assert proj.vault_ro_path == vault / "ro" / proj.name
+    assert (vault / ".gitignore").read_text() == "rw/\n"
+    # ``rw/`` names nothing from inside the ``ro`` arm.
+    assert not (vault / "ro" / ".gitignore").exists()
 
-    def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
-        self, std, config_file, tmp_home,
-    ):
-        """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
-        _repoint(std.primary_workset, "vault_ro", "{meta.workset.path}/store/ro")
-        reloaded = load_std_paths(load_config(config_file))
-        workspace = tmp_home / "code" / "storeapp"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(reloaded, load_config(config_file), str(workspace),
-                               initialize=True)
-        root = reloaded.primary_workset
-        # Anti-vacuity: the repoint took effect AND stayed inside the root, so the
-        # containment guard admits it — the derivation is the only thing wrong.
-        assert proj.vault_ro_path == root / "store" / "ro" / proj.name
-        assert proj.vault_ro_path.is_dir()
-        # ``store/`` is a directory no key gave us.
-        assert not (root / "store" / ".gitignore").exists()
-        # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
-        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+  def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
+    self,
+    std,
+    config_file,
+    tmp_home,
+  ):
+    """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
+    _repoint(std.primary_workset, "vault_ro", "{meta.workset.path}/store/ro")
+    reloaded = load_std_paths(load_config(config_file))
+    workspace = tmp_home / "code" / "storeapp"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(reloaded, load_config(config_file), str(workspace), initialize=True)
+    root = reloaded.primary_workset
+    # Anti-vacuity: the repoint took effect AND stayed inside the root, so the
+    # containment guard admits it — the derivation is the only thing wrong.
+    assert proj.vault_ro_path == root / "store" / "ro" / proj.name
+    assert proj.vault_ro_path.is_dir()
+    # ``store/`` is a directory no key gave us.
+    assert not (root / "store" / ".gitignore").exists()
+    # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
+    assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
 
 
 # ---------------------------------------------------------------------------
 # STANDALONE mode — the project root IS the workset root (no per-box leaf)
 # ---------------------------------------------------------------------------
 
+
 class TestStandaloneModeVault:
-    def test_unrepointed_lands_exactly_where_it_does_today(self, std, config, project_dir):
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        root = project_dir.resolve()
-        assert proj.vault_ro_path == root / "vault" / "ro"
-        assert proj.vault_rw_path == root / "vault" / "rw"
-        assert proj.vault_ro_path.is_dir()
-        # The default layout still gets its vault-level .gitignore.
-        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+  def test_unrepointed_lands_exactly_where_it_does_today(self, std, config, project_dir):
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    root = project_dir.resolve()
+    assert proj.vault_ro_path == root / "vault" / "ro"
+    assert proj.vault_rw_path == root / "vault" / "rw"
+    assert proj.vault_ro_path.is_dir()
+    # The default layout still gets its vault-level .gitignore.
+    assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
 
-    def test_repoint_moves_the_created_dir(self, std, config, project_dir, tmp_home):
-        root = project_dir.resolve()
-        elsewhere = tmp_home / "sa-store"
-        _repoint(root, "vault_ro", str(elsewhere / "ro"))
-        _repoint(root, "vault_rw", str(elsewhere / "rw"))
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        assert proj.vault_ro_path == elsewhere / "ro"
-        assert proj.vault_rw_path == elsewhere / "rw"
-        assert (elsewhere / "ro").is_dir()
-        assert (elsewhere / "rw").is_dir()
-        assert not (root / "vault" / "ro").exists()
+  def test_repoint_moves_the_created_dir(self, std, config, project_dir, tmp_home):
+    root = project_dir.resolve()
+    elsewhere = tmp_home / "sa-store"
+    _repoint(root, "vault_ro", str(elsewhere / "ro"))
+    _repoint(root, "vault_rw", str(elsewhere / "rw"))
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    assert proj.vault_ro_path == elsewhere / "ro"
+    assert proj.vault_rw_path == elsewhere / "rw"
+    assert (elsewhere / "ro").is_dir()
+    assert (elsewhere / "rw").is_dir()
+    assert not (root / "vault" / "ro").exists()
 
-    def test_out_of_root_repoint_writes_no_gitignore_beside_the_user_dir(
-        self, std, config, project_dir, tmp_home,
-    ):
-        """⚑ The vault ``.gitignore`` belongs to the workset's own ``vault/`` skeleton dir."""
-        root = project_dir.resolve()
-        outside = tmp_home / "outside"
-        _repoint(root, "vault_ro", str(outside / "ro"))
-        _repoint(root, "vault_rw", str(outside / "rw"))
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        # Anti-vacuity: the repoint really did take effect here.
-        assert proj.vault_ro_path == outside / "ro"
-        assert (outside / "ro").is_dir()
-        assert not (outside / ".gitignore").exists()
+  def test_out_of_root_repoint_writes_no_gitignore_beside_the_user_dir(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_home,
+  ):
+    """⚑ The vault ``.gitignore`` belongs to the workset's own ``vault/`` skeleton dir."""
+    root = project_dir.resolve()
+    outside = tmp_home / "outside"
+    _repoint(root, "vault_ro", str(outside / "ro"))
+    _repoint(root, "vault_rw", str(outside / "rw"))
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    # Anti-vacuity: the repoint really did take effect here.
+    assert proj.vault_ro_path == outside / "ro"
+    assert (outside / "ro").is_dir()
+    assert not (outside / ".gitignore").exists()
 
-    def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
-        self, std, config, project_dir,
-    ):
-        """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
-        root = project_dir.resolve()
-        _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        # Anti-vacuity: the repoint took effect AND stayed INSIDE the root, so the
-        # containment guard admits it — the derivation is the only thing wrong.
-        assert proj.vault_ro_path == root / "store" / "ro"
-        assert (root / "store" / "ro").is_dir()
-        # ``store/`` is a directory no key gave us: nothing of ours belongs in it.
-        assert not (root / "store" / ".gitignore").exists()
-        # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
-        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+  def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
+    root = project_dir.resolve()
+    _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    # Anti-vacuity: the repoint took effect AND stayed INSIDE the root, so the
+    # containment guard admits it — the derivation is the only thing wrong.
+    assert proj.vault_ro_path == root / "store" / "ro"
+    assert (root / "store" / "ro").is_dir()
+    # ``store/`` is a directory no key gave us: nothing of ours belongs in it.
+    assert not (root / "store" / ".gitignore").exists()
+    # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
+    assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
 
-    def test_rw_repointed_out_leaves_the_skeleton_claiming_nothing(
-        self, std, config, project_dir, tmp_home,
-    ):
-        """⚑ The file CLAIMS ``rw/`` is a child; only ``workset.vault_rw`` can make that true."""
-        root = project_dir.resolve()
-        elsewhere = tmp_home / "rwstore"
-        _repoint(root, "vault_rw", str(elsewhere))
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        # Anti-vacuity: the ro arm is still the default, so the skeleton dir exists.
-        assert proj.vault_ro_path == root / "vault" / "ro"
-        assert (root / "vault" / "ro").is_dir()
-        assert proj.vault_rw_path == elsewhere
-        assert elsewhere.is_dir()
-        assert not (root / "vault" / ".gitignore").exists()
+  def test_rw_repointed_out_leaves_the_skeleton_claiming_nothing(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_home,
+  ):
+    """⚑ The file CLAIMS ``rw/`` is a child; only ``workset.vault_rw`` can make that true."""
+    root = project_dir.resolve()
+    elsewhere = tmp_home / "rwstore"
+    _repoint(root, "vault_rw", str(elsewhere))
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    # Anti-vacuity: the ro arm is still the default, so the skeleton dir exists.
+    assert proj.vault_ro_path == root / "vault" / "ro"
+    assert (root / "vault" / "ro").is_dir()
+    assert proj.vault_rw_path == elsewhere
+    assert elsewhere.is_dir()
+    assert not (root / "vault" / ".gitignore").exists()
 
-    def test_rw_pointed_at_the_skeleton_gets_no_gitignore_inside_it(
-        self, std, config, project_dir,
-    ):
-        """⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent."""
-        root = project_dir.resolve()
-        _repoint(root, "vault_rw", "{meta.workset.path}/vault")
-        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        assert proj.vault_rw_path == root / "vault"
-        assert (root / "vault").is_dir()
-        assert not (root / "vault" / ".gitignore").exists()
+  def test_rw_pointed_at_the_skeleton_gets_no_gitignore_inside_it(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent."""
+    root = project_dir.resolve()
+    _repoint(root, "vault_rw", "{meta.workset.path}/vault")
+    proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+    assert proj.vault_rw_path == root / "vault"
+    assert (root / "vault").is_dir()
+    assert not (root / "vault" / ".gitignore").exists()

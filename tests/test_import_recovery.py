@@ -24,11 +24,11 @@ import pytest
 from kanibako.project import import_reconcile, registry_store
 from kanibako.launch import journal
 from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
-    detect_project_mode,
-    resolve_project,
-    resolve_standalone_project,
+  BoxMode,
+  _early_scope,
+  detect_project_mode,
+  resolve_project,
+  resolve_standalone_project,
 )
 from kanibako.project.workset import add_project, create_workset
 
@@ -37,27 +37,28 @@ from kanibako.project.workset import add_project, create_workset
 # journal.pending_import — the register-only recovery signal (op-typed)
 # ---------------------------------------------------------------------------
 
-class TestPendingImport:
-    def test_pending_import_matches_import_and_connect_only(self, tmp_path: Path):
-        jp = tmp_path / "journal.yaml"
-        box = tmp_path / "boxes" / "b"
-        # An import entry IS a pending import.
-        journal.write_entry(jp, box, op="import", name="b", mode="primary")
-        assert journal.pending_import(jp, box) is not None
-        assert journal.pending_import(jp, box)["op"] == "import"
-        # A connect entry IS a pending import.
-        journal.write_entry(jp, box, op="connect", name="b", mode="named")
-        assert journal.pending_import(jp, box) is not None
-        # A create entry is NOT a pending import (op-typed separation).
-        journal.write_entry(jp, box, op="create", name="b", mode="primary")
-        assert journal.pending_import(jp, box) is None
-        # ... and pending_create does NOT match an import entry.
-        journal.write_entry(jp, box, op="import", name="b", mode="primary")
-        assert journal.pending_create(jp, box) is None
 
-    def test_pending_import_absent_when_empty(self, tmp_path: Path):
-        jp = tmp_path / "journal.yaml"
-        assert journal.pending_import(jp, tmp_path / "nope") is None
+class TestPendingImport:
+  def test_pending_import_matches_import_and_connect_only(self, tmp_path: Path):
+    jp = tmp_path / "journal.yaml"
+    box = tmp_path / "boxes" / "b"
+    # An import entry IS a pending import.
+    journal.write_entry(jp, box, op="import", name="b", mode="primary")
+    assert journal.pending_import(jp, box) is not None
+    assert journal.pending_import(jp, box)["op"] == "import"
+    # A connect entry IS a pending import.
+    journal.write_entry(jp, box, op="connect", name="b", mode="named")
+    assert journal.pending_import(jp, box) is not None
+    # A create entry is NOT a pending import (op-typed separation).
+    journal.write_entry(jp, box, op="create", name="b", mode="primary")
+    assert journal.pending_import(jp, box) is None
+    # ... and pending_create does NOT match an import entry.
+    journal.write_entry(jp, box, op="import", name="b", mode="primary")
+    assert journal.pending_create(jp, box) is None
+
+  def test_pending_import_absent_when_empty(self, tmp_path: Path):
+    jp = tmp_path / "journal.yaml"
+    assert journal.pending_import(jp, tmp_path / "nope") is None
 
 
 # ---------------------------------------------------------------------------
@@ -65,164 +66,222 @@ class TestPendingImport:
 # (entry written + cleared WITHIN the op).
 # ---------------------------------------------------------------------------
 
+
 class TestImportBehavioralEquivalence:
-    def test_standalone_import_empty_journal_at_rest(
-        self, std, config, project_dir, credentials_dir, capsys,
-    ):
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        name = proj.name
-        registry_store.save_section(std.registry, "standalone", {})
-        capsys.readouterr()
+  def test_standalone_import_empty_journal_at_rest(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+  ):
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    name = proj.name
+    registry_store.save_section(std.registry, "standalone", {})
+    capsys.readouterr()
 
-        # Resolve never registers a standalone box; ``box register``'s import does,
-        # and the journal must be EMPTY at rest after either.
-        result = detect_project_mode(project_dir, std, config)
-        assert result.mode is BoxMode.standalone
-        assert registry_store.load_standalone(std.registry) == {}
-        assert journal.read_journal(std.journal) == {}
-        import_reconcile.import_standalone(
-            std.registry, project_dir.resolve(), journal=std.journal,
-            early=_early_scope(std, BoxMode.standalone))
-        assert registry_store.load_standalone(std.registry).get(name) == str(
-            project_dir.resolve()
-        )
-        assert journal.read_journal(std.journal) == {}
+    # Resolve never registers a standalone box; ``box register``'s import does,
+    # and the journal must be EMPTY at rest after either.
+    result = detect_project_mode(project_dir, std, config)
+    assert result.mode is BoxMode.standalone
+    assert registry_store.load_standalone(std.registry) == {}
+    assert journal.read_journal(std.journal) == {}
+    import_reconcile.import_standalone(
+      std.registry,
+      project_dir.resolve(),
+      journal=std.journal,
+      early=_early_scope(std, BoxMode.standalone),
+    )
+    assert registry_store.load_standalone(std.registry).get(name) == str(project_dir.resolve())
+    assert journal.read_journal(std.journal) == {}
 
-    def test_primary_resolve_no_rediscovery_option_a(
-        self, std, config, project_dir, credentials_dir, capsys,
-    ):
-        """P8b/Option A: a register=True resolve does NOT auto-rediscover an
-        unregistered on-disk PRIMARY box (retired live import) — and it touches no
-        journal.  The registry is the sole identity authority."""
-        from kanibako.settings.paths import (
-            load_primary_boxes,
-            unregister_primary_box_name,
-        )
+  def test_primary_resolve_no_rediscovery_option_a(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+  ):
+    """P8b/Option A: a register=True resolve does NOT auto-rediscover an
+    unregistered on-disk PRIMARY box (retired live import) — and it touches no
+    journal.  The registry is the sole identity authority."""
+    from kanibako.settings.paths import (
+      load_primary_boxes,
+      unregister_primary_box_name,
+    )
 
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        assert proj.name
-        # Drop the PRIMARY-membership entry (the sole store since the global
-        # ``projects:`` section retired).
-        unregister_primary_box_name(std.primary_workset, proj.name,
-                early=_early_scope(std, BoxMode.primary))
-        capsys.readouterr()
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=str(project_dir),
+      initialize=True,
+    )
+    assert proj.name
+    # Drop the PRIMARY-membership entry (the sole store since the global
+    # ``projects:`` section retired).
+    unregister_primary_box_name(
+      std.primary_workset, proj.name, early=_early_scope(std, BoxMode.primary)
+    )
+    capsys.readouterr()
 
-        proj2 = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=False,
-        )
-        assert proj2.name == ""  # not recovered from disk
-        assert load_primary_boxes(std.primary_workset,
-                early=_early_scope(std, BoxMode.primary)) == {}
-        assert journal.read_journal(std.journal) == {}
+    proj2 = resolve_project(
+      std,
+      config,
+      project_dir=str(project_dir),
+      initialize=False,
+    )
+    assert proj2.name == ""  # not recovered from disk
+    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert journal.read_journal(std.journal) == {}
 
-    def test_named_workset_import_empty_journal_at_rest(
-        self, std, config, tmp_home, capsys,
-    ):
-        ws_root = tmp_home / "worksets" / "imp"
-        create_workset("imp", ws_root, std)
-        registry_store.save_section(std.registry, "worksets", {})
-        capsys.readouterr()
+  def test_named_workset_import_empty_journal_at_rest(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    ws_root = tmp_home / "worksets" / "imp"
+    create_workset("imp", ws_root, std)
+    registry_store.save_section(std.registry, "worksets", {})
+    capsys.readouterr()
 
-        name = import_reconcile.import_named_workset(
-            std.registry, ws_root, journal=std.journal,
-        )
-        assert name == "imp"
-        assert registry_store.load_section(std.registry, "worksets").get(
-            "imp"
-        ) == str(ws_root.resolve())
-        assert journal.read_journal(std.journal) == {}
+    name = import_reconcile.import_named_workset(
+      std.registry,
+      ws_root,
+      journal=std.journal,
+    )
+    assert name == "imp"
+    assert registry_store.load_section(std.registry, "worksets").get("imp") == str(
+      ws_root.resolve()
+    )
+    assert journal.read_journal(std.journal) == {}
 
-    def test_import_without_journal_arg_is_plain_register(
-        self, std, config, project_dir, credentials_dir, capsys,
-    ):
-        """A std-less caller (journal=None) registers exactly as before J2 —
-        no journal file is touched."""
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        name = proj.name
-        registry_store.save_section(std.registry, "standalone", {})
-        capsys.readouterr()
+  def test_import_without_journal_arg_is_plain_register(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+  ):
+    """A std-less caller (journal=None) registers exactly as before J2 —
+    no journal file is touched."""
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    name = proj.name
+    registry_store.save_section(std.registry, "standalone", {})
+    capsys.readouterr()
 
-        # Direct call WITHOUT journal= → plain register, no journal write.
-        got = import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone))
-        assert got == name
-        assert registry_store.load_standalone(std.registry).get(name) == str(
-            project_dir.resolve()
-        )
-        # The journal file was never created/written.
-        assert journal.read_journal(std.journal) == {}
+    # Direct call WITHOUT journal= → plain register, no journal write.
+    got = import_reconcile.import_standalone(
+      std.registry, project_dir, early=_early_scope(std, BoxMode.standalone)
+    )
+    assert got == name
+    assert registry_store.load_standalone(std.registry).get(name) == str(project_dir.resolve())
+    # The journal file was never created/written.
+    assert journal.read_journal(std.journal) == {}
 
 
 # ---------------------------------------------------------------------------
 # Atomicity: the entry is PRESENT during the register window (write-ahead).
 # ---------------------------------------------------------------------------
 
+
 class TestImportWriteAheadOrdering:
-    def test_entry_present_during_register_then_cleared(
-        self, std, config, project_dir, credentials_dir, capsys, monkeypatch,
-    ):
-        """The journal entry exists DURING the registry write (write-ahead) and
-        is gone after — proven by spying the registry write."""
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        name = proj.name
-        registry_store.save_section(std.registry, "standalone", {})
-        capsys.readouterr()
+  def test_entry_present_during_register_then_cleared(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    """The journal entry exists DURING the registry write (write-ahead) and
+    is gone after — proven by spying the registry write."""
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    name = proj.name
+    registry_store.save_section(std.registry, "standalone", {})
+    capsys.readouterr()
 
-        box_key = str((project_dir / "box_data").resolve())
-        seen = {}
-        real_register = registry_store.register_standalone
+    box_key = str((project_dir / "box_data").resolve())
+    seen = {}
+    real_register = registry_store.register_standalone
 
-        def spy_register(registry, n, root):
-            seen["pending_during_register"] = (
-                journal.pending_import(std.journal, box_key) is not None
-            )
-            return real_register(registry, n, root)
+    def spy_register(registry, n, root):
+      seen["pending_during_register"] = journal.pending_import(std.journal, box_key) is not None
+      return real_register(registry, n, root)
 
-        monkeypatch.setattr(
-            registry_store, "register_standalone", spy_register,
-        )
-        import_reconcile.import_standalone(
-            std.registry, project_dir, journal=std.journal,
-            early=_early_scope(std, BoxMode.standalone),
-        )
+    monkeypatch.setattr(
+      registry_store,
+      "register_standalone",
+      spy_register,
+    )
+    import_reconcile.import_standalone(
+      std.registry,
+      project_dir,
+      journal=std.journal,
+      early=_early_scope(std, BoxMode.standalone),
+    )
 
-        # Write-ahead: entry was present during the register, gone at rest.
-        assert seen["pending_during_register"] is True
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
-        assert registry_store.load_standalone(std.registry).get(name)
+    # Write-ahead: entry was present during the register, gone at rest.
+    assert seen["pending_during_register"] is True
+    assert journal.pending_import(std.journal, box_key) is None
+    assert journal.read_journal(std.journal) == {}
+    assert registry_store.load_standalone(std.registry).get(name)
 
-    def test_register_crash_leaves_entry(
-        self, std, config, project_dir, credentials_dir, capsys, monkeypatch,
-    ):
-        """If the register body raises, the entry is LEFT (import incomplete) —
-        the wrapper does NOT swallow the error or clear the entry."""
-        resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        registry_store.save_section(std.registry, "standalone", {})
-        capsys.readouterr()
+  def test_register_crash_leaves_entry(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+    monkeypatch,
+  ):
+    """If the register body raises, the entry is LEFT (import incomplete) —
+    the wrapper does NOT swallow the error or clear the entry."""
+    resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    registry_store.save_section(std.registry, "standalone", {})
+    capsys.readouterr()
 
-        box_key = str((project_dir / "box_data").resolve())
+    box_key = str((project_dir / "box_data").resolve())
 
-        def boom(registry, n, root):
-            raise RuntimeError("simulated registry write crash")
+    def boom(registry, n, root):
+      raise RuntimeError("simulated registry write crash")
 
-        monkeypatch.setattr(registry_store, "register_standalone", boom)
-        with pytest.raises(RuntimeError, match="simulated"):
-            import_reconcile.import_standalone(
-                std.registry, project_dir, journal=std.journal,
-                early=_early_scope(std, BoxMode.standalone),
-            )
-        # Entry LEFT — recovery resumes it on the next resolve.
-        assert journal.pending_import(std.journal, box_key) is not None
+    monkeypatch.setattr(registry_store, "register_standalone", boom)
+    with pytest.raises(RuntimeError, match="simulated"):
+      import_reconcile.import_standalone(
+        std.registry,
+        project_dir,
+        journal=std.journal,
+        early=_early_scope(std, BoxMode.standalone),
+      )
+    # Entry LEFT — recovery resumes it on the next resolve.
+    assert journal.pending_import(std.journal, box_key) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -233,103 +292,132 @@ class TestImportWriteAheadOrdering:
 # The seed entry points an import must NEVER call.  Patched to a sentinel-raising
 # fail so any accidental seed during an import recovery is a hard test failure.
 _SEED_FUNCS = (
-    "kanibako.commands.start.seed_new_box",
-    "kanibako.commands.start._seed_box_home",
+  "kanibako.commands.start.seed_new_box",
+  "kanibako.commands.start._seed_box_home",
 )
 
 
 @pytest.fixture
 def seed_tripwire(monkeypatch):
-    """Make ANY seed call during the test an immediate failure.
+  """Make ANY seed call during the test an immediate failure.
 
-    Import/connect register-only flows must never seed (B7); recovery replays
-    register-only.  Tripping this proves the recovery path took no seed step.
-    """
-    called = {"seed": False}
+  Import/connect register-only flows must never seed (B7); recovery replays
+  register-only.  Tripping this proves the recovery path took no seed step.
+  """
+  called = {"seed": False}
 
-    def trip(*a, **k):
-        called["seed"] = True
-        raise AssertionError("seed must NOT be called on an import/connect path")
+  def trip(*a, **k):
+    called["seed"] = True
+    raise AssertionError("seed must NOT be called on an import/connect path")
 
-    for fq in _SEED_FUNCS:
-        monkeypatch.setattr(fq, trip)
-    return called
+  for fq in _SEED_FUNCS:
+    monkeypatch.setattr(fq, trip)
+  return called
 
 
 class TestStandaloneImportRecovery:
-    def test_interrupted_import_completes_and_clears_no_seed(
-        self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
-    ):
-        """STANDALONE import interrupted (entry left, NOT registered): a resolve
-        leaves both alone; re-running the import registers + clears the entry;
-        seed NEVER called.  All asserts UNCONDITIONAL."""
-        # Build a real standalone box, then wipe the registry → unregistered.
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        name = proj.name
-        registry_store.save_section(std.registry, "standalone", {})
+  def test_interrupted_import_completes_and_clears_no_seed(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+    seed_tripwire,
+  ):
+    """STANDALONE import interrupted (entry left, NOT registered): a resolve
+    leaves both alone; re-running the import registers + clears the entry;
+    seed NEVER called.  All asserts UNCONDITIONAL."""
+    # Build a real standalone box, then wipe the registry → unregistered.
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    name = proj.name
+    registry_store.save_section(std.registry, "standalone", {})
 
-        box_key = str((project_dir / "box_data").resolve())
-        # Simulate the crash-before-register state: write the import entry, then
-        # STOP (registration not done).
-        journal.write_entry(
-            std.journal, box_key, op="import", name=name, mode="standalone",
-        )
-        # Plant a user file in the box home to prove recovery never re-seeds it.
-        home = project_dir / "box_data" / "home"
-        home.mkdir(parents=True, exist_ok=True)
-        (home / "USER.txt").write_text("precious")
-        capsys.readouterr()
+    box_key = str((project_dir / "box_data").resolve())
+    # Simulate the crash-before-register state: write the import entry, then
+    # STOP (registration not done).
+    journal.write_entry(
+      std.journal,
+      box_key,
+      op="import",
+      name=name,
+      mode="standalone",
+    )
+    # Plant a user file in the box home to prove recovery never re-seeds it.
+    home = project_dir / "box_data" / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "USER.txt").write_text("precious")
+    capsys.readouterr()
 
-        assert journal.pending_import(std.journal, box_key) is not None
-        assert registry_store.load_standalone(std.registry) == {}
+    assert journal.pending_import(std.journal, box_key) is not None
+    assert registry_store.load_standalone(std.registry) == {}
 
-        result = detect_project_mode(project_dir, std, config)
-        assert result.mode is BoxMode.standalone
-        assert registry_store.load_standalone(std.registry) == {}
-        assert journal.pending_import(std.journal, box_key) is not None
+    result = detect_project_mode(project_dir, std, config)
+    assert result.mode is BoxMode.standalone
+    assert registry_store.load_standalone(std.registry) == {}
+    assert journal.pending_import(std.journal, box_key) is not None
 
-        # Recovery: ``box register`` re-enters the idempotent import → register + clear.
-        import_reconcile.import_standalone(
-            std.registry, project_dir.resolve(), journal=std.journal,
-            early=_early_scope(std, BoxMode.standalone))
-        # Registered exactly once.
-        registered = registry_store.load_standalone(std.registry)
-        assert registered.get(name) == str(project_dir.resolve())
-        assert list(registered).count(name) == 1
-        # Entry GONE; journal empty (invariant restored).
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
-        # NO seed (tripwire never fired) + user file untouched.
-        assert seed_tripwire["seed"] is False
-        assert (home / "USER.txt").read_text() == "precious"
+    # Recovery: ``box register`` re-enters the idempotent import → register + clear.
+    import_reconcile.import_standalone(
+      std.registry,
+      project_dir.resolve(),
+      journal=std.journal,
+      early=_early_scope(std, BoxMode.standalone),
+    )
+    # Registered exactly once.
+    registered = registry_store.load_standalone(std.registry)
+    assert registered.get(name) == str(project_dir.resolve())
+    assert list(registered).count(name) == 1
+    # Entry GONE; journal empty (invariant restored).
+    assert journal.pending_import(std.journal, box_key) is None
+    assert journal.read_journal(std.journal) == {}
+    # NO seed (tripwire never fired) + user file untouched.
+    assert seed_tripwire["seed"] is False
+    assert (home / "USER.txt").read_text() == "precious"
 
-    def test_register_clear_window_stale_entry_cleared(
-        self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
-    ):
-        """STANDALONE register->clear window (REGISTERED + stale entry): a
-        re-resolve over the already-complete box clears the stale entry, no seed.
-        """
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        name = proj.name
-        box_key = str((project_dir / "box_data").resolve())
-        # Box is registered (from the resolve above); plant a stale import entry.
-        journal.write_entry(
-            std.journal, box_key, op="import", name=name, mode="standalone",
-        )
-        capsys.readouterr()
-        assert registry_store.load_standalone(std.registry).get(name)
-        assert journal.pending_import(std.journal, box_key) is not None
+  def test_register_clear_window_stale_entry_cleared(
+    self,
+    std,
+    config,
+    project_dir,
+    credentials_dir,
+    capsys,
+    seed_tripwire,
+  ):
+    """STANDALONE register->clear window (REGISTERED + stale entry): a
+    re-resolve over the already-complete box clears the stale entry, no seed.
+    """
+    proj = resolve_standalone_project(
+      std,
+      config,
+      str(project_dir),
+      initialize=True,
+    )
+    name = proj.name
+    box_key = str((project_dir / "box_data").resolve())
+    # Box is registered (from the resolve above); plant a stale import entry.
+    journal.write_entry(
+      std.journal,
+      box_key,
+      op="import",
+      name=name,
+      mode="standalone",
+    )
+    capsys.readouterr()
+    assert registry_store.load_standalone(std.registry).get(name)
+    assert journal.pending_import(std.journal, box_key) is not None
 
-        # Re-resolve hits the import's idempotent no-op branch → clears stale.
-        detect_project_mode(project_dir, std, config)
+    # Re-resolve hits the import's idempotent no-op branch → clears stale.
+    detect_project_mode(project_dir, std, config)
 
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
-        assert seed_tripwire["seed"] is False
+    assert journal.pending_import(std.journal, box_key) is None
+    assert journal.read_journal(std.journal) == {}
+    assert seed_tripwire["seed"] is False
 
 
 # NOTE (P8c): the PRIMARY import-recovery tests were removed — they exercised
@@ -345,294 +433,347 @@ class TestStandaloneImportRecovery:
 # move/convert/duplicate pipelines also call; FIX 2).
 # ---------------------------------------------------------------------------
 
+
 def _connect_args(workset, source, project_name=None, force=False):
-    import argparse as _ap
-    return _ap.Namespace(
-        workset=workset, source=str(source), project_name=project_name,
-        force=force,
-    )
+  import argparse as _ap
+
+  return _ap.Namespace(
+    workset=workset,
+    source=str(source),
+    project_name=project_name,
+    force=force,
+  )
 
 
 class TestConnectJournal:
-    def test_clean_connect_empty_journal_at_rest(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A normal connect (via run_connect) writes + clears the entry within
-        the op → journal empty at rest (behavioral equivalence)."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.project.workset import load_workset
+  def test_clean_connect_empty_journal_at_rest(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A normal connect (via run_connect) writes + clears the entry within
+    the op → journal empty at rest (behavioral equivalence)."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.project.workset import load_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("cjws", tmp_home / "cj_ws", std)
-        src = tmp_home / "cj_src"
-        src.mkdir()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("cjws", tmp_home / "cj_ws", std)
+    src = tmp_home / "cj_src"
+    src.mkdir()
 
-        rc = run_connect(_connect_args("cjws", src, "cjproj"))
-        assert rc == 0
-        assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
-        assert any(p.name == "cjproj" for p in reloaded.projects)
+    rc = run_connect(_connect_args("cjws", src, "cjproj"))
+    assert rc == 0
+    assert journal.read_journal(std.journal) == {}
+    reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
+    assert any(p.name == "cjproj" for p in reloaded.projects)
 
-    def test_connect_entry_present_during_membership_write(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """Write-ahead: the connect entry exists DURING the workset-membership
-        write (inside add_project) and is gone after run_connect returns."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.settings import paths as paths_mod
+  def test_connect_entry_present_during_membership_write(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """Write-ahead: the connect entry exists DURING the workset-membership
+    write (inside add_project) and is gone after run_connect returns."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.settings import paths as paths_mod
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("cjws2", tmp_home / "cj_ws2", std)
-        src = tmp_home / "cj_src2"
-        src.mkdir()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("cjws2", tmp_home / "cj_ws2", std)
+    src = tmp_home / "cj_src2"
+    src.mkdir()
 
-        box_key = str((tmp_home / "cj_ws2" / "boxes" / "cjproj2"))
-        seen = {}
-        real_write = paths_mod._register_workset_box_membership
+    box_key = str((tmp_home / "cj_ws2" / "boxes" / "cjproj2"))
+    seen = {}
+    real_write = paths_mod._register_workset_box_membership
 
-        def spy_write(*a, **k):
-            seen["pending_during_write"] = (
-                journal.pending_import(std.journal, box_key) is not None
-            )
-            return real_write(*a, **k)
+    def spy_write(*a, **k):
+      seen["pending_during_write"] = journal.pending_import(std.journal, box_key) is not None
+      return real_write(*a, **k)
 
-        monkeypatch.setattr(
-            paths_mod, "_register_workset_box_membership", spy_write,
-        )
-        rc = run_connect(_connect_args("cjws2", src, "cjproj2"))
+    monkeypatch.setattr(
+      paths_mod,
+      "_register_workset_box_membership",
+      spy_write,
+    )
+    rc = run_connect(_connect_args("cjws2", src, "cjproj2"))
 
-        assert rc == 0
-        assert seen["pending_during_write"] is True
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
+    assert rc == 0
+    assert seen["pending_during_write"] is True
+    assert journal.pending_import(std.journal, box_key) is None
+    assert journal.read_journal(std.journal) == {}
 
-    def test_connect_membership_crash_leaves_entry(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """A crash in the membership write leaves the connect entry (incomplete);
-        the in-process unwind still runs but the journal entry persists for the
-        cross-process recovery signal."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.settings import paths as paths_mod
+  def test_connect_membership_crash_leaves_entry(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """A crash in the membership write leaves the connect entry (incomplete);
+    the in-process unwind still runs but the journal entry persists for the
+    cross-process recovery signal."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.settings import paths as paths_mod
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("cjws3", tmp_home / "cj_ws3", std)
-        src = tmp_home / "cj_src3"
-        src.mkdir()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("cjws3", tmp_home / "cj_ws3", std)
+    src = tmp_home / "cj_src3"
+    src.mkdir()
 
-        box_key = str((tmp_home / "cj_ws3" / "boxes" / "cjproj3"))
+    box_key = str((tmp_home / "cj_ws3" / "boxes" / "cjproj3"))
 
-        def boom(*a, **k):
-            raise RuntimeError("simulated membership write crash")
+    def boom(*a, **k):
+      raise RuntimeError("simulated membership write crash")
 
-        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
-        with pytest.raises(RuntimeError, match="simulated"):
-            run_connect(_connect_args("cjws3", src, "cjproj3"))
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
+    with pytest.raises(RuntimeError, match="simulated"):
+      run_connect(_connect_args("cjws3", src, "cjproj3"))
 
-        # Entry LEFT (the membership write never completed).
-        assert journal.pending_import(std.journal, box_key) is not None
+    # Entry LEFT (the membership write never completed).
+    assert journal.pending_import(std.journal, box_key) is not None
 
-    @pytest.mark.parametrize("undo_fails", [False, True])
-    def test_connect_oserror_entry_follows_rollback(
-        self, config_file, tmp_home, capsys, monkeypatch, undo_fails,
-    ):
-        """An OSError the command reports clears the entry when the rollback finished,
-        and leaves it when a rollback step failed (something is left to complete)."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project import workset as workset_mod
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.settings import paths as paths_mod
+  @pytest.mark.parametrize("undo_fails", [False, True])
+  def test_connect_oserror_entry_follows_rollback(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+    undo_fails,
+  ):
+    """An OSError the command reports clears the entry when the rollback finished,
+    and leaves it when a rollback step failed (something is left to complete)."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project import workset as workset_mod
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.settings import paths as paths_mod
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("cjws4", tmp_home / "cj_ws4", std)
-        src = tmp_home / "cj_src4"
-        src.mkdir()
-        box_key = str(tmp_home / "cj_ws4" / "boxes" / "cjproj4")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("cjws4", tmp_home / "cj_ws4", std)
+    src = tmp_home / "cj_src4"
+    src.mkdir()
+    box_key = str(tmp_home / "cj_ws4" / "boxes" / "cjproj4")
 
-        def disk_full(*a, **k):
-            raise OSError(28, "No space left on device")
+    def disk_full(*a, **k):
+      raise OSError(28, "No space left on device")
 
-        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", disk_full)
-        if undo_fails:
-            monkeypatch.setattr(workset_mod, "_unwind_created_root", lambda *a, **k: False)
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", disk_full)
+    if undo_fails:
+      monkeypatch.setattr(workset_mod, "_unwind_created_root", lambda *a, **k: False)
 
-        rc = run_connect(_connect_args("cjws4", src, "cjproj4"))
+    rc = run_connect(_connect_args("cjws4", src, "cjproj4"))
 
-        assert rc == 1
-        assert "No space left on device" in capsys.readouterr().err
-        pending = journal.pending_import(std.journal, box_key)
-        assert (pending is not None) is undo_fails
+    assert rc == 1
+    assert "No space left on device" in capsys.readouterr().err
+    pending = journal.pending_import(std.journal, box_key)
+    assert (pending is not None) is undo_fails
 
 
 class TestConnectSelfHealOnResolve:
-    """FIX 1: a stale ``connect`` entry on an already-MEMBER box self-heals when
-    ``resolve_workset_project`` next resolves it — symmetric with the import
-    path's ``_clear_stale_import``.  Restores 'registered ==> no pending entry'."""
+  """FIX 1: a stale ``connect`` entry on an already-MEMBER box self-heals when
+  ``resolve_workset_project`` next resolves it — symmetric with the import
+  path's ``_clear_stale_import``.  Restores 'registered ==> no pending entry'."""
 
-    def test_resolve_clears_stale_connect_entry(
-        self, config_file, tmp_home, credentials_dir, capsys, seed_tripwire,
-    ):
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            load_std_paths,
-            resolve_workset_project,
-        )
-        from kanibako.settings.paths import WorksetSpec
-        from kanibako.project.workset import load_workset
+  def test_resolve_clears_stale_connect_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    seed_tripwire,
+  ):
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      load_std_paths,
+      resolve_workset_project,
+    )
+    from kanibako.settings.paths import WorksetSpec
+    from kanibako.project.workset import load_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("healws", tmp_home / "heal_ws", std)
-        src = tmp_home / "heal_src"
-        src.mkdir()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("healws", tmp_home / "heal_ws", std)
+    src = tmp_home / "heal_src"
+    src.mkdir()
 
-        # Connect (registers the member), then plant a stale connect entry to
-        # simulate a crash in the register->clear window (box IS a member).
-        rc = run_connect(_connect_args("healws", src, "healproj"))
-        assert rc == 0
-        box_key = str((tmp_home / "heal_ws" / "boxes" / "healproj"))
-        journal.write_entry(
-            std.journal, box_key, op="connect", name="healproj", mode="named",
-            workset="healws",
-        )
-        capsys.readouterr()
-        assert journal.pending_import(std.journal, box_key) is not None
+    # Connect (registers the member), then plant a stale connect entry to
+    # simulate a crash in the register->clear window (box IS a member).
+    rc = run_connect(_connect_args("healws", src, "healproj"))
+    assert rc == 0
+    box_key = str((tmp_home / "heal_ws" / "boxes" / "healproj"))
+    journal.write_entry(
+      std.journal,
+      box_key,
+      op="connect",
+      name="healproj",
+      mode="named",
+      workset="healws",
+    )
+    capsys.readouterr()
+    assert journal.pending_import(std.journal, box_key) is not None
 
-        # Resolve the already-member box → self-heal clears the stale entry.
-        ws = load_workset(tmp_home / "heal_ws", "healws", early_system=std.early_system)
-        proj = resolve_workset_project(
-            WorksetSpec.from_workset(ws), "healproj", std, config,
-            initialize=False,
-        )
+    # Resolve the already-member box → self-heal clears the stale entry.
+    ws = load_workset(tmp_home / "heal_ws", "healws", early_system=std.early_system)
+    proj = resolve_workset_project(
+      WorksetSpec.from_workset(ws),
+      "healproj",
+      std,
+      config,
+      initialize=False,
+    )
 
-        # UNCONDITIONAL: the box's host-side dir matches the entry key, cleared.
-        assert str(Path(proj.shell_path).parent) == box_key
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
-        # No seed on the resolve path.
-        assert seed_tripwire["seed"] is False
+    # UNCONDITIONAL: the box's host-side dir matches the entry key, cleared.
+    assert str(Path(proj.shell_path).parent) == box_key
+    assert journal.pending_import(std.journal, box_key) is None
+    assert journal.read_journal(std.journal) == {}
+    # No seed on the resolve path.
+    assert seed_tripwire["seed"] is False
 
-    def test_resolve_does_not_touch_create_entry(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """Guard: the self-heal clears ONLY register-only (import/connect)
-        entries — a J1 ``create`` entry for the same box is LEFT untouched (it is
-        the create-recovery path's signal)."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import (
-            load_std_paths,
-            resolve_workset_project,
-        )
-        from kanibako.settings.paths import WorksetSpec
-        from kanibako.project.workset import load_workset
+  def test_resolve_does_not_touch_create_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """Guard: the self-heal clears ONLY register-only (import/connect)
+    entries — a J1 ``create`` entry for the same box is LEFT untouched (it is
+    the create-recovery path's signal)."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
+      load_std_paths,
+      resolve_workset_project,
+    )
+    from kanibako.settings.paths import WorksetSpec
+    from kanibako.project.workset import load_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("crws", tmp_home / "cr_ws", std)
-        src = tmp_home / "cr_src"
-        src.mkdir()
-        run_connect(_connect_args("crws", src, "crproj"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("crws", tmp_home / "cr_ws", std)
+    src = tmp_home / "cr_src"
+    src.mkdir()
+    run_connect(_connect_args("crws", src, "crproj"))
 
-        box_key = str((tmp_home / "cr_ws" / "boxes" / "crproj"))
-        journal.write_entry(
-            std.journal, box_key, op="create", name="crproj", mode="named",
-        )
-        capsys.readouterr()
+    box_key = str((tmp_home / "cr_ws" / "boxes" / "crproj"))
+    journal.write_entry(
+      std.journal,
+      box_key,
+      op="create",
+      name="crproj",
+      mode="named",
+    )
+    capsys.readouterr()
 
-        ws = load_workset(tmp_home / "cr_ws", "crws", early_system=std.early_system)
-        resolve_workset_project(
-            WorksetSpec.from_workset(ws), "crproj", std, config,
-            initialize=False,
-        )
-        # The create entry is NOT cleared by the connect self-heal.
-        assert journal.pending_create(std.journal, box_key) is not None
+    ws = load_workset(tmp_home / "cr_ws", "crws", early_system=std.early_system)
+    resolve_workset_project(
+      WorksetSpec.from_workset(ws),
+      "crproj",
+      std,
+      config,
+      initialize=False,
+    )
+    # The create entry is NOT cleared by the connect self-heal.
+    assert journal.pending_create(std.journal, box_key) is not None
 
 
 class TestDeferredPipelinesDoNotJournalConnect:
-    """FIX 2: add_project is also the membership-write seam for the DEFERRED
-    move/convert/duplicate pipelines.  Those must produce NO ``connect`` journal
-    entry — only the actual connect command (run_connect) journals."""
+  """FIX 2: add_project is also the membership-write seam for the DEFERRED
+  move/convert/duplicate pipelines.  Those must produce NO ``connect`` journal
+  entry — only the actual connect command (run_connect) journals."""
 
-    def test_bare_add_project_writes_no_journal_entry(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A direct add_project call (the move/convert/duplicate seam) writes NO
-        journal entry, even though std (with a journal) is passed."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.project.workset import load_workset
+  def test_bare_add_project_writes_no_journal_entry(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A direct add_project call (the move/convert/duplicate seam) writes NO
+    journal entry, even though std (with a journal) is passed."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.project.workset import load_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dpws", tmp_home / "dp_ws", std)
-        # Internal source (the duplicate/move target is an in-tree workspace dir).
-        src = ws.workspaces_dir / "dpproj"
-        src.mkdir(parents=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dpws", tmp_home / "dp_ws", std)
+    # Internal source (the duplicate/move target is an in-tree workspace dir).
+    src = ws.workspaces_dir / "dpproj"
+    src.mkdir(parents=True)
 
-        add_project(ws, "dpproj", src, std)  # std passed — but NO journal entry.
+    add_project(ws, "dpproj", src, std)  # std passed — but NO journal entry.
 
-        assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
-        assert any(p.name == "dpproj" for p in reloaded.projects)
+    assert journal.read_journal(std.journal) == {}
+    reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
+    assert any(p.name == "dpproj" for p in reloaded.projects)
 
-    def test_copy_into_workset_writes_no_journal_entry(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """``copy_into_workset`` (the duplicate-into-workset pipeline helper)
-        registers via add_project but writes NO connect journal entry."""
-        from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import BoxMode, load_std_paths
-        from kanibako.project.workset import load_workset
+  def test_copy_into_workset_writes_no_journal_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """``copy_into_workset`` (the duplicate-into-workset pipeline helper)
+    registers via add_project but writes NO connect journal entry."""
+    from kanibako.commands.box._lifecycle import copy_into_workset
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import BoxMode, load_std_paths
+    from kanibako.project.workset import load_workset
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("ciws", tmp_home / "ci_ws", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("ciws", tmp_home / "ci_ws", std)
 
-        # A source box to copy from: metadata + shell dirs + a workspace.
-        src_meta = tmp_home / "src_box"
-        src_shell = src_meta / "home"
-        src_shell.mkdir(parents=True)
-        (src_shell / "marker.txt").write_text("x")
-        src_workspace = tmp_home / "src_ws"
-        src_workspace.mkdir()
+    # A source box to copy from: metadata + shell dirs + a workspace.
+    src_meta = tmp_home / "src_box"
+    src_shell = src_meta / "home"
+    src_shell.mkdir(parents=True)
+    (src_shell / "marker.txt").write_text("x")
+    src_workspace = tmp_home / "src_ws"
+    src_workspace.mkdir()
 
-        copy_into_workset(
-            ws, "ciproj", src_meta, src_shell, src_workspace, BoxMode.primary,
-            copy_workspace=True, std=std,
-        )
+    copy_into_workset(
+      ws,
+      "ciproj",
+      src_meta,
+      src_shell,
+      src_workspace,
+      BoxMode.primary,
+      copy_workspace=True,
+      std=std,
+    )
 
-        # The pipeline registered the project but journaled NO connect op.
-        assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
-        assert any(p.name == "ciproj" for p in reloaded.projects)
+    # The pipeline registered the project but journaled NO connect op.
+    assert journal.read_journal(std.journal) == {}
+    reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
+    assert any(p.name == "ciproj" for p in reloaded.projects)
 
-    def test_no_journal_connect_call_in_lifecycle_module(self) -> None:
-        """Structural guard: the move/convert/duplicate module must NOT call the
-        connect journal bracket — only run_connect journals a connect op."""
-        import importlib
-        import inspect
+  def test_no_journal_connect_call_in_lifecycle_module(self) -> None:
+    """Structural guard: the move/convert/duplicate module must NOT call the
+    connect journal bracket — only run_connect journals a connect op."""
+    import importlib
+    import inspect
 
-        src = inspect.getsource(
-            importlib.import_module("kanibako.commands.box._lifecycle")
-        )
-        assert "_journal_connect" not in src, (
-            "move/convert/duplicate (_lifecycle) must NOT journal a connect op; "
-            "only run_connect does."
-        )
+    src = inspect.getsource(importlib.import_module("kanibako.commands.box._lifecycle"))
+    assert "_journal_connect" not in src, (
+      "move/convert/duplicate (_lifecycle) must NOT journal a connect op; only run_connect does."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -640,21 +781,23 @@ class TestDeferredPipelinesDoNotJournalConnect:
 # seed entry point (the register-only replay has no seed step — B7).
 # ---------------------------------------------------------------------------
 
-class TestNoSeedInImportConnectModules:
-    @pytest.mark.parametrize(
-        "module", ["kanibako.project.import_reconcile", "kanibako.project.workset"],
-    )
-    def test_no_seed_calls(self, module: str) -> None:
-        import importlib
-        import inspect
 
-        src = inspect.getsource(importlib.import_module(module))
-        # ⚑ ``_sync_box_at_create`` JOINED THE LIST 2026-08-11: the once-at-create
-        # ``synced`` write is the seed's sibling and belongs to the SAME create
-        # moment, so a register-only flow must not reach it either. An imported box
-        # was created — and synced — where it was created.
-        for forbidden in ("seed_new_box", "_seed_box_home", "_sync_box_at_create"):
-            assert forbidden not in src, (
-                f"{module} must not reference {forbidden}: import/connect "
-                f"register-only flows must NEVER seed (B7)."
-            )
+class TestNoSeedInImportConnectModules:
+  @pytest.mark.parametrize(
+    "module",
+    ["kanibako.project.import_reconcile", "kanibako.project.workset"],
+  )
+  def test_no_seed_calls(self, module: str) -> None:
+    import importlib
+    import inspect
+
+    src = inspect.getsource(importlib.import_module(module))
+    # ⚑ ``_sync_box_at_create`` JOINED THE LIST 2026-08-11: the once-at-create
+    # ``synced`` write is the seed's sibling and belongs to the SAME create
+    # moment, so a register-only flow must not reach it either. An imported box
+    # was created — and synced — where it was created.
+    for forbidden in ("seed_new_box", "_seed_box_home", "_sync_box_at_create"):
+      assert forbidden not in src, (
+        f"{module} must not reference {forbidden}: import/connect "
+        f"register-only flows must NEVER seed (B7)."
+      )

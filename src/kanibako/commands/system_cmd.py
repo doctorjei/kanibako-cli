@@ -11,550 +11,564 @@ from kanibako.settings.config import user_config_file
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser(
-        "system",
-        help="Global configuration, upgrades, and system information",
-        description="Manage global kanibako configuration and perform system tasks.",
-    )
-    sys_sub = p.add_subparsers(dest="system_command", metavar="COMMAND")
+  p = subparsers.add_parser(
+    "system",
+    help="Global configuration, upgrades, and system information",
+    description="Manage global kanibako configuration and perform system tasks.",
+  )
+  sys_sub = p.add_subparsers(dest="system_command", metavar="COMMAND")
 
-    # system info (default)
-    info_p = sys_sub.add_parser(
-        "info",
-        aliases=["inspect"],
-        help="Show system information",
-    )
-    info_p.set_defaults(func=run_info)
+  # system info (default)
+  info_p = sys_sub.add_parser(
+    "info",
+    aliases=["inspect"],
+    help="Show system information",
+  )
+  info_p.set_defaults(func=run_info)
 
-    # system set <key>=<value> [--force]
-    set_p = sys_sub.add_parser(
-        "set",
-        help="Set a global configuration value",
-        description=(
-            "Set a global setting (key=value).\n\n"
-            "  system set model=opus              set the global default model\n"
-            "  system set system.env.EDITOR=nano  set a global env var\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    set_p.add_argument("key_value", nargs="?", help="key=value pair")
-    add_null_flag(set_p, undo="system reset <key>")
-    add_set_force_flag(set_p)
-    set_p.set_defaults(func=run_set)
+  # system set <key>=<value> [--force]
+  set_p = sys_sub.add_parser(
+    "set",
+    help="Set a global configuration value",
+    description=(
+      "Set a global setting (key=value).\n\n"
+      "  system set model=opus              set the global default model\n"
+      "  system set system.env.EDITOR=nano  set a global env var\n"
+    ),
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+  )
+  set_p.add_argument("key_value", nargs="?", help="key=value pair")
+  add_null_flag(set_p, undo="system reset <key>")
+  add_set_force_flag(set_p)
+  set_p.set_defaults(func=run_set)
 
-    # system reset <key> | --all  [--force]
-    reset_p = sys_sub.add_parser(
-        "reset",
-        help="Reset (remove) a global configuration override",
-        description=(
-            "Remove a global override, reverting to the default.\n\n"
-            "  system reset model                 reset one key\n"
-            "  system reset --all                 reset all overrides\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    reset_p.add_argument("key", nargs="?", default=None, help="Config key to reset")
-    reset_p.add_argument(
-        "--all", action="store_true", dest="all_keys",
-        help="Remove all overrides",
-    )
-    reset_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompts; accept a workset.logs directory shared by "
-             "working sets",
-    )
-    reset_p.set_defaults(func=run_reset)
+  # system reset <key> | --all  [--force]
+  reset_p = sys_sub.add_parser(
+    "reset",
+    help="Reset (remove) a global configuration override",
+    description=(
+      "Remove a global override, reverting to the default.\n\n"
+      "  system reset model                 reset one key\n"
+      "  system reset --all                 reset all overrides\n"
+    ),
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+  )
+  reset_p.add_argument("key", nargs="?", default=None, help="Config key to reset")
+  reset_p.add_argument(
+    "--all",
+    action="store_true",
+    dest="all_keys",
+    help="Remove all overrides",
+  )
+  reset_p.add_argument(
+    "--force",
+    action="store_true",
+    help="Skip confirmation prompts; accept a workset.logs directory shared by working sets",
+  )
+  reset_p.set_defaults(func=run_reset)
 
-    # system get <key>
-    get_p = sys_sub.add_parser(
-        "get",
-        help="Get a global configuration value",
-        description="Read one global setting.",
-    )
-    get_p.add_argument("key", help="Config key to read")
-    get_p.set_defaults(func=run_get)
+  # system get <key>
+  get_p = sys_sub.add_parser(
+    "get",
+    help="Get a global configuration value",
+    description="Read one global setting.",
+  )
+  get_p.add_argument("key", help="Config key to read")
+  get_p.set_defaults(func=run_get)
 
-    # system show [--effective]
-    show_p = sys_sub.add_parser(
-        "show",
-        help="Show global configuration",
-        description=(
-            "Show global settings.\n\n"
-            "  system show                        show overrides\n"
-            "  system show --effective            show resolved values\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    show_p.add_argument(
-        "--effective", action="store_true",
-        help="Show all resolved values including defaults",
-    )
-    show_p.set_defaults(func=run_show)
+  # system show [--effective]
+  show_p = sys_sub.add_parser(
+    "show",
+    help="Show global configuration",
+    description=(
+      "Show global settings.\n\n"
+      "  system show                        show overrides\n"
+      "  system show --effective            show resolved values\n"
+    ),
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+  )
+  show_p.add_argument(
+    "--effective",
+    action="store_true",
+    help="Show all resolved values including defaults",
+  )
+  show_p.set_defaults(func=run_show)
 
-    # system defaults
-    defaults_p = sys_sub.add_parser(
-        "defaults",
-        help="List every default kanibako ships, with its scope and source",
-        description=(
-            "List the values kanibako declares out of the box.\n\n"
-            "Install-wide and STATIC — it takes no box and resolves nothing, so it\n"
-            "answers what 'show --effective' cannot: which of the values in force\n"
-            "are kanibako's own defaults, and which file declares each one.\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    defaults_p.set_defaults(func=run_defaults)
+  # system defaults
+  defaults_p = sys_sub.add_parser(
+    "defaults",
+    help="List every default kanibako ships, with its scope and source",
+    description=(
+      "List the values kanibako declares out of the box.\n\n"
+      "Install-wide and STATIC — it takes no box and resolves nothing, so it\n"
+      "answers what 'show --effective' cannot: which of the values in force\n"
+      "are kanibako's own defaults, and which file declares each one.\n"
+    ),
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+  )
+  defaults_p.set_defaults(func=run_defaults)
 
-    # system upgrade [--check]
-    from kanibako.commands.upgrade import run as run_upgrade_fn
+  # system upgrade [--check]
+  from kanibako.commands.upgrade import run as run_upgrade_fn
 
-    upgrade_p = sys_sub.add_parser(
-        "upgrade",
-        help="Upgrade kanibako to the latest version",
-    )
-    upgrade_p.add_argument(
-        "--check", action="store_true",
-        help="Check for updates without installing",
-    )
-    upgrade_p.set_defaults(func=run_upgrade_fn)
+  upgrade_p = sys_sub.add_parser(
+    "upgrade",
+    help="Upgrade kanibako to the latest version",
+  )
+  upgrade_p.add_argument(
+    "--check",
+    action="store_true",
+    help="Check for updates without installing",
+  )
+  upgrade_p.set_defaults(func=run_upgrade_fn)
 
-    # system diagnose
-    from kanibako.commands.diagnose import run_system_diagnose
+  # system diagnose
+  from kanibako.commands.diagnose import run_system_diagnose
 
-    diagnose_p = sys_sub.add_parser(
-        "diagnose",
-        help="Check system health (runtime, images, agents, storage)",
-    )
-    diagnose_p.set_defaults(func=run_system_diagnose)
+  diagnose_p = sys_sub.add_parser(
+    "diagnose",
+    help="Check system health (runtime, images, agents, storage)",
+  )
+  diagnose_p.set_defaults(func=run_system_diagnose)
 
-    # Default to info when 'system' is run without a subcommand
-    p.set_defaults(func=run_info)
+  # Default to info when 'system' is run without a subcommand
+  p.set_defaults(func=run_info)
 
 
 def run_info(args: argparse.Namespace) -> int:
-    """Show system information: version, paths, runtime."""
-    import platform
+  """Show system information: version, paths, runtime."""
+  import platform
 
-    cf = user_config_file()
+  cf = user_config_file()
 
-    print(f"Kanibako v{__version__}")
-    print(f"Python:    {platform.python_version()}")
+  print(f"Kanibako v{__version__}")
+  print(f"Python:    {platform.python_version()}")
 
-    if cf.exists():
-        print(f"Config:    {cf}")
-        from pathlib import Path
+  if cf.exists():
+    print(f"Config:    {cf}")
+    from pathlib import Path
 
-        from kanibako.settings.paths import layer1_foundation
-        # ⚑ LAYER 1 ALONE: the Data line should not go dark because of a bad SYSTEM settings
-        # file it is not reporting.
-        data_path = Path(layer1_foundation(cf, runtime_dir=True)["config.data"])
-        print(f"Data:      {data_path}")
+    from kanibako.settings.paths import layer1_foundation
+
+    # ⚑ LAYER 1 ALONE: the Data line should not go dark because of a bad SYSTEM settings
+    # file it is not reporting.
+    data_path = Path(layer1_foundation(cf, runtime_dir=True)["config.data"])
+    print(f"Data:      {data_path}")
+  else:
+    print("Config:    (not initialized — run 'kanibako setup' or just 'kanibako start')")
+
+  # Container runtime
+  import subprocess
+
+  from kanibako.runtime.container import ContainerError, ContainerRuntime
+
+  try:
+    runtime = ContainerRuntime()
+    result = subprocess.run(
+      [runtime.cmd, "--version"],
+      capture_output=True,
+      text=True,
+    )
+    version = result.stdout.strip() if result.returncode == 0 else "unknown"
+    print(f"Runtime:   {runtime.cmd} ({version})")
+  except ContainerError as exc:
+    print(f"Runtime:   {exc}")
+  except Exception:
+    print("Runtime:   not found — install podman (https://podman.io/) or Docker")
+
+  # Install method
+  try:
+    from kanibako.commands.upgrade import _get_repo_dir
+
+    repo = _get_repo_dir()
+    if repo is not None:
+      print(f"Install:   git ({repo})")
     else:
-        print(
-            "Config:    (not initialized — run 'kanibako setup' or just 'kanibako start')"
-        )
+      print("Install:   pip")
+  except Exception:
+    print("Install:   pip")
 
-    # Container runtime
-    import subprocess
+  # Agent count
+  try:
+    from kanibako.targets import discover_targets
 
-    from kanibako.runtime.container import ContainerError, ContainerRuntime
+    targets = discover_targets()
+    count = len(targets)
+    if count > 0:
+      print(f"Agents:    {count} detected (use 'kanibako agent list' for details)")
+    else:
+      print("Agents:    none (install a plugin: pip install kanibako-agent-claude)")
+  except Exception:
+    pass
 
-    try:
-        runtime = ContainerRuntime()
-        result = subprocess.run(
-            [runtime.cmd, "--version"], capture_output=True, text=True,
-        )
-        version = result.stdout.strip() if result.returncode == 0 else "unknown"
-        print(f"Runtime:   {runtime.cmd} ({version})")
-    except ContainerError as exc:
-        print(f"Runtime:   {exc}")
-    except Exception:
-        print(
-            "Runtime:   not found — install podman (https://podman.io/) or Docker"
-        )
+  print()
+  print("Tip: Run 'kanibako system diagnose' for a full health check.")
 
-    # Install method
-    try:
-        from kanibako.commands.upgrade import _get_repo_dir
-
-        repo = _get_repo_dir()
-        if repo is not None:
-            print(f"Install:   git ({repo})")
-        else:
-            print("Install:   pip")
-    except Exception:
-        print("Install:   pip")
-
-    # Agent count
-    try:
-        from kanibako.targets import discover_targets
-
-        targets = discover_targets()
-        count = len(targets)
-        if count > 0:
-            print(
-                f"Agents:    {count} detected (use 'kanibako agent list' for details)"
-            )
-        else:
-            print(
-                "Agents:    none (install a plugin: pip install kanibako-agent-claude)"
-            )
-    except Exception:
-        pass
-
-    print()
-    print("Tip: Run 'kanibako system diagnose' for a full health check.")
-
-    return 0
+  return 0
 
 
 def run_set(args: argparse.Namespace) -> int:
-    """``system set <key>=<value>``."""
-    args.reset = False
-    args.all_keys = False
-    args.effective = False
-    return _run_system_config(args)
+  """``system set <key>=<value>``."""
+  args.reset = False
+  args.all_keys = False
+  args.effective = False
+  return _run_system_config(args)
 
 
 def run_reset(args: argparse.Namespace) -> int:
-    """``system reset <key>`` / ``system reset --all``."""
-    args.reset = True
-    args.key_value = getattr(args, "key", None)
-    args.effective = False
-    return _run_system_config(args)
+  """``system reset <key>`` / ``system reset --all``."""
+  args.reset = True
+  args.key_value = getattr(args, "key", None)
+  args.effective = False
+  return _run_system_config(args)
 
 
 def run_get(args: argparse.Namespace) -> int:
-    """``system get <key>``."""
-    args.key_value = args.key
-    args.reset = False
-    args.all_keys = False
-    args.effective = False
-    args.force = False
-    return _run_system_config(args)
+  """``system get <key>``."""
+  args.key_value = args.key
+  args.reset = False
+  args.all_keys = False
+  args.effective = False
+  args.force = False
+  return _run_system_config(args)
 
 
 def run_show(args: argparse.Namespace) -> int:
-    """``system show [--effective]``."""
-    args.key_value = None
-    args.reset = False
-    args.all_keys = False
-    args.force = False
-    return _run_system_config(args)
+  """``system show [--effective]``."""
+  args.key_value = None
+  args.reset = False
+  args.all_keys = False
+  args.force = False
+  return _run_system_config(args)
 
 
 def run_defaults(args: argparse.Namespace) -> int:
-    """``system defaults`` — the shipped defaults, each beside the artifact declaring it.
+  """``system defaults`` — the shipped defaults, each beside the artifact declaring it.
 
-    Deliberately NOT routed through ``_run_system_config``: that engine reads and writes
-    the user's own files, and this verb reads neither. It consults only PACKAGED data
-    (the keyspace manifest, ``core-defaults.yaml``, each installed plugin's defaults
-    file), so it works with no config, no project and no box — which is exactly when a
-    user needs to know what the defaults are.
-    """
-    from kanibako.settings.defaults_inventory import print_defaults
+  Deliberately NOT routed through ``_run_system_config``: that engine reads and writes
+  the user's own files, and this verb reads neither. It consults only PACKAGED data
+  (the keyspace manifest, ``core-defaults.yaml``, each installed plugin's defaults
+  file), so it works with no config, no project and no box — which is exactly when a
+  user needs to know what the defaults are.
+  """
+  from kanibako.settings.defaults_inventory import print_defaults
 
-    print_defaults(sys.stdout)
-    return 0
+  print_defaults(sys.stdout)
+  return 0
 
 
 def _agent_node_error(key: str, *, verb: str) -> str | None:
-    """Why ``system <verb>`` refuses the agent node *key* addresses, or ``None``.
+  """Why ``system <verb>`` refuses the agent node *key* addresses, or ``None``.
 
-    The node is judged by the ``system get`` verdict (spec §0), before anything is
-    written or removed. A valid node returns ``None``: the engine owns every other refusal.
-    """
-    from kanibako.settings.config_keys import (
-        ConfigLevel,
-        agent_node_of,
-        resolve_key,
-        scope_key_reason,
-        scope_key_refusal,
-    )
-    from kanibako.settings.settings_keyspace import is_valid_agent_segment
-    from kanibako.settings.settings_prefs import default_valid_agents
+  The node is judged by the ``system get`` verdict (spec §0), before anything is
+  written or removed. A valid node returns ``None``: the engine owns every other refusal.
+  """
+  from kanibako.settings.config_keys import (
+    ConfigLevel,
+    agent_node_of,
+    resolve_key,
+    scope_key_reason,
+    scope_key_refusal,
+  )
+  from kanibako.settings.settings_keyspace import is_valid_agent_segment
+  from kanibako.settings.settings_prefs import default_valid_agents
 
-    canonical = resolve_key(key)
-    # ⚑ The key's own agent segment, the one ``get`` judges — not ``agent_node_of``'s node,
-    # which splits on the LAST segment and reads ``agent.claude.bindings.ro.model`` as
-    # node ``claude.bindings.ro``, pre-empting the engine's retired-route refusal.
-    if not agent_node_of(canonical) or is_valid_agent_segment(
-        canonical.split(".")[1], default_valid_agents(),
-    ):
-        return None
-    reason = scope_key_reason(canonical)
-    if reason is None:
-        return None
-    return scope_key_refusal(key, reason, ConfigLevel.system, verb=verb, cure="")
+  canonical = resolve_key(key)
+  # ⚑ The key's own agent segment, the one ``get`` judges — not ``agent_node_of``'s node,
+  # which splits on the LAST segment and reads ``agent.claude.bindings.ro.model`` as
+  # node ``claude.bindings.ro``, pre-empting the engine's retired-route refusal.
+  if not agent_node_of(canonical) or is_valid_agent_segment(
+    canonical.split(".")[1],
+    default_valid_agents(),
+  ):
+    return None
+  reason = scope_key_reason(canonical)
+  if reason is None:
+    return None
+  return scope_key_refusal(key, reason, ConfigLevel.system, verb=verb, cure="")
 
 
 def _system_target_std(cf):
-    """``(std, error)`` for the system scope's target (spec §2a), shared by ``set`` and
-    ``get``; ``(None, reason)`` when a stored value stops it loading."""
-    from kanibako.errors import KanibakoError
-    from kanibako.settings.config import load_config
-    from kanibako.settings.paths import load_std_paths
+  """``(std, error)`` for the system scope's target (spec §2a), shared by ``set`` and
+  ``get``; ``(None, reason)`` when a stored value stops it loading."""
+  from kanibako.errors import KanibakoError
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import load_std_paths
 
-    try:
-        return load_std_paths(load_config(cf)), None
-    except KanibakoError as exc:
-        return None, str(exc)
+  try:
+    return load_std_paths(load_config(cf)), None
+  except KanibakoError as exc:
+    return None, str(exc)
 
 
 def _run_system_config(args: argparse.Namespace) -> int:
-    """Shared global-config engine dispatch.
+  """Shared global-config engine dispatch.
 
-    The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
-    family) in the ``~/.config/kanibako.cfg`` CONFIG file (``cf``) and
-    routes SETTINGS (``system.agent``, the ``system.auth.*`` chain,
-    agent settings, downward scope defaults) to ``{config.settings}`` =
-    ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
-    the same file the launch cascade's system tier reads (F2/F3).
+  The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
+  family) in the ``~/.config/kanibako.cfg`` CONFIG file (``cf``) and
+  routes SETTINGS (``system.agent``, the ``system.auth.*`` chain,
+  agent settings, downward scope defaults) to ``{config.settings}`` =
+  ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
+  the same file the launch cascade's system tier reads (F2/F3).
 
-    ⚑ There is NO system-tier ENV FILE any more. ``{config.data}/env`` was the
-    docker ``.env`` the launch layered as its system tier; R-39 retired the bare
-    ``env.<VAR>`` spelling that wrote it and the RQ-1 re-ruling [Jei:2026-08-02] retired the
-    launch READ, so no verb threads it. The system env family is the settings key
-    ``system.env.<VAR>``, stored in ``ssp`` like every other system setting.
-    """
-    from pathlib import Path
+  ⚑ There is NO system-tier ENV FILE any more. ``{config.data}/env`` was the
+  docker ``.env`` the launch layered as its system tier; R-39 retired the bare
+  ``env.<VAR>`` spelling that wrote it and the RQ-1 re-ruling [Jei:2026-08-02] retired the
+  launch READ, so no verb threads it. The system env family is the settings key
+  ``system.env.<VAR>``, stored in ``ssp`` like every other system setting.
+  """
+  from pathlib import Path
 
-    from kanibako.settings.config import user_config_file
-    from kanibako.settings.paths import layer1_foundation
+  from kanibako.settings.config import user_config_file
+  from kanibako.settings.paths import layer1_foundation
 
-    cf = user_config_file()
-    # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: a
-    # stored-but-unusable Layer-2 value must not reach these verbs — the read-time
-    # refusal (keyspec §2a "A path key's stored value") owns that guard — and the
-    # foundation answers from Layer-1 alone.  (Brick
-    # history: back when ``load_std_paths`` also MATERIALIZED the store, one such value
-    # bricked every config verb behind a raw ``OSError``, including the ``reset`` that
-    # would have un-stored it.)  These verbs need only ``std.settings`` and ``std.agents``,
-    # both Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
-    # ``settings/config.py`` already make this substitution for the same reason).
-    # ⚑ It creates nothing (no ``XDG_RUNTIME_DIR``); no shipped ``config.*`` default
-    # references that variable, so nothing is lost by the choice.
-    # ⚑ An absent file yields {}: a fresh install resolves defaults, and every reader
-    # below treats an absent file as "unset" — which is exactly what it is.
-    _foundation = layer1_foundation(cf)
-    # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
-    ssp = Path(_foundation["config.settings"])
-    agents_root = Path(_foundation["config.agents"])
+  cf = user_config_file()
+  # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: a
+  # stored-but-unusable Layer-2 value must not reach these verbs — the read-time
+  # refusal (keyspec §2a "A path key's stored value") owns that guard — and the
+  # foundation answers from Layer-1 alone.  (Brick
+  # history: back when ``load_std_paths`` also MATERIALIZED the store, one such value
+  # bricked every config verb behind a raw ``OSError``, including the ``reset`` that
+  # would have un-stored it.)  These verbs need only ``std.settings`` and ``std.agents``,
+  # both Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
+  # ``settings/config.py`` already make this substitution for the same reason).
+  # ⚑ It creates nothing (no ``XDG_RUNTIME_DIR``); no shipped ``config.*`` default
+  # references that variable, so nothing is lost by the choice.
+  # ⚑ An absent file yields {}: a fresh install resolves defaults, and every reader
+  # below treats an absent file as "unset" — which is exactly what it is.
+  _foundation = layer1_foundation(cf)
+  # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
+  ssp = Path(_foundation["config.settings"])
+  agents_root = Path(_foundation["config.agents"])
 
-    from kanibako.settings.config_keys import (
-        ConfigLevel,
-        agent_node_of,
-        bare_env_retired_error,
-        resolve_key,
-        scope_read_key_error,
+  from kanibako.settings.config_keys import (
+    ConfigLevel,
+    agent_node_of,
+    bare_env_retired_error,
+    resolve_key,
+    scope_read_key_error,
+  )
+  from kanibako.settings.config_interface import (
+    ConfigAction,
+    get_config_value,
+    parse_config_arg,
+    reset_all,
+    reset_config_value,
+    set_config_value,
+    show_config,
+  )
+
+  key_value = getattr(args, "key_value", None)
+  action, key, value = parse_config_arg(
+    key_value,
+    set_null=getattr(args, "null", False),
+  )
+
+  # ⚑ Keyspec § 0: dropping the system value can land worksets on one log dir.
+  if args.reset and (key or getattr(args, "all_keys", False)):
+    reset_std, _ = _system_target_std(cf)
+    if reset_std is not None:
+      from kanibako.project.workset import logs_share_refusal
+      from kanibako.settings.settings_resolve import UNSET
+
+      _collision = logs_share_refusal(
+        "workset.logs" if getattr(args, "all_keys", False) else key,
+        UNSET,
+        reset_std,
+        force=args.force,
+        scope="system",
+      )
+      if _collision is not None:
+        print(_collision, file=sys.stderr)
+        return 1
+
+  # --reset --all
+  if args.reset and getattr(args, "all_keys", False):
+    msg = reset_all(
+      config_path=cf,
+      force=args.force,
+      system_settings_path=ssp,
+      command_scope=ConfigLevel.system,
     )
-    from kanibako.settings.config_interface import (
-        ConfigAction,
-        get_config_value,
-        parse_config_arg,
-        reset_all,
-        reset_config_value,
-        set_config_value,
-        show_config,
-    )
-
-    key_value = getattr(args, "key_value", None)
-    action, key, value = parse_config_arg(
-        key_value, set_null=getattr(args, "null", False),
-    )
-
-    # ⚑ Keyspec § 0: dropping the system value can land worksets on one log dir.
-    if args.reset and (key or getattr(args, "all_keys", False)):
-        reset_std, _ = _system_target_std(cf)
-        if reset_std is not None:
-            from kanibako.project.workset import logs_share_refusal
-            from kanibako.settings.settings_resolve import UNSET
-
-            _collision = logs_share_refusal(
-                "workset.logs" if getattr(args, "all_keys", False) else key, UNSET,
-                reset_std, force=args.force, scope="system",
-            )
-            if _collision is not None:
-                print(_collision, file=sys.stderr)
-                return 1
-
-    # --reset --all
-    if args.reset and getattr(args, "all_keys", False):
-        msg = reset_all(
-            config_path=cf, force=args.force,
-            system_settings_path=ssp,
-            command_scope=ConfigLevel.system,
-        )
-        print(msg)
-        return 0
-
-    # --reset <key>
-    if args.reset:
-        if not key:
-            print(
-                "Error: reset requires a key (or --all).",
-                file=sys.stderr,
-            )
-            return 1
-        _node_err = _agent_node_error(key, verb="reset")
-        if _node_err is not None:
-            print(_node_err, file=sys.stderr)
-            return 1
-        # Ensure the system settings dir exists for SETTINGS removals.
-        ssp.parent.mkdir(parents=True, exist_ok=True)
-        # ⚑ NO per-node bind floor registry is threaded any more. It existed so a
-        # reset of ``agent.<node>.bindings.{ro,rw}.<name>`` could name the descriptor
-        # FLOOR it reverted to; R-9 retired that reset route (the engine refuses the
-        # key by name), so there is nothing left for the registry to describe.
-        # Thread the system SETTINGS file as the cascade's system tier so the
-        # honest cleared-message can name the now-effective value + source tier
-        # (item 1). A system-scope regular settings key was removed FROM ssp, so
-        # ssp is the tier the post-reset snapshot must read.
-        msg = reset_config_value(
-            key, config_path=cf, system_settings_path=ssp,
-            command_scope=ConfigLevel.system,
-            cascade_system_path=ssp,
-            agents_root=agents_root, node_store=False,
-        )
-        if msg.startswith("Error:"):
-            print(msg, file=sys.stderr)
-            return 1
-        print(msg)
-        return 0
-
-    # show (no args)
-    if action == ConfigAction.show:
-        show_config(
-            global_config_path=cf,
-            command_scope=ConfigLevel.system,
-            config_path=cf,
-            effective=args.effective,
-            system_settings_path=ssp,
-        )
-        return 0
-
-    # get
-    if action == ConfigAction.get:
-        # Bare env.* — RETIRED (R-39): refused with the cure BEFORE the closed-keyspace
-        # gate, for the reason ``scope_read_key_error`` states — a generic "not a key"
-        # must not overwrite a specific cure.
-        _env_err = bare_env_retired_error(
-            key, verb="read", command_scope=ConfigLevel.system,
-        )
-        if _env_err is not None:
-            print(_env_err, file=sys.stderr)
-            return 1
-        # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — the SAME function ``box get`` and
-        # ``workset get`` call, so the three nouns cannot drift into three answers for one
-        # key.  Without it a declared name this scope cannot serve was read anyway, found
-        # nothing, and printed "(not set)" at rc 0 — the fabricated answer §0 forbids in
-        # the same breath as the write.
-        # ⚑⚑ IT IS THE ONLY VOCABULARY GATE ON THIS READ, and that is the point.  An
-        # ``is_known_key`` PRE-GATE stood here until 2026-08-28 printing "unknown config
-        # key" — a SECOND vocabulary, disagreeing with this one on SEVEN DECLARED KEYS
-        # (the six bind-shaped category terminals
-        # ``system.{bindings.ro,bindings.rw,caches,common,seeded,synced}`` and
-        # ``system.masks``), which it refused while ``get_config_value`` reads every one
-        # of them and its two sibling nouns already served them.  ``is_known_key`` answers
-        # "is this key-SHAPED, as opposed to a project name" — the question ``box``'s
-        # POSITIONAL PARSER asks, which is where it still lives; §0 asks "is this a
-        # DECLARED key", and only ``key_validity`` (reached here through
-        # ``scope_key_reason``) answers that.
-        # ⚑ NO ``active_agent``: a bare table leaf here means the ANY-AGENT tier, so naming
-        # one agent in the cure would answer for a tier the user did not ask about.
-        _key_err = scope_read_key_error(key, ConfigLevel.system)
-        if _key_err is not None:
-            print(_key_err, file=sys.stderr)
-            return 1
-        val = get_config_value(
-            key, global_config_path=cf,
-            system_settings_path=ssp,
-            agents_root=agents_root, node_store=False,
-            # ⚑ The scope is threaded even though every other handler threads it
-            # for a REASON this one does not have: ``get`` consumes command_scope
-            # only for the box-scope redirect, so at the system scope it changes
-            # nothing today (pinned per key family in
-            # tests/test_settings/test_config_dest_parity.py). It is passed because
-            # the destination rule now takes the scope explicitly, and a handler
-            # that withholds it leaves the rule inferring the scope from a path
-            # being non-None -- which is exactly how get and set drifted apart.
-            command_scope=ConfigLevel.system,
-            std=_system_target_std(cf)[0],
-        )
-        if val is None:
-            print(f"{key}: (not set)")
-        else:
-            print(f"{key}={val}")
-        return 0
-
-    # set
-    if action == ConfigAction.set:
-        _node_err = _agent_node_error(key, verb="set")
-        if _node_err is not None:
-            print(_node_err, file=sys.stderr)
-            return 1
-        # Ensure the system settings dir exists for SETTINGS writes.
-        ssp.parent.mkdir(parents=True, exist_ok=True)
-
-        # ⚑ THE PER-NODE BIND ROUTING BLOCK IS GONE (R-9). A system-scope
-        # ``agent.<node>.bindings.{ro,rw}.<name>`` set used to be re-aimed at the
-        # node's OWN ``agents/<node>/agent.yaml`` (mkdir included) and handed the
-        # detect-free descriptor floor registry so the must-exist gate would pass.
-        # That write route is retired: the engine refuses the key BY NAME in its
-        # preamble, before any destination is resolved. Removing the block here is
-        # part of the retirement, not an oversight — leaving it would have mkdir'd an
-        # ``agents/<node>/`` directory for a write that is then refused.
-        #
-        # Full launch cascade for a CATEGORY set's set-time E3 probe
-        # ([Jei:2026-06-29] (b)): the system is the command scope, whose settings
-        # file is ssp — the SAME file the launch cascade's system tier reads
-        # (start.py) and the same file this command's RESET handler threads. It
-        # passed cf (the CONFIG file) here while a system category set wrote to cf,
-        # so the must-exist probe agreed with neither the launch nor reset; both
-        # halves now name ssp.
-        # ⚑ THE ONE DATUM THIS VERB HAS TO READ OFF THE KEY (P7). ``cascade_agent_name``
-        # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
-        # agent, ``agent set`` is handed the node it was invoked on, and here the key is
-        # the only carrier — so a per-node key names its own node and every other key
-        # names none. It anchors ``{meta.agent.<node>.path}`` in the set-time snapshot;
-        # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
-        # refused as a dangling reference while ``agent set claude canon=…`` — the same
-        # key, the other spelling — accepted it.
-        # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same
-        # parsers ``path_key_anchor`` uses, so only the node this write ADDRESSES is
-        # floored. A ref against any OTHER node's store root still dangles, and a key
-        # naming no node threads nothing — this cannot become a blanket accept of
-        # ``{meta.agent.*.path}``.
-        # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
-        # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
-        # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,
-        # which this verb deliberately does not hold (the foundation note above). It is
-        # loaded for the set-time resolve (:func:`_system_target_std`).
-        set_std, set_std_error = _system_target_std(cf)
-        # ⚑ Keyspec § 0: an anchored value can still land worksets on one log dir.
-        if set_std is not None:
-            from kanibako.project.workset import logs_share_refusal
-
-            _collision = logs_share_refusal(key, value, set_std, force=args.force,
-                                           scope="system")
-            if _collision is not None:
-                print(_collision, file=sys.stderr)
-                return 1
-        msg = set_config_value(
-            key, value, config_path=cf,
-            system_settings_path=ssp,
-            cascade_system_path=ssp,
-            cascade_agent_name=agent_node_of(resolve_key(key)),
-            command_scope=ConfigLevel.system,
-            agents_root=agents_root, node_store=False,
-            std=set_std,
-            target_error=set_std_error,
-            force=args.force,
-        )
-        if msg.startswith("Error:"):
-            print(msg, file=sys.stderr)
-            return 1
-        print(msg)
-        return 0
-
+    print(msg)
     return 0
+
+  # --reset <key>
+  if args.reset:
+    if not key:
+      print(
+        "Error: reset requires a key (or --all).",
+        file=sys.stderr,
+      )
+      return 1
+    _node_err = _agent_node_error(key, verb="reset")
+    if _node_err is not None:
+      print(_node_err, file=sys.stderr)
+      return 1
+    # Ensure the system settings dir exists for SETTINGS removals.
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+    # ⚑ NO per-node bind floor registry is threaded any more. It existed so a
+    # reset of ``agent.<node>.bindings.{ro,rw}.<name>`` could name the descriptor
+    # FLOOR it reverted to; R-9 retired that reset route (the engine refuses the
+    # key by name), so there is nothing left for the registry to describe.
+    # Thread the system SETTINGS file as the cascade's system tier so the
+    # honest cleared-message can name the now-effective value + source tier
+    # (item 1). A system-scope regular settings key was removed FROM ssp, so
+    # ssp is the tier the post-reset snapshot must read.
+    msg = reset_config_value(
+      key,
+      config_path=cf,
+      system_settings_path=ssp,
+      command_scope=ConfigLevel.system,
+      cascade_system_path=ssp,
+      agents_root=agents_root,
+      node_store=False,
+    )
+    if msg.startswith("Error:"):
+      print(msg, file=sys.stderr)
+      return 1
+    print(msg)
+    return 0
+
+  # show (no args)
+  if action == ConfigAction.show:
+    show_config(
+      global_config_path=cf,
+      command_scope=ConfigLevel.system,
+      config_path=cf,
+      effective=args.effective,
+      system_settings_path=ssp,
+    )
+    return 0
+
+  # get
+  if action == ConfigAction.get:
+    # Bare env.* — RETIRED (R-39): refused with the cure BEFORE the closed-keyspace
+    # gate, for the reason ``scope_read_key_error`` states — a generic "not a key"
+    # must not overwrite a specific cure.
+    _env_err = bare_env_retired_error(
+      key,
+      verb="read",
+      command_scope=ConfigLevel.system,
+    )
+    if _env_err is not None:
+      print(_env_err, file=sys.stderr)
+      return 1
+    # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — the SAME function ``box get`` and
+    # ``workset get`` call, so the three nouns cannot drift into three answers for one
+    # key.  Without it a declared name this scope cannot serve was read anyway, found
+    # nothing, and printed "(not set)" at rc 0 — the fabricated answer §0 forbids in
+    # the same breath as the write.
+    # ⚑⚑ IT IS THE ONLY VOCABULARY GATE ON THIS READ, and that is the point.  An
+    # ``is_known_key`` PRE-GATE stood here until 2026-08-28 printing "unknown config
+    # key" — a SECOND vocabulary, disagreeing with this one on SEVEN DECLARED KEYS
+    # (the six bind-shaped category terminals
+    # ``system.{bindings.ro,bindings.rw,caches,common,seeded,synced}`` and
+    # ``system.masks``), which it refused while ``get_config_value`` reads every one
+    # of them and its two sibling nouns already served them.  ``is_known_key`` answers
+    # "is this key-SHAPED, as opposed to a project name" — the question ``box``'s
+    # POSITIONAL PARSER asks, which is where it still lives; §0 asks "is this a
+    # DECLARED key", and only ``key_validity`` (reached here through
+    # ``scope_key_reason``) answers that.
+    # ⚑ NO ``active_agent``: a bare table leaf here means the ANY-AGENT tier, so naming
+    # one agent in the cure would answer for a tier the user did not ask about.
+    _key_err = scope_read_key_error(key, ConfigLevel.system)
+    if _key_err is not None:
+      print(_key_err, file=sys.stderr)
+      return 1
+    val = get_config_value(
+      key,
+      global_config_path=cf,
+      system_settings_path=ssp,
+      agents_root=agents_root,
+      node_store=False,
+      # ⚑ The scope is threaded even though every other handler threads it
+      # for a REASON this one does not have: ``get`` consumes command_scope
+      # only for the box-scope redirect, so at the system scope it changes
+      # nothing today (pinned per key family in
+      # tests/test_settings/test_config_dest_parity.py). It is passed because
+      # the destination rule now takes the scope explicitly, and a handler
+      # that withholds it leaves the rule inferring the scope from a path
+      # being non-None -- which is exactly how get and set drifted apart.
+      command_scope=ConfigLevel.system,
+      std=_system_target_std(cf)[0],
+    )
+    if val is None:
+      print(f"{key}: (not set)")
+    else:
+      print(f"{key}={val}")
+    return 0
+
+  # set
+  if action == ConfigAction.set:
+    _node_err = _agent_node_error(key, verb="set")
+    if _node_err is not None:
+      print(_node_err, file=sys.stderr)
+      return 1
+    # Ensure the system settings dir exists for SETTINGS writes.
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+
+    # ⚑ THE PER-NODE BIND ROUTING BLOCK IS GONE (R-9). A system-scope
+    # ``agent.<node>.bindings.{ro,rw}.<name>`` set used to be re-aimed at the
+    # node's OWN ``agents/<node>/agent.yaml`` (mkdir included) and handed the
+    # detect-free descriptor floor registry so the must-exist gate would pass.
+    # That write route is retired: the engine refuses the key BY NAME in its
+    # preamble, before any destination is resolved. Removing the block here is
+    # part of the retirement, not an oversight — leaving it would have mkdir'd an
+    # ``agents/<node>/`` directory for a write that is then refused.
+    #
+    # Full launch cascade for a CATEGORY set's set-time E3 probe
+    # ([Jei:2026-06-29] (b)): the system is the command scope, whose settings
+    # file is ssp — the SAME file the launch cascade's system tier reads
+    # (start.py) and the same file this command's RESET handler threads. It
+    # passed cf (the CONFIG file) here while a system category set wrote to cf,
+    # so the must-exist probe agreed with neither the launch nor reset; both
+    # halves now name ssp.
+    # ⚑ THE ONE DATUM THIS VERB HAS TO READ OFF THE KEY (P7). ``cascade_agent_name``
+    # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
+    # agent, ``agent set`` is handed the node it was invoked on, and here the key is
+    # the only carrier — so a per-node key names its own node and every other key
+    # names none. It anchors ``{meta.agent.<node>.path}`` in the set-time snapshot;
+    # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
+    # refused as a dangling reference while ``agent set claude canon=…`` — the same
+    # key, the other spelling — accepted it.
+    # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same
+    # parsers ``path_key_anchor`` uses, so only the node this write ADDRESSES is
+    # floored. A ref against any OTHER node's store root still dangles, and a key
+    # naming no node threads nothing — this cannot become a blanket accept of
+    # ``{meta.agent.*.path}``.
+    # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
+    # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
+    # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,
+    # which this verb deliberately does not hold (the foundation note above). It is
+    # loaded for the set-time resolve (:func:`_system_target_std`).
+    set_std, set_std_error = _system_target_std(cf)
+    # ⚑ Keyspec § 0: an anchored value can still land worksets on one log dir.
+    if set_std is not None:
+      from kanibako.project.workset import logs_share_refusal
+
+      _collision = logs_share_refusal(key, value, set_std, force=args.force, scope="system")
+      if _collision is not None:
+        print(_collision, file=sys.stderr)
+        return 1
+    msg = set_config_value(
+      key,
+      value,
+      config_path=cf,
+      system_settings_path=ssp,
+      cascade_system_path=ssp,
+      cascade_agent_name=agent_node_of(resolve_key(key)),
+      command_scope=ConfigLevel.system,
+      agents_root=agents_root,
+      node_store=False,
+      std=set_std,
+      target_error=set_std_error,
+      force=args.force,
+    )
+    if msg.startswith("Error:"):
+      print(msg, file=sys.stderr)
+      return 1
+    print(msg)
+    return 0
+
+  return 0

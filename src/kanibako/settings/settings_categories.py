@@ -45,8 +45,8 @@ from kanibako.agent_ref import ENV_VAR_NAME
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from kanibako.settings.kb_store import Bind
-    from kanibako.settings.keystore import KeyStore
+  from kanibako.settings.kb_store import Bind
+  from kanibako.settings.keystore import KeyStore
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -64,9 +64,9 @@ ENV: Final[Delivery] = "ENV"
 #: keyspec §2a "A path key's stored value") and ``settings_launch`` (a ``secret_path`` host
 #: source).
 BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
-    "a relative source resolves against whatever directory kanibako happens to be run "
-    "from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as "
-    "the name of a NAMED VOLUME rather than as a host path at all"
+  "a relative source resolves against whatever directory kanibako happens to be run "
+  "from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as "
+  "the name of a NAMED VOLUME rather than as a host path at all"
 )
 
 #: Where ``secret_path`` ro-mounts each host secret file, as ``{dir}/{VAR}`` (§2a).
@@ -87,7 +87,12 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # NOTE the order: ``bindings.ro``/``bindings.rw`` must precede a bare ``bindings``
 # (there is none), longest-first, so every alternation below is unambiguous.
 _BIND_CATEGORIES: Final[tuple[str, ...]] = (
-    "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
+  "bindings.ro",
+  "bindings.rw",
+  "caches",
+  "seeded",
+  "common",
+  "synced",
 )
 #: The bind-shaped categories whose CATEGORY KEY IS TERMINAL — the whole of the key,
 #: with a destination-keyed map for a value (R-5/R-6).  ALL SIX.
@@ -99,7 +104,7 @@ _TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = _BIND_CATEGORIES
 #: "terminal" has exactly one definition here.  ⚑ EMPTY since 2026-08-08c, a case
 #: :data:`BIND_KEY_RE` handles EXPLICITLY.
 _NON_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
-    c for c in _BIND_CATEGORIES if c not in _TERMINAL_BIND_CATEGORIES
+  c for c in _BIND_CATEGORIES if c not in _TERMINAL_BIND_CATEGORIES
 )
 #: The bind-shaped categories a ``config set`` / ``config reset`` key may name.
 #: **EMPTY — DS-BL1 = (a): every bind-shaped category is YAML-only.**  Kept, not
@@ -117,49 +122,49 @@ ABSTRACT_CATEGORIES: Final[tuple[str, ...]] = ("common", "caches", "seeded")
 # spec §2a DECLARATION ROOTS — THE single copy of the spec's table.  ``{agent}`` is the
 # only placeholder, because the agent tier is discriminated.
 DECLARATION_ROOT_REF: Final[Mapping[str, str]] = {
-    "system": "{config.data}",
-    "agent": "{{meta.agent.{agent}.path}}",
-    "workset": "{meta.workset.path}",
-    "box": "{meta.box.path}",
+  "system": "{config.data}",
+  "agent": "{{meta.agent.{agent}.path}}",
+  "workset": "{meta.workset.path}",
+  "box": "{meta.box.path}",
 }
 
 
 def agent_declaration_root_ref(node: str) -> str:
-    """The agent row of :data:`DECLARATION_ROOT_REF` for *node*.
+  """The agent row of :data:`DECLARATION_ROOT_REF` for *node*.
 
-    ⚑ ``agent.default`` HAS NO IDENTITY ANCHOR: keyspec §2d declares no
-    ``meta.agent.default.*``, so its root is the store path that retired anchor
-    resolved to — the same directory, spelled with no undeclared ``{key}``-ref.
-    A settings-file declaration at ``agent.default`` roots at the ACTIVE node instead
-    (:func:`agent_tier_node`); this row is what an agent-less read keeps.
-    """
-    if node == "default":
-        return "{config.agents}/default"
-    return DECLARATION_ROOT_REF["agent"].format(agent=node)
+  ⚑ ``agent.default`` HAS NO IDENTITY ANCHOR: keyspec §2d declares no
+  ``meta.agent.default.*``, so its root is the store path that retired anchor
+  resolved to — the same directory, spelled with no undeclared ``{key}``-ref.
+  A settings-file declaration at ``agent.default`` roots at the ACTIVE node instead
+  (:func:`agent_tier_node`); this row is what an agent-less read keeps.
+  """
+  if node == "default":
+    return "{config.agents}/default"
+  return DECLARATION_ROOT_REF["agent"].format(agent=node)
 
 
 def agent_tier_node(node: str, active_agent: str | None, fallback: str) -> str:
-    """The node whose store roots a declaration at ``agent.<node>`` (keyspec §2d).
+  """The node whose store roots a declaration at ``agent.<node>`` (keyspec §2d).
 
-    ``agent.default`` becomes *active_agent*: its values seed into every agent, and
-    each gets its own directory. With no active agent it becomes *fallback*.
-    """
-    if node != "default":
-        return node
-    return active_agent or fallback
+  ``agent.default`` becomes *active_agent*: its values seed into every agent, and
+  each gets its own directory. With no active agent it becomes *fallback*.
+  """
+  if node != "default":
+    return node
+  return active_agent or fallback
 
 
 _DELIVERY: dict[str, Delivery] = {
-    "masks": MOUNT,
-    "bindings.ro": MOUNT,
-    "bindings.rw": MOUNT,
-    "caches": MOUNT,
-    "seeded": COPY,
-    "common": MOUNT,
-    "synced": COPY,
-    "env": ENV,
-    # ⚑ secret_path takes a binding's TAG; its value is a scalar PATH, not a Bind.
-    "secret_path": MOUNT,
+  "masks": MOUNT,
+  "bindings.ro": MOUNT,
+  "bindings.rw": MOUNT,
+  "caches": MOUNT,
+  "seeded": COPY,
+  "common": MOUNT,
+  "synced": COPY,
+  "env": ENV,
+  # ⚑ secret_path takes a binding's TAG; its value is a scalar PATH, not a Bind.
+  "secret_path": MOUNT,
 }
 
 #: The §2a category FAMILY ROOTS — the FIRST key segment of each family, so the two
@@ -170,7 +175,7 @@ _DELIVERY: dict[str, Delivery] = {
 #: this and not one of them: ``masks``, ``env`` and ``secret_path`` are in no subset
 #: that also holds the four abstract ones.
 CATEGORY_FAMILY_ROOTS: Final[frozenset[str]] = frozenset(
-    name.split(".", 1)[0] for name in _DELIVERY
+  name.split(".", 1)[0] for name in _DELIVERY
 )
 
 # One regex for the bind-shaped categories: scope . <category> . name (name greedily
@@ -185,26 +190,22 @@ _AGENT_SCOPE = r"agent\.[^.]+"
 #: discriminated agent tier.  The regex alternation below derives from it.
 FILE_SCOPES: Final[tuple[str, ...]] = tuple(s for s in SCOPE_CONTAINMENT if s != "agent")
 _FILE_SCOPE_ALT = "|".join(FILE_SCOPES)
-_NON_TERMINAL_CATEGORY_ALT = "|".join(
-    c.replace(".", r"\.") for c in _NON_TERMINAL_BIND_CATEGORIES
-)
+_NON_TERMINAL_CATEGORY_ALT = "|".join(c.replace(".", r"\.") for c in _NON_TERMINAL_BIND_CATEGORIES)
 #: The categories NO scope may name in a set/reset key any more — the DIFFERENCE from
 #: ``_BIND_CATEGORIES``, ALL SIX since DS-BL1 = (a).  ⚑ It feeds BOTH scope regexes
 #: below, so the two doors cover the same categories by DERIVATION, not by two hand
 #: lists.  Recognition is derived here; resolution is not (llm-doc).
 RETIRED_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
-    c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES
+  c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES
 )
-_RETIRED_CATEGORY_ALT = "|".join(
-    c.replace(".", r"\.") for c in RETIRED_BIND_CATEGORIES
-)
+_RETIRED_CATEGORY_ALT = "|".join(c.replace(".", r"\.") for c in RETIRED_BIND_CATEGORIES)
 #: ``{system,workset,box}.<bind-shaped category>.<name>`` — the RETIRED FILE-scope
 #: bind route, which exists ONLY to be RECOGNIZED and refused by name.  ⚑ NOT the
 #: AGENT scope — its node segment must be split NON-GREEDILY and canonicalized
 #: (``+`` -> ``℘``) first, so it has its own recognizer below.
 SCOPE_BIND_KEY_RE = re.compile(
-    rf"^(?P<scope>{_FILE_SCOPE_ALT})"
-    rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
+  rf"^(?P<scope>{_FILE_SCOPE_ALT})"
+  rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 #: ``agent.<node>.<bind-shaped category>.<name>`` — the AGENT-scope twin, for ONE
 #: purpose: to be RECOGNIZED and refused BY NAME.  ⚑ THE NODE IS NON-GREEDY so the
@@ -214,8 +215,8 @@ SCOPE_BIND_KEY_RE = re.compile(
 #: match (§0/§2d).  ⚑⚑ RECOGNITION ONLY — IT PICKS NO READ ROUTE, and that separation
 #: is load-bearing; ``config_keys._AGENT_NODE_BIND_RE`` is the parser that picks one.
 AGENT_BIND_KEY_RE = re.compile(
-    rf"^agent\.(?P<node>.+?)"
-    rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
+  rf"^agent\.(?P<node>.+?)"
+  rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 # The PER-ENTRY bind-shaped key shape.  ⚑ NOT a "settable" shape: it answers "does a
 # per-entry dotted key EXIST here?", so it is built from the NON-TERMINAL complement.
@@ -227,24 +228,24 @@ AGENT_BIND_KEY_RE = re.compile(
 # to restore a refusal: a match would mean "this per-entry key exists", the one thing
 # that is no longer true.
 BIND_KEY_RE = re.compile(
-    rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
-    rf"\.(?P<category>{_NON_TERMINAL_CATEGORY_ALT})\.(?P<name>.+)$"
-    if _NON_TERMINAL_CATEGORY_ALT
-    else r"(?!)"  # matches nothing, ever
+  rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
+  rf"\.(?P<category>{_NON_TERMINAL_CATEGORY_ALT})\.(?P<name>.+)$"
+  if _NON_TERMINAL_CATEGORY_ALT
+  else r"(?!)"  # matches nothing, ever
 )
 # ``{scope}.masks`` — a map ``box_dest → bool|None`` (spec §2a). The KEY has no
 # per-entry name; each entry is keyed by its ``box_dest``.
 MASK_KEY_RE = re.compile(rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\.masks$")
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
-    rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
-    rf"\.env\.(?P<name>{ENV_VAR_NAME})$"
+  rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
+  rf"\.env\.(?P<name>{ENV_VAR_NAME})$"
 )
 # ``{scope}.secret_path.{VAR}`` — the SECRET category (spec §2a): a scalar host PATH
 # keyed by the env VAR it delivers.  VAR is the env-name shape, never dotted.
 SECRET_KEY_RE = re.compile(
-    rf"^(?P<scope>{'|'.join(SCOPE_CONTAINMENT)})\.secret_path\."
-    rf"(?P<name>{ENV_VAR_NAME})$"
+  rf"^(?P<scope>{'|'.join(SCOPE_CONTAINMENT)})\.secret_path\."
+  rf"(?P<name>{ENV_VAR_NAME})$"
 )
 #: The bare-VAR shape above, enforced AGAIN at launch emit — ⚑ the VAR is
 #: interpolated into a generated ``sh -c`` export shim, so one that slipped past
@@ -261,7 +262,9 @@ _SCOPE_APPLY_ORDER = {scope: rank for rank, scope in enumerate(SCOPE_CONTAINMENT
 # bind-vs-bind collision — its dest is ``SECRET_MOUNT_DIR/{VAR}`` by construction, so two
 # such entries share one VAR across two scopes.
 CONCRETE_CATEGORIES: Final[tuple[str, ...]] = (
-    "bindings.ro", "bindings.rw", "secret_path",
+  "bindings.ro",
+  "bindings.rw",
+  "secret_path",
 )
 
 # The release in which the §0 collision table replaced the flat authority ladder.
@@ -272,645 +275,658 @@ _RULE_CHANGE_RELEASE: Final[str] = "1.8.0"
 
 @dataclass(frozen=True)
 class CategoryEntry:
-    """One resolved scope-category entry (pre-collision-resolution).
+  """One resolved scope-category entry (pre-collision-resolution).
 
-    Field-by-field: ``llm-docs/kanibako/settings/settings_categories.py.md``.  ⚑ Note
-    that ``env`` bends two — *box_dest* is its VAR NAME, *options* its VALUE.
+  Field-by-field: ``llm-docs/kanibako/settings/settings_categories.py.md``.  ⚑ Note
+  that ``env`` bends two — *box_dest* is its VAR NAME, *options* its VALUE.
 
-    *key_segments* is the DECLARATION KEY plus the ENTRY'S DESTINATION, ONE SEGMENT
-    PER NODE (``("box", "bindings", "rw", "~/w")``).  ⚑⚑ SEGMENTS, NOT A DOTTED
-    STRING: a dest routinely contains ``.`` (``~/.cache/uv``), so a dotted spelling is
-    AMBIGUOUS with the key-path separator; the joined form used to shatter a dest
-    across tree levels.  :attr:`key` is the DERIVED dotted form, never structure.
+  *key_segments* is the DECLARATION KEY plus the ENTRY'S DESTINATION, ONE SEGMENT
+  PER NODE (``("box", "bindings", "rw", "~/w")``).  ⚑⚑ SEGMENTS, NOT A DOTTED
+  STRING: a dest routinely contains ``.`` (``~/.cache/uv``), so a dotted spelling is
+  AMBIGUOUS with the key-path separator; the joined form used to shatter a dest
+  across tree levels.  :attr:`key` is the DERIVED dotted form, never structure.
 
-    *is_credential* is what :func:`gate_credential_delivery` (D-M4) keys off.
+  *is_credential* is what :func:`gate_credential_delivery` (D-M4) keys off.
 
-    Skip-if-absent (spec §2c) is not an entry field: the emitter decides it by
-    DESTINATION over the ``canon:`` rows.
+  Skip-if-absent (spec §2c) is not an entry field: the emitter decides it by
+  DESTINATION over the ``canon:`` rows.
 
-    ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN: ``box_dest``
-    is a GUEST path for EVERY category, spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
-    ⚑ Do not reintroduce a host-spelled dest — one used to be mapped BACK under the
-    box home, landing where nothing reads it, and the discriminator is gone (llm-doc).
+  ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN: ``box_dest``
+  is a GUEST path for EVERY category, spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
+  ⚑ Do not reintroduce a host-spelled dest — one used to be mapped BACK under the
+  box home, landing where nothing reads it, and the discriminator is gone (llm-doc).
 
-    ⚑ THE ``canon`` NAMING TRAP, here because both spellings meet in this dataclass:
-    **``{box.canon}`` (= ``<box_dir>/canon``, the box's CONTRIBUTION root, one RO
-    chapter at ``~/canon/handbook/box``) is NOT ``~/canon``**, the ASSEMBLED GUEST
-    VIEW at ``<box_dir>/home/canon`` that the home bind delivers.
-    """
+  ⚑ THE ``canon`` NAMING TRAP, here because both spellings meet in this dataclass:
+  **``{box.canon}`` (= ``<box_dir>/canon``, the box's CONTRIBUTION root, one RO
+  chapter at ``~/canon/handbook/box``) is NOT ``~/canon``**, the ASSEMBLED GUEST
+  VIEW at ``<box_dir>/home/canon`` that the home bind delivers.
+  """
 
-    category: str
-    scope: str
-    box_dest: str
-    host_src: str | None
-    delivery: Delivery
-    options: str
-    name: str
-    key_segments: tuple[str, ...]
-    is_credential: bool = False
+  category: str
+  scope: str
+  box_dest: str
+  host_src: str | None
+  delivery: Delivery
+  options: str
+  name: str
+  key_segments: tuple[str, ...]
+  is_credential: bool = False
 
-    @property
-    def key(self) -> str:
-        """The DOTTED spelling of :attr:`key_segments`; messages use :attr:`label`."""
-        return ".".join(self.key_segments)
+  @property
+  def key(self) -> str:
+    """The DOTTED spelling of :attr:`key_segments`; messages use :attr:`label`."""
+    return ".".join(self.key_segments)
 
-    @property
-    def label(self) -> str:
-        """How a message names this entry: ``<declaration>[<dest>]`` or ``….<VAR>``."""
-        from kanibako.settings.settings_keyspace import display_segments, entry_label
+  @property
+  def label(self) -> str:
+    """How a message names this entry: ``<declaration>[<dest>]`` or ``….<VAR>``."""
+    from kanibako.settings.settings_keyspace import display_segments, entry_label
 
-        declaration = ".".join(display_segments(self.key_segments[:-1]))
-        return entry_label(declaration, self.key_segments[-1])
+    declaration = ".".join(display_segments(self.key_segments[:-1]))
+    return entry_label(declaration, self.key_segments[-1])
 
 
 def _bind_options(category: str) -> str:
-    """Mount options for a bind-shaped MOUNT category — ``ro``, else ``Z,U``."""
-    return "ro" if category == "bindings.ro" else "Z,U"
+  """Mount options for a bind-shaped MOUNT category — ``ro``, else ``Z,U``."""
+  return "ro" if category == "bindings.ro" else "Z,U"
 
 
 def is_read_only(options: str | None) -> bool:
-    """True when mount *options* carries ``ro`` as a comma-separated TOKEN."""
-    return "ro" in {token.strip() for token in (options or "").split(",")}
+  """True when mount *options* carries ``ro`` as a comma-separated TOKEN."""
+  return "ro" in {token.strip() for token in (options or "").split(",")}
 
 
 @dataclass(frozen=True)
 class CategoryCollision:
-    """One SAME-SCOPE ``caches``/``common`` ambiguity at one ``box_dest`` (§0's exempt pair).
+  """One SAME-SCOPE ``caches``/``common`` ambiguity at one ``box_dest`` (§0's exempt pair).
 
-    Built as DATA by the ``store_shape`` PRODUCER (which stays PURE) and rendered by
-    ``commands.start.emit_collision_warnings``.  ⚑ IT LIVES HERE, NOT IN
-    ``store_shape``, DELIBERATELY: the message below is spec §0's, written ONCE,
-    beside the two refusal texts the producer also raises.  ⚑ That producer is the
-    ONLY builder (5-1c retired the second) — do not add one.
-    """
+  Built as DATA by the ``store_shape`` PRODUCER (which stays PURE) and rendered by
+  ``commands.start.emit_collision_warnings``.  ⚑ IT LIVES HERE, NOT IN
+  ``store_shape``, DELIBERATELY: the message below is spec §0's, written ONCE,
+  beside the two refusal texts the producer also raises.  ⚑ That producer is the
+  ONLY builder (5-1c retired the second) — do not add one.
+  """
 
-    box_dest: str
-    scope: str
-    winner_key: str
-    loser_keys: tuple[str, ...]
+  box_dest: str
+  scope: str
+  winner_key: str
+  loser_keys: tuple[str, ...]
 
-    def message(self) -> str:
-        """The rendered warning line (one per collision, §0 "WARN every launch")."""
-        losers = ", ".join(self.loser_keys)
-        ignored = "is" if len(self.loser_keys) == 1 else "are"
-        return (
-            f"Two {self.scope!r}-scope declarations target {self.box_dest!r}: "
-            f"{self.winner_key} wins, {losers} {ignored} ignored. A same-scope "
-            f"collision is ambiguous — kanibako keeps the existing ordering but "
-            f"cannot know which you meant. Suppress one (set it to null) or "
-            f"repoint it. This warning repeats every launch until it is fixed."
-        )
+  def message(self) -> str:
+    """The rendered warning line (one per collision, §0 "WARN every launch")."""
+    losers = ", ".join(self.loser_keys)
+    ignored = "is" if len(self.loser_keys) == 1 else "are"
+    return (
+      f"Two {self.scope!r}-scope declarations target {self.box_dest!r}: "
+      f"{self.winner_key} wins, {losers} {ignored} ignored. A same-scope "
+      f"collision is ambiguous — kanibako keeps the existing ordering but "
+      f"cannot know which you meant. Suppress one (set it to null) or "
+      f"repoint it. This warning repeats every launch until it is fixed."
+    )
 
 
 def path_depth(box_dest: str) -> int:
-    """Path-depth of a guest dest for the mount depth-sort (shallower first).
+  """Path-depth of a guest dest for the mount depth-sort (shallower first).
 
-    ⚑ PUBLIC because emission depth-sorts too — one rule, two consumers; a second
-    spelling would drift the podman mount order on the nested dests it resolves.
-    """
-    return len([c for c in box_dest.strip("/").split("/") if c])
+  ⚑ PUBLIC because emission depth-sorts too — one rule, two consumers; a second
+  spelling would drift the podman mount order on the nested dests it resolves.
+  """
+  return len([c for c in box_dest.strip("/").split("/") if c])
 
 
 def gate_credential_delivery(
-    entries: list[CategoryEntry], deliver_creds: bool,
+  entries: list[CategoryEntry],
+  deliver_creds: bool,
 ) -> list[CategoryEntry]:
-    """Drop what a PRIVATE box must not receive (D-M4). PUBLIC, PURE and IDEMPOTENT."""
-    # ⚑ THE ONLY SPELLING OF THE RULE, APPLIED ONCE — at the launch seam, above EVERY
-    # consumer of the entry list. A second application is how a credential reaches a
-    # box the user made private.
-    if deliver_creds:
-        return list(entries)
-    return [
-        e for e in entries
-        if e.category != "synced"
-        and not (e.category == "seeded" and e.is_credential)
-    ]
+  """Drop what a PRIVATE box must not receive (D-M4). PUBLIC, PURE and IDEMPOTENT."""
+  # ⚑ THE ONLY SPELLING OF THE RULE, APPLIED ONCE — at the launch seam, above EVERY
+  # consumer of the entry list. A second application is how a credential reaches a
+  # box the user made private.
+  if deliver_creds:
+    return list(entries)
+  return [
+    e
+    for e in entries
+    if e.category != "synced" and not (e.category == "seeded" and e.is_credential)
+  ]
 
 
 @dataclass(frozen=True)
 class LaunchDeliveries:
-    """What the launch entry list delivers BESIDE the collapse's mount set — and WHO DECLARED it.
+  """What the launch entry list delivers BESIDE the collapse's mount set — and WHO DECLARED it.
 
-    Built ONCE at the seam (``commands.start._resolve_launch_snapshot``) off the
-    CREDENTIAL-GATED list the collapse also sees, so the two describe one box.
+  Built ONCE at the seam (``commands.start._resolve_launch_snapshot``) off the
+  CREDENTIAL-GATED list the collapse also sees, so the two describe one box.
 
-    ⚑ *agent_dests* (the emitter's SKIP-IF-ABSENT set) is a PARAMETER, not a filter
-    written here: the predicate deciding what an agent delivery IS belongs to the
-    emitter.  ⚑ *narrow_bindings* is a NARROW resolve's whole mount product and
-    ``None`` otherwise — the collapse returns before writing
-    ``meta.assembly.bindings`` — and ``None`` UNLESS THE CALLER ASKED, so the main
-    path cannot reach a map it never requested (P3).
+  ⚑ *agent_dests* (the emitter's SKIP-IF-ABSENT set) is a PARAMETER, not a filter
+  written here: the predicate deciding what an agent delivery IS belongs to the
+  emitter.  ⚑ *narrow_bindings* is a NARROW resolve's whole mount product and
+  ``None`` otherwise — the collapse returns before writing
+  ``meta.assembly.bindings`` — and ``None`` UNLESS THE CALLER ASKED, so the main
+  path cannot reach a map it never requested (P3).
 
-    ⚑⚑ *declared_by* IS THE FOLD'S OWN
-    :attr:`~kanibako.settings.store_collapse.CollapsedStore.declared_by`, carried out
-    of the resolve rather than written into the snapshot — dest-keyed, EMPTY on a
-    narrow resolve (which folds no bind map at all).  It rides HERE because this
-    carrier is the resolve's ONE out-of-band return channel: a second channel for one
-    map is the two-carriers defect, and the alternative — a fourth ``meta.assembly``
-    leaf — is the closed-keyspace addition ``store_collapse`` forbids by name.  It is
-    read by a display that must NAME the declaration a mount came from
-    (``settings.config_display``, ``box show --effective``).
+  ⚑⚑ *declared_by* IS THE FOLD'S OWN
+  :attr:`~kanibako.settings.store_collapse.CollapsedStore.declared_by`, carried out
+  of the resolve rather than written into the snapshot — dest-keyed, EMPTY on a
+  narrow resolve (which folds no bind map at all).  It rides HERE because this
+  carrier is the resolve's ONE out-of-band return channel: a second channel for one
+  map is the two-carriers defect, and the alternative — a fourth ``meta.assembly``
+  leaf — is the closed-keyspace addition ``store_collapse`` forbids by name.  It is
+  read by a display that must NAME the declaration a mount came from
+  (``settings.config_display``, ``box show --effective``).
 
-    *dest_keys* is ``expand``'s record of the arm key each bind entry was filed under
-    (``settings_expand.DestKeys``), carried here for the same reason: a display that
-    holds a stored destination finds its entry through it instead of re-expanding.
+  *dest_keys* is ``expand``'s record of the arm key each bind entry was filed under
+  (``settings_expand.DestKeys``), carried here for the same reason: a display that
+  holds a stored destination finds its entry through it instead of re-expanding.
 
-    *convenience_sources* is the floor's own resolved source at each bind of
-    convenience (``settings_launch.convenience_bind_sources``): the display omits a row
-    there only while its source is still this one (``[R149]``).
+  *convenience_sources* is the floor's own resolved source at each bind of
+  convenience (``settings_launch.convenience_bind_sources``): the display omits a row
+  there only while its source is still this one (``[R149]``).
 
-    🛑 THE ENVIRONMENT IS NOT HERE ANY MORE — the variables are arbitrated by
-    ``store_collapse.collapse_env`` and read off ``meta.assembly.env``.  A second,
-    un-arbitrated view of the same declarations is what let a per-VAR contest be
-    settled silently by a consumer's ``dict.update``.  🛑 AND THIS IS A RETURN VALUE,
-    NEVER A SNAPSHOT KEY: ``meta.assembly.*`` is a CLOSED set of DECLARED leaves and
-    an UNDECLARED one installs SILENTLY.  A FIELD is cheap; a LEAF is a keyspace edit.
-    """
+  🛑 THE ENVIRONMENT IS NOT HERE ANY MORE — the variables are arbitrated by
+  ``store_collapse.collapse_env`` and read off ``meta.assembly.env``.  A second,
+  un-arbitrated view of the same declarations is what let a per-VAR contest be
+  settled silently by a consumer's ``dict.update``.  🛑 AND THIS IS A RETURN VALUE,
+  NEVER A SNAPSHOT KEY: ``meta.assembly.*`` is a CLOSED set of DECLARED leaves and
+  an UNDECLARED one installs SILENTLY.  A FIELD is cheap; a LEAF is a keyspace edit.
+  """
 
-    secrets: list[CategoryEntry]
-    agent_dests: frozenset[str]
-    narrow_bindings: "dict[str, object] | None" = None
-    declared_by: "dict[str, str]" = field(default_factory=dict)
-    dest_keys: "dict[tuple[str, ...], str]" = field(default_factory=dict)
-    convenience_sources: "dict[str, str]" = field(default_factory=dict)
-    #: :func:`secret_path_names` of the same gated list — the ``secret_path`` owners
-    #: of each VAR, which the env collapse cannot see (a creating launch's ``-e``).
-    secret_names: "dict[str, list[str]]" = field(default_factory=dict)
+  secrets: list[CategoryEntry]
+  agent_dests: frozenset[str]
+  narrow_bindings: "dict[str, object] | None" = None
+  declared_by: "dict[str, str]" = field(default_factory=dict)
+  dest_keys: "dict[tuple[str, ...], str]" = field(default_factory=dict)
+  convenience_sources: "dict[str, str]" = field(default_factory=dict)
+  #: :func:`secret_path_names` of the same gated list — the ``secret_path`` owners
+  #: of each VAR, which the env collapse cannot see (a creating launch's ``-e``).
+  secret_names: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
-    """The per-VAR ``secret_path`` winners — spec §2a's cascade, at the seam.
+  """The per-VAR ``secret_path`` winners — spec §2a's cascade, at the seam.
 
-    Every ``secret_path`` dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a
-    group sharing a dest is ONE VAR from several scopes — the per-VAR cascade, picked
-    by :func:`_most_specific`, then depth-sorted.  A winner whose ``host_src`` is
-    ``None`` is a KEYLESS declaration (§2a): it wins its VAR and mounts nothing.
-    ⚑ P7 — WHAT IT DOES *NOT* DECIDE:
-    whether anything ELSE contends for that dest.  That is
-    :func:`secret_path_deliveries`'.
-    """
-    by_dest: dict[str, list[CategoryEntry]] = {}
-    for e in entries:
-        if e.category == "secret_path":
-            by_dest.setdefault(e.box_dest, []).append(e)
-    winners = [_most_specific(group) for group in by_dest.values()]
-    winners.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
-    return winners
+  Every ``secret_path`` dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a
+  group sharing a dest is ONE VAR from several scopes — the per-VAR cascade, picked
+  by :func:`_most_specific`, then depth-sorted.  A winner whose ``host_src`` is
+  ``None`` is a KEYLESS declaration (§2a): it wins its VAR and mounts nothing.
+  ⚑ P7 — WHAT IT DOES *NOT* DECIDE:
+  whether anything ELSE contends for that dest.  That is
+  :func:`secret_path_deliveries`'.
+  """
+  by_dest: dict[str, list[CategoryEntry]] = {}
+  for e in entries:
+    if e.category == "secret_path":
+      by_dest.setdefault(e.box_dest, []).append(e)
+  winners = [_most_specific(group) for group in by_dest.values()]
+  winners.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
+  return winners
 
 
 def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
-    """The ``secret_path`` mounts a launch DELIVERS: the per-VAR winners, §0-gated.
+  """The ``secret_path`` mounts a launch DELIVERS: the per-VAR winners, §0-gated.
 
-    ⚑⚑ THE §0 CROSS-CATEGORY GATE FOR SECRET DESTS LIVES HERE (6-R2), BECAUSE NOTHING
-    ELSE HOLDS THE INPUTS: ``secret_path`` carries no arm in the disk-store shape
-    (producer DESIGN §7.4), so the COLLAPSE never sees a secret.  Two rules apply over
-    the SAME entry list in the SAME order, at secret dests only:
+  ⚑⚑ THE §0 CROSS-CATEGORY GATE FOR SECRET DESTS LIVES HERE (6-R2), BECAUSE NOTHING
+  ELSE HOLDS THE INPUTS: ``secret_path`` carries no arm in the disk-store shape
+  (producer DESIGN §7.4), so the COLLAPSE never sees a secret.  Two rules apply over
+  the SAME entry list in the SAME order, at secret dests only:
 
-    * a BIND at the dest — a ``bindings.*`` row, or an abstraction deriving one, aimed
-      at ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, naming BOTH declarations.
-      ⚑ Several ``secret_path`` rows at one dest are the per-VAR cascade and NOT a
-      collision — the D2 carve-out, the CALLER's test exactly as
-      :func:`raise_binding_vs_binding` says.
-    * a MASK at the dest — it takes the dest and the VAR is not delivered,
-      SILENTLY: the tmpfs lands there anyway.
+  * a BIND at the dest — a ``bindings.*`` row, or an abstraction deriving one, aimed
+    at ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, naming BOTH declarations.
+    ⚑ Several ``secret_path`` rows at one dest are the per-VAR cascade and NOT a
+    collision — the D2 carve-out, the CALLER's test exactly as
+    :func:`raise_binding_vs_binding` says.
+  * a MASK at the dest — it takes the dest and the VAR is not delivered,
+    SILENTLY: the tmpfs lands there anyway.
 
-    ⚑ EXACT DEST ONLY, and that is not a narrowing: a bind or mask over the secrets
-    DIRECTORY never contended with ``SECRET_MOUNT_DIR/<VAR>`` (MEASURED, 6-R2).
-    🛑 But the dest GROUP is the WHOLE mount group, per-VAR LOSERS included, so a
-    refusal names every participant rather than just one.
-    """
-    winners = secret_path_winners(entries)
-    dests = {w.box_dest for w in winners}
-    by_dest: dict[str, list[CategoryEntry]] = {}
-    for e in entries:
-        if e.delivery == MOUNT and e.box_dest in dests:
-            by_dest.setdefault(e.box_dest, []).append(e)
+  ⚑ EXACT DEST ONLY, and that is not a narrowing: a bind or mask over the secrets
+  DIRECTORY never contended with ``SECRET_MOUNT_DIR/<VAR>`` (MEASURED, 6-R2).
+  🛑 But the dest GROUP is the WHOLE mount group, per-VAR LOSERS included, so a
+  refusal names every participant rather than just one.
+  """
+  winners = secret_path_winners(entries)
+  dests = {w.box_dest for w in winners}
+  by_dest: dict[str, list[CategoryEntry]] = {}
+  for e in entries:
+    if e.delivery == MOUNT and e.box_dest in dests:
+      by_dest.setdefault(e.box_dest, []).append(e)
 
-    delivered: list[CategoryEntry] = []
-    for winner in winners:
-        if winner.host_src is None:
-            continue
-        group = by_dest[winner.box_dest]
-        concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
-        abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
-        if len(concrete) > 1 and not all(
-            e.category == "secret_path" for e in concrete
-        ):
-            raise_binding_vs_binding(winner.box_dest, concrete)
-        if concrete and abstract:
-            raise_extension_onto_occupied(
-                winner.box_dest, extension=abstract[-1], base=concrete[-1],
-            )
-        if any(e.category == "masks" for e in group):
-            continue
-        delivered.append(winner)
-    return delivered
+  delivered: list[CategoryEntry] = []
+  for winner in winners:
+    if winner.host_src is None:
+      continue
+    group = by_dest[winner.box_dest]
+    concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
+    abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
+    if len(concrete) > 1 and not all(e.category == "secret_path" for e in concrete):
+      raise_binding_vs_binding(winner.box_dest, concrete)
+    if concrete and abstract:
+      raise_extension_onto_occupied(
+        winner.box_dest,
+        extension=abstract[-1],
+        base=concrete[-1],
+      )
+    if any(e.category == "masks" for e in group):
+      continue
+    delivered.append(winner)
+  return delivered
 
 
 #: A refused value's shape as the FILE spells it, paired with the article a sentence
 #: reads it with.  ⚑ ``bool`` LEADS because it is an ``int`` subclass, so an ``int`` test
 #: would answer ``True`` with the wrong word.
 _ARTICLE_SHAPES: "tuple[tuple[type, str], ...]" = (
-    (bool, "a boolean"),
-    (int, "an integer"),
-    (float, "a number"),
+  (bool, "a boolean"),
+  (int, "an integer"),
+  (float, "a number"),
 )
 
 
 def _value_shape(value: object) -> str:
-    """A USER-FACING name for a refused value's shape — never a class name.
+  """A USER-FACING name for a refused value's shape — never a class name.
 
-    ``KeyStore`` is the merged store's node type and means nothing to someone reading the
-    YAML they wrote, where the same thing is a MAP; ``Bind``/``BindEntry`` are ``tuple``
-    subclasses and read as LISTS in a file.
+  ``KeyStore`` is the merged store's node type and means nothing to someone reading the
+  YAML they wrote, where the same thing is a MAP; ``Bind``/``BindEntry`` are ``tuple``
+  subclasses and read as LISTS in a file.
 
-    ⚑ A SCALAR IS A USER WORD TOO: a file says ``8080``, ``true``, ``1.5`` and never
-    ``int`` / ``bool`` / ``float``.
-    """
-    if isinstance(value, dict):
-        return "map"
-    if isinstance(value, (list, tuple)):
-        return "list"
-    for shape_type, phrase in _ARTICLE_SHAPES:
-        if isinstance(value, shape_type):
-            return phrase.split(" ", 1)[1]
-    return type(value).__name__
+  ⚑ A SCALAR IS A USER WORD TOO: a file says ``8080``, ``true``, ``1.5`` and never
+  ``int`` / ``bool`` / ``float``.
+  """
+  if isinstance(value, dict):
+    return "map"
+  if isinstance(value, (list, tuple)):
+    return "list"
+  for shape_type, phrase in _ARTICLE_SHAPES:
+    if isinstance(value, shape_type):
+      return phrase.split(" ", 1)[1]
+  return type(value).__name__
 
 
 def _shape_phrase(value: object) -> str:
-    """:func:`_value_shape` WITH ITS ARTICLE — the carrier's one way to name a shape.
+  """:func:`_value_shape` WITH ITS ARTICLE — the carrier's one way to name a shape.
 
-    🛑 A CALLER SPELLS ``holds {phrase}``, never ``holds a {shape}``: the article belongs
-    to the word, so a caller that supplies its own cannot get it wrong.
-    """
-    for shape_type, phrase in _ARTICLE_SHAPES:
-        if isinstance(value, shape_type):
-            return phrase
-    return f"a {_value_shape(value)}"
+  🛑 A CALLER SPELLS ``holds {phrase}``, never ``holds a {shape}``: the article belongs
+  to the word, so a caller that supplies its own cannot get it wrong.
+  """
+  for shape_type, phrase in _ARTICLE_SHAPES:
+    if isinstance(value, shape_type):
+      return phrase
+  return f"a {_value_shape(value)}"
 
 
 def is_scalar_family_value(value: object) -> bool:
-    """True iff *value* is a shape an ``env.<VAR>`` key may hold (spec §2a).
+  """True iff *value* is a shape an ``env.<VAR>`` key may hold (spec §2a).
 
-    ⚑ A present-``None`` IS one: it is the tri-state OMIT a reset writes, which every
-    reader already spells ``null``, and refusing it would refuse the unset idiom.
-    ⚑ AN INT / FLOAT / BOOL IS ONE TOO, and that is the spec's line rather than a
-    softening: §2a refuses *"a non-scalar (list, map, etc)"*, so a YAML ``8080`` at
-    ``box.env.PORT`` stays the value it has always been.  (A PLUGIN's own defaults file
-    is stricter still — ``agent_defaults._env_values`` takes strings alone — because an
-    unquoted ``true`` there is an authoring slip in a file kanibako ships, not a user's
-    value.)
-    """
-    return value is None or isinstance(value, (str, int, float, bool))
+  ⚑ A present-``None`` IS one: it is the tri-state OMIT a reset writes, which every
+  reader already spells ``null``, and refusing it would refuse the unset idiom.
+  ⚑ AN INT / FLOAT / BOOL IS ONE TOO, and that is the spec's line rather than a
+  softening: §2a refuses *"a non-scalar (list, map, etc)"*, so a YAML ``8080`` at
+  ``box.env.PORT`` stays the value it has always been.  (A PLUGIN's own defaults file
+  is stricter still — ``agent_defaults._env_values`` takes strings alone — because an
+  unquoted ``true`` there is an authoring slip in a file kanibako ships, not a user's
+  value.)
+  """
+  return value is None or isinstance(value, (str, int, float, bool))
 
 
 def is_path_key_value(value: object) -> bool:
-    """True iff *value* is a shape a PATH key may hold.
+  """True iff *value* is a shape a PATH key may hold.
 
-    ⚑ STRICTER THAN :func:`is_scalar_family_value`, and the families differ BECAUSE their
-    declared types do.  For the two SCALAR families §2a refuses only *"a non-scalar (list,
-    map, etc)"*, so an unquoted ``8080`` at ``box.env.PORT`` stays the value it has always
-    been.  A PATH key is not SCALAR but TYPED ``path``, and §2a's set-time rule makes
-    *"a type mismatch for a typed scalar key"* a hard error — so an INT, FLOAT or BOOL is a
-    mismatch here where it is not one at ``env``.
-    ⚑⚑ A NAME-PARAMETRIC FAMILY IS NOT A REASON TO LEAVE A VALUE LOOSE: a
-    ``secret_path.<VAR>`` key is typed ``path`` and judged by THIS predicate, so
-    ``box.secret_path.T: 8080`` REFUSES while ``box.env.PORT: 8080`` does not.
+  ⚑ STRICTER THAN :func:`is_scalar_family_value`, and the families differ BECAUSE their
+  declared types do.  For the two SCALAR families §2a refuses only *"a non-scalar (list,
+  map, etc)"*, so an unquoted ``8080`` at ``box.env.PORT`` stays the value it has always
+  been.  A PATH key is not SCALAR but TYPED ``path``, and §2a's set-time rule makes
+  *"a type mismatch for a typed scalar key"* a hard error — so an INT, FLOAT or BOOL is a
+  mismatch here where it is not one at ``env``.
+  ⚑⚑ A NAME-PARAMETRIC FAMILY IS NOT A REASON TO LEAVE A VALUE LOOSE: a
+  ``secret_path.<VAR>`` key is typed ``path`` and judged by THIS predicate, so
+  ``box.secret_path.T: 8080`` REFUSES while ``box.env.PORT: 8080`` does not.
 
-    ⚑ A PRESENT ``None`` IS STILL LEGAL: the tri-state OMIT a reset writes.
-    """
-    return value is None or isinstance(value, str)
+  ⚑ A PRESENT ``None`` IS STILL LEGAL: the tri-state OMIT a reset writes.
+  """
+  return value is None or isinstance(value, str)
 
 
 def refuse_non_scalar_family_value(
-    key: str, category: str, value: object,
+  key: str,
+  category: str,
+  value: object,
 ) -> None:
-    """Refuse a value *key* may not hold — the two name-parametric families or a PATH key (§2a).
+  """Refuse a value *key* may not hold — the two name-parametric families or a PATH key (§2a).
 
-    *category* is ``"env"``, ``"secret_path"`` or ``"path"``; *key* is the WHOLE dotted key, which
-    is the only thing the message names — §2a: *"A non-scalar (list, map, etc) is
-    REFUSED at resolve and the key is named, irrespective of origin (settings file,
-    plugin, CLI, etc)."*  ⚑ IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND
-    THING TO PRINT: the key already tells a reader which file to open (``box.env.FOO``
-    is the box's settings file), and no producer here carries the ROUTE a value arrived
-    by.  A message promising the route would need one threaded from
-    ``snapshot_category_entries`` down.
+  *category* is ``"env"``, ``"secret_path"`` or ``"path"``; *key* is the WHOLE dotted key, which
+  is the only thing the message names — §2a: *"A non-scalar (list, map, etc) is
+  REFUSED at resolve and the key is named, irrespective of origin (settings file,
+  plugin, CLI, etc)."*  ⚑ IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND
+  THING TO PRINT: the key already tells a reader which file to open (``box.env.FOO``
+  is the box's settings file), and no producer here carries the ROUTE a value arrived
+  by.  A message promising the route would need one threaded from
+  ``snapshot_category_entries`` down.
 
-    ⚑⚑ THE REMEDY TEXT LIVES HERE, ONCE, like the two collision raisers above: the
-    rule has more than one application site (the launch RESOLVE seam, which sees the
-    merged snapshot, and the ``get`` READ, which reads a file and builds no snapshot),
-    and a second copy is how two seams drift into two sentences for one refusal.
+  ⚑⚑ THE REMEDY TEXT LIVES HERE, ONCE, like the two collision raisers above: the
+  rule has more than one application site (the launch RESOLVE seam, which sees the
+  merged snapshot, and the ``get`` READ, which reads a file and builds no snapshot),
+  and a second copy is how two seams drift into two sentences for one refusal.
 
-    🛑 IT IS NOT A DISPLAY RULE.  Before it existed both seams coerced with ``str()``:
-    a list at ``box.env.FOO`` was EXPORTED INTO THE GUEST as the literal text
-    ``['--x', '--w']`` and a list at ``secret_path.<VAR>`` became a MOUNT SOURCE spelled
-    as a Python repr.  Curing the rendering alone would have cured the screen and left
-    the box wrong.
-    """
-    from kanibako.settings.settings_resolve import SettingsError
+  🛑 IT IS NOT A DISPLAY RULE.  Before it existed both seams coerced with ``str()``:
+  a list at ``box.env.FOO`` was EXPORTED INTO THE GUEST as the literal text
+  ``['--x', '--w']`` and a list at ``secret_path.<VAR>`` became a MOUNT SOURCE spelled
+  as a Python repr.  Curing the rendering alone would have cured the screen and left
+  the box wrong.
+  """
+  from kanibako.settings.settings_resolve import SettingsError
 
-    if (is_scalar_family_value(value) if category == "env"
-            else is_path_key_value(value)):
-        return
-    shape = _shape_phrase(value)
-    if category == "path":
-        raise SettingsError(
-            f"{key} holds {shape}; a PATH key takes ONE path spelled as a string "
-            f"(keyspec §2a: a type mismatch for a typed scalar key is a hard error). "
-            f"Its value is never coerced into a string, so {shape} names no "
-            f"directory to use: give one quoted path."
-        )
-    if category == "env":
-        raise SettingsError(
-            f"{key} holds {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
-            f"an environment variable is a STRING. Its value is never coerced into "
-            f"a string nor shell-split, so write ONE quoted value - 'x y' is one "
-            f"variable holding two words, not two values."
-        )
+  if is_scalar_family_value(value) if category == "env" else is_path_key_value(value):
+    return
+  shape = _shape_phrase(value)
+  if category == "path":
     raise SettingsError(
-        f"{key} holds {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
-        f"and its value is ONE host path - the file the box exports the variable "
-        f"from. Its value is never coerced into a string, so {shape} names no "
-        f"host file to mount: give a single path, and declare a second "
-        f"secret_path.<VAR> key for a second secret."
+      f"{key} holds {shape}; a PATH key takes ONE path spelled as a string "
+      f"(keyspec §2a: a type mismatch for a typed scalar key is a hard error). "
+      f"Its value is never coerced into a string, so {shape} names no "
+      f"directory to use: give one quoted path."
     )
+  if category == "env":
+    raise SettingsError(
+      f"{key} holds {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
+      f"an environment variable is a STRING. Its value is never coerced into "
+      f"a string nor shell-split, so write ONE quoted value - 'x y' is one "
+      f"variable holding two words, not two values."
+    )
+  raise SettingsError(
+    f"{key} holds {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
+    f"and its value is ONE host path - the file the box exports the variable "
+    f"from. Its value is never coerced into a string, so {shape} names no "
+    f"host file to mount: give a single path, and declare a second "
+    f"secret_path.<VAR> key for a second secret."
+  )
 
 
 def env_twin_refusal(var: str, claim: str, cure: str) -> str:
-    """The ONE frame of every refusal of a contested environment-variable slot.
+  """The ONE frame of every refusal of a contested environment-variable slot.
 
-    ``the environment variable '<VAR>' <claim>. <cure>`` — the subject spelled once
-    for the three raisers, which stay SPLIT BY INPUT because each sees a contest
-    the others cannot: two scopes' ``env`` keys (``store_collapse._refuse_env_twin``,
-    off the collapse's slots), the ``env`` and ``secret_path`` families
-    (:func:`refuse_env_secret_twins`, off the entry list), and a user value for the
-    variable ``--browser`` writes (``commands.start._refuse_browser_env_twin``, off
-    the collapsed slots).  A key naming a variable the launch REALIZES is refused
-    before any of them (``commands.start._refuse_realized_twin``), in its own
-    wording: it leads with the key the user wrote and the key that drives it.
-    *claim* says who claims the slot; *cure* is the raiser's own, because each
-    contest is cleared a different way.
-    """
-    return f"the environment variable {var!r} {claim}. {cure}"
+  ``the environment variable '<VAR>' <claim>. <cure>`` — the subject spelled once
+  for the three raisers, which stay SPLIT BY INPUT because each sees a contest
+  the others cannot: two scopes' ``env`` keys (``store_collapse._refuse_env_twin``,
+  off the collapse's slots), the ``env`` and ``secret_path`` families
+  (:func:`refuse_env_secret_twins`, off the entry list), and a user value for the
+  variable ``--browser`` writes (``commands.start._refuse_browser_env_twin``, off
+  the collapsed slots).  A key naming a variable the launch REALIZES is refused
+  before any of them (``commands.start._refuse_realized_twin``), in its own
+  wording: it leads with the key the user wrote and the key that drives it.
+  *claim* says who claims the slot; *cure* is the raiser's own, because each
+  contest is cleared a different way.
+  """
+  return f"the environment variable {var!r} {claim}. {cure}"
 
 
 def secret_path_names(entries: list[CategoryEntry]) -> dict[str, list[str]]:
-    """Each VAR a ``secret_path.<VAR>`` key names, with every such key (any scope).
+  """Each VAR a ``secret_path.<VAR>`` key names, with every such key (any scope).
 
-    A present-``null`` pointer (keyless) names no host file and is not counted — the
-    same rows :func:`refuse_env_secret_twins` weighs against the ``env`` family.
-    """
-    names: dict[str, list[str]] = {}
-    for e in entries:
-        if e.category == "secret_path" and e.host_src is not None:
-            names.setdefault(e.name, []).append(e.key)
-    return names
+  A present-``null`` pointer (keyless) names no host file and is not counted — the
+  same rows :func:`refuse_env_secret_twins` weighs against the ``env`` family.
+  """
+  names: dict[str, list[str]] = {}
+  for e in entries:
+    if e.category == "secret_path" and e.host_src is not None:
+      names.setdefault(e.name, []).append(e.key)
+  return names
 
 
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
-    """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
+  """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
 
-    ``env.<VAR>`` and ``secret_path.<VAR>`` are the two SCALAR name-parametric
-    families and they share ONE delivery target — a box environment variable.  Spec
-    §2a: *"A VAR named by BOTH families REFUSES the launch, naming both keys …  NO
-    precedence between the families is defined, and none may be inferred from
-    delivery order."*
+  ``env.<VAR>`` and ``secret_path.<VAR>`` are the two SCALAR name-parametric
+  families and they share ONE delivery target — a box environment variable.  Spec
+  §2a: *"A VAR named by BOTH families REFUSES the launch, naming both keys …  NO
+  precedence between the families is defined, and none may be inferred from
+  delivery order."*
 
-    ⚑⚑ THE THIRD QUESTION THE COLLAPSE DOES NOT ANSWER, for the same reason as the
-    other two: a ``secret_path`` carries no arm in the disk-store shape and its VALUE
-    never enters the collapse at all (arm's length), so ``store_collapse.collapse_env``
-    arbitrates only the ``env`` HALF of a VAR slot and cannot see this contest.  ⚑ It
-    is the whole ENTRY LIST that holds both, which is why this reads that and not a
-    product of either half.
+  ⚑⚑ THE THIRD QUESTION THE COLLAPSE DOES NOT ANSWER, for the same reason as the
+  other two: a ``secret_path`` carries no arm in the disk-store shape and its VALUE
+  never enters the collapse at all (arm's length), so ``store_collapse.collapse_env``
+  arbitrates only the ``env`` HALF of a VAR slot and cannot see this contest.  ⚑ It
+  is the whole ENTRY LIST that holds both, which is why this reads that and not a
+  product of either half.
 
-    ⚑ EVERY SCOPE PAIRING, and that is not a widening: the two are different KEYS, so
-    no cascade level and no containment walk can ever reduce the pair to one.  ⚑ The
-    credential gate never drops either family (:func:`gate_credential_delivery` drops
-    ``synced`` and credential ``seeded`` alone), so the gated and ungated lists hold
-    the same twins.
+  ⚑ EVERY SCOPE PAIRING, and that is not a widening: the two are different KEYS, so
+  no cascade level and no containment walk can ever reduce the pair to one.  ⚑ The
+  credential gate never drops either family (:func:`gate_credential_delivery` drops
+  ``synced`` and credential ``seeded`` alone), so the gated and ungated lists hold
+  the same twins.
 
-    🛑 A PER-RUN ``-e VAR=VALUE`` IS NOT A PARTICIPANT AND MUST NOT BE TAUGHT TO BE.
-    It is the ``env`` family's CLI LEVEL rather than a key
-    (``store_collapse._apply_cli_env``), so the remedy below — remove one of two keys
-    — would name nothing the user could remove.
-    """
-    from kanibako.settings.settings_resolve import SettingsError
+  🛑 A PER-RUN ``-e VAR=VALUE`` IS NOT A PARTICIPANT AND MUST NOT BE TAUGHT TO BE.
+  It is the ``env`` family's CLI LEVEL rather than a key
+  (``store_collapse._apply_cli_env``), so the remedy below — remove one of two keys
+  — would name nothing the user could remove.
+  """
+  from kanibako.settings.settings_resolve import SettingsError
 
-    env_keys: dict[str, list[str]] = {}
-    for e in entries:
-        if e.category == "env":
-            env_keys.setdefault(e.name, []).append(e.key)
-    secret_keys = secret_path_names(entries)
+  env_keys: dict[str, list[str]] = {}
+  for e in entries:
+    if e.category == "env":
+      env_keys.setdefault(e.name, []).append(e.key)
+  secret_keys = secret_path_names(entries)
 
-    for var, env_group in env_keys.items():
-        secret_group = secret_keys.get(var)
-        if secret_group is None:
-            continue
-        # ⚑ EVERY key on each side, never one picked as representative: with no
-        # precedence to appeal to, a message naming one of three leaves the user to
-        # guess which pair is the mistake.  (A second ``env`` key normally meets
-        # ``store_collapse._refuse_env_twin`` first; on a NARROW resolve, which folds
-        # no env slots, it reaches here instead.)
-        raise SettingsError(env_twin_refusal(
-            var,
-            f"is named by BOTH scalar families: "
-            f"{_and_list(env_group)} {_agrees('hold', env_group)} a VALUE for it, "
-            f"and {_and_list(secret_group)} {_agrees('point', secret_group)} at a "
-            f"host file the box exports it from",
-            "The two families share ONE "
-            "delivery target, so naming a variable with both is a mistake "
-            "rather than a preference: NO "
-            "precedence between them is defined, and none may be inferred from the "
-            "order a box happens to receive them. Keep exactly ONE and remove the "
-            "other - 'secret_path' when the value is secret material kanibako must "
-            "never read, 'env' otherwise.",
-        ))
+  for var, env_group in env_keys.items():
+    secret_group = secret_keys.get(var)
+    if secret_group is None:
+      continue
+    # ⚑ EVERY key on each side, never one picked as representative: with no
+    # precedence to appeal to, a message naming one of three leaves the user to
+    # guess which pair is the mistake.  (A second ``env`` key normally meets
+    # ``store_collapse._refuse_env_twin`` first; on a NARROW resolve, which folds
+    # no env slots, it reaches here instead.)
+    raise SettingsError(
+      env_twin_refusal(
+        var,
+        f"is named by BOTH scalar families: "
+        f"{_and_list(env_group)} {_agrees('hold', env_group)} a VALUE for it, "
+        f"and {_and_list(secret_group)} {_agrees('point', secret_group)} at a "
+        f"host file the box exports it from",
+        "The two families share ONE "
+        "delivery target, so naming a variable with both is a mistake "
+        "rather than a preference: NO "
+        "precedence between them is defined, and none may be inferred from the "
+        "order a box happens to receive them. Keep exactly ONE and remove the "
+        "other - 'secret_path' when the value is secret material kanibako must "
+        "never read, 'env' otherwise.",
+      )
+    )
 
 
 def launch_deliveries(
-    entries: list[CategoryEntry], *, agent_dests: frozenset[str],
-    narrow_bindings: "dict[str, object] | None" = None,
-    declared_by: "dict[str, str] | None" = None,
-    dest_keys: "dict[tuple[str, ...], str] | None" = None,
-    convenience_sources: "dict[str, str] | None" = None,
+  entries: list[CategoryEntry],
+  *,
+  agent_dests: frozenset[str],
+  narrow_bindings: "dict[str, object] | None" = None,
+  declared_by: "dict[str, str] | None" = None,
+  dest_keys: "dict[tuple[str, ...], str] | None" = None,
+  convenience_sources: "dict[str, str] | None" = None,
 ) -> LaunchDeliveries:
-    """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
+  """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
-    ⚑ NO ``ENV`` FILTER HERE, AND ADDING ONE BACK WOULD BE A SECOND ROUTE: the ``env``
-    rows leave through the assembly collapse, off this same list, so a box's variables
-    and its mounts fold from one input.
+  ⚑ NO ``ENV`` FILTER HERE, AND ADDING ONE BACK WOULD BE A SECOND ROUTE: the ``env``
+  rows leave through the assembly collapse, off this same list, so a box's variables
+  and its mounts fold from one input.
 
-    ⚑ *declared_by* is HANDED IN, never derived: it is the FOLD's record (see the field),
-    and this function has no bind map to read one off.  Omitted, the carrier reports an
-    empty map and every reader of it prints exactly what it always did.
+  ⚑ *declared_by* is HANDED IN, never derived: it is the FOLD's record (see the field),
+  and this function has no bind map to read one off.  Omitted, the carrier reports an
+  empty map and every reader of it prints exactly what it always did.
 
-    ⚑ THE BOTH-FAMILIES REFUSAL RUNS FIRST, above every dest question: it is decided
-    on VAR NAMES alone, so it needs none of the winners below, and the pair it names
-    is the likelier user error of the two.  It lives on THIS side of the seam rather
-    than inside :func:`secret_path_deliveries` because it is not a dest contest —
-    ``env`` has no dest at all.
-    """
-    refuse_env_secret_twins(entries)
-    return LaunchDeliveries(
-        secrets=secret_path_deliveries(entries),
-        agent_dests=agent_dests,
-        narrow_bindings=narrow_bindings,
-        declared_by=dict(declared_by or {}),
-        dest_keys=dict(dest_keys or {}),
-        convenience_sources=dict(convenience_sources or {}),
-        secret_names=secret_path_names(entries),
-    )
+  ⚑ THE BOTH-FAMILIES REFUSAL RUNS FIRST, above every dest question: it is decided
+  on VAR NAMES alone, so it needs none of the winners below, and the pair it names
+  is the likelier user error of the two.  It lives on THIS side of the seam rather
+  than inside :func:`secret_path_deliveries` because it is not a dest contest —
+  ``env`` has no dest at all.
+  """
+  refuse_env_secret_twins(entries)
+  return LaunchDeliveries(
+    secrets=secret_path_deliveries(entries),
+    agent_dests=agent_dests,
+    narrow_bindings=narrow_bindings,
+    declared_by=dict(declared_by or {}),
+    dest_keys=dict(dest_keys or {}),
+    convenience_sources=dict(convenience_sources or {}),
+    secret_names=secret_path_names(entries),
+  )
 
 
 def narrow_table_winners(
-    entries: list[CategoryEntry], dests: frozenset[str],
+  entries: list[CategoryEntry],
+  dests: frozenset[str],
 ) -> list[CategoryEntry]:
-    """A NARROW resolve's mount winners: its OWN table's dests, one row each.
+  """A NARROW resolve's mount winners: its OWN table's dests, one row each.
 
-    A narrow resolve carries one injected table (``include_base_families=False``) but
-    still resolves the user's whole CASCADE, so a user's declaration reaches it —
-    emitting those is the D1 defect, deleted (P4) by filtering to *dests*, the
-    table's own.  At such a dest §0 still decides, and these two rules are its:
+  A narrow resolve carries one injected table (``include_base_families=False``) but
+  still resolves the user's whole CASCADE, so a user's declaration reaches it —
+  emitting those is the D1 defect, deleted (P4) by filtering to *dests*, the
+  table's own.  At such a dest §0 still decides, and these two rules are its:
 
-    * a MASK at the dest OVERRIDES the table's bind: the COLLAPSE's rule, applied
-      here because the collapse returns early on a narrow resolve.
-    * anything else contending for a table dest is REFUSED by name.  The producer
-      already raised both refusals for a SAME-scope pair; what is left here is the
-      CROSS-scope pair.  ⚑ A bare dest-filter would let both rows into a dest-keyed
-      map and resolve them by INSERTION ORDER, silently.
+  * a MASK at the dest OVERRIDES the table's bind: the COLLAPSE's rule, applied
+    here because the collapse returns early on a narrow resolve.
+  * anything else contending for a table dest is REFUSED by name.  The producer
+    already raised both refusals for a SAME-scope pair; what is left here is the
+    CROSS-scope pair.  ⚑ A bare dest-filter would let both rows into a dest-keyed
+    map and resolve them by INSERTION ORDER, silently.
 
-    ⚑ NO SILENT PICK, deliberately — "two mounts at one destination are an error in
-    every scope combination but one" is the ratified rule, its one exception is the
-    producer's, and a narrow resolve has no cross-scope arbiter to defer to.
-    """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  ⚑ NO SILENT PICK, deliberately — "two mounts at one destination are an error in
+  every scope combination but one" is the ratified rule, its one exception is the
+  producer's, and a narrow resolve has no cross-scope arbiter to defer to.
+  """
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    by_dest: dict[str, list[CategoryEntry]] = {}
-    for e in entries:
-        if e.delivery != MOUNT:
-            continue
-        dest = normalize_bind_dest(e.box_dest)
-        if dest in dests:
-            by_dest.setdefault(dest, []).append(e)
+  by_dest: dict[str, list[CategoryEntry]] = {}
+  for e in entries:
+    if e.delivery != MOUNT:
+      continue
+    dest = normalize_bind_dest(e.box_dest)
+    if dest in dests:
+      by_dest.setdefault(dest, []).append(e)
 
-    winners: list[CategoryEntry] = []
-    for dest, group in by_dest.items():
-        masks = [e for e in group if e.category == "masks"]
-        if masks:
-            winners.append(masks[-1])
-            continue
-        if len(group) > 1:
-            concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
-            abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
-            if concrete and abstract:
-                raise_extension_onto_occupied(
-                    dest, extension=abstract[-1], base=concrete[-1],
-                )
-            raise_binding_vs_binding(dest, group)
-        winners.append(group[0])
-    return winners
+  winners: list[CategoryEntry] = []
+  for dest, group in by_dest.items():
+    masks = [e for e in group if e.category == "masks"]
+    if masks:
+      winners.append(masks[-1])
+      continue
+    if len(group) > 1:
+      concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
+      abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
+      if concrete and abstract:
+        raise_extension_onto_occupied(
+          dest,
+          extension=abstract[-1],
+          base=concrete[-1],
+        )
+      raise_binding_vs_binding(dest, group)
+    winners.append(group[0])
+  return winners
 
 
 def raise_binding_vs_binding(
-    box_dest: str, concrete: list[CategoryEntry],
+  box_dest: str,
+  concrete: list[CategoryEntry],
 ) -> NoReturn:
-    """Raise §0's refusal of two CONCRETE declarations at one *box_dest*.
+  """Raise §0's refusal of two CONCRETE declarations at one *box_dest*.
 
-    PUBLIC because that is decidable inside ONE scope as well as across two, so it
-    has THREE callers: the ``store_shape`` producer and the two launch-seam functions
-    above.  ⚑ The D2 carve-out is the CALLER's test: it decides whether the set in
-    hand is a collision at all.
-    """
-    from kanibako.errors import CategoryCollisionError
+  PUBLIC because that is decidable inside ONE scope as well as across two, so it
+  has THREE callers: the ``store_shape`` producer and the two launch-seam functions
+  above.  ⚑ The D2 carve-out is the CALLER's test: it decides whether the set in
+  hand is a collision at all.
+  """
+  from kanibako.errors import CategoryCollisionError
 
-    raise CategoryCollisionError(
-        f"Two bindings target the same box destination '{box_dest}':\n"
-        + _entry_lines(concrete)
-        + "A destination may be bound exactly once. Choosing one silently "
-        "would give you a\nread-only mount where the other declaration asked "
-        "for read-write.\n\n"
-        + _rule_changed(
-            "Until {rel} the more specific scope won, silently — a "
-            "configuration that\nlaunched before can refuse to launch now. "
-            "Your files did not change; the rule did."
-        )
-        + _suppress_then_add_or_keep_internal(
-            box_dest, concrete[0].key_segments, ambiguous=True,
-        ),
-        kind="binding_vs_binding",
-        box_dest=box_dest,
-        entries=tuple((e.label, e.host_src) for e in concrete),
+  raise CategoryCollisionError(
+    f"Two bindings target the same box destination '{box_dest}':\n"
+    + _entry_lines(concrete)
+    + "A destination may be bound exactly once. Choosing one silently "
+    "would give you a\nread-only mount where the other declaration asked "
+    "for read-write.\n\n"
+    + _rule_changed(
+      "Until {rel} the more specific scope won, silently — a "
+      "configuration that\nlaunched before can refuse to launch now. "
+      "Your files did not change; the rule did."
     )
+    + _suppress_then_add_or_keep_internal(
+      box_dest,
+      concrete[0].key_segments,
+      ambiguous=True,
+    ),
+    kind="binding_vs_binding",
+    box_dest=box_dest,
+    entries=tuple((e.label, e.host_src) for e in concrete),
+  )
 
 
 def raise_extension_onto_occupied(
-    box_dest: str, *, extension: CategoryEntry, base: CategoryEntry,
+  box_dest: str,
+  *,
+  extension: CategoryEntry,
+  base: CategoryEntry,
 ) -> NoReturn:
-    """Raise §0's refusal of *extension* extending onto the *base*'s *box_dest*.
+  """Raise §0's refusal of *extension* extending onto the *base*'s *box_dest*.
 
-    PUBLIC for the same reason as :func:`raise_binding_vs_binding`, with the same
-    three callers.  ⚑ The BASE always survives, so the remedy names it without the
-    two-peers "either one may be the one you keep" hedge.
-    """
-    from kanibako.errors import CategoryCollisionError
+  PUBLIC for the same reason as :func:`raise_binding_vs_binding`, with the same
+  three callers.  ⚑ The BASE always survives, so the remedy names it without the
+  two-peers "either one may be the one you keep" hedge.
+  """
+  from kanibako.errors import CategoryCollisionError
 
-    raise CategoryCollisionError(
-        f"'{extension.label}' extends onto '{box_dest}', which\n"
-        f"'{base.label}' already binds.\n"
-        "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
-        "derives a\nbindings.rw entry. The explicit binding is the BASE and "
-        "survives; the derived\nextension is refused.\n\n"
-        + _rule_changed(
-            "Until {rel} a 'common' silently overrode a binding at the same "
-            "destination,\nand a 'caches' silently lost to one — two "
-            "abstractions, two opposite silent\noutcomes. Both are now "
-            "refused."
-        )
-        + _suppress_then_add_or_keep_internal(box_dest, base.key_segments),
-        kind="extension_onto_occupied",
-        box_dest=box_dest,
-        entries=tuple((e.label, e.host_src) for e in (extension, base)),
+  raise CategoryCollisionError(
+    f"'{extension.label}' extends onto '{box_dest}', which\n"
+    f"'{base.label}' already binds.\n"
+    "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
+    "derives a\nbindings.rw entry. The explicit binding is the BASE and "
+    "survives; the derived\nextension is refused.\n\n"
+    + _rule_changed(
+      "Until {rel} a 'common' silently overrode a binding at the same "
+      "destination,\nand a 'caches' silently lost to one — two "
+      "abstractions, two opposite silent\noutcomes. Both are now "
+      "refused."
     )
+    + _suppress_then_add_or_keep_internal(box_dest, base.key_segments),
+    kind="extension_onto_occupied",
+    box_dest=box_dest,
+    entries=tuple((e.label, e.host_src) for e in (extension, base)),
+  )
 
 
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry:
-    """The winner among same-layer peers: SCOPE PRECEDENCE first, then input order.
+  """The winner among same-layer peers: SCOPE PRECEDENCE first, then input order.
 
-    ⚑ The scope order is authoritative and the CALLER's list order must not override
-    it — this takes an ARBITRARY list; only the live adapter hands it apply-ordered.
-    Within one scope input order decides, LAST wins.  ⚑ ONE CALLER since 6-R3.
-    """
-    return max(
-        enumerate(entries),
-        key=lambda pair: (_SCOPE_APPLY_ORDER[pair[1].scope], pair[0]),
-    )[1]
+  ⚑ The scope order is authoritative and the CALLER's list order must not override
+  it — this takes an ARBITRARY list; only the live adapter hands it apply-ordered.
+  Within one scope input order decides, LAST wins.  ⚑ ONE CALLER since 6-R3.
+  """
+  return max(
+    enumerate(entries),
+    key=lambda pair: (_SCOPE_APPLY_ORDER[pair[1].scope], pair[0]),
+  )[1]
 
 
 def _entry_lines(entries: list[CategoryEntry]) -> str:
-    """``    <label>  ->  <host_src>`` lines, label-column aligned."""
-    width = max((len(e.label) for e in entries), default=0)
-    return "".join(
-        f"    {e.label.ljust(width)}  ->  {e.host_src}\n" for e in entries
-    )
+  """``    <label>  ->  <host_src>`` lines, label-column aligned."""
+  width = max((len(e.label) for e in entries), default=0)
+  return "".join(f"    {e.label.ljust(width)}  ->  {e.host_src}\n" for e in entries)
 
 
 def _and_list(keys: list[str]) -> str:
-    """``'a'``, ``'a' and 'b'``, ``'a', 'b' and 'c'`` - quoted keys, INLINE.
+  """``'a'``, ``'a' and 'b'``, ``'a', 'b' and 'c'`` - quoted keys, INLINE.
 
-    The sibling of :func:`_entry_lines`, for a refusal whose participants are KEYS
-    with no source to pair them with - :func:`refuse_env_secret_twins`' two families
-    contend over a VARIABLE NAME rather than a destination, so there is no
-    ``key -> host_src`` column to lay out.
-    """
-    quoted = [repr(k) for k in keys]
-    if len(quoted) == 1:
-        return quoted[0]
-    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+  The sibling of :func:`_entry_lines`, for a refusal whose participants are KEYS
+  with no source to pair them with - :func:`refuse_env_secret_twins`' two families
+  contend over a VARIABLE NAME rather than a destination, so there is no
+  ``key -> host_src`` column to lay out.
+  """
+  quoted = [repr(k) for k in keys]
+  if len(quoted) == 1:
+    return quoted[0]
+  return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
 
 
 def _agrees(verb: str, subjects: list[str]) -> str:
-    """*verb* (bare plural form) agreeing with a one-or-many :func:`_and_list` subject."""
-    return verb if len(subjects) > 1 else f"{verb}s"
+  """*verb* (bare plural form) agreeing with a one-or-many :func:`_and_list` subject."""
+  return verb if len(subjects) > 1 else f"{verb}s"
 
 
 #: The SUPPRESS-THEN-ADD cure (§0), unwrapped.  ⚑⚑ ONE CARRIER, and that is the whole
@@ -920,11 +936,11 @@ def _agrees(verb: str, subjects: list[str]) -> str:
 #: and ``store_collapse``'s refusals take it as it stands.  It carries no terminal
 #: punctuation, so a caller ends it with the ``.`` or ``:`` its own sentence needs.
 SUPPRESS_THEN_ADD: Final[str] = (
-    "To change what occupies a destination you must SUPPRESS the entry you do not "
-    "want and then declare the one you do. An override is not enough: these are two "
-    "different KEYS, so both survive the cascade. Set the unwanted key to null in the "
-    "settings file for its scope (a file may write its own scope and the scopes it "
-    "contains)"
+  "To change what occupies a destination you must SUPPRESS the entry you do not "
+  "want and then declare the one you do. An override is not enough: these are two "
+  "different KEYS, so both survive the cascade. Set the unwanted key to null in the "
+  "settings file for its scope (a file may write its own scope and the scopes it "
+  "contains)"
 )
 
 #: The width :func:`_suppress_then_add` wraps at.  ⚑ It is a MESSAGE-LAYOUT choice, not
@@ -934,229 +950,237 @@ _REMEDY_WRAP: Final[int] = 80
 
 
 def internal_bind_cure(dests: Sequence[str]) -> str | None:
-    """The cure for a collision at an INTERNAL bind's dest, or ``None`` if none is one.
+  """The cure for a collision at an INTERNAL bind's dest, or ``None`` if none is one.
 
-    ⚑ THE ONE PREDICATE for "is a collision participant internal" (spec §2c), shared by
-    every collision remedy here and in ``store_collapse``: an internal bind is not
-    repointable and not suppressible, so :data:`SUPPRESS_THEN_ADD` would name an edit
-    the resolve refuses.  Judged on the RESOLVED dest, so a ``{key}``-ref spelling that
-    passed the resolve's written-dest check still meets it.
-    """
-    from kanibako.settings.core_defaults import internal_bind_keys
-    from kanibako.settings.settings_resolve import normalize_bind_dest
+  ⚑ THE ONE PREDICATE for "is a collision participant internal" (spec §2c), shared by
+  every collision remedy here and in ``store_collapse``: an internal bind is not
+  repointable and not suppressible, so :data:`SUPPRESS_THEN_ADD` would name an edit
+  the resolve refuses.  Judged on the RESOLVED dest, so a ``{key}``-ref spelling that
+  passed the resolve's written-dest check still meets it.
+  """
+  from kanibako.settings.core_defaults import internal_bind_keys
+  from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    internal = {dest for _arm, dest in internal_bind_keys()}
-    held = sorted({normalize_bind_dest(d) for d in dests} & internal)
-    if not held:
-        return None
-    what = "is an internal kanibako bind" if len(held) == 1 else "are internal kanibako binds"
-    return (
-        f"{', '.join(repr(d) for d in held)} {what} (spec §2c), not repointable and not "
-        f"suppressible: keep it, and change the other declaration."
-    )
+  internal = {dest for _arm, dest in internal_bind_keys()}
+  held = sorted({normalize_bind_dest(d) for d in dests} & internal)
+  if not held:
+    return None
+  what = "is an internal kanibako bind" if len(held) == 1 else "are internal kanibako binds"
+  return (
+    f"{', '.join(repr(d) for d in held)} {what} (spec §2c), not repointable and not "
+    f"suppressible: keep it, and change the other declaration."
+  )
 
 
 def _suppress_then_add_or_keep_internal(
-    box_dest: str, occupant_segments: tuple[str, ...], *, ambiguous: bool = False,
+  box_dest: str,
+  occupant_segments: tuple[str, ...],
+  *,
+  ambiguous: bool = False,
 ) -> str:
-    """:func:`internal_bind_cure` at an internal *box_dest*, else :func:`_suppress_then_add`."""
-    cure = internal_bind_cure([box_dest])
-    if cure is not None:
-        return textwrap.fill(cure, _REMEDY_WRAP) + "\n"
-    return _suppress_then_add(occupant_segments, ambiguous=ambiguous)
+  """:func:`internal_bind_cure` at an internal *box_dest*, else :func:`_suppress_then_add`."""
+  cure = internal_bind_cure([box_dest])
+  if cure is not None:
+    return textwrap.fill(cure, _REMEDY_WRAP) + "\n"
+  return _suppress_then_add(occupant_segments, ambiguous=ambiguous)
 
 
 def _rule_changed(body: str) -> str:
-    """The migration-grade paragraph (M-7) — ⚑ ONLY on a rule whose outcome changed;
-    on one that did NOT it trains a reader to skip it.
-    """
-    return (
-        f"⚑ THIS RULE CHANGED IN kanibako {_RULE_CHANGE_RELEASE}. "
-        + body.format(rel=_RULE_CHANGE_RELEASE)
-        + "\n\n"
-    )
+  """The migration-grade paragraph (M-7) — ⚑ ONLY on a rule whose outcome changed;
+  on one that did NOT it trains a reader to skip it.
+  """
+  return (
+    f"⚑ THIS RULE CHANGED IN kanibako {_RULE_CHANGE_RELEASE}. "
+    + body.format(rel=_RULE_CHANGE_RELEASE)
+    + "\n\n"
+  )
 
 
 def _suppress_then_add(
-    occupant_segments: tuple[str, ...], *, ambiguous: bool = False,
+  occupant_segments: tuple[str, ...],
+  *,
+  ambiguous: bool = False,
 ) -> str:
-    """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
+  """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
 
-    ⚑ The prose is :data:`SUPPRESS_THEN_ADD`, wrapped — NOT a literal of its own.
+  ⚑ The prose is :data:`SUPPRESS_THEN_ADD`, wrapped — NOT a literal of its own.
 
-    ⚑ NO CLI verb can express THIS suppression — ``set``, ``reset`` and
-    ``set --null pref.<key>`` each fail for a different reason (llm-doc).  So the
-    remedy is a hand edit, and the message says so rather than naming a command that
-    would not work.  ⚑ It also names the SCOPE: a box file may not suppress a
-    containing scope's key.  *ambiguous* is True when the caller could not know WHICH
-    entry to keep (two peers), so the block is labeled an example rather than a
-    prescription; the extension-onto-occupied refusal passes False.
-    """
-    # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
-    from kanibako.settings.settings_keyspace import display_segments, entry_label
+  ⚑ NO CLI verb can express THIS suppression — ``set``, ``reset`` and
+  ``set --null pref.<key>`` each fail for a different reason (llm-doc).  So the
+  remedy is a hand edit, and the message says so rather than naming a command that
+  would not work.  ⚑ It also names the SCOPE: a box file may not suppress a
+  containing scope's key.  *ambiguous* is True when the caller could not know WHICH
+  entry to keep (two peers), so the block is labeled an example rather than a
+  prescription; the extension-onto-occupied refusal passes False.
+  """
+  # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
+  from kanibako.settings.settings_keyspace import display_segments, entry_label
 
-    # The block is pasted into a file, where the node reads in its ``+`` spelling.
-    occupant_segments = display_segments(occupant_segments)
-    occupant_key = entry_label(".".join(occupant_segments[:-1]), occupant_segments[-1])
-    scope = occupant_segments[0]
-    last = len(occupant_segments) - 1
-    indent = "  "
-    lines = [f"{scope}:"]
-    for depth, seg in enumerate(occupant_segments[1:], start=1):
-        lines.append(f"{indent * depth}{seg}:" if depth < last
-                     else f"{indent * depth}{seg}: null")
-    # ⚑ An agent's OWN file has NO node level: its root ``self:`` IS ``agent.<node>``,
-    # with the category table DIRECTLY under it, so printing only the canonical form
-    # would hand the reader an edit that silently does nothing there. ⚑ That spelling
-    # comes from the BOUNDARY, never a literal here — the caveat QUOTES the file, and
-    # it quotes the TABLE, never the entry, whose last segment is the DEST.
-    from kanibako.settings.agent_file import file_spelling
+  # The block is pasted into a file, where the node reads in its ``+`` spelling.
+  occupant_segments = display_segments(occupant_segments)
+  occupant_key = entry_label(".".join(occupant_segments[:-1]), occupant_segments[-1])
+  scope = occupant_segments[0]
+  last = len(occupant_segments) - 1
+  indent = "  "
+  lines = [f"{scope}:"]
+  for depth, seg in enumerate(occupant_segments[1:], start=1):
+    lines.append(f"{indent * depth}{seg}:" if depth < last else f"{indent * depth}{seg}: null")
+  # ⚑ An agent's OWN file has NO node level: its root ``self:`` IS ``agent.<node>``,
+  # with the category table DIRECTLY under it, so printing only the canonical form
+  # would hand the reader an edit that silently does nothing there. ⚑ That spelling
+  # comes from the BOUNDARY, never a literal here — the caveat QUOTES the file, and
+  # it quotes the TABLE, never the entry, whose last segment is the DEST.
+  from kanibako.settings.agent_file import file_spelling
 
-    caveat = (
-        f"\n⚑ In {occupant_segments[1]}'s OWN settings file there is no node level: "
-        f"the table is\nspelled '{file_spelling(*occupant_segments[2:last])}', because "
-        f"'{file_spelling()}:' IS '{scope}.{occupant_segments[1]}'. The form above is "
-        "what a CONTAINING scope's file writes.\n"
-        if scope == "agent" and len(occupant_segments) > 1 else ""
-    )
-    which = (
-        "Either entry may be the one you keep — the block below suppresses "
-        f"'{occupant_key}';\nuse whichever key you do NOT want.\n\n"
-        if ambiguous else ""
-    )
-    return (
-        textwrap.fill(SUPPRESS_THEN_ADD, _REMEDY_WRAP)
-        + ":\n\n"
-        + which
-        + "\n".join(lines)
-        + "\n"
-        + caveat
-    )
+  caveat = (
+    f"\n⚑ In {occupant_segments[1]}'s OWN settings file there is no node level: "
+    f"the table is\nspelled '{file_spelling(*occupant_segments[2:last])}', because "
+    f"'{file_spelling()}:' IS '{scope}.{occupant_segments[1]}'. The form above is "
+    "what a CONTAINING scope's file writes.\n"
+    if scope == "agent" and len(occupant_segments) > 1
+    else ""
+  )
+  which = (
+    "Either entry may be the one you keep — the block below suppresses "
+    f"'{occupant_key}';\nuse whichever key you do NOT want.\n\n"
+    if ambiguous
+    else ""
+  )
+  return (
+    textwrap.fill(SUPPRESS_THEN_ADD, _REMEDY_WRAP)
+    + ":\n\n"
+    + which
+    + "\n".join(lines)
+    + "\n"
+    + caveat
+  )
 
 
 def derive_binding_keys(
-    entries: list[CategoryEntry],
+  entries: list[CategoryEntry],
 ) -> dict[tuple[str, ...], "Bind"]:
-    """The MATERIALIZED derived bindings for the ABSTRACT declarations (§0).
+  """The MATERIALIZED derived bindings for the ABSTRACT declarations (§0).
 
-    §0 requires the binding each abstract declaration produces to be materialized
-    BESIDE it, at ``binding_derivations.<declaration-key>.<dest>`` (R-8: the reserved
-    INTERNAL node at the snapshot root — NOT a key).  ⚑ KEYED BY SEGMENTS, and
-    ``KeyStore.insert_segments`` splits nothing — see :class:`CategoryEntry`.
+  §0 requires the binding each abstract declaration produces to be materialized
+  BESIDE it, at ``binding_derivations.<declaration-key>.<dest>`` (R-8: the reserved
+  INTERNAL node at the snapshot root — NOT a key).  ⚑ KEYED BY SEGMENTS, and
+  ``KeyStore.insert_segments`` splits nothing — see :class:`CategoryEntry`.
 
-    ⚑ It is deliberately NOT written into ``<scope>.bindings.rw.<name>`` (§0's own
-    ruling) — not for a runtime reason, but for MEANING: a key in the concrete layer
-    that no user wrote and that emits no mount is a FORGERY of the one thing the §0
-    table reads (llm-doc: the argument in full).
+  ⚑ It is deliberately NOT written into ``<scope>.bindings.rw.<name>`` (§0's own
+  ruling) — not for a runtime reason, but for MEANING: a key in the concrete layer
+  that no user wrote and that emits no mount is a FORGERY of the one thing the §0
+  table reads (llm-doc: the argument in full).
 
-    PURE; the ONE seam that installs the map is
-    ``commands.start._resolve_launch_snapshot``.  ⚑ Every abstract entry surviving the
-    credential gate gets one, WINNERS AND LOSERS ALIKE: a loser's derivation is what
-    explains the warning that names it.
-    """
-    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, Bind
+  PURE; the ONE seam that installs the map is
+  ``commands.start._resolve_launch_snapshot``.  ⚑ Every abstract entry surviving the
+  credential gate gets one, WINNERS AND LOSERS ALIKE: a loser's derivation is what
+  explains the warning that names it.
+  """
+  from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, Bind
 
-    out: dict[tuple[str, ...], Bind] = {}
-    for e in entries:
-        if e.category not in ABSTRACT_CATEGORIES:
-            continue
-        out[(BINDING_DERIVATIONS_NODE, *e.key_segments)] = Bind(
-            host=e.host_src or "", box=e.box_dest,
-            opts=e.options or None,
-        )
-    return out
+  out: dict[tuple[str, ...], Bind] = {}
+  for e in entries:
+    if e.category not in ABSTRACT_CATEGORIES:
+      continue
+    out[(BINDING_DERIVATIONS_NODE, *e.key_segments)] = Bind(
+      host=e.host_src or "",
+      box=e.box_dest,
+      opts=e.options or None,
+    )
+  return out
 
 
 def declaration_delivery(decl_key: str) -> Delivery:
-    """The COPY/MOUNT delivery of a declaration KEY, off the ONE category table.
+  """The COPY/MOUNT delivery of a declaration KEY, off the ONE category table.
 
-    The category is the segment after the scope, and the AGENT scope is
-    DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is one.
-    Parsed BY POSITION rather than by substring search, so a trailing DESTINATION
-    that happens to spell a category (``box.caches.common``) cannot be misread.
-    (The trailing segment is a dest, not a name: the four categories went terminal
-    and dest-keyed on 2026-08-08c.)
+  The category is the segment after the scope, and the AGENT scope is
+  DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is one.
+  Parsed BY POSITION rather than by substring search, so a trailing DESTINATION
+  that happens to spell a category (``box.caches.common``) cannot be misread.
+  (The trailing segment is a dest, not a name: the four categories went terminal
+  and dest-keyed on 2026-08-08c.)
 
-    ⚑ IT LIVES BESIDE :data:`_DELIVERY`, which is the ONE definition of what a
-    category delivers.  It was ``config_display._declaration_delivery`` until the
-    ``--effective`` pairing landed, and moved here because the pairing needs the
-    same answer: a renderer keeping its own copy would drift the moment a category
-    moved between COPY and MOUNT.
-    """
-    parts = decl_key.split(".")
-    idx = 2 if parts[0] == "agent" else 1
-    return _DELIVERY.get(parts[idx] if len(parts) > idx else "", MOUNT)
+  ⚑ IT LIVES BESIDE :data:`_DELIVERY`, which is the ONE definition of what a
+  category delivers.  It was ``config_display._declaration_delivery`` until the
+  ``--effective`` pairing landed, and moved here because the pairing needs the
+  same answer: a renderer keeping its own copy would drift the moment a category
+  moved between COPY and MOUNT.
+  """
+  parts = decl_key.split(".")
+  idx = 2 if parts[0] == "agent" else 1
+  return _DELIVERY.get(parts[idx] if len(parts) > idx else "", MOUNT)
 
 
 def effective_bindings_and_template_sources(
-    snapshot: "KeyStore",
+  snapshot: "KeyStore",
 ) -> "tuple[Any, ...]":
-    """Every ABSTRACT declaration paired with the delivery the box ACTUALLY receives.
+  """Every ABSTRACT declaration paired with the delivery the box ACTUALLY receives.
 
-    Returns ``store_collapse.Derivation`` rows, one per declaration, sorted by
-    declaration key.  THE SINGLE SOURCE for the ``--effective``
-    binding-derivations block: a consumer that recomputes either half is the second
-    opinion that display exists to DETECT.
+  Returns ``store_collapse.Derivation`` rows, one per declaration, sorted by
+  declaration key.  THE SINGLE SOURCE for the ``--effective``
+  binding-derivations block: a consumer that recomputes either half is the second
+  opinion that display exists to DETECT.
 
-    🛑🛑 **IT TAKES TWO INPUTS AND BOTH ARE LOAD-BEARING.**  The reserved
-    ``binding_derivations`` node supplies the DECLARATIONS and nothing else: it is
-    populated BEFORE arbitration, DELIBERATELY (R-8 — a derived binding is a
-    property of the DECLARATION, and :func:`derive_binding_keys` materializes one
-    for winners and losers ALIKE), so every row in it reads as a live mount.  What
-    the box receives is ``meta.assembly.bindings`` / ``.seeded`` / ``.synced`` — the
-    arbitrated collapse.  **Reading the reserved node ALONE is the measured failure
-    this function exists to prevent**: a ``common`` declaration under a mask at the
-    same dest collapses to a mask sentinel — no mount — and the node still says
-    mount, so the block printed ``(mount)`` and printed no mask at all.
+  🛑🛑 **IT TAKES TWO INPUTS AND BOTH ARE LOAD-BEARING.**  The reserved
+  ``binding_derivations`` node supplies the DECLARATIONS and nothing else: it is
+  populated BEFORE arbitration, DELIBERATELY (R-8 — a derived binding is a
+  property of the DECLARATION, and :func:`derive_binding_keys` materializes one
+  for winners and losers ALIKE), so every row in it reads as a live mount.  What
+  the box receives is ``meta.assembly.bindings`` / ``.seeded`` / ``.synced`` — the
+  arbitrated collapse.  **Reading the reserved node ALONE is the measured failure
+  this function exists to prevent**: a ``common`` declaration under a mask at the
+  same dest collapses to a mask sentinel — no mount — and the node still says
+  mount, so the block printed ``(mount)`` and printed no mask at all.
 
-    ⚑ Absent assembly leaves are a NARROW resolve, and the pairing says so by name
-    (``DERIVED_UNCOVERED``) rather than reporting every declaration as unmounted.
+  ⚑ Absent assembly leaves are a NARROW resolve, and the pairing says so by name
+  (``DERIVED_UNCOVERED``) rather than reporting every declaration as unmounted.
 
-    ⚑ ABSTRACT DECLARATIONS ONLY, because that is what the reserved node carries
-    and what keyspec ``:88`` obliges.  The CONCRETE half of the block is rendered
-    from the per-scope ``bindings.{ro,rw}`` arms and needs no pairing: a concrete
-    declaration IS the source of truth a mount is emitted from.
-    """
-    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
-    from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_launch import snapshot_leaf
-    from kanibako.settings.settings_keyspace import display_segments, entry_label
-    from kanibako.settings.settings_views import derived_binding_rows
-    from kanibako.settings.store_collapse import Declaration, pair_declarations
+  ⚑ ABSTRACT DECLARATIONS ONLY, because that is what the reserved node carries
+  and what keyspec ``:88`` obliges.  The CONCRETE half of the block is rendered
+  from the per-scope ``bindings.{ro,rw}`` arms and needs no pairing: a concrete
+  declaration IS the source of truth a mount is emitted from.
+  """
+  from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
+  from kanibako.settings.keystore import KeyStore
+  from kanibako.settings.settings_launch import snapshot_leaf
+  from kanibako.settings.settings_keyspace import display_segments, entry_label
+  from kanibako.settings.settings_views import derived_binding_rows
+  from kanibako.settings.store_collapse import Declaration, pair_declarations
 
-    node = dict.get(snapshot, BINDING_DERIVATIONS_NODE)
-    derived = derived_binding_rows(node) if isinstance(node, KeyStore) else {}
-    # ⚑ ``key`` is DISPLAY (``pair_declarations`` never reads it), so it is the entry's
-    # label; the delivery is read off the dotted declaration key.
-    declarations = [
-        Declaration(
-            key=entry_label(".".join(display_segments(segments[:-1])), segments[-1]),
-            dest=bind.box, src=bind.host,
-            delivery=declaration_delivery(".".join(segments)),
-        )
-        for segments, bind in sorted(derived.items())
-    ]
-    bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
-    return pair_declarations(
-        declarations,
-        dict(bindings) if isinstance(bindings, dict) else {},
-        [
-            *_assembly_copy_list(snapshot, "meta.assembly.seeded"),
-            *_assembly_copy_list(snapshot, "meta.assembly.synced"),
-        ],
+  node = dict.get(snapshot, BINDING_DERIVATIONS_NODE)
+  derived = derived_binding_rows(node) if isinstance(node, KeyStore) else {}
+  # ⚑ ``key`` is DISPLAY (``pair_declarations`` never reads it), so it is the entry's
+  # label; the delivery is read off the dotted declaration key.
+  declarations = [
+    Declaration(
+      key=entry_label(".".join(display_segments(segments[:-1])), segments[-1]),
+      dest=bind.box,
+      src=bind.host,
+      delivery=declaration_delivery(".".join(segments)),
     )
+    for segments, bind in sorted(derived.items())
+  ]
+  bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
+  return pair_declarations(
+    declarations,
+    dict(bindings) if isinstance(bindings, dict) else {},
+    [
+      *_assembly_copy_list(snapshot, "meta.assembly.seeded"),
+      *_assembly_copy_list(snapshot, "meta.assembly.synced"),
+    ],
+  )
 
 
 def _assembly_copy_list(snapshot: "KeyStore", dotted: str) -> list[Any]:
-    """One collapsed copy leaf as a list — ABSENT and EMPTY both yield ``[]`` here.
+  """One collapsed copy leaf as a list — ABSENT and EMPTY both yield ``[]`` here.
 
-    ⚑ The distinction the launch readers keep (``commands.start
-    ._snapshot_assembly_seeded``: absent = a narrow resolve) is not one this caller
-    can act on.  A copy is arbitrated at no destination, so an absent list and an
-    empty one both mean *no copy row accounts for this declaration* — which the
-    pairing already reports as a loss, by the same route a same-scope loser takes.
-    """
-    from kanibako.settings.settings_launch import snapshot_leaf
+  ⚑ The distinction the launch readers keep (``commands.start
+  ._snapshot_assembly_seeded``: absent = a narrow resolve) is not one this caller
+  can act on.  A copy is arbitrated at no destination, so an absent list and an
+  empty one both mean *no copy row accounts for this declaration* — which the
+  pairing already reports as a loss, by the same route a same-scope loser takes.
+  """
+  from kanibako.settings.settings_launch import snapshot_leaf
 
-    rows = snapshot_leaf(snapshot, dotted)
-    return list(rows) if isinstance(rows, list) else []
+  rows = snapshot_leaf(snapshot, dotted)
+  return list(rows) if isinstance(rows, list) else []

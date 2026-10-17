@@ -20,9 +20,9 @@ from typing import Final, Mapping
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import (
-    ABSTRACT_CATEGORIES,
-    DECLARATION_ROOT_REF,
-    agent_declaration_root_ref,
+  ABSTRACT_CATEGORIES,
+  DECLARATION_ROOT_REF,
+  agent_declaration_root_ref,
 )
 from kanibako.settings.settings_resolve import match_braced, starts_bare_reference
 from kanibako.utils import logical_cwd
@@ -30,65 +30,65 @@ from kanibako.utils import logical_cwd
 
 @dataclass
 class AgentConfig:
-    """Per-agent configuration loaded from an agent YAML file.
+  """Per-agent configuration loaded from an agent YAML file.
 
-    ⚑ ``secret_path`` is THREE-STATE: a VAR is ABSENT, maps to ``None``
-    (PRESENT-null — deliberately KEYLESS), or maps to a path ``str``.  Test
-    membership (``var in cfg.secret_path``) before reading — ``.get(var)`` cannot
-    tell the first two apart.  Field-by-field notes are in the llm-doc.
+  ⚑ ``secret_path`` is THREE-STATE: a VAR is ABSENT, maps to ``None``
+  (PRESENT-null — deliberately KEYLESS), or maps to a path ``str``.  Test
+  membership (``var in cfg.secret_path``) before reading — ``.get(var)`` cannot
+  tell the first two apart.  Field-by-field notes are in the llm-doc.
 
-    ⚑⚑ ``run_args`` IS THREE-STATE FOR THE SAME REASON, and it is why the field is
-    ``| None``: ABSENT (``None`` — this file says nothing about the argv) is not the
-    same as an explicit ``run_args: []`` (the user's "no arguments").  The two used to
-    load as one empty list, which was harmless while the file was the argv's only
-    source and is not now: ``agent.default.run_args`` reaches a launch
-    (keyspec §2d agent.default.run_args), so the difference is whether this agent OPTS OUT
-    of that default or lets it through. Test ``cfg.run_args is None`` before reading — a
-    truthy test cannot tell them apart.
+  ⚑⚑ ``run_args`` IS THREE-STATE FOR THE SAME REASON, and it is why the field is
+  ``| None``: ABSENT (``None`` — this file says nothing about the argv) is not the
+  same as an explicit ``run_args: []`` (the user's "no arguments").  The two used to
+  load as one empty list, which was harmless while the file was the argv's only
+  source and is not now: ``agent.default.run_args`` reaches a launch
+  (keyspec §2d agent.default.run_args), so the difference is whether this agent OPTS OUT
+  of that default or lets it through. Test ``cfg.run_args is None`` before reading — a
+  truthy test cannot tell them apart.
 
-    ⚑ ``name`` WAS A FIELD HERE AND IS GONE (D8b, 2026-09-15): the agent FILE's own identity
-    field, never a keyspace leaf.  ``agent.<agent>.label`` (spec §2d) is the declared key that
-    carries an agent's human-readable description now, and a file still holding a ``name:``
-    line REFUSES the launch by name — deliberately; see
-    :func:`kanibako.settings.agent_file._refuse_undeclared_state` and ``MIGRATION.md``.
-    """
+  ⚑ ``name`` WAS A FIELD HERE AND IS GONE (D8b, 2026-09-15): the agent FILE's own identity
+  field, never a keyspace leaf.  ``agent.<agent>.label`` (spec §2d) is the declared key that
+  carries an agent's human-readable description now, and a file still holding a ``name:``
+  line REFUSES the launch by name — deliberately; see
+  :func:`kanibako.settings.agent_file._refuse_undeclared_state` and ``MIGRATION.md``.
+  """
 
-    run_args: list[str] | None = None
-    state: dict[str, str | bool | None] = field(default_factory=dict)
-    # ⚑ `env` is the READ side of the `agent` verbs, NOT a delivery route: env
-    # reaches the box through the collapse's arbitrated slots (MBR-1 P3).
-    # ⚑ `str | bool | None` LIKE ITS SIBLINGS, one arm per STORED SPELLING: a
-    # present-`None` is the DECLARED suppression state (spec §2h) and a bool is a
-    # stored one, so the record must hold both UNRENDERED. Typed `dict[str, str]`,
-    # this field forced `load` to `str()` them into `"None"` and `True`.
-    env: dict[str, str | bool | None] = field(default_factory=dict)
-    secret_path: dict[str, str | bool | None] = field(default_factory=dict)
-    transform_settings: dict = field(default_factory=dict)
-    # ⚑ Carried OPAQUELY through read→write; no live producer
-    # today.  A guard against a shape change, not dead code.
-    category_tables: dict[str, object] = field(default_factory=dict)
+  run_args: list[str] | None = None
+  state: dict[str, str | bool | None] = field(default_factory=dict)
+  # ⚑ `env` is the READ side of the `agent` verbs, NOT a delivery route: env
+  # reaches the box through the collapse's arbitrated slots (MBR-1 P3).
+  # ⚑ `str | bool | None` LIKE ITS SIBLINGS, one arm per STORED SPELLING: a
+  # present-`None` is the DECLARED suppression state (spec §2h) and a bool is a
+  # stored one, so the record must hold both UNRENDERED. Typed `dict[str, str]`,
+  # this field forced `load` to `str()` them into `"None"` and `True`.
+  env: dict[str, str | bool | None] = field(default_factory=dict)
+  secret_path: dict[str, str | bool | None] = field(default_factory=dict)
+  transform_settings: dict = field(default_factory=dict)
+  # ⚑ Carried OPAQUELY through read→write; no live producer
+  # today.  A guard against a shape change, not dead code.
+  category_tables: dict[str, object] = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
-    """Return the agents directory under *data_path*."""
-    return data_path / (paths_agents or "agents")
+  """Return the agents directory under *data_path*."""
+  return data_path / (paths_agents or "agents")
 
 
 def store_dirname(node: str) -> str:
-    """The on-disk store DIRNAME for a *node* — the ``+`` spelling, never ``℘``."""
-    # ⚑ THE single place a node becomes a DIRECTORY, so every store path is spelled
-    # once.  ``℘`` is a key-path device (``agent_ref.SEPARATORS`` says why) and a
-    # store dir is not a key: a user lists it and cd's into it, so it wears the ``+``
-    # they typed.  DELEGATES rather than repeating the substitution.
-    return display_agent_ref(node)
+  """The on-disk store DIRNAME for a *node* — the ``+`` spelling, never ``℘``."""
+  # ⚑ THE single place a node becomes a DIRECTORY, so every store path is spelled
+  # once.  ``℘`` is a key-path device (``agent_ref.SEPARATORS`` says why) and a
+  # store dir is not a key: a user lists it and cd's into it, so it wears the ``+``
+  # they typed.  DELEGATES rather than repeating the substitution.
+  return display_agent_ref(node)
 
 
 def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
-    """Return ``{meta.agent.<agent>.settings}`` for *agent_id*."""
-    # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
-    # ``agents/<agent>.yaml`` (D-2026-06-22).  Callers pass the CANONICAL node; the
-    # ``+`` dirname is applied here, so no caller has to know the two differ.
-    return agents_root / store_dirname(agent_id) / AGENT_META_FILE
+  """Return ``{meta.agent.<agent>.settings}`` for *agent_id*."""
+  # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
+  # ``agents/<agent>.yaml`` (D-2026-06-22).  Callers pass the CANONICAL node; the
+  # ``+`` dirname is applied here, so no caller has to know the two differ.
+  return agents_root / store_dirname(agent_id) / AGENT_META_FILE
 
 
 # --------------------------------------------------------------------------- #
@@ -100,21 +100,21 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
 #: ⚑ DERIVED from the category list, never re-typed: the dirname IS the category
 #: name, and the root dirname is fixed machinery rather than a key (spec §2a).
 AGENT_CATEGORY_DIRNAME: Final[Mapping[str, str]] = {
-    category: category for category in ABSTRACT_CATEGORIES
+  category: category for category in ABSTRACT_CATEGORIES
 }
 
 
 def agent_category_dirname(category: str) -> str:
-    """The FIXED sub-dirname for an ABSTRACT *category* in a per-agent store."""
-    # ⚑ An undeclared category is REFUSED, never given a bare root (spec §0).
-    try:
-        return AGENT_CATEGORY_DIRNAME[category]
-    except KeyError:
-        raise ValueError(
-            f"{category!r} is not an ABSTRACT category with a per-agent store dir "
-            f"(declared: {', '.join(sorted(AGENT_CATEGORY_DIRNAME))}); "
-            "bindings.{ro,rw} take no root at any scope (spec §2a)"
-        ) from None
+  """The FIXED sub-dirname for an ABSTRACT *category* in a per-agent store."""
+  # ⚑ An undeclared category is REFUSED, never given a bare root (spec §0).
+  try:
+    return AGENT_CATEGORY_DIRNAME[category]
+  except KeyError:
+    raise ValueError(
+      f"{category!r} is not an ABSTRACT category with a per-agent store dir "
+      f"(declared: {', '.join(sorted(AGENT_CATEGORY_DIRNAME))}); "
+      "bindings.{ro,rw} take no root at any scope (spec §2a)"
+    ) from None
 
 
 # ⚑ ``agent_category_root(agents_root, agent, category)`` USED TO LIVE HERE and is
@@ -134,88 +134,88 @@ def agent_category_dirname(category: str) -> str:
 
 
 def category_root_ref(scope: str, category: str, *, agent: str | None = None) -> str:
-    """The self-resolving ``{key}``-ref an abstract *category*'s sources root at, per SCOPE.
+  """The self-resolving ``{key}``-ref an abstract *category*'s sources root at, per SCOPE.
 
-    ⚑ What a loader STORES: it must resolve on its own, with no layer prepending
-    anything later (spec §2a).  Every row comes from the single copy of the
-    DECLARATION-ROOT table, never a local literal — the four scopes differ ONLY in
-    which row is read, which is why there is one function and not four.  *agent* is
-    REQUIRED for the agent row and is the only placeholder any row carries; an
-    undeclared *scope* is refused rather than given a bare root (spec §0).
-    """
-    try:
-        root = DECLARATION_ROOT_REF[scope]
-    except KeyError:
-        raise ValueError(
-            f"{scope!r} is not a DECLARATION-ROOT scope "
-            f"(declared: {', '.join(sorted(DECLARATION_ROOT_REF))}; spec §2a)"
-        ) from None
-    if "{agent}" in root:
-        if agent is None:
-            raise ValueError(
-                f"the {scope!r} DECLARATION ROOT is DISCRIMINATED "
-                f"({root!r}); an agent name is required to build it (spec §2d)"
-            )
-        root = agent_declaration_root_ref(agent)
-    return f"{root}/{agent_category_dirname(category)}"
+  ⚑ What a loader STORES: it must resolve on its own, with no layer prepending
+  anything later (spec §2a).  Every row comes from the single copy of the
+  DECLARATION-ROOT table, never a local literal — the four scopes differ ONLY in
+  which row is read, which is why there is one function and not four.  *agent* is
+  REQUIRED for the agent row and is the only placeholder any row carries; an
+  undeclared *scope* is refused rather than given a bare root (spec §0).
+  """
+  try:
+    root = DECLARATION_ROOT_REF[scope]
+  except KeyError:
+    raise ValueError(
+      f"{scope!r} is not a DECLARATION-ROOT scope "
+      f"(declared: {', '.join(sorted(DECLARATION_ROOT_REF))}; spec §2a)"
+    ) from None
+  if "{agent}" in root:
+    if agent is None:
+      raise ValueError(
+        f"the {scope!r} DECLARATION ROOT is DISCRIMINATED "
+        f"({root!r}); an agent name is required to build it (spec §2d)"
+      )
+    root = agent_declaration_root_ref(agent)
+  return f"{root}/{agent_category_dirname(category)}"
 
 
 def agent_category_root_ref(agent: str, category: str) -> str:
-    """The self-resolving ``{key}``-ref an abstract *category*'s sources root at."""
-    # ⚑ The AGENT row of :func:`category_root_ref`, kept as a named entry point for
-    # the per-agent loaders that never see another scope.
-    return category_root_ref("agent", category, agent=agent)
+  """The self-resolving ``{key}``-ref an abstract *category*'s sources root at."""
+  # ⚑ The AGENT row of :func:`category_root_ref`, kept as a named entry point for
+  # the per-agent loaders that never see another scope.
+  return category_root_ref("agent", category, agent=agent)
 
 
 def is_self_resolving(src: str) -> bool:
-    r"""Whether *src* resolves on its own — absolute, an unescaped leading ``~``, or a braced reference.
+  r"""Whether *src* resolves on its own — absolute, an unescaped leading ``~``, or a braced reference.
 
-    ⚑ NOT a plain first-char test: ``~`` counts only UNESCAPED, so ``\~foo`` is a
-    plain relative dir.  ``\/`` is no escape (keyspec "References"), so a value that
-    starts with it is refused where it is expanded, never read as absolute here.
-    ``@`` and ``$`` are ordinary characters (keyspec "References"): ``@foo/x`` and
-    ``$HOME/x`` are bare relative paths.
-    """
-    if src[:1] == "~":
-        return True
-    if starts_bare_reference(src):  # BARE-REF-GUARD: the expander refuses it with its cure.
-        return True
-    if src[:1] == "{" and match_braced(src, 0) is not None:
-        return True
-    return src[:1] == "/"
+  ⚑ NOT a plain first-char test: ``~`` counts only UNESCAPED, so ``\~foo`` is a
+  plain relative dir.  ``\/`` is no escape (keyspec "References"), so a value that
+  starts with it is refused where it is expanded, never read as absolute here.
+  ``@`` and ``$`` are ordinary characters (keyspec "References"): ``@foo/x`` and
+  ``$HOME/x`` are bare relative paths.
+  """
+  if src[:1] == "~":
+    return True
+  if starts_bare_reference(src):  # BARE-REF-GUARD: the expander refuses it with its cure.
+    return True
+  if src[:1] == "{" and match_braced(src, 0) is not None:
+    return True
+  return src[:1] == "/"
 
 
 def is_unambiguous_path_value(value: str) -> bool:
-    r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points
-    (keyspec §2a "A path key's stored value").
+  r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points
+  (keyspec §2a "A path key's stored value").
 
-    Legal: absolute, ``~``-rooted, an ``XDG_*`` variable or a key reference.  Anything else — a
-    bare leaf, ``./x``, ``../x`` — is AMBIGUOUS and is refused rather than anchored
-    (:func:`ambiguous_path_value_error` says why and names both readings).
+  Legal: absolute, ``~``-rooted, an ``XDG_*`` variable or a key reference.  Anything else — a
+  bare leaf, ``./x``, ``../x`` — is AMBIGUOUS and is refused rather than anchored
+  (:func:`ambiguous_path_value_error` says why and names both readings).
 
-    ⚑ NARROWER THAN :func:`is_self_resolving`, ON PURPOSE, AND THE DIFFERENCE IS
-    ``{$VAR}``.  That predicate rules on a BIND SOURCE, where a declaration may name
-    any variable the launch namespace supplies; this one rules on a path a USER
-    typed, and EVERY variable outside the ``XDG_`` family expands to a bare word
-    that anchors nothing — today an agent or workset name (``{$AGENT}``,
-    ``{$WORKSET}``) or a terminal type (``{$TERM}``) — so ``{$AGENT}/logs`` and
-    ``{$TERM}/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
-    ``XDG_`` PREFIX, not that list: a variable added to the dispatch is refused
-    here the day it lands, and this sentence is examples, never an inventory.
-    ⚑ A leading escape falls the same way it does there: ``\~foo`` is a plain
-    relative dir.
-    """
-    if value[:1] == "~":
-        return True
-    if starts_bare_reference(value):  # BARE-REF-GUARD: the expander refuses it with its cure.
-        return True
-    if value[:1] == "{":
-        braced = match_braced(value, 0)
-        if braced is None:
-            return False
-        kind, name, _ = braced
-        return kind == "ref" or name.startswith("XDG_")
-    return value[:1] == "/"
+  ⚑ NARROWER THAN :func:`is_self_resolving`, ON PURPOSE, AND THE DIFFERENCE IS
+  ``{$VAR}``.  That predicate rules on a BIND SOURCE, where a declaration may name
+  any variable the launch namespace supplies; this one rules on a path a USER
+  typed, and EVERY variable outside the ``XDG_`` family expands to a bare word
+  that anchors nothing — today an agent or workset name (``{$AGENT}``,
+  ``{$WORKSET}``) or a terminal type (``{$TERM}``) — so ``{$AGENT}/logs`` and
+  ``{$TERM}/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
+  ``XDG_`` PREFIX, not that list: a variable added to the dispatch is refused
+  here the day it lands, and this sentence is examples, never an inventory.
+  ⚑ A leading escape falls the same way it does there: ``\~foo`` is a plain
+  relative dir.
+  """
+  if value[:1] == "~":
+    return True
+  if starts_bare_reference(value):  # BARE-REF-GUARD: the expander refuses it with its cure.
+    return True
+  if value[:1] == "{":
+    braced = match_braced(value, 0)
+    if braced is None:
+      return False
+    kind, name, _ = braced
+    return kind == "ref" or name.startswith("XDG_")
+  return value[:1] == "/"
 
 
 #: How the other reading is INTRODUCED when the anchor is the root the key's own
@@ -232,96 +232,103 @@ DECLARATION_ROOT_LABEL = "this key's scope root"
 
 
 def ambiguous_path_value_error(
-    key: str, value: str, *, anchor: str, anchor_ref: str | None = None,
-    where: str | None = None, anchor_label: str = DEFAULT_ROOT_LABEL,
+  key: str,
+  value: str,
+  *,
+  anchor: str,
+  anchor_ref: str | None = None,
+  where: str | None = None,
+  anchor_label: str = DEFAULT_ROOT_LABEL,
 ) -> str:
-    """The refusal for a bare-relative *value* stored at *key* — BOTH readings named
-    (keyspec §2a "A path key's stored value").
+  """The refusal for a bare-relative *value* stored at *key* — BOTH readings named
+  (keyspec §2a "A path key's stored value").
 
-    *anchor* is the RESOLVED directory of the other candidate reading: the root this
-    key's own default sits under, which is the only anchor besides the cwd that the
-    user could plausibly have meant.  *anchor_ref* is that root's legal spelling
-    (``{meta.workset.path}``, ``{$XDG_DATA_HOME}``), offered so the user can paste the
-    fix.  *where* names the file the value was read from, when the seam has one.
-    *anchor_label* introduces the reading — see :data:`DECLARATION_ROOT_LABEL` for the
-    one case where the default wording would be a lie.
+  *anchor* is the RESOLVED directory of the other candidate reading: the root this
+  key's own default sits under, which is the only anchor besides the cwd that the
+  user could plausibly have meant.  *anchor_ref* is that root's legal spelling
+  (``{meta.workset.path}``, ``{$XDG_DATA_HOME}``), offered so the user can paste the
+  fix.  *where* names the file the value was read from, when the seam has one.
+  *anchor_label* introduces the reading — see :data:`DECLARATION_ROOT_LABEL` for the
+  one case where the default wording would be a lie.
 
-    ⚑ NAMING BOTH READINGS IS THE POINT, not decoration.  The user had two plausible
-    meanings that land in different directories; a message that only said "be
-    absolute" would move the guess onto the user instead of removing it.
-    ⚑ AN UNRESOLVABLE ANCHOR IS PASSED AS ITS OWN REF SPELLING and *anchor_ref* is then
-    left unset — the reading is still named, and in a form the user can paste, without
-    the line saying the same thing twice.
-    """
-    in_file = f" in {where}" if where else ""
-    spelled = f", spelled '{anchor_ref}/{value}'" if anchor_ref else ""
-    return (
-        f"{key} is set to {value!r}{in_file}, which is a BARE RELATIVE path. "
-        f"kanibako will not guess what it is relative to — both of these readings "
-        f"are plausible and they are DIFFERENT directories:\n"
-        f"    {Path(anchor) / value}   ({anchor_label}{spelled})\n"
-        f"    {Path(logical_cwd()) / value}   (the directory kanibako was run from)\n"
-        f"Set the one you mean, spelled so it resolves on its own: an absolute "
-        f"path, '~/...', '{{$XDG_*}}/...', or a '{{key}}' reference."
-    )
+  ⚑ NAMING BOTH READINGS IS THE POINT, not decoration.  The user had two plausible
+  meanings that land in different directories; a message that only said "be
+  absolute" would move the guess onto the user instead of removing it.
+  ⚑ AN UNRESOLVABLE ANCHOR IS PASSED AS ITS OWN REF SPELLING and *anchor_ref* is then
+  left unset — the reading is still named, and in a form the user can paste, without
+  the line saying the same thing twice.
+  """
+  in_file = f" in {where}" if where else ""
+  spelled = f", spelled '{anchor_ref}/{value}'" if anchor_ref else ""
+  return (
+    f"{key} is set to {value!r}{in_file}, which is a BARE RELATIVE path. "
+    f"kanibako will not guess what it is relative to — both of these readings "
+    f"are plausible and they are DIFFERENT directories:\n"
+    f"    {Path(anchor) / value}   ({anchor_label}{spelled})\n"
+    f"    {Path(logical_cwd()) / value}   (the directory kanibako was run from)\n"
+    f"Set the one you mean, spelled so it resolves on its own: an absolute "
+    f"path, '~/...', '{{$XDG_*}}/...', or a '{{key}}' reference."
+  )
 
 
 def ambiguous_path_shape_error(key: str, value: object, *, where: str | None = None) -> str:
-    """The §2a TYPE refusal for a non-string *value* stored at PATH key *key*.
+  """The §2a TYPE refusal for a non-string *value* stored at PATH key *key*.
 
-    ⚑ THE SENTENCE IS NOT WRITTEN HERE.  It is
-    :func:`~kanibako.settings.settings_categories.refuse_non_scalar_family_value`'s, at its
-    ``path`` category, called and caught: the two SCALAR families and the path keys share
-    ONE carrier, so a key answered here and a key answered there cannot drift into two
-    messages for one rule.  *where* names the file the value was read from, which the
-    carrier has no route to and the cure here is a hand-edit.
+  ⚑ THE SENTENCE IS NOT WRITTEN HERE.  It is
+  :func:`~kanibako.settings.settings_categories.refuse_non_scalar_family_value`'s, at its
+  ``path`` category, called and caught: the two SCALAR families and the path keys share
+  ONE carrier, so a key answered here and a key answered there cannot drift into two
+  messages for one rule.  *where* names the file the value was read from, which the
+  carrier has no route to and the cure here is a hand-edit.
 
-    ⛔ **TOTAL, AND IT SAYS SO: a value a PATH key MAY hold has no refusal to render, so
-    this RAISES :class:`ValueError` rather than returning a sentence about a legal value.**
-    Every caller reaches it through :func:`~kanibako.settings.settings_categories.is_path_key_value`
-    FIRST, so the raise is unreachable from production and marks a caller that skipped the
-    predicate — a message built here without asking would describe a shape the rule does
-    not refuse, which is the one sentence nobody can act on.
-    """
-    from kanibako.settings.settings_categories import (
-        is_path_key_value,
-        refuse_non_scalar_family_value,
+  ⛔ **TOTAL, AND IT SAYS SO: a value a PATH key MAY hold has no refusal to render, so
+  this RAISES :class:`ValueError` rather than returning a sentence about a legal value.**
+  Every caller reaches it through :func:`~kanibako.settings.settings_categories.is_path_key_value`
+  FIRST, so the raise is unreachable from production and marks a caller that skipped the
+  predicate — a message built here without asking would describe a shape the rule does
+  not refuse, which is the one sentence nobody can act on.
+  """
+  from kanibako.settings.settings_categories import (
+    is_path_key_value,
+    refuse_non_scalar_family_value,
+  )
+  from kanibako.settings.settings_resolve import SettingsError
+
+  if is_path_key_value(value):
+    raise ValueError(
+      f"ambiguous_path_shape_error({key!r}, {value!r}): a PATH key may hold that "
+      f"value, so there is no §2a type refusal to render; ask "
+      f"is_path_key_value first"
     )
-    from kanibako.settings.settings_resolve import SettingsError
-
-    if is_path_key_value(value):
-        raise ValueError(
-            f"ambiguous_path_shape_error({key!r}, {value!r}): a PATH key may hold that "
-            f"value, so there is no §2a type refusal to render; ask "
-            f"is_path_key_value first"
-        )
-    try:
-        refuse_non_scalar_family_value(key, "path", value)
-    except SettingsError as exc:
-        # ⚑ THE PATH TAKEN ON EVERY CALL, and the only honest way to read the carrier's
-        # sentence: the guard above has refused a value a PATH key may hold, so what
-        # arrives here is one the carrier DOES refuse, and it raises.  A caller that
-        # reached this function skipping the guard got the ValueError above, not silence.
-        message = str(exc)
-    return f"{message} (in {where})" if where else message
+  try:
+    refuse_non_scalar_family_value(key, "path", value)
+  except SettingsError as exc:
+    # ⚑ THE PATH TAKEN ON EVERY CALL, and the only honest way to read the carrier's
+    # sentence: the guard above has refused a value a PATH key may hold, so what
+    # arrives here is one the carrier DOES refuse, and it raises.  A caller that
+    # reached this function skipping the guard got the ValueError above, not silence.
+    message = str(exc)
+  return f"{message} (in {where})" if where else message
 
 
 def root_relative_source(src: str, root_ref: str) -> str:
-    """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
+  """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
 
-    THE declaration-time rooting, implemented ONCE (spec §2a).  ⚑ An ABSOLUTE (or
-    ``~``-rooted or braced-reference) source is LEGAL and is NOT joined — the root is a
-    DEFAULT FOR RELATIVE SOURCES, not a universal law.  Applied ONLY by the
-    ABSTRACT-category declaration loaders; ``bindings.{ro,rw}`` take no root at any
-    scope, so a relative source there is a DEFECT and is refused where declared.
-    """
-    if is_self_resolving(src):
-        return src
-    return f"{root_ref}/{src}"
+  THE declaration-time rooting, implemented ONCE (spec §2a).  ⚑ An ABSOLUTE (or
+  ``~``-rooted or braced-reference) source is LEGAL and is NOT joined — the root is a
+  DEFAULT FOR RELATIVE SOURCES, not a universal law.  Applied ONLY by the
+  ABSTRACT-category declaration loaders; ``bindings.{ro,rw}`` take no root at any
+  scope, so a relative source there is a DEFECT and is refused where declared.
+  """
+  if is_self_resolving(src):
+    return src
+  return f"{root_ref}/{src}"
 
 
 def agent_config_path(
-    data_path: Path, agent_id: str, paths_agents: str = "agents",
+  data_path: Path,
+  agent_id: str,
+  paths_agents: str = "agents",
 ) -> Path:
-    """Convenience wrapper for callers holding a *data_path*, not an agents root."""
-    return agent_settings_path(agents_dir(data_path, paths_agents), agent_id)
+  """Convenience wrapper for callers holding a *data_path*, not an agents root."""
+  return agent_settings_path(agents_dir(data_path, paths_agents), agent_id)

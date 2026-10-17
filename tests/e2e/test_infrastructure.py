@@ -5,64 +5,59 @@ from __future__ import annotations
 import pytest
 
 from tests.e2e.conftest import (
-    box_container,
-    e2e_requires,
-    resolve_box_dir,
-    run_kanibako,
-    wait_for_container,
+  box_container,
+  e2e_requires,
+  resolve_box_dir,
+  run_kanibako,
+  wait_for_container,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 
 class TestMountStubs:
-    """Test 11: Mount point directories are pre-created in shell dir."""
+  """Test 11: Mount point directories are pre-created in shell dir."""
 
-    def test_mount_stubs_created_after_start(self, e2e_env):
-        """After start, shell dir contains all expected mount point stubs."""
-        env = e2e_env["env"]
-        project = e2e_env["project"]
+  def test_mount_stubs_created_after_start(self, e2e_env):
+    """After start, shell dir contains all expected mount point stubs."""
+    env = e2e_env["env"]
+    project = e2e_env["project"]
 
-        result = run_kanibako(
-            ["create", str(project), "--name", "e2e_stubs"],
-            env=env,
-        )
-        assert result.returncode == 0
+    result = run_kanibako(
+      ["create", str(project), "--name", "e2e_stubs"],
+      env=env,
+    )
+    assert result.returncode == 0
 
-        # Start a container so mount stubs get created
-        run_kanibako(
-            ["start", "e2e_stubs",
-             "-e", "CLAUDE_STUB_MODE=long-running"],
-            env=env,
-        )
-        wait_for_container(box_container("e2e_stubs"), timeout=15)
+    # Start a container so mount stubs get created
+    run_kanibako(
+      ["start", "e2e_stubs", "-e", "CLAUDE_STUB_MODE=long-running"],
+      env=env,
+    )
+    wait_for_container(box_container("e2e_stubs"), timeout=15)
 
-        # Resolve the box metadata dir THROUGH the real path resolver (boxes are
-        # workset-scoped: .../kanibako/<workset>/boxes/<name>, not the legacy
-        # .../kanibako/boxes/<name>).  The shell dir lives under boxes/<name>/home/.
-        box_dir = resolve_box_dir(env, project)
-        assert box_dir.is_dir(), (
-            f"No box directory found at {box_dir}"
-        )
-        shell_path = box_dir / "home"
-        assert shell_path.is_dir(), (
-            f"Shell dir missing: {shell_path} "
-            f"(box contents: {list(box_dir.iterdir())})"
-        )
+    # Resolve the box metadata dir THROUGH the real path resolver (boxes are
+    # workset-scoped: .../kanibako/<workset>/boxes/<name>, not the legacy
+    # .../kanibako/boxes/<name>).  The shell dir lives under boxes/<name>/home/.
+    box_dir = resolve_box_dir(env, project)
+    assert box_dir.is_dir(), f"No box directory found at {box_dir}"
+    shell_path = box_dir / "home"
+    assert shell_path.is_dir(), (
+      f"Shell dir missing: {shell_path} (box contents: {list(box_dir.iterdir())})"
+    )
 
-        # These directories must exist as mount point stubs.
-        # Without them, crun fails with "Permission denied" in LXC (#57).
-        # "workspace" and "channels" come from _precreate_mount_stubs()
-        # (the inter-instance comms tree was renamed comms -> channels in
-        # 1.6.0); ".claude" comes from the agent's cache/plugins binds.
-        expected_stubs = [
-            "workspace",
-            ".claude",
-            "channels",
-        ]
-        for stub in expected_stubs:
-            stub_path = shell_path / stub
-            assert stub_path.exists(), (
-                f"Mount stub missing: {stub_path} "
-                f"(contents: {list(shell_path.iterdir())})"
-            )
+    # These directories must exist as mount point stubs.
+    # Without them, crun fails with "Permission denied" in LXC (#57).
+    # "workspace" and "channels" come from _precreate_mount_stubs()
+    # (the inter-instance comms tree was renamed comms -> channels in
+    # 1.6.0); ".claude" comes from the agent's cache/plugins binds.
+    expected_stubs = [
+      "workspace",
+      ".claude",
+      "channels",
+    ]
+    for stub in expected_stubs:
+      stub_path = shell_path / stub
+      assert stub_path.exists(), (
+        f"Mount stub missing: {stub_path} (contents: {list(shell_path.iterdir())})"
+      )

@@ -19,1536 +19,1510 @@ import pytest
 
 from kanibako.settings import agent_defaults, core_defaults
 from kanibako.settings.agent_config import (
-    agent_category_dirname,
-    agent_category_root_ref,
-    is_self_resolving,
-    root_relative_source,
-    store_dirname,
+  agent_category_dirname,
+  agent_category_root_ref,
+  is_self_resolving,
+  root_relative_source,
+  store_dirname,
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.targets.base import (
-    Channel,
-    SettingArg,
-    TargetSetting,
-    descriptor_floor,
+  Channel,
+  SettingArg,
+  TargetSetting,
+  descriptor_floor,
 )
 
 
 @pytest.fixture
 def declfile(tmp_path, monkeypatch):
-    """Write a synthetic ``<agent>-defaults.yaml`` into an importable package.
+  """Write a synthetic ``<agent>-defaults.yaml`` into an importable package.
 
-    Returns a ``write(text) -> (package, filename)`` callable; the loader reads it
-    through the same ``importlib.resources`` route the shipped plugins use.
-    """
-    pkg_dir = tmp_path / "kanibako_probe_defaults"
-    pkg_dir.mkdir()
-    (pkg_dir / "__init__.py").write_text("")
-    monkeypatch.syspath_prepend(str(tmp_path))
-    sys.modules.pop("kanibako_probe_defaults", None)
+  Returns a ``write(text) -> (package, filename)`` callable; the loader reads it
+  through the same ``importlib.resources`` route the shipped plugins use.
+  """
+  pkg_dir = tmp_path / "kanibako_probe_defaults"
+  pkg_dir.mkdir()
+  (pkg_dir / "__init__.py").write_text("")
+  monkeypatch.syspath_prepend(str(tmp_path))
+  sys.modules.pop("kanibako_probe_defaults", None)
 
-    def write(text: str, filename: str = "probe-defaults.yaml"):
-        (pkg_dir / filename).write_text(text)
-        return "kanibako_probe_defaults", filename
+  def write(text: str, filename: str = "probe-defaults.yaml"):
+    (pkg_dir / filename).write_text(text)
+    return "kanibako_probe_defaults", filename
 
-    yield write
-    sys.modules.pop("kanibako_probe_defaults", None)
+  yield write
+  sys.modules.pop("kanibako_probe_defaults", None)
 
 
 class TestLoadCommonRooting:
-    def test_load_common_emits_rooted_ref(self, declfile):
-        """T2 — a bare leaf is STORED as the agent DECLARATION ROOT ref.
+  def test_load_common_emits_rooted_ref(self, declfile):
+    """T2 — a bare leaf is STORED as the agent DECLARATION ROOT ref.
 
-        ⚑ ONE TERMINAL key ``agent.<a>.common`` holds BOTH rows, keyed by box
-        DESTINATION (2026-08-08c) — the entry name is gone.
+    ⚑ ONE TERMINAL key ``agent.<a>.common`` holds BOTH rows, keyed by box
+    DESTINATION (2026-08-08c) — the entry name is gone.
 
-        (Mutation: ``agent_category_dirname('common')`` -> "" → the ``/common/``
-        segment vanishes → RED.)"""
-        package, filename = declfile(
-            "common:\n"
-            "  - host_src: plugins\n"
-            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
-            "  - host_src: cache\n"
-            "    box_dest: \"{$GUEST_HOME}/.claude/cache\"\n"
-        )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds == {
-            "agent.claude.common": {
-                "/home/agent/.claude/plugins": (
-                    "{meta.agent.claude.path}/common/plugins",
-                ),
-                "/home/agent/.claude/cache": (
-                    "{meta.agent.claude.path}/common/cache",
-                ),
-            },
-        }
-
-    def test_rooted_ref_is_built_from_host_src_not_dest(self, declfile):
-        """T3 — ``box_dest`` names the entry, ``host_src`` is the PATH leaf that
-        gets rooted, and the two are INDEPENDENT.
-
-        They are coincidentally related for claude's shipped rows; keeping them
-        independent is what lets an override repoint the SOURCE without moving
-        the destination.  (Mutation: build the ref from the ``box_dest`` leaf →
-        the source becomes ``…/common/p`` → RED.)"""
-        package, filename = declfile(
-            "common:\n"
-            "  - host_src: plugins\n"
-            "    box_dest: \"{$GUEST_HOME}/.claude/p\"\n"
-        )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert list(common_binds) == ["agent.claude.common"]
-        arm = common_binds["agent.claude.common"]
-        assert list(arm) == ["/home/agent/.claude/p"]
-        assert arm["/home/agent/.claude/p"][0] == (
-            "{meta.agent.claude.path}/common/plugins"
-        )
-
-    def test_leftover_entry_name_is_refused(self, declfile):
-        """A ``key:`` under ``common:`` is REFUSED, not ignored.
-
-        ``agent.<a>.common`` is TERMINAL and dest-keyed, so an entry name names
-        NOTHING; a plugin written against the retired contract must fail loudly
-        rather than keep loading under a shape it no longer declares.
-
-        (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
-        name is silently discarded → RED.)"""
-        package, filename = declfile(
-            "common:\n"
-            "  - key: plugins\n"
-            "    host_src: plugins\n"
-            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_common(package, filename, "claude")
-        msg = str(e.value)
-        assert filename in msg
-        assert "agent.claude.common" in msg
-        assert "plugins" in msg
-        assert "RETIRED" in msg
-
-    @pytest.mark.parametrize(
-        "src",
-        ["/abs/dir", "~/tdir", "{$XDG_CACHE_HOME}/x", "{system.cache}/tweakcc"],
+    (Mutation: ``agent_category_dirname('common')`` -> "" → the ``/common/``
+    segment vanishes → RED.)"""
+    package, filename = declfile(
+      "common:\n"
+      "  - host_src: plugins\n"
+      '    box_dest: "{$GUEST_HOME}/.claude/plugins"\n'
+      "  - host_src: cache\n"
+      '    box_dest: "{$GUEST_HOME}/.claude/cache"\n'
     )
-    def test_self_resolving_source_is_stored_verbatim(self, declfile, src):
-        """An ALREADY self-resolving source is NOT root-joined (spec §2a
-        — the root is a default for RELATIVE sources, not a universal law).
+    common_binds = agent_defaults.load_common(package, filename, "claude")
+    assert common_binds == {
+      "agent.claude.common": {
+        "/home/agent/.claude/plugins": ("{meta.agent.claude.path}/common/plugins",),
+        "/home/agent/.claude/cache": ("{meta.agent.claude.path}/common/cache",),
+      },
+    }
 
-        (Mutation: drop the prefix test in ``root_relative_source`` → each of
-        these gains an ``{meta.agent.*}`` prefix → RED.)"""
-        package, filename = declfile(
-            "common:\n"
-            f"  - host_src: \"{src}\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.thing\"\n"
-        )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds["agent.claude.common"]["/home/agent/.thing"][0] == src
+  def test_rooted_ref_is_built_from_host_src_not_dest(self, declfile):
+    """T3 — ``box_dest`` names the entry, ``host_src`` is the PATH leaf that
+    gets rooted, and the two are INDEPENDENT.
 
-    def test_options_are_preserved_on_a_rooted_entry(self, declfile):
-        """Explicit mount options ride as element 1 and root the source the same
-        way — under dest-keying the dest left the VALUE, so the entry is a
-        2-element ``(src, options)`` rather than the retired 3-element form."""
-        package, filename = declfile(
-            "common:\n"
-            "  - host_src: plugins\n"
-            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
-            "    options: ro\n"
-        )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds["agent.claude.common"] == {
-            "/home/agent/.claude/plugins": (
-                "{meta.agent.claude.path}/common/plugins",
-                "ro",
-            ),
-        }
+    They are coincidentally related for claude's shipped rows; keeping them
+    independent is what lets an override repoint the SOURCE without moving
+    the destination.  (Mutation: build the ref from the ``box_dest`` leaf →
+    the source becomes ``…/common/p`` → RED.)"""
+    package, filename = declfile(
+      'common:\n  - host_src: plugins\n    box_dest: "{$GUEST_HOME}/.claude/p"\n'
+    )
+    common_binds = agent_defaults.load_common(package, filename, "claude")
+    assert list(common_binds) == ["agent.claude.common"]
+    arm = common_binds["agent.claude.common"]
+    assert list(arm) == ["/home/agent/.claude/p"]
+    assert arm["/home/agent/.claude/p"][0] == ("{meta.agent.claude.path}/common/plugins")
 
-    def test_no_common_block_yields_empty(self, declfile):
-        package, filename = declfile("descriptor: {}\n")
-        assert agent_defaults.load_common(package, filename, "goose") == {}
+  def test_leftover_entry_name_is_refused(self, declfile):
+    """A ``key:`` under ``common:`` is REFUSED, not ignored.
 
-    def test_root_follows_the_declaring_agent(self, declfile):
-        """The root is keyed on the DECLARING plugin's own name, so two plugins
-        never share a store dir."""
-        package, filename = declfile(
-            "common:\n"
-            "  - host_src: leaf\n"
-            "    box_dest: \"{$GUEST_HOME}/.k\"\n"
-        )
-        got = agent_defaults.load_common(package, filename, "goose")
-        assert got["agent.goose.common"]["/home/agent/.k"][0] == (
-            "{meta.agent.goose.path}/common/leaf"
-        )
+    ``agent.<a>.common`` is TERMINAL and dest-keyed, so an entry name names
+    NOTHING; a plugin written against the retired contract must fail loudly
+    rather than keep loading under a shape it no longer declares.
+
+    (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
+    name is silently discarded → RED.)"""
+    package, filename = declfile(
+      "common:\n"
+      "  - key: plugins\n"
+      "    host_src: plugins\n"
+      '    box_dest: "{$GUEST_HOME}/.claude/plugins"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_common(package, filename, "claude")
+    msg = str(e.value)
+    assert filename in msg
+    assert "agent.claude.common" in msg
+    assert "plugins" in msg
+    assert "RETIRED" in msg
+
+  @pytest.mark.parametrize(
+    "src",
+    ["/abs/dir", "~/tdir", "{$XDG_CACHE_HOME}/x", "{system.cache}/tweakcc"],
+  )
+  def test_self_resolving_source_is_stored_verbatim(self, declfile, src):
+    """An ALREADY self-resolving source is NOT root-joined (spec §2a
+    — the root is a default for RELATIVE sources, not a universal law).
+
+    (Mutation: drop the prefix test in ``root_relative_source`` → each of
+    these gains an ``{meta.agent.*}`` prefix → RED.)"""
+    package, filename = declfile(
+      f'common:\n  - host_src: "{src}"\n    box_dest: "{{$GUEST_HOME}}/.thing"\n'
+    )
+    common_binds = agent_defaults.load_common(package, filename, "claude")
+    assert common_binds["agent.claude.common"]["/home/agent/.thing"][0] == src
+
+  def test_options_are_preserved_on_a_rooted_entry(self, declfile):
+    """Explicit mount options ride as element 1 and root the source the same
+    way — under dest-keying the dest left the VALUE, so the entry is a
+    2-element ``(src, options)`` rather than the retired 3-element form."""
+    package, filename = declfile(
+      "common:\n"
+      "  - host_src: plugins\n"
+      '    box_dest: "{$GUEST_HOME}/.claude/plugins"\n'
+      "    options: ro\n"
+    )
+    common_binds = agent_defaults.load_common(package, filename, "claude")
+    assert common_binds["agent.claude.common"] == {
+      "/home/agent/.claude/plugins": (
+        "{meta.agent.claude.path}/common/plugins",
+        "ro",
+      ),
+    }
+
+  def test_no_common_block_yields_empty(self, declfile):
+    package, filename = declfile("descriptor: {}\n")
+    assert agent_defaults.load_common(package, filename, "goose") == {}
+
+  def test_root_follows_the_declaring_agent(self, declfile):
+    """The root is keyed on the DECLARING plugin's own name, so two plugins
+    never share a store dir."""
+    package, filename = declfile('common:\n  - host_src: leaf\n    box_dest: "{$GUEST_HOME}/.k"\n')
+    got = agent_defaults.load_common(package, filename, "goose")
+    assert got["agent.goose.common"]["/home/agent/.k"][0] == (
+      "{meta.agent.goose.path}/common/leaf"
+    )
 
 
 class TestCategoryBindsTakeNoRoot:
-    """A ``category_binds:`` entry is stored as written — the loader supplies no root
-    (spec §2a), so a bare relative source there is a plugin DEFECT — refused, not
-    silently rooted.
+  """A ``category_binds:`` entry is stored as written — the loader supplies no root
+  (spec §2a), so a bare relative source there is a plugin DEFECT — refused, not
+  silently rooted.
 
-    ⚑ The refusal is a property of the SOURCE, not of the category, so it is
-    exercised on BOTH an ARMED category (``bindings.ro``) and a bare one
-    (``caches``).  Since 2026-08-08c the two have the same dest-keyed shape, but
-    they still reach ``add_bind`` by different-looking category spellings.
-    """
+  ⚑ The refusal is a property of the SOURCE, not of the category, so it is
+  exercised on BOTH an ARMED category (``bindings.ro``) and a bare one
+  (``caches``).  Since 2026-08-08c the two have the same dest-keyed shape, but
+  they still reach ``add_bind`` by different-looking category spellings.
+  """
 
-    def test_relative_arm_bind_is_refused(self, declfile):
-        """An arm entry is identified by its DESTINATION now, so the refusal
-        names the arm key and the dest — there is no entry name left to name."""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: some/relative/path\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert "agent.claude.bindings.ro" in msg
-        assert "/home/agent/.guide" in msg
-        assert "some/relative/path" in msg
-        assert filename in msg
-
-    def test_relative_bare_category_bind_is_refused(self, declfile):
-        """The same refusal on a NON-armed category, which names the terminal key
-        and the destination that identifies the entry."""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: caches\n"
-            "    meta_ref: some/relative/path\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert "agent.claude.caches" in msg
-        assert "/home/agent/.guide" in msg
-        assert "some/relative/path" in msg
-        assert filename in msg
-
-    @pytest.mark.parametrize("category, abstract", [
-        ("bindings.ro", False), ("synced", False),
-        ("caches", True), ("common", True), ("seeded", True),
-    ])
-    def test_the_refusal_states_a_true_reason(self, declfile, category, abstract):
-        """The refusal is the shared ``settings_resolve.unrooted_source_message`` text,
-        and its reason is true of the category: an ABSTRACT category IS rooted where its
-        declaration supplies the root, so "takes NO root at any scope" would be false.
-        (Mutation: drop the abstract reason → the false sentence appears → RED.)"""
-        from kanibako.settings.settings_resolve import unrooted_source_message
-
-        package, filename = declfile(
-            "category_binds:\n"
-            f"  - category: {category}\n"
-            "    meta_ref: rel/src\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert ("takes NO root at any scope" in msg) is not abstract, msg
-        entry = f"category_bind 'agent.claude.{category}' entry at '/home/agent/.guide'"
-        because = (
-            f"{category} is rooted only where its declaration supplies the root "
-            f"(spec §2a), and a category_binds entry is stored as written"
-        ) if abstract else None
-        assert msg == f"{filename}: " + unrooted_source_message(
-            entry, "rel/src", category, unrooted_because=because,
-        )
-
-    @pytest.mark.parametrize(
-        "src", ["/abs", "~/x", "{$XDG_DATA_HOME}/x", "{system.channelroot}/x"],
+  def test_relative_arm_bind_is_refused(self, declfile):
+    """An arm entry is identified by its DESTINATION now, so the refusal
+    names the arm key and the dest — there is no entry name left to name."""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      "    meta_ref: some/relative/path\n"
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
     )
-    def test_self_resolving_category_bind_is_accepted(self, declfile, src):
-        """A source that resolves on its own is stored VERBATIM.
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert "agent.claude.bindings.ro" in msg
+    assert "/home/agent/.guide" in msg
+    assert "some/relative/path" in msg
+    assert filename in msg
 
-        ⚑ VEHICLED ON ``caches`` DELIBERATELY. This test is about the SOURCE, so
-        it runs on a BARE category rather than on a ``bindings`` arm — the arm
-        shape is pinned by ``TestCategoryBindsAreDestKeyed`` below, and keeping
-        the two vehicles apart is what stops one edit from re-pinning both.
-        """
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: caches\n"
-            f"    meta_ref: \"{src}\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-            "    ro: true\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "claude")
-        assert binds == {
-            "agent.claude.caches": {"/home/agent/.guide": (src, "ro")},
-        }
+  def test_relative_bare_category_bind_is_refused(self, declfile):
+    """The same refusal on a NON-armed category, which names the terminal key
+    and the destination that identifies the entry."""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: caches\n"
+      "    meta_ref: some/relative/path\n"
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert "agent.claude.caches" in msg
+    assert "/home/agent/.guide" in msg
+    assert "some/relative/path" in msg
+    assert filename in msg
+
+  @pytest.mark.parametrize(
+    "category, abstract",
+    [
+      ("bindings.ro", False),
+      ("synced", False),
+      ("caches", True),
+      ("common", True),
+      ("seeded", True),
+    ],
+  )
+  def test_the_refusal_states_a_true_reason(self, declfile, category, abstract):
+    """The refusal is the shared ``settings_resolve.unrooted_source_message`` text,
+    and its reason is true of the category: an ABSTRACT category IS rooted where its
+    declaration supplies the root, so "takes NO root at any scope" would be false.
+    (Mutation: drop the abstract reason → the false sentence appears → RED.)"""
+    from kanibako.settings.settings_resolve import unrooted_source_message
+
+    package, filename = declfile(
+      "category_binds:\n"
+      f"  - category: {category}\n"
+      "    meta_ref: rel/src\n"
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert ("takes NO root at any scope" in msg) is not abstract, msg
+    entry = f"category_bind 'agent.claude.{category}' entry at '/home/agent/.guide'"
+    because = (
+      (
+        f"{category} is rooted only where its declaration supplies the root "
+        f"(spec §2a), and a category_binds entry is stored as written"
+      )
+      if abstract
+      else None
+    )
+    assert msg == f"{filename}: " + unrooted_source_message(
+      entry,
+      "rel/src",
+      category,
+      unrooted_because=because,
+    )
+
+  @pytest.mark.parametrize(
+    "src",
+    ["/abs", "~/x", "{$XDG_DATA_HOME}/x", "{system.channelroot}/x"],
+  )
+  def test_self_resolving_category_bind_is_accepted(self, declfile, src):
+    """A source that resolves on its own is stored VERBATIM.
+
+    ⚑ VEHICLED ON ``caches`` DELIBERATELY. This test is about the SOURCE, so
+    it runs on a BARE category rather than on a ``bindings`` arm — the arm
+    shape is pinned by ``TestCategoryBindsAreDestKeyed`` below, and keeping
+    the two vehicles apart is what stops one edit from re-pinning both.
+    """
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: caches\n"
+      f'    meta_ref: "{src}"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+      "    ro: true\n"
+    )
+    binds = agent_defaults.load_category_binds(package, filename, "claude")
+    assert binds == {
+      "agent.claude.caches": {"/home/agent/.guide": (src, "ro")},
+    }
 
 
 class TestOldReferenceSpellingsAreRefusedAtLoad:
-    """BARE-REF-GUARD (keyspec "References"): a plugin file that still spells a reference
-    the old way is refused when it LOADS, naming the file and the braced cure, rather
-    than loading and failing every launch.  ``GUEST_HOME`` is a known variable in a
-    plugin file, so a bare ``$GUEST_HOME`` is guarded too.
-    (Mutation: drop ``_refuse_bad_source`` or the ``expand_guest_home`` refusal → the
-    file loads → RED.)"""
+  """BARE-REF-GUARD (keyspec "References"): a plugin file that still spells a reference
+  the old way is refused when it LOADS, naming the file and the braced cure, rather
+  than loading and failing every launch.  ``GUEST_HOME`` is a known variable in a
+  plugin file, so a bare ``$GUEST_HOME`` is guarded too.
+  (Mutation: drop ``_refuse_bad_source`` or the ``expand_guest_home`` refusal → the
+  file loads → RED.)"""
 
-    @pytest.mark.parametrize("src, cure", [
-        ("@meta.agent.claude.path/caches/x", "{meta.agent.claude.path}"),
-        ("@{meta.agent.claude.path}/caches/x", "{meta.agent.claude.path}"),
-        ("$XDG_CACHE_HOME/x", "{$XDG_CACHE_HOME}"),
-    ])
-    def test_category_bind_meta_ref(self, declfile, src, cure):
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: caches\n"
-            f"    meta_ref: \"{src}\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert filename in msg and f"write '{cure}'" in msg, msg
+  @pytest.mark.parametrize(
+    "src, cure",
+    [
+      ("@meta.agent.claude.path/caches/x", "{meta.agent.claude.path}"),
+      ("@{meta.agent.claude.path}/caches/x", "{meta.agent.claude.path}"),
+      ("$XDG_CACHE_HOME/x", "{$XDG_CACHE_HOME}"),
+    ],
+  )
+  def test_category_bind_meta_ref(self, declfile, src, cure):
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: caches\n"
+      f'    meta_ref: "{src}"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert filename in msg and f"write '{cure}'" in msg, msg
 
-    def test_common_host_src(self, declfile):
-        package, filename = declfile(
-            "common:\n"
-            "  - host_src: \"@meta.agent.claude.path/common/x\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.x\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_common(package, filename, "claude")
-        msg = str(e.value)
-        assert filename in msg and "write '{meta.agent.claude.path}'" in msg, msg
+  def test_common_host_src(self, declfile):
+    package, filename = declfile(
+      "common:\n"
+      '  - host_src: "@meta.agent.claude.path/common/x"\n'
+      '    box_dest: "{$GUEST_HOME}/.x"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_common(package, filename, "claude")
+    msg = str(e.value)
+    assert filename in msg and "write '{meta.agent.claude.path}'" in msg, msg
 
-    @pytest.mark.parametrize("old", ["$GUEST_HOME", "${GUEST_HOME}"])
-    @pytest.mark.parametrize("route", ["category_binds", "common", "env", "descriptor"])
-    def test_bare_guest_home(self, declfile, old, route):
-        text = {
-            "category_binds": (
-                "category_binds:\n  - category: caches\n    meta_ref: /abs\n"
-                f"    box_dest: \"{old}/.guide\"\n"
-            ),
-            "common": f"common:\n  - host_src: leaf\n    box_dest: \"{old}/.x\"\n",
-            "env": f"env:\n  PROBE_DIR: \"{old}/bin\"\n",
-            "descriptor": (
-                "descriptor:\n  command: [\"probe\"]\n  bindings:\n    - key: share\n"
-                f"      origin: install_dir\n      box_dest: \"{old}/.share\"\n"
-                "      kind: dir\n      scope: agent_critical\n"
-            ),
-        }[route]
-        package, filename = declfile(text)
-        load = {
-            "category_binds": lambda: agent_defaults.load_category_binds(
-                package, filename, "claude"),
-            "common": lambda: agent_defaults.load_common(package, filename, "claude"),
-            "env": lambda: agent_defaults.load_envs(package, filename, "claude"),
-            "descriptor": lambda: agent_defaults.load_descriptor(package, filename),
-        }[route]
-        with pytest.raises(SettingsError) as e:
-            load()
-        msg = str(e.value)
-        assert filename in msg and "write '{$GUEST_HOME}'" in msg, msg
+  @pytest.mark.parametrize("old", ["$GUEST_HOME", "${GUEST_HOME}"])
+  @pytest.mark.parametrize("route", ["category_binds", "common", "env", "descriptor"])
+  def test_bare_guest_home(self, declfile, old, route):
+    text = {
+      "category_binds": (
+        "category_binds:\n  - category: caches\n    meta_ref: /abs\n"
+        f'    box_dest: "{old}/.guide"\n'
+      ),
+      "common": f'common:\n  - host_src: leaf\n    box_dest: "{old}/.x"\n',
+      "env": f'env:\n  PROBE_DIR: "{old}/bin"\n',
+      "descriptor": (
+        'descriptor:\n  command: ["probe"]\n  bindings:\n    - key: share\n'
+        f'      origin: install_dir\n      box_dest: "{old}/.share"\n'
+        "      kind: dir\n      scope: agent_critical\n"
+      ),
+    }[route]
+    package, filename = declfile(text)
+    load = {
+      "category_binds": lambda: agent_defaults.load_category_binds(package, filename, "claude"),
+      "common": lambda: agent_defaults.load_common(package, filename, "claude"),
+      "env": lambda: agent_defaults.load_envs(package, filename, "claude"),
+      "descriptor": lambda: agent_defaults.load_descriptor(package, filename),
+    }[route]
+    with pytest.raises(SettingsError) as e:
+      load()
+    msg = str(e.value)
+    assert filename in msg and "write '{$GUEST_HOME}'" in msg, msg
 
-    def test_ordinary_at_and_dollar_still_load(self, declfile):
-        """Only an old SPELLING is refused: ``@``/``$`` before a name that is no
-        declared key or known variable are ordinary characters."""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: caches\n"
-            "    meta_ref: \"/srv/a@b/$HOME\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-            "env:\n  PROBE_DIR: \"$GUEST_HOMEX/bin\"\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "claude")
-        assert binds == {"agent.claude.caches": {"/home/agent/.guide": ("/srv/a@b/$HOME",)}}
-        assert agent_defaults.load_envs(package, filename, "claude") == {
-            "agent.claude.env.PROBE_DIR": "$GUEST_HOMEX/bin",
-        }
+  def test_ordinary_at_and_dollar_still_load(self, declfile):
+    """Only an old SPELLING is refused: ``@``/``$`` before a name that is no
+    declared key or known variable are ordinary characters."""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: caches\n"
+      '    meta_ref: "/srv/a@b/$HOME"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+      'env:\n  PROBE_DIR: "$GUEST_HOMEX/bin"\n'
+    )
+    binds = agent_defaults.load_category_binds(package, filename, "claude")
+    assert binds == {"agent.claude.caches": {"/home/agent/.guide": ("/srv/a@b/$HOME",)}}
+    assert agent_defaults.load_envs(package, filename, "claude") == {
+      "agent.claude.env.PROBE_DIR": "$GUEST_HOMEX/bin",
+    }
 
 
 class TestCategoryBindsAreDestKeyed:
-    """EVERY ``category_binds:`` declaration lands in a TERMINAL category key,
-    keyed by box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).
+  """EVERY ``category_binds:`` declaration lands in a TERMINAL category key,
+  keyed by box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).
 
-    ``bindings.{ro,rw}`` flipped 2026-08-06c and ``caches`` / ``seeded`` /
-    ``common`` / ``synced`` followed 2026-08-08c, so there is now ONE shape and no
-    selection between two.
+  ``bindings.{ro,rw}`` flipped 2026-08-06c and ``caches`` / ``seeded`` /
+  ``common`` / ``synced`` followed 2026-08-08c, so there is now ONE shape and no
+  selection between two.
 
-    This is the PUBLISHED third-party plugin contract. The retired shape
-    (``agent.<a>.bindings.ro.<name>`` → ``(src, dest[, "ro"])``) is what
-    ``settings_assemble._insert_dotted`` refuses by name at floor assembly, so a
-    producer that still emits it produces a table nothing can consume.
-    """
+  This is the PUBLISHED third-party plugin contract. The retired shape
+  (``agent.<a>.bindings.ro.<name>`` → ``(src, dest[, "ro"])``) is what
+  ``settings_assemble._insert_dotted`` refuses by name at floor assembly, so a
+  producer that still emits it produces a table nothing can consume.
+  """
 
-    def test_arm_is_terminal_and_dest_keyed(self, declfile):
-        """The re-pin of the old name-keyed assertion.
+  def test_arm_is_terminal_and_dest_keyed(self, declfile):
+    """The re-pin of the old name-keyed assertion.
 
-        (Mutation: emit ``agent.claude.bindings.ro.guide`` -> (src, dest, "ro")
-        — the pre-2026-08-06c output — → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/x\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-            "    ro: true\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "claude")
-        assert binds == {
-            "agent.claude.bindings.ro": {
-                "/home/agent/.guide": ("{system.channelroot}/x", "ro"),
-            },
-        }
-
-    def test_absent_ro_omits_the_option(self, declfile):
-        """No ``ro:`` → a ONE-element entry, meaning "use the category default".
-
-        (Mutation: always append an options element → the entry becomes 2-element
-        → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.rw\n"
-            "    meta_ref: \"{system.channelroot}/x\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.rwslot\"\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "claude")
-        assert binds == {
-            "agent.claude.bindings.rw": {
-                "/home/agent/.rwslot": ("{system.channelroot}/x",),
-            },
-        }
-
-    def test_entries_group_into_one_arm_per_category(self, declfile):
-        """All entries of ONE category live under ONE key — the category is
-        TERMINAL, so a second entry EXTENDS the map rather than adding a sibling
-        key.  ⚑ Exercised across an ARMED category and a bare one together.
-
-        (Mutation: emit one key per entry → four keys instead of three → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/a\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.a\"\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/b\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.b\"\n"
-            "    ro: true\n"
-            "  - category: bindings.rw\n"
-            "    meta_ref: \"{system.channelroot}/c\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.c\"\n"
-            "  - category: caches\n"
-            "    meta_ref: \"{system.channelroot}/d\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.d\"\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "goose")
-        assert binds == {
-            "agent.goose.bindings.ro": {
-                "/home/agent/.a": ("{system.channelroot}/a",),
-                "/home/agent/.b": ("{system.channelroot}/b", "ro"),
-            },
-            "agent.goose.bindings.rw": {
-                "/home/agent/.c": ("{system.channelroot}/c",),
-            },
-            "agent.goose.caches": {
-                "/home/agent/.d": ("{system.channelroot}/d",),
-            },
-        }
-
-    @pytest.mark.parametrize(
-        ("declared", "key"),
-        [
-            ("~/slot", "/home/agent/slot"),
-            ("~/slot/", "/home/agent/slot"),
-            ("~", "/home/agent"),
-            ("/home/agent/slot/", "/home/agent/slot"),
-        ],
+    (Mutation: emit ``agent.claude.bindings.ro.guide`` -> (src, dest, "ro")
+    — the pre-2026-08-06c output — → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/x"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+      "    ro: true\n"
     )
-    def test_destination_is_normalized(self, declfile, declared, key):
-        """R-11 — a PRODUCER must normalize, because the floor merge in
-        ``commands.start`` dedupes on these keys BEFORE anything parses them.
+    binds = agent_defaults.load_category_binds(package, filename, "claude")
+    assert binds == {
+      "agent.claude.bindings.ro": {
+        "/home/agent/.guide": ("{system.channelroot}/x", "ro"),
+      },
+    }
 
-        (Mutation: drop the ``normalize_bind_dest`` call in the arm constructor →
-        the key stays ``~/slot`` / keeps its trailing slash → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/x\"\n"
-            f"    box_dest: \"{declared}\"\n"
-        )
-        binds = agent_defaults.load_category_binds(package, filename, "claude")
-        assert list(binds["agent.claude.bindings.ro"]) == [key]
+  def test_absent_ro_omits_the_option(self, declfile):
+    """No ``ro:`` → a ONE-element entry, meaning "use the category default".
 
-    def test_two_entries_at_one_destination_are_refused(self, declfile):
-        """Bindings are ACT-ONCE: a dest-keyed arm admits one entry per dest, and
-        the second would otherwise just replace the first in the dict.
-
-        ⚑ The two spellings here normalize to the SAME dest — which is precisely
-        the collision R-11 exists to make visible.
-
-        (Mutation: ``arm[dest] = ...`` without the ``if dest in arm`` guard →
-        last-wins, no error → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/first\"\n"
-            "    box_dest: \"~/slot\"\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/second\"\n"
-            "    box_dest: \"{$GUEST_HOME}/slot/\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert filename in msg
-        assert "/home/agent/slot" in msg
-        assert "agent.claude.bindings.ro" in msg
-
-    @pytest.mark.parametrize(
-        "category",
-        ["bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced"],
+    (Mutation: always append an options element → the entry becomes 2-element
+    → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.rw\n"
+      '    meta_ref: "{system.channelroot}/x"\n'
+      '    box_dest: "{$GUEST_HOME}/.rwslot"\n'
     )
-    def test_leftover_entry_name_is_refused(self, declfile, category):
-        """A ``key:`` under ANY bind-shaped category is REFUSED, not ignored.
+    binds = agent_defaults.load_category_binds(package, filename, "claude")
+    assert binds == {
+      "agent.claude.bindings.rw": {
+        "/home/agent/.rwslot": ("{system.channelroot}/x",),
+      },
+    }
 
-        Ignoring it is the worst of the three outcomes: a plugin written against
-        the retired contract would keep LOADING while binding under a key it never
-        declared.  ⚑ All SIX categories, because all six are dest-keyed now — the
-        four that flipped 2026-08-08c are exactly the ones a third-party plugin
-        is most likely to still spell the retired way.
+  def test_entries_group_into_one_arm_per_category(self, declfile):
+    """All entries of ONE category live under ONE key — the category is
+    TERMINAL, so a second entry EXTENDS the map rather than adding a sibling
+    key.  ⚑ Exercised across an ARMED category and a bare one together.
 
-        (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
-        name is silently discarded → RED.)"""
-        package, filename = declfile(
-            "category_binds:\n"
-            f"  - category: {category}\n"
-            "    key: guide\n"
-            "    meta_ref: \"{system.channelroot}/x\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-        )
-        with pytest.raises(SettingsError) as e:
-            agent_defaults.load_category_binds(package, filename, "claude")
-        msg = str(e.value)
-        assert filename in msg
-        assert f"agent.claude.{category}" in msg
-        assert "guide" in msg
-        assert "RETIRED" in msg
+    (Mutation: emit one key per entry → four keys instead of three → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/a"\n'
+      '    box_dest: "{$GUEST_HOME}/.a"\n'
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/b"\n'
+      '    box_dest: "{$GUEST_HOME}/.b"\n'
+      "    ro: true\n"
+      "  - category: bindings.rw\n"
+      '    meta_ref: "{system.channelroot}/c"\n'
+      '    box_dest: "{$GUEST_HOME}/.c"\n'
+      "  - category: caches\n"
+      '    meta_ref: "{system.channelroot}/d"\n'
+      '    box_dest: "{$GUEST_HOME}/.d"\n'
+    )
+    binds = agent_defaults.load_category_binds(package, filename, "goose")
+    assert binds == {
+      "agent.goose.bindings.ro": {
+        "/home/agent/.a": ("{system.channelroot}/a",),
+        "/home/agent/.b": ("{system.channelroot}/b", "ro"),
+      },
+      "agent.goose.bindings.rw": {
+        "/home/agent/.c": ("{system.channelroot}/c",),
+      },
+      "agent.goose.caches": {
+        "/home/agent/.d": ("{system.channelroot}/d",),
+      },
+    }
 
-    def test_no_category_binds_block_yields_empty(self, declfile):
-        package, filename = declfile("descriptor: {}\n")
-        assert agent_defaults.load_category_binds(package, filename, "goose") == {}
+  @pytest.mark.parametrize(
+    ("declared", "key"),
+    [
+      ("~/slot", "/home/agent/slot"),
+      ("~/slot/", "/home/agent/slot"),
+      ("~", "/home/agent"),
+      ("/home/agent/slot/", "/home/agent/slot"),
+    ],
+  )
+  def test_destination_is_normalized(self, declfile, declared, key):
+    """R-11 — a PRODUCER must normalize, because the floor merge in
+    ``commands.start`` dedupes on these keys BEFORE anything parses them.
 
-    def test_emitted_arm_survives_floor_assembly(self, declfile):
-        """END-TO-END: what this loader emits must be what the floor assembler
-        ACCEPTS — the defect S-1 named was a first-party producer emitting exactly
-        what a first-party assembler refuses.
+    (Mutation: drop the ``normalize_bind_dest`` call in the arm constructor →
+    the key stays ``~/slot`` / keeps its trailing slash → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/x"\n'
+      f'    box_dest: "{declared}"\n'
+    )
+    binds = agent_defaults.load_category_binds(package, filename, "claude")
+    assert list(binds["agent.claude.bindings.ro"]) == [key]
 
-        (Mutation: emit the retired ``…bindings.ro.<name>`` key →
-        ``_insert_dotted`` raises "names a binding by ENTRY NAME" → RED.)"""
-        from kanibako.settings.settings_assemble import dotted_partial
+  def test_two_entries_at_one_destination_are_refused(self, declfile):
+    """Bindings are ACT-ONCE: a dest-keyed arm admits one entry per dest, and
+    the second would otherwise just replace the first in the dict.
 
-        package, filename = declfile(
-            "category_binds:\n"
-            "  - category: bindings.ro\n"
-            "    meta_ref: \"{system.channelroot}/x\"\n"
-            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
-            "    ro: true\n"
-        )
-        floor = dict(agent_defaults.load_category_binds(package, filename, "claude"))
-        level = dotted_partial(floor)
-        arm = level["agent"]["claude"]["bindings"]["ro"]
-        assert list(arm) == ["/home/agent/.guide"]
-        entry = arm["/home/agent/.guide"]
-        assert (entry.src, entry.opts) == ("{system.channelroot}/x", "ro")
+    ⚑ The two spellings here normalize to the SAME dest — which is precisely
+    the collision R-11 exists to make visible.
+
+    (Mutation: ``arm[dest] = ...`` without the ``if dest in arm`` guard →
+    last-wins, no error → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/first"\n'
+      '    box_dest: "~/slot"\n'
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/second"\n'
+      '    box_dest: "{$GUEST_HOME}/slot/"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert filename in msg
+    assert "/home/agent/slot" in msg
+    assert "agent.claude.bindings.ro" in msg
+
+  @pytest.mark.parametrize(
+    "category",
+    ["bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced"],
+  )
+  def test_leftover_entry_name_is_refused(self, declfile, category):
+    """A ``key:`` under ANY bind-shaped category is REFUSED, not ignored.
+
+    Ignoring it is the worst of the three outcomes: a plugin written against
+    the retired contract would keep LOADING while binding under a key it never
+    declared.  ⚑ All SIX categories, because all six are dest-keyed now — the
+    four that flipped 2026-08-08c are exactly the ones a third-party plugin
+    is most likely to still spell the retired way.
+
+    (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
+    name is silently discarded → RED.)"""
+    package, filename = declfile(
+      "category_binds:\n"
+      f"  - category: {category}\n"
+      "    key: guide\n"
+      '    meta_ref: "{system.channelroot}/x"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+    )
+    with pytest.raises(SettingsError) as e:
+      agent_defaults.load_category_binds(package, filename, "claude")
+    msg = str(e.value)
+    assert filename in msg
+    assert f"agent.claude.{category}" in msg
+    assert "guide" in msg
+    assert "RETIRED" in msg
+
+  def test_no_category_binds_block_yields_empty(self, declfile):
+    package, filename = declfile("descriptor: {}\n")
+    assert agent_defaults.load_category_binds(package, filename, "goose") == {}
+
+  def test_emitted_arm_survives_floor_assembly(self, declfile):
+    """END-TO-END: what this loader emits must be what the floor assembler
+    ACCEPTS — the defect S-1 named was a first-party producer emitting exactly
+    what a first-party assembler refuses.
+
+    (Mutation: emit the retired ``…bindings.ro.<name>`` key →
+    ``_insert_dotted`` raises "names a binding by ENTRY NAME" → RED.)"""
+    from kanibako.settings.settings_assemble import dotted_partial
+
+    package, filename = declfile(
+      "category_binds:\n"
+      "  - category: bindings.ro\n"
+      '    meta_ref: "{system.channelroot}/x"\n'
+      '    box_dest: "{$GUEST_HOME}/.guide"\n'
+      "    ro: true\n"
+    )
+    floor = dict(agent_defaults.load_category_binds(package, filename, "claude"))
+    level = dotted_partial(floor)
+    arm = level["agent"]["claude"]["bindings"]["ro"]
+    assert list(arm) == ["/home/agent/.guide"]
+    entry = arm["/home/agent/.guide"]
+    assert (entry.src, entry.opts) == ("{system.channelroot}/x", "ro")
 
 
 class TestLayoutSingleSource:
-    """The per-agent store layout is spelled ONCE, so its producers cannot drift.
+  """The per-agent store layout is spelled ONCE, so its producers cannot drift.
 
-    ⚑ WHAT THIS CLASS PINS CHANGED WITH ITS SUBJECT. It used to compare the ref
-    builder against ``agent_category_root``, a resolved twin that composed
-    ``agents/<node>/<category>``; that twin is GONE (see the tombstone in
-    ``settings.agent_config``) because the persona shim — its only consumer — went
-    generic over categories and now carries a WHOLE store-relative path.
+  ⚑ WHAT THIS CLASS PINS CHANGED WITH ITS SUBJECT. It used to compare the ref
+  builder against ``agent_category_root``, a resolved twin that composed
+  ``agents/<node>/<category>``; that twin is GONE (see the tombstone in
+  ``settings.agent_config``) because the persona shim — its only consumer — went
+  generic over categories and now carries a WHOLE store-relative path.
 
-    So the pairing asserted here is the one that is still LIVE, and both halves have
-    a real producer: what a declaration STORES (``agent_category_root_ref``, read by
-    :func:`~kanibako.settings.agent_defaults.load_common`) against where that ``{key}``-ref
-    RESOLVES (``settings_launch.meta_agent_path_floor``, which defines
-    ``meta.agent.<a>.path``). A test that compared a live producer with a dead one
-    would keep passing while the live pair drifted.
+  So the pairing asserted here is the one that is still LIVE, and both halves have
+  a real producer: what a declaration STORES (``agent_category_root_ref``, read by
+  :func:`~kanibako.settings.agent_defaults.load_common`) against where that ``{key}``-ref
+  RESOLVES (``settings_launch.meta_agent_path_floor``, which defines
+  ``meta.agent.<a>.path``). A test that compared a live producer with a dead one
+  would keep passing while the live pair drifted.
+  """
+
+  def test_the_declaration_root_resolves_to_the_store_dir(self):
+    """``{meta.agent.<a>.path}/<category>`` must land on ``agents/<dir>/<category>``.
+
+    ⚑ Both sides are CALLS to the two production builders, never a literal
+    composed here — a hand-spelled expectation would agree with itself.
+    The literals below are the SPELLINGS, which is the other half: they are the
+    strings a stored declaration and a resolved anchor actually carry.
     """
+    from kanibako.settings.settings_launch import meta_agent_path_floor
 
-    def test_the_declaration_root_resolves_to_the_store_dir(self):
-        """``{meta.agent.<a>.path}/<category>`` must land on ``agents/<dir>/<category>``.
+    ref = agent_category_root_ref("claude", "common")
+    anchor = meta_agent_path_floor("claude")["meta.agent.claude.path"]
+    assert ref == "{meta.agent.claude.path}/common"
+    assert anchor == "{config.agents}/claude"
+    # The ref is the anchor plus the category dirname — nothing else prepends.
+    assert ref == f"{{meta.agent.claude.path}}/{agent_category_dirname('common')}"
 
-        ⚑ Both sides are CALLS to the two production builders, never a literal
-        composed here — a hand-spelled expectation would agree with itself.
-        The literals below are the SPELLINGS, which is the other half: they are the
-        strings a stored declaration and a resolved anchor actually carry.
-        """
-        from kanibako.settings.settings_launch import meta_agent_path_floor
+  def test_a_persona_node_keeps_the_KEY_spelling_and_the_DIR_spelling_apart(self):
+    """⚑ THE SPLIT-STORE GUARD, on the pair that survived.
 
-        ref = agent_category_root_ref("claude", "common")
-        anchor = meta_agent_path_floor("claude")["meta.agent.claude.path"]
-        assert ref == "{meta.agent.claude.path}/common"
-        assert anchor == "{config.agents}/claude"
-        # The ref is the anchor plus the category dirname — nothing else prepends.
-        assert ref == f"{{meta.agent.claude.path}}/{agent_category_dirname('common')}"
+    A key path carries the canonical ``℘`` node; a directory carries the ``+``
+    the user typed. The ref keeps the KEY spelling because it is a key path; the
+    anchor's VALUE takes ``store_dirname``. Collapse the two either way and the
+    store SILENTLY splits in half — every path here is create-if-absent, so
+    nothing raises.
+    """
+    from kanibako.settings.settings_launch import meta_agent_path_floor
 
-    def test_a_persona_node_keeps_the_KEY_spelling_and_the_DIR_spelling_apart(self):
-        """⚑ THE SPLIT-STORE GUARD, on the pair that survived.
+    node = "navigator℘claude"
+    assert agent_category_root_ref(node, "common") == (f"{{meta.agent.{node}.path}}/common")
+    anchor = meta_agent_path_floor(node)[f"meta.agent.{node}.path"]
+    assert anchor == "{config.agents}/navigator+claude"
+    assert store_dirname(node) == "navigator+claude"
 
-        A key path carries the canonical ``℘`` node; a directory carries the ``+``
-        the user typed. The ref keeps the KEY spelling because it is a key path; the
-        anchor's VALUE takes ``store_dirname``. Collapse the two either way and the
-        store SILENTLY splits in half — every path here is create-if-absent, so
-        nothing raises.
-        """
-        from kanibako.settings.settings_launch import meta_agent_path_floor
+  @pytest.mark.parametrize("category", ["common", "caches", "seeded"])
+  def test_abstract_categories_have_a_dirname(self, category):
+    assert agent_category_dirname(category) == category
 
-        node = "navigator℘claude"
-        assert agent_category_root_ref(node, "common") == (
-            f"{{meta.agent.{node}.path}}/common"
-        )
-        anchor = meta_agent_path_floor(node)[f"meta.agent.{node}.path"]
-        assert anchor == "{config.agents}/navigator+claude"
-        assert store_dirname(node) == "navigator+claude"
+  @pytest.mark.parametrize("category", ["bindings.ro", "bindings.rw", "env", "nope"])
+  def test_concrete_or_unknown_category_is_refused(self, category):
+    """An undeclared category is NOT a key — refuse rather than fabricate a
+    default (closed-keyspace rule, spec §0)."""
+    with pytest.raises(ValueError, match="ABSTRACT category"):
+      agent_category_dirname(category)
 
-    @pytest.mark.parametrize("category", ["common", "caches", "seeded"])
-    def test_abstract_categories_have_a_dirname(self, category):
-        assert agent_category_dirname(category) == category
+  @pytest.mark.parametrize(
+    ("src", "rooted"),
+    [
+      ("leaf", "{r}/leaf"),
+      ("a/b", "{r}/a/b"),
+      ("/abs", "/abs"),
+      ("~/x", "~/x"),
+      ("{$V}/x", "{$V}/x"),
+      ("{k}/x", "{k}/x"),
+      # ⚑ A LEADING ESCAPE is read the way the RESOLVER reads it (asserted
+      # directly in ``test_escapes_match_the_resolver`` below):
+      #   \~foo  unescapes to ~foo  -> a literal relative dir, rooted
+      #   \/foo  is no escape       -> not absolute; the expansion refuses it
+      ("\\/foo", "{r}/\\/foo"),
+      ("\\~foo", "{r}/\\~foo"),
+      ("\\$V/x", "{r}/\\$V/x"),
+      ("\\@k/x", "{r}/\\@k/x"),
+    ],
+  )
+  def test_prefix_rule(self, src, rooted):
+    assert root_relative_source(src, "{r}") == rooted
+    assert is_self_resolving(src) is (rooted == src)
 
-    @pytest.mark.parametrize("category", ["bindings.ro", "bindings.rw", "env", "nope"])
-    def test_concrete_or_unknown_category_is_refused(self, category):
-        """An undeclared category is NOT a key — refuse rather than fabricate a
-        default (closed-keyspace rule, spec §0)."""
-        with pytest.raises(ValueError, match="ABSTRACT category"):
-            agent_category_dirname(category)
+  @pytest.mark.parametrize(
+    ("src", "expanded"),
+    [
+      (r"\~foo", "~foo"),  # escaped tilde -> a literal relative dir
+      (r"\\foo", "\\foo"),  # escaped backslash -> a literal relative dir
+      # ``\$`` and ``\@`` are no escapes now: refused (test_strict_braces_escapes).
+      ("/abs", "/abs"),
+      ("~/x", "/home/u/x"),
+      ("leaf", "leaf"),
+    ],
+  )
+  def test_escapes_match_the_resolver(self, src, expanded):
+    r"""The rule must agree with what the RESOLVER makes of the same string.
 
-    @pytest.mark.parametrize(
-        ("src", "rooted"),
-        [
-            ("leaf", "{r}/leaf"),
-            ("a/b", "{r}/a/b"),
-            ("/abs", "/abs"),
-            ("~/x", "~/x"),
-            ("{$V}/x", "{$V}/x"),
-            ("{k}/x", "{k}/x"),
-            # ⚑ A LEADING ESCAPE is read the way the RESOLVER reads it (asserted
-            # directly in ``test_escapes_match_the_resolver`` below):
-            #   \~foo  unescapes to ~foo  -> a literal relative dir, rooted
-            #   \/foo  is no escape       -> not absolute; the expansion refuses it
-            ("\\/foo", "{r}/\\/foo"),
-            ("\\~foo", "{r}/\\~foo"),
-            ("\\$V/x", "{r}/\\$V/x"),
-            ("\\@k/x", "{r}/\\@k/x"),
-        ],
+    ⚑ This is the byte-identity boundary. The retired assembly-time join ran
+    POST-expand and tested the (already unescaped) string for a leading ``/``;
+    this rule runs PRE-expand. They give the same answer only if the pre-expand
+    test reads escapes the way ``expand_expr`` does — which a plain first-char
+    test does NOT: it calls ``\/foo`` relative and would root a path the old
+    join left absolute.
+
+    A value is self-resolving exactly when its expansion is ABSOLUTE (or is a
+    token the expansion would have made absolute), so the two are asserted
+    against each other rather than against a hand-written expectation.
+    """
+    from kanibako.settings.settings_resolve import ResolveCtx, expand_expr
+
+    ctx = ResolveCtx(
+      agent_name=None,
+      workset_name=None,
+      host_home="/home/u",
+      xdg={},
     )
-    def test_prefix_rule(self, src, rooted):
-        assert root_relative_source(src, "{r}") == rooted
-        assert is_self_resolving(src) is (rooted == src)
-
-    @pytest.mark.parametrize(
-        ("src", "expanded"),
-        [
-            (r"\~foo", "~foo"),      # escaped tilde -> a literal relative dir
-            (r"\\foo", "\\foo"),    # escaped backslash -> a literal relative dir
-            # ``\$`` and ``\@`` are no escapes now: refused (test_strict_braces_escapes).
-            ("/abs", "/abs"),
-            ("~/x", "/home/u/x"),
-            ("leaf", "leaf"),
-        ],
+    assert (
+      expand_expr(
+        src,
+        space="host",
+        ctx=ctx,
+        lookup=lambda r, c: "",
+      )
+      == expanded
     )
-    def test_escapes_match_the_resolver(self, src, expanded):
-        r"""The rule must agree with what the RESOLVER makes of the same string.
-
-        ⚑ This is the byte-identity boundary. The retired assembly-time join ran
-        POST-expand and tested the (already unescaped) string for a leading ``/``;
-        this rule runs PRE-expand. They give the same answer only if the pre-expand
-        test reads escapes the way ``expand_expr`` does — which a plain first-char
-        test does NOT: it calls ``\/foo`` relative and would root a path the old
-        join left absolute.
-
-        A value is self-resolving exactly when its expansion is ABSOLUTE (or is a
-        token the expansion would have made absolute), so the two are asserted
-        against each other rather than against a hand-written expectation.
-        """
-        from kanibako.settings.settings_resolve import ResolveCtx, expand_expr
-
-        ctx = ResolveCtx(
-            agent_name=None, workset_name=None, host_home="/home/u", xdg={},
-        )
-        assert expand_expr(
-            src, space="host", ctx=ctx, lookup=lambda r, c: "",
-        ) == expanded
-        # Self-resolving iff the expansion lands on an absolute path, OR the value
-        # opens with an unexpanded token ($VAR/@ref) that resolves elsewhere.
-        expected = expanded.startswith("/") or src[:1] in ("$", "@")
-        assert is_self_resolving(src) is expected
+    # Self-resolving iff the expansion lands on an absolute path, OR the value
+    # opens with an unexpanded token ($VAR/@ref) that resolves elsewhere.
+    expected = expanded.startswith("/") or src[:1] in ("$", "@")
+    assert is_self_resolving(src) is expected
 
 
 class TestPersonaBlockLoading:
-    """The ``persona:`` block LOADER: declared-or-nothing (T3.2).
+  """The ``persona:`` block LOADER: declared-or-nothing (T3.2).
 
-    Every field falls back to its :class:`PersonaSpec` default when the block omits
-    it, so a plugin never silently inherits another harness's semantics.
+  Every field falls back to its :class:`PersonaSpec` default when the block omits
+  it, so a plugin never silently inherits another harness's semantics.
+  """
+
+  def _persona(self, declfile, block: str):
+    package, filename = declfile('descriptor:\n  command: ["probe"]\n  persona:\n' + block)
+    return agent_defaults.load_descriptor(package, filename).persona
+
+  def test_a_retired_model_required_key_is_IGNORED(self, declfile):
+    """The model veto is retired: a skewed plugin still declaring it still LOADS,
+    and nothing reads the key."""
+    p = self._persona(
+      declfile,
+      "    endpoint_delivery: env\n    token_var: PROBE\n    model_required: true\n",
+    )
+    assert p is not None
+    assert p.token_var == "PROBE"
+    assert not hasattr(p, "model_required")
+
+  def test_a_retired_host_dir_adopt_key_is_IGNORED(self, declfile):
+    """B3 is retired (D3): a skewed plugin still declaring it still LOADS.
+
+    Descriptor keys are read individually, so an unrecognized one is simply not
+    read.  That silence is the RIGHT answer here — unlike ``safe_bypass``, whose
+    absence would degrade the launch into permissive, a stale ``host_dir_adopt``
+    asks for a credential route that no longer exists, and refusing to load the
+    plugin over it would break an install whose base upgraded first.
     """
+    p = self._persona(
+      declfile,
+      "    endpoint_delivery: env\n    token_var: PROBE\n    host_dir_adopt: true\n",
+    )
+    assert p is not None
+    assert p.token_var == "PROBE"
+    assert not hasattr(p, "host_dir_adopt")
 
-    def _persona(self, declfile, block: str):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  persona:\n" + block
-        )
-        return agent_defaults.load_descriptor(package, filename).persona
-
-    def test_a_retired_model_required_key_is_IGNORED(self, declfile):
-        """The model veto is retired: a skewed plugin still declaring it still LOADS,
-        and nothing reads the key."""
-        p = self._persona(
-            declfile,
-            "    endpoint_delivery: env\n    token_var: PROBE\n    model_required: true\n",
-        )
-        assert p is not None
-        assert p.token_var == "PROBE"
-        assert not hasattr(p, "model_required")
-
-    def test_a_retired_host_dir_adopt_key_is_IGNORED(self, declfile):
-        """B3 is retired (D3): a skewed plugin still declaring it still LOADS.
-
-        Descriptor keys are read individually, so an unrecognized one is simply not
-        read.  That silence is the RIGHT answer here — unlike ``safe_bypass``, whose
-        absence would degrade the launch into permissive, a stale ``host_dir_adopt``
-        asks for a credential route that no longer exists, and refusing to load the
-        plugin over it would break an install whose base upgraded first.
-        """
-        p = self._persona(
-            declfile,
-            "    endpoint_delivery: env\n"
-            "    token_var: PROBE\n"
-            "    host_dir_adopt: true\n",
-        )
-        assert p is not None
-        assert p.token_var == "PROBE"
-        assert not hasattr(p, "host_dir_adopt")
-
-    def test_no_persona_block_is_none(self, declfile):
-        """No block at all → no spec, so ``start.py``'s ``_persona_wiring`` returns
-        ``None`` and the persona runs with no persona checks."""
-        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
-        assert agent_defaults.load_descriptor(package, filename).persona is None
+  def test_no_persona_block_is_none(self, declfile):
+    """No block at all → no spec, so ``start.py``'s ``_persona_wiring`` returns
+    ``None`` and the persona runs with no persona checks."""
+    package, filename = declfile('descriptor:\n  command: ["probe"]\n')
+    assert agent_defaults.load_descriptor(package, filename).persona is None
 
 
 class TestLoginVarsLoading:
-    """The descriptor's ``login_vars``: a list of env VAR names, or nothing."""
+  """The descriptor's ``login_vars``: a list of env VAR names, or nothing."""
 
-    def _load(self, declfile, line: str):
-        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n" + line)
-        return agent_defaults.load_descriptor(package, filename), filename
+  def _load(self, declfile, line: str):
+    package, filename = declfile('descriptor:\n  command: ["probe"]\n' + line)
+    return agent_defaults.load_descriptor(package, filename), filename
 
-    def test_absent_is_empty(self, declfile):
-        assert self._load(declfile, "")[0].login_vars == ()
+  def test_absent_is_empty(self, declfile):
+    assert self._load(declfile, "")[0].login_vars == ()
 
-    def test_a_list_of_names_loads_in_order(self, declfile):
-        desc, _ = self._load(declfile, "  login_vars: [PROBE_KEY, PROBE_TOKEN]\n")
-        assert desc.login_vars == ("PROBE_KEY", "PROBE_TOKEN")
+  def test_a_list_of_names_loads_in_order(self, declfile):
+    desc, _ = self._load(declfile, "  login_vars: [PROBE_KEY, PROBE_TOKEN]\n")
+    assert desc.login_vars == ("PROBE_KEY", "PROBE_TOKEN")
 
-    @pytest.mark.parametrize("line", [
-        "  login_vars: PROBE_KEY\n",
-        "  login_vars: [\"not a var\"]\n",
-        "  login_vars: [1]\n",
-    ])
-    def test_a_malformed_value_is_refused_by_name(self, declfile, line):
-        with pytest.raises(SettingsError) as exc:
-            self._load(declfile, line)
-        assert "login_vars" in str(exc.value)
+  @pytest.mark.parametrize(
+    "line",
+    [
+      "  login_vars: PROBE_KEY\n",
+      '  login_vars: ["not a var"]\n',
+      "  login_vars: [1]\n",
+    ],
+  )
+  def test_a_malformed_value_is_refused_by_name(self, declfile, line):
+    with pytest.raises(SettingsError) as exc:
+      self._load(declfile, line)
+    assert "login_vars" in str(exc.value)
 
 
 class TestRetiredSafeBypassKey:
-    """The pre-rename key ``safe_bypass:`` is REFUSED BY NAME, not ignored.
+  """The pre-rename key ``safe_bypass:`` is REFUSED BY NAME, not ignored.
 
-    ``load_descriptor`` reads descriptor keys individually, so an unrecognized
-    one is simply never read.  For THIS key that silence is the dangerous
-    outcome, not the harmless one: the descriptor would load with
-    ``access_realization=None``, ``access_row`` would return ``None`` for every
-    tier, the un-rendered-tier gate would have nothing to check, and the agent
-    would launch with no permission emission at all — which on the ENV channel
-    IS the bypass (goose: unset ``GOOSE_MODE`` ⇒ ``auto``).
+  ``load_descriptor`` reads descriptor keys individually, so an unrecognized
+  one is simply never read.  For THIS key that silence is the dangerous
+  outcome, not the harmless one: the descriptor would load with
+  ``access_realization=None``, ``access_row`` would return ``None`` for every
+  tier, the un-rendered-tier gate would have nothing to check, and the agent
+  would launch with no permission emission at all — which on the ENV channel
+  IS the bypass (goose: unset ``GOOSE_MODE`` ⇒ ``auto``).
 
-    (Mutation: drop the guard → the descriptor loads clean with no realization
-    → a stale plugin silently runs permissive → RED here.)
+  (Mutation: drop the guard → the descriptor loads clean with no realization
+  → a stale plugin silently runs permissive → RED here.)
+  """
+
+  def test_retired_key_is_refused_and_names_its_replacement(self, declfile):
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  safe_bypass:\n"
+      "    channel: env\n"
+      "    env_var: PROBE_MODE\n"
+      "    setting_key: access\n"
+      "    tiers:\n"
+      "      restricted: {env_value: approve}\n"
+      "      full: {env_value: auto}\n"
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    msg = str(exc.value)
+    assert "safe_bypass" in msg  # names what is wrong
+    assert "access_realization" in msg  # ...and the cure
+    assert filename in msg  # ...and the file to fix
+
+  # ── The refusal must CURE, and the cure is two changes, not one ───────────
+  #
+  # A plugin author hitting this refusal is running a v1.7.2-shaped file, and
+  # those are the bodies below: ``channel`` + a ``flag``/``secure_flag`` or
+  # ``env_value``/``secure_env_value`` polarity pair + ``setting_key:
+  # auto_approve``, with NO ``tiers:``.  The rename (``c65b1d48``) and the
+  # reshape (``fca775ff``) were two separate commits, so "rename the key" alone
+  # is refused a SECOND time.  These three tests walk that author's path:
+  # refused → rename only → STILL refused → rename + reshape → loads.
+  #
+  # (Mutation: restore the old "(same shape). Rename the key:" wording →
+  # ``test_refusal_names_the_reshape_not_just_the_rename`` RED on 'tiers'.
+  # Mutation: drop the unknown-field guard in ``_build_access_realization`` →
+  # ``test_rename_alone_is_refused_again`` RED, and the message's own claim
+  # about the fields left behind becomes false with it.)
+
+  _V172_ENV_BODY = (
+    "    channel: env\n"
+    "    env_var: PROBE_MODE\n"
+    "    env_value: auto\n"
+    "    secure_env_value: approve\n"
+    "    setting_key: auto_approve\n"
+  )
+  _V172_FLAG_BODY = (
+    "    channel: flag\n"
+    '    flag: ["--dangerously-skip-permissions"]\n'
+    "    setting_key: auto_approve\n"
+  )
+
+  @pytest.mark.parametrize(
+    "body",
+    [_V172_ENV_BODY, _V172_FLAG_BODY],
+    ids=["v1.7.2-env", "v1.7.2-flag"],
+  )
+  def test_refusal_names_the_reshape_not_just_the_rename(self, declfile, body):
+    """The printed cure covers BOTH changes and points somewhere real.
+
+    The message used to say the block was renamed "(same shape)" — true only
+    of the intermediate dev state between the two commits, and false of the
+    v1.7.2 baseline every refused author is actually holding.
     """
+    package, filename = declfile('descriptor:\n  command: ["probe"]\n  safe_bypass:\n' + body)
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    msg = str(exc.value)
+    assert "safe_bypass" in msg  # names what is wrong
+    assert "access_realization" in msg  # ...the renamed key
+    assert "tiers" in msg  # ...the RESHAPE, not just the rename
+    assert "MIGRATION.md" in msg  # ...where the before/after lives
+    assert "same shape" not in msg  # ...and never the claim that failed
+    assert "auto_approve" in msg  # ...the setting_key that fails SILENTLY
+    assert filename in msg  # ...and the file to fix
 
-    def test_retired_key_is_refused_and_names_its_replacement(self, declfile):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  safe_bypass:\n"
-            "    channel: env\n"
-            "    env_var: PROBE_MODE\n"
-            "    setting_key: access\n"
-            "    tiers:\n"
-            "      restricted: {env_value: approve}\n"
-            "      full: {env_value: auto}\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        msg = str(exc.value)
-        assert "safe_bypass" in msg          # names what is wrong
-        assert "access_realization" in msg   # ...and the cure
-        assert filename in msg               # ...and the file to fix
+  @pytest.mark.parametrize(
+    "body",
+    [_V172_ENV_BODY, _V172_FLAG_BODY],
+    ids=["v1.7.2-env", "v1.7.2-flag"],
+  )
+  def test_rename_alone_is_refused_again(self, declfile, body):
+    """Following the OLD message literally walks into a second refusal.
 
-    # ── The refusal must CURE, and the cure is two changes, not one ───────────
-    #
-    # A plugin author hitting this refusal is running a v1.7.2-shaped file, and
-    # those are the bodies below: ``channel`` + a ``flag``/``secure_flag`` or
-    # ``env_value``/``secure_env_value`` polarity pair + ``setting_key:
-    # auto_approve``, with NO ``tiers:``.  The rename (``c65b1d48``) and the
-    # reshape (``fca775ff``) were two separate commits, so "rename the key" alone
-    # is refused a SECOND time.  These three tests walk that author's path:
-    # refused → rename only → STILL refused → rename + reshape → loads.
-    #
-    # (Mutation: restore the old "(same shape). Rename the key:" wording →
-    # ``test_refusal_names_the_reshape_not_just_the_rename`` RED on 'tiers'.
-    # Mutation: drop the unknown-field guard in ``_build_access_realization`` →
-    # ``test_rename_alone_is_refused_again`` RED, and the message's own claim
-    # about the fields left behind becomes false with it.)
+    This is the defect the message now warns about, pinned as behavior: the
+    v1.7.2 body under the NEW key is refused by ``_build_access_realization``
+    for the polarity fields the reshape retired.
+    """
+    package, filename = declfile(
+      'descriptor:\n  command: ["probe"]\n  access_realization:\n' + body
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    assert "unknown field(s)" in str(exc.value)
 
-    _V172_ENV_BODY = (
+  @pytest.mark.parametrize(
+    "body",
+    [
+      (
         "    channel: env\n"
         "    env_var: PROBE_MODE\n"
-        "    env_value: auto\n"
-        "    secure_env_value: approve\n"
-        "    setting_key: auto_approve\n"
-    )
-    _V172_FLAG_BODY = (
+        "    setting_key: access\n"
+        "    tiers:\n"
+        "      restricted: {env_value: approve}\n"
+        "      full: {env_value: auto}\n"
+      ),
+      (
         "    channel: flag\n"
-        "    flag: [\"--dangerously-skip-permissions\"]\n"
-        "    setting_key: auto_approve\n"
+        "    setting_key: access\n"
+        "    tiers:\n"
+        "      restricted: {}\n"
+        '      full: {flag: ["--dangerously-skip-permissions"]}\n'
+      ),
+    ],
+    ids=["cured-env", "cured-flag"],
+  )
+  def test_the_printed_cure_actually_loads(self, declfile, body):
+    """Rename AND reshape, exactly as the message says — and it loads.
+
+    Non-vacuity for the two tests above: what the refusal asks for is a shape
+    the loader accepts, so the message is a cure rather than a description.
+    """
+    package, filename = declfile(
+      'descriptor:\n  command: ["probe"]\n  access_realization:\n' + body
     )
+    ar = agent_defaults.load_descriptor(package, filename).access_realization
+    assert ar is not None
+    assert ar.rendered_tiers() == ("restricted", "full")
+    assert ar.setting_key == "access"
 
-    @pytest.mark.parametrize(
-        "body", [_V172_ENV_BODY, _V172_FLAG_BODY], ids=["v1.7.2-env", "v1.7.2-flag"],
+  def test_new_key_still_loads(self, declfile):
+    """The guard keys off the RETIRED spelling only — the new one is fine."""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  access_realization:\n"
+      "    channel: env\n"
+      "    env_var: PROBE_MODE\n"
+      "    tiers:\n"
+      "      full: {env_value: auto}\n"
     )
-    def test_refusal_names_the_reshape_not_just_the_rename(self, declfile, body):
-        """The printed cure covers BOTH changes and points somewhere real.
-
-        The message used to say the block was renamed "(same shape)" — true only
-        of the intermediate dev state between the two commits, and false of the
-        v1.7.2 baseline every refused author is actually holding.
-        """
-        package, filename = declfile(
-            "descriptor:\n  command: [\"probe\"]\n  safe_bypass:\n" + body
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        msg = str(exc.value)
-        assert "safe_bypass" in msg           # names what is wrong
-        assert "access_realization" in msg    # ...the renamed key
-        assert "tiers" in msg                 # ...the RESHAPE, not just the rename
-        assert "MIGRATION.md" in msg          # ...where the before/after lives
-        assert "same shape" not in msg        # ...and never the claim that failed
-        assert "auto_approve" in msg          # ...the setting_key that fails SILENTLY
-        assert filename in msg                # ...and the file to fix
-
-    @pytest.mark.parametrize(
-        "body", [_V172_ENV_BODY, _V172_FLAG_BODY], ids=["v1.7.2-env", "v1.7.2-flag"],
-    )
-    def test_rename_alone_is_refused_again(self, declfile, body):
-        """Following the OLD message literally walks into a second refusal.
-
-        This is the defect the message now warns about, pinned as behavior: the
-        v1.7.2 body under the NEW key is refused by ``_build_access_realization``
-        for the polarity fields the reshape retired.
-        """
-        package, filename = declfile(
-            "descriptor:\n  command: [\"probe\"]\n  access_realization:\n" + body
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        assert "unknown field(s)" in str(exc.value)
-
-    @pytest.mark.parametrize(
-        "body",
-        [
-            (
-                "    channel: env\n"
-                "    env_var: PROBE_MODE\n"
-                "    setting_key: access\n"
-                "    tiers:\n"
-                "      restricted: {env_value: approve}\n"
-                "      full: {env_value: auto}\n"
-            ),
-            (
-                "    channel: flag\n"
-                "    setting_key: access\n"
-                "    tiers:\n"
-                "      restricted: {}\n"
-                "      full: {flag: [\"--dangerously-skip-permissions\"]}\n"
-            ),
-        ],
-        ids=["cured-env", "cured-flag"],
-    )
-    def test_the_printed_cure_actually_loads(self, declfile, body):
-        """Rename AND reshape, exactly as the message says — and it loads.
-
-        Non-vacuity for the two tests above: what the refusal asks for is a shape
-        the loader accepts, so the message is a cure rather than a description.
-        """
-        package, filename = declfile(
-            "descriptor:\n  command: [\"probe\"]\n  access_realization:\n" + body
-        )
-        ar = agent_defaults.load_descriptor(package, filename).access_realization
-        assert ar is not None
-        assert ar.rendered_tiers() == ("restricted", "full")
-        assert ar.setting_key == "access"
-
-    def test_new_key_still_loads(self, declfile):
-        """The guard keys off the RETIRED spelling only — the new one is fine."""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  access_realization:\n"
-            "    channel: env\n"
-            "    env_var: PROBE_MODE\n"
-            "    tiers:\n"
-            "      full: {env_value: auto}\n"
-        )
-        d = agent_defaults.load_descriptor(package, filename)
-        assert d.access_realization is not None
-        assert d.access_realization.rendered_tiers() == ("full",)
+    d = agent_defaults.load_descriptor(package, filename)
+    assert d.access_realization is not None
+    assert d.access_realization.rendered_tiers() == ("full",)
 
 
 class TestAccessRowChannelDiscipline:
-    """``access_realization.tiers`` rows are checked AGAINST THEIR CHANNEL at load.
+  """``access_realization.tiers`` rows are checked AGAINST THEIR CHANNEL at load.
 
-    The dangerous asymmetry this class pins: an EMPTY row is legal on the FLAG
-    channel (emit no flag — claude/codex ``restricted``) and ILLEGAL on the ENV
-    channel.  Emitting nothing on ENV leaves the variable unset, and an unset
-    permission variable is the harness's own default, which for the agents that
-    use this channel is the PERMISSIVE one (goose: no ``GOOSE_MODE`` ⇒ ``auto``
-    ⇒ full bypass).  So a declared-but-empty ENV row would deliver ``full`` under
-    another tier's name — silently, with the launch reporting success.
+  The dangerous asymmetry this class pins: an EMPTY row is legal on the FLAG
+  channel (emit no flag — claude/codex ``restricted``) and ILLEGAL on the ENV
+  channel.  Emitting nothing on ENV leaves the variable unset, and an unset
+  permission variable is the harness's own default, which for the agents that
+  use this channel is the PERMISSIVE one (goose: no ``GOOSE_MODE`` ⇒ ``auto``
+  ⇒ full bypass).  So a declared-but-empty ENV row would deliver ``full`` under
+  another tier's name — silently, with the launch reporting success.
 
-    A harness that cannot realize a tier OMITS the row; that is a DECLARATION and
-    the launch refuses it loudly by name.  Declaring one obliges it to carry a
-    value.
+  A harness that cannot realize a tier OMITS the row; that is a DECLARATION and
+  the launch refuses it loudly by name.  Declaring one obliges it to carry a
+  value.
+  """
+
+  def _descriptor(self, declfile, block: str):
+    package, filename = declfile(
+      'descriptor:\n  command: ["probe"]\n  access_realization:\n' + block
+    )
+    return agent_defaults.load_descriptor(package, filename)
+
+  def test_env_channel_refuses_a_declared_empty_row(self, declfile):
+    """THE fix: ``restricted: {}`` on ENV is REFUSED at descriptor load.
+
+    (Mutation: drop the guard → the row loads with ``env_value=""``,
+    ``assemble_env`` emits nothing, and the box runs at goose's ``auto``
+    default while reporting the ``restricted`` tier → RED here.)
     """
+    with pytest.raises(SettingsError) as exc:
+      self._descriptor(
+        declfile,
+        "    channel: env\n"
+        "    env_var: PROBE_MODE\n"
+        "    tiers:\n"
+        "      restricted: {}\n"
+        "      full: {env_value: auto}\n",
+      )
+    msg = str(exc.value)
+    assert "restricted" in msg  # names the tier
+    assert "probe-defaults.yaml" in msg  # ...and the plugin file to fix
+    assert "env_value" in msg
 
-    def _descriptor(self, declfile, block: str):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  access_realization:\n" + block
-        )
-        return agent_defaults.load_descriptor(package, filename)
+  def test_env_channel_accepts_rows_that_carry_values(self, declfile):
+    """The shipped goose shape stays legal (both rows carry a value)."""
+    d = self._descriptor(
+      declfile,
+      "    channel: env\n"
+      "    env_var: PROBE_MODE\n"
+      "    tiers:\n"
+      "      restricted: {env_value: approve}\n"
+      "      full: {env_value: auto}\n",
+    )
+    assert d.access_realization is not None
+    assert d.access_realization.rendered_tiers() == ("restricted", "full")
+    assert d.access_realization.restricted.env_value == "approve"
 
-    def test_env_channel_refuses_a_declared_empty_row(self, declfile):
-        """THE fix: ``restricted: {}`` on ENV is REFUSED at descriptor load.
+  def test_flag_channel_still_allows_the_empty_row(self, declfile):
+    """The claude/codex shape: an empty FLAG row means "emit nothing".
 
-        (Mutation: drop the guard → the row loads with ``env_value=""``,
-        ``assemble_env`` emits nothing, and the box runs at goose's ``auto``
-        default while reporting the ``restricted`` tier → RED here.)
-        """
-        with pytest.raises(SettingsError) as exc:
-            self._descriptor(
-                declfile,
-                "    channel: env\n"
-                "    env_var: PROBE_MODE\n"
-                "    tiers:\n"
-                "      restricted: {}\n"
-                "      full: {env_value: auto}\n",
-            )
-        msg = str(exc.value)
-        assert "restricted" in msg          # names the tier
-        assert "probe-defaults.yaml" in msg  # ...and the plugin file to fix
-        assert "env_value" in msg
+    Legal, because the tier is realized by the ABSENCE of a flag on an argv
+    that carries the tier's other flags — nothing is left to a harness
+    default that we would then be lying about.
+    """
+    d = self._descriptor(
+      declfile,
+      '    channel: flag\n    tiers:\n      restricted: {}\n      full: {flag: ["--bypass"]}\n',
+    )
+    assert d.access_realization is not None
+    assert d.access_realization.restricted.flag == ()
+    assert d.access_realization.rendered_tiers() == ("restricted", "full")
 
-    def test_env_channel_accepts_rows_that_carry_values(self, declfile):
-        """The shipped goose shape stays legal (both rows carry a value)."""
-        d = self._descriptor(
-            declfile,
-            "    channel: env\n"
-            "    env_var: PROBE_MODE\n"
-            "    tiers:\n"
-            "      restricted: {env_value: approve}\n"
-            "      full: {env_value: auto}\n",
-        )
-        assert d.access_realization is not None
-        assert d.access_realization.rendered_tiers() == ("restricted", "full")
-        assert d.access_realization.restricted.env_value == "approve"
-
-    def test_flag_channel_still_allows_the_empty_row(self, declfile):
-        """The claude/codex shape: an empty FLAG row means "emit nothing".
-
-        Legal, because the tier is realized by the ABSENCE of a flag on an argv
-        that carries the tier's other flags — nothing is left to a harness
-        default that we would then be lying about.
-        """
-        d = self._descriptor(
-            declfile,
-            "    channel: flag\n"
-            "    tiers:\n"
-            "      restricted: {}\n"
-            "      full: {flag: [\"--bypass\"]}\n",
-        )
-        assert d.access_realization is not None
-        assert d.access_realization.restricted.flag == ()
-        assert d.access_realization.rendered_tiers() == ("restricted", "full")
-
-    def test_omitted_row_is_not_the_same_as_an_empty_one(self, declfile):
-        """OMITTING a row on ENV is legal — that is the "cannot render" case."""
-        d = self._descriptor(
-            declfile,
-            "    channel: env\n"
-            "    env_var: PROBE_MODE\n"
-            "    tiers:\n"
-            "      restricted: {env_value: approve}\n"
-            "      full: {env_value: auto}\n",
-        )
-        assert d.access_realization is not None
-        assert d.access_realization.editing is None
-        assert d.access_realization.renders("editing") is False
+  def test_omitted_row_is_not_the_same_as_an_empty_one(self, declfile):
+    """OMITTING a row on ENV is legal — that is the "cannot render" case."""
+    d = self._descriptor(
+      declfile,
+      "    channel: env\n"
+      "    env_var: PROBE_MODE\n"
+      "    tiers:\n"
+      "      restricted: {env_value: approve}\n"
+      "      full: {env_value: auto}\n",
+    )
+    assert d.access_realization is not None
+    assert d.access_realization.editing is None
+    assert d.access_realization.renders("editing") is False
 
 
 class TestEnvChannelBlocksMustNameTheirVariable:
-    """F-5 — the SAME discipline the tier ROWS get, applied to the BLOCK's fields.
+  """F-5 — the SAME discipline the tier ROWS get, applied to the BLOCK's fields.
 
-    The rows above are checked against their channel; the block declaring that
-    channel was not.  ``env_var=raw.get("env_var", "")`` accepted an ENV-channel
-    realization that named no variable, and ``assemble_env`` emits a row only
-    when one is named (``ar.channel is Channel.ENV and ar.env_var``).  So a plain
-    typo — ``env_ver:`` for ``env_var:`` — produced a descriptor that loads, a
-    launch whose un-rendered-tier gate passes (the ROWS all exist), and a box
-    with ``GOOSE_MODE`` UNSET, i.e. goose's ``auto`` default, while the launch
-    reports ``restricted``.  A silent, security-relevant downgrade from one
-    transposed letter.
+  The rows above are checked against their channel; the block declaring that
+  channel was not.  ``env_var=raw.get("env_var", "")`` accepted an ENV-channel
+  realization that named no variable, and ``assemble_env`` emits a row only
+  when one is named (``ar.channel is Channel.ENV and ar.env_var``).  So a plain
+  typo — ``env_ver:`` for ``env_var:`` — produced a descriptor that loads, a
+  launch whose un-rendered-tier gate passes (the ROWS all exist), and a box
+  with ``GOOSE_MODE`` UNSET, i.e. goose's ``auto`` default, while the launch
+  reports ``restricted``.  A silent, security-relevant downgrade from one
+  transposed letter.
 
-    ``settings:`` entries carry the identical hole (``assemble_env`` skips on
-    ``and s.env_var``); there the dropped value is claude's ``endpoint``, so a
-    persona runs against the harness's DEFAULT endpoint while every preflight
-    reports the configured one.
+  ``settings:`` entries carry the identical hole (``assemble_env`` skips on
+  ``and s.env_var``); there the dropped value is claude's ``endpoint``, so a
+  persona runs against the harness's DEFAULT endpoint while every preflight
+  reports the configured one.
 
-    The FLAG-channel cases in the class above are the pin that this refusal is
-    not too broad — a FLAG block legitimately names no ``env_var`` and must keep
-    loading.
+  The FLAG-channel cases in the class above are the pin that this refusal is
+  not too broad — a FLAG block legitimately names no ``env_var`` and must keep
+  loading.
 
-    ⚑ The ORIGINATING typo (``env_ver:``) is caught by BOTH guards, and the
-    unknown-field one fires FIRST.  So the two ``without_env_var`` tests below
-    OMIT the field entirely rather than misspelling it: written with the typo
-    they pass with the ``env_var`` guard deleted, pinning nothing.  Each test
-    here exercises exactly one guard.
-    """
+  ⚑ The ORIGINATING typo (``env_ver:``) is caught by BOTH guards, and the
+  unknown-field one fires FIRST.  So the two ``without_env_var`` tests below
+  OMIT the field entirely rather than misspelling it: written with the typo
+  they pass with the ``env_var`` guard deleted, pinning nothing.  Each test
+  here exercises exactly one guard.
+  """
 
-    def _descriptor(self, declfile, block: str):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  access_realization:\n" + block
-        )
-        return agent_defaults.load_descriptor(package, filename)
+  def _descriptor(self, declfile, block: str):
+    package, filename = declfile(
+      'descriptor:\n  command: ["probe"]\n  access_realization:\n' + block
+    )
+    return agent_defaults.load_descriptor(package, filename)
 
-    def test_env_channel_access_realization_without_env_var_is_refused(self, declfile):
-        """(Mutation: restore ``env_var=raw.get("env_var", "")`` with no check →
-        the descriptor loads, every row is skipped at assembly, the box runs
-        permissive under the ``restricted`` name → RED here.)"""
-        with pytest.raises(SettingsError) as exc:
-            self._descriptor(
-                declfile,
-                "    channel: env\n"              # ...and no env_var at all
-                "    tiers:\n"
-                "      restricted: {env_value: approve}\n"
-                "      full: {env_value: auto}\n",
-            )
-        msg = str(exc.value)
-        assert "env_var" in msg                  # names the field
-        assert "env" in msg                      # ...and the channel
-        assert "probe-defaults.yaml" in msg      # ...and the file to fix
+  def test_env_channel_access_realization_without_env_var_is_refused(self, declfile):
+    """(Mutation: restore ``env_var=raw.get("env_var", "")`` with no check →
+    the descriptor loads, every row is skipped at assembly, the box runs
+    permissive under the ``restricted`` name → RED here.)"""
+    with pytest.raises(SettingsError) as exc:
+      self._descriptor(
+        declfile,
+        "    channel: env\n"  # ...and no env_var at all
+        "    tiers:\n"
+        "      restricted: {env_value: approve}\n"
+        "      full: {env_value: auto}\n",
+      )
+    msg = str(exc.value)
+    assert "env_var" in msg  # names the field
+    assert "env" in msg  # ...and the channel
+    assert "probe-defaults.yaml" in msg  # ...and the file to fix
 
-    def test_env_channel_setting_arg_without_env_var_is_refused(self, declfile):
-        """The second instance, in ``_build_setting_arg``.
+  def test_env_channel_setting_arg_without_env_var_is_refused(self, declfile):
+    """The second instance, in ``_build_setting_arg``.
 
-        (Mutation: drop the guard → ``endpoint`` loads with ``env_var=""``,
-        ``assemble_env`` skips it, and a persona silently talks to the default
-        endpoint → RED here.)"""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: endpoint\n"
-            "      channel: env\n"               # ...and no env_var at all
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        msg = str(exc.value)
-        assert "endpoint" in msg                 # names the entry
-        assert "env_var" in msg                  # ...and the field
-        assert filename in msg                   # ...and the file to fix
+    (Mutation: drop the guard → ``endpoint`` loads with ``env_var=""``,
+    ``assemble_env`` skips it, and a persona silently talks to the default
+    endpoint → RED here.)"""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: endpoint\n"
+      "      channel: env\n"  # ...and no env_var at all
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    msg = str(exc.value)
+    assert "endpoint" in msg  # names the entry
+    assert "env_var" in msg  # ...and the field
+    assert filename in msg  # ...and the file to fix
 
-    def test_unknown_field_in_the_access_block_is_refused(self, declfile):
-        """An unrecognized block field is REFUSED, not silently unread.
+  def test_unknown_field_in_the_access_block_is_refused(self, declfile):
+    """An unrecognized block field is REFUSED, not silently unread.
 
-        (Mutation: drop the guard → ``env_ver:`` above would be accepted as an
-        unread extra even once the ENV check exists on some OTHER spelling, and
-        every future field typo degrades to silence → RED here.)"""
-        with pytest.raises(SettingsError) as exc:
-            self._descriptor(
-                declfile,
-                "    channel: flag\n"
-                "    setting_kye: access\n"       # the typo
-                "    tiers:\n"
-                "      full: {flag: [\"--bypass\"]}\n",
-            )
-        msg = str(exc.value)
-        assert "setting_kye" in msg              # names the offending field
-        assert "probe-defaults.yaml" in msg      # ...and the file to fix
+    (Mutation: drop the guard → ``env_ver:`` above would be accepted as an
+    unread extra even once the ENV check exists on some OTHER spelling, and
+    every future field typo degrades to silence → RED here.)"""
+    with pytest.raises(SettingsError) as exc:
+      self._descriptor(
+        declfile,
+        "    channel: flag\n"
+        "    setting_kye: access\n"  # the typo
+        "    tiers:\n"
+        '      full: {flag: ["--bypass"]}\n',
+      )
+    msg = str(exc.value)
+    assert "setting_kye" in msg  # names the offending field
+    assert "probe-defaults.yaml" in msg  # ...and the file to fix
 
-    def test_unknown_field_in_a_settings_entry_is_refused(self, declfile):
-        """The ``settings:`` half of the same rule (not in the named three; it
-        pins the other branch of the guard added with them)."""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: model\n"
-            "      channel: flag\n"
-            "      flga: [\"--model\"]\n"         # the typo
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        msg = str(exc.value)
-        assert "flga" in msg
-        assert "model" in msg
-        assert filename in msg
+  def test_unknown_field_in_a_settings_entry_is_refused(self, declfile):
+    """The ``settings:`` half of the same rule (not in the named three; it
+    pins the other branch of the guard added with them)."""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: model\n"
+      "      channel: flag\n"
+      '      flga: ["--model"]\n'  # the typo
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    msg = str(exc.value)
+    assert "flga" in msg
+    assert "model" in msg
+    assert filename in msg
 
-    def test_a_flag_channel_setting_arg_needs_no_env_var(self, declfile):
-        """The refusal is CHANNEL-scoped: claude's ``model`` flag arg still loads."""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: model\n"
-            "      channel: flag\n"
-            "      flag: [\"--model\"]\n"
-        )
-        d = agent_defaults.load_descriptor(package, filename)
-        assert d.settings[0].flag == ("--model",)
-        assert d.settings[0].env_var == ""
+  def test_a_flag_channel_setting_arg_needs_no_env_var(self, declfile):
+    """The refusal is CHANNEL-scoped: claude's ``model`` flag arg still loads."""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: model\n"
+      "      channel: flag\n"
+      '      flag: ["--model"]\n'
+    )
+    d = agent_defaults.load_descriptor(package, filename)
+    assert d.settings[0].flag == ("--model",)
+    assert d.settings[0].env_var == ""
 
 
 class TestFlagChannelSettingsMustNameTheirFlag:
-    """The FLAG-channel twin of the rule above, on the OMISSION route.
+  """The FLAG-channel twin of the rule above, on the OMISSION route.
 
-    ``assemble_argv`` emits ``flag + [value]`` for a FLAG setting.  With no
-    ``flag`` the extend contributes nothing and the append puts the VALUE on the
-    argv ALONE — a BARE POSITIONAL.  For claude that positional is the initial
-    PROMPT (``claude [options] [command] [prompt]``, verified against the
-    installed binary), so a malformed descriptor turns a setting's value into
-    the text the agent is asked to act on; for a harness whose bare positional
-    is a SUBCOMMAND (``goose [COMMAND]``) it is a hard launch failure with an
-    unrelated-looking message.  Worse than the ENV twin, whose failure is only a
-    silent drop.
+  ``assemble_argv`` emits ``flag + [value]`` for a FLAG setting.  With no
+  ``flag`` the extend contributes nothing and the append puts the VALUE on the
+  argv ALONE — a BARE POSITIONAL.  For claude that positional is the initial
+  PROMPT (``claude [options] [command] [prompt]``, verified against the
+  installed binary), so a malformed descriptor turns a setting's value into
+  the text the agent is asked to act on; for a harness whose bare positional
+  is a SUBCOMMAND (``goose [COMMAND]``) it is a hard launch failure with an
+  unrelated-looking message.  Worse than the ENV twin, whose failure is only a
+  silent drop.
 
-    ⚑ The TYPO route (``flga:``) is already closed by the unknown-field guard —
-    ``test_unknown_field_in_a_settings_entry_is_refused`` above pins it, and a
-    test written in that shape would pass with THIS guard deleted, pinning
-    nothing.  So both tests below spell the OMISSION: ``flag`` wholly absent,
-    and ``flag: []`` present-but-empty.  Each exercises exactly one guard.
+  ⚑ The TYPO route (``flga:``) is already closed by the unknown-field guard —
+  ``test_unknown_field_in_a_settings_entry_is_refused`` above pins it, and a
+  test written in that shape would pass with THIS guard deleted, pinning
+  nothing.  So both tests below spell the OMISSION: ``flag`` wholly absent,
+  and ``flag: []`` present-but-empty.  Each exercises exactly one guard.
 
-    ⚑ This rule does NOT extend to ``AccessTierRow``, whose empty ``flag`` is
-    the documented "emit nothing, deliberately" realization (claude/codex
-    ``restricted``) and must keep loading — a tier row emits its flag and
-    nothing else, so ``()`` there is meaningful; a setting arg always appends
-    its value, so for IT an empty flag has no such reading.
-    """
+  ⚑ This rule does NOT extend to ``AccessTierRow``, whose empty ``flag`` is
+  the documented "emit nothing, deliberately" realization (claude/codex
+  ``restricted``) and must keep loading — a tier row emits its flag and
+  nothing else, so ``()`` there is meaningful; a setting arg always appends
+  its value, so for IT an empty flag has no such reading.
+  """
 
-    def test_flag_channel_setting_arg_without_flag_is_refused(self, declfile):
-        """``flag`` wholly absent.
+  def test_flag_channel_setting_arg_without_flag_is_refused(self, declfile):
+    """``flag`` wholly absent.
 
-        (Mutation: drop the guard → the entry loads with ``flag=()`` and
-        ``assemble_argv`` appends the model value as claude's prompt → RED.)"""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: model\n"
-            "      channel: flag\n"                # ...and no flag at all
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        msg = str(exc.value)
-        assert "model" in msg                      # names the entry
-        assert "flag" in msg                       # ...and the field
-        assert filename in msg                     # ...and the file to fix
+    (Mutation: drop the guard → the entry loads with ``flag=()`` and
+    ``assemble_argv`` appends the model value as claude's prompt → RED.)"""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: model\n"
+      "      channel: flag\n"  # ...and no flag at all
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    msg = str(exc.value)
+    assert "model" in msg  # names the entry
+    assert "flag" in msg  # ...and the field
+    assert filename in msg  # ...and the file to fix
 
-    def test_flag_channel_setting_arg_with_an_empty_flag_is_refused(self, declfile):
-        """``flag: []`` — present but empty, which assembles identically.
+  def test_flag_channel_setting_arg_with_an_empty_flag_is_refused(self, declfile):
+    """``flag: []`` — present but empty, which assembles identically.
 
-        (Mutation: drop the guard → same bare positional as above → RED.)"""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: model\n"
-            "      channel: flag\n"
-            "      flag: []\n"                     # ...declared, and empty
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        assert "flag" in str(exc.value)
-        assert "model" in str(exc.value)
+    (Mutation: drop the guard → same bare positional as above → RED.)"""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: model\n"
+      "      channel: flag\n"
+      "      flag: []\n"  # ...declared, and empty
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    assert "flag" in str(exc.value)
+    assert "model" in str(exc.value)
 
-    def test_an_env_channel_setting_arg_needs_no_flag(self, declfile):
-        """NOT-TOO-BROAD control, the mirror of the ``needs_no_env_var`` one.
+  def test_an_env_channel_setting_arg_needs_no_flag(self, declfile):
+    """NOT-TOO-BROAD control, the mirror of the ``needs_no_env_var`` one.
 
-        claude's shipped ``endpoint`` entry is exactly this shape: ENV channel,
-        no ``flag``.  A guard that asked for ``flag`` unconditionally would
-        refuse every shipped goose setting and claude's endpoint with it."""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: endpoint\n"
-            "      channel: env\n"
-            "      env_var: \"ANTHROPIC_BASE_URL\"\n"
-        )
-        d = agent_defaults.load_descriptor(package, filename)
-        assert d.settings[0].env_var == "ANTHROPIC_BASE_URL"
-        assert d.settings[0].flag == ()
+    claude's shipped ``endpoint`` entry is exactly this shape: ENV channel,
+    no ``flag``.  A guard that asked for ``flag`` unconditionally would
+    refuse every shipped goose setting and claude's endpoint with it."""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: endpoint\n"
+      "      channel: env\n"
+      '      env_var: "ANTHROPIC_BASE_URL"\n'
+    )
+    d = agent_defaults.load_descriptor(package, filename)
+    assert d.settings[0].env_var == "ANTHROPIC_BASE_URL"
+    assert d.settings[0].flag == ()
 
-    def test_an_empty_access_tier_row_flag_still_loads(self, declfile):
-        """NOT-TOO-BROAD control #2: the rule stops at ``SettingArg``.
+  def test_an_empty_access_tier_row_flag_still_loads(self, declfile):
+    """NOT-TOO-BROAD control #2: the rule stops at ``SettingArg``.
 
-        claude's ``restricted`` row is ``{}`` — emit nothing, deliberately — and
-        must keep loading.  This is the pin that a future reader does not
-        "restore symmetry" by extending the refusal onto the tier rows."""
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  access_realization:\n"
-            "    channel: flag\n"
-            "    setting_key: access\n"
-            "    tiers:\n"
-            "      restricted: {}\n"
-            "      full: {flag: [\"--bypass\"]}\n"
-        )
-        d = agent_defaults.load_descriptor(package, filename)
-        assert d.access_realization is not None
-        assert d.access_realization.restricted is not None
-        assert d.access_realization.restricted.flag == ()
+    claude's ``restricted`` row is ``{}`` — emit nothing, deliberately — and
+    must keep loading.  This is the pin that a future reader does not
+    "restore symmetry" by extending the refusal onto the tier rows."""
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  access_realization:\n"
+      "    channel: flag\n"
+      "    setting_key: access\n"
+      "    tiers:\n"
+      "      restricted: {}\n"
+      '      full: {flag: ["--bypass"]}\n'
+    )
+    d = agent_defaults.load_descriptor(package, filename)
+    assert d.access_realization is not None
+    assert d.access_realization.restricted is not None
+    assert d.access_realization.restricted.flag == ()
 
 
 class TestSettingEntryEmptyField:
-    """``empty: emit | omit`` on a ``settings:`` entry (null-model design S5a).
+  """``empty: emit | omit`` on a ``settings:`` entry (null-model design S5a).
 
-    The parser stores what the YAML says: ``emit`` → ``True``, ``omit`` →
-    ``False``, absent → ``None``.  The default for ``None`` lives in
-    :class:`SettingArg`, so a YAML entry and the same entry built in Python
-    compare equal."""
+  The parser stores what the YAML says: ``emit`` → ``True``, ``omit`` →
+  ``False``, absent → ``None``.  The default for ``None`` lives in
+  :class:`SettingArg`, so a YAML entry and the same entry built in Python
+  compare equal."""
 
-    @staticmethod
-    def _load(declfile, key, extra=""):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            f"    - setting_key: {key}\n"
-            "      channel: flag\n"
-            "      flag: [\"--x\"]\n" + extra
-        )
-        return agent_defaults.load_descriptor(package, filename), filename
-
-    def test_undeclared_is_none(self, declfile):
-        d, _ = self._load(declfile, "model")
-        assert d.settings[0].emit_empty is None
-
-    def test_omit_on_model_is_false(self, declfile):
-        d, _ = self._load(declfile, "model", "      empty: omit\n")
-        assert d.settings[0].emit_empty is False
-
-    def test_emit_on_provider_is_true(self, declfile):
-        d, _ = self._load(declfile, "provider", "      empty: emit\n")
-        assert d.settings[0].emit_empty is True
-
-    def test_an_unknown_word_is_refused(self, declfile):
-        with pytest.raises(SettingsError) as exc:
-            self._load(declfile, "model", "      empty: maybe\n")
-        msg = str(exc.value)
-        assert "'model'" in msg                    # names the entry
-        assert "probe-defaults.yaml" in msg        # ...and the file to fix
-        assert "maybe" in msg
-        assert "emit" in msg and "omit" in msg     # ...and the two legal words
-
-    @pytest.mark.parametrize(
-        ("word", "spelled"),
-        [("null", "empty: null"), ("true", "empty: true"),
-         ("\"\"", "empty: ''"), ("[emit]", "empty: [emit]")],
+  @staticmethod
+  def _load(declfile, key, extra=""):
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      f"    - setting_key: {key}\n"
+      "      channel: flag\n"
+      '      flag: ["--x"]\n' + extra
     )
-    def test_a_non_word_is_refused(self, declfile, word, spelled):
-        """An explicit null (or any non-word) is not "undeclared": it refuses,
-        quoting the value in YAML spelling, not as a Python repr."""
-        with pytest.raises(SettingsError) as exc:
-            self._load(declfile, "model", f"      empty: {word}\n")
-        msg = str(exc.value)
-        assert "'model'" in msg                    # names the entry
-        assert "probe-defaults.yaml" in msg        # ...and the file to fix
-        assert spelled in msg                      # ...as the user wrote it
-        assert "emit" in msg and "omit" in msg
+    return agent_defaults.load_descriptor(package, filename), filename
 
-    def test_a_yaml_entry_equals_the_python_built_one(self, declfile):
-        package, filename = declfile(
-            "descriptor:\n"
-            "  command: [\"probe\"]\n"
-            "  settings:\n"
-            "    - setting_key: model\n"
-            "      channel: flag\n"
-            "      flag: [\"--model\"]\n"
-        )
-        d = agent_defaults.load_descriptor(package, filename)
-        assert d.settings[0] == SettingArg(
-            setting_key="model", channel=Channel.FLAG, flag=("--model",),
-        )
+  def test_undeclared_is_none(self, declfile):
+    d, _ = self._load(declfile, "model")
+    assert d.settings[0].emit_empty is None
+
+  def test_omit_on_model_is_false(self, declfile):
+    d, _ = self._load(declfile, "model", "      empty: omit\n")
+    assert d.settings[0].emit_empty is False
+
+  def test_emit_on_provider_is_true(self, declfile):
+    d, _ = self._load(declfile, "provider", "      empty: emit\n")
+    assert d.settings[0].emit_empty is True
+
+  def test_an_unknown_word_is_refused(self, declfile):
+    with pytest.raises(SettingsError) as exc:
+      self._load(declfile, "model", "      empty: maybe\n")
+    msg = str(exc.value)
+    assert "'model'" in msg  # names the entry
+    assert "probe-defaults.yaml" in msg  # ...and the file to fix
+    assert "maybe" in msg
+    assert "emit" in msg and "omit" in msg  # ...and the two legal words
+
+  @pytest.mark.parametrize(
+    ("word", "spelled"),
+    [
+      ("null", "empty: null"),
+      ("true", "empty: true"),
+      ('""', "empty: ''"),
+      ("[emit]", "empty: [emit]"),
+    ],
+  )
+  def test_a_non_word_is_refused(self, declfile, word, spelled):
+    """An explicit null (or any non-word) is not "undeclared": it refuses,
+    quoting the value in YAML spelling, not as a Python repr."""
+    with pytest.raises(SettingsError) as exc:
+      self._load(declfile, "model", f"      empty: {word}\n")
+    msg = str(exc.value)
+    assert "'model'" in msg  # names the entry
+    assert "probe-defaults.yaml" in msg  # ...and the file to fix
+    assert spelled in msg  # ...as the user wrote it
+    assert "emit" in msg and "omit" in msg
+
+  def test_a_yaml_entry_equals_the_python_built_one(self, declfile):
+    package, filename = declfile(
+      "descriptor:\n"
+      '  command: ["probe"]\n'
+      "  settings:\n"
+      "    - setting_key: model\n"
+      "      channel: flag\n"
+      '      flag: ["--model"]\n'
+    )
+    d = agent_defaults.load_descriptor(package, filename)
+    assert d.settings[0] == SettingArg(
+      setting_key="model",
+      channel=Channel.FLAG,
+      flag=("--model",),
+    )
 
 
 class TestLoadBehavior:
-    """``behavior:`` — the plugin's DECLARED behavior floor (D1-7).
+  """``behavior:`` — the plugin's DECLARED behavior floor (D1-7).
 
-    The floor values used to be ``default=`` literals inside each plugin's
-    ``setting_descriptors()``.  They live in the shipped defaults file now, so the
-    file a plugin ships is the ONE place that answers "what does this agent default
-    its model to".  These drive the real loader over synthetic files; the SHIPPED
-    rows are pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
-    """
+  The floor values used to be ``default=`` literals inside each plugin's
+  ``setting_descriptors()``.  They live in the shipped defaults file now, so the
+  file a plugin ships is the ONE place that answers "what does this agent default
+  its model to".  These drive the real loader over synthetic files; the SHIPPED
+  rows are pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
+  """
 
-    def test_reads_key_description_and_default(self, declfile):
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: model\n"
-            "    description: Model to use\n"
-            "    default: opus\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.key == "model"
-        assert setting.description == "Model to use"
-        assert setting.default == "opus"
-        assert setting.choices == ()
-
-    def test_file_order_is_preserved(self, declfile):
-        """The order is what ``config`` lists the agent's settings in."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - {key: provider, description: P, default: \"\"}\n"
-            "  - {key: model, description: M, default: \"\"}\n"
-            "  - {key: endpoint, description: E, default: \"\"}\n"
-        )
-        got = agent_defaults.load_behavior(package, filename)
-        assert [s.key for s in got] == ["provider", "model", "endpoint"]
-
-    def test_an_explicit_empty_default_is_kept(self, declfile):
-        """A ``""`` floor is a STRING declaration and stays ``""``.
-
-        (Mutation: coerce an empty default to some placeholder → RED.)"""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: provider\n"
-            "    description: LLM provider\n"
-            "    default: \"\"\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.default == ""
-
-    def test_a_null_default_is_kept_a_present_none(self, declfile):
-        """``default: null`` spells ``<None>`` for a key ``agent.default`` does not declare.
-
-        goose's ``provider`` is ``null`` DELIBERATELY (never pin goose).  It loads as
-        ``None`` — not ``""`` and not a refusal — so the launch places a PRESENT
-        ``None`` at ``agent.<agent>.<key>``.
-
-        (Mutation: refuse a ``None`` default, or coerce it to ``""`` → RED.)"""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: provider\n"
-            "    description: LLM provider\n"
-            "    default: null\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.default is None
-
-    def test_an_absent_default_is_refused_for_a_plugin_only_key(self, declfile):
-        """START-STRICT where nothing can be inherited: absence is NOT ``null``.
-
-        ``agent.default`` declares no ``provider``, so an omitted floor would name no
-        value with no tier below to supply one.  The refusal is what keeps goose's
-        ``null`` a STATEMENT."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: provider\n"
-            "    description: LLM provider\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        msg = str(exc.value)
-        assert "provider" in msg
-        assert "default" in msg
-        assert filename in msg
-
-    @pytest.mark.parametrize("key", sorted(core_defaults.behavior_defaults()))
-    def test_an_absent_default_inherits_for_an_agent_default_key(self, declfile, key):
-        """Q105: a row for a key ``agent.default`` declares may set no value.
-
-        It loads as ``UNSET`` and :func:`~kanibako.targets.base.descriptor_floor`
-        leaves it out, so the §2d pick reaches ``agent.default.<key>``.  The corpus is
-        every key core's ``agent_default:`` table declares, never a list."""
-        package, filename = declfile(
-            "behavior:\n"
-            f"  - key: {key}\n"
-            "    description: D\n"
-            "    choices: [a]\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.default is UNSET
-        assert setting.choices == ("a",)
-        assert descriptor_floor([setting]) == {}
-
-    def test_descriptor_floor_keeps_real_and_none_defaults(self):
-        """Only the inheriting row drops out; a string and a present ``None`` stay."""
-        rows = [
-            TargetSetting(key="label", description="L", default="Mine"),
-            TargetSetting(key="provider", description="P", default=None),
-            TargetSetting(key="model", description="M", default=UNSET),
-        ]
-        assert descriptor_floor(rows) == {"label": "Mine", "provider": None}
-
-    @pytest.mark.parametrize(
-        "key",
-        sorted(k for k, v in core_defaults.behavior_defaults().items() if v is None),
+  def test_reads_key_description_and_default(self, declfile):
+    package, filename = declfile(
+      "behavior:\n  - key: model\n    description: Model to use\n    default: opus\n"
     )
-    def test_a_null_that_repeats_agent_defaults_none_is_refused(self, declfile, key):
-        """Q105: ``agent.default.<key>`` already supplies ``<None>``, so a plugin
-        ``null`` adds nothing but a shadow over a user's ``agent.default.<key>``."""
-        package, filename = declfile(
-            "behavior:\n"
-            f"  - key: {key}\n"
-            "    description: D\n"
-            "    default: null\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        msg = str(exc.value)
-        assert filename in msg
-        assert f"'agent.default.{key}' is already <None>" in msg
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.key == "model"
+    assert setting.description == "Model to use"
+    assert setting.default == "opus"
+    assert setting.choices == ()
 
-    def test_a_real_default_for_an_agent_default_key_is_kept(self, declfile):
-        """[Q91]: a plugin's real value still floors at ``agent.<agent>`` (claude's
-        ``transform: tweakcc``), whatever ``agent.default`` holds."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: transform\n"
-            "    description: T\n"
-            "    default: tweakcc\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.default == "tweakcc"
+  def test_file_order_is_preserved(self, declfile):
+    """The order is what ``config`` lists the agent's settings in."""
+    package, filename = declfile(
+      "behavior:\n"
+      '  - {key: provider, description: P, default: ""}\n'
+      '  - {key: model, description: M, default: ""}\n'
+      '  - {key: endpoint, description: E, default: ""}\n'
+    )
+    got = agent_defaults.load_behavior(package, filename)
+    assert [s.key for s in got] == ["provider", "model", "endpoint"]
 
-    def test_a_non_string_default_is_refused(self, declfile):
-        """A floor is a string or ``None``; an int would travel as an int."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: model\n"
-            "    description: Model\n"
-            "    default: 1\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        assert "int" in str(exc.value)
-        assert "model" in str(exc.value)
+  def test_an_explicit_empty_default_is_kept(self, declfile):
+    """A ``""`` floor is a STRING declaration and stays ``""``.
 
-    def test_a_missing_description_is_refused(self, declfile):
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: model\n"
-            "    default: opus\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        assert "description" in str(exc.value)
+    (Mutation: coerce an empty default to some placeholder → RED.)"""
+    package, filename = declfile(
+      'behavior:\n  - key: provider\n    description: LLM provider\n    default: ""\n'
+    )
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.default == ""
 
-    def test_an_unknown_field_is_refused(self, declfile):
-        """A row is read field by field, so a typo'd name is never read."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: model\n"
-            "    description: Model\n"
-            "    default: opus\n"
-            "    defualt: opus\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        assert "defualt" in str(exc.value)
+  def test_a_null_default_is_kept_a_present_none(self, declfile):
+    """``default: null`` spells ``<None>`` for a key ``agent.default`` does not declare.
 
-    def test_a_duplicate_key_is_refused(self, declfile):
-        """Two rows for one key are two answers; the loser would be invisible."""
-        package, filename = declfile(
-            "behavior:\n"
-            "  - {key: model, description: M, default: opus}\n"
-            "  - {key: model, description: M, default: sonnet}\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        assert "twice" in str(exc.value)
-        assert "model" in str(exc.value)
+    goose's ``provider`` is ``null`` DELIBERATELY (never pin goose).  It loads as
+    ``None`` — not ``""`` and not a refusal — so the launch places a PRESENT
+    ``None`` at ``agent.<agent>.<key>``.
 
-    def test_choices_load_as_a_tuple(self, declfile):
-        package, filename = declfile(
-            "behavior:\n"
-            "  - key: bootstrap\n"
-            "    description: Multiplexer\n"
-            "    default: tmux\n"
-            "    choices: [tmux, none]\n"
-        )
-        (setting,) = agent_defaults.load_behavior(package, filename)
-        assert setting.choices == ("tmux", "none")
+    (Mutation: refuse a ``None`` default, or coerce it to ``""`` → RED.)"""
+    package, filename = declfile(
+      "behavior:\n  - key: provider\n    description: LLM provider\n    default: null\n"
+    )
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.default is None
 
-    def test_a_file_with_no_behavior_section_declares_none(self, declfile):
-        """An agent with no behavior keys of its own is legal (empty floor)."""
-        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
-        assert agent_defaults.load_behavior(package, filename) == ()
+  def test_an_absent_default_is_refused_for_a_plugin_only_key(self, declfile):
+    """START-STRICT where nothing can be inherited: absence is NOT ``null``.
 
-    def test_a_bare_scalar_row_is_refused_clearly(self, declfile):
-        """A row that is not a mapping is named as such.
+    ``agent.default`` declares no ``provider``, so an omitted floor would name no
+    value with no tier below to supply one.  The refusal is what keeps goose's
+    ``null`` a STATEMENT."""
+    package, filename = declfile("behavior:\n  - key: provider\n    description: LLM provider\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    msg = str(exc.value)
+    assert "provider" in msg
+    assert "default" in msg
+    assert filename in msg
 
-        Without the type guard the field-by-field read would refuse it naming the
-        five LETTERS of the string as unknown fields."""
-        package, filename = declfile("behavior:\n  - model\n")
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_behavior(package, filename)
-        assert "mapping" in str(exc.value)
-        assert "str" in str(exc.value)
+  @pytest.mark.parametrize("key", sorted(core_defaults.behavior_defaults()))
+  def test_an_absent_default_inherits_for_an_agent_default_key(self, declfile, key):
+    """Q105: a row for a key ``agent.default`` declares may set no value.
+
+    It loads as ``UNSET`` and :func:`~kanibako.targets.base.descriptor_floor`
+    leaves it out, so the §2d pick reaches ``agent.default.<key>``.  The corpus is
+    every key core's ``agent_default:`` table declares, never a list."""
+    package, filename = declfile(
+      f"behavior:\n  - key: {key}\n    description: D\n    choices: [a]\n"
+    )
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.default is UNSET
+    assert setting.choices == ("a",)
+    assert descriptor_floor([setting]) == {}
+
+  def test_descriptor_floor_keeps_real_and_none_defaults(self):
+    """Only the inheriting row drops out; a string and a present ``None`` stay."""
+    rows = [
+      TargetSetting(key="label", description="L", default="Mine"),
+      TargetSetting(key="provider", description="P", default=None),
+      TargetSetting(key="model", description="M", default=UNSET),
+    ]
+    assert descriptor_floor(rows) == {"label": "Mine", "provider": None}
+
+  @pytest.mark.parametrize(
+    "key",
+    sorted(k for k, v in core_defaults.behavior_defaults().items() if v is None),
+  )
+  def test_a_null_that_repeats_agent_defaults_none_is_refused(self, declfile, key):
+    """Q105: ``agent.default.<key>`` already supplies ``<None>``, so a plugin
+    ``null`` adds nothing but a shadow over a user's ``agent.default.<key>``."""
+    package, filename = declfile(
+      f"behavior:\n  - key: {key}\n    description: D\n    default: null\n"
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    msg = str(exc.value)
+    assert filename in msg
+    assert f"'agent.default.{key}' is already <None>" in msg
+
+  def test_a_real_default_for_an_agent_default_key_is_kept(self, declfile):
+    """[Q91]: a plugin's real value still floors at ``agent.<agent>`` (claude's
+    ``transform: tweakcc``), whatever ``agent.default`` holds."""
+    package, filename = declfile(
+      "behavior:\n  - key: transform\n    description: T\n    default: tweakcc\n"
+    )
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.default == "tweakcc"
+
+  def test_a_non_string_default_is_refused(self, declfile):
+    """A floor is a string or ``None``; an int would travel as an int."""
+    package, filename = declfile(
+      "behavior:\n  - key: model\n    description: Model\n    default: 1\n"
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    assert "int" in str(exc.value)
+    assert "model" in str(exc.value)
+
+  def test_a_missing_description_is_refused(self, declfile):
+    package, filename = declfile("behavior:\n  - key: model\n    default: opus\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    assert "description" in str(exc.value)
+
+  def test_an_unknown_field_is_refused(self, declfile):
+    """A row is read field by field, so a typo'd name is never read."""
+    package, filename = declfile(
+      "behavior:\n  - key: model\n    description: Model\n    default: opus\n    defualt: opus\n"
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    assert "defualt" in str(exc.value)
+
+  def test_a_duplicate_key_is_refused(self, declfile):
+    """Two rows for one key are two answers; the loser would be invisible."""
+    package, filename = declfile(
+      "behavior:\n"
+      "  - {key: model, description: M, default: opus}\n"
+      "  - {key: model, description: M, default: sonnet}\n"
+    )
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    assert "twice" in str(exc.value)
+    assert "model" in str(exc.value)
+
+  def test_choices_load_as_a_tuple(self, declfile):
+    package, filename = declfile(
+      "behavior:\n"
+      "  - key: bootstrap\n"
+      "    description: Multiplexer\n"
+      "    default: tmux\n"
+      "    choices: [tmux, none]\n"
+    )
+    (setting,) = agent_defaults.load_behavior(package, filename)
+    assert setting.choices == ("tmux", "none")
+
+  def test_a_file_with_no_behavior_section_declares_none(self, declfile):
+    """An agent with no behavior keys of its own is legal (empty floor)."""
+    package, filename = declfile('descriptor:\n  command: ["probe"]\n')
+    assert agent_defaults.load_behavior(package, filename) == ()
+
+  def test_a_bare_scalar_row_is_refused_clearly(self, declfile):
+    """A row that is not a mapping is named as such.
+
+    Without the type guard the field-by-field read would refuse it naming the
+    five LETTERS of the string as unknown fields."""
+    package, filename = declfile("behavior:\n  - model\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_behavior(package, filename)
+    assert "mapping" in str(exc.value)
+    assert "str" in str(exc.value)
 
 
 class TestBindingOwnerCell:
-    """Keyspec §0: a declared bind row carries its ``owner:`` cell into :class:`Binding`."""
+  """Keyspec §0: a declared bind row carries its ``owner:`` cell into :class:`Binding`."""
 
-    _ROW = (
-        "descriptor:\n"
-        "  command: [\"probe\"]\n"
-        "  bindings:\n"
-        "    - key: ref\n"
-        "      origin: literal\n"
-        "      literal_src: /srv/ref\n"
-        "      box_dest: /ref\n"
-        "      kind: dir\n"
-        "      scope: agent\n"
-    )
+  _ROW = (
+    "descriptor:\n"
+    '  command: ["probe"]\n'
+    "  bindings:\n"
+    "    - key: ref\n"
+    "      origin: literal\n"
+    "      literal_src: /srv/ref\n"
+    "      box_dest: /ref\n"
+    "      kind: dir\n"
+    "      scope: agent\n"
+  )
 
-    @pytest.mark.parametrize("owner", ["box", "workset", "partition", "agent", "shared"])
-    def test_the_owner_cell_is_kept(self, declfile, owner):
-        package, filename = declfile(self._ROW + f"      owner: {owner}\n")
-        (row,) = agent_defaults.load_descriptor(package, filename).bindings
-        assert row.owner == owner
+  @pytest.mark.parametrize("owner", ["box", "workset", "partition", "agent", "shared"])
+  def test_the_owner_cell_is_kept(self, declfile, owner):
+    package, filename = declfile(self._ROW + f"      owner: {owner}\n")
+    (row,) = agent_defaults.load_descriptor(package, filename).bindings
+    assert row.owner == owner
 
-    def test_a_row_without_one_is_shared(self, declfile):
-        package, filename = declfile(self._ROW)
-        (row,) = agent_defaults.load_descriptor(package, filename).bindings
-        assert row.owner == "shared"
+  def test_a_row_without_one_is_shared(self, declfile):
+    package, filename = declfile(self._ROW)
+    (row,) = agent_defaults.load_descriptor(package, filename).bindings
+    assert row.owner == "shared"
 
-    def test_an_unknown_owner_is_refused_by_name(self, declfile):
-        package, filename = declfile(self._ROW + "      owner: boxes\n")
-        with pytest.raises(SettingsError) as exc:
-            agent_defaults.load_descriptor(package, filename)
-        assert "'boxes'" in str(exc.value) and "'ref'" in str(exc.value)
+  def test_an_unknown_owner_is_refused_by_name(self, declfile):
+    package, filename = declfile(self._ROW + "      owner: boxes\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults.load_descriptor(package, filename)
+    assert "'boxes'" in str(exc.value) and "'ref'" in str(exc.value)

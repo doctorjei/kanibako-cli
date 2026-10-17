@@ -14,3913 +14,4593 @@ from kanibako.settings.config import load_config
 from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
 from kanibako.settings.settings_resolve import normalize_bind_dest
 from kanibako.project.workset import (
-    add_project,
-    create_workset,
-    list_worksets,
+  add_project,
+  create_workset,
+  list_worksets,
 )
 
 
 def _workset_boxes(ws):
-    """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
-    from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
+  """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
+  from kanibako.project import workset_registry
+  from kanibako.settings.config_io import load_doc
 
-    registry_path = workset_registry.resolve_workset_registry_path(
-        ws.root, load_doc(ws.root / "workset.yaml"),
-        early=ws.early_scope,
-    )
-    return workset_registry.load_workset_boxes(registry_path)
+  registry_path = workset_registry.resolve_workset_registry_path(
+    ws.root,
+    load_doc(ws.root / "workset.yaml"),
+    early=ws.early_scope,
+  )
+  return workset_registry.load_workset_boxes(registry_path)
 
 
 def _assert_every_key_declared(doc):
-    """Every dotted LEAF path in *doc* must be a DECLARED key.
+  """Every dotted LEAF path in *doc* must be a DECLARED key.
 
-    The keyspace is CLOSED (spec §0): an undeclared path is not a key at all, so
-    a settings file that carries one is a violation, not merely a dead write.
-    Derived from ``key_validity`` rather than from a list of expected names.
-    """
-    from kanibako.settings.settings_keyspace import key_validity
+  The keyspace is CLOSED (spec §0): an undeclared path is not a key at all, so
+  a settings file that carries one is a violation, not merely a dead write.
+  Derived from ``key_validity`` rather than from a list of expected names.
+  """
+  from kanibako.settings.settings_keyspace import key_validity
 
-    def walk(node, prefix):
-        for key, value in node.items():
-            path = f"{prefix}.{key}" if prefix else key
-            if isinstance(value, dict):
-                walk(value, path)
-                continue
-            reason = key_validity(path, valid_agents=())
-            assert reason is None, reason
+  def walk(node, prefix):
+    for key, value in node.items():
+      path = f"{prefix}.{key}" if prefix else key
+      if isinstance(value, dict):
+        walk(value, path)
+        continue
+      reason = key_validity(path, valid_agents=())
+      assert reason is None, reason
 
-    walk(doc, "")
+  walk(doc, "")
 
 
 class TestWorksetCreate:
-    def test_create_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_success(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "myworkset"
-        args = argparse.Namespace(
-            path=str(ws_root), name=None,
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Created working set" in out
-        assert ws_root.resolve().is_dir()
+    ws_root = tmp_home / "myworkset"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name=None,
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Created working set" in out
+    assert ws_root.resolve().is_dir()
 
-    @pytest.mark.parametrize("folder, name", [
-        ("my-set", "my_set"), ("team.v2", "team_v2"), ("kanibako-cli", "kanibako_cli")])
-    def test_create_derives_underscore_for_dash_and_dot(
-            self, config_file, tmp_home, capsys, folder, name):
-        """Spec §0: a workset named from its folder writes ``_`` for ``-`` and ``.``."""
-        from kanibako.commands.workset_cmd import run_create
+  @pytest.mark.parametrize(
+    "folder, name",
+    [("my-set", "my_set"), ("team.v2", "team_v2"), ("kanibako-cli", "kanibako_cli")],
+  )
+  def test_create_derives_underscore_for_dash_and_dot(
+    self, config_file, tmp_home, capsys, folder, name
+  ):
+    """Spec §0: a workset named from its folder writes ``_`` for ``-`` and ``.``."""
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / folder
-        args = argparse.Namespace(
-            path=str(ws_root), name=None,
-            standalone=False, image=None, no_vault=False,
-        )
-        assert run_create(args) == 0
-        assert f"Created working set '{name}'" in capsys.readouterr().out
-        assert ws_root.resolve().is_dir()
+    ws_root = tmp_home / folder
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name=None,
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    assert run_create(args) == 0
+    assert f"Created working set '{name}'" in capsys.readouterr().out
+    assert ws_root.resolve().is_dir()
 
-    @pytest.mark.parametrize("typed, flaw, spelled", [
-        ("my-set", "must not contain '-'", "my_set"),
-        ("my.set", "must not contain '.'", "my_set"),
-        ("2set", "must not start with a digit", "_2set"),
-        ("café", "must not contain U+00E9", "cafe"),
-        ("漢字", "must not contain U+6F22", "<new-name>"),
-    ])
-    def test_create_refuses_a_typed_name_and_names_its_spelling(
-            self, config_file, tmp_home, capsys, typed, flaw, spelled):
-        from kanibako.commands.workset_cmd import run_create
+  @pytest.mark.parametrize(
+    "typed, flaw, spelled",
+    [
+      ("my-set", "must not contain '-'", "my_set"),
+      ("my.set", "must not contain '.'", "my_set"),
+      ("2set", "must not start with a digit", "_2set"),
+      ("café", "must not contain U+00E9", "cafe"),
+      ("漢字", "must not contain U+6F22", "<new-name>"),
+    ],
+  )
+  def test_create_refuses_a_typed_name_and_names_its_spelling(
+    self, config_file, tmp_home, capsys, typed, flaw, spelled
+  ):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "wsroot"
-        args = argparse.Namespace(
-            path=str(ws_root), name=typed,
-            standalone=False, image=None, no_vault=False,
-        )
-        assert run_create(args) == 1
-        err = capsys.readouterr().err
-        assert f"Invalid workset name '{typed}': workset name {flaw}" in err, err
-        assert f"kanibako workset create {ws_root} --name {spelled}" in err, err
-        assert not ws_root.exists()
+    ws_root = tmp_home / "wsroot"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name=typed,
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    assert run_create(args) == 1
+    err = capsys.readouterr().err
+    assert f"Invalid workset name '{typed}': workset name {flaw}" in err, err
+    assert f"kanibako workset create {ws_root} --name {spelled}" in err, err
+    assert not ws_root.exists()
 
-    def test_create_with_name_override(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_with_name_override(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "myworkset2"
-        args = argparse.Namespace(
-            path=str(ws_root), name="custom_name",
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "custom_name" in out
+    ws_root = tmp_home / "myworkset2"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="custom_name",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "custom_name" in out
 
-    def test_create_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_dir = tmp_home / "cwd_ws"
-        ws_dir.mkdir()
-        monkeypatch.chdir(ws_dir)
-        # Since cwd exists and create_workset errors on existing root,
-        # test that path=None uses cwd by checking the error message
-        args = argparse.Namespace(
-            path=None, name="cwdws",
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args)
-        # cwd already exists, so this should fail with "already exists"
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "already exists" in err
+    ws_dir = tmp_home / "cwd_ws"
+    ws_dir.mkdir()
+    monkeypatch.chdir(ws_dir)
+    # Since cwd exists and create_workset errors on existing root,
+    # test that path=None uses cwd by checking the error message
+    args = argparse.Namespace(
+      path=None,
+      name="cwdws",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args)
+    # cwd already exists, so this should fail with "already exists"
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "already exists" in err
 
-    def test_create_duplicate_name_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_duplicate_name_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root1 = tmp_home / "ws1"
-        args1 = argparse.Namespace(
-            path=str(ws_root1), name="dup",
-            standalone=False, image=None, no_vault=False,
-        )
-        run_create(args1)
+    ws_root1 = tmp_home / "ws1"
+    args1 = argparse.Namespace(
+      path=str(ws_root1),
+      name="dup",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    run_create(args1)
 
-        ws_root2 = tmp_home / "ws2"
-        args2 = argparse.Namespace(
-            path=str(ws_root2), name="dup",
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args2)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "already in use" in err
+    ws_root2 = tmp_home / "ws2"
+    args2 = argparse.Namespace(
+      path=str(ws_root2),
+      name="dup",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args2)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "already in use" in err
 
-    def test_create_takes_a_primary_box_name(
-        self, config_file, tmp_home, capsys, caplog
-    ):
-        """Box and workset names are separate namespaces (spec § Detection & import):
-        a workset named like a primary box is created, and nothing is said."""
-        from kanibako.commands.workset_cmd import run_create
-        from kanibako.settings.paths import load_std_paths, register_primary_box_name
+  def test_create_takes_a_primary_box_name(self, config_file, tmp_home, capsys, caplog):
+    """Box and workset names are separate namespaces (spec § Detection & import):
+    a workset named like a primary box is created, and nothing is said."""
+    from kanibako.commands.workset_cmd import run_create
+    from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        register_primary_box_name(
-            std.primary_workset, "common", str(tmp_home / "box"),
-            early=_early_scope(std, BoxMode.primary),
-        )
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    register_primary_box_name(
+      std.primary_workset,
+      "common",
+      str(tmp_home / "box"),
+      early=_early_scope(std, BoxMode.primary),
+    )
 
-        ws_root = tmp_home / "shared_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="common",
-            standalone=False, image=None, no_vault=False,
-        )
-        with caplog.at_level("WARNING"):
-            rc = run_create(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Created working set" in captured.out
-        assert "primary box" not in captured.err
-        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
-        assert ws_root.resolve().is_dir()
+    ws_root = tmp_home / "shared_ws"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="common",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    with caplog.at_level("WARNING"):
+      rc = run_create(args)
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Created working set" in captured.out
+    assert "primary box" not in captured.err
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+    assert ws_root.resolve().is_dir()
 
-    def test_create_reserved_sentinel_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_reserved_sentinel_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        args = argparse.Namespace(
-            path=str(tmp_home / "ws-primary"), name="__PRIMARY__",
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "reserved" in err
+    args = argparse.Namespace(
+      path=str(tmp_home / "ws-primary"),
+      name="__PRIMARY__",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "reserved" in err
 
-    def test_create_auto_name_collision_refused(self, config_file, tmp_home, capsys):
-        # The default name derives from path.name; a collision must still refuse
-        # cleanly (no auto-suffix) via the WorksetError caught in run_create.
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_auto_name_collision_refused(self, config_file, tmp_home, capsys):
+    # The default name derives from path.name; a collision must still refuse
+    # cleanly (no auto-suffix) via the WorksetError caught in run_create.
+    from kanibako.commands.workset_cmd import run_create
 
-        (tmp_home / "common").mkdir()
-        first = tmp_home / "a" / "common"
-        args1 = argparse.Namespace(
-            path=str(first), name=None,
-            standalone=False, image=None, no_vault=False,
-        )
-        assert run_create(args1) == 0
-        capsys.readouterr()
+    (tmp_home / "common").mkdir()
+    first = tmp_home / "a" / "common"
+    args1 = argparse.Namespace(
+      path=str(first),
+      name=None,
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    assert run_create(args1) == 0
+    capsys.readouterr()
 
-        second = tmp_home / "b" / "common"
-        args2 = argparse.Namespace(
-            path=str(second), name=None,
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args2)
-        assert rc == 1
-        assert "already in use" in capsys.readouterr().err
+    second = tmp_home / "b" / "common"
+    args2 = argparse.Namespace(
+      path=str(second),
+      name=None,
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args2)
+    assert rc == 1
+    assert "already in use" in capsys.readouterr().err
 
-    def test_create_existing_root_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_existing_root_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "existing"
-        ws_root.mkdir()
-        args = argparse.Namespace(
-            path=str(ws_root), name="ex",
-            standalone=False, image=None, no_vault=False,
-        )
-        rc = run_create(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "already exists" in err
+    ws_root = tmp_home / "existing"
+    ws_root.mkdir()
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="ex",
+      standalone=False,
+      image=None,
+      no_vault=False,
+    )
+    rc = run_create(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "already exists" in err
 
-    def test_create_with_image(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
+  def test_create_with_image(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "image_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="imagews",
-            standalone=False, image="custom:latest", no_vault=False,
-        )
-        rc = run_create(args)
-        assert rc == 0
+    ws_root = tmp_home / "image_ws"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="imagews",
+      standalone=False,
+      image="custom:latest",
+      no_vault=False,
+    )
+    rc = run_create(args)
+    assert rc == 0
 
-        # The image cascade setting lands in the root workset.yaml — which is
-        # created ONLY because something was actually set.  ⚑ It is the ONE file
-        # under the root: no identity table anywhere, and no registry.yaml until
-        # there is a member to record.
-        import yaml
-        settings_yaml = ws_root.resolve() / "workset.yaml"
-        assert settings_yaml.exists()
-        with open(settings_yaml) as f:
-            data = yaml.safe_load(f)
-        assert data == {"box": {"image": "custom:latest"}}
-        assert not (ws_root.resolve() / "registry.yaml").exists()
-        # The name is in the GLOBAL registry, and only there.
-        std = load_std_paths(load_config(config_file))
-        assert list_worksets(std)["imagews"] == ws_root.resolve()
+    # The image cascade setting lands in the root workset.yaml — which is
+    # created ONLY because something was actually set.  ⚑ It is the ONE file
+    # under the root: no identity table anywhere, and no registry.yaml until
+    # there is a member to record.
+    import yaml
 
-    def test_create_with_image_merges_into_the_existing_box_table(
-        self, config_file, tmp_home, monkeypatch
-    ):
-        """--image sets ``box.image`` WITHIN the table already on disk.
+    settings_yaml = ws_root.resolve() / "workset.yaml"
+    assert settings_yaml.exists()
+    with open(settings_yaml) as f:
+      data = yaml.safe_load(f)
+    assert data == {"box": {"image": "custom:latest"}}
+    assert not (ws_root.resolve() / "registry.yaml").exists()
+    # The name is in the GLOBAL registry, and only there.
+    std = load_std_paths(load_config(config_file))
+    assert list_worksets(std)["imagews"] == ws_root.resolve()
 
-        Assigning the whole ``box:`` table would drop every other ``box.*`` key
-        the file already carries — which is exactly what the block's own "MERGE
-        into the existing file, never overwrite" comment forbids.  The stamp is
-        stubbed to leave a populated file behind, because that is the state the
-        merge exists to survive.
-        """
-        from kanibako.commands.workset_cmd import run_create
-        from kanibako.launch import templates
+  def test_create_with_image_merges_into_the_existing_box_table(
+    self, config_file, tmp_home, monkeypatch
+  ):
+    """--image sets ``box.image`` WITHIN the table already on disk.
 
-        real_install = templates.install_workset_template
+    Assigning the whole ``box:`` table would drop every other ``box.*`` key
+    the file already carries — which is exactly what the block's own "MERGE
+    into the existing file, never overwrite" comment forbids.  The stamp is
+    stubbed to leave a populated file behind, because that is the state the
+    merge exists to survive.
+    """
+    from kanibako.commands.workset_cmd import run_create
+    from kanibako.launch import templates
 
-        def _install_and_stamp_settings(std, workset_path, **kwargs):
-            real_install(std, workset_path, **kwargs)
-            (workset_path / "workset.yaml").write_text(
-                "box:\n  shell: /bin/zsh\n  image: mold:stamped\n"
-            )
+    real_install = templates.install_workset_template
 
-        monkeypatch.setattr(
-            templates, "install_workset_template", _install_and_stamp_settings
-        )
+    def _install_and_stamp_settings(std, workset_path, **kwargs):
+      real_install(std, workset_path, **kwargs)
+      (workset_path / "workset.yaml").write_text(
+        "box:\n  shell: /bin/zsh\n  image: mold:stamped\n"
+      )
 
-        ws_root = tmp_home / "merge_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="mergews",
-            standalone=False, image="custom:latest", no_vault=False,
-        )
-        assert run_create(args) == 0
+    monkeypatch.setattr(templates, "install_workset_template", _install_and_stamp_settings)
 
-        import yaml
-        settings_yaml = ws_root.resolve() / "workset.yaml"
-        data = yaml.safe_load(settings_yaml.read_text())
-        # The explicit flag wins over the stamped value ...
-        assert data["box"]["image"] == "custom:latest"
-        # ... and every OTHER box.* key survives it.
-        assert data["box"]["shell"] == "/bin/zsh"
-        _assert_every_key_declared(data)
+    ws_root = tmp_home / "merge_ws"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="mergews",
+      standalone=False,
+      image="custom:latest",
+      no_vault=False,
+    )
+    assert run_create(args) == 0
 
-    def test_create_no_vault_writes_the_key_the_reader_looks_at(
-        self, config_file, tmp_home
-    ):
-        """--no-vault lands at ``box.enable_vault``.
+    import yaml
 
-        That is where ``read_box_enable_vault``/``write_box_enable_vault`` look;
-        a TOP-LEVEL ``enable_vault`` is not a declared key at all (spec §0), so
-        it was both unread and a keyspace violation.
-        """
-        from kanibako.commands.workset_cmd import run_create
-        from kanibako.settings.config import read_box_enable_vault
+    settings_yaml = ws_root.resolve() / "workset.yaml"
+    data = yaml.safe_load(settings_yaml.read_text())
+    # The explicit flag wins over the stamped value ...
+    assert data["box"]["image"] == "custom:latest"
+    # ... and every OTHER box.* key survives it.
+    assert data["box"]["shell"] == "/bin/zsh"
+    _assert_every_key_declared(data)
 
-        ws_root = tmp_home / "novault_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="novaultws",
-            standalone=False, image=None, no_vault=True,
-        )
-        assert run_create(args) == 0
+  def test_create_no_vault_writes_the_key_the_reader_looks_at(self, config_file, tmp_home):
+    """--no-vault lands at ``box.enable_vault``.
 
-        import yaml
-        settings_yaml = ws_root.resolve() / "workset.yaml"
-        data = yaml.safe_load(settings_yaml.read_text())
-        assert data == {"box": {"enable_vault": False}}
-        _assert_every_key_declared(data)
-        assert read_box_enable_vault(settings_yaml) is False
+    That is where ``read_box_enable_vault``/``write_box_enable_vault`` look;
+    a TOP-LEVEL ``enable_vault`` is not a declared key at all (spec §0), so
+    it was both unread and a keyspace violation.
+    """
+    from kanibako.commands.workset_cmd import run_create
+    from kanibako.settings.config import read_box_enable_vault
 
-    def test_create_standalone_refused(self, config_file, tmp_home, capsys):
-        """``--standalone`` is REFUSED, not accepted-and-inert [Jei:2026-08-27].
+    ws_root = tmp_home / "novault_ws"
+    args = argparse.Namespace(
+      path=str(ws_root),
+      name="novaultws",
+      standalone=False,
+      image=None,
+      no_vault=True,
+    )
+    assert run_create(args) == 0
 
-        It still PARSES — the flag stays declared so the refusal can name it and
-        hand back a cure — and it produces no working set: nothing on disk and
-        nothing in the registry, because the refusal precedes every side effect.
-        """
-        from kanibako.cli import build_parser
-        from kanibako.settings.paths import load_std_paths
+    import yaml
 
-        ws_root = tmp_home / "standalone_ws"
-        args = build_parser().parse_args(
-            ["workset", "create", str(ws_root), "--name", "standalonews",
-             "--standalone"],
-        )
-        assert args.standalone is True
+    settings_yaml = ws_root.resolve() / "workset.yaml"
+    data = yaml.safe_load(settings_yaml.read_text())
+    assert data == {"box": {"enable_vault": False}}
+    _assert_every_key_declared(data)
+    assert read_box_enable_vault(settings_yaml) is False
 
-        assert args.func(args) == 1
-        err = capsys.readouterr().err
-        # The cure, not an inventory of the wording: name the flag, and hand back
-        # the spelling that DOES make a standalone box.
-        assert "--standalone" in err
-        assert "kanibako box create --standalone" in err
+  def test_create_standalone_refused(self, config_file, tmp_home, capsys):
+    """``--standalone`` is REFUSED, not accepted-and-inert [Jei:2026-08-27].
 
-        assert not ws_root.exists()
-        assert "standalonews" not in list_worksets(load_std_paths(load_config(config_file)))
+    It still PARSES — the flag stays declared so the refusal can name it and
+    hand back a cure — and it produces no working set: nothing on disk and
+    nothing in the registry, because the refusal precedes every side effect.
+    """
+    from kanibako.cli import build_parser
+    from kanibako.settings.paths import load_std_paths
+
+    ws_root = tmp_home / "standalone_ws"
+    args = build_parser().parse_args(
+      ["workset", "create", str(ws_root), "--name", "standalonews", "--standalone"],
+    )
+    assert args.standalone is True
+
+    assert args.func(args) == 1
+    err = capsys.readouterr().err
+    # The cure, not an inventory of the wording: name the flag, and hand back
+    # the spelling that DOES make a standalone box.
+    assert "--standalone" in err
+    assert "kanibako box create --standalone" in err
+
+    assert not ws_root.exists()
+    assert "standalonews" not in list_worksets(load_std_paths(load_config(config_file)))
 
 
 class TestWorksetList:
-    def test_list_empty_shows_only_default(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_list
+  def test_list_empty_shows_only_default(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_list
 
-        args = argparse.Namespace(quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # The synthesized default workset is always present.
-        assert "default" in out
-        assert "<default workset>" in out
-        assert "NAME" in out
+    args = argparse.Namespace(quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # The synthesized default workset is always present.
+    assert "default" in out
+    assert "<default workset>" in out
+    assert "NAME" in out
 
-    def test_list_shows_worksets(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_list
+  def test_list_shows_worksets(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("alpha", tmp_home / "ws_alpha", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("alpha", tmp_home / "ws_alpha", std)
 
-        args = argparse.Namespace(quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "alpha" in out
-        assert "NAME" in out
+    args = argparse.Namespace(quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "alpha" in out
+    assert "NAME" in out
 
-    def test_list_shows_project_count(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_list
+  def test_list_shows_project_count(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("beta", tmp_home / "ws_beta", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("beta", tmp_home / "ws_beta", std)
 
-        src = tmp_home / "proj_src"
-        src.mkdir()
-        add_project(ws, "myproj", src)
+    src = tmp_home / "proj_src"
+    src.mkdir()
+    add_project(ws, "myproj", src)
 
-        args = argparse.Namespace(quiet=False)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "beta" in out
-        assert "1" in out
+    args = argparse.Namespace(quiet=False)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "beta" in out
+    assert "1" in out
 
-    def test_list_quiet(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_list
+  def test_list_quiet(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_list
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("quiet1", tmp_home / "ws_quiet1", std)
-        create_workset("quiet2", tmp_home / "ws_quiet2", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("quiet1", tmp_home / "ws_quiet1", std)
+    create_workset("quiet2", tmp_home / "ws_quiet2", std)
 
-        args = argparse.Namespace(quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        lines = out.strip().split("\n")
-        # 2 named worksets + the synthesized default.
-        assert len(lines) == 3
-        assert "default" in lines
-        assert "quiet1" in lines
-        assert "quiet2" in lines
-        # Quiet mode should not have header
-        assert "NAME" not in out
+    args = argparse.Namespace(quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.strip().split("\n")
+    # 2 named worksets + the synthesized default.
+    assert len(lines) == 3
+    assert "default" in lines
+    assert "quiet1" in lines
+    assert "quiet2" in lines
+    # Quiet mode should not have header
+    assert "NAME" not in out
 
-    def test_list_quiet_empty_shows_default(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_list
+  def test_list_quiet_empty_shows_default(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_list
 
-        args = argparse.Namespace(quiet=True)
-        rc = run_list(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # Even with no named worksets, the default workset is listed.
-        assert out.strip() == "default"
+    args = argparse.Namespace(quiet=True)
+    rc = run_list(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Even with no named worksets, the default workset is listed.
+    assert out.strip() == "default"
 
-    def test_list_names_a_refused_entry_and_keeps_listing_the_rest(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A registry entry that REFUSES to load is named, not counted as empty."""
-        from kanibako.commands.workset_cmd import run_list
-        from kanibako.project.names import register_name
+  def test_list_names_a_refused_entry_and_keeps_listing_the_rest(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A registry entry that REFUSES to load is named, not counted as empty."""
+    from kanibako.commands.workset_cmd import run_list
+    from kanibako.project.names import register_name
 
-        std = load_std_paths(load_config(config_file))
-        alpha = create_workset("alpha", tmp_home / "ws_alpha", std)
-        create_workset("beta", tmp_home / "ws_beta", std)
-        src = tmp_home / "proj_src"
-        src.mkdir()
-        add_project(alpha, "myproj", src)
-        # A name ``workset create`` refuses, registered the way a pre-1.8 registry holds
-        # one; and a registered root that is gone.  Both refuse at load.
-        register_name(std.registry, "primary", str(tmp_home / "ws_beta"), section="worksets")
-        register_name(std.registry, "ghostws", str(tmp_home / "ws_gone"), section="worksets")
+    std = load_std_paths(load_config(config_file))
+    alpha = create_workset("alpha", tmp_home / "ws_alpha", std)
+    create_workset("beta", tmp_home / "ws_beta", std)
+    src = tmp_home / "proj_src"
+    src.mkdir()
+    add_project(alpha, "myproj", src)
+    # A name ``workset create`` refuses, registered the way a pre-1.8 registry holds
+    # one; and a registered root that is gone.  Both refuse at load.
+    register_name(std.registry, "primary", str(tmp_home / "ws_beta"), section="worksets")
+    register_name(std.registry, "ghostws", str(tmp_home / "ws_gone"), section="worksets")
 
-        rc = run_list(argparse.Namespace(quiet=False))
-        assert rc == 0
-        out, err = capsys.readouterr()
-        assert err.count("Warning:") == 2, err
-        assert "primary" in err and "ghostws" in err, err
-        row = {ln.split()[0]: ln.split() for ln in out.splitlines() if ln.split()}
-        assert row["primary"][1] == "ERROR", out
-        assert row["ghostws"][1] == "ERROR", out
-        # A genuinely EMPTY workset still reads 0, and a populated one its count: the
-        # marker marks an unread entry, not every zero.
-        assert row["beta"][1] == "0", out
-        assert row["alpha"][1] == "1", out
+    rc = run_list(argparse.Namespace(quiet=False))
+    assert rc == 0
+    out, err = capsys.readouterr()
+    assert err.count("Warning:") == 2, err
+    assert "primary" in err and "ghostws" in err, err
+    row = {ln.split()[0]: ln.split() for ln in out.splitlines() if ln.split()}
+    assert row["primary"][1] == "ERROR", out
+    assert row["ghostws"][1] == "ERROR", out
+    # A genuinely EMPTY workset still reads 0, and a populated one its count: the
+    # marker marks an unread entry, not every zero.
+    assert row["beta"][1] == "0", out
+    assert row["alpha"][1] == "1", out
 
-    def test_list_quiet_lists_names_without_loading_each_workset(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``--quiet`` prints NAMES only.
+  def test_list_quiet_lists_names_without_loading_each_workset(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``--quiet`` prints NAMES only.
 
-        It never printed a project count, so it never claimed the count a refused
-        entry used to be given; and it must keep working on a store the table path
-        cannot read — loading every workset here would turn a quiet name list into a
-        failing one.
-        """
-        from kanibako.commands.workset_cmd import run_list
-        from kanibako.project.names import register_name
+    It never printed a project count, so it never claimed the count a refused
+    entry used to be given; and it must keep working on a store the table path
+    cannot read — loading every workset here would turn a quiet name list into a
+    failing one.
+    """
+    from kanibako.commands.workset_cmd import run_list
+    from kanibako.project.names import register_name
 
-        std = load_std_paths(load_config(config_file))
-        for name in ("alpha", "beta"):
-            create_workset(name, tmp_home / f"ws_{name}", std)
-        register_name(std.registry, "primary", str(tmp_home / "ws_alpha"), section="worksets")
-        (tmp_home / "ws_beta" / "workset.yaml").write_text("workset: [unclosed\n")
+    std = load_std_paths(load_config(config_file))
+    for name in ("alpha", "beta"):
+      create_workset(name, tmp_home / f"ws_{name}", std)
+    register_name(std.registry, "primary", str(tmp_home / "ws_alpha"), section="worksets")
+    (tmp_home / "ws_beta" / "workset.yaml").write_text("workset: [unclosed\n")
 
-        rc = run_list(argparse.Namespace(quiet=True))
-        assert rc == 0
-        out, err = capsys.readouterr()
-        assert sorted(out.split()) == ["alpha", "beta", "default", "primary"]
-        assert "ERROR" not in out
-        assert err == ""
+    rc = run_list(argparse.Namespace(quiet=True))
+    assert rc == 0
+    out, err = capsys.readouterr()
+    assert sorted(out.split()) == ["alpha", "beta", "default", "primary"]
+    assert "ERROR" not in out
+    assert err == ""
 
 
 class TestWorksetRm:
-    def test_rm_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_success(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("todel", tmp_home / "ws_todel", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("todel", tmp_home / "ws_todel", std)
 
-        args = argparse.Namespace(name="todel", purge=False, force=True)
-        rc = run_rm(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Deleted working set 'todel'" in out
+    args = argparse.Namespace(name="todel", purge=False, force=True)
+    rc = run_rm(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Deleted working set 'todel'" in out
 
-    def test_rm_with_purge(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_with_purge(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("rmfiles", tmp_home / "ws_rmfiles", std)
-        root = ws.root
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("rmfiles", tmp_home / "ws_rmfiles", std)
+    root = ws.root
 
-        assert root.is_dir()
-        args = argparse.Namespace(name="rmfiles", purge=True, force=True)
-        rc = run_rm(args)
-        assert rc == 0
-        assert not root.is_dir()
+    assert root.is_dir()
+    args = argparse.Namespace(name="rmfiles", purge=True, force=True)
+    rc = run_rm(args)
+    assert rc == 0
+    assert not root.is_dir()
 
-    @pytest.mark.parametrize("malformed", [
-        pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
-        pytest.param("- one\n- two\n", id="top-level-list"),
-        pytest.param("just-a-scalar\n", id="top-level-scalar"),
-    ])
-    def test_rm_purge_of_an_unreadable_workset_yaml_succeeds(
-        self, config_file, tmp_home, capsys, malformed,
-    ):
-        """⚑ A DELETION PATH NEVER GAINS A REFUSAL FOR A BROKEN FILE.
+  @pytest.mark.parametrize(
+    "malformed",
+    [
+      pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
+      pytest.param("- one\n- two\n", id="top-level-list"),
+      pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ],
+  )
+  def test_rm_purge_of_an_unreadable_workset_yaml_succeeds(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    malformed,
+  ):
+    """⚑ A DELETION PATH NEVER GAINS A REFUSAL FOR A BROKEN FILE.
 
-        ``run_rm`` asks how many projects a workset holds before it will unregister
-        it, and that ask is where the refusal landed once the reader started refusing.
-        A user deleting a root because its file is broken must not have to hand-edit
-        it first.
-        """
-        from kanibako.commands.workset_cmd import run_rm
+    ``run_rm`` asks how many projects a workset holds before it will unregister
+    it, and that ask is where the refusal landed once the reader started refusing.
+    A user deleting a root because its file is broken must not have to hand-edit
+    it first.
+    """
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("purgebad", tmp_home / "ws_purgebad", std)
-        root = ws.root
-        (root / "workset.yaml").write_text(malformed)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("purgebad", tmp_home / "ws_purgebad", std)
+    root = ws.root
+    (root / "workset.yaml").write_text(malformed)
 
-        rc = run_rm(argparse.Namespace(name="purgebad", purge=True, force=True))
+    rc = run_rm(argparse.Namespace(name="purgebad", purge=True, force=True))
 
-        assert rc == 0
-        assert not root.resolve().exists()
+    assert rc == 0
+    assert not root.resolve().exists()
 
-    @pytest.mark.parametrize("malformed", [
-        pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
-        pytest.param("- one\n- two\n", id="top-level-list"),
-        pytest.param("just-a-scalar\n", id="top-level-scalar"),
-    ])
-    def test_rm_purge_without_force_keeps_the_project_guard_for_an_unreadable_workset_yaml(
-        self, config_file, tmp_home, capsys, malformed,
-    ):
-        """⚑ A BROKEN FILE DOES NOT LIFT THE PROJECT-COUNT GUARD — ``--purge`` included.
+  @pytest.mark.parametrize(
+    "malformed",
+    [
+      pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
+      pytest.param("- one\n- two\n", id="top-level-list"),
+      pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ],
+  )
+  def test_rm_purge_without_force_keeps_the_project_guard_for_an_unreadable_workset_yaml(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    malformed,
+  ):
+    """⚑ A BROKEN FILE DOES NOT LIFT THE PROJECT-COUNT GUARD — ``--purge`` included.
 
-        The members are counted at the DEFAULT registry path, so a workset that has
-        projects still needs ``--force`` before ``--purge`` deletes its tree.
-        """
-        from kanibako.commands.workset_cmd import run_rm
+    The members are counted at the DEFAULT registry path, so a workset that has
+    projects still needs ``--force`` before ``--purge`` deletes its tree.
+    """
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("purgemembers", tmp_home / "ws_purgemembers", std)
-        src = tmp_home / "proj_src_purgemembers"
-        src.mkdir()
-        add_project(ws, "myproj", src)
-        root = ws.root
-        (root / "workset.yaml").write_text(malformed)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("purgemembers", tmp_home / "ws_purgemembers", std)
+    src = tmp_home / "proj_src_purgemembers"
+    src.mkdir()
+    add_project(ws, "myproj", src)
+    root = ws.root
+    (root / "workset.yaml").write_text(malformed)
 
-        rc = run_rm(argparse.Namespace(name="purgemembers", purge=True, force=False))
+    rc = run_rm(argparse.Namespace(name="purgemembers", purge=True, force=False))
 
-        assert rc == 1
-        assert root.is_dir()
-        assert "purgemembers" in list_worksets(std)
-        assert "has 1 project(s)" in capsys.readouterr().err
+    assert rc == 1
+    assert root.is_dir()
+    assert "purgemembers" in list_worksets(std)
+    assert "has 1 project(s)" in capsys.readouterr().err
 
-    def test_rm_without_purge_refuses_an_unreadable_workset_yaml_and_names_both_cures(
-        self, config_file, tmp_home, capsys,
-    ):
-        """⚑ OFF THE PURGE PATH THE GUARD KEEPS ITS SHAPE — unregistering still asks.
+  def test_rm_without_purge_refuses_an_unreadable_workset_yaml_and_names_both_cures(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """⚑ OFF THE PURGE PATH THE GUARD KEEPS ITS SHAPE — unregistering still asks.
 
-        Only ``--purge`` is exempt, because only it destroys the tree. The refusal
-        carries the reader's own wording, so it names the file, and it names the two
-        ways forward.
-        """
-        from kanibako.commands.workset_cmd import run_rm
+    Only ``--purge`` is exempt, because only it destroys the tree. The refusal
+    carries the reader's own wording, so it names the file, and it names the two
+    ways forward.
+    """
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("keepbad", tmp_home / "ws_keepbad", std)
-        root = ws.root
-        (root / "workset.yaml").write_text("just-a-scalar\n")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("keepbad", tmp_home / "ws_keepbad", std)
+    root = ws.root
+    (root / "workset.yaml").write_text("just-a-scalar\n")
 
-        rc = run_rm(argparse.Namespace(name="keepbad", purge=False, force=False))
+    rc = run_rm(argparse.Namespace(name="keepbad", purge=False, force=False))
 
-        assert rc == 1
-        assert root.is_dir()
-        assert "keepbad" in list_worksets(std)
-        err = capsys.readouterr().err
-        assert str(root / "workset.yaml") in err
-        assert "--purge" in err and "--force" in err
+    assert rc == 1
+    assert root.is_dir()
+    assert "keepbad" in list_worksets(std)
+    err = capsys.readouterr().err
+    assert str(root / "workset.yaml") in err
+    assert "--purge" in err and "--force" in err
 
-    def test_rm_purge_refusing_box_tree_errors_and_keeps_the_workset(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """⚑ A refusing box tree is an ``Error:`` naming it, not a traceback; still registered."""
-        import kanibako.runtime.container as container_mod
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_purge_refusing_box_tree_errors_and_keeps_the_workset(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """⚑ A refusing box tree is an ``Error:`` naming it, not a traceback; still registered."""
+    import kanibako.runtime.container as container_mod
+    from kanibako.commands.workset_cmd import run_rm
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("stuckrm", tmp_home / "ws_stuckrm", std)
-        box_tree = ws.root / "boxes" / "b1"
-        box_tree.mkdir(parents=True)
-        monkeypatch.setattr(container_mod, "remove_box_tree", lambda p: False)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("stuckrm", tmp_home / "ws_stuckrm", std)
+    box_tree = ws.root / "boxes" / "b1"
+    box_tree.mkdir(parents=True)
+    monkeypatch.setattr(container_mod, "remove_box_tree", lambda p: False)
 
-        rc = run_rm(argparse.Namespace(name="stuckrm", purge=True, force=True))
+    rc = run_rm(argparse.Namespace(name="stuckrm", purge=True, force=True))
 
-        assert rc == 1
-        assert f"Error: could not remove {box_tree}" in capsys.readouterr().err
-        assert "stuckrm" in list_worksets(std)
-        assert ws.root.is_dir()
+    assert rc == 1
+    assert f"Error: could not remove {box_tree}" in capsys.readouterr().err
+    assert "stuckrm" in list_worksets(std)
+    assert ws.root.is_dir()
 
-    def test_rm_purge_oserror_before_the_unregister_keeps_it_registered(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """⚑ An OSError raised while the workset is still registered never says "unregistered"."""
-        import kanibako.runtime.container as container_mod
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_purge_oserror_before_the_unregister_keeps_it_registered(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """⚑ An OSError raised while the workset is still registered never says "unregistered"."""
+    import kanibako.runtime.container as container_mod
+    from kanibako.commands.workset_cmd import run_rm
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("stuckpre", tmp_home / "ws_stuckpre", std)
-        box_tree = ws.root / "boxes" / "b1"
-        box_tree.mkdir(parents=True)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("stuckpre", tmp_home / "ws_stuckpre", std)
+    box_tree = ws.root / "boxes" / "b1"
+    box_tree.mkdir(parents=True)
 
-        def refusing(path):
-            raise PermissionError(13, "Permission denied", str(path))
+    def refusing(path):
+      raise PermissionError(13, "Permission denied", str(path))
 
-        monkeypatch.setattr(container_mod, "remove_box_tree", refusing)
+    monkeypatch.setattr(container_mod, "remove_box_tree", refusing)
 
-        rc = run_rm(argparse.Namespace(name="stuckpre", purge=True, force=True))
+    rc = run_rm(argparse.Namespace(name="stuckpre", purge=True, force=True))
 
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "unregistered" not in err and "podman unshare" not in err, err
-        assert "could not remove working set 'stuckpre'" in err and str(box_tree) in err
-        assert "stuckpre" in list_worksets(std)
-        assert ws.root.is_dir()
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "unregistered" not in err and "podman unshare" not in err, err
+    assert "could not remove working set 'stuckpre'" in err and str(box_tree) in err
+    assert "stuckpre" in list_worksets(std)
+    assert ws.root.is_dir()
 
-    def test_rm_purge_refusing_root_names_the_root_as_the_cure(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """⚑ The root rmtree runs after the unregister: the error says so, no traceback."""
-        import shutil
+  def test_rm_purge_refusing_root_names_the_root_as_the_cure(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """⚑ The root rmtree runs after the unregister: the error says so, no traceback."""
+    import shutil
 
-        from kanibako.commands.workset_cmd import run_rm
+    from kanibako.commands.workset_cmd import run_rm
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("stuckroot", tmp_home / "ws_stuckroot", std)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("stuckroot", tmp_home / "ws_stuckroot", std)
 
-        def refusing(path, *a, **k):
-            raise PermissionError(13, "Permission denied", str(path))
+    def refusing(path, *a, **k):
+      raise PermissionError(13, "Permission denied", str(path))
 
-        monkeypatch.setattr(shutil, "rmtree", refusing)
+    monkeypatch.setattr(shutil, "rmtree", refusing)
 
-        rc = run_rm(argparse.Namespace(name="stuckroot", purge=True, force=True))
+    rc = run_rm(argparse.Namespace(name="stuckroot", purge=True, force=True))
 
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "unregistered working set 'stuckroot' but could not remove its files" in err
-        assert f"podman unshare rm -rf {ws.root}" in err
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "unregistered working set 'stuckroot' but could not remove its files" in err
+    assert f"podman unshare rm -rf {ws.root}" in err
 
-    def test_rm_unknown_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_unknown_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
 
-        args = argparse.Namespace(name="nonexistent", purge=False, force=True)
-        rc = run_rm(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "not registered" in err
+    args = argparse.Namespace(name="nonexistent", purge=False, force=True)
+    rc = run_rm(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not registered" in err
 
-    def test_rm_with_projects_errors_without_force(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_with_projects_errors_without_force(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("hasproj", tmp_home / "ws_hasproj", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("hasproj", tmp_home / "ws_hasproj", std)
 
-        src = tmp_home / "proj_src_rm"
-        src.mkdir()
-        add_project(ws, "myproj", src)
+    src = tmp_home / "proj_src_rm"
+    src.mkdir()
+    add_project(ws, "myproj", src)
 
-        args = argparse.Namespace(name="hasproj", purge=False, force=False)
-        rc = run_rm(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "has 1 project(s)" in err
-        assert "--force" in err
+    args = argparse.Namespace(name="hasproj", purge=False, force=False)
+    rc = run_rm(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "has 1 project(s)" in err
+    assert "--force" in err
 
-    def test_rm_with_projects_succeeds_with_force(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
+  def test_rm_with_projects_succeeds_with_force(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("hasproj2", tmp_home / "ws_hasproj2", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("hasproj2", tmp_home / "ws_hasproj2", std)
 
-        src = tmp_home / "proj_src_rm2"
-        src.mkdir()
-        add_project(ws, "myproj", src)
+    src = tmp_home / "proj_src_rm2"
+    src.mkdir()
+    add_project(ws, "myproj", src)
 
-        args = argparse.Namespace(name="hasproj2", purge=False, force=True)
-        rc = run_rm(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Deleted working set 'hasproj2'" in out
+    args = argparse.Namespace(name="hasproj2", purge=False, force=True)
+    rc = run_rm(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Deleted working set 'hasproj2'" in out
 
 
 class TestWorksetConnect:
-    def test_connect_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_connect
+  def test_connect_success(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_connect
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("addws", tmp_home / "ws_add", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("addws", tmp_home / "ws_add", std)
 
-        src = tmp_home / "add_src"
-        src.mkdir()
+    src = tmp_home / "add_src"
+    src.mkdir()
 
-        args = argparse.Namespace(
-            workset="addws", source=str(src), project_name=None, force=False,
+    args = argparse.Namespace(
+      workset="addws",
+      source=str(src),
+      project_name=None,
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Added project" in out
+    assert "add_src" in out
+
+  def test_connect_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("cwdws", tmp_home / "ws_cwd", std)
+
+    cwd_dir = tmp_home / "cwd_proj"
+    cwd_dir.mkdir()
+    monkeypatch.chdir(cwd_dir)
+
+    args = argparse.Namespace(
+      workset="cwdws",
+      source=None,
+      project_name=None,
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "cwd_proj" in out
+
+  def test_connect_custom_name(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("namews", tmp_home / "ws_name", std)
+
+    src = tmp_home / "name_src"
+    src.mkdir()
+
+    args = argparse.Namespace(
+      workset="namews",
+      source=str(src),
+      project_name="custom_name",
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "custom_name" in out
+
+  def test_connect_in_tree_under_null_workspaces_refuses_before_the_journal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Q96: the refusal names the key and leaves no pending ``connect`` entry."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_nows").resolve()
+    create_workset("nows", root, std)
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+    src = root / "intree"
+    src.mkdir()
+
+    args = argparse.Namespace(
+      workset="nows",
+      source=str(src),
+      project_name="app",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert "workset.workspaces" in err and str(root / "workset.yaml") in err
+    assert journal.read_journal(std.journal) == {}
+    assert not (root / "workspaces" / "app").exists()
+
+  def _assert_connect_refused(
+    self, config_file, tmp_home, capsys, source, name="nothere", force=False, expect=""
+  ):
+    """A refused EXTERNAL connect writes nothing and leaves no pending journal entry.
+
+    *expect* is the exact ``Error: `` line the refusal must print.
+    """
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_extmiss").resolve()
+    create_workset("extmiss", root, std)
+
+    args = argparse.Namespace(
+      workset="extmiss",
+      source=str(source),
+      project_name=name,
+      force=force,
+    )
+    assert run_connect(args) == 1
+    assert capsys.readouterr().err.strip() == expect
+    assert not (root / "workspaces" / name).exists()
+    reloaded = load_workset(
+      list_worksets(std)["extmiss"], "extmiss", early_system=std.early_system
+    )
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_missing_external_source_refuses_before_the_journal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``connect`` REGISTERS an existing dir, so a missing EXTERNAL source is refused."""
+    source = (tmp_home / "nothere").resolve()
+    self._assert_connect_refused(
+      config_file,
+      tmp_home,
+      capsys,
+      source,
+      expect=f"Error: Cannot connect '{source}': no such directory.",
+    )
+
+  def test_connect_file_source_refuses_before_the_journal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """An EXTERNAL source that is a regular file is refused as not-a-directory."""
+    source = (tmp_home / "afile").resolve()
+    source.write_text("not a project\n")
+    self._assert_connect_refused(
+      config_file,
+      tmp_home,
+      capsys,
+      source,
+      name="afile",
+      expect=f"Error: Cannot connect '{source}': it is not a directory.",
+    )
+
+  def test_connect_dangling_symlink_source_refuses_before_the_journal(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A dangling symlink is PRESENT but not a directory, so it reads as not-a-directory."""
+    target = tmp_home / "gone"
+    link = tmp_home / "dangling"
+    link.symlink_to(target)
+    self._assert_connect_refused(
+      config_file,
+      tmp_home,
+      capsys,
+      link,
+      name="gone",
+      expect=f"Error: Cannot connect '{link}': it is not a directory.",
+    )
+
+  def test_connect_force_does_not_bypass_a_missing_external_source(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``--force`` absorbs a standalone box; it does not create a missing source dir."""
+    source = (tmp_home / "nothere").resolve()
+    self._assert_connect_refused(
+      config_file,
+      tmp_home,
+      capsys,
+      source,
+      force=True,
+      expect=f"Error: Cannot connect '{source}': no such directory.",
+    )
+
+  def test_connect_duplicate_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dupws", tmp_home / "ws_dup", std)
+
+    src = tmp_home / "dup_src"
+    src.mkdir()
+    add_project(ws, "proj1", src)
+
+    args = argparse.Namespace(
+      workset="dupws",
+      source=str(src),
+      project_name="proj1",
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "already exists" in err
+
+  def test_connect_external_writes_override_and_symlink(self, config_file, tmp_home, capsys):
+    """connect to an EXTERNAL dir → workspace override in the per-workset
+    boxes: connection record (D10), and a workspaces/{name} symlink to the
+    dir.  P8b/Option A: the override is NO LONGER written to box.yaml —
+    the per-workset registry is the sole connection record."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config_io import load_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("extws", tmp_home / "ws_ext", std)
+
+    # External source: a sibling of the workset root, outside ws.root.
+    external = (tmp_home / "external_repo").resolve()
+    external.mkdir()
+
+    args = argparse.Namespace(
+      workset="extws",
+      source=str(external),
+      project_name="ext",
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+
+    # P8b/Option A: no on-disk ``project:`` identity is written for the
+    # connected box — the override lives ONLY in the per-workset registry.
+    project_toml = ws.projects_dir / "ext" / "box.yaml"
+    assert "project" not in load_doc(project_toml)
+
+    # The per-workset registry has the connection record: box name → external
+    # path (the D10 replacement for the global connected: index).
+    assert _workset_boxes(ws).get("ext") == str(external)
+
+    # workspaces/ext is a SYMLINK to the external dir, not a real dir.
+    link = ws.workspaces_dir / "ext"
+    assert link.is_symlink()
+    assert link.resolve() == external
+
+  def test_connect_internal_no_override_no_symlink(self, config_file, tmp_home, capsys):
+    """connect an EXISTING workspaces/{name} dir INSIDE the workset root → that same
+    real dir, kept as it is, no override, and a membership row recording it."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config_io import load_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("intws", tmp_home / "ws_int", std)
+
+    # Internal source: the member's own leaf, the dir an in-tree member runs on.
+    internal = ws.workspaces_dir / "int"
+    internal.mkdir(parents=True)
+    (internal / "keep.txt").write_text("kept\n")
+
+    args = argparse.Namespace(
+      workset="intws",
+      source=str(internal),
+      project_name="int",
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+
+    # No workspace override written (box.yaml not pre-seeded).
+    project_toml = ws.projects_dir / "int" / "box.yaml"
+    assert "project" not in load_doc(project_toml)
+
+    # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
+    # member's row records ``workspaces/<name>``, the dir it actually runs on.
+    # ⚑ A row that records the caller's SOURCE instead is the ``add_project``
+    # seam's invariant, pinned where it lives: ``test_workset.py``
+    # ``test_creates_subdirectories`` and ``test_persists_to_the_membership``.
+    assert _workset_boxes(ws) == {"int": str(ws.workspaces_dir / "int")}
+
+    # workspaces/int is a real directory, not a symlink, and keeps its files:
+    # connect registers, it never re-seeds what is already there.
+    wsdir = ws.workspaces_dir / "int"
+    assert wsdir.is_dir()
+    assert not wsdir.is_symlink()
+    assert (wsdir / "keep.txt").read_text() == "kept\n"
+
+  def test_connect_in_tree_own_tree_refuses_creating_nothing(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A dir that is the workset's OWN tree — its root, or a sibling of
+    ``workspaces/`` — is not a project, so connect refuses it and creates nothing."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_own").resolve()
+    create_workset("own", root, std)
+    notes = root / "notes"
+    notes.mkdir()
+    (notes / "file.txt").write_text("mine\n")
+
+    for source, name in ((root, "ws_own"), (notes, "notes")):
+      args = argparse.Namespace(
+        workset="own",
+        source=str(source),
+        project_name=name,
+        force=False,
+      )
+      assert run_connect(args) == 1
+      err = capsys.readouterr().err
+      # The refusal NAMES why, and the leaf it would take is named with it.
+      assert "inside the working set root or its workspaces directory" in err
+      assert f"'{root / 'workspaces' / name}'" in err
+
+    # Neither shape gained a member, a workspace or a pending journal entry.
+    assert not (root / "workspaces" / "ws_own").exists()
+    assert not (root / "workspaces" / "notes").exists()
+    assert (notes / "file.txt").read_text() == "mine\n"
+    reloaded = load_workset(list_worksets(std)["own"], "own", early_system=std.early_system)
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_in_tree_leaf_naming_a_different_project_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A source that is not the ``workspaces/<name>`` its member would run on — a
+    subdir of a member, or a leaf whose name is not the project name — is refused,
+    and no ``workspaces/<name>`` is made to stand in for it."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_sub").resolve()
+    create_workset("sub", root, std)
+    member = root / "workspaces" / "alpha"
+    member.mkdir(parents=True)
+    (member / "keep.txt").write_text("kept\n")
+    inside = member / "sub"
+    inside.mkdir()
+
+    reasons = []
+    for source, name in ((inside, "sub"), (member, "beta")):
+      args = argparse.Namespace(
+        workset="sub",
+        source=str(source),
+        project_name=name,
+        force=False,
+      )
+      assert run_connect(args) == 1
+      err = capsys.readouterr().err
+      reasons.append(err)
+      assert f"'{root / 'workspaces' / name}'" in err
+      assert not (root / "workspaces" / name).exists()
+
+    # A leaf asked for under a name of its own is told the two names differ; the
+    # subdir is told it is inside the working set.  The member's dir is untouched
+    # and neither shape registered.
+    assert "its directory name 'alpha' and --name 'beta' differ" in reasons[1]
+    assert "inside the working set root or its workspaces directory" in reasons[0]
+    assert (member / "keep.txt").read_text() == "kept\n"
+    reloaded = load_workset(list_worksets(std)["sub"], "sub", early_system=std.early_system)
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_in_tree_repointed_workspaces_refuses_creating_nothing(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``workset.workspaces`` is a USER key, so it can point OUTSIDE the workset
+    root: in-tree is then the workspaces dir too, and a dir inside it that is not a
+    ``workspaces/<name>`` leaf is refused rather than made into a member."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_rp").resolve()
+    create_workset("rp", root, std)
+    outside = (tmp_home / "extws").resolve()
+    outside.mkdir()
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+    (outside / "x" / "sub").mkdir(parents=True)
+    (outside / "x" / "sub" / "f.txt").write_text("mine\n")
+    # The OLD default leaf is still in the tree, but no longer the leaf it takes.
+    (root / "workspaces" / "alpha").mkdir(parents=True)
+
+    for source, name in (
+      (outside / "x" / "sub", "sub"),
+      (outside, "extws"),
+      (root / "workspaces" / "alpha", "alpha"),
+    ):
+      args = argparse.Namespace(
+        workset="rp",
+        source=str(source),
+        project_name=name,
+        force=False,
+      )
+      assert run_connect(args) == 1
+      err = capsys.readouterr().err
+      assert "inside the working set root or its workspaces directory" in err
+      # The leaf it names is under the REPOINTED dir, the one it would take.
+      assert f"it takes an existing '{outside / name}' directory" in err
+
+    # Nothing was created or registered under the repointed dir either.
+    assert not (outside / "sub").exists()
+    assert not (outside / "extws").exists()
+    assert not (outside / "alpha").exists()
+    assert (outside / "x" / "sub" / "f.txt").read_text() == "mine\n"
+    reloaded = load_workset(list_worksets(std)["rp"], "rp", early_system=std.early_system)
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_in_tree_repointed_workspaces_admits_its_own_leaf(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A repointed ``workset.workspaces`` still admits the member's own leaf: the
+    dir connect records is the one the user pointed at, so it is adopted as it is."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_rpok").resolve()
+    create_workset("rpok", root, std)
+    outside = (tmp_home / "extws2").resolve()
+    leaf = outside / "alpha"
+    leaf.mkdir(parents=True)
+    (leaf / "keep.txt").write_text("kept\n")
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+    args = argparse.Namespace(
+      workset="rpok",
+      source=str(leaf),
+      project_name="alpha",
+      force=False,
+    )
+    assert run_connect(args) == 0
+    assert "Added project 'alpha'" in capsys.readouterr().out
+    reloaded = load_workset(list_worksets(std)["rpok"], "rpok", early_system=std.early_system)
+    assert _workset_boxes(reloaded) == {"alpha": str(leaf)}
+    assert (leaf / "keep.txt").read_text() == "kept\n"
+
+  def test_connect_in_tree_missing_leaf_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``connect`` registers a member, so a ``workspaces/<name>`` path with NO
+    directory there is refused rather than made."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_ghost").resolve()
+    create_workset("ghost", root, std)
+    missing = root / "workspaces" / "ghost"
+
+    args = argparse.Namespace(
+      workset="ghost",
+      source=str(missing),
+      project_name="ghost",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert f"Cannot connect '{missing}': no directory there." in err
+    assert f"it takes an existing '{missing}' directory" in err
+
+    assert not missing.exists()
+    reloaded = load_workset(list_worksets(std)["ghost"], "ghost", early_system=std.early_system)
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_in_tree_leaf_of_a_primary_box_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """One workspace holds one box: a leaf under a REPOINTED ``workset.workspaces``
+    that is already a primary box's workspace is refused, not shared."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import register_primary_box_name
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    outside = (tmp_home / "extws3").resolve()
+    leaf = outside / "beta"
+    leaf.mkdir(parents=True)
+    register_primary_box_name(
+      std.primary_workset, "beta", str(leaf), early=_early_scope(std, BoxMode.primary)
+    )
+    root = (tmp_home / "ws_pb").resolve()
+    create_workset("pb", root, std)
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+    args = argparse.Namespace(
+      workset="pb",
+      source=str(leaf),
+      project_name="beta",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert f"Cannot connect '{leaf}': it is already the workspace of primary box 'beta'" in err
+    reloaded = load_workset(list_worksets(std)["pb"], "pb", early_system=std.early_system)
+    assert reloaded.projects == []
+    assert _workset_boxes(reloaded) == {}
+    assert not (reloaded.projects_dir / "beta").exists()
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_in_tree_cure_names_the_operations_that_reach_the_box(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The refusal's cure names ``convert``, ``move`` and ``rm`` — the three
+    operations that reach a box whose workspace is a primary box's, wherever the
+    workset's path space puts it.  ONE message for both arms of the refusal."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import create_workset
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import register_primary_box_name
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    outside = (tmp_home / "extws_cure").resolve()
+    leaf = outside / "beta"
+    leaf.mkdir(parents=True)
+    register_primary_box_name(
+      std.primary_workset, "beta", str(leaf), early=_early_scope(std, BoxMode.primary)
+    )
+    root = (tmp_home / "ws_cure").resolve()
+    create_workset("cure", root, std)
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+    args = argparse.Namespace(
+      workset="cure",
+      source=str(leaf),
+      project_name="beta",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert "kanibako box convert beta --workset cure" in err
+    assert "kanibako box move beta <path>" in err
+    assert "kanibako box rm beta" in err
+    # ⚑ A rename under a new member name must name the RELOCATING form: the
+    # in-place ``--name`` convert is refused, so advising it would be a dead end.
+    assert "kanibako box convert beta --workset cure --name <member> --move" in err
+    assert "--workset cure --name" not in err.replace(
+      "kanibako box convert beta --workset cure --name <member> --move", ""
+    )
+
+  def test_connect_external_cure_names_the_same_operations(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """PIN: the EXTERNAL arm states the SAME cure, from the one constant."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import create_workset
+    from kanibako.settings.paths import register_primary_box_name
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    leaf = (tmp_home / "elsewhere" / "gamma").resolve()
+    leaf.mkdir(parents=True)
+    register_primary_box_name(
+      std.primary_workset, "gamma", str(leaf), early=_early_scope(std, BoxMode.primary)
+    )
+    root = (tmp_home / "ws_ext_cure").resolve()
+    create_workset("extcure", root, std)
+
+    args = argparse.Namespace(
+      workset="extcure",
+      source=str(leaf),
+      project_name="gamma",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert "kanibako box convert gamma --workset extcure" in err
+    assert "kanibako box move gamma <path>" in err
+    assert "kanibako box rm gamma" in err
+
+  def test_connect_in_tree_leaf_another_workset_connects_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The EXTERNAL arm's "already a box" check runs on an in-tree leaf too: a leaf
+    another workset already connects is refused, not registered a second time."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import add_project, list_worksets, load_workset
+    from kanibako.settings.config_io import dump_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    outside = (tmp_home / "extws4").resolve()
+    leaf = outside / "beta"
+    leaf.mkdir(parents=True)
+    other = create_workset("other", (tmp_home / "ws_other").resolve(), std)
+    add_project(other, "beta", leaf, std)
+    root = (tmp_home / "ws_tw").resolve()
+    create_workset("tw", root, std)
+    dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+    args = argparse.Namespace(
+      workset="tw",
+      source=str(leaf),
+      project_name="beta",
+      force=False,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert "already connected as project 'beta' in workset 'other'" in err
+    assert (
+      _workset_boxes(load_workset(list_worksets(std)["tw"], "tw", early_system=std.early_system))
+      == {}
+    )
+
+  def test_connect_external_workspace_of_a_primary_box_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """An EXTERNAL dir that is a primary box's workspace is refused too, and told the
+    verb that changes the box's owner."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.settings.paths import register_primary_box_name
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ext = (tmp_home / "ext_pb" / "beta").resolve()
+    ext.mkdir(parents=True)
+    register_primary_box_name(
+      std.primary_workset, "beta", str(ext), early=_early_scope(std, BoxMode.primary)
+    )
+    create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
+
+    args = argparse.Namespace(
+      workset="xpb",
+      source=str(ext),
+      project_name="beta",
+      force=True,
+    )
+    assert run_connect(args) == 1
+    err = capsys.readouterr().err
+    assert "it is already the workspace of primary box 'beta'" in err
+    assert "\n  kanibako box convert beta --workset xpb\n" in err
+    assert (
+      _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb", early_system=std.early_system))
+      == {}
+    )
+
+  def test_connect_standalone_refused_without_force(self, config_file, tmp_home, capsys):
+    """B2a: connecting a self-declared standalone box (in-place marker) is
+    REFUSED without --force (no silent absorb/steal)."""
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("saws", tmp_home / "ws_sa", std)
+
+    external = (tmp_home / "sa_box").resolve()
+    external.mkdir()
+    (external / "box_data").mkdir()
+    (external / "workset.yaml").write_text("workset:\n  registry: null\n")
+
+    args = argparse.Namespace(
+      workset="saws",
+      source=str(external),
+      project_name="sb",
+      force=False,
+    )
+    rc = run_connect(args)
+    assert rc == 1
+    assert "standalone box" in capsys.readouterr().err
+    # Nothing registered — no steal.
+    assert "sb" not in _workset_boxes(ws)
+
+  def test_connect_standalone_absorbed_with_force(self, config_file, tmp_home, capsys):
+    """B2a: --force deliberately absorbs the standalone box as a workset box
+    (registers the connection record)."""
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("saws2", tmp_home / "ws_sa2", std)
+
+    external = (tmp_home / "sa_box2").resolve()
+    external.mkdir()
+    (external / "box_data").mkdir()
+    (external / "workset.yaml").write_text("workset:\n  registry: null\n")
+
+    args = argparse.Namespace(
+      workset="saws2",
+      source=str(external),
+      project_name="sb",
+      force=True,
+    )
+    rc = run_connect(args)
+    assert rc == 0
+    assert _workset_boxes(ws).get("sb") == str(external)
+
+  def test_connect_case_variant_of_a_member_refuses_writing_nothing(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``--name Proj`` beside member ``proj`` refuses; it once REPLACED proj's row."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_case").resolve()
+    ws = create_workset("casews", root, std)
+    ext1 = (tmp_home / "ext1").resolve()
+    ext2 = (tmp_home / "ext2").resolve()
+    ext1.mkdir()
+    ext2.mkdir()
+    assert (
+      run_connect(
+        argparse.Namespace(workset="casews", source=str(ext1), project_name="proj", force=False)
+      )
+      == 0
+    )
+    capsys.readouterr()
+    before = sorted(str(p) for p in root.rglob("*"))
+
+    rc = run_connect(
+      argparse.Namespace(workset="casews", source=str(ext2), project_name="Proj", force=False)
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().err.strip() == (
+      f"Error: Cannot connect '{ext2}' as 'Proj': project 'proj' already exists in "
+      f"working set 'casews' (names compare case-blind). Pick another name with "
+      f"--name, or disconnect it first: kanibako workset disconnect casews proj"
+    )
+    assert _workset_boxes(ws) == {"proj": str(ext1)}
+    assert sorted(str(p) for p in root.rglob("*")) == before
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_case_variant_of_a_kept_store_refuses_writing_nothing(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``--name PROJ`` after a plain disconnect of ``proj`` once built a PARALLEL store."""
+    from kanibako.commands.workset_cmd import run_connect, run_disconnect
+    from kanibako.launch import journal
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_kept").resolve()
+    ws = create_workset("keptws", root, std)
+    ext = (tmp_home / "ext_kept").resolve()
+    ext.mkdir()
+    assert (
+      run_connect(
+        argparse.Namespace(workset="keptws", source=str(ext), project_name="proj", force=False)
+      )
+      == 0
+    )
+    assert (
+      run_disconnect(
+        argparse.Namespace(workset="keptws", project="proj", remove_files=False, force=True)
+      )
+      == 0
+    )
+    capsys.readouterr()
+    before = sorted(str(p) for p in root.rglob("*"))
+
+    rc = run_connect(
+      argparse.Namespace(workset="keptws", source=str(ext), project_name="PROJ", force=False)
+    )
+
+    assert rc == 1
+    kept = ", ".join(
+      str(p)
+      for p in sorted(
+        [root / "boxes" / "proj", root / "vault" / "ro" / "proj", root / "vault" / "rw" / "proj"]
+      )
+    )
+    assert capsys.readouterr().err.strip() == (
+      f"Error: Project 'PROJ' would build a second store beside the kept store of "
+      f"'proj' in workset 'keptws' (names compare case-blind): {kept}. Use the "
+      f"existing spelling to re-adopt it, or remove those directories first."
+    )
+    assert sorted(str(p) for p in root.rglob("*")) == before
+    assert _workset_boxes(ws) == {}
+    assert journal.read_journal(std.journal) == {}
+
+    # The exact spelling re-adopts the kept store, silently.
+    assert (
+      run_connect(
+        argparse.Namespace(workset="keptws", source=str(ext), project_name="proj", force=False)
+      )
+      == 0
+    )
+    assert "Warning" not in capsys.readouterr().err
+    assert _workset_boxes(ws) == {"proj": str(ext)}
+
+  def test_connect_beside_a_live_member_on_a_shared_arm_is_not_refused(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``/shared/zed`` is ws2's LIVE member's vault, not a kept store of ws3."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    shared = (tmp_home / "shared").resolve()
+    shared.mkdir()
+    for name in ("ws2", "ws3"):
+      ws = create_workset(name, tmp_home / f"{name}_root", std)
+      data = load_doc(ws.root / "workset.yaml")
+      data.setdefault("workset", {})["vault_rw"] = str(shared)
+      dump_doc(ws.root / "workset.yaml", data)
+    for name in ("zed", "zed2"):
+      (tmp_home / name).mkdir()
+    assert (
+      run_connect(
+        argparse.Namespace(
+          workset="ws2", source=str(tmp_home / "zed"), project_name="zed", force=False
         )
-        rc = run_connect(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Added project" in out
-        assert "add_src" in out
+      )
+      == 0
+    )
 
-    def test_connect_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("cwdws", tmp_home / "ws_cwd", std)
-
-        cwd_dir = tmp_home / "cwd_proj"
-        cwd_dir.mkdir()
-        monkeypatch.chdir(cwd_dir)
-
-        args = argparse.Namespace(
-            workset="cwdws", source=None, project_name=None, force=False,
+    assert (
+      run_connect(
+        argparse.Namespace(
+          workset="ws3", source=str(tmp_home / "zed2"), project_name="ZED", force=False
         )
-        rc = run_connect(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "cwd_proj" in out
-
-    def test_connect_custom_name(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("namews", tmp_home / "ws_name", std)
-
-        src = tmp_home / "name_src"
-        src.mkdir()
-
-        args = argparse.Namespace(
-            workset="namews", source=str(src), project_name="custom_name", force=False,
-        )
-        rc = run_connect(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "custom_name" in out
-
-    def test_connect_in_tree_under_null_workspaces_refuses_before_the_journal(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Q96: the refusal names the key and leaves no pending ``connect`` entry."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_nows").resolve()
-        create_workset("nows", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
-        src = root / "intree"
-        src.mkdir()
-
-        args = argparse.Namespace(
-            workset="nows", source=str(src), project_name="app", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert "workset.workspaces" in err and str(root / "workset.yaml") in err
-        assert journal.read_journal(std.journal) == {}
-        assert not (root / "workspaces" / "app").exists()
-
-    def _assert_connect_refused(self, config_file, tmp_home, capsys, source,
-                                name="nothere", force=False, expect=""):
-        """A refused EXTERNAL connect writes nothing and leaves no pending journal entry.
-
-        *expect* is the exact ``Error: `` line the refusal must print.
-        """
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_extmiss").resolve()
-        create_workset("extmiss", root, std)
-
-        args = argparse.Namespace(
-            workset="extmiss", source=str(source), project_name=name, force=force,
-        )
-        assert run_connect(args) == 1
-        assert capsys.readouterr().err.strip() == expect
-        assert not (root / "workspaces" / name).exists()
-        reloaded = load_workset(list_worksets(std)["extmiss"], "extmiss",
-                early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_missing_external_source_refuses_before_the_journal(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``connect`` REGISTERS an existing dir, so a missing EXTERNAL source is refused."""
-        source = (tmp_home / "nothere").resolve()
-        self._assert_connect_refused(
-            config_file, tmp_home, capsys, source,
-            expect=f"Error: Cannot connect '{source}': no such directory.",
-        )
-
-    def test_connect_file_source_refuses_before_the_journal(
-        self, config_file, tmp_home, capsys,
-    ):
-        """An EXTERNAL source that is a regular file is refused as not-a-directory."""
-        source = (tmp_home / "afile").resolve()
-        source.write_text("not a project\n")
-        self._assert_connect_refused(
-            config_file, tmp_home, capsys, source, name="afile",
-            expect=f"Error: Cannot connect '{source}': it is not a directory.",
-        )
-
-    def test_connect_dangling_symlink_source_refuses_before_the_journal(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A dangling symlink is PRESENT but not a directory, so it reads as not-a-directory."""
-        target = tmp_home / "gone"
-        link = tmp_home / "dangling"
-        link.symlink_to(target)
-        self._assert_connect_refused(
-            config_file, tmp_home, capsys, link, name="gone",
-            expect=f"Error: Cannot connect '{link}': it is not a directory.",
-        )
-
-    def test_connect_force_does_not_bypass_a_missing_external_source(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``--force`` absorbs a standalone box; it does not create a missing source dir."""
-        source = (tmp_home / "nothere").resolve()
-        self._assert_connect_refused(
-            config_file, tmp_home, capsys, source, force=True,
-            expect=f"Error: Cannot connect '{source}': no such directory.",
-        )
-
-    def test_connect_duplicate_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dupws", tmp_home / "ws_dup", std)
-
-        src = tmp_home / "dup_src"
-        src.mkdir()
-        add_project(ws, "proj1", src)
-
-        args = argparse.Namespace(
-            workset="dupws", source=str(src), project_name="proj1", force=False,
-        )
-        rc = run_connect(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "already exists" in err
-
-    def test_connect_external_writes_override_and_symlink(
-        self, config_file, tmp_home, capsys
-    ):
-        """connect to an EXTERNAL dir → workspace override in the per-workset
-        boxes: connection record (D10), and a workspaces/{name} symlink to the
-        dir.  P8b/Option A: the override is NO LONGER written to box.yaml —
-        the per-workset registry is the sole connection record."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config_io import load_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("extws", tmp_home / "ws_ext", std)
-
-        # External source: a sibling of the workset root, outside ws.root.
-        external = (tmp_home / "external_repo").resolve()
-        external.mkdir()
-
-        args = argparse.Namespace(
-            workset="extws", source=str(external), project_name="ext", force=False,
-        )
-        rc = run_connect(args)
-        assert rc == 0
-
-        # P8b/Option A: no on-disk ``project:`` identity is written for the
-        # connected box — the override lives ONLY in the per-workset registry.
-        project_toml = ws.projects_dir / "ext" / "box.yaml"
-        assert "project" not in load_doc(project_toml)
-
-        # The per-workset registry has the connection record: box name → external
-        # path (the D10 replacement for the global connected: index).
-        assert _workset_boxes(ws).get("ext") == str(external)
-
-        # workspaces/ext is a SYMLINK to the external dir, not a real dir.
-        link = ws.workspaces_dir / "ext"
-        assert link.is_symlink()
-        assert link.resolve() == external
-
-    def test_connect_internal_no_override_no_symlink(
-        self, config_file, tmp_home, capsys
-    ):
-        """connect an EXISTING workspaces/{name} dir INSIDE the workset root → that same
-        real dir, kept as it is, no override, and a membership row recording it."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config_io import load_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("intws", tmp_home / "ws_int", std)
-
-        # Internal source: the member's own leaf, the dir an in-tree member runs on.
-        internal = ws.workspaces_dir / "int"
-        internal.mkdir(parents=True)
-        (internal / "keep.txt").write_text("kept\n")
-
-        args = argparse.Namespace(
-            workset="intws", source=str(internal), project_name="int", force=False,
-        )
-        rc = run_connect(args)
-        assert rc == 0
-
-        # No workspace override written (box.yaml not pre-seeded).
-        project_toml = ws.projects_dir / "int" / "box.yaml"
-        assert "project" not in load_doc(project_toml)
-
-        # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
-        # member's row records ``workspaces/<name>``, the dir it actually runs on.
-        # ⚑ A row that records the caller's SOURCE instead is the ``add_project``
-        # seam's invariant, pinned where it lives: ``test_workset.py``
-        # ``test_creates_subdirectories`` and ``test_persists_to_the_membership``.
-        assert _workset_boxes(ws) == {"int": str(ws.workspaces_dir / "int")}
-
-        # workspaces/int is a real directory, not a symlink, and keeps its files:
-        # connect registers, it never re-seeds what is already there.
-        wsdir = ws.workspaces_dir / "int"
-        assert wsdir.is_dir()
-        assert not wsdir.is_symlink()
-        assert (wsdir / "keep.txt").read_text() == "kept\n"
-
-    def test_connect_in_tree_own_tree_refuses_creating_nothing(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A dir that is the workset's OWN tree — its root, or a sibling of
-        ``workspaces/`` — is not a project, so connect refuses it and creates nothing."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_own").resolve()
-        create_workset("own", root, std)
-        notes = root / "notes"
-        notes.mkdir()
-        (notes / "file.txt").write_text("mine\n")
-
-        for source, name in ((root, "ws_own"), (notes, "notes")):
-            args = argparse.Namespace(
-                workset="own", source=str(source), project_name=name, force=False,
-            )
-            assert run_connect(args) == 1
-            err = capsys.readouterr().err
-            # The refusal NAMES why, and the leaf it would take is named with it.
-            assert "inside the working set root or its workspaces directory" in err
-            assert f"'{root / 'workspaces' / name}'" in err
-
-        # Neither shape gained a member, a workspace or a pending journal entry.
-        assert not (root / "workspaces" / "ws_own").exists()
-        assert not (root / "workspaces" / "notes").exists()
-        assert (notes / "file.txt").read_text() == "mine\n"
-        reloaded = load_workset(list_worksets(std)["own"], "own", early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_in_tree_leaf_naming_a_different_project_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A source that is not the ``workspaces/<name>`` its member would run on — a
-        subdir of a member, or a leaf whose name is not the project name — is refused,
-        and no ``workspaces/<name>`` is made to stand in for it."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_sub").resolve()
-        create_workset("sub", root, std)
-        member = root / "workspaces" / "alpha"
-        member.mkdir(parents=True)
-        (member / "keep.txt").write_text("kept\n")
-        inside = member / "sub"
-        inside.mkdir()
-
-        reasons = []
-        for source, name in ((inside, "sub"), (member, "beta")):
-            args = argparse.Namespace(
-                workset="sub", source=str(source), project_name=name, force=False,
-            )
-            assert run_connect(args) == 1
-            err = capsys.readouterr().err
-            reasons.append(err)
-            assert f"'{root / 'workspaces' / name}'" in err
-            assert not (root / "workspaces" / name).exists()
-
-        # A leaf asked for under a name of its own is told the two names differ; the
-        # subdir is told it is inside the working set.  The member's dir is untouched
-        # and neither shape registered.
-        assert "its directory name 'alpha' and --name 'beta' differ" in reasons[1]
-        assert "inside the working set root or its workspaces directory" in reasons[0]
-        assert (member / "keep.txt").read_text() == "kept\n"
-        reloaded = load_workset(list_worksets(std)["sub"], "sub", early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_in_tree_repointed_workspaces_refuses_creating_nothing(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``workset.workspaces`` is a USER key, so it can point OUTSIDE the workset
-        root: in-tree is then the workspaces dir too, and a dir inside it that is not a
-        ``workspaces/<name>`` leaf is refused rather than made into a member."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_rp").resolve()
-        create_workset("rp", root, std)
-        outside = (tmp_home / "extws").resolve()
-        outside.mkdir()
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
-        (outside / "x" / "sub").mkdir(parents=True)
-        (outside / "x" / "sub" / "f.txt").write_text("mine\n")
-        # The OLD default leaf is still in the tree, but no longer the leaf it takes.
-        (root / "workspaces" / "alpha").mkdir(parents=True)
-
-        for source, name in ((outside / "x" / "sub", "sub"), (outside, "extws"),
-                             (root / "workspaces" / "alpha", "alpha")):
-            args = argparse.Namespace(
-                workset="rp", source=str(source), project_name=name, force=False,
-            )
-            assert run_connect(args) == 1
-            err = capsys.readouterr().err
-            assert "inside the working set root or its workspaces directory" in err
-            # The leaf it names is under the REPOINTED dir, the one it would take.
-            assert f"it takes an existing '{outside / name}' directory" in err
-
-        # Nothing was created or registered under the repointed dir either.
-        assert not (outside / "sub").exists()
-        assert not (outside / "extws").exists()
-        assert not (outside / "alpha").exists()
-        assert (outside / "x" / "sub" / "f.txt").read_text() == "mine\n"
-        reloaded = load_workset(list_worksets(std)["rp"], "rp", early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_in_tree_repointed_workspaces_admits_its_own_leaf(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A repointed ``workset.workspaces`` still admits the member's own leaf: the
-        dir connect records is the one the user pointed at, so it is adopted as it is."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import list_worksets, load_workset
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_rpok").resolve()
-        create_workset("rpok", root, std)
-        outside = (tmp_home / "extws2").resolve()
-        leaf = outside / "alpha"
-        leaf.mkdir(parents=True)
-        (leaf / "keep.txt").write_text("kept\n")
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
-
-        args = argparse.Namespace(
-            workset="rpok", source=str(leaf), project_name="alpha", force=False,
-        )
-        assert run_connect(args) == 0
-        assert "Added project 'alpha'" in capsys.readouterr().out
-        reloaded = load_workset(list_worksets(std)["rpok"], "rpok", early_system=std.early_system)
-        assert _workset_boxes(reloaded) == {"alpha": str(leaf)}
-        assert (leaf / "keep.txt").read_text() == "kept\n"
-
-    def test_connect_in_tree_missing_leaf_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``connect`` registers a member, so a ``workspaces/<name>`` path with NO
-        directory there is refused rather than made."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_ghost").resolve()
-        create_workset("ghost", root, std)
-        missing = root / "workspaces" / "ghost"
-
-        args = argparse.Namespace(
-            workset="ghost", source=str(missing), project_name="ghost", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert f"Cannot connect '{missing}': no directory there." in err
-        assert f"it takes an existing '{missing}' directory" in err
-
-        assert not missing.exists()
-        reloaded = load_workset(list_worksets(std)["ghost"], "ghost",
-                early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_in_tree_leaf_of_a_primary_box_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """One workspace holds one box: a leaf under a REPOINTED ``workset.workspaces``
-        that is already a primary box's workspace is refused, not shared."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-        from kanibako.project.workset import list_worksets, load_workset
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        outside = (tmp_home / "extws3").resolve()
-        leaf = outside / "beta"
-        leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, "beta", str(leaf),
-                early=_early_scope(std, BoxMode.primary))
-        root = (tmp_home / "ws_pb").resolve()
-        create_workset("pb", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
-
-        args = argparse.Namespace(
-            workset="pb", source=str(leaf), project_name="beta", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert f"Cannot connect '{leaf}': it is already the workspace of primary box 'beta'" in err
-        reloaded = load_workset(list_worksets(std)["pb"], "pb", early_system=std.early_system)
-        assert reloaded.projects == []
-        assert _workset_boxes(reloaded) == {}
-        assert not (reloaded.projects_dir / "beta").exists()
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_in_tree_cure_names_the_operations_that_reach_the_box(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The refusal's cure names ``convert``, ``move`` and ``rm`` — the three
-        operations that reach a box whose workspace is a primary box's, wherever the
-        workset's path space puts it.  ONE message for both arms of the refusal."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import create_workset
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        outside = (tmp_home / "extws_cure").resolve()
-        leaf = outside / "beta"
-        leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, "beta", str(leaf),
-                                  early=_early_scope(std, BoxMode.primary))
-        root = (tmp_home / "ws_cure").resolve()
-        create_workset("cure", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
-
-        args = argparse.Namespace(
-            workset="cure", source=str(leaf), project_name="beta", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert "kanibako box convert beta --workset cure" in err
-        assert "kanibako box move beta <path>" in err
-        assert "kanibako box rm beta" in err
-        # ⚑ A rename under a new member name must name the RELOCATING form: the
-        # in-place ``--name`` convert is refused, so advising it would be a dead end.
-        assert "kanibako box convert beta --workset cure --name <member> --move" in err
-        assert "--workset cure --name" not in err.replace(
-            "kanibako box convert beta --workset cure --name <member> --move", ""
-        )
-
-    def test_connect_external_cure_names_the_same_operations(
-        self, config_file, tmp_home, capsys,
-    ):
-        """PIN: the EXTERNAL arm states the SAME cure, from the one constant."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import create_workset
-        from kanibako.settings.paths import register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        leaf = (tmp_home / "elsewhere" / "gamma").resolve()
-        leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, "gamma", str(leaf),
-                                  early=_early_scope(std, BoxMode.primary))
-        root = (tmp_home / "ws_ext_cure").resolve()
-        create_workset("extcure", root, std)
-
-        args = argparse.Namespace(
-            workset="extcure", source=str(leaf), project_name="gamma", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert "kanibako box convert gamma --workset extcure" in err
-        assert "kanibako box move gamma <path>" in err
-        assert "kanibako box rm gamma" in err
-
-    def test_connect_in_tree_leaf_another_workset_connects_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The EXTERNAL arm's "already a box" check runs on an in-tree leaf too: a leaf
-        another workset already connects is refused, not registered a second time."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import add_project, list_worksets, load_workset
-        from kanibako.settings.config_io import dump_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        outside = (tmp_home / "extws4").resolve()
-        leaf = outside / "beta"
-        leaf.mkdir(parents=True)
-        other = create_workset("other", (tmp_home / "ws_other").resolve(), std)
-        add_project(other, "beta", leaf, std)
-        root = (tmp_home / "ws_tw").resolve()
-        create_workset("tw", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
-
-        args = argparse.Namespace(
-            workset="tw", source=str(leaf), project_name="beta", force=False,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert "already connected as project 'beta' in workset 'other'" in err
-        assert _workset_boxes(load_workset(list_worksets(std)["tw"], "tw",
-                early_system=std.early_system)) == {}
-
-    def test_connect_external_workspace_of_a_primary_box_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """An EXTERNAL dir that is a primary box's workspace is refused too, and told the
-        verb that changes the box's owner."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import list_worksets, load_workset
-        from kanibako.settings.paths import register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ext = (tmp_home / "ext_pb" / "beta").resolve()
-        ext.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, "beta", str(ext),
-                early=_early_scope(std, BoxMode.primary))
-        create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
-
-        args = argparse.Namespace(
-            workset="xpb", source=str(ext), project_name="beta", force=True,
-        )
-        assert run_connect(args) == 1
-        err = capsys.readouterr().err
-        assert "it is already the workspace of primary box 'beta'" in err
-        assert "\n  kanibako box convert beta --workset xpb\n" in err
-        assert _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb",
-                early_system=std.early_system)) == {}
-
-    def test_connect_standalone_refused_without_force(
-        self, config_file, tmp_home, capsys
-    ):
-        """B2a: connecting a self-declared standalone box (in-place marker) is
-        REFUSED without --force (no silent absorb/steal)."""
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("saws", tmp_home / "ws_sa", std)
-
-        external = (tmp_home / "sa_box").resolve()
-        external.mkdir()
-        (external / "box_data").mkdir()
-        (external / "workset.yaml").write_text("workset:\n  registry: null\n")
-
-        args = argparse.Namespace(
-            workset="saws", source=str(external), project_name="sb", force=False,
-        )
-        rc = run_connect(args)
-        assert rc == 1
-        assert "standalone box" in capsys.readouterr().err
-        # Nothing registered — no steal.
-        assert "sb" not in _workset_boxes(ws)
-
-    def test_connect_standalone_absorbed_with_force(
-        self, config_file, tmp_home, capsys
-    ):
-        """B2a: --force deliberately absorbs the standalone box as a workset box
-        (registers the connection record)."""
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("saws2", tmp_home / "ws_sa2", std)
-
-        external = (tmp_home / "sa_box2").resolve()
-        external.mkdir()
-        (external / "box_data").mkdir()
-        (external / "workset.yaml").write_text("workset:\n  registry: null\n")
-
-        args = argparse.Namespace(
-            workset="saws2", source=str(external), project_name="sb", force=True,
-        )
-        rc = run_connect(args)
-        assert rc == 0
-        assert _workset_boxes(ws).get("sb") == str(external)
-
-    def test_connect_case_variant_of_a_member_refuses_writing_nothing(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``--name Proj`` beside member ``proj`` refuses; it once REPLACED proj's row."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_case").resolve()
-        ws = create_workset("casews", root, std)
-        ext1 = (tmp_home / "ext1").resolve()
-        ext2 = (tmp_home / "ext2").resolve()
-        ext1.mkdir()
-        ext2.mkdir()
-        assert run_connect(argparse.Namespace(
-            workset="casews", source=str(ext1), project_name="proj", force=False)) == 0
-        capsys.readouterr()
-        before = sorted(str(p) for p in root.rglob("*"))
-
-        rc = run_connect(argparse.Namespace(
-            workset="casews", source=str(ext2), project_name="Proj", force=False))
-
-        assert rc == 1
-        assert capsys.readouterr().err.strip() == (
-            f"Error: Cannot connect '{ext2}' as 'Proj': project 'proj' already exists in "
-            f"working set 'casews' (names compare case-blind). Pick another name with "
-            f"--name, or disconnect it first: kanibako workset disconnect casews proj"
-        )
-        assert _workset_boxes(ws) == {"proj": str(ext1)}
-        assert sorted(str(p) for p in root.rglob("*")) == before
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_case_variant_of_a_kept_store_refuses_writing_nothing(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``--name PROJ`` after a plain disconnect of ``proj`` once built a PARALLEL store."""
-        from kanibako.commands.workset_cmd import run_connect, run_disconnect
-        from kanibako.launch import journal
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_kept").resolve()
-        ws = create_workset("keptws", root, std)
-        ext = (tmp_home / "ext_kept").resolve()
-        ext.mkdir()
-        assert run_connect(argparse.Namespace(
-            workset="keptws", source=str(ext), project_name="proj", force=False)) == 0
-        assert run_disconnect(argparse.Namespace(
-            workset="keptws", project="proj", remove_files=False, force=True)) == 0
-        capsys.readouterr()
-        before = sorted(str(p) for p in root.rglob("*"))
-
-        rc = run_connect(argparse.Namespace(
-            workset="keptws", source=str(ext), project_name="PROJ", force=False))
-
-        assert rc == 1
-        kept = ", ".join(str(p) for p in sorted(
-            [root / "boxes" / "proj", root / "vault" / "ro" / "proj",
-             root / "vault" / "rw" / "proj"]))
-        assert capsys.readouterr().err.strip() == (
-            f"Error: Project 'PROJ' would build a second store beside the kept store of "
-            f"'proj' in workset 'keptws' (names compare case-blind): {kept}. Use the "
-            f"existing spelling to re-adopt it, or remove those directories first."
-        )
-        assert sorted(str(p) for p in root.rglob("*")) == before
-        assert _workset_boxes(ws) == {}
-        assert journal.read_journal(std.journal) == {}
-
-        # The exact spelling re-adopts the kept store, silently.
-        assert run_connect(argparse.Namespace(
-            workset="keptws", source=str(ext), project_name="proj", force=False)) == 0
-        assert "Warning" not in capsys.readouterr().err
-        assert _workset_boxes(ws) == {"proj": str(ext)}
-
-    def test_connect_beside_a_live_member_on_a_shared_arm_is_not_refused(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``/shared/zed`` is ws2's LIVE member's vault, not a kept store of ws3."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.settings.config_io import dump_doc, load_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        shared = (tmp_home / "shared").resolve()
-        shared.mkdir()
-        for name in ("ws2", "ws3"):
-            ws = create_workset(name, tmp_home / f"{name}_root", std)
-            data = load_doc(ws.root / "workset.yaml")
-            data.setdefault("workset", {})["vault_rw"] = str(shared)
-            dump_doc(ws.root / "workset.yaml", data)
-        for name in ("zed", "zed2"):
-            (tmp_home / name).mkdir()
-        assert run_connect(argparse.Namespace(
-            workset="ws2", source=str(tmp_home / "zed"), project_name="zed",
-            force=False)) == 0
-
-        assert run_connect(argparse.Namespace(
-            workset="ws3", source=str(tmp_home / "zed2"), project_name="ZED",
-            force=False)) == 0
-        assert "kept store" not in capsys.readouterr().err
-
-    def test_connect_names_every_case_variant_kept(self, config_file, tmp_home, capsys):
-        """Two kept variants, ``Proj`` and ``proj``, are both named."""
-        from kanibako.commands.workset_cmd import run_connect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_two").resolve()
-        create_workset("twows", root, std)
-        (root / "boxes" / "Proj").mkdir(parents=True)
-        (root / "boxes" / "proj").mkdir()
-        ext = (tmp_home / "ext_two").resolve()
-        ext.mkdir()
-
-        assert run_connect(argparse.Namespace(
-            workset="twows", source=str(ext), project_name="PROJ", force=False)) == 1
-
-        err = capsys.readouterr().err
-        assert "beside the kept store of 'Proj', 'proj' in workset 'twows'" in err
-        assert f"{root / 'boxes' / 'Proj'}, {root / 'boxes' / 'proj'}" in err
-
-    def test_connect_refused_inside_the_journal_bracket_leaves_no_entry(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``add_project``'s "already connected" refusal fires inside the bracket; it clears."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("wsa", tmp_home / "ws_a", std)
-        create_workset("wsb", tmp_home / "ws_b", std)
-        ext = (tmp_home / "ext").resolve()
-        ext.mkdir()
-        assert run_connect(argparse.Namespace(
-            workset="wsa", source=str(ext), project_name="p1", force=False)) == 0
-        capsys.readouterr()
-
-        rc = run_connect(argparse.Namespace(
-            workset="wsb", source=str(ext), project_name="p2", force=False))
-
-        assert rc == 1
-        assert "already connected as project 'p1'" in capsys.readouterr().err
-        assert journal.read_journal(std.journal) == {}
-
-    def test_connect_registry_refusal_clears_its_entry(
-        self, config_file, tmp_home, monkeypatch,
-    ):
-        """The membership write's own ``ProjectError`` refusal clears the entry too.
-
-        A crash (any other raise) leaves it: ``test_import_recovery.py`` pins that.
-        """
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.errors import ProjectError
-        from kanibako.launch import journal
-        from kanibako.settings import paths as paths_mod
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("wsr", tmp_home / "ws_r", std)
-        ext = (tmp_home / "ext").resolve()
-        ext.mkdir()
-
-        def refuse(*a, **k):
-            raise ProjectError("one box per workspace path")
-
-        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", refuse)
-        with pytest.raises(ProjectError):
-            run_connect(argparse.Namespace(
-                workset="wsr", source=str(ext), project_name="p", force=False))
-        assert journal.read_journal(std.journal) == {}
-
-    def test_reconnect_after_disconnect_adopts_its_kept_store_silently(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A plain disconnect keeps the box dir and vault; re-connect adopts them, no Warning."""
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import load_workset, remove_project
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_re").resolve()
-        create_workset("rews", root, std)
-        ext = (tmp_home / "ext").resolve()
-        ext.mkdir()
-        args = argparse.Namespace(
-            workset="rews", source=str(ext), project_name="proj", force=False)
-        assert run_connect(args) == 0
-        (root / "vault" / "rw" / "proj" / "kept").write_text("data\n")
-        remove_project(load_workset(root, "rews", early_system=std.early_system), "proj")
-        capsys.readouterr()
-
-        assert run_connect(args) == 0
-        assert "Warning" not in capsys.readouterr().err
-        assert (root / "vault" / "rw" / "proj" / "kept").read_text() == "data\n"
+      )
+      == 0
+    )
+    assert "kept store" not in capsys.readouterr().err
+
+  def test_connect_names_every_case_variant_kept(self, config_file, tmp_home, capsys):
+    """Two kept variants, ``Proj`` and ``proj``, are both named."""
+    from kanibako.commands.workset_cmd import run_connect
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_two").resolve()
+    create_workset("twows", root, std)
+    (root / "boxes" / "Proj").mkdir(parents=True)
+    (root / "boxes" / "proj").mkdir()
+    ext = (tmp_home / "ext_two").resolve()
+    ext.mkdir()
+
+    assert (
+      run_connect(
+        argparse.Namespace(workset="twows", source=str(ext), project_name="PROJ", force=False)
+      )
+      == 1
+    )
+
+    err = capsys.readouterr().err
+    assert "beside the kept store of 'Proj', 'proj' in workset 'twows'" in err
+    assert f"{root / 'boxes' / 'Proj'}, {root / 'boxes' / 'proj'}" in err
+
+  def test_connect_refused_inside_the_journal_bracket_leaves_no_entry(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``add_project``'s "already connected" refusal fires inside the bracket; it clears."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("wsa", tmp_home / "ws_a", std)
+    create_workset("wsb", tmp_home / "ws_b", std)
+    ext = (tmp_home / "ext").resolve()
+    ext.mkdir()
+    assert (
+      run_connect(
+        argparse.Namespace(workset="wsa", source=str(ext), project_name="p1", force=False)
+      )
+      == 0
+    )
+    capsys.readouterr()
+
+    rc = run_connect(
+      argparse.Namespace(workset="wsb", source=str(ext), project_name="p2", force=False)
+    )
+
+    assert rc == 1
+    assert "already connected as project 'p1'" in capsys.readouterr().err
+    assert journal.read_journal(std.journal) == {}
+
+  def test_connect_registry_refusal_clears_its_entry(
+    self,
+    config_file,
+    tmp_home,
+    monkeypatch,
+  ):
+    """The membership write's own ``ProjectError`` refusal clears the entry too.
+
+    A crash (any other raise) leaves it: ``test_import_recovery.py`` pins that.
+    """
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.errors import ProjectError
+    from kanibako.launch import journal
+    from kanibako.settings import paths as paths_mod
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("wsr", tmp_home / "ws_r", std)
+    ext = (tmp_home / "ext").resolve()
+    ext.mkdir()
+
+    def refuse(*a, **k):
+      raise ProjectError("one box per workspace path")
+
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", refuse)
+    with pytest.raises(ProjectError):
+      run_connect(
+        argparse.Namespace(workset="wsr", source=str(ext), project_name="p", force=False)
+      )
+    assert journal.read_journal(std.journal) == {}
+
+  def test_reconnect_after_disconnect_adopts_its_kept_store_silently(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A plain disconnect keeps the box dir and vault; re-connect adopts them, no Warning."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.workset import load_workset, remove_project
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_re").resolve()
+    create_workset("rews", root, std)
+    ext = (tmp_home / "ext").resolve()
+    ext.mkdir()
+    args = argparse.Namespace(workset="rews", source=str(ext), project_name="proj", force=False)
+    assert run_connect(args) == 0
+    (root / "vault" / "rw" / "proj" / "kept").write_text("data\n")
+    remove_project(load_workset(root, "rews", early_system=std.early_system), "proj")
+    capsys.readouterr()
+
+    assert run_connect(args) == 0
+    assert "Warning" not in capsys.readouterr().err
+    assert (root / "vault" / "rw" / "proj" / "kept").read_text() == "data\n"
 
 
 class TestWorksetDisconnect:
-    def test_disconnect_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_disconnect
+  def test_disconnect_success(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("rmws", tmp_home / "ws_rm", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("rmws", tmp_home / "ws_rm", std)
 
-        src = tmp_home / "rm_src"
-        src.mkdir()
-        add_project(ws, "rmproj", src)
+    src = tmp_home / "rm_src"
+    src.mkdir()
+    add_project(ws, "rmproj", src)
 
-        args = argparse.Namespace(
-            workset="rmws", project="rmproj",
-            remove_files=False, force=True,
-        )
-        rc = run_disconnect(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Removed project 'rmproj'" in out
+    args = argparse.Namespace(
+      workset="rmws",
+      project="rmproj",
+      remove_files=False,
+      force=True,
+    )
+    rc = run_disconnect(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Removed project 'rmproj'" in out
 
-    def test_disconnect_with_files(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_disconnect
+  def test_disconnect_with_files(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("rmfws", tmp_home / "ws_rmf", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("rmfws", tmp_home / "ws_rmf", std)
 
-        src = tmp_home / "rmf_src"
-        src.mkdir()
-        add_project(ws, "rmfproj", src)
+    src = tmp_home / "rmf_src"
+    src.mkdir()
+    add_project(ws, "rmfproj", src)
 
-        # Verify per-project dirs were created.
-        assert (ws.projects_dir / "rmfproj").is_dir()
+    # Verify per-project dirs were created.
+    assert (ws.projects_dir / "rmfproj").is_dir()
 
-        args = argparse.Namespace(
-            workset="rmfws", project="rmfproj",
-            remove_files=True, force=True,
-        )
-        rc = run_disconnect(args)
-        assert rc == 0
-        assert not (ws.projects_dir / "rmfproj").is_dir()
+    args = argparse.Namespace(
+      workset="rmfws",
+      project="rmfproj",
+      remove_files=True,
+      force=True,
+    )
+    rc = run_disconnect(args)
+    assert rc == 0
+    assert not (ws.projects_dir / "rmfproj").is_dir()
 
-    @pytest.mark.parametrize("remove_files", [True, False])
-    def test_disconnect_remove_files_deletes_the_box_logs(
-        self, config_file, tmp_home, remove_files,
-    ):
-        """``--remove-files`` deletes every per-box log file from the RESOLVED
-        ``workset.logs`` (where the helper-log mount is bound from); a plain disconnect
-        keeps them."""
-        from kanibako.commands.workset_cmd import run_disconnect
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import box_log_files
+  @pytest.mark.parametrize("remove_files", [True, False])
+  def test_disconnect_remove_files_deletes_the_box_logs(
+    self,
+    config_file,
+    tmp_home,
+    remove_files,
+  ):
+    """``--remove-files`` deletes every per-box log file from the RESOLVED
+    ``workset.logs`` (where the helper-log mount is bound from); a plain disconnect
+    keeps them."""
+    from kanibako.commands.workset_cmd import run_disconnect
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import box_log_files
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_logs").resolve()
-        ws = create_workset("logsws", root, std)
-        elsewhere = tmp_home / "log-store"
-        dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
-        src = tmp_home / "logs_src"
-        src.mkdir()
-        add_project(ws, "logsproj", src)
-        logs = box_log_files(elsewhere, "logsproj")
-        elsewhere.mkdir()
-        for log in logs:
-            log.write_text("x")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_logs").resolve()
+    ws = create_workset("logsws", root, std)
+    elsewhere = tmp_home / "log-store"
+    dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
+    src = tmp_home / "logs_src"
+    src.mkdir()
+    add_project(ws, "logsproj", src)
+    logs = box_log_files(elsewhere, "logsproj")
+    elsewhere.mkdir()
+    for log in logs:
+      log.write_text("x")
 
-        args = argparse.Namespace(
-            workset="logsws", project="logsproj",
-            remove_files=remove_files, force=True,
-        )
-        assert run_disconnect(args) == 0
-        assert [log.exists() for log in logs] == [not remove_files] * len(logs)
+    args = argparse.Namespace(
+      workset="logsws",
+      project="logsproj",
+      remove_files=remove_files,
+      force=True,
+    )
+    assert run_disconnect(args) == 0
+    assert [log.exists() for log in logs] == [not remove_files] * len(logs)
 
-    def test_disconnect_unresolvable_logs_refuses_before_deleting(
-        self, config_file, tmp_home,
-    ):
-        """A ``workset.logs`` that does not resolve refuses ``--remove-files`` WHOLE:
-        the box tree and its membership are still there after the refusal."""
-        from kanibako.commands.workset_cmd import run_disconnect
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_disconnect_unresolvable_logs_refuses_before_deleting(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    """A ``workset.logs`` that does not resolve refuses ``--remove-files`` WHOLE:
+    the box tree and its membership are still there after the refusal."""
+    from kanibako.commands.workset_cmd import run_disconnect
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_resolve import SettingsError
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        root = (tmp_home / "ws_badlogs").resolve()
-        ws = create_workset("badlogsws", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"logs": "{workset.nosuchkey}/x"}})
-        src = tmp_home / "badlogs_src"
-        src.mkdir()
-        add_project(ws, "badlogsproj", src)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_badlogs").resolve()
+    ws = create_workset("badlogsws", root, std)
+    dump_doc(root / "workset.yaml", {"workset": {"logs": "{workset.nosuchkey}/x"}})
+    src = tmp_home / "badlogs_src"
+    src.mkdir()
+    add_project(ws, "badlogsproj", src)
 
-        args = argparse.Namespace(
-            workset="badlogsws", project="badlogsproj", remove_files=True, force=True,
-        )
-        with pytest.raises(SettingsError):
-            run_disconnect(args)
-        assert (ws.projects_dir / "badlogsproj").is_dir()
-        assert "badlogsproj" in _workset_boxes(ws)
+    args = argparse.Namespace(
+      workset="badlogsws",
+      project="badlogsproj",
+      remove_files=True,
+      force=True,
+    )
+    with pytest.raises(SettingsError):
+      run_disconnect(args)
+    assert (ws.projects_dir / "badlogsproj").is_dir()
+    assert "badlogsproj" in _workset_boxes(ws)
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
-    def test_a_plain_disconnect_failure_never_prints_a_deleting_cure(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A plain disconnect keeps the workspace, so its EACCES cure must not ``rm -rf`` it."""
-        from kanibako.commands.workset_cmd import run_disconnect
+  @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
+  def test_a_plain_disconnect_failure_never_prints_a_deleting_cure(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A plain disconnect keeps the workspace, so its EACCES cure must not ``rm -rf`` it."""
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("keepws", tmp_home / "ws_keep", std)
-        src = ws.workspaces_dir / "it1"
-        src.mkdir(parents=True)
-        (src / "ws.txt").write_text("mine")
-        add_project(ws, "it1", src)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("keepws", tmp_home / "ws_keep", std)
+    src = ws.workspaces_dir / "it1"
+    src.mkdir(parents=True)
+    (src / "ws.txt").write_text("mine")
+    add_project(ws, "it1", src)
 
-        ws.workspaces_dir.chmod(0)
-        try:
-            rc = run_disconnect(argparse.Namespace(
-                workset="keepws", project="it1", remove_files=False, force=True))
-        finally:
-            ws.workspaces_dir.chmod(0o755)
-        err = capsys.readouterr().err
-        assert rc == 1 and "could not remove project 'it1'" in err, err
-        assert "rm " not in err, err
-        assert "fix the permissions" in err, err
-        assert (src / "ws.txt").read_text() == "mine"
+    ws.workspaces_dir.chmod(0)
+    try:
+      rc = run_disconnect(
+        argparse.Namespace(workset="keepws", project="it1", remove_files=False, force=True)
+      )
+    finally:
+      ws.workspaces_dir.chmod(0o755)
+    err = capsys.readouterr().err
+    assert rc == 1 and "could not remove project 'it1'" in err, err
+    assert "rm " not in err, err
+    assert "fix the permissions" in err, err
+    assert (src / "ws.txt").read_text() == "mine"
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
-    def test_remove_files_refuses_an_uncheckable_leaf_before_deleting(
-        self, config_file, tmp_home, capsys,
-    ):
-        """EACCES in the keep pre-flight is a refusal naming the path, not a traceback."""
-        from kanibako.commands.workset_cmd import run_disconnect
+  @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
+  def test_remove_files_refuses_an_uncheckable_leaf_before_deleting(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """EACCES in the keep pre-flight is a refusal naming the path, not a traceback."""
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("eaccws", tmp_home / "ws_eacc", std)
-        src = ws.workspaces_dir / "it1"
-        src.mkdir(parents=True)
-        (src / "ws.txt").write_text("mine")
-        add_project(ws, "it1", src)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("eaccws", tmp_home / "ws_eacc", std)
+    src = ws.workspaces_dir / "it1"
+    src.mkdir(parents=True)
+    (src / "ws.txt").write_text("mine")
+    add_project(ws, "it1", src)
 
-        ws.workspaces_dir.chmod(0)
-        try:
-            rc = run_disconnect(argparse.Namespace(
-                workset="eaccws", project="it1", remove_files=True, force=True))
-        finally:
-            ws.workspaces_dir.chmod(0o755)
-        err = capsys.readouterr().err
-        assert rc == 1, err
-        assert f"could not check {src} before removing files" in err, err
-        assert f"Try: fix the permissions on {src}" in err, err
-        assert (src / "ws.txt").read_text() == "mine"
-        assert (ws.projects_dir / "it1").is_dir()
-        assert "it1" in _workset_boxes(ws)
+    ws.workspaces_dir.chmod(0)
+    try:
+      rc = run_disconnect(
+        argparse.Namespace(workset="eaccws", project="it1", remove_files=True, force=True)
+      )
+    finally:
+      ws.workspaces_dir.chmod(0o755)
+    err = capsys.readouterr().err
+    assert rc == 1, err
+    assert f"could not check {src} before removing files" in err, err
+    assert f"Try: fix the permissions on {src}" in err, err
+    assert (src / "ws.txt").read_text() == "mine"
+    assert (ws.projects_dir / "it1").is_dir()
+    assert "it1" in _workset_boxes(ws)
 
-    def test_remove_files_refuses_a_looping_path_before_deleting(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """ELOOP in the keep pre-flight names the loop as the thing to fix."""
-        import errno
+  def test_remove_files_refuses_a_looping_path_before_deleting(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """ELOOP in the keep pre-flight names the loop as the thing to fix."""
+    import errno
 
-        from kanibako.commands.box import _parser
-        from kanibako.commands.workset_cmd import run_disconnect
+    from kanibako.commands.box import _parser
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("loopws", tmp_home / "ws_loop", std)
-        src = tmp_home / "loop_src"
-        src.mkdir()
-        add_project(ws, "it1", src)
-        looping = ws.projects_dir / "it1"
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("loopws", tmp_home / "ws_loop", std)
+    src = tmp_home / "loop_src"
+    src.mkdir()
+    add_project(ws, "it1", src)
+    looping = ws.projects_dir / "it1"
 
-        def loop(_std, path, **_kw):
-            raise OSError(errno.ELOOP, "Too many levels of symbolic links", str(looping))
+    def loop(_std, path, **_kw):
+      raise OSError(errno.ELOOP, "Too many levels of symbolic links", str(looping))
 
-        monkeypatch.setattr(_parser, "kept_for_recorded_workspace", loop)
-        rc = run_disconnect(argparse.Namespace(
-            workset="loopws", project="it1", remove_files=True, force=True))
-        err = capsys.readouterr().err
-        assert rc == 1, err
-        assert f"Try: replace the looping link at {looping}" in err, err
-        assert looping.is_dir() and "it1" in _workset_boxes(ws)
+    monkeypatch.setattr(_parser, "kept_for_recorded_workspace", loop)
+    rc = run_disconnect(
+      argparse.Namespace(workset="loopws", project="it1", remove_files=True, force=True)
+    )
+    err = capsys.readouterr().err
+    assert rc == 1, err
+    assert f"Try: replace the looping link at {looping}" in err, err
+    assert looping.is_dir() and "it1" in _workset_boxes(ws)
 
-    def test_remove_files_names_a_workspace_leaf_kept_under_a_looping_workspaces(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``workspaces/`` a loop: the leaf cannot be reached, so it is kept AND named —
-        not skipped under a bare "Removed project".  Nothing is deleted through the loop."""
-        from kanibako.commands.workset_cmd import run_disconnect
+  def test_remove_files_names_a_workspace_leaf_kept_under_a_looping_workspaces(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``workspaces/`` a loop: the leaf cannot be reached, so it is kept AND named —
+    not skipped under a bare "Removed project".  Nothing is deleted through the loop."""
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("wsloopws", tmp_home / "ws_wsloop", std)
-        src = ws.workspaces_dir / "it1"
-        src.mkdir(parents=True)
-        (src / "ws.txt").write_text("mine")
-        add_project(ws, "it1", src)
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("wsloopws", tmp_home / "ws_wsloop", std)
+    src = ws.workspaces_dir / "it1"
+    src.mkdir(parents=True)
+    (src / "ws.txt").write_text("mine")
+    add_project(ws, "it1", src)
 
-        real = tmp_home / "ws_wsloop_real"
-        ws.workspaces_dir.rename(real)
-        other = tmp_home / "ws_wsloop_other"
-        ws.workspaces_dir.symlink_to(other)
-        other.symlink_to(ws.workspaces_dir)
-        leaf = ws.workspaces_dir / "it1"
+    real = tmp_home / "ws_wsloop_real"
+    ws.workspaces_dir.rename(real)
+    other = tmp_home / "ws_wsloop_other"
+    ws.workspaces_dir.symlink_to(other)
+    other.symlink_to(ws.workspaces_dir)
+    leaf = ws.workspaces_dir / "it1"
 
-        rc = run_disconnect(argparse.Namespace(
-            workset="wsloopws", project="it1", remove_files=True, force=True))
-        out, err = capsys.readouterr()
-        assert rc == 0, err
-        assert "Removed project 'it1'" in out, out
-        assert (f"Note: left the workspace at {leaf} in place — it is a symlink loop "
-                "that kanibako cannot resolve, so it is left in place for you to look "
-                "at.") in err, err
-        assert ws.workspaces_dir.is_symlink() and other.is_symlink()
-        assert (real / "it1" / "ws.txt").read_text() == "mine"
+    rc = run_disconnect(
+      argparse.Namespace(workset="wsloopws", project="it1", remove_files=True, force=True)
+    )
+    out, err = capsys.readouterr()
+    assert rc == 0, err
+    assert "Removed project 'it1'" in out, out
+    assert (
+      f"Note: left the workspace at {leaf} in place — it is a symlink loop "
+      "that kanibako cannot resolve, so it is left in place for you to look "
+      "at."
+    ) in err, err
+    assert ws.workspaces_dir.is_symlink() and other.is_symlink()
+    assert (real / "it1" / "ws.txt").read_text() == "mine"
 
-    def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_disconnect
+  def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("rmunkws", tmp_home / "ws_rmunk", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("rmunkws", tmp_home / "ws_rmunk", std)
 
-        args = argparse.Namespace(
-            workset="rmunkws", project="nope",
-            remove_files=False, force=True,
-        )
-        rc = run_disconnect(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "not found" in err
+    args = argparse.Namespace(
+      workset="rmunkws",
+      project="nope",
+      remove_files=False,
+      force=True,
+    )
+    rc = run_disconnect(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not found" in err
 
 
 class TestWorksetInfo:
-    def test_info_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_info
+  def test_info_success(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_info
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("infows", tmp_home / "ws_info", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("infows", tmp_home / "ws_info", std)
 
-        src = tmp_home / "info_src"
-        src.mkdir()
-        add_project(ws, "infoproj", src)
+    src = tmp_home / "info_src"
+    src.mkdir()
+    add_project(ws, "infoproj", src)
 
-        args = argparse.Namespace(name="infows")
-        rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "infows" in out
-        assert "infoproj" in out
-        assert "Root:" in out
-        # ⚑ ``created`` is gone from the model, so there is no line to print.
-        assert "Created:" not in out
+    args = argparse.Namespace(name="infows")
+    rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "infows" in out
+    assert "infoproj" in out
+    assert "Root:" in out
+    # ⚑ ``created`` is gone from the model, so there is no line to print.
+    assert "Created:" not in out
 
-    def test_info_unknown_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_info
+  def test_info_unknown_error(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_info
 
-        args = argparse.Namespace(name="nosuchws")
-        rc = run_info(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "not registered" in err
+    args = argparse.Namespace(name="nosuchws")
+    rc = run_info(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not registered" in err
 
 
 class TestWorksetConfig:
-    def test_config_show_empty(self, config_file, tmp_home, capsys):
-        """Config show with no overrides prints '(no overrides)'."""
-        from kanibako.commands.workset_cmd import run_show
+  def test_config_show_empty(self, config_file, tmp_home, capsys):
+    """Config show with no overrides prints '(no overrides)'."""
+    from kanibako.commands.workset_cmd import run_show
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("cfgws", tmp_home / "ws_cfg", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("cfgws", tmp_home / "ws_cfg", std)
 
-        args = argparse.Namespace(workset="cfgws", effective=False)
-        rc = run_show(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "no overrides" in out
+    args = argparse.Namespace(workset="cfgws", effective=False)
+    rc = run_show(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "no overrides" in out
 
-    def test_config_set_get_share_allowed_roundtrips(self, config_file, tmp_home, capsys):
-        """``workset.auth.share_allowed`` is now an ORDINARY settable bool key;
-        setting it then getting it round-trips through the set/get plumbing."""
-        from kanibako.commands.workset_cmd import run_get, run_set
+  def test_config_set_get_share_allowed_roundtrips(self, config_file, tmp_home, capsys):
+    """``workset.auth.share_allowed`` is now an ORDINARY settable bool key;
+    setting it then getting it round-trips through the set/get plumbing."""
+    from kanibako.commands.workset_cmd import run_get, run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("authcfg", tmp_home / "ws_authcfg", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("authcfg", tmp_home / "ws_authcfg", std)
 
-        set_args = argparse.Namespace(
-            workset="authcfg", key_value="workset.auth.share_allowed=false",
-            force=False,
-        )
-        rc = run_set(set_args)
-        assert rc == 0
-        capsys.readouterr()
+    set_args = argparse.Namespace(
+      workset="authcfg",
+      key_value="workset.auth.share_allowed=false",
+      force=False,
+    )
+    rc = run_set(set_args)
+    assert rc == 0
+    capsys.readouterr()
 
-        get_args = argparse.Namespace(workset="authcfg", key="workset.auth.share_allowed")
-        rc = run_get(get_args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "false" in out.lower()
+    get_args = argparse.Namespace(workset="authcfg", key="workset.auth.share_allowed")
+    rc = run_get(get_args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "false" in out.lower()
 
-    def test_config_set_regular_key(self, config_file, tmp_home, capsys):
-        """Setting a regular config key writes to config.yaml.
+  def test_config_set_regular_key(self, config_file, tmp_home, capsys):
+    """Setting a regular config key writes to config.yaml.
 
-        Uses ``workset.vault_ro`` — a real workset-scope regular string key,
-        legal at the workset scope by construction (same-scope write).
-        """
-        from kanibako.commands.workset_cmd import run_set
+    Uses ``workset.vault_ro`` — a real workset-scope regular string key,
+    legal at the workset scope by construction (same-scope write).
+    """
+    from kanibako.commands.workset_cmd import run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("regcfg", tmp_home / "ws_regcfg", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("regcfg", tmp_home / "ws_regcfg", std)
 
-        args = argparse.Namespace(
-            workset="regcfg", key_value="workset.vault_ro=/ro",
-            force=False,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Set" in out
-        assert "vault" in out
+    args = argparse.Namespace(
+      workset="regcfg",
+      key_value="workset.vault_ro=/ro",
+      force=False,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Set" in out
+    assert "vault" in out
 
-    def test_config_reset_key(self, config_file, tmp_home, capsys):
-        """Resetting a config key removes the override."""
-        from kanibako.commands.workset_cmd import run_reset, run_set
+  def test_config_reset_key(self, config_file, tmp_home, capsys):
+    """Resetting a config key removes the override."""
+    from kanibako.commands.workset_cmd import run_reset, run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("resetcfg", tmp_home / "ws_resetcfg", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("resetcfg", tmp_home / "ws_resetcfg", std)
 
-        # First set a value (workset.vault_ro = a real workset-scope key,
-        # legal at the workset scope by construction).
-        set_args = argparse.Namespace(
-            workset="resetcfg", key_value="workset.vault_ro=/ro",
-            force=False,
-        )
-        run_set(set_args)
-        capsys.readouterr()
+    # First set a value (workset.vault_ro = a real workset-scope key,
+    # legal at the workset scope by construction).
+    set_args = argparse.Namespace(
+      workset="resetcfg",
+      key_value="workset.vault_ro=/ro",
+      force=False,
+    )
+    run_set(set_args)
+    capsys.readouterr()
 
-        # Then reset it.
-        reset_args = argparse.Namespace(
-            workset="resetcfg", key="workset.vault_ro", reset_all=False, force=False,
-        )
-        rc = run_reset(reset_args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # F7 honest message on a successful clear (or "No override" if absent).
-        assert "cleared" in out.lower() or "No override" in out
-        assert "reverts to default" not in out
+    # Then reset it.
+    reset_args = argparse.Namespace(
+      workset="resetcfg",
+      key="workset.vault_ro",
+      reset_all=False,
+      force=False,
+    )
+    rc = run_reset(reset_args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # F7 honest message on a successful clear (or "No override" if absent).
+    assert "cleared" in out.lower() or "No override" in out
+    assert "reverts to default" not in out
 
-    def test_config_reset_share_allowed(self, config_file, tmp_home, capsys):
-        """Resetting the ordinary ``workset.auth.share_allowed`` override removes
-        it via the standard reset plumbing."""
-        from kanibako.commands.workset_cmd import run_reset, run_set
+  def test_config_reset_share_allowed(self, config_file, tmp_home, capsys):
+    """Resetting the ordinary ``workset.auth.share_allowed`` override removes
+    it via the standard reset plumbing."""
+    from kanibako.commands.workset_cmd import run_reset, run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("resetauth", tmp_home / "ws_resetauth", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("resetauth", tmp_home / "ws_resetauth", std)
 
-        # First set an override.
-        set_args = argparse.Namespace(
-            workset="resetauth", key_value="workset.auth.share_allowed=false",
-            force=False,
-        )
-        run_set(set_args)
-        capsys.readouterr()
+    # First set an override.
+    set_args = argparse.Namespace(
+      workset="resetauth",
+      key_value="workset.auth.share_allowed=false",
+      force=False,
+    )
+    run_set(set_args)
+    capsys.readouterr()
 
-        # Then reset it.
-        reset_args = argparse.Namespace(
-            workset="resetauth", key="workset.auth.share_allowed",
-            reset_all=False, force=False,
-        )
-        rc = run_reset(reset_args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # F7 honest message on a successful clear (or "No override" if absent).
-        assert "cleared" in out.lower() or "No override" in out
-        assert "reverts to default" not in out
+    # Then reset it.
+    reset_args = argparse.Namespace(
+      workset="resetauth",
+      key="workset.auth.share_allowed",
+      reset_all=False,
+      force=False,
+    )
+    rc = run_reset(reset_args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # F7 honest message on a successful clear (or "No override" if absent).
+    assert "cleared" in out.lower() or "No override" in out
+    assert "reverts to default" not in out
 
-    def test_config_reset_all(self, config_file, tmp_home, capsys):
-        """reset --all clears all overrides."""
-        from kanibako.commands.workset_cmd import run_reset, run_set
+  def test_config_reset_all(self, config_file, tmp_home, capsys):
+    """reset --all clears all overrides."""
+    from kanibako.commands.workset_cmd import run_reset, run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("resetall", tmp_home / "ws_resetall", std)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("resetall", tmp_home / "ws_resetall", std)
 
-        # Set a value first (workset.vault_ro = a real workset-scope key,
-        # legal at the workset scope by construction).
-        set_args = argparse.Namespace(
-            workset="resetall", key_value="workset.vault_ro=/ro",
-            force=False,
-        )
-        run_set(set_args)
-        capsys.readouterr()
-        # Two pref REQUESTS beside it (Q86 = (a): --all clears them too).
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
-        ws_config = _workset_config_path(ws)
-        doc = load_doc(ws_config)
-        doc["pref"] = {
-            "system": {"agent": "goose"}, "agent": {"claude": {"model": "opus"}},
-        }
-        dump_doc(ws_config, doc)
+    # Set a value first (workset.vault_ro = a real workset-scope key,
+    # legal at the workset scope by construction).
+    set_args = argparse.Namespace(
+      workset="resetall",
+      key_value="workset.vault_ro=/ro",
+      force=False,
+    )
+    run_set(set_args)
+    capsys.readouterr()
+    # Two pref REQUESTS beside it (Q86 = (a): --all clears them too).
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        # Reset all.
-        reset_args = argparse.Namespace(
-            workset="resetall", key=None, reset_all=True, force=True,
-        )
-        rc = run_reset(reset_args)
-        assert rc == 0
-        assert capsys.readouterr().out.strip() == "Reset 3 override(s)."
-        assert "pref" not in load_doc(ws_config)
+    ws_config = _workset_config_path(ws)
+    doc = load_doc(ws_config)
+    doc["pref"] = {
+      "system": {"agent": "goose"},
+      "agent": {"claude": {"model": "opus"}},
+    }
+    dump_doc(ws_config, doc)
 
-    def test_config_reset_requires_key(self, config_file, tmp_home, capsys):
-        """reset without a key or --all is an error."""
-        from kanibako.commands.workset_cmd import run_reset
+    # Reset all.
+    reset_args = argparse.Namespace(
+      workset="resetall",
+      key=None,
+      reset_all=True,
+      force=True,
+    )
+    rc = run_reset(reset_args)
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "Reset 3 override(s)."
+    assert "pref" not in load_doc(ws_config)
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("resetbare", tmp_home / "ws_resetbare", std)
+  def test_config_reset_requires_key(self, config_file, tmp_home, capsys):
+    """reset without a key or --all is an error."""
+    from kanibako.commands.workset_cmd import run_reset
 
-        args = argparse.Namespace(
-            workset="resetbare", key=None, reset_all=False, force=False,
-        )
-        rc = run_reset(args)
-        assert rc == 1
-        assert "requires a key" in capsys.readouterr().err
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("resetbare", tmp_home / "ws_resetbare", std)
 
-    def test_config_unknown_workset(self, config_file, tmp_home, capsys):
-        """Config on unknown workset returns error."""
-        from kanibako.commands.workset_cmd import run_show
+    args = argparse.Namespace(
+      workset="resetbare",
+      key=None,
+      reset_all=False,
+      force=False,
+    )
+    rc = run_reset(args)
+    assert rc == 1
+    assert "requires a key" in capsys.readouterr().err
 
-        args = argparse.Namespace(workset="nosuchws", effective=False)
-        rc = run_show(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "not registered" in err
+  def test_config_unknown_workset(self, config_file, tmp_home, capsys):
+    """Config on unknown workset returns error."""
+    from kanibako.commands.workset_cmd import run_show
+
+    args = argparse.Namespace(workset="nosuchws", effective=False)
+    rc = run_show(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not registered" in err
 
 
 class TestDefaultWorksetCli:
-    def _std(self, config_file):
-        config = load_config(config_file)
-        return load_std_paths(config)
+  def _std(self, config_file):
+    config = load_config(config_file)
+    return load_std_paths(config)
 
-    def test_config_set_regular_key_writes_spec_settings_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        # workset.vault_ro = a real workset-scope regular string key, legal at
-        # the workset scope by construction (same-scope write; lands nested under
-        # the [workset] table).
-        # F4: the write lands in the spec §2c file
-        # ``{config.primary_workset}/workset.yaml`` (the old
-        # ``{config.data}/config.yaml`` target was a launch-invisible dead write).
-        from kanibako.commands.workset_cmd import run_set
-        std = self._std(config_file)
+  def test_config_set_regular_key_writes_spec_settings_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    # workset.vault_ro = a real workset-scope regular string key, legal at
+    # the workset scope by construction (same-scope write; lands nested under
+    # the [workset] table).
+    # F4: the write lands in the spec §2c file
+    # ``{config.primary_workset}/workset.yaml`` (the old
+    # ``{config.data}/config.yaml`` target was a launch-invisible dead write).
+    from kanibako.commands.workset_cmd import run_set
 
-        args = argparse.Namespace(
-            workset="default", key_value="workset.vault_ro=/ro",
-            force=False,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        import yaml
-        with open(std.primary_workset / "workset.yaml") as f:
-            data = yaml.safe_load(f)
-        assert data["workset"]["vault_ro"] == "/ro"
-        assert not (std.data_path / "config.yaml").exists()
-        assert not (std.data_path / "workset.yaml").exists()
+    std = self._std(config_file)
 
-    def test_info_default(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_info
-        args = argparse.Namespace(name="default")
-        rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "__default__" in out
-        assert "<default workset>" in out
+    args = argparse.Namespace(
+      workset="default",
+      key_value="workset.vault_ro=/ro",
+      force=False,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    import yaml
 
-    def test_rm_default_refused(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_rm
-        for name in ("default", "__default__"):
-            args = argparse.Namespace(name=name, purge=False, force=True)
-            rc = run_rm(args)
-            assert rc == 1
-            err = capsys.readouterr().err
-            assert "cannot be removed" in err
+    with open(std.primary_workset / "workset.yaml") as f:
+      data = yaml.safe_load(f)
+    assert data["workset"]["vault_ro"] == "/ro"
+    assert not (std.data_path / "config.yaml").exists()
+    assert not (std.data_path / "workset.yaml").exists()
 
-    def test_disconnect_default_refused(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_disconnect
-        args = argparse.Namespace(
-            workset="default", project="anything",
-            remove_files=False, force=True,
-        )
-        rc = run_disconnect(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "cannot be removed" in err
+  def test_info_default(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_info
+
+    args = argparse.Namespace(name="default")
+    rc = run_info(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "__default__" in out
+    assert "<default workset>" in out
+
+  def test_rm_default_refused(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_rm
+
+    for name in ("default", "__default__"):
+      args = argparse.Namespace(name=name, purge=False, force=True)
+      rc = run_rm(args)
+      assert rc == 1
+      err = capsys.readouterr().err
+      assert "cannot be removed" in err
+
+  def test_disconnect_default_refused(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_disconnect
+
+    args = argparse.Namespace(
+      workset="default",
+      project="anything",
+      remove_files=False,
+      force=True,
+    )
+    rc = run_disconnect(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "cannot be removed" in err
 
 
 class TestWorksetParser:
-    """Test parser aliases and subcommand registration."""
+  """Test parser aliases and subcommand registration."""
 
-    def test_aliases_registered(self):
-        """Verify that ls, inspect, and delete aliases are registered."""
-        import argparse
-        from kanibako.commands.workset_cmd import add_parser
+  def test_aliases_registered(self):
+    """Verify that ls, inspect, and delete aliases are registered."""
+    import argparse
+    from kanibako.commands.workset_cmd import add_parser
 
-        parser = argparse.ArgumentParser()
-        subs = parser.add_subparsers()
-        add_parser(subs)
+    parser = argparse.ArgumentParser()
+    subs = parser.add_subparsers()
+    add_parser(subs)
 
-        # These should parse without error (aliases are recognized).
-        # We test by parsing a few known alias forms.
-        args = parser.parse_args(["workset", "ls"])
-        assert hasattr(args, "func")
+    # These should parse without error (aliases are recognized).
+    # We test by parsing a few known alias forms.
+    args = parser.parse_args(["workset", "ls"])
+    assert hasattr(args, "func")
 
-        args = parser.parse_args(["workset", "inspect", "myws"])
-        assert hasattr(args, "func")
+    args = parser.parse_args(["workset", "inspect", "myws"])
+    assert hasattr(args, "func")
 
-        args = parser.parse_args(["workset", "delete", "myws", "--force"])
-        assert hasattr(args, "func")
+    args = parser.parse_args(["workset", "delete", "myws", "--force"])
+    assert hasattr(args, "func")
 
 
 class TestPrimaryWorksetSpecConvergence:
-    """F4: the PRIMARY workset's settings write path AND every launch reader
-    converge on the spec location ``{config.primary_workset}/workset.yaml``
-    (spec §2c: PRIMARY ``meta.workset.path`` = ``{config.primary_workset}``;
-    ALL-WORKSETS ``meta.workset.settings`` = ``{meta.workset.path}/workset.yaml``).
+  """F4: the PRIMARY workset's settings write path AND every launch reader
+  converge on the spec location ``{config.primary_workset}/workset.yaml``
+  (spec §2c: PRIMARY ``meta.workset.path`` = ``{config.primary_workset}``;
+  ALL-WORKSETS ``meta.workset.settings`` = ``{meta.workset.path}/workset.yaml``).
 
-    Pins the fix for the 1.6.0 three-file split: the CLI wrote
-    ``{config.data}/config.yaml`` (a silent dead write) while the cascade read
-    ``{config.data}/settings.yaml`` — neither the spec file.
+  Pins the fix for the 1.6.0 three-file split: the CLI wrote
+  ``{config.data}/config.yaml`` (a silent dead write) while the cascade read
+  ``{config.data}/settings.yaml`` — neither the spec file.
+  """
+
+  def _set_default(self, key_value: str) -> int:
+    from kanibako.commands.workset_cmd import run_set
+
+    args = argparse.Namespace(
+      workset="default",
+      key_value=key_value,
+      force=False,
+    )
+    return run_set(args)
+
+  def test_set_default_writes_spec_file(self, config_file, tmp_home, capsys):
+    """``workset set default <key>`` lands in the §2c spec file."""
+    import yaml
+
+    std = load_std_paths(load_config(config_file))
+    rc = self._set_default("box.shell=/bin/zsh")
+    assert rc == 0
+    spec_file = std.primary_workset / "workset.yaml"
+    assert spec_file.is_file()
+    with open(spec_file) as f:
+      data = yaml.safe_load(f)
+    assert data["box"]["shell"] == "/bin/zsh"
+
+  def test_set_default_no_longer_writes_legacy_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The legacy dead-write target ``{config.data}/config.yaml`` stays absent."""
+    std = load_std_paths(load_config(config_file))
+    rc = self._set_default("box.shell=/bin/zsh")
+    assert rc == 0
+    assert not (std.data_path / "config.yaml").exists()
+
+  def test_set_default_resolves_in_primary_box_snapshot(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """End-to-end (the audit's probe shape): a ``workset set default`` value
+    must reach a primary-mode box's REAL launch snapshot — CLI write, then
+    the launch's own workset-tier file derivation, then the committed
+    ``build_launch_snapshot`` pipeline.
     """
+    from kanibako.settings.paths import host_xdg_map, resolve_project
+    from kanibako.settings.settings_launch import build_launch_snapshot
+    from kanibako.settings.settings_resolve import ResolveCtx
 
-    def _set_default(self, key_value: str) -> int:
-        from kanibako.commands.workset_cmd import run_set
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    rc = self._set_default("box.shell=/bin/zsh")
+    assert rc == 0
+    capsys.readouterr()
 
-        args = argparse.Namespace(
-            workset="default", key_value=key_value, force=False,
-        )
-        return run_set(args)
+    (tmp_home / "proj").mkdir()
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=str(tmp_home / "proj"),
+      initialize=True,
+    )
+    assert proj.group is not None and proj.group.is_default
+    # The launch's workset-tier settings-file derivation (start.py).
+    from kanibako.settings.paths import workset_settings_path
 
-    def test_set_default_writes_spec_file(self, config_file, tmp_home, capsys):
-        """``workset set default <key>`` lands in the §2c spec file."""
-        import yaml
+    workset_path = workset_settings_path(proj.group)
+    ctx = ResolveCtx(
+      agent_name=None,
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg=host_xdg_map(std.data_home),
+    )
+    snap = build_launch_snapshot(
+      agent_name="shell",
+      ctx=ctx,
+      system_path=std.settings,
+      agent_path=None,
+      workset_path=workset_path,
+      box_path=None,
+    )
+    assert snap.box.shell == "/bin/zsh"
 
-        std = load_std_paths(load_config(config_file))
-        rc = self._set_default("box.shell=/bin/zsh")
-        assert rc == 0
-        spec_file = std.primary_workset / "workset.yaml"
-        assert spec_file.is_file()
-        with open(spec_file) as f:
-            data = yaml.safe_load(f)
-        assert data["box"]["shell"] == "/bin/zsh"
+  def test_get_default_roundtrips_spec_file(self, config_file, tmp_home, capsys):
+    """``workset get default <key>`` reads back what set wrote."""
+    from kanibako.commands.workset_cmd import run_get
 
-    def test_set_default_no_longer_writes_legacy_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The legacy dead-write target ``{config.data}/config.yaml`` stays absent."""
-        std = load_std_paths(load_config(config_file))
-        rc = self._set_default("box.shell=/bin/zsh")
-        assert rc == 0
-        assert not (std.data_path / "config.yaml").exists()
+    rc = self._set_default("workset.vault_ro=/ro")
+    assert rc == 0
+    capsys.readouterr()
+    args = argparse.Namespace(workset="default", key="workset.vault_ro")
+    rc = run_get(args)
+    assert rc == 0
+    assert "/ro" in capsys.readouterr().out.lower()
 
-    def test_set_default_resolves_in_primary_box_snapshot(
-        self, config_file, tmp_home, capsys,
-    ):
-        """End-to-end (the audit's probe shape): a ``workset set default`` value
-        must reach a primary-mode box's REAL launch snapshot — CLI write, then
-        the launch's own workset-tier file derivation, then the committed
-        ``build_launch_snapshot`` pipeline.
-        """
-        from kanibako.settings.paths import host_xdg_map, resolve_project
-        from kanibako.settings.settings_launch import build_launch_snapshot
-        from kanibako.settings.settings_resolve import ResolveCtx
+  def test_named_workset_settings_file_unchanged(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A NAMED workset keeps its single ``<root>/workset.yaml`` file."""
+    import yaml
+    from kanibako.commands.workset_cmd import run_set
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        rc = self._set_default("box.shell=/bin/zsh")
-        assert rc == 0
-        capsys.readouterr()
-
-        (tmp_home / "proj").mkdir()
-        proj = resolve_project(
-            std, config, project_dir=str(tmp_home / "proj"), initialize=True,
-        )
-        assert proj.group is not None and proj.group.is_default
-        # The launch's workset-tier settings-file derivation (start.py).
-        from kanibako.settings.paths import workset_settings_path
-        workset_path = workset_settings_path(proj.group)
-        ctx = ResolveCtx(
-            agent_name=None,
-            workset_name=None,
-            host_home=str(tmp_home),
-            xdg=host_xdg_map(std.data_home),
-        )
-        snap = build_launch_snapshot(
-            agent_name="shell",
-            ctx=ctx,
-            system_path=std.settings,
-            agent_path=None,
-            workset_path=workset_path,
-            box_path=None,
-        )
-        assert snap.box.shell == "/bin/zsh"
-
-    def test_get_default_roundtrips_spec_file(self, config_file, tmp_home, capsys):
-        """``workset get default <key>`` reads back what set wrote."""
-        from kanibako.commands.workset_cmd import run_get
-
-        rc = self._set_default("workset.vault_ro=/ro")
-        assert rc == 0
-        capsys.readouterr()
-        args = argparse.Namespace(workset="default", key="workset.vault_ro")
-        rc = run_get(args)
-        assert rc == 0
-        assert "/ro" in capsys.readouterr().out.lower()
-
-    def test_named_workset_settings_file_unchanged(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A NAMED workset keeps its single ``<root>/workset.yaml`` file."""
-        import yaml
-        from kanibako.commands.workset_cmd import run_set
-
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("namedcfg", tmp_home / "ws_namedcfg", std)
-        args = argparse.Namespace(
-            workset="namedcfg", key_value="workset.vault_ro=/ro",
-            force=False,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        with open(ws.root / "workset.yaml") as f:
-            data = yaml.safe_load(f)
-        assert data["workset"]["vault_ro"] == "/ro"
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("namedcfg", tmp_home / "ws_namedcfg", std)
+    args = argparse.Namespace(
+      workset="namedcfg",
+      key_value="workset.vault_ro=/ro",
+      force=False,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    with open(ws.root / "workset.yaml") as f:
+      data = yaml.safe_load(f)
+    assert data["workset"]["vault_ro"] == "/ro"
 
 
 class TestWorksetEnv:
-    """``workset config set workset.env.<VAR>`` — the workset env tier.
+  """``workset config set workset.env.<VAR>`` — the workset env tier.
 
-    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote a docker ``.env`` FILE
-    at the workset root, threaded into the engine as ``env_path``; R-39 retired
-    the spelling and RQ-1 retired the launch READ of those files, so both the
-    threading and the file are gone. The workset env tier is the settings key
-    ``workset.env.<VAR>``, stored in the workset's own ``workset.yaml`` — for
-    BOTH named and primary worksets.
+  ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote a docker ``.env`` FILE
+  at the workset root, threaded into the engine as ``env_path``; R-39 retired
+  the spelling and RQ-1 retired the launch READ of those files, so both the
+  threading and the file are gone. The workset env tier is the settings key
+  ``workset.env.<VAR>``, stored in the workset's own ``workset.yaml`` — for
+  BOTH named and primary worksets.
+  """
+
+  def test_bare_env_set_is_refused_with_the_workset_cure(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_set
+
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("envws", tmp_home / "ws_env", std)
+    args = argparse.Namespace(
+      workset="envws",
+      key_value="env.EDITOR=vim",
+      force=False,
+    )
+    assert run_set(args) == 1
+    assert "workset.env.EDITOR" in capsys.readouterr().err
+    assert not (ws.root / "env").exists()
+
+  def test_bare_env_get_is_refused_at_the_handler(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_get
+
+    std = load_std_paths(load_config(config_file))
+    create_workset("envgetbare", tmp_home / "ws_envgetbare", std)
+    rc = run_get(argparse.Namespace(workset="envgetbare", key="env.MY_VAR"))
+    assert rc == 1
+    assert "workset.env.MY_VAR" in capsys.readouterr().err
+
+  def test_set_env_named_workset(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_set
+
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("envws2", tmp_home / "ws_env2", std)
+    args = argparse.Namespace(
+      workset="envws2",
+      key_value="workset.env.EDITOR=vim",
+      force=False,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
+    from kanibako.settings.config_io import load_doc
+
+    assert load_doc(ws.root / "workset.yaml")["workset"]["env"]["EDITOR"] == "vim"
+
+  def test_set_env_default_workset(self, config_file, tmp_home, capsys):
+    """PRIMARY: the value lands under ``{config.primary_workset}``."""
+    from kanibako.commands.workset_cmd import run_set
+
+    std = load_std_paths(load_config(config_file))
+    args = argparse.Namespace(
+      workset="default",
+      key_value="workset.env.EDITOR=vim",
+      force=False,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
+    from kanibako.settings.config_io import load_doc
+
+    assert (
+      load_doc(
+        std.primary_workset / "workset.yaml",
+      )["workset"]["env"]["EDITOR"]
+      == "vim"
+    )
+
+  def test_get_env_workset(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_get, run_set
+
+    std = load_std_paths(load_config(config_file))
+    create_workset("envget", tmp_home / "ws_envget", std)
+    args = argparse.Namespace(
+      workset="envget",
+      key_value="workset.env.MY_VAR=hello",
+      force=False,
+    )
+    assert run_set(args) == 0
+    capsys.readouterr()
+    get_args = argparse.Namespace(workset="envget", key="workset.env.MY_VAR")
+    rc = run_get(get_args)
+    assert rc == 0
+    assert "hello" in capsys.readouterr().out
+
+  def test_reset_env_workset(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_reset, run_set
+
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("envreset", tmp_home / "ws_envreset", std)
+    args = argparse.Namespace(
+      workset="envreset",
+      key_value="workset.env.MY_VAR=hello",
+      force=False,
+    )
+    assert run_set(args) == 0
+    reset_args = argparse.Namespace(
+      workset="envreset",
+      key="workset.env.MY_VAR",
+      reset_all=False,
+      force=False,
+    )
+    rc = run_reset(reset_args)
+    assert rc == 0
+    capsys.readouterr()
+    from kanibako.settings.config_io import load_doc
+
+    assert "env" not in load_doc(ws.root / "workset.yaml").get("workset", {})
+
+  def _env_from_the_files(self, config_file):
+    """The container env a launch would build from what the VERBS wrote.
+
+    The route, in the order the launch runs it: read the two settings files the
+    ``system set`` / ``workset set`` verbs produced, adapt them to the entry list
+    (``snapshot_category_entries``), fold the env slots
+    (``store_collapse.collapse_env`` — ``meta.assembly.env``'s producer) and
+    project them through the launch's own consumer.
     """
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_launch import snapshot_category_entries
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.store_collapse import collapse_env
 
-    def test_bare_env_set_is_refused_with_the_workset_cure(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_set
-
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("envws", tmp_home / "ws_env", std)
-        args = argparse.Namespace(
-            workset="envws", key_value="env.EDITOR=vim", force=False,
+    std = load_std_paths(load_config(config_file))
+    snapshot = KeyStore(
+      {
+        "system": {
+          "env": dict(load_doc(std.settings).get("system", {}).get("env", {})),
+        },
+        "workset": {
+          "env": dict(
+            load_doc(std.primary_workset / "workset.yaml").get("workset", {}).get("env", {})
+          ),
+        },
+      }
+    )
+    ctx = ResolveCtx(
+      agent_name="claude",
+      workset_name=None,
+      host_home="/home/host",
+      xdg={"XDG_DATA_HOME": "/data"},
+    )
+    return _build_config_env(
+      collapse_env(
+        snapshot_category_entries(
+          snapshot,
+          active_agent="claude",
+          box_ctx=ctx,
         )
-        assert run_set(args) == 1
-        assert "workset.env.EDITOR" in capsys.readouterr().err
-        assert not (ws.root / "env").exists()
+      )
+    )
 
-    def test_bare_env_get_is_refused_at_the_handler(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_get
+  def test_primary_workset_env_reaches_the_launch_env(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A primary-workset env var written by the VERB reaches the container env.
 
-        std = load_std_paths(load_config(config_file))
-        create_workset("envgetbare", tmp_home / "ws_envgetbare", std)
-        rc = run_get(argparse.Namespace(workset="envgetbare", key="env.MY_VAR"))
-        assert rc == 1
-        assert "workset.env.MY_VAR" in capsys.readouterr().err
+    🛑 REBUILT ONTO THE COLLAPSE, AND ITS OLD ORACLE WAS THE INVERSE OF THE
+    RULED MODEL. It declared ``system.env.EDITOR`` AND ``workset.env.EDITOR``
+    and asserted ``vim`` — "the workset overrides the system tier" — because
+    the consumer's dict-update over a scope-sorted list was the only thing
+    deciding a contested VAR, and it landed the LAST entry. The variables
+    realize SYSTEM-FIRST, so that config no longer picks a winner in either
+    direction: it REFUSES, which the case below now pins. Flipping the assert
+    would have pinned an outcome no route produces.
 
-    def test_set_env_named_workset(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_set
+    What survives is the claim the test is FOR: a value only the workset file
+    declares is delivered.
+    """
+    from kanibako.commands.system_cmd import run_set as system_set
+    from kanibako.commands.workset_cmd import run_set
 
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("envws2", tmp_home / "ws_env2", std)
-        args = argparse.Namespace(
-            workset="envws2", key_value="workset.env.EDITOR=vim", force=False,
+    assert (
+      system_set(
+        argparse.Namespace(
+          key_value="system.env.PAGER=less",
+          force=True,
         )
-        rc = run_set(args)
-        assert rc == 0
-        assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
-        from kanibako.settings.config_io import load_doc
-        assert load_doc(ws.root / "workset.yaml")["workset"]["env"]["EDITOR"] == "vim"
-
-    def test_set_env_default_workset(self, config_file, tmp_home, capsys):
-        """PRIMARY: the value lands under ``{config.primary_workset}``."""
-        from kanibako.commands.workset_cmd import run_set
-
-        std = load_std_paths(load_config(config_file))
-        args = argparse.Namespace(
-            workset="default", key_value="workset.env.EDITOR=vim", force=False,
+      )
+      == 0
+    )
+    assert (
+      run_set(
+        argparse.Namespace(
+          workset="default",
+          key_value="workset.env.EDITOR=vim",
+          force=False,
         )
-        rc = run_set(args)
-        assert rc == 0
-        assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
-        from kanibako.settings.config_io import load_doc
-        assert load_doc(
-            std.primary_workset / "workset.yaml",
-        )["workset"]["env"]["EDITOR"] == "vim"
+      )
+      == 0
+    )
+    capsys.readouterr()
 
-    def test_get_env_workset(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_get, run_set
+    env = self._env_from_the_files(config_file)
+    assert env["EDITOR"] == "vim"  # the workset file's own variable
+    assert env["PAGER"] == "less"  # and the system file's, beside it
 
-        std = load_std_paths(load_config(config_file))
-        create_workset("envget", tmp_home / "ws_envget", std)
-        args = argparse.Namespace(
-            workset="envget", key_value="workset.env.MY_VAR=hello", force=False,
+  def test_the_same_VAR_at_system_and_workset_refuses(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Two scopes' keys, one slot: the launch refuses and names both keys.
+
+    The twin the case above used to assert a winner for. ⚑ Written through the
+    VERBS on purpose — this is the config a user can reach by running two
+    supported commands, so the refusal has to be the one they meet.
+    """
+    from kanibako.commands.system_cmd import run_set as system_set
+    from kanibako.commands.workset_cmd import run_set
+    from kanibako.settings.settings_resolve import SettingsError
+
+    assert (
+      system_set(
+        argparse.Namespace(
+          key_value="system.env.EDITOR=nano",
+          force=True,
         )
-        assert run_set(args) == 0
-        capsys.readouterr()
-        get_args = argparse.Namespace(workset="envget", key="workset.env.MY_VAR")
-        rc = run_get(get_args)
-        assert rc == 0
-        assert "hello" in capsys.readouterr().out
-
-    def test_reset_env_workset(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_reset, run_set
-
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("envreset", tmp_home / "ws_envreset", std)
-        args = argparse.Namespace(
-            workset="envreset", key_value="workset.env.MY_VAR=hello", force=False,
+      )
+      == 0
+    )
+    assert (
+      run_set(
+        argparse.Namespace(
+          workset="default",
+          key_value="workset.env.EDITOR=vim",
+          force=False,
         )
-        assert run_set(args) == 0
-        reset_args = argparse.Namespace(
-            workset="envreset", key="workset.env.MY_VAR",
-            reset_all=False, force=False,
-        )
-        rc = run_reset(reset_args)
-        assert rc == 0
-        capsys.readouterr()
-        from kanibako.settings.config_io import load_doc
-        assert "env" not in load_doc(ws.root / "workset.yaml").get("workset", {})
+      )
+      == 0
+    )
+    capsys.readouterr()
 
-    def _env_from_the_files(self, config_file):
-        """The container env a launch would build from what the VERBS wrote.
+    with pytest.raises(SettingsError) as exc:
+      self._env_from_the_files(config_file)
 
-        The route, in the order the launch runs it: read the two settings files the
-        ``system set`` / ``workset set`` verbs produced, adapt them to the entry list
-        (``snapshot_category_entries``), fold the env slots
-        (``store_collapse.collapse_env`` — ``meta.assembly.env``'s producer) and
-        project them through the launch's own consumer.
-        """
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_launch import snapshot_category_entries
-        from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.store_collapse import collapse_env
-
-        std = load_std_paths(load_config(config_file))
-        snapshot = KeyStore({
-            "system": {
-                "env": dict(load_doc(std.settings).get("system", {}).get("env", {})),
-            },
-            "workset": {
-                "env": dict(
-                    load_doc(std.primary_workset / "workset.yaml")
-                    .get("workset", {}).get("env", {})
-                ),
-            },
-        })
-        ctx = ResolveCtx(
-            agent_name="claude", workset_name=None,
-            host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
-        )
-        return _build_config_env(collapse_env(snapshot_category_entries(
-            snapshot, active_agent="claude", box_ctx=ctx,
-        )))
-
-    def test_primary_workset_env_reaches_the_launch_env(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A primary-workset env var written by the VERB reaches the container env.
-
-        🛑 REBUILT ONTO THE COLLAPSE, AND ITS OLD ORACLE WAS THE INVERSE OF THE
-        RULED MODEL. It declared ``system.env.EDITOR`` AND ``workset.env.EDITOR``
-        and asserted ``vim`` — "the workset overrides the system tier" — because
-        the consumer's dict-update over a scope-sorted list was the only thing
-        deciding a contested VAR, and it landed the LAST entry. The variables
-        realize SYSTEM-FIRST, so that config no longer picks a winner in either
-        direction: it REFUSES, which the case below now pins. Flipping the assert
-        would have pinned an outcome no route produces.
-
-        What survives is the claim the test is FOR: a value only the workset file
-        declares is delivered.
-        """
-        from kanibako.commands.system_cmd import run_set as system_set
-        from kanibako.commands.workset_cmd import run_set
-
-        assert system_set(argparse.Namespace(
-            key_value="system.env.PAGER=less", force=True,
-        )) == 0
-        assert run_set(argparse.Namespace(
-            workset="default", key_value="workset.env.EDITOR=vim", force=False,
-        )) == 0
-        capsys.readouterr()
-
-        env = self._env_from_the_files(config_file)
-        assert env["EDITOR"] == "vim"   # the workset file's own variable
-        assert env["PAGER"] == "less"   # and the system file's, beside it
-
-    def test_the_same_VAR_at_system_and_workset_refuses(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Two scopes' keys, one slot: the launch refuses and names both keys.
-
-        The twin the case above used to assert a winner for. ⚑ Written through the
-        VERBS on purpose — this is the config a user can reach by running two
-        supported commands, so the refusal has to be the one they meet.
-        """
-        from kanibako.commands.system_cmd import run_set as system_set
-        from kanibako.commands.workset_cmd import run_set
-        from kanibako.settings.settings_resolve import SettingsError
-
-        assert system_set(argparse.Namespace(
-            key_value="system.env.EDITOR=nano", force=True,
-        )) == 0
-        assert run_set(argparse.Namespace(
-            workset="default", key_value="workset.env.EDITOR=vim", force=False,
-        )) == 0
-        capsys.readouterr()
-
-        with pytest.raises(SettingsError) as exc:
-            self._env_from_the_files(config_file)
-
-        message = str(exc.value)
-        assert "system.env.EDITOR" in message
-        assert "workset.env.EDITOR" in message
-        # The system scope acts FIRST, so it is the holder and the workset key is
-        # the arrival — the direction, not just the pair.
-        assert message.index("system.env.EDITOR") < message.index(
-            "workset.env.EDITOR"
-        )
+    message = str(exc.value)
+    assert "system.env.EDITOR" in message
+    assert "workset.env.EDITOR" in message
+    # The system scope acts FIRST, so it is the holder and the workset key is
+    # the arrival — the direction, not just the pair.
+    assert message.index("system.env.EDITOR") < message.index("workset.env.EDITOR")
 
 
 class TestPrimaryWorksetMigration:
-    """The approved F4 migration behavior (c):
-    DROP the legacy locations — ``{config.data}/settings.yaml`` is never read
-    into the cascade and never touched on disk."""
+  """The approved F4 migration behavior (c):
+  DROP the legacy locations — ``{config.data}/settings.yaml`` is never read
+  into the cascade and never touched on disk."""
 
-    def test_legacy_data_settings_yaml_dropped(self, config_file, tmp_home):
-        """Approved migration behavior ((c): drop the legacy location).
+  def test_legacy_data_settings_yaml_dropped(self, config_file, tmp_home):
+    """Approved migration behavior ((c): drop the legacy location).
 
-        The legacy 1.6.0 read location ``{config.data}/settings.yaml`` is
-        DROPPED — never read into the cascade, never touched on disk.
-        """
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.paths import (
-            host_xdg_map,
-            resolve_project,
-            workset_settings_path,
-        )
-        from kanibako.settings.settings_launch import build_launch_snapshot
-        from kanibako.settings.settings_resolve import ResolveCtx
+    The legacy 1.6.0 read location ``{config.data}/settings.yaml`` is
+    DROPPED — never read into the cascade, never touched on disk.
+    """
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.paths import (
+      host_xdg_map,
+      resolve_project,
+      workset_settings_path,
+    )
+    from kanibako.settings.settings_launch import build_launch_snapshot
+    from kanibako.settings.settings_resolve import ResolveCtx
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        legacy = std.data_path / "settings.yaml"
-        # ⚑ The resolve no longer materializes the store (set-door brick repair),
-        # so the test stages its own legacy file — the subject here is the DROP,
-        # not directory creation.
-        legacy.parent.mkdir(parents=True, exist_ok=True)
-        legacy_text = "box:\n  shell: /bin/legacy\n"
-        legacy.write_text(legacy_text)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    legacy = std.data_path / "settings.yaml"
+    # ⚑ The resolve no longer materializes the store (set-door brick repair),
+    # so the test stages its own legacy file — the subject here is the DROP,
+    # not directory creation.
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy_text = "box:\n  shell: /bin/legacy\n"
+    legacy.write_text(legacy_text)
 
-        (tmp_home / "migproj").mkdir()
-        proj = resolve_project(
-            std, config, project_dir=str(tmp_home / "migproj"), initialize=True,
-        )
+    (tmp_home / "migproj").mkdir()
+    proj = resolve_project(
+      std,
+      config,
+      project_dir=str(tmp_home / "migproj"),
+      initialize=True,
+    )
 
-        ctx = ResolveCtx(
-            agent_name=None,
-            workset_name=None,
-            host_home=str(tmp_home),
-            xdg=host_xdg_map(std.data_home),
-        )
-        snap = build_launch_snapshot(
-            agent_name="shell",
-            ctx=ctx,
-            system_path=std.settings,
-            agent_path=None,
-            workset_path=workset_settings_path(proj.group),
-            box_path=None,
-        )
-        box = snap.box if "box" in snap else KeyStore()
-        # The legacy value must NOT resolve: ``box.shell`` is the floor's present
-        # ``None`` (spec §2b ``<None>``), never ``/bin/legacy``.
-        assert dict.get(box, "shell", "ABSENT") is None
-        assert legacy.read_text() == legacy_text  # and the file is untouched
+    ctx = ResolveCtx(
+      agent_name=None,
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg=host_xdg_map(std.data_home),
+    )
+    snap = build_launch_snapshot(
+      agent_name="shell",
+      ctx=ctx,
+      system_path=std.settings,
+      agent_path=None,
+      workset_path=workset_settings_path(proj.group),
+      box_path=None,
+    )
+    box = snap.box if "box" in snap else KeyStore()
+    # The legacy value must NOT resolve: ``box.shell`` is the floor's present
+    # ``None`` (spec §2b ``<None>``), never ``/bin/legacy``.
+    assert dict.get(box, "shell", "ABSENT") is None
+    assert legacy.read_text() == legacy_text  # and the file is untouched
 
 
 class TestWorksetCmdSystemFloor:
-    """S-4: ``workset share list --effective`` must resolve the SAME ``system.*`` tier
-    a launch does — its whole job is to say what a launch would mount.
+  """S-4: ``workset share list --effective`` must resolve the SAME ``system.*`` tier
+  a launch does — its whole job is to say what a launch would mount.
 
-    ⚑⚑ THE OLD VERSION OF THIS CLASS DID NOT CATCH A MISSING KEY, and that is why it is
-    rewritten rather than extended.  It read the two functions' SOURCE TEXT for four
-    hard-coded key names, so it compared each map against a list, not against the other
-    map and not against the declared keyspace.  Both maps could be — and both were —
-    wrong about a key it did not name: the display floor carried NONE of the five
-    ``system.channels.*`` leaves and the launch floor was missing
-    ``system.channels.broadcast``, and this class was green throughout.  A pin that
-    enumerates what it checks can only ever catch the names its author already thought
-    of, which is the opposite of the property.
+  ⚑⚑ THE OLD VERSION OF THIS CLASS DID NOT CATCH A MISSING KEY, and that is why it is
+  rewritten rather than extended.  It read the two functions' SOURCE TEXT for four
+  hard-coded key names, so it compared each map against a list, not against the other
+  map and not against the declared keyspace.  Both maps could be — and both were —
+  wrong about a key it did not name: the display floor carried NONE of the five
+  ``system.channels.*`` leaves and the launch floor was missing
+  ``system.channels.broadcast``, and this class was green throughout.  A pin that
+  enumerates what it checks can only ever catch the names its author already thought
+  of, which is the opposite of the property.
 
-    Both carriers now read ``settings/paths.system_path_floor``.  The cases below pin
-    that they DO (by mutation) and that the display renders everything the launch floor
-    answers (by derivation), so no key name appears in this file at all.
+  Both carriers now read ``settings/paths.system_path_floor``.  The cases below pin
+  that they DO (by mutation) and that the display renders everything the launch floor
+  answers (by derivation), so no key name appears in this file at all.
 
-    ⚑ The failure this guards is SILENT by construction: an unresolvable ``{key}``-ref is a
-    legitimately-absent referent, not an error, so the binding row simply does not
-    print, with rc 0.
+  ⚑ The failure this guards is SILENT by construction: an unresolvable ``{key}``-ref is a
+  legitimately-absent referent, not an error, so the binding row simply does not
+  print, with rc 0.
+  """
+
+  _DEST = "/home/agent/floor-probe"
+
+  def _workset(self, std, tmp_home):
+    """One real workset; the caller re-points its single binding per case."""
+    ws_root = tmp_home / "worksets" / "floor_set"
+    create_workset("floor_set", ws_root, std)
+    return "floor_set", ws_root
+
+  def _bind_at(self, ws_root, source):
+    """Re-point the workset's one RO binding at *source*."""
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    doc_path = ws_root / WORKSET_META_FILE
+    doc = load_doc(doc_path) or {}
+    doc.setdefault("workset", {}).setdefault("bindings", {})["ro"] = {
+      self._DEST: [source],
+    }
+    dump_doc(doc_path, doc)
+
+  def _effective(self, name, capsys):
+    from kanibako.commands import workset_cmd
+
+    rc = workset_cmd.run_share_list(argparse.Namespace(workset=name, effective=True))
+    assert rc == 0
+    return capsys.readouterr().out
+
+  def test_the_display_renders_every_key_the_launch_floor_answers(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_home,
+    capsys,
+  ):
+    """The value oracle: the launch's OWN output supplies the key list.
+
+    A key present in one carrier and absent in the other reds here whatever it is
+    called, which is exactly what naming the keys could not do.
     """
+    from kanibako.settings.paths import resolve_project
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
-    _DEST = "/home/agent/floor-probe"
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    resolved_sys = resolve_inputs(
+      subject=ResolveSubject.BOX,
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_path=std.settings,
+    ).system_floor
+    assert resolved_sys, "the launch floor is empty; this oracle would be vacuous"
 
-    def _workset(self, std, tmp_home):
-        """One real workset; the caller re-points its single binding per case."""
-        ws_root = tmp_home / "worksets" / "floor_set"
-        create_workset("floor_set", ws_root, std)
-        return "floor_set", ws_root
+    name, ws_root = self._workset(std, tmp_home)
+    for key, value in sorted(resolved_sys.items()):
+      self._bind_at(ws_root, f"{{{key}}}")
+      out = self._effective(name, capsys)
+      assert f"{value} -> {self._DEST}" in out, (
+        f"{{{key}}} is in the LAUNCH floor and did not render in the "
+        f"--effective display: the display omits a binding a launch mounts"
+      )
 
-    def _bind_at(self, ws_root, source):
-        """Re-point the workset's one RO binding at *source*."""
-        from kanibako.settings.config import WORKSET_META_FILE
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def test_both_carriers_read_the_one_builder(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """MUTATION on the shared builder: drop a key and BOTH sides must lose it.
 
-        doc_path = ws_root / WORKSET_META_FILE
-        doc = load_doc(doc_path) or {}
-        doc.setdefault("workset", {}).setdefault("bindings", {})["ro"] = {
-            self._DEST: [source],
-        }
-        dump_doc(doc_path, doc)
+    Two hand-written maps would each keep their own copy and neither would notice.
+    """
+    from kanibako.settings import paths as paths_mod
+    from kanibako.settings import settings_launch as launch_mod
+    from kanibako.settings.paths import resolve_project, system_path_floor
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
-    def _effective(self, name, capsys):
-        from kanibako.commands import workset_cmd
+    dropped = "system.channelroot"
 
-        rc = workset_cmd.run_share_list(
-            argparse.Namespace(workset=name, effective=True)
-        )
-        assert rc == 0
-        return capsys.readouterr().out
+    def mutated(s):
+      return {k: v for k, v in system_path_floor(s).items() if k != dropped}
 
-    def test_the_display_renders_every_key_the_launch_floor_answers(
-        self, std, config, project_dir, tmp_home, capsys,
-    ):
-        """The value oracle: the launch's OWN output supplies the key list.
+    # ONE mutated builder at both binding sites: ``settings_launch`` imports
+    # it at module level, ``workset_cmd`` from ``paths`` at call time.
+    monkeypatch.setattr(paths_mod, "system_path_floor", mutated)
+    monkeypatch.setattr(launch_mod, "system_path_floor", mutated)
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    resolved_sys = resolve_inputs(
+      subject=ResolveSubject.BOX,
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_path=std.settings,
+    ).system_floor
+    assert dropped not in resolved_sys
 
-        A key present in one carrier and absent in the other reds here whatever it is
-        called, which is exactly what naming the keys could not do.
-        """
-        from kanibako.settings.paths import resolve_project
-        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        resolved_sys = resolve_inputs(
-            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
-            system_path=std.settings,
-        ).system_floor
-        assert resolved_sys, "the launch floor is empty; this oracle would be vacuous"
-
-        name, ws_root = self._workset(std, tmp_home)
-        for key, value in sorted(resolved_sys.items()):
-            self._bind_at(ws_root, f"{{{key}}}")
-            out = self._effective(name, capsys)
-            assert f"{value} -> {self._DEST}" in out, (
-                f"{{{key}}} is in the LAUNCH floor and did not render in the "
-                f"--effective display: the display omits a binding a launch mounts"
-            )
-
-    def test_both_carriers_read_the_one_builder(
-        self, std, config, project_dir, tmp_home, capsys, monkeypatch,
-    ):
-        """MUTATION on the shared builder: drop a key and BOTH sides must lose it.
-
-        Two hand-written maps would each keep their own copy and neither would notice.
-        """
-        from kanibako.settings import paths as paths_mod
-        from kanibako.settings import settings_launch as launch_mod
-        from kanibako.settings.paths import resolve_project, system_path_floor
-        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
-
-        dropped = "system.channelroot"
-
-        def mutated(s):
-            return {k: v for k, v in system_path_floor(s).items() if k != dropped}
-
-        # ONE mutated builder at both binding sites: ``settings_launch`` imports
-        # it at module level, ``workset_cmd`` from ``paths`` at call time.
-        monkeypatch.setattr(paths_mod, "system_path_floor", mutated)
-        monkeypatch.setattr(launch_mod, "system_path_floor", mutated)
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        resolved_sys = resolve_inputs(
-            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
-            system_path=std.settings,
-        ).system_floor
-        assert dropped not in resolved_sys
-
-        name, ws_root = self._workset(std, tmp_home)
-        self._bind_at(ws_root, f"{{{dropped}}}")
-        out = self._effective(name, capsys)
-        assert self._DEST not in out, (
-            "the display still resolved a key the shared builder no longer emits, so "
-            "it is reading a second map of its own"
-        )
+    name, ws_root = self._workset(std, tmp_home)
+    self._bind_at(ws_root, f"{{{dropped}}}")
+    out = self._effective(name, capsys)
+    assert self._DEST not in out, (
+      "the display still resolved a key the shared builder no longer emits, so "
+      "it is reading a second map of its own"
+    )
 
 
 class TestWorksetCreateIsAtomicOnRefusal:
-    """F2: a whitelist refusal must leave NOTHING behind.
+  """F2: a whitelist refusal must leave NOTHING behind.
 
-    ⚑ "Loud and leak-free" is not the same as "clean". Refusing part-way through the
-    mold stamp satisfied both of those and still left a REGISTERED workset with a
-    root, its own ``workset.yaml`` and a PARTIAL chapter copy — recoverable only by
-    ``workset rm``. The check therefore runs BEFORE anything is registered or
-    created, matching the order ``create_workset`` already uses for its name guards.
-    """
+  ⚑ "Loud and leak-free" is not the same as "clean". Refusing part-way through the
+  mold stamp satisfied both of those and still left a REGISTERED workset with a
+  root, its own ``workset.yaml`` and a PARTIAL chapter copy — recoverable only by
+  ``workset rm``. The check therefore runs BEFORE anything is registered or
+  created, matching the order ``create_workset`` already uses for its name guards.
+  """
 
-    def _plant(self, std, name):
-        (std.template / "workset").mkdir(parents=True, exist_ok=True)
-        (std.template / "workset" / name).write_text("boxes: {}\n")
+  def _plant(self, std, name):
+    (std.template / "workset").mkdir(parents=True, exist_ok=True)
+    (std.template / "workset" / name).write_text("boxes: {}\n")
 
-    def test_refused_create_leaves_no_registration_and_no_root(
-        self, std, config, tmp_path, capsys,
-    ):
-        import argparse
+  def test_refused_create_leaves_no_registration_and_no_root(
+    self,
+    std,
+    config,
+    tmp_path,
+    capsys,
+  ):
+    import argparse
 
-        from kanibako.commands import workset_cmd
-        from kanibako.launch.templates import install_packaged_templates
-        from kanibako.project.workset import list_worksets
+    from kanibako.commands import workset_cmd
+    from kanibako.launch.templates import install_packaged_templates
+    from kanibako.project.workset import list_worksets
 
-        install_packaged_templates(std, [])
-        self._plant(std, "registry.yaml")
+    install_packaged_templates(std, [])
+    self._plant(std, "registry.yaml")
 
-        root = tmp_path / "ws-refused"
-        rc = workset_cmd.run_create(
-            argparse.Namespace(path=str(root), name="refused", force=False)
-        )
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "WORKSET" in err and "registry.yaml" in err
-        # NOTHING was created, and nothing was registered.
-        assert not root.exists(), sorted(root.rglob("*")) if root.exists() else None
-        assert "refused" not in list_worksets(std)
+    root = tmp_path / "ws-refused"
+    rc = workset_cmd.run_create(argparse.Namespace(path=str(root), name="refused", force=False))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "WORKSET" in err and "registry.yaml" in err
+    # NOTHING was created, and nothing was registered.
+    assert not root.exists(), sorted(root.rglob("*")) if root.exists() else None
+    assert "refused" not in list_worksets(std)
 
-    def test_a_clean_mold_still_creates_normally(self, std, config, tmp_path):
-        import argparse
+  def test_a_clean_mold_still_creates_normally(self, std, config, tmp_path):
+    import argparse
 
-        from kanibako.commands import workset_cmd
-        from kanibako.launch.templates import install_packaged_templates
-        from kanibako.project.workset import list_worksets
+    from kanibako.commands import workset_cmd
+    from kanibako.launch.templates import install_packaged_templates
+    from kanibako.project.workset import list_worksets
 
-        install_packaged_templates(std, [])
-        root = tmp_path / "ws-ok"
-        assert workset_cmd.run_create(
-            argparse.Namespace(path=str(root), name="okset", force=False)
-        ) == 0
-        assert "okset" in list_worksets(std)
-        assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
+    install_packaged_templates(std, [])
+    root = tmp_path / "ws-ok"
+    assert (
+      workset_cmd.run_create(argparse.Namespace(path=str(root), name="okset", force=False)) == 0
+    )
+    assert "okset" in list_worksets(std)
+    assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
 
 
 class TestWorksetGetIsWiredToTheClosedKeyspace:
-    """spec §0 at the ``workset`` noun — the twin of the box noun's gate.
+  """spec §0 at the ``workset`` noun — the twin of the box noun's gate.
 
-    ⚑ END-TO-END through the verb; the predicate itself is pinned in
-    ``tests/test_settings/test_config_interface.py``.
-    """
+  ⚑ END-TO-END through the verb; the predicate itself is pinned in
+  ``tests/test_settings/test_config_interface.py``.
+  """
 
-    def _ws(self, config_file, tmp_home, name):
-        std = load_std_paths(load_config(config_file))
-        return create_workset(name, tmp_home / f"ws_{name}", std)
+  def _ws(self, config_file, tmp_home, name):
+    std = load_std_paths(load_config(config_file))
+    return create_workset(name, tmp_home / f"ws_{name}", std)
 
-    def _merge(self, ws, table):
-        """MERGE into the workset's settings file — never overwrite it: the create
-        wrote content of its own, and clobbering it tests a file no user has."""
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def _merge(self, ws, table):
+    """MERGE into the workset's settings file — never overwrite it: the create
+    wrote content of its own, and clobbering it tests a file no user has."""
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc.setdefault("workset", {}).update(table)
-        dump_doc(path, doc)
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc.setdefault("workset", {}).update(table)
+    dump_doc(path, doc)
 
-    def test_an_undeclared_key_refuses_at_rc_1_NAMING_it(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_get
+  def test_an_undeclared_key_refuses_at_rc_1_NAMING_it(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_get
 
-        # MUTATION-PROVED: neuter the handler's ``scope_read_key_error`` call and this
-        # reds with ``assert 0 == 1``, as does the box noun's twin.
-        self._ws(config_file, tmp_home, "keyspacews")
-        rc = run_get(argparse.Namespace(workset="keyspacews", key="workset.frob"))
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "(not set)" not in err
-        assert "workset.frob" in err
+    # MUTATION-PROVED: neuter the handler's ``scope_read_key_error`` call and this
+    # reds with ``assert 0 == 1``, as does the box noun's twin.
+    self._ws(config_file, tmp_home, "keyspacews")
+    rc = run_get(argparse.Namespace(workset="keyspacews", key="workset.frob"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "(not set)" not in err
+    assert "workset.frob" in err
 
-    def test_a_DECLARED_but_unset_key_still_answers_not_set_at_rc_0(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_get
+  def test_a_DECLARED_but_unset_key_still_answers_not_set_at_rc_0(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_get
 
-        self._ws(config_file, tmp_home, "unsetws")
-        rc = run_get(argparse.Namespace(workset="unsetws", key="workset.vault_ro"))
-        assert rc == 0
-        assert "(not set)" in capsys.readouterr().err
+    self._ws(config_file, tmp_home, "unsetws")
+    rc = run_get(argparse.Namespace(workset="unsetws", key="workset.vault_ro"))
+    assert rc == 0
+    assert "(not set)" in capsys.readouterr().err
 
-    def test_a_HAND_AUTHORED_bind_entry_still_reads_back(
-        self, config_file, tmp_home, capsys,
-    ):
-        """§0: *"Refuse the write; keep the read honest."*"""
-        from kanibako.commands.workset_cmd import run_get
+  def test_a_HAND_AUTHORED_bind_entry_still_reads_back(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """§0: *"Refuse the write; keep the read honest."*"""
+    from kanibako.commands.workset_cmd import run_get
 
-        ws = self._ws(config_file, tmp_home, "bindws")
-        self._merge(ws, {
-            "bindings": {"ro": {"/in/box": ["/on/host", "ro"]}},
-            "synced": {"/in/box/s": ["/on/host/s"]},
-        })
-        for key in ("workset.bindings.ro./in/box", "workset.synced./in/box/s"):
-            assert run_get(
-                argparse.Namespace(workset="bindws", key=key),
-            ) == 0, key
-            assert "/on/host" in capsys.readouterr().out, key
+    ws = self._ws(config_file, tmp_home, "bindws")
+    self._merge(
+      ws,
+      {
+        "bindings": {"ro": {"/in/box": ["/on/host", "ro"]}},
+        "synced": {"/in/box/s": ["/on/host/s"]},
+      },
+    )
+    for key in ("workset.bindings.ro./in/box", "workset.synced./in/box/s"):
+      assert (
+        run_get(
+          argparse.Namespace(workset="bindws", key=key),
+        )
+        == 0
+      ), key
+      assert "/on/host" in capsys.readouterr().out, key
 
-    def test_the_BARE_agent_key_refusal_still_wins_over_the_generic_one(
-        self, config_file, tmp_home, capsys,
-    ):
-        """ORDER pin: a recognized spelling keeps the cure written for it. The §0 gate
-        runs LAST, or it would overwrite a specific refusal with a vaguer one."""
-        from kanibako.commands.workset_cmd import run_get
+  def test_the_BARE_agent_key_refusal_still_wins_over_the_generic_one(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """ORDER pin: a recognized spelling keeps the cure written for it. The §0 gate
+    runs LAST, or it would overwrite a specific refusal with a vaguer one."""
+    from kanibako.commands.workset_cmd import run_get
 
-        self._ws(config_file, tmp_home, "barews")
-        assert run_get(argparse.Namespace(workset="barews", key="model")) == 1
-        err = capsys.readouterr().err
-        assert "pref.agent.<agent>.model" in err
-        assert "cannot be read" not in err
+    self._ws(config_file, tmp_home, "barews")
+    assert run_get(argparse.Namespace(workset="barews", key="model")) == 1
+    err = capsys.readouterr().err
+    assert "pref.agent.<agent>.model" in err
+    assert "cannot be read" not in err
 
-    def test_workset_show_marks_a_hand_written_undeclared_entry(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_show
+  def test_workset_show_marks_a_hand_written_undeclared_entry(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_show
 
-        ws = self._ws(config_file, tmp_home, "showws")
-        self._merge(ws, {"vault_ro": "/ro", "frob": 1})
-        assert run_show(argparse.Namespace(workset="showws", effective=False)) == 0
-        out = capsys.readouterr().out
-        assert "undeclared" in out
-        assert "workset.frob = 1" in out
+    ws = self._ws(config_file, tmp_home, "showws")
+    self._merge(ws, {"vault_ro": "/ro", "frob": 1})
+    assert run_show(argparse.Namespace(workset="showws", effective=False)) == 0
+    out = capsys.readouterr().out
+    assert "undeclared" in out
+    assert "workset.frob = 1" in out
 
-    def test_workset_show_prints_no_such_block_for_a_clean_file(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_show
+  def test_workset_show_prints_no_such_block_for_a_clean_file(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_show
 
-        ws = self._ws(config_file, tmp_home, "cleanws")
-        self._merge(ws, {"vault_ro": "/ro"})
-        assert run_show(argparse.Namespace(workset="cleanws", effective=False)) == 0
-        assert "undeclared" not in capsys.readouterr().out
+    ws = self._ws(config_file, tmp_home, "cleanws")
+    self._merge(ws, {"vault_ro": "/ro"})
+    assert run_show(argparse.Namespace(workset="cleanws", effective=False)) == 0
+    assert "undeclared" not in capsys.readouterr().out
 
 
 class TestWorksetShowListsTheAbstractTrio:
-    """spec §0: *"They remain real, declared keys: a user sets them in YAML …,
-    ``config show`` lists them"* — at the noun that OWNS a workset's declarations.
+  """spec §0: *"They remain real, declared keys: a user sets them in YAML …,
+  ``config show`` lists them"* — at the noun that OWNS a workset's declarations.
 
-    The trio (``common`` / ``caches`` / ``seeded``) is YAML-only, so every fixture
-    here hand-authors it; a ``set`` would be refused (terminal category).
+  The trio (``common`` / ``caches`` / ``seeded``) is YAML-only, so every fixture
+  here hand-authors it; a ``set`` would be refused (terminal category).
 
-    ⚑ MUTATION-PROVED: drop ``system_settings_path=ws_config`` from the ``show``
-    branch of ``commands/workset_cmd.py`` and all three families vanish from both
-    views — which is the defect these pin.
-    ⚑ The PLAIN view is the requirement [Jei:2026-09-19], not only ``--effective``.
-    """
+  ⚑ MUTATION-PROVED: drop ``system_settings_path=ws_config`` from the ``show``
+  branch of ``commands/workset_cmd.py`` and all three families vanish from both
+  views — which is the defect these pin.
+  ⚑ The PLAIN view is the requirement [Jei:2026-09-19], not only ``--effective``.
+  """
 
-    TRIO = {
-        "common": {"~/shared/docs": ["teamdocs"]},
-        "caches": {"~/.cache/uv": ["uv"]},
-        "seeded": {"~/.bashrc": ["bashrc"]},
-    }
+  TRIO = {
+    "common": {"~/shared/docs": ["teamdocs"]},
+    "caches": {"~/.cache/uv": ["uv"]},
+    "seeded": {"~/.bashrc": ["bashrc"]},
+  }
 
-    def _ws(self, config_file, tmp_home, name):
-        std = load_std_paths(load_config(config_file))
-        return create_workset(name, tmp_home / f"ws_{name}", std)
+  def _ws(self, config_file, tmp_home, name):
+    std = load_std_paths(load_config(config_file))
+    return create_workset(name, tmp_home / f"ws_{name}", std)
 
-    def _merge(self, ws, table):
-        """MERGE into the workset's settings file — never overwrite it."""
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def _merge(self, ws, table):
+    """MERGE into the workset's settings file — never overwrite it."""
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc.setdefault("workset", {}).update(table)
-        dump_doc(path, doc)
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc.setdefault("workset", {}).update(table)
+    dump_doc(path, doc)
 
-    def _show(self, name, capsys, *, effective):
-        from kanibako.commands.workset_cmd import run_show
+  def _show(self, name, capsys, *, effective):
+    from kanibako.commands.workset_cmd import run_show
 
-        assert run_show(argparse.Namespace(workset=name, effective=effective)) == 0
-        return capsys.readouterr().out
+    assert run_show(argparse.Namespace(workset=name, effective=effective)) == 0
+    return capsys.readouterr().out
 
-    @pytest.mark.parametrize("effective", [False, True])
-    def test_every_abstract_family_is_listed(
-        self, config_file, tmp_home, capsys, effective,
-    ):
-        ws = self._ws(config_file, tmp_home, "trio")
-        self._merge(ws, self.TRIO)
-        out = self._show("trio", capsys, effective=effective)
-        for cat, table in self.TRIO.items():
-            for dest in table:
-                assert f"workset.{cat}[{normalize_bind_dest(dest)}]" in out, out
+  @pytest.mark.parametrize("effective", [False, True])
+  def test_every_abstract_family_is_listed(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    effective,
+  ):
+    ws = self._ws(config_file, tmp_home, "trio")
+    self._merge(ws, self.TRIO)
+    out = self._show("trio", capsys, effective=effective)
+    for cat, table in self.TRIO.items():
+      for dest in table:
+        assert f"workset.{cat}[{normalize_bind_dest(dest)}]" in out, out
 
-    def test_a_declaration_is_listed_ONCE(self, config_file, tmp_home, capsys):
-        """One carrier, one row: the flatten is the only reader of this file."""
-        ws = self._ws(config_file, tmp_home, "trioonce")
-        self._merge(ws, self.TRIO)
-        out = self._show("trioonce", capsys, effective=False)
-        for cat, table in self.TRIO.items():
-            for dest in table:
-                label = f"workset.{cat}[{normalize_bind_dest(dest)}]"
-                assert out.count(label) == 1, label
+  def test_a_declaration_is_listed_ONCE(self, config_file, tmp_home, capsys):
+    """One carrier, one row: the flatten is the only reader of this file."""
+    ws = self._ws(config_file, tmp_home, "trioonce")
+    self._merge(ws, self.TRIO)
+    out = self._show("trioonce", capsys, effective=False)
+    for cat, table in self.TRIO.items():
+      for dest in table:
+        label = f"workset.{cat}[{normalize_bind_dest(dest)}]"
+        assert out.count(label) == 1, label
 
-    def test_a_row_prints_the_key_the_resolve_uses_and_its_source_as_written(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The destination prints NORMALIZED — the spelling ``parse_bind_map`` keys it by
-        (R-11), so this row and the ``--effective`` derived block name one declaration with
-        one key — and the entry prints ``src`` / ``src  [options]``, never the Python repr
-        ``['uv']``.  A ``masks`` destination is carried as written by the resolve, so it
-        prints as written here too.
-        MUTATION: route bind maps back through the plain walk in
-        ``config_display._flatten_table`` and every assertion below but the ``masks`` one
-        reds."""
-        ws = self._ws(config_file, tmp_home, "triospell")
-        self._merge(ws, {
-            "common": {"~/shared/docs/": ["teamdocs"]},
-            "caches": {"~/.cache/uv": ["uv", "Z,U"]},
-            "masks": {"~/.ssh": True},
-        })
-        out = self._show("triospell", capsys, effective=False)
-        assert f"workset.common[{normalize_bind_dest('~/shared/docs')}] = teamdocs\n" in out
-        assert f"workset.caches[{normalize_bind_dest('~/.cache/uv')}] = uv  [Z,U]\n" in out
-        assert "workset.masks[~/.ssh] = true\n" in out
-        assert "['" not in out, out
-        assert "workset.common[~/]" not in out, out
+  def test_a_row_prints_the_key_the_resolve_uses_and_its_source_as_written(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The destination prints NORMALIZED — the spelling ``parse_bind_map`` keys it by
+    (R-11), so this row and the ``--effective`` derived block name one declaration with
+    one key — and the entry prints ``src`` / ``src  [options]``, never the Python repr
+    ``['uv']``.  A ``masks`` destination is carried as written by the resolve, so it
+    prints as written here too.
+    MUTATION: route bind maps back through the plain walk in
+    ``config_display._flatten_table`` and every assertion below but the ``masks`` one
+    reds."""
+    ws = self._ws(config_file, tmp_home, "triospell")
+    self._merge(
+      ws,
+      {
+        "common": {"~/shared/docs/": ["teamdocs"]},
+        "caches": {"~/.cache/uv": ["uv", "Z,U"]},
+        "masks": {"~/.ssh": True},
+      },
+    )
+    out = self._show("triospell", capsys, effective=False)
+    assert f"workset.common[{normalize_bind_dest('~/shared/docs')}] = teamdocs\n" in out
+    assert f"workset.caches[{normalize_bind_dest('~/.cache/uv')}] = uv  [Z,U]\n" in out
+    assert "workset.masks[~/.ssh] = true\n" in out
+    assert "['" not in out, out
+    assert "workset.common[~/]" not in out, out
 
-    def test_a_pref_request_is_not_doubled_by_the_flatten(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The flatten (``_nested_settings_overrides``) is every noun's one ``pref``
-        producer, so a request prints once."""
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def test_a_pref_request_is_not_doubled_by_the_flatten(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The flatten (``_nested_settings_overrides``) is every noun's one ``pref``
+    producer, so a request prints once."""
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        ws = self._ws(config_file, tmp_home, "trioprefs")
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc.setdefault("pref", {}).setdefault("system", {})["agent"] = "claude"
-        dump_doc(path, doc)
-        out = self._show("trioprefs", capsys, effective=False)
-        assert out.count("pref.system.agent = claude") == 1
+    ws = self._ws(config_file, tmp_home, "trioprefs")
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc.setdefault("pref", {}).setdefault("system", {})["agent"] = "claude"
+    dump_doc(path, doc)
+    out = self._show("trioprefs", capsys, effective=False)
+    assert out.count("pref.system.agent = claude") == 1
 
-    def test_a_clean_workset_still_reports_no_overrides(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The flatten must not manufacture a row out of a create-written file."""
-        self._ws(config_file, tmp_home, "trioclean")
-        assert "no overrides" in self._show("trioclean", capsys, effective=False)
+  def test_a_clean_workset_still_reports_no_overrides(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The flatten must not manufacture a row out of a create-written file."""
+    self._ws(config_file, tmp_home, "trioclean")
+    assert "no overrides" in self._show("trioclean", capsys, effective=False)
 
-    @pytest.mark.parametrize("effective", [False, True])
-    def test_a_dropped_upward_table_is_announced_ONCE(
-        self, config_file, tmp_home, capsys, caplog, effective,
-    ):
-        """spec §0: a containing scope's table is dropped *"with a warning naming the file
-        and key"*.  The PLAIN view assembled nothing, so it printed no warning at all; both
-        views now name the file and key, once.
-        MUTATION: drop the ``_warn_upward_drops`` call from ``settings_assemble._file_view``
-        and the plain case reds; skip the ``_DROP_WARNED`` check in
-        ``settings_assemble._warn_upward_drops`` and the ``--effective`` case reds."""
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
+  @pytest.mark.parametrize("effective", [False, True])
+  def test_a_dropped_upward_table_is_announced_ONCE(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    caplog,
+    effective,
+  ):
+    """spec §0: a containing scope's table is dropped *"with a warning naming the file
+    and key"*.  The PLAIN view assembled nothing, so it printed no warning at all; both
+    views now name the file and key, once.
+    MUTATION: drop the ``_warn_upward_drops`` call from ``settings_assemble._file_view``
+    and the plain case reds; skip the ``_DROP_WARNED`` check in
+    ``settings_assemble._warn_upward_drops`` and the ``--effective`` case reds."""
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        ws = self._ws(config_file, tmp_home, f"triodrop{int(effective)}")
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc["system"] = {"auth": {"share_allowed": False}}
-        dump_doc(path, doc)
-        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
-            self._show(ws.name, capsys, effective=effective)
-        drops = [
-            m for m in caplog.messages
-            if m.startswith(
-                f"Dropping upward-scope key 'system' from workset settings file {path}"
-            )
-        ]
-        assert len(drops) == 1, caplog.messages
+    ws = self._ws(config_file, tmp_home, f"triodrop{int(effective)}")
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc["system"] = {"auth": {"share_allowed": False}}
+    dump_doc(path, doc)
+    with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+      self._show(ws.name, capsys, effective=effective)
+    drops = [
+      m
+      for m in caplog.messages
+      if m.startswith(f"Dropping upward-scope key 'system' from workset settings file {path}")
+    ]
+    assert len(drops) == 1, caplog.messages
 
 
 class TestWorksetShowDerivesTheAbstractTrio:
-    """keyspec §0: *"``--effective`` shows BOTH the declaration and the derived
-    binding and a user can see WHY a mount exists."*
+  """keyspec §0: *"``--effective`` shows BOTH the declaration and the derived
+  binding and a user can see WHY a mount exists."*
 
-    The DECLARATION half is ``TestWorksetShowListsTheAbstractTrio`` above.  This is
-    the DERIVED half, at the noun that owns a working set's declarations — and it is
-    an ``--effective`` obligation only.
+  The DECLARATION half is ``TestWorksetShowListsTheAbstractTrio`` above.  This is
+  the DERIVED half, at the noun that owns a working set's declarations — and it is
+  an ``--effective`` obligation only.
 
-    ⚑ **EACH TEST NAMES THE GUARD IT DEPENDS ON, rather than one blanket mutation
-    claim for the class.** The two tests that assert an ABSENCE cannot red under the
-    mutation the four PRESENCE tests red under — dropping the
-    ``_print_effective_derivations`` call from the ``show`` branch of
-    ``commands/workset_cmd.py`` prints nothing, which is what they assert — so a
-    claim spanning all six would be a gate that passes vacuously (P15).  The three
-    guards, one per group:
+  ⚑ **EACH TEST NAMES THE GUARD IT DEPENDS ON, rather than one blanket mutation
+  claim for the class.** The two tests that assert an ABSENCE cannot red under the
+  mutation the four PRESENCE tests red under — dropping the
+  ``_print_effective_derivations`` call from the ``show`` branch of
+  ``commands/workset_cmd.py`` prints nothing, which is what they assert — so a
+  claim spanning all six would be a gate that passes vacuously (P15).  The three
+  guards, one per group:
 
-    * the CALL in the ``show`` branch — the four tests asserting a printed row.
-    * the ``not args.effective`` guard beside it —
-      ``test_the_PLAIN_view_derives_nothing``, whose fixture declares the trio, so
-      the block would print for the plain view without it.
-    * the ``if not abstract: return 0`` gate in ``_print_effective_derivations`` —
-      ``test_a_workset_with_no_abstract_declaration_prints_no_block``, which would
-      otherwise receive the heading over an empty row list.
+  * the CALL in the ``show`` branch — the four tests asserting a printed row.
+  * the ``not args.effective`` guard beside it —
+    ``test_the_PLAIN_view_derives_nothing``, whose fixture declares the trio, so
+    the block would print for the plain view without it.
+  * the ``if not abstract: return 0`` gate in ``_print_effective_derivations`` —
+    ``test_a_workset_with_no_abstract_declaration_prints_no_block``, which would
+    otherwise receive the heading over an empty row list.
 
-    🛑 Those three are read off the assertions and the guards, NOT measured by
-    running the mutations: the tree is shared with other writers and a mutation
-    parked in it is a trap for whoever gates next.
+  🛑 Those three are read off the assertions and the guards, NOT measured by
+  running the mutations: the tree is shared with other writers and a mutation
+  parked in it is a trap for whoever gates next.
 
-    ⚑ Nothing below hard-codes a host path: the expected source is derived from the
-    working set's own root, which is what ``{meta.workset.path}`` names (§2a
-    "Declaration roots"), so a layout change reds instead of quietly outdating.
-    """
+  ⚑ Nothing below hard-codes a host path: the expected source is derived from the
+  working set's own root, which is what ``{meta.workset.path}`` names (§2a
+  "Declaration roots"), so a layout change reds instead of quietly outdating.
+  """
 
-    TRIO = {
+  TRIO = {
+    "common": {"~/shared/docs": ["teamdocs"]},
+    "caches": {"~/.cache/uv": ["uv"]},
+    "seeded": {"~/.bashrc": ["bashrc"]},
+  }
+
+  def _ws(self, config_file, tmp_home, name):
+    std = load_std_paths(load_config(config_file))
+    return create_workset(name, tmp_home / f"ws_{name}", std)
+
+  def _merge(self, ws, table):
+    """MERGE into the workset's settings file — the trio is YAML-only."""
+    from kanibako.commands.workset_cmd import _workset_config_path
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc.setdefault("workset", {}).update(table)
+    dump_doc(path, doc)
+
+  def _show(self, name, capsys, *, effective=True, rc=0):
+    from kanibako.commands.workset_cmd import run_show
+
+    assert (
+      run_show(
+        argparse.Namespace(workset=name, effective=effective),
+      )
+      == rc
+    )
+    return capsys.readouterr()
+
+  def test_every_abstract_family_derives_its_binding(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """One row per declaration, each carrying what it DERIVES — the §0 pair."""
+    ws = self._ws(config_file, tmp_home, "deriv")
+    self._merge(ws, self.TRIO)
+    out = self._show("deriv", capsys).out
+
+    # The MOUNT pair: source rooted at the workset root, arrow to the GUEST dest.
+    assert f"{ws.root}/common/teamdocs -> /home/agent/shared/docs" in out
+    assert "(mount)" in out
+    assert f"{ws.root}/caches/uv -> /home/agent/.cache/uv" in out
+    # ⚑ ``seeded`` derives a COPY, not a mount (§0), and the phrase says so.
+    assert f"{ws.root}/seeded/bashrc -> /home/agent/.bashrc  (copy)" in out
+
+  def test_the_declaration_key_is_named_beside_its_derivation(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """A derivation the user cannot trace to a key is one they cannot act on."""
+    ws = self._ws(config_file, tmp_home, "derivkey")
+    self._merge(ws, self.TRIO)
+    out = self._show("derivkey", capsys).out
+    assert "workset.common[/home/agent/shared/docs]" in out
+
+  def test_the_root_anchor_resolves(self, config_file, tmp_home, capsys):
+    """🛑 The REGRESSION this pins: ``{meta.workset.path}`` was absent from the
+    preview floor, so a rooted declaration resolved to a bare ``/common/<src>``
+    — a path that exists nowhere.  Derived from ``ws.root``, never a literal."""
+    ws = self._ws(config_file, tmp_home, "derivroot")
+    self._merge(ws, {"common": {"~/shared/docs": ["teamdocs"]}})
+    out = self._show("derivroot", capsys).out
+    assert str(ws.root) in out
+    assert " /common/teamdocs" not in out
+
+  def test_a_masked_declaration_prints_the_LOSS_not_a_mount(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The measured defect class: reading the pre-arbitration node alone reports
+    a mount for a declaration a mask swallowed, with the mask invisible."""
+    ws = self._ws(config_file, tmp_home, "derivmask")
+    self._merge(
+      ws,
+      {
         "common": {"~/shared/docs": ["teamdocs"]},
-        "caches": {"~/.cache/uv": ["uv"]},
-        "seeded": {"~/.bashrc": ["bashrc"]},
-    }
+        "masks": {"~/shared/docs": True},
+      },
+    )
+    out = self._show("derivmask", capsys).out
+    assert "no mount" in out
+    assert "workset.masks[~/shared/docs]" in out
+    assert "teamdocs -> " not in out
 
-    def _ws(self, config_file, tmp_home, name):
-        std = load_std_paths(load_config(config_file))
-        return create_workset(name, tmp_home / f"ws_{name}", std)
+  def test_the_block_names_the_masks_it_does_not_apply(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The heading answers without a box or an agent, so the line beneath it says
+    which masks that leaves out and where the box's own answer is.
+    MUTATION: delete the note's ``print`` in ``_print_effective_derivations`` and
+    this reds."""
+    ws = self._ws(config_file, tmp_home, "derivnote")
+    self._merge(ws, self.TRIO)
+    lines = self._show("derivnote", capsys).out.splitlines()
+    heading = lines.index("Derived bindings for working set 'derivnote':")
+    note = lines[heading + 1]
+    assert note.startswith(
+      "  (Masks from an agent file or a box's own file are not applied here;"
+    ), note
+    assert "'kanibako box show <box> --effective'" in note, note
 
-    def _merge(self, ws, table):
-        """MERGE into the workset's settings file — the trio is YAML-only."""
-        from kanibako.commands.workset_cmd import _workset_config_path
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def test_the_PLAIN_view_derives_nothing(self, config_file, tmp_home, capsys):
+    """The derived half is an ``--effective`` obligation; the plain view shows
+    what this file OVERRIDES and must not grow a resolved answer."""
+    ws = self._ws(config_file, tmp_home, "derivplain")
+    self._merge(ws, self.TRIO)
+    out = self._show("derivplain", capsys, effective=False).out
+    assert "Derived bindings" not in out
 
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc.setdefault("workset", {}).update(table)
-        dump_doc(path, doc)
-
-    def _show(self, name, capsys, *, effective=True, rc=0):
-        from kanibako.commands.workset_cmd import run_show
-
-        assert run_show(
-            argparse.Namespace(workset=name, effective=effective),
-        ) == rc
-        return capsys.readouterr()
-
-    def test_every_abstract_family_derives_its_binding(
-        self, config_file, tmp_home, capsys,
-    ):
-        """One row per declaration, each carrying what it DERIVES — the §0 pair."""
-        ws = self._ws(config_file, tmp_home, "deriv")
-        self._merge(ws, self.TRIO)
-        out = self._show("deriv", capsys).out
-
-        # The MOUNT pair: source rooted at the workset root, arrow to the GUEST dest.
-        assert f"{ws.root}/common/teamdocs -> /home/agent/shared/docs" in out
-        assert "(mount)" in out
-        assert f"{ws.root}/caches/uv -> /home/agent/.cache/uv" in out
-        # ⚑ ``seeded`` derives a COPY, not a mount (§0), and the phrase says so.
-        assert f"{ws.root}/seeded/bashrc -> /home/agent/.bashrc  (copy)" in out
-
-    def test_the_declaration_key_is_named_beside_its_derivation(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A derivation the user cannot trace to a key is one they cannot act on."""
-        ws = self._ws(config_file, tmp_home, "derivkey")
-        self._merge(ws, self.TRIO)
-        out = self._show("derivkey", capsys).out
-        assert "workset.common[/home/agent/shared/docs]" in out
-
-    def test_the_root_anchor_resolves(self, config_file, tmp_home, capsys):
-        """🛑 The REGRESSION this pins: ``{meta.workset.path}`` was absent from the
-        preview floor, so a rooted declaration resolved to a bare ``/common/<src>``
-        — a path that exists nowhere.  Derived from ``ws.root``, never a literal."""
-        ws = self._ws(config_file, tmp_home, "derivroot")
-        self._merge(ws, {"common": {"~/shared/docs": ["teamdocs"]}})
-        out = self._show("derivroot", capsys).out
-        assert str(ws.root) in out
-        assert " /common/teamdocs" not in out
-
-    def test_a_masked_declaration_prints_the_LOSS_not_a_mount(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The measured defect class: reading the pre-arbitration node alone reports
-        a mount for a declaration a mask swallowed, with the mask invisible."""
-        ws = self._ws(config_file, tmp_home, "derivmask")
-        self._merge(ws, {
-            "common": {"~/shared/docs": ["teamdocs"]},
-            "masks": {"~/shared/docs": True},
-        })
-        out = self._show("derivmask", capsys).out
-        assert "no mount" in out
-        assert "workset.masks[~/shared/docs]" in out
-        assert "teamdocs -> " not in out
-
-    def test_the_block_names_the_masks_it_does_not_apply(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The heading answers without a box or an agent, so the line beneath it says
-        which masks that leaves out and where the box's own answer is.
-        MUTATION: delete the note's ``print`` in ``_print_effective_derivations`` and
-        this reds."""
-        ws = self._ws(config_file, tmp_home, "derivnote")
-        self._merge(ws, self.TRIO)
-        lines = self._show("derivnote", capsys).out.splitlines()
-        heading = lines.index("Derived bindings for working set 'derivnote':")
-        note = lines[heading + 1]
-        assert note.startswith(
-            "  (Masks from an agent file or a box's own file are not applied here;"
-        ), note
-        assert "'kanibako box show <box> --effective'" in note, note
-
-    def test_the_PLAIN_view_derives_nothing(self, config_file, tmp_home, capsys):
-        """The derived half is an ``--effective`` obligation; the plain view shows
-        what this file OVERRIDES and must not grow a resolved answer."""
-        ws = self._ws(config_file, tmp_home, "derivplain")
-        self._merge(ws, self.TRIO)
-        out = self._show("derivplain", capsys, effective=False).out
-        assert "Derived bindings" not in out
-
-    def test_a_workset_with_no_abstract_declaration_prints_no_block(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Nothing to arbitrate ⇒ no collapse and no block: the output a working set
-        without the trio already had is unchanged."""
-        ws = self._ws(config_file, tmp_home, "derivnone")
-        self._merge(ws, {"bindings": {"ro": {"/opt/ref": ["/on/host"]}}})
-        out = self._show("derivnone", capsys).out
-        assert "Derived bindings" not in out
+  def test_a_workset_with_no_abstract_declaration_prints_no_block(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """Nothing to arbitrate ⇒ no collapse and no block: the output a working set
+    without the trio already had is unchanged."""
+    ws = self._ws(config_file, tmp_home, "derivnone")
+    self._merge(ws, {"bindings": {"ro": {"/opt/ref": ["/on/host"]}}})
+    out = self._show("derivnone", capsys).out
+    assert "Derived bindings" not in out
 
 
 class TestWorksetPreviewResolvesTheDeclarationRoot:
-    """``{meta.workset.path}`` must resolve in BOTH ``--effective`` listings.
+  """``{meta.workset.path}`` must resolve in BOTH ``--effective`` listings.
 
-    ⚑ The anchor is §2a's workset ``<scope-root>``, so every rooted declaration and
-    every value a user spells against it depends on it.  It was absent from the
-    preview floor — ``paths.system_path_floor`` carries no ``meta.*`` key — and
-    ``settings_expand`` renders an unresolvable anchor as the EMPTY string, so a
-    share sourced ``@meta.workset.path/refdir`` listed as ``/refdir`` at rc 0 with no
-    warning.  MEASURED on the shipped ``workset share list --effective``.
-    """
+  ⚑ The anchor is §2a's workset ``<scope-root>``, so every rooted declaration and
+  every value a user spells against it depends on it.  It was absent from the
+  preview floor — ``paths.system_path_floor`` carries no ``meta.*`` key — and
+  ``settings_expand`` renders an unresolvable anchor as the EMPTY string, so a
+  share sourced ``@meta.workset.path/refdir`` listed as ``/refdir`` at rc 0 with no
+  warning.  MEASURED on the shipped ``workset share list --effective``.
+  """
 
-    def _ws(self, config_file, tmp_home, name):
-        std = load_std_paths(load_config(config_file))
-        return create_workset(name, tmp_home / f"ws_{name}", std)
+  def _ws(self, config_file, tmp_home, name):
+    std = load_std_paths(load_config(config_file))
+    return create_workset(name, tmp_home / f"ws_{name}", std)
 
-    def test_share_list_effective_roots_a_meta_workset_path_source(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import _workset_config_path, run_share_list
-        from kanibako.settings.config_io import dump_doc, load_doc
+  def test_share_list_effective_roots_a_meta_workset_path_source(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import _workset_config_path, run_share_list
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        ws = self._ws(config_file, tmp_home, "anchorws")
-        path = _workset_config_path(ws)
-        doc = load_doc(path)
-        doc.setdefault("workset", {})["bindings"] = {
-            "ro": {"/opt/ref": ["{meta.workset.path}/refdir"]},
-        }
-        dump_doc(path, doc)
+    ws = self._ws(config_file, tmp_home, "anchorws")
+    path = _workset_config_path(ws)
+    doc = load_doc(path)
+    doc.setdefault("workset", {})["bindings"] = {
+      "ro": {"/opt/ref": ["{meta.workset.path}/refdir"]},
+    }
+    dump_doc(path, doc)
 
-        assert run_share_list(argparse.Namespace(
-            workset="anchorws", effective=True,
-        )) == 0
-        out = capsys.readouterr().out
-        assert f"{ws.root}/refdir -> /opt/ref" in out
+    assert (
+      run_share_list(
+        argparse.Namespace(
+          workset="anchorws",
+          effective=True,
+        )
+      )
+      == 0
+    )
+    out = capsys.readouterr().out
+    assert f"{ws.root}/refdir -> /opt/ref" in out
 
 
 class TestWorksetGetAnswersOnlyTheWorksetFile:
-    """``workset get <ws> agent.<node>.<key>`` answers "(not set)" over the node's file.
+  """``workset get <ws> agent.<node>.<key>`` answers "(not set)" over the node's file.
 
-    The twin of the box noun's pin. Spec §2a: plain ``get`` returns the value STORED
-    at the command scope's file, "never another tier's value"; the workset scope
-    cannot store the key, and ``agents/<node>/agent.yaml`` is the agent scope's file.
-    """
+  The twin of the box noun's pin. Spec §2a: plain ``get`` returns the value STORED
+  at the command scope's file, "never another tier's value"; the workset scope
+  cannot store the key, and ``agents/<node>/agent.yaml`` is the agent scope's file.
+  """
 
-    def _ws_and_agents_root(self, config_file, tmp_home, name):
-        std = load_std_paths(load_config(config_file))
-        create_workset(name, tmp_home / f"ws_{name}", std)
-        return std.agents
+  def _ws_and_agents_root(self, config_file, tmp_home, name):
+    std = load_std_paths(load_config(config_file))
+    create_workset(name, tmp_home / f"ws_{name}", std)
+    return std.agents
 
-    def _write_node(self, agents_root, key, value):
-        """Write the node's own file through the PRODUCTION ``agent`` route."""
-        from kanibako.settings.config_interface import set_config_value
-        from kanibako.settings.config_keys import ConfigLevel
+  def _write_node(self, agents_root, key, value):
+    """Write the node's own file through the PRODUCTION ``agent`` route."""
+    from kanibako.settings.config_interface import set_config_value
+    from kanibako.settings.config_keys import ConfigLevel
 
-        msg = set_config_value(
-            key, value,
-            config_path=agents_root.parent / "unused-workset.yaml",
-            command_scope=ConfigLevel.system,
-            agents_root=agents_root,
-        )
-        assert not msg.startswith("Error:"), msg
-        assert agent_settings_path(agents_root, "claude").is_file()
+    msg = set_config_value(
+      key,
+      value,
+      config_path=agents_root.parent / "unused-workset.yaml",
+      command_scope=ConfigLevel.system,
+      agents_root=agents_root,
+    )
+    assert not msg.startswith("Error:"), msg
+    assert agent_settings_path(agents_root, "claude").is_file()
 
-    def _get(self, ws, key):
-        from kanibako.cli import build_parser
+  def _get(self, ws, key):
+    from kanibako.cli import build_parser
 
-        args = build_parser().parse_args(["workset", "get", ws, key])
-        return args.func(args)
+    args = build_parser().parse_args(["workset", "get", ws, key])
+    return args.func(args)
 
-    @pytest.mark.parametrize("key, value", [
-        ("agent.claude.model", "opus-test"),
-        ("agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token"),
-    ])
-    def test_a_node_file_value_is_not_set_at_the_workset(
-        self, config_file, tmp_home, capsys, key, value,
-    ):
-        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
-        self._write_node(agents_root, key, value)
+  @pytest.mark.parametrize(
+    "key, value",
+    [
+      ("agent.claude.model", "opus-test"),
+      ("agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token"),
+    ],
+  )
+  def test_a_node_file_value_is_not_set_at_the_workset(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    key,
+    value,
+  ):
+    agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
+    self._write_node(agents_root, key, value)
 
-        assert self._get("nodews", key) == 0
-        captured = capsys.readouterr()
-        assert value not in captured.out
-        assert "(not set)" in captured.err
+    assert self._get("nodews", key) == 0
+    captured = capsys.readouterr()
+    assert value not in captured.out
+    assert "(not set)" in captured.err
 
-    def test_an_unset_node_key_is_not_set(self, config_file, tmp_home, capsys):
-        self._ws_and_agents_root(config_file, tmp_home, "nonodews")
-        assert self._get("nonodews", "agent.claude.model") == 0
-        assert "(not set)" in capsys.readouterr().err
+  def test_an_unset_node_key_is_not_set(self, config_file, tmp_home, capsys):
+    self._ws_and_agents_root(config_file, tmp_home, "nonodews")
+    assert self._get("nonodews", "agent.claude.model") == 0
+    assert "(not set)" in capsys.readouterr().err
 
 
 class TestWorksetShareListArbitrates:
-    """``workset share list --effective`` must answer with the COLLAPSE, not the entry list.
+  """``workset share list --effective`` must answer with the COLLAPSE, not the entry list.
 
-    Its whole job is to say what a launch would mount, and until 2026-08-26 it printed
-    the pre-collapse ENTRY LIST: every stored binding, with no mask, no containment and
-    no §0 row applied.  A workset that ALSO declared ``workset.masks`` over a share's
-    destination listed that share as a live mount while the box received nothing there —
-    rc 0, no message.
+  Its whole job is to say what a launch would mount, and until 2026-08-26 it printed
+  the pre-collapse ENTRY LIST: every stored binding, with no mask, no containment and
+  no §0 row applied.  A workset that ALSO declared ``workset.masks`` over a share's
+  destination listed that share as a live mount while the box received nothing there —
+  rc 0, no message.
 
-    ⚑ The two carriers are now ONE walk: ``store_shape.build_store_shape_set`` +
-    ``store_collapse.collapse_store_shapes``, the same pair
-    ``commands.start._install_assembly_collapse`` makes, with the per-share outcome read
-    off ``store_collapse.pair_declarations`` — the function ``box show --effective``
-    already pairs its own declarations with.
+  ⚑ The two carriers are now ONE walk: ``store_shape.build_store_shape_set`` +
+  ``store_collapse.collapse_store_shapes``, the same pair
+  ``commands.start._install_assembly_collapse`` makes, with the per-share outcome read
+  off ``store_collapse.pair_declarations`` — the function ``box show --effective``
+  already pairs its own declarations with.
+  """
+
+  _SRC = "/etc/hostname"
+
+  def _ws(self, std, tmp_home, name, node):
+    """One real workset carrying *node* under its ``workset:`` root."""
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    ws_root = tmp_home / "worksets" / name
+    create_workset(name, ws_root, std)
+    doc_path = ws_root / WORKSET_META_FILE
+    doc = load_doc(doc_path) or {}
+    doc.setdefault("workset", {}).update(node)
+    dump_doc(doc_path, doc)
+    return ws_root
+
+  def _effective(self, name, capsys):
+    """``(rc, stdout, stderr)`` — the refusal path writes to stderr and rc 1."""
+    from kanibako.commands import workset_cmd
+
+    rc = workset_cmd.run_share_list(argparse.Namespace(workset=name, effective=True))
+    captured = capsys.readouterr()
+    return rc, captured.out, captured.err
+
+  def test_an_undisturbed_share_still_prints_as_a_mount(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """The unchanged case: an arrow line, and NO result phrase under it."""
+    self._ws(
+      std,
+      tmp_home,
+      "arb_plain",
+      {
+        "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+      },
+    )
+    rc, out, _err = self._effective("arb_plain", capsys)
+    assert rc == 0
+    assert f"  {self._SRC} -> /opt/arb  [ro]" in out
+    assert "no mount" not in out
+
+  def test_a_mask_at_the_destination_is_named_instead_of_a_mount(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """A mask takes the share's own point: the box sees nothing, and the row says so."""
+    self._ws(
+      std,
+      tmp_home,
+      "arb_at",
+      {
+        "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+        "masks": {"/opt/arb": True},
+      },
+    )
+    rc, out, _err = self._effective("arb_at", capsys)
+    assert rc == 0
+    assert f"{self._SRC} -> /opt/arb" not in out, (
+      "a share a mask swallowed is printed with the delivery arrow, so the "
+      "listing claims a mount the box does not receive"
+    )
+    assert "/opt/arb  [ro]  (declared: /etc/hostname)" in out
+    # ⚑ THE MASK'S OWN KEY, not just its destination. A mask has no host source,
+    # so before 2026-08-27 this row named nothing the user could match against a
+    # key they had written — the destination alone, which for the PARENT case
+    # below is not even a path their own key spells.
+    assert ("no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb") in out
+    assert "workset.bindings.ro" not in out, (
+      "the row named the SHARE's key where the MASK's belongs: the question "
+      "is what swallowed this declaration, not what the declaration is"
+    )
+
+  def test_a_mask_above_the_destination_is_named_instead_of_a_mount(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """The PARENT case: the share's own dest is absent from the map entirely.
+
+    ⚑ This is the one a dest-keyed lookup cannot answer — nothing sits at
+    ``/opt/arb/inner`` after the sweep, and reading "absent" as "fine" says nothing.
+    The mask's OWN destination is the whole diagnosis and is not a path the user's
+    binding key names — so the KEY that declared it is what makes the row
+    actionable: it is the thing the reader has to go and edit.
     """
+    self._ws(
+      std,
+      tmp_home,
+      "arb_above",
+      {
+        "bindings": {"ro": {"/opt/arb/inner": [self._SRC]}},
+        "masks": {"/opt/arb": True},
+      },
+    )
+    rc, out, _err = self._effective("arb_above", capsys)
+    assert rc == 0
+    assert f"{self._SRC} -> /opt/arb/inner" not in out
+    assert ("no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb ") in out
 
-    _SRC = "/etc/hostname"
+  def test_a_tilde_mask_is_named_by_its_canonical_key(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """A ``~``-spelled mask is named by its CANONICAL key.
 
-    def _ws(self, std, tmp_home, name, node):
-        """One real workset carrying *node* under its ``workset:`` root."""
-        from kanibako.settings.config import WORKSET_META_FILE
-        from kanibako.settings.config_io import dump_doc, load_doc
+    A mask dest is canonicalized at parse (spec §2a "A MOUNT DESTINATION IS
+    CANONICALIZED"), so the key and the collapsed destination now agree on
+    ``~``; the tilde spelling must not survive into the line.  The read-not-rebuilt
+    proof now rests on a ``{$VAR}`` mask dest, which is NOT canonicalized, so its key and
+    its destination still differ (``test_categories_live.py``'s ``{$XDG_DATA_HOME}/z`` case).
+    """
+    from kanibako.settings.settings_resolve import GUEST_HOME
 
-        ws_root = tmp_home / "worksets" / name
-        create_workset(name, ws_root, std)
-        doc_path = ws_root / WORKSET_META_FILE
-        doc = load_doc(doc_path) or {}
-        doc.setdefault("workset", {}).update(node)
-        dump_doc(doc_path, doc)
-        return ws_root
+    self._ws(
+      std,
+      tmp_home,
+      "arb_tilde",
+      {
+        "bindings": {"ro": {"~/masked/inner": [self._SRC]}},
+        "masks": {"~/masked": True},
+      },
+    )
+    rc, out, _err = self._effective("arb_tilde", capsys)
+    assert rc == 0
+    assert f"workset.masks[{GUEST_HOME}/masked]" in out
+    assert f"at {GUEST_HOME}/masked " in out
+    assert "workset.masks[~/masked]" not in out
 
-    def _effective(self, name, capsys):
-        """``(rc, stdout, stderr)`` — the refusal path writes to stderr and rc 1."""
-        from kanibako.commands import workset_cmd
+  def test_a_share_nested_inside_another_share_still_mounts(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """A bind may NEST inside a bind — both still print, and neither gains a phrase.
 
-        rc = workset_cmd.run_share_list(
-            argparse.Namespace(workset=name, effective=True)
-        )
-        captured = capsys.readouterr()
-        return rc, captured.out, captured.err
+    The guard against a fix that reports every containment as a loss.
+    """
+    self._ws(
+      std,
+      tmp_home,
+      "arb_nest",
+      {
+        "bindings": {"ro": {"/opt/n": [self._SRC], "/opt/n/in": ["/etc/hosts"]}},
+      },
+    )
+    rc, out, _err = self._effective("arb_nest", capsys)
+    assert rc == 0
+    assert f"  {self._SRC} -> /opt/n  [ro]" in out
+    assert "  /etc/hosts -> /opt/n/in  [ro]" in out
+    assert "no mount" not in out
 
-    def test_an_undisturbed_share_still_prints_as_a_mount(
-        self, std, config, tmp_home, capsys,
-    ):
-        """The unchanged case: an arrow line, and NO result phrase under it."""
-        self._ws(std, tmp_home, "arb_plain", {
-            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
-        })
-        rc, out, _err = self._effective("arb_plain", capsys)
-        assert rc == 0
-        assert f"  {self._SRC} -> /opt/arb  [ro]" in out
-        assert "no mount" not in out
+  def test_declarations_a_launch_refuses_are_refused_here_too(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+  ):
+    """A workset a launch cannot assemble no longer lists cleanly at rc 0.
 
-    def test_a_mask_at_the_destination_is_named_instead_of_a_mount(
-        self, std, config, tmp_home, capsys,
-    ):
-        """A mask takes the share's own point: the box sees nothing, and the row says so."""
-        self._ws(std, tmp_home, "arb_at", {
-            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
-            "masks": {"/opt/arb": True},
-        })
-        rc, out, _err = self._effective("arb_at", capsys)
-        assert rc == 0
-        assert f"{self._SRC} -> /opt/arb" not in out, (
-            "a share a mask swallowed is printed with the delivery arrow, so the "
-            "listing claims a mount the box does not receive"
-        )
-        assert "/opt/arb  [ro]  (declared: /etc/hostname)" in out
-        # ⚑ THE MASK'S OWN KEY, not just its destination. A mask has no host source,
-        # so before 2026-08-27 this row named nothing the user could match against a
-        # key they had written — the destination alone, which for the PARENT case
-        # below is not even a path their own key spells.
-        assert (
-            "no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb"
-        ) in out
-        assert "workset.bindings.ro" not in out, (
-            "the row named the SHARE's key where the MASK's belongs: the question "
-            "is what swallowed this declaration, not what the declaration is"
-        )
+    ``workset.common`` extending onto a bound destination is a §0 row-3 refusal.
+    Before the collapse ran here the listing printed the binding and returned 0, so
+    ``--effective`` reported a working assembly for a workset that has none.
 
-    def test_a_mask_above_the_destination_is_named_instead_of_a_mount(
-        self, std, config, tmp_home, capsys,
-    ):
-        """The PARENT case: the share's own dest is absent from the map entirely.
+    ⚑ BOTH HALVES ARE PINNED, and they are two different obligations: the FRAMING
+    says this refusal is the answer to "what would a box here mount", and the
+    DETAIL is the launch's own refusal carried verbatim.  Dropping either one is a
+    regression — a bare collision answers a question the user did not ask, and a
+    frame with no detail names no key and no cure.
+    """
+    self._ws(
+      std,
+      tmp_home,
+      "arb_refuse",
+      {
+        "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+        "common": {"/opt/arb": ["shared"]},
+      },
+    )
+    rc, out, err = self._effective("arb_refuse", capsys)
+    assert rc == 1
+    # THE FRAMING — context, and it names the dest off the exception.
+    assert "Cannot say what working set 'arb_refuse' would mount" in err
+    assert "no box in it can launch" in err
+    assert "'/opt/arb'" in err
+    # THE DETAIL — the launch's own words, including the remedy block.
+    assert "workset.common[/opt/arb]" in err
+    assert "already binds" in err
+    assert "Set the unwanted key to null" in err
+    # ⚑ ONE prefix, not two: ``cli.main`` would have printed exactly one
+    # ``Error:`` line, and catching the refusal here must not add a second.
+    assert err.count("Error: ") == 1
+    assert "Effective bindings for working set" not in out
 
-        ⚑ This is the one a dest-keyed lookup cannot answer — nothing sits at
-        ``/opt/arb/inner`` after the sweep, and reading "absent" as "fine" says nothing.
-        The mask's OWN destination is the whole diagnosis and is not a path the user's
-        binding key names — so the KEY that declared it is what makes the row
-        actionable: it is the thing the reader has to go and edit.
-        """
-        self._ws(std, tmp_home, "arb_above", {
-            "bindings": {"ro": {"/opt/arb/inner": [self._SRC]}},
-            "masks": {"/opt/arb": True},
-        })
-        rc, out, _err = self._effective("arb_above", capsys)
-        assert rc == 0
-        assert f"{self._SRC} -> /opt/arb/inner" not in out
-        assert (
-            "no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb "
-        ) in out
+  def test_the_pre_arbitration_answer_is_a_mutation_that_reds(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """MUTATION: hand the display the RETIRED answer and the defect comes back.
 
-    def test_a_tilde_mask_is_named_by_its_canonical_key(
-        self, std, config, tmp_home, capsys,
-    ):
-        """A ``~``-spelled mask is named by its CANONICAL key.
+    The stand-in is the listing's own former behavior — every declared bind, no
+    mask arm, no containment — and it is a throwaway, never the real symbol.  If the
+    display had gone on reading the entry list, the cases above would pass anyway.
+    """
+    from kanibako.settings import store_collapse
+    from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+    from kanibako.settings.store_collapse import CollapsedBind, CollapsedStore
 
-        A mask dest is canonicalized at parse (spec §2a "A MOUNT DESTINATION IS
-        CANONICALIZED"), so the key and the collapsed destination now agree on
-        ``~``; the tilde spelling must not survive into the line.  The read-not-rebuilt
-        proof now rests on a ``{$VAR}`` mask dest, which is NOT canonicalized, so its key and
-        its destination still differ (``test_categories_live.py``'s ``{$XDG_DATA_HOME}/z`` case).
-        """
-        from kanibako.settings.settings_resolve import GUEST_HOME
+    def _no_arbitration(store_shape_set, home_bind, entries=None):
+      return CollapsedStore(
+        bindings={
+          dest: CollapsedBind(entry.src, entry.opts)
+          for scope in SCOPE_CONTAINMENT
+          for arm in (
+            store_shape_set[scope].ro,
+            store_shape_set[scope].rw,
+          )
+          for dest, entry in arm.items()
+        },
+        seeded=[],
+        synced=[],
+      )
 
-        self._ws(std, tmp_home, "arb_tilde", {
-            "bindings": {"ro": {"~/masked/inner": [self._SRC]}},
-            "masks": {"~/masked": True},
-        })
-        rc, out, _err = self._effective("arb_tilde", capsys)
-        assert rc == 0
-        assert f"workset.masks[{GUEST_HOME}/masked]" in out
-        assert f"at {GUEST_HOME}/masked " in out
-        assert "workset.masks[~/masked]" not in out
+    monkeypatch.setattr(
+      store_collapse,
+      "collapse_store_shapes",
+      _no_arbitration,
+    )
+    self._ws(
+      std,
+      tmp_home,
+      "arb_mutant",
+      {
+        "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+        "masks": {"/opt/arb": True},
+      },
+    )
+    rc, out, _err = self._effective("arb_mutant", capsys)
+    assert rc == 0
+    assert f"{self._SRC} -> /opt/arb" in out, (
+      "the mutant did not restore the defect, so the cases above are not "
+      "pinned on the arbitration at all"
+    )
+    assert "no mount" not in out
 
-    def test_a_share_nested_inside_another_share_still_mounts(
-        self, std, config, tmp_home, capsys,
-    ):
-        """A bind may NEST inside a bind — both still print, and neither gains a phrase.
+  def test_the_collision_detail_is_carried_from_the_exception_not_rebuilt(
+    self,
+    std,
+    config,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """MUTATION: a throwaway raiser with a SENTINEL message, which must print VERBATIM.
 
-        The guard against a fix that reports every containment as a loss.
-        """
-        self._ws(std, tmp_home, "arb_nest", {
-            "bindings": {"ro": {"/opt/n": [self._SRC], "/opt/n/in": ["/etc/hosts"]}},
-        })
-        rc, out, _err = self._effective("arb_nest", capsys)
-        assert rc == 0
-        assert f"  {self._SRC} -> /opt/n  [ro]" in out
-        assert "  /etc/hosts -> /opt/n/in  [ro]" in out
-        assert "no mount" not in out
+    The stand-in is a fake ``build_store_shape_set`` that refuses with text this
+    module could not possibly have composed.  If the display ever restated the
+    collision in its own words, the sentinel would not appear and this reds — and
+    restating it is precisely what the framing line exists to avoid, because a
+    second carrier of a refusal drifts from the launch's and the launch's is the
+    one a user has to act on.
 
-    def test_declarations_a_launch_refuses_are_refused_here_too(
-        self, std, config, tmp_home, capsys,
-    ):
-        """A workset a launch cannot assemble no longer lists cleanly at rc 0.
+    ⚑ The stand-in is a THROWAWAY, monkeypatched for this test alone; no real
+    symbol is mutated, so a concurrent writer cannot be handed a false red.
+    """
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings import store_shape
 
-        ``workset.common`` extending onto a bound destination is a §0 row-3 refusal.
-        Before the collapse ran here the listing printed the binding and returned 0, so
-        ``--effective`` reported a working assembly for a workset that has none.
+    sentinel = "SENTINEL-9f21: this text exists nowhere in the source tree"
 
-        ⚑ BOTH HALVES ARE PINNED, and they are two different obligations: the FRAMING
-        says this refusal is the answer to "what would a box here mount", and the
-        DETAIL is the launch's own refusal carried verbatim.  Dropping either one is a
-        regression — a bare collision answers a question the user did not ask, and a
-        frame with no detail names no key and no cure.
-        """
-        self._ws(std, tmp_home, "arb_refuse", {
-            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
-            "common": {"/opt/arb": ["shared"]},
-        })
-        rc, out, err = self._effective("arb_refuse", capsys)
-        assert rc == 1
-        # THE FRAMING — context, and it names the dest off the exception.
-        assert "Cannot say what working set 'arb_refuse' would mount" in err
-        assert "no box in it can launch" in err
-        assert "'/opt/arb'" in err
-        # THE DETAIL — the launch's own words, including the remedy block.
-        assert "workset.common[/opt/arb]" in err
-        assert "already binds" in err
-        assert "Set the unwanted key to null" in err
-        # ⚑ ONE prefix, not two: ``cli.main`` would have printed exactly one
-        # ``Error:`` line, and catching the refusal here must not add a second.
-        assert err.count("Error: ") == 1
-        assert "Effective bindings for working set" not in out
+    def _always_collides(entries):
+      raise CategoryCollisionError(
+        sentinel,
+        kind="probe",
+        box_dest="/opt/sentinel",
+      )
 
-    def test_the_pre_arbitration_answer_is_a_mutation_that_reds(
-        self, std, config, tmp_home, capsys, monkeypatch,
-    ):
-        """MUTATION: hand the display the RETIRED answer and the defect comes back.
-
-        The stand-in is the listing's own former behavior — every declared bind, no
-        mask arm, no containment — and it is a throwaway, never the real symbol.  If the
-        display had gone on reading the entry list, the cases above would pass anyway.
-        """
-        from kanibako.settings import store_collapse
-        from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-        from kanibako.settings.store_collapse import CollapsedBind, CollapsedStore
-
-        def _no_arbitration(store_shape_set, home_bind, entries=None):
-            return CollapsedStore(
-                bindings={
-                    dest: CollapsedBind(entry.src, entry.opts)
-                    for scope in SCOPE_CONTAINMENT
-                    for arm in (
-                        store_shape_set[scope].ro, store_shape_set[scope].rw,
-                    )
-                    for dest, entry in arm.items()
-                },
-                seeded=[],
-                synced=[],
-            )
-
-        monkeypatch.setattr(
-            store_collapse, "collapse_store_shapes", _no_arbitration,
-        )
-        self._ws(std, tmp_home, "arb_mutant", {
-            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
-            "masks": {"/opt/arb": True},
-        })
-        rc, out, _err = self._effective("arb_mutant", capsys)
-        assert rc == 0
-        assert f"{self._SRC} -> /opt/arb" in out, (
-            "the mutant did not restore the defect, so the cases above are not "
-            "pinned on the arbitration at all"
-        )
-        assert "no mount" not in out
-
-    def test_the_collision_detail_is_carried_from_the_exception_not_rebuilt(
-        self, std, config, tmp_home, capsys, monkeypatch,
-    ):
-        """MUTATION: a throwaway raiser with a SENTINEL message, which must print VERBATIM.
-
-        The stand-in is a fake ``build_store_shape_set`` that refuses with text this
-        module could not possibly have composed.  If the display ever restated the
-        collision in its own words, the sentinel would not appear and this reds — and
-        restating it is precisely what the framing line exists to avoid, because a
-        second carrier of a refusal drifts from the launch's and the launch's is the
-        one a user has to act on.
-
-        ⚑ The stand-in is a THROWAWAY, monkeypatched for this test alone; no real
-        symbol is mutated, so a concurrent writer cannot be handed a false red.
-        """
-        from kanibako.errors import CategoryCollisionError
-        from kanibako.settings import store_shape
-
-        sentinel = "SENTINEL-9f21: this text exists nowhere in the source tree"
-
-        def _always_collides(entries):
-            raise CategoryCollisionError(
-                sentinel, kind="probe", box_dest="/opt/sentinel",
-            )
-
-        monkeypatch.setattr(store_shape, "build_store_shape_set", _always_collides)
-        self._ws(std, tmp_home, "arb_sentinel", {
-            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
-        })
-        rc, _out, err = self._effective("arb_sentinel", capsys)
-        assert rc == 1
-        assert f"Error: {sentinel}" in err, (
-            "the collision detail did not come from the caught exception, so this "
-            "display is composing a second copy of the launch's refusal"
-        )
-        # The FRAME reads its destination off the exception too, not off the entries.
-        assert "collide at '/opt/sentinel'" in err
+    monkeypatch.setattr(store_shape, "build_store_shape_set", _always_collides)
+    self._ws(
+      std,
+      tmp_home,
+      "arb_sentinel",
+      {
+        "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+      },
+    )
+    rc, _out, err = self._effective("arb_sentinel", capsys)
+    assert rc == 1
+    assert f"Error: {sentinel}" in err, (
+      "the collision detail did not come from the caught exception, so this "
+      "display is composing a second copy of the launch's refusal"
+    )
+    # The FRAME reads its destination off the exception too, not off the entries.
+    assert "collide at '/opt/sentinel'" in err
 
 
 class TestWorksetVerbsAreCaseBlind:
-    """Spec §0, ``⚑ NAMING RULES`` — and these were LIVE defects, not latent ones.
+  """Spec §0, ``⚑ NAMING RULES`` — and these were LIVE defects, not latent ones.
 
-    Unlike box names, workset names have never been folded on entry, so an exact-match
-    lookup in a workset verb is a defect the day it is written.  ``create`` refusing
-    ``SAME-NAME`` against a stored ``same-name`` while ``rm``/``connect``/``disconnect``
-    answered "not registered" for the same pair made the tree contradict itself.
+  Unlike box names, workset names have never been folded on entry, so an exact-match
+  lookup in a workset verb is a defect the day it is written.  ``create`` refusing
+  ``SAME-NAME`` against a stored ``same-name`` while ``rm``/``connect``/``disconnect``
+  answered "not registered" for the same pair made the tree contradict itself.
 
-    ⚑ Each of these fails on the pre-image; they are the evidence, not the gate.
+  ⚑ Each of these fails on the pre-image; they are the evidence, not the gate.
+  """
+
+  def test_rm_resolves_a_case_variant_and_reports_the_STORED_name(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_rm
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("todel", tmp_home / "ws_todel", std)
+
+    rc = run_rm(argparse.Namespace(name="ToDel", purge=False, force=True))
+    assert rc == 0
+    # The name is reported as REGISTERED — the user is being told what was destroyed.
+    assert "Deleted working set 'todel'" in capsys.readouterr().out
+    assert list_worksets(std) == {}
+
+  def test_rm_of_the_default_alias_is_refused_in_any_case(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """The tuple-literal compare: an exact re-spelling of a set that folds.
+
+    ``workset rm Default`` used to miss this guard entirely and fall through to
+    "not registered", which is both the wrong message and the wrong reason.
     """
+    from kanibako.commands.workset_cmd import run_rm
 
-    def test_rm_resolves_a_case_variant_and_reports_the_STORED_name(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_rm
+    rc = run_rm(argparse.Namespace(name="Default", purge=False, force=True))
+    assert rc == 1
+    assert "default workset cannot be removed" in capsys.readouterr().err
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("todel", tmp_home / "ws_todel", std)
+  def test_connect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_connect
 
-        rc = run_rm(argparse.Namespace(name="ToDel", purge=False, force=True))
-        assert rc == 0
-        # The name is reported as REGISTERED — the user is being told what was destroyed.
-        assert "Deleted working set 'todel'" in capsys.readouterr().out
-        assert list_worksets(std) == {}
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("addws", tmp_home / "ws_add", std)
 
-    def test_rm_of_the_default_alias_is_refused_in_any_case(
-        self, config_file, tmp_home, capsys,
-    ):
-        """The tuple-literal compare: an exact re-spelling of a set that folds.
+    src = tmp_home / "add_src"
+    src.mkdir()
 
-        ``workset rm Default`` used to miss this guard entirely and fall through to
-        "not registered", which is both the wrong message and the wrong reason.
-        """
-        from kanibako.commands.workset_cmd import run_rm
+    rc = run_connect(
+      argparse.Namespace(
+        workset="AddWS",
+        source=str(src),
+        project_name=None,
+        force=False,
+      )
+    )
+    assert rc == 0
+    assert "Added project" in capsys.readouterr().out
 
-        rc = run_rm(argparse.Namespace(name="Default", purge=False, force=True))
-        assert rc == 1
-        assert "default workset cannot be removed" in capsys.readouterr().err
+  def test_disconnect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
+    from kanibako.commands.workset_cmd import run_disconnect
 
-    def test_connect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_connect
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("rmws", tmp_home / "ws_rm", std)
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("addws", tmp_home / "ws_add", std)
+    src = tmp_home / "rm_src"
+    src.mkdir()
+    add_project(ws, "rmproj", src)
 
-        src = tmp_home / "add_src"
-        src.mkdir()
+    rc = run_disconnect(
+      argparse.Namespace(
+        workset="RmWS",
+        project="rmproj",
+        remove_files=False,
+        force=True,
+      )
+    )
+    assert rc == 0
+    assert "Removed project 'rmproj'" in capsys.readouterr().out
 
-        rc = run_connect(argparse.Namespace(
-            workset="AddWS", source=str(src), project_name=None, force=False,
-        ))
-        assert rc == 0
-        assert "Added project" in capsys.readouterr().out
+  def test_disconnect_of_the_default_alias_is_refused_in_any_case(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.commands.workset_cmd import run_disconnect
 
-    def test_disconnect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_disconnect
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("rmws", tmp_home / "ws_rm", std)
-
-        src = tmp_home / "rm_src"
-        src.mkdir()
-        add_project(ws, "rmproj", src)
-
-        rc = run_disconnect(argparse.Namespace(
-            workset="RmWS", project="rmproj", remove_files=False, force=True,
-        ))
-        assert rc == 0
-        assert "Removed project 'rmproj'" in capsys.readouterr().out
-
-    def test_disconnect_of_the_default_alias_is_refused_in_any_case(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.commands.workset_cmd import run_disconnect
-
-        rc = run_disconnect(argparse.Namespace(
-            workset="DEFAULT", project="x", remove_files=False, force=True,
-        ))
-        assert rc == 1
-        assert "default workset cannot be removed" in capsys.readouterr().err
+    rc = run_disconnect(
+      argparse.Namespace(
+        workset="DEFAULT",
+        project="x",
+        remove_files=False,
+        force=True,
+      )
+    )
+    assert rc == 1
+    assert "default workset cannot be removed" in capsys.readouterr().err
 
 
 class TestWorksetShowEffectiveReadsNoLayer1AsABoxTier:
-    """``workset show --effective`` never reads the Layer-1 ``kanibako.cfg`` as a box tier,
-    whose legal ``config:`` table (keyspec §1) that tier refuses."""
+  """``workset show --effective`` never reads the Layer-1 ``kanibako.cfg`` as a box tier,
+  whose legal ``config:`` table (keyspec §1) that tier refuses."""
 
-    def test_a_config_table_in_the_cfg_does_not_refuse_the_view(
-        self, config_file, tmp_home, capsys,
-    ):
-        """MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and
-        this reds on the refusal."""
-        from kanibako.commands.workset_cmd import run_show
+  def test_a_config_table_in_the_cfg_does_not_refuse_the_view(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and
+    this reds on the refusal."""
+    from kanibako.commands.workset_cmd import run_show
 
-        std = load_std_paths(load_config(config_file))
-        create_workset("cfgtbl", tmp_home / "ws_cfgtbl", std)
-        with config_file.open("a") as fh:
-            fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
-        assert run_show(argparse.Namespace(workset="cfgtbl", effective=True)) == 0
-        assert "config.* entries" not in capsys.readouterr().err
+    std = load_std_paths(load_config(config_file))
+    create_workset("cfgtbl", tmp_home / "ws_cfgtbl", std)
+    with config_file.open("a") as fh:
+      fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+    assert run_show(argparse.Namespace(workset="cfgtbl", effective=True)) == 0
+    assert "config.* entries" not in capsys.readouterr().err
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
 class TestWorksetCreateConnectReadOnlyRegistry:
-    """``workset create`` and ``workset connect`` catch a real OSError from the registry
-    write as one ``Error: ...`` line plus its cure line and exit 1, with no traceback.
+  """``workset create`` and ``workset connect`` catch a real OSError from the registry
+  write as one ``Error: ...`` line plus its cure line and exit 1, with no traceback.
 
-    The read-only target is REAL: a ``chmod``-ed file on this box (uid 1000) raises a
-    genuine ``PermissionError`` (verified via ``id -u`` at task intake), so the doors'
-    narrow exception arms (create: ``TemplateScopeError``, ``WorksetError``; connect:
-    ``WorksetError``), which never cover ``OSError``, get an actual refusal, not a
-    synthetic one.
+  The read-only target is REAL: a ``chmod``-ed file on this box (uid 1000) raises a
+  genuine ``PermissionError`` (verified via ``id -u`` at task intake), so the doors'
+  narrow exception arms (create: ``TemplateScopeError``, ``WorksetError``; connect:
+  ``WorksetError``), which never cover ``OSError``, get an actual refusal, not a
+  synthetic one.
+  """
+
+  @staticmethod
+  def _lock(file_path: Path) -> None:
+    """Make *file_path* unwritable: a 0o555 parent blocks both creating it (the
+    atomic-write path's ``mkstemp`` in ``file_path.parent``) and writing to an
+    existing copy (``os.replace`` needs the parent writable).  Existing files
+    also get a 0o444 mode so even a direct open-for-write would refuse — only an
+    at-rest restore (which restores the parent first) can free the path."""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    if file_path.exists() or file_path.is_symlink():
+      file_path.chmod(0o444)
+    file_path.parent.chmod(0o555)
+
+  @staticmethod
+  def _unlock(file_path: Path) -> None:
+    file_path.parent.chmod(0o755)
+    if file_path.exists() or file_path.is_symlink():
+      file_path.chmod(0o644)
+
+  def test_create_catches_unwritable_global_registry_as_one_error_line(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``workset create`` against a read-only global registry exits 1, prints one
+    ``Error: ...`` line, and does NOT print ``Traceback``.
+
+    Before the fix the ``OSError`` from the registry ``register_name`` write
+    escapes the door: rc 1 with a full traceback on stderr.
     """
+    from kanibako.commands.workset_cmd import run_create
 
-    @staticmethod
-    def _lock(file_path: Path) -> None:
-        """Make *file_path* unwritable: a 0o555 parent blocks both creating it (the
-        atomic-write path's ``mkstemp`` in ``file_path.parent``) and writing to an
-        existing copy (``os.replace`` needs the parent writable).  Existing files
-        also get a 0o444 mode so even a direct open-for-write would refuse — only an
-        at-rest restore (which restores the parent first) can free the path."""
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        if file_path.exists() or file_path.is_symlink():
-            file_path.chmod(0o444)
-        file_path.parent.chmod(0o555)
+    std = load_std_paths(load_config(config_file))
+    registry = std.registry
+    self._lock(registry)
+    try:
+      rc = run_create(
+        argparse.Namespace(
+          path=str(tmp_home / "ro_target"),
+          name="ro_create",
+          standalone=False,
+          image=None,
+          no_vault=False,
+          force=False,
+        )
+      )
+    finally:
+      self._unlock(registry)
 
-    @staticmethod
-    def _unlock(file_path: Path) -> None:
-        file_path.parent.chmod(0o755)
-        if file_path.exists() or file_path.is_symlink():
-            file_path.chmod(0o644)
+    captured = capsys.readouterr()
+    assert rc == 1, (captured.out, captured.err)
+    assert "Traceback" not in captured.err, captured.err
+    assert "Error:" in captured.err, captured.err
+    assert (
+      "  Fix that, then run the same 'kanibako workset create' again." in captured.err.splitlines()
+    ), captured.err
 
-    def test_create_catches_unwritable_global_registry_as_one_error_line(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``workset create`` against a read-only global registry exits 1, prints one
-        ``Error: ...`` line, and does NOT print ``Traceback``.
+  def test_connect_catches_unwritable_per_workset_registry_as_one_error_line(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``workset connect`` against a read-only per-workset ``registry.yaml`` exits 1,
+    prints one ``Error: ...`` line, and does NOT print ``Traceback``.
 
-        Before the fix the ``OSError`` from the registry ``register_name`` write
-        escapes the door: rc 1 with a full traceback on stderr.
-        """
-        from kanibako.commands.workset_cmd import run_create
+    A read-only global registry would not trip the connect path: the create call
+    writes the global name, but the membership ``boxes:`` row the connect adds lands
+    in ``<ws_root>/registry.yaml`` — the file ``add_project`` re-opens for every
+    membership, and a fresh workset has none yet.
+    """
+    from kanibako.commands.workset_cmd import run_connect
 
-        std = load_std_paths(load_config(config_file))
-        registry = std.registry
-        self._lock(registry)
-        try:
-            rc = run_create(argparse.Namespace(
-                path=str(tmp_home / "ro_target"),
-                name="ro_create",
-                standalone=False, image=None, no_vault=False, force=False,
-            ))
-        finally:
-            self._unlock(registry)
+    std = load_std_paths(load_config(config_file))
+    ws_root = tmp_home / "lockws"
+    create_workset("lockws", ws_root, std)
 
-        captured = capsys.readouterr()
-        assert rc == 1, (captured.out, captured.err)
-        assert "Traceback" not in captured.err, captured.err
-        assert "Error:" in captured.err, captured.err
-        assert ("  Fix that, then run the same 'kanibako workset create' again."
-                in captured.err.splitlines()), captured.err
+    external = tmp_home / "lockws-src"
+    external.mkdir()
 
-    def test_connect_catches_unwritable_per_workset_registry_as_one_error_line(
-        self, config_file, tmp_home, capsys,
-    ):
-        """``workset connect`` against a read-only per-workset ``registry.yaml`` exits 1,
-        prints one ``Error: ...`` line, and does NOT print ``Traceback``.
+    per_ws_registry = ws_root / "registry.yaml"
+    self._lock(per_ws_registry)
+    try:
+      rc = run_connect(
+        argparse.Namespace(
+          workset="lockws",
+          source=str(external),
+          project_name="lockproj",
+          force=True,
+        )
+      )
+    finally:
+      self._unlock(per_ws_registry)
 
-        A read-only global registry would not trip the connect path: the create call
-        writes the global name, but the membership ``boxes:`` row the connect adds lands
-        in ``<ws_root>/registry.yaml`` — the file ``add_project`` re-opens for every
-        membership, and a fresh workset has none yet.
-        """
-        from kanibako.commands.workset_cmd import run_connect
+    captured = capsys.readouterr()
+    assert rc == 1, (captured.out, captured.err)
+    assert "Traceback" not in captured.err, captured.err
+    assert "Error:" in captured.err, captured.err
+    assert (
+      "  Fix that, then run the same 'kanibako workset connect' again."
+      in captured.err.splitlines()
+    ), captured.err
 
-        std = load_std_paths(load_config(config_file))
-        ws_root = tmp_home / "lockws"
-        create_workset("lockws", ws_root, std)
+  def test_a_connect_box_dir_left_behind_is_adopted_by_the_same_connect(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+    monkeypatch,
+  ):
+    """A box dir the rollback cannot remove keeps the journal entry; its Note says the
+    same connect adopts it, never "remove it", and that re-run lands."""
+    import kanibako.settings.paths as paths_mod
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.launch import journal as journal_mod
+    from kanibako.runtime.container import ContainerRuntime
 
-        external = tmp_home / "lockws-src"
-        external.mkdir()
+    std = load_std_paths(load_config(config_file))
+    ws = create_workset("lockws", tmp_home / "lockws", std)
+    external = tmp_home / "lockws-src"
+    external.mkdir()
+    boxes = ws.projects_dir
+    real = paths_mod._register_workset_box_membership
 
-        per_ws_registry = ws_root / "registry.yaml"
-        self._lock(per_ws_registry)
-        try:
-            rc = run_connect(argparse.Namespace(
-                workset="lockws",
-                source=str(external),
-                project_name="lockproj",
-                force=True,
-            ))
-        finally:
-            self._unlock(per_ws_registry)
+    def locked(*a, **k):
+      os.chmod(boxes, 0o555)
+      self._lock(ws.root / "registry.yaml")
+      return real(*a, **k)
 
-        captured = capsys.readouterr()
-        assert rc == 1, (captured.out, captured.err)
-        assert "Traceback" not in captured.err, captured.err
-        assert "Error:" in captured.err, captured.err
-        assert ("  Fix that, then run the same 'kanibako workset connect' again."
-                in captured.err.splitlines()), captured.err
+    args = argparse.Namespace(
+      workset="lockws", source=str(external), project_name="lockproj", force=True
+    )
+    try:
+      with monkeypatch.context() as mp:
+        mp.setattr(paths_mod, "_register_workset_box_membership", locked)
+        # ⚑ A working ``podman unshare rm`` ignores modes (CI has one).
+        mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+        assert run_connect(args) == 1
+    finally:
+      self._unlock(ws.root / "registry.yaml")
+      os.chmod(boxes, 0o755)
 
-    def test_a_connect_box_dir_left_behind_is_adopted_by_the_same_connect(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """A box dir the rollback cannot remove keeps the journal entry; its Note says the
-        same connect adopts it, never "remove it", and that re-run lands."""
-        import kanibako.settings.paths as paths_mod
-        from kanibako.commands.workset_cmd import run_connect
-        from kanibako.launch import journal as journal_mod
-        from kanibako.runtime.container import ContainerRuntime
-
-        std = load_std_paths(load_config(config_file))
-        ws = create_workset("lockws", tmp_home / "lockws", std)
-        external = tmp_home / "lockws-src"
-        external.mkdir()
-        boxes = ws.projects_dir
-        real = paths_mod._register_workset_box_membership
-
-        def locked(*a, **k):
-            os.chmod(boxes, 0o555)
-            self._lock(ws.root / "registry.yaml")
-            return real(*a, **k)
-
-        args = argparse.Namespace(workset="lockws", source=str(external),
-                                  project_name="lockproj", force=True)
-        try:
-            with monkeypatch.context() as mp:
-                mp.setattr(paths_mod, "_register_workset_box_membership", locked)
-                # ⚑ A working ``podman unshare rm`` ignores modes (CI has one).
-                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
-                assert run_connect(args) == 1
-        finally:
-            self._unlock(ws.root / "registry.yaml")
-            os.chmod(boxes, 0o755)
-
-        err = capsys.readouterr().err
-        assert (f"Note: could not remove {boxes / 'lockproj'}, which this operation "
-                "created; running the same 'kanibako workset connect' again adopts it\n"
-                ) in err, err
-        assert "remove it before" not in err, err
-        assert journal_mod.pending_import(std.journal, boxes / "lockproj") is not None
-        assert run_connect(args) == 0
-        assert journal_mod.pending_import(std.journal, boxes / "lockproj") is None
-        assert "lockproj" in _workset_boxes(ws)
+    err = capsys.readouterr().err
+    assert (
+      f"Note: could not remove {boxes / 'lockproj'}, which this operation "
+      "created; running the same 'kanibako workset connect' again adopts it\n"
+    ) in err, err
+    assert "remove it before" not in err, err
+    assert journal_mod.pending_import(std.journal, boxes / "lockproj") is not None
+    assert run_connect(args) == 0
+    assert journal_mod.pending_import(std.journal, boxes / "lockproj") is None
+    assert "lockproj" in _workset_boxes(ws)
 
 
 class TestConnectDropsTheStandaloneMarker:
-    """181-DF3 and 181-DF4 [Jei:2026-10-13]: a box is in one workset only.  ``workset connect
-    --force`` of a standalone box removes its marker (the ``workset.registry`` null) and
-    nothing else; ``disconnect`` writes none back, so the box ends as a plain directory."""
+  """181-DF3 and 181-DF4 [Jei:2026-10-13]: a box is in one workset only.  ``workset connect
+  --force`` of a standalone box removes its marker (the ``workset.registry`` null) and
+  nothing else; ``disconnect`` writes none back, so the box ends as a plain directory."""
 
-    @staticmethod
-    def _standalone(std, root: Path, *, register: bool = True) -> str:
-        from kanibako.settings.paths import establish_standalone
+  @staticmethod
+  def _standalone(std, root: Path, *, register: bool = True) -> str:
+    from kanibako.settings.paths import establish_standalone
 
-        root.mkdir()
-        (root / "file.txt").write_text("mine")
-        name = establish_standalone(std, root, enable_vault=None, register=register)[0]
-        (root / "box_data").mkdir(exist_ok=True)
-        (root / "box_data" / "home.txt").write_text("state")
-        return name
+    root.mkdir()
+    (root / "file.txt").write_text("mine")
+    name = establish_standalone(std, root, enable_vault=None, register=register)[0]
+    (root / "box_data").mkdir(exist_ok=True)
+    (root / "box_data" / "home.txt").write_text("state")
+    return name
 
-    @staticmethod
-    def _connect(workset: str, root: Path, *, force: bool = True) -> int:
-        from kanibako.commands.workset_cmd import run_connect
+  @staticmethod
+  def _connect(workset: str, root: Path, *, force: bool = True) -> int:
+    from kanibako.commands.workset_cmd import run_connect
 
-        return run_connect(argparse.Namespace(
-            workset=workset, source=str(root), project_name="sb", force=force))
+    return run_connect(
+      argparse.Namespace(workset=workset, source=str(root), project_name="sb", force=force)
+    )
 
-    @staticmethod
-    def _disconnect(workset: str) -> int:
-        from kanibako.commands.workset_cmd import run_disconnect
+  @staticmethod
+  def _disconnect(workset: str) -> int:
+    from kanibako.commands.workset_cmd import run_disconnect
 
-        return run_disconnect(argparse.Namespace(
-            workset=workset, project="sb", remove_files=False, force=True))
+    return run_disconnect(
+      argparse.Namespace(workset=workset, project="sb", remove_files=False, force=True)
+    )
 
-    @pytest.mark.parametrize("register", [True, False])
-    def test_force_connect_removes_only_the_marker(self, config_file, tmp_home, register):
-        from kanibako.launch import box_resolve
-        from kanibako.project import registry_store
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import DetectionResult, detect_project_mode
+  @pytest.mark.parametrize("register", [True, False])
+  def test_force_connect_removes_only_the_marker(self, config_file, tmp_home, register):
+    from kanibako.launch import box_resolve
+    from kanibako.project import registry_store
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import DetectionResult, detect_project_mode
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        name = self._standalone(std, root, register=register)
-        kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    name = self._standalone(std, root, register=register)
+    kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
 
+    assert self._connect("dm", root) == 0
+
+    assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
+    assert not box_resolve.stores_standalone_registry_null(root)
+    assert (root / "box_data" / "home.txt").read_text() == "state"
+    assert (root / "file.txt").read_text() == "mine"
+    assert name not in registry_store.load_standalone(std.registry)
+    assert _workset_boxes(ws) == {"sb": str(root)}
+    assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(BoxMode.named, root)
+    assert detect_project_mode(root, std, config).mode is BoxMode.named
+
+  def test_box_register_after_connect_imports_nothing(self, config_file, tmp_home, capsys):
+    from kanibako.commands.box._parser import run_register
+    from kanibako.project import registry_store
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    assert self._connect("dm", root) == 0
+    capsys.readouterr()
+
+    assert run_register(argparse.Namespace(target=str(root), box=None)) == 0
+    assert registry_store.load_standalone(std.registry) == {}
+    assert f"'dm/sb' is already registered (named box at {root})" in capsys.readouterr().out
+
+  def test_disconnect_leaves_a_plain_directory_that_reconnects_without_force(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    from kanibako.launch import box_resolve
+    from kanibako.project import registry_store
+    from kanibako.settings.config_io import load_doc
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    assert self._connect("dm", root) == 0
+    after_connect = (root / "workset.yaml").read_text()
+    capsys.readouterr()
+
+    assert self._disconnect("dm") == 0
+
+    out = capsys.readouterr().out
+    assert f"Re-adopt them: kanibako workset connect dm {root} --name sb" in out
+    assert (root / "workset.yaml").read_text() == after_connect
+    assert "registry" not in load_doc(root / "workset.yaml")["workset"]
+    assert registry_store.load_standalone(std.registry) == {}
+    assert _workset_boxes(ws) == {}
+    assert box_resolve.detect_box_mode(root, std, config) is None
+    # The printed cure works as printed: no marker, so no --force.
+    assert self._connect("dm", root, force=False) == 0
+    assert _workset_boxes(ws) == {"sb": str(root)}
+
+  def test_disconnect_of_a_plain_member_writes_no_marker(self, config_file, tmp_home):
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "plain").resolve()
+    root.mkdir()
+
+    assert self._connect("dm", root, force=False) == 0
+    assert self._disconnect("dm") == 0
+
+    assert sorted(p.name for p in root.iterdir()) == []
+
+  def test_convert_to_standalone_after_connect_writes_the_marker_again(
+    self,
+    config_file,
+    tmp_home,
+  ):
+    from kanibako.commands.box._lifecycle import run_convert
+    from kanibako.launch import box_resolve
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    assert self._connect("dm", root) == 0
+    # Convert refuses to adopt a leftover ``box_data/`` (its own refusal, the same
+    # with or without the marker), so this root has none.
+    (root / "box_data" / "home.txt").unlink()
+    (root / "box_data").rmdir()
+
+    assert (
+      run_convert(
+        argparse.Namespace(
+          old="dm/sb",
+          force=True,
+          to_default=False,
+          to_standalone=True,
+          to_workset=None,
+          move=None,
+          name=None,
+        )
+      )
+      == 0
+    )
+
+    assert box_resolve.stores_standalone_registry_null(root)
+    assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.standalone
+
+  @pytest.mark.parametrize("where", ["in_the_write", "after_the_write"])
+  def test_an_interrupted_connect_restores_the_marker_and_the_row(
+    self,
+    config_file,
+    tmp_home,
+    monkeypatch,
+    where,
+  ):
+    """The unwind writes the marker back, byte for byte, so a failed connect leaves the
+    marker or the membership, never neither."""
+    from kanibako import boxfs
+    from kanibako.project import registry_store
+    from kanibako.project.workset import load_workset
+    from kanibako.settings import paths
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    name = self._standalone(std, root)
+    before = (root / "workset.yaml").read_text()
+
+    if where == "in_the_write":
+      real_write = boxfs.write_text
+      calls = []
+
+      def write_text(path, root_, data, *a, **kw):
+        if Path(path) == root / "workset.yaml":
+          calls.append(path)
+          if len(calls) == 1:
+            raise KeyboardInterrupt
+        return real_write(path, root_, data, *a, **kw)
+
+      monkeypatch.setattr(boxfs, "write_text", write_text)
+    else:
+      real_drop = paths.drop_standalone_marker
+
+      def drop(root_, push_undo):
+        real_drop(root_, push_undo)
+        assert (root_ / "workset.yaml").read_text() != before
+        raise KeyboardInterrupt
+
+      monkeypatch.setattr(paths, "drop_standalone_marker", drop)
+
+    with pytest.raises(KeyboardInterrupt):
+      self._connect("dm", root)
+
+    if where == "in_the_write":
+      assert len(calls) == 2  # the undo was pushed before the write, and ran
+    assert (root / "workset.yaml").read_text() == before
+    assert registry_store.load_standalone(std.registry) == {name: str(root)}
+    assert (
+      _workset_boxes(load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system))
+      == {}
+    )
+
+  def test_a_linked_marker_file_is_kept_and_the_connect_goes_ahead(
+    self,
+    config_file,
+    tmp_home,
+    caplog,
+  ):
+    """The root is box-writable, so the edit goes through boxfs, which never follows the
+    link: the link and its target stay, with a warning, and the box is the member."""
+    from kanibako.launch import box_resolve
+    from kanibako.settings.paths import DetectionResult
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    target = (tmp_home / "elsewhere.yaml").resolve()
+    (root / "workset.yaml").rename(target)
+    (root / "workset.yaml").symlink_to(target)
+    before = target.read_text()
+
+    with caplog.at_level("WARNING"):
+      assert self._connect("dm", root) == 0
+
+    assert (root / "workset.yaml").is_symlink()
+    assert target.read_text() == before
+    [warning] = [
+      r.getMessage()
+      for r in caplog.records
+      if "could not remove the standalone marker" in r.getMessage()
+    ]
+    assert "refusing to follow the symlink" in warning
+    assert warning.count(str(root / "workset.yaml")) == 2  # the subject, the link: once each
+    assert _workset_boxes(ws) == {"sb": str(root)}
+    assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(BoxMode.named, root)
+
+  @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the read-only directory")
+  def test_a_marker_that_cannot_be_rewritten_is_kept_and_the_connect_goes_ahead(
+    self,
+    config_file,
+    tmp_home,
+    caplog,
+  ):
+    from kanibako.launch import box_resolve
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    before = (root / "workset.yaml").read_text()
+    root.chmod(0o555)
+    try:
+      with caplog.at_level("WARNING"):
         assert self._connect("dm", root) == 0
+    finally:
+      root.chmod(0o755)
 
-        assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
-        assert not box_resolve.stores_standalone_registry_null(root)
-        assert (root / "box_data" / "home.txt").read_text() == "state"
-        assert (root / "file.txt").read_text() == "mine"
-        assert name not in registry_store.load_standalone(std.registry)
-        assert _workset_boxes(ws) == {"sb": str(root)}
-        assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(
-            BoxMode.named, root)
-        assert detect_project_mode(root, std, config).mode is BoxMode.named
+    assert (root / "workset.yaml").read_text() == before
+    assert any("could not remove the standalone marker" in r.getMessage() for r in caplog.records)
+    assert _workset_boxes(ws) == {"sb": str(root)}
+    assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.named
 
-    def test_box_register_after_connect_imports_nothing(self, config_file, tmp_home, capsys):
-        from kanibako.commands.box._parser import run_register
-        from kanibako.project import registry_store
+  @pytest.mark.parametrize("dropped", [False, True], ids=["before_the_drop", "after_the_drop"])
+  def test_a_killed_connect_replays_the_marker_drop(
+    self,
+    config_file,
+    tmp_home,
+    monkeypatch,
+    dropped,
+  ):
+    """A kill after the membership write leaves the ``connect`` entry, and the marker
+    when it came before the drop; the next resolve drops the marker, then clears it."""
+    from kanibako.launch import box_resolve, journal
+    from kanibako.project.workset import load_workset
+    from kanibako.settings import paths
+    from kanibako.settings.config_io import load_doc
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        assert self._connect("dm", root) == 0
-        capsys.readouterr()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
 
-        assert run_register(argparse.Namespace(target=str(root), box=None)) == 0
-        assert registry_store.load_standalone(std.registry) == {}
-        assert f"'dm/sb' is already registered (named box at {root})" in capsys.readouterr().out
+    # The kill: the process never reaches the drop (or the clear after it).
+    if not dropped:
+      monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
+    monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
+    assert self._connect("dm", root) == 0
+    monkeypatch.undo()
 
-    def test_disconnect_leaves_a_plain_directory_that_reconnects_without_force(
-        self, config_file, tmp_home, capsys,
-    ):
-        from kanibako.launch import box_resolve
-        from kanibako.project import registry_store
-        from kanibako.settings.config_io import load_doc
+    ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
+    box_key = ws.projects_dir / "sb"
+    assert journal.pending_import(std.journal, box_key)["op"] == "connect"
+    assert box_resolve.stores_standalone_registry_null(root) is not dropped
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        assert self._connect("dm", root) == 0
-        after_connect = (root / "workset.yaml").read_text()
-        capsys.readouterr()
+    paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std, config)
 
-        assert self._disconnect("dm") == 0
+    assert journal.pending_import(std.journal, box_key) is None
+    assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
+    assert (root / "box_data" / "home.txt").read_text() == "state"
+    assert _workset_boxes(ws) == {"sb": str(root)}
 
-        out = capsys.readouterr().out
-        assert f"Re-adopt them: kanibako workset connect dm {root} --name sb" in out
-        assert (root / "workset.yaml").read_text() == after_connect
-        assert "registry" not in load_doc(root / "workset.yaml")["workset"]
-        assert registry_store.load_standalone(std.registry) == {}
-        assert _workset_boxes(ws) == {}
-        assert box_resolve.detect_box_mode(root, std, config) is None
-        # The printed cure works as printed: no marker, so no --force.
-        assert self._connect("dm", root, force=False) == 0
-        assert _workset_boxes(ws) == {"sb": str(root)}
+  @pytest.mark.parametrize("damage", ["unreadable", "link_loop"])
+  def test_a_replay_that_cannot_read_the_marker_warns_and_clears(
+    self,
+    config_file,
+    tmp_home,
+    monkeypatch,
+    caplog,
+    damage,
+  ):
+    """The replay never raises: an unreadable or looping ``workset.yaml`` keeps its
+    marker, with a warning naming it, and the entry still clears, as it did before."""
+    from kanibako.launch import journal
+    from kanibako.project.workset import load_workset
+    from kanibako.settings import paths
 
-    def test_disconnect_of_a_plain_member_writes_no_marker(self, config_file, tmp_home):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "plain").resolve()
-        root.mkdir()
+    if damage == "unreadable" and os.geteuid() == 0:
+      pytest.skip("root ignores the file mode")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+    root = (tmp_home / "sa").resolve()
+    self._standalone(std, root)
+    marker = root / "workset.yaml"
+    before = marker.read_text()
 
-        assert self._connect("dm", root, force=False) == 0
-        assert self._disconnect("dm") == 0
+    monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
+    monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
+    assert self._connect("dm", root) == 0
+    monkeypatch.undo()
+    ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
+    box_key = ws.projects_dir / "sb"
+    assert journal.pending_import(std.journal, box_key)["op"] == "connect"
 
-        assert sorted(p.name for p in root.iterdir()) == []
-
-    def test_convert_to_standalone_after_connect_writes_the_marker_again(
-        self, config_file, tmp_home,
-    ):
-        from kanibako.commands.box._lifecycle import run_convert
-        from kanibako.launch import box_resolve
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        assert self._connect("dm", root) == 0
-        # Convert refuses to adopt a leftover ``box_data/`` (its own refusal, the same
-        # with or without the marker), so this root has none.
-        (root / "box_data" / "home.txt").unlink()
-        (root / "box_data").rmdir()
-
-        assert run_convert(argparse.Namespace(
-            old="dm/sb", force=True, to_default=False, to_standalone=True,
-            to_workset=None, move=None, name=None)) == 0
-
-        assert box_resolve.stores_standalone_registry_null(root)
-        assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.standalone
-
-    @pytest.mark.parametrize("where", ["in_the_write", "after_the_write"])
-    def test_an_interrupted_connect_restores_the_marker_and_the_row(
-        self, config_file, tmp_home, monkeypatch, where,
-    ):
-        """The unwind writes the marker back, byte for byte, so a failed connect leaves the
-        marker or the membership, never neither."""
-        from kanibako import boxfs
-        from kanibako.project import registry_store
-        from kanibako.project.workset import load_workset
-        from kanibako.settings import paths
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        name = self._standalone(std, root)
-        before = (root / "workset.yaml").read_text()
-
-        if where == "in_the_write":
-            real_write = boxfs.write_text
-            calls = []
-
-            def write_text(path, root_, data, *a, **kw):
-                if Path(path) == root / "workset.yaml":
-                    calls.append(path)
-                    if len(calls) == 1:
-                        raise KeyboardInterrupt
-                return real_write(path, root_, data, *a, **kw)
-
-            monkeypatch.setattr(boxfs, "write_text", write_text)
-        else:
-            real_drop = paths.drop_standalone_marker
-
-            def drop(root_, push_undo):
-                real_drop(root_, push_undo)
-                assert (root_ / "workset.yaml").read_text() != before
-                raise KeyboardInterrupt
-
-            monkeypatch.setattr(paths, "drop_standalone_marker", drop)
-
-        with pytest.raises(KeyboardInterrupt):
-            self._connect("dm", root)
-
-        if where == "in_the_write":
-            assert len(calls) == 2  # the undo was pushed before the write, and ran
-        assert (root / "workset.yaml").read_text() == before
-        assert registry_store.load_standalone(std.registry) == {name: str(root)}
-        assert _workset_boxes(load_workset(list_worksets(std)["dm"], "dm",
-                                           early_system=std.early_system)) == {}
-
-    def test_a_linked_marker_file_is_kept_and_the_connect_goes_ahead(
-        self, config_file, tmp_home, caplog,
-    ):
-        """The root is box-writable, so the edit goes through boxfs, which never follows the
-        link: the link and its target stay, with a warning, and the box is the member."""
-        from kanibako.launch import box_resolve
-        from kanibako.settings.paths import DetectionResult
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        target = (tmp_home / "elsewhere.yaml").resolve()
-        (root / "workset.yaml").rename(target)
-        (root / "workset.yaml").symlink_to(target)
-        before = target.read_text()
-
-        with caplog.at_level("WARNING"):
-            assert self._connect("dm", root) == 0
-
-        assert (root / "workset.yaml").is_symlink()
-        assert target.read_text() == before
-        [warning] = [r.getMessage() for r in caplog.records
-                     if "could not remove the standalone marker" in r.getMessage()]
-        assert "refusing to follow the symlink" in warning
-        assert warning.count(str(root / "workset.yaml")) == 2  # the subject, the link: once each
-        assert _workset_boxes(ws) == {"sb": str(root)}
-        assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(
-            BoxMode.named, root)
-
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the read-only directory")
-    def test_a_marker_that_cannot_be_rewritten_is_kept_and_the_connect_goes_ahead(
-        self, config_file, tmp_home, caplog,
-    ):
-        from kanibako.launch import box_resolve
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        before = (root / "workset.yaml").read_text()
-        root.chmod(0o555)
-        try:
-            with caplog.at_level("WARNING"):
-                assert self._connect("dm", root) == 0
-        finally:
-            root.chmod(0o755)
-
-        assert (root / "workset.yaml").read_text() == before
-        assert any("could not remove the standalone marker" in r.getMessage()
-                   for r in caplog.records)
-        assert _workset_boxes(ws) == {"sb": str(root)}
-        assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.named
-
-    @pytest.mark.parametrize("dropped", [False, True], ids=["before_the_drop", "after_the_drop"])
-    def test_a_killed_connect_replays_the_marker_drop(
-        self, config_file, tmp_home, monkeypatch, dropped,
-    ):
-        """A kill after the membership write leaves the ``connect`` entry, and the marker
-        when it came before the drop; the next resolve drops the marker, then clears it."""
-        from kanibako.launch import box_resolve, journal
-        from kanibako.project.workset import load_workset
-        from kanibako.settings import paths
-        from kanibako.settings.config_io import load_doc
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
-
-        # The kill: the process never reaches the drop (or the clear after it).
-        if not dropped:
-            monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
-        monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
-        assert self._connect("dm", root) == 0
-        monkeypatch.undo()
-
-        ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
-        box_key = ws.projects_dir / "sb"
-        assert journal.pending_import(std.journal, box_key)["op"] == "connect"
-        assert box_resolve.stores_standalone_registry_null(root) is not dropped
-
+    if damage == "unreadable":
+      marker.chmod(0)
+    else:
+      marker.rename(root / "kept.yaml")
+      (root / "loop.yaml").symlink_to(marker)
+      marker.symlink_to(root / "loop.yaml")
+    try:
+      with caplog.at_level("WARNING"):
         paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std, config)
+    finally:
+      if damage == "unreadable":
+        marker.chmod(0o644)
 
-        assert journal.pending_import(std.journal, box_key) is None
-        assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
-        assert (root / "box_data" / "home.txt").read_text() == "state"
-        assert _workset_boxes(ws) == {"sb": str(root)}
-
-    @pytest.mark.parametrize("damage", ["unreadable", "link_loop"])
-    def test_a_replay_that_cannot_read_the_marker_warns_and_clears(
-        self, config_file, tmp_home, monkeypatch, caplog, damage,
-    ):
-        """The replay never raises: an unreadable or looping ``workset.yaml`` keeps its
-        marker, with a warning naming it, and the entry still clears, as it did before."""
-        from kanibako.launch import journal
-        from kanibako.project.workset import load_workset
-        from kanibako.settings import paths
-
-        if damage == "unreadable" and os.geteuid() == 0:
-            pytest.skip("root ignores the file mode")
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
-        root = (tmp_home / "sa").resolve()
-        self._standalone(std, root)
-        marker = root / "workset.yaml"
-        before = marker.read_text()
-
-        monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
-        monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
-        assert self._connect("dm", root) == 0
-        monkeypatch.undo()
-        ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
-        box_key = ws.projects_dir / "sb"
-        assert journal.pending_import(std.journal, box_key)["op"] == "connect"
-
-        if damage == "unreadable":
-            marker.chmod(0)
-        else:
-            marker.rename(root / "kept.yaml")
-            (root / "loop.yaml").symlink_to(marker)
-            marker.symlink_to(root / "loop.yaml")
-        try:
-            with caplog.at_level("WARNING"):
-                paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std,
-                                              config)
-        finally:
-            if damage == "unreadable":
-                marker.chmod(0o644)
-
-        assert journal.pending_import(std.journal, box_key) is None
-        [warning] = [r.getMessage() for r in caplog.records
-                     if "could not check the standalone marker" in r.getMessage()]
-        assert warning.count(str(marker)) == 1
-        assert "retry" not in warning  # the entry clears, so a retry would drop nothing
-        assert "remove that line by hand" in warning
-        assert (f"({os.strerror(errno.EACCES)})" if damage == "unreadable"
-                else f"({os.strerror(errno.ELOOP)})") in warning
-        if damage == "unreadable":
-            assert marker.read_text() == before
-        else:
-            assert marker.is_symlink() and (root / "kept.yaml").read_text() == before
-        assert _workset_boxes(ws) == {"sb": str(root)}
+    assert journal.pending_import(std.journal, box_key) is None
+    [warning] = [
+      r.getMessage()
+      for r in caplog.records
+      if "could not check the standalone marker" in r.getMessage()
+    ]
+    assert warning.count(str(marker)) == 1
+    assert "retry" not in warning  # the entry clears, so a retry would drop nothing
+    assert "remove that line by hand" in warning
+    assert (
+      f"({os.strerror(errno.EACCES)})"
+      if damage == "unreadable"
+      else f"({os.strerror(errno.ELOOP)})"
+    ) in warning
+    if damage == "unreadable":
+      assert marker.read_text() == before
+    else:
+      assert marker.is_symlink() and (root / "kept.yaml").read_text() == before
+    assert _workset_boxes(ws) == {"sb": str(root)}

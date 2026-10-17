@@ -21,173 +21,164 @@ from kanibako.settings.config_io import load_doc
 
 @pytest.fixture
 def reg(tmp_path: Path) -> Path:
-    """The resolved ``config.registry`` file path under a fresh tree."""
-    return tmp_path / "global" / "registry.yaml"
+  """The resolved ``config.registry`` file path under a fresh tree."""
+  return tmp_path / "global" / "registry.yaml"
 
 
 def test_fresh_tree_empty_sections(reg: Path) -> None:
-    """Absent registry.yaml → every section present and empty.
+  """Absent registry.yaml → every section present and empty.
 
-    ``projects`` is NOT among them — it was RETIRED (clean split, 2026-07-08):
-    default-mode box identity lives in the primary per-workset ``boxes:``
-    membership now, not in the global registry.
-    """
-    loaded = registry_store.load_registry(reg)
-    assert loaded == {
-        "worksets": {},
-        "standalone": {},
-        "deregistered": {},
-        "rigs": {},
-        "image_shells": {},
-    }
+  ``projects`` is NOT among them — it was RETIRED (clean split, 2026-07-08):
+  default-mode box identity lives in the primary per-workset ``boxes:``
+  membership now, not in the global registry.
+  """
+  loaded = registry_store.load_registry(reg)
+  assert loaded == {
+    "worksets": {},
+    "standalone": {},
+    "deregistered": {},
+    "rigs": {},
+    "image_shells": {},
+  }
 
 
 def test_sections_round_trip(reg: Path) -> None:
-    """All sections survive a save/load round-trip with their shapes intact."""
-    sections = {
-        "worksets": {"ws": "/home/user/ws"},
-        "standalone": {"abc_box": "/abs/proj"},
-        "deregistered": {
-            "gone": {"kind": "primary", "workspace": "/w", "metadata": "/m"}
-        },
-        "rigs": {"corp/base:1.0": {"kind": "prefab"}},
-        "image_shells": {"sha256:abc": "/bin/bash"},
-    }
-    registry_store.save_registry(reg, sections)
-    assert registry_store.load_registry(reg) == sections
+  """All sections survive a save/load round-trip with their shapes intact."""
+  sections = {
+    "worksets": {"ws": "/home/user/ws"},
+    "standalone": {"abc_box": "/abs/proj"},
+    "deregistered": {"gone": {"kind": "primary", "workspace": "/w", "metadata": "/m"}},
+    "rigs": {"corp/base:1.0": {"kind": "prefab"}},
+    "image_shells": {"sha256:abc": "/bin/bash"},
+  }
+  registry_store.save_registry(reg, sections)
+  assert registry_store.load_registry(reg) == sections
 
 
 def test_save_creates_global_dir(tmp_path: Path) -> None:
-    """Saving into a fresh tree creates the registry's parent dir."""
-    reg = tmp_path / "a" / "b" / "global" / "registry.yaml"
-    registry_store.save_registry(reg, {"worksets": {"x": "/x"}})
-    assert reg.is_file()
+  """Saving into a fresh tree creates the registry's parent dir."""
+  reg = tmp_path / "a" / "b" / "global" / "registry.yaml"
+  registry_store.save_registry(reg, {"worksets": {"x": "/x"}})
+  assert reg.is_file()
 
 
 def test_name_sections_sorted_on_write(reg: Path) -> None:
-    """worksets keys are written sorted (stable diffs)."""
-    registry_store.save_registry(
-        reg,
-        {"worksets": {"zed": "/z", "abe": "/a", "mid": "/m"}},
-    )
-    raw = load_doc(reg)
-    assert list(raw["worksets"].keys()) == ["abe", "mid", "zed"]
+  """worksets keys are written sorted (stable diffs)."""
+  registry_store.save_registry(
+    reg,
+    {"worksets": {"zed": "/z", "abe": "/a", "mid": "/m"}},
+  )
+  raw = load_doc(reg)
+  assert list(raw["worksets"].keys()) == ["abe", "mid", "zed"]
 
 
 def test_save_section_preserves_other_sections(reg: Path) -> None:
-    """save_section swaps one section and leaves the rest untouched."""
-    registry_store.save_registry(
-        reg,
-        {
-            "worksets": {"keep": "/keep"},
-            "rigs": {"corp/base:1.0": {"kind": "prefab"}},
-        },
-    )
-    registry_store.save_section(reg, "standalone", {"box1": "/proj"})
+  """save_section swaps one section and leaves the rest untouched."""
+  registry_store.save_registry(
+    reg,
+    {
+      "worksets": {"keep": "/keep"},
+      "rigs": {"corp/base:1.0": {"kind": "prefab"}},
+    },
+  )
+  registry_store.save_section(reg, "standalone", {"box1": "/proj"})
 
-    loaded = registry_store.load_registry(reg)
-    assert loaded["worksets"] == {"keep": "/keep"}
-    assert loaded["rigs"] == {"corp/base:1.0": {"kind": "prefab"}}
-    assert loaded["standalone"] == {"box1": "/proj"}
+  loaded = registry_store.load_registry(reg)
+  assert loaded["worksets"] == {"keep": "/keep"}
+  assert loaded["rigs"] == {"corp/base:1.0": {"kind": "prefab"}}
+  assert loaded["standalone"] == {"box1": "/proj"}
 
 
 def test_load_section_returns_single_section(reg: Path) -> None:
-    registry_store.save_section(reg, "worksets", {"ws": "/root"})
-    assert registry_store.load_section(reg, "worksets") == {"ws": "/root"}
-    # Untouched sections read empty.
-    assert registry_store.load_section(reg, "standalone") == {}
+  registry_store.save_section(reg, "worksets", {"ws": "/root"})
+  assert registry_store.load_section(reg, "worksets") == {"ws": "/root"}
+  # Untouched sections read empty.
+  assert registry_store.load_section(reg, "standalone") == {}
 
 
 def test_projects_section_retired(reg: Path, caplog) -> None:
-    """The ``projects`` section is retired: never surfaced, dropped on write.
+  """The ``projects`` section is retired: never surfaced, dropped on write.
 
-    A legacy registry.yaml carrying a ``projects`` block (an older install that
-    predates the clean split) is ignored on load and dropped on the next save —
-    no migration, no read-compat.
-    """
-    from kanibako.settings.config_io import dump_doc
+  A legacy registry.yaml carrying a ``projects`` block (an older install that
+  predates the clean split) is ignored on load and dropped on the next save —
+  no migration, no read-compat.
+  """
+  from kanibako.settings.config_io import dump_doc
 
-    dump_doc(
-        reg,
-        {
-            "projects": {"myapp": "/home/user/myapp"},
-            "worksets": {"ws": "/root"},
-        },
-    )
-    loaded = registry_store.load_registry(reg)
-    assert "projects" not in loaded
-    assert loaded["worksets"] == {"ws": "/root"}
-    # Round-trip a save: the projects section does not reappear on disk.
-    registry_store.save_registry(reg, loaded)
-    raw = load_doc(reg)
-    assert "projects" not in raw
-    # ... and the save says so, printing what it dropped.
-    assert caplog.messages == [
-        f"{reg}: dropped the section 'projects', which kanibako does not read. It held:\n"
-        "projects:\n  myapp: /home/user/myapp"
-    ]
+  dump_doc(
+    reg,
+    {
+      "projects": {"myapp": "/home/user/myapp"},
+      "worksets": {"ws": "/root"},
+    },
+  )
+  loaded = registry_store.load_registry(reg)
+  assert "projects" not in loaded
+  assert loaded["worksets"] == {"ws": "/root"}
+  # Round-trip a save: the projects section does not reappear on disk.
+  registry_store.save_registry(reg, loaded)
+  raw = load_doc(reg)
+  assert "projects" not in raw
+  # ... and the save says so, printing what it dropped.
+  assert caplog.messages == [
+    f"{reg}: dropped the section 'projects', which kanibako does not read. It held:\n"
+    "projects:\n  myapp: /home/user/myapp"
+  ]
 
 
 def test_register_standalone_adds_entry(reg: Path) -> None:
-    registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
-    assert registry_store.load_standalone(reg) == {"abc_box": "/abs/proj"}
-    assert registry_store.standalone_box_names(reg) == {"abc_box"}
+  registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
+  assert registry_store.load_standalone(reg) == {"abc_box": "/abs/proj"}
+  assert registry_store.standalone_box_names(reg) == {"abc_box"}
 
 
 def test_register_standalone_overwrites_root(reg: Path) -> None:
-    registry_store.register_standalone(reg, "abc_box", Path("/old"))
-    registry_store.register_standalone(reg, "abc_box", Path("/new"))
-    assert registry_store.load_standalone(reg) == {"abc_box": "/new"}
+  registry_store.register_standalone(reg, "abc_box", Path("/old"))
+  registry_store.register_standalone(reg, "abc_box", Path("/new"))
+  assert registry_store.load_standalone(reg) == {"abc_box": "/new"}
 
 
 def test_unregister_standalone(reg: Path) -> None:
-    registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
-    registry_store.unregister_standalone(reg, "abc_box")
-    assert registry_store.load_standalone(reg) == {}
-    # No-op when absent.
-    registry_store.unregister_standalone(reg, "missing")
+  registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
+  registry_store.unregister_standalone(reg, "abc_box")
+  assert registry_store.load_standalone(reg) == {}
+  # No-op when absent.
+  registry_store.unregister_standalone(reg, "missing")
 
 
 def test_standalone_name_for_root(reg: Path) -> None:
-    registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
-    assert (
-        registry_store.standalone_name_for_root(reg, Path("/abs/proj"))
-        == "abc_box"
-    )
-    assert (
-        registry_store.standalone_name_for_root(reg, Path("/other")) is None
-    )
+  registry_store.register_standalone(reg, "abc_box", Path("/abs/proj"))
+  assert registry_store.standalone_name_for_root(reg, Path("/abs/proj")) == "abc_box"
+  assert registry_store.standalone_name_for_root(reg, Path("/other")) is None
 
 
 def test_standalone_register_preserves_other_sections(reg: Path) -> None:
-    registry_store.save_section(reg, "worksets", {"keep": "/keep"})
-    registry_store.register_standalone(reg, "abc_box", Path("/proj"))
-    assert registry_store.load_section(reg, "worksets") == {"keep": "/keep"}
+  registry_store.save_section(reg, "worksets", {"keep": "/keep"})
+  registry_store.register_standalone(reg, "abc_box", Path("/proj"))
+  assert registry_store.load_section(reg, "worksets") == {"keep": "/keep"}
 
 
 def test_section_round_trip_by_registry_path(reg: Path) -> None:
-    """load_section / save_section operate via the registry.yaml path.
+  """load_section / save_section operate via the registry.yaml path.
 
-    They back the path-based section-owners (rig_registry, shells).
-    """
-    registry_store.save_section(reg, "rigs", {"corp/x:1": {"kind": "prefab"}})
-    assert registry_store.load_section(reg, "rigs") == {
-        "corp/x:1": {"kind": "prefab"}
-    }
-    # Empty/absent section reads {}.
-    assert registry_store.load_section(reg, "image_shells") == {}
+  They back the path-based section-owners (rig_registry, shells).
+  """
+  registry_store.save_section(reg, "rigs", {"corp/x:1": {"kind": "prefab"}})
+  assert registry_store.load_section(reg, "rigs") == {"corp/x:1": {"kind": "prefab"}}
+  # Empty/absent section reads {}.
+  assert registry_store.load_section(reg, "image_shells") == {}
 
 
 def test_section_preserves_sibling_sections(reg: Path) -> None:
-    """A section-owner writing a section preserves every other section."""
-    registry_store.save_section(reg, "worksets", {"keep": "/keep"})
-    registry_store.save_section(reg, "rigs", {"r": {"kind": "extended"}})
-    registry_store.save_section(reg, "image_shells", {"sha256:a": "/bin/sh"})
+  """A section-owner writing a section preserves every other section."""
+  registry_store.save_section(reg, "worksets", {"keep": "/keep"})
+  registry_store.save_section(reg, "rigs", {"r": {"kind": "extended"}})
+  registry_store.save_section(reg, "image_shells", {"sha256:a": "/bin/sh"})
 
-    loaded = registry_store.load_registry(reg)
-    assert loaded["worksets"] == {"keep": "/keep"}
-    assert loaded["rigs"] == {"r": {"kind": "extended"}}
-    assert loaded["image_shells"] == {"sha256:a": "/bin/sh"}
+  loaded = registry_store.load_registry(reg)
+  assert loaded["worksets"] == {"keep": "/keep"}
+  assert loaded["rigs"] == {"r": {"kind": "extended"}}
+  assert loaded["image_shells"] == {"sha256:a": "/bin/sh"}
 
 
 # ---------------------------------------------------------------------------
@@ -197,53 +188,53 @@ def test_section_preserves_sibling_sections(reg: Path) -> None:
 
 
 def test_no_seeded_section_in_loaded_registry(reg: Path) -> None:
-    """A fresh registry has NO ``seeded`` section (B7 clean break)."""
-    loaded = registry_store.load_registry(reg)
-    assert "seeded" not in loaded
-    # The membership sections are present and empty.
-    assert loaded["worksets"] == {}
-    assert loaded["standalone"] == {}
+  """A fresh registry has NO ``seeded`` section (B7 clean break)."""
+  loaded = registry_store.load_registry(reg)
+  assert "seeded" not in loaded
+  # The membership sections are present and empty.
+  assert loaded["worksets"] == {}
+  assert loaded["standalone"] == {}
 
 
 def test_seeded_helpers_removed(reg: Path) -> None:
-    """The seeded-flag read/write primitives no longer exist on the module."""
-    assert not hasattr(registry_store, "is_box_seeded")
-    assert not hasattr(registry_store, "mark_box_seeded_entry")
+  """The seeded-flag read/write primitives no longer exist on the module."""
+  assert not hasattr(registry_store, "is_box_seeded")
+  assert not hasattr(registry_store, "mark_box_seeded_entry")
 
 
 def test_legacy_seeded_section_is_dropped_not_round_tripped(reg: Path) -> None:
-    """A legacy registry.yaml with a ``seeded`` section ignores + drops it.
+  """A legacy registry.yaml with a ``seeded`` section ignores + drops it.
 
-    Clean break (pre-release, no read-compat): the section is neither read into
-    the loaded shape nor re-persisted on the next save.
-    """
-    from kanibako.settings.config_io import dump_doc
+  Clean break (pre-release, no read-compat): the section is neither read into
+  the loaded shape nor re-persisted on the next save.
+  """
+  from kanibako.settings.config_io import dump_doc
 
-    dump_doc(
-        reg,
-        {
-            "standalone": {"abc_box": "/p"},
-            "seeded": {"projects": {"myapp": True}, "standalone": {"abc_box": True}},
-        },
-    )
-    loaded = registry_store.load_registry(reg)
-    assert "seeded" not in loaded
-    assert registry_store.load_standalone(reg) == {"abc_box": "/p"}
-    # Round-trip a save: the seeded section does not reappear on disk.
-    registry_store.save_registry(reg, loaded)
-    raw = load_doc(reg)
-    assert "seeded" not in raw
+  dump_doc(
+    reg,
+    {
+      "standalone": {"abc_box": "/p"},
+      "seeded": {"projects": {"myapp": True}, "standalone": {"abc_box": True}},
+    },
+  )
+  loaded = registry_store.load_registry(reg)
+  assert "seeded" not in loaded
+  assert registry_store.load_standalone(reg) == {"abc_box": "/p"}
+  # Round-trip a save: the seeded section does not reappear on disk.
+  registry_store.save_registry(reg, loaded)
+  raw = load_doc(reg)
+  assert "seeded" not in raw
 
 
 def test_atomic_write_no_partial_on_existing(reg: Path) -> None:
-    """A second save fully replaces the file (atomic temp + replace)."""
-    registry_store.save_section(reg, "worksets", {"a": "/a", "b": "/b"})
-    registry_store.save_section(reg, "worksets", {"a": "/a"})
-    assert registry_store.load_section(reg, "worksets") == {"a": "/a"}
-    # No stray temp files left in the global dir.
-    global_dir = reg.parent
-    leftovers = [p.name for p in global_dir.iterdir() if p.name != "registry.yaml"]
-    assert leftovers == []
+  """A second save fully replaces the file (atomic temp + replace)."""
+  registry_store.save_section(reg, "worksets", {"a": "/a", "b": "/b"})
+  registry_store.save_section(reg, "worksets", {"a": "/a"})
+  assert registry_store.load_section(reg, "worksets") == {"a": "/a"}
+  # No stray temp files left in the global dir.
+  global_dir = reg.parent
+  leftovers = [p.name for p in global_dir.iterdir() if p.name != "registry.yaml"]
+  assert leftovers == []
 
 
 # ---------------------------------------------------------------------------
@@ -257,286 +248,339 @@ def test_atomic_write_no_partial_on_existing(reg: Path) -> None:
 
 
 def test_default_config_registry_resolves_under_data(tmp_path: Path) -> None:
-    """Resolution oracle: default ``config.registry`` == ``config.data/global/registry.yaml``.
+  """Resolution oracle: default ``config.registry`` == ``config.data/global/registry.yaml``.
 
-    This is the equivalence anchor — the path the store targets at default config
-    matches the old ``data_path``-relative reconstruction byte-for-byte.
-    """
-    from kanibako.settings.paths import resolve_system_paths
+  This is the equivalence anchor — the path the store targets at default config
+  matches the old ``data_path``-relative reconstruction byte-for-byte.
+  """
+  from kanibako.settings.paths import resolve_system_paths
 
-    home = tmp_path / "home"
-    data_home = tmp_path / "xdg-data"
-    resolved = resolve_system_paths({}, data_home=data_home, home=home)
-    assert (
-        resolved["config.registry"]
-        == resolved["config.data"] / "global" / "registry.yaml"
-    )
+  home = tmp_path / "home"
+  data_home = tmp_path / "xdg-data"
+  resolved = resolve_system_paths({}, data_home=data_home, home=home)
+  assert resolved["config.registry"] == resolved["config.data"] / "global" / "registry.yaml"
 
 
 def test_repointed_config_registry_is_honored(tmp_path: Path) -> None:
-    """A repointed ``config.registry`` is the file the store actually uses.
+  """A repointed ``config.registry`` is the file the store actually uses.
 
-    Resolve ``config.registry`` to a location OUTSIDE ``config.data`` and prove
-    that ``save_registry``/``load_registry`` (via the resolved path) read and write
-    THAT file — and that the default location is NOT touched.  This is the new
-    honored behavior the block delivers; before, the store reconstructed
-    ``data_path/global/registry.yaml`` and silently ignored the repoint.
-    """
-    from kanibako.settings.paths import resolve_system_paths
+  Resolve ``config.registry`` to a location OUTSIDE ``config.data`` and prove
+  that ``save_registry``/``load_registry`` (via the resolved path) read and write
+  THAT file — and that the default location is NOT touched.  This is the new
+  honored behavior the block delivers; before, the store reconstructed
+  ``data_path/global/registry.yaml`` and silently ignored the repoint.
+  """
+  from kanibako.settings.paths import resolve_system_paths
 
-    home = tmp_path / "home"
-    data_home = tmp_path / "xdg-data"
-    custom = tmp_path / "elsewhere" / "myregistry.yaml"
+  home = tmp_path / "home"
+  data_home = tmp_path / "xdg-data"
+  custom = tmp_path / "elsewhere" / "myregistry.yaml"
 
-    resolved = resolve_system_paths(
-        {"config.registry": str(custom)}, data_home=data_home, home=home,
-    )
-    registry = resolved["config.registry"]
-    assert registry == custom  # the repoint resolved through, not the default
+  resolved = resolve_system_paths(
+    {"config.registry": str(custom)},
+    data_home=data_home,
+    home=home,
+  )
+  registry = resolved["config.registry"]
+  assert registry == custom  # the repoint resolved through, not the default
 
-    registry_store.save_section(registry, "worksets", {"myapp": "/home/user/myapp"})
+  registry_store.save_section(registry, "worksets", {"myapp": "/home/user/myapp"})
 
-    # The repointed file holds the data...
-    assert custom.is_file()
-    assert registry_store.load_section(registry, "worksets") == {
-        "myapp": "/home/user/myapp"
-    }
-    # ...and the DEFAULT location was never created (the repoint is honored, not
-    # ignored with a reconstructed default).
-    default_loc = resolved["config.data"] / "global" / "registry.yaml"
-    assert not default_loc.exists()
+  # The repointed file holds the data...
+  assert custom.is_file()
+  assert registry_store.load_section(registry, "worksets") == {"myapp": "/home/user/myapp"}
+  # ...and the DEFAULT location was never created (the repoint is honored, not
+  # ignored with a reconstructed default).
+  default_loc = resolved["config.data"] / "global" / "registry.yaml"
+  assert not default_loc.exists()
 
 
 # ---------------------------------------------------------------------------
 # deregistered section (I1: rm-without-purge parks a recovery blob by name)
 # ---------------------------------------------------------------------------
 
+
 class TestDeregistered:
-    def test_register_and_lookup_round_trip(self, reg: Path, tmp_path: Path) -> None:
-        meta = tmp_path / "boxes" / "tempwow"
-        meta.mkdir(parents=True)
-        registry_store.register_deregistered(
-            reg,
-            "tempwow",
-            kind="primary",
-            workspace="/home/user/tempwow",
-            metadata=str(meta),
-            image="ghcr.io/x:1",
-        )
-        entry = registry_store.lookup_deregistered(reg, "tempwow")
-        assert entry is not None
-        stamp = entry.pop("deregistered_at")
-        assert entry == {
-            "kind": "primary",
-            "workspace": "/home/user/tempwow",
-            "metadata": str(meta),
-            "image": "ghcr.io/x:1",
-        }
-        entry["deregistered_at"] = stamp
-        # Round-trips through the on-disk file (not just in-memory).
-        assert registry_store.load_deregistered(reg)["tempwow"] == entry
+  def test_register_and_lookup_round_trip(self, reg: Path, tmp_path: Path) -> None:
+    meta = tmp_path / "boxes" / "tempwow"
+    meta.mkdir(parents=True)
+    registry_store.register_deregistered(
+      reg,
+      "tempwow",
+      kind="primary",
+      workspace="/home/user/tempwow",
+      metadata=str(meta),
+      image="ghcr.io/x:1",
+    )
+    entry = registry_store.lookup_deregistered(reg, "tempwow")
+    assert entry is not None
+    stamp = entry.pop("deregistered_at")
+    assert entry == {
+      "kind": "primary",
+      "workspace": "/home/user/tempwow",
+      "metadata": str(meta),
+      "image": "ghcr.io/x:1",
+    }
+    entry["deregistered_at"] = stamp
+    # Round-trips through the on-disk file (not just in-memory).
+    assert registry_store.load_deregistered(reg)["tempwow"] == entry
 
-    def test_lookup_missing_returns_none(self, reg: Path) -> None:
-        assert registry_store.lookup_deregistered(reg, "nope") is None
+  def test_lookup_missing_returns_none(self, reg: Path) -> None:
+    assert registry_store.lookup_deregistered(reg, "nope") is None
 
-    def test_lookup_is_a_pure_read(self, reg: Path) -> None:
-        """lookup never mutates — even for an entry whose dir is gone."""
-        registry_store.register_deregistered(
-            reg, "ghost", kind="primary", workspace="/w",
-            metadata="/does/not/exist",
-        )
-        assert registry_store.lookup_deregistered(reg, "ghost") is not None
-        # Still present after lookup (self-heal is a list/purge concern only).
-        assert "ghost" in registry_store.load_deregistered(reg)
+  def test_lookup_is_a_pure_read(self, reg: Path) -> None:
+    """lookup never mutates — even for an entry whose dir is gone."""
+    registry_store.register_deregistered(
+      reg,
+      "ghost",
+      kind="primary",
+      workspace="/w",
+      metadata="/does/not/exist",
+    )
+    assert registry_store.lookup_deregistered(reg, "ghost") is not None
+    # Still present after lookup (self-heal is a list/purge concern only).
+    assert "ghost" in registry_store.load_deregistered(reg)
 
-    def test_unregister_drops_and_reports(self, reg: Path, tmp_path: Path) -> None:
-        registry_store.register_deregistered(
-            reg, "b", kind="primary", workspace="/w", metadata=str(tmp_path),
-        )
-        assert registry_store.unregister_deregistered(reg, "b") is True
-        assert registry_store.lookup_deregistered(reg, "b") is None
-        # Idempotent: dropping an absent entry is a no-op returning False.
-        assert registry_store.unregister_deregistered(reg, "b") is False
+  def test_unregister_drops_and_reports(self, reg: Path, tmp_path: Path) -> None:
+    registry_store.register_deregistered(
+      reg,
+      "b",
+      kind="primary",
+      workspace="/w",
+      metadata=str(tmp_path),
+    )
+    assert registry_store.unregister_deregistered(reg, "b") is True
+    assert registry_store.lookup_deregistered(reg, "b") is None
+    # Idempotent: dropping an absent entry is a no-op returning False.
+    assert registry_store.unregister_deregistered(reg, "b") is False
 
-    def test_optional_fields_omitted_when_none(self, reg: Path, tmp_path: Path) -> None:
-        registry_store.register_deregistered(
-            reg, "bare", kind="standalone", workspace=None, metadata=str(tmp_path),
-        )
-        entry = registry_store.lookup_deregistered(reg, "bare")
-        assert entry is not None
-        del entry["deregistered_at"]
-        assert entry == {
-            "kind": "standalone",
-            "workspace": None,
-            "metadata": str(tmp_path),
-        }
+  def test_optional_fields_omitted_when_none(self, reg: Path, tmp_path: Path) -> None:
+    registry_store.register_deregistered(
+      reg,
+      "bare",
+      kind="standalone",
+      workspace=None,
+      metadata=str(tmp_path),
+    )
+    entry = registry_store.lookup_deregistered(reg, "bare")
+    assert entry is not None
+    del entry["deregistered_at"]
+    assert entry == {
+      "kind": "standalone",
+      "workspace": None,
+      "metadata": str(tmp_path),
+    }
 
-    def test_park_stamps_the_time_itself(self, reg: Path, tmp_path: Path) -> None:
-        """Every parked blob carries a UTC ``deregistered_at`` no caller has to supply."""
-        before = datetime.now(timezone.utc)
-        registry_store.register_deregistered(
-            reg, "stamped", kind="primary", workspace="/w", metadata=str(tmp_path),
-        )
-        entry = registry_store.lookup_deregistered(reg, "stamped")
-        assert entry is not None
-        stamp = datetime.fromisoformat(entry["deregistered_at"])
-        assert stamp.utcoffset() == timedelta(0)
-        assert before <= stamp <= datetime.now(timezone.utc)
+  def test_park_stamps_the_time_itself(self, reg: Path, tmp_path: Path) -> None:
+    """Every parked blob carries a UTC ``deregistered_at`` no caller has to supply."""
+    before = datetime.now(timezone.utc)
+    registry_store.register_deregistered(
+      reg,
+      "stamped",
+      kind="primary",
+      workspace="/w",
+      metadata=str(tmp_path),
+    )
+    entry = registry_store.lookup_deregistered(reg, "stamped")
+    assert entry is not None
+    stamp = datetime.fromisoformat(entry["deregistered_at"])
+    assert stamp.utcoffset() == timedelta(0)
+    assert before <= stamp <= datetime.now(timezone.utc)
 
-    def test_list_keeps_a_gone_entry_and_drops_an_empty_one(
-        self, reg: Path, tmp_path: Path,
-    ) -> None:
-        """A gone directory stays listed: ``box list`` prints its ``rm --purge`` cure, and
-        that purge needs the entry.  Only an entry with no metadata path is dropped."""
-        live_dir = tmp_path / "live"
-        live_dir.mkdir()
-        registry_store.register_deregistered(
-            reg, "live", kind="primary", workspace="/w", metadata=str(live_dir),
-        )
-        registry_store.register_deregistered(
-            reg, "gone", kind="primary", workspace="/w",
-            metadata=str(tmp_path / "gone"),
-        )
-        registry_store.register_deregistered(
-            reg, "empty", kind="primary", workspace="/w", metadata="",
-        )
-        listed = registry_store.list_deregistered(reg)
-        assert set(listed) == {"live", "gone"}
-        # The drop is PERSISTED, not just filtered in memory.
-        assert set(registry_store.load_deregistered(reg)) == {"live", "gone"}
+  def test_list_keeps_a_gone_entry_and_drops_an_empty_one(
+    self,
+    reg: Path,
+    tmp_path: Path,
+  ) -> None:
+    """A gone directory stays listed: ``box list`` prints its ``rm --purge`` cure, and
+    that purge needs the entry.  Only an entry with no metadata path is dropped."""
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    registry_store.register_deregistered(
+      reg,
+      "live",
+      kind="primary",
+      workspace="/w",
+      metadata=str(live_dir),
+    )
+    registry_store.register_deregistered(
+      reg,
+      "gone",
+      kind="primary",
+      workspace="/w",
+      metadata=str(tmp_path / "gone"),
+    )
+    registry_store.register_deregistered(
+      reg,
+      "empty",
+      kind="primary",
+      workspace="/w",
+      metadata="",
+    )
+    listed = registry_store.list_deregistered(reg)
+    assert set(listed) == {"live", "gone"}
+    # The drop is PERSISTED, not just filtered in memory.
+    assert set(registry_store.load_deregistered(reg)) == {"live", "gone"}
 
-    def test_list_keeps_entry_on_transient_stat_error(
-        self, reg: Path, tmp_path: Path,
-    ) -> None:
-        """A stat error (EACCES/EIO) must NOT drop a recovery pointer.
+  def test_list_keeps_entry_on_transient_stat_error(
+    self,
+    reg: Path,
+    tmp_path: Path,
+  ) -> None:
+    """A stat error (EACCES/EIO) must NOT drop a recovery pointer.
 
-        Mutation proof: a ``Path.exists()`` filter collapses the permission error
-        into ``False`` and drops ``blocked``, reddening the assertions.
-        """
-        import errno
-        import os
-        from unittest.mock import patch
+    Mutation proof: a ``Path.exists()`` filter collapses the permission error
+    into ``False`` and drops ``blocked``, reddening the assertions.
+    """
+    import errno
+    import os
+    from unittest.mock import patch
 
-        gone = tmp_path / "reallygone"          # genuinely absent → drop
-        blocked = tmp_path / "blocked"          # present, stat raises EACCES → keep
-        blocked.mkdir()
-        registry_store.register_deregistered(
-            reg, "gone", kind="primary", workspace="/w", metadata=str(gone),
-        )
-        registry_store.register_deregistered(
-            reg, "blocked", kind="primary", workspace="/w", metadata=str(blocked),
-        )
+    gone = tmp_path / "reallygone"  # genuinely absent → drop
+    blocked = tmp_path / "blocked"  # present, stat raises EACCES → keep
+    blocked.mkdir()
+    registry_store.register_deregistered(
+      reg,
+      "gone",
+      kind="primary",
+      workspace="/w",
+      metadata=str(gone),
+    )
+    registry_store.register_deregistered(
+      reg,
+      "blocked",
+      kind="primary",
+      workspace="/w",
+      metadata=str(blocked),
+    )
 
-        real_stat = os.stat
+    real_stat = os.stat
 
-        def fake_stat(path, *a, **k):  # type: ignore[no-untyped-def]
-            if str(path) == str(blocked):
-                raise OSError(errno.EACCES, "Permission denied")
-            return real_stat(path, *a, **k)
+    def fake_stat(path, *a, **k):  # type: ignore[no-untyped-def]
+      if str(path) == str(blocked):
+        raise OSError(errno.EACCES, "Permission denied")
+      return real_stat(path, *a, **k)
 
-        with patch("os.stat", fake_stat):
-            listed = registry_store.list_deregistered(reg)
+    with patch("os.stat", fake_stat):
+      listed = registry_store.list_deregistered(reg)
 
-        # 'blocked' KEPT despite the ambiguous error, as is 'gone' (its purge needs it).
-        assert set(listed) == {"blocked", "gone"}
-        assert set(registry_store.load_deregistered(reg)) == {"blocked", "gone"}
+    # 'blocked' KEPT despite the ambiguous error, as is 'gone' (its purge needs it).
+    assert set(listed) == {"blocked", "gone"}
+    assert set(registry_store.load_deregistered(reg)) == {"blocked", "gone"}
 
-    def test_section_survives_other_section_writes(self, reg: Path, tmp_path: Path) -> None:
-        registry_store.register_deregistered(
-            reg, "keep", kind="primary", workspace="/w", metadata=str(tmp_path),
-        )
-        registry_store.register_standalone(reg, "sa", tmp_path)
-        # Writing a sibling section preserves deregistered.
-        assert registry_store.lookup_deregistered(reg, "keep") is not None
+  def test_section_survives_other_section_writes(self, reg: Path, tmp_path: Path) -> None:
+    registry_store.register_deregistered(
+      reg,
+      "keep",
+      kind="primary",
+      workspace="/w",
+      metadata=str(tmp_path),
+    )
+    registry_store.register_standalone(reg, "sa", tmp_path)
+    # Writing a sibling section preserves deregistered.
+    assert registry_store.lookup_deregistered(reg, "keep") is not None
 
 
 def _rig(name):
-    return rig_registry.RigRecord(name=name, kind="image")
+  return rig_registry.RigRecord(name=name, kind="image")
 
 
 # Every read-modify-write of the global registry, each run twice at once on a
 # different row.  ``(seed, write, read, expected)``: *seed* prepares rows 0 and 1,
 # *write(reg, i)* acts on row *i*, *read(reg)* returns the row names left.
 _WRITERS = {
-    "register_standalone": (
-        None,
-        lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
-        lambda reg: set(registry_store.load_standalone(reg)), {"b0", "b1"}),
-    "unregister_standalone": (
-        lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
-        lambda reg, i: registry_store.unregister_standalone(reg, f"b{i}"),
-        lambda reg: set(registry_store.load_standalone(reg)), set()),
-    "register_deregistered": (
-        None,
-        lambda reg, i: registry_store.register_deregistered(
-            reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)),
-        lambda reg: set(registry_store.load_deregistered(reg)), {"d0", "d1"}),
-    "unregister_deregistered": (
-        lambda reg, i: registry_store.register_deregistered(
-            reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)),
-        lambda reg, i: registry_store.unregister_deregistered(reg, f"d{i}"),
-        lambda reg: set(registry_store.load_deregistered(reg)), set()),
-    "names.register_name": (
-        None,
-        lambda reg, i: names.register_name(
-            reg, f"w{i}", str(reg.parent / f"w{i}")),
-        lambda reg: set(registry_store.load_registry(reg)["worksets"]), {"w0", "w1"}),
-    "names.unregister_name": (
-        lambda reg, i: names.register_name(
-            reg, f"w{i}", str(reg.parent / f"w{i}")),
-        lambda reg, i: names.unregister_name(
-            reg, f"w{i}"),
-        lambda reg: set(registry_store.load_registry(reg)["worksets"]), set()),
-    "rig_registry.upsert": (
-        None,
-        lambda reg, i: rig_registry.upsert(
-            reg, _rig(f"g{i}")),
-        lambda reg: set(registry_store.load_registry(reg)["rigs"]), {"g0", "g1"}),
-    "rig_registry.remove": (
-        lambda reg, i: rig_registry.upsert(
-            reg, _rig(f"g{i}")),
-        lambda reg, i: rig_registry.remove(
-            reg, f"g{i}"),
-        lambda reg: set(registry_store.load_registry(reg)["rigs"]), set()),
-    "shells.save_image_shell": (
-        None,
-        lambda reg, i: shells.save_image_shell(
-            SimpleNamespace(registry=reg), f"k{i}", "bash"),
-        lambda reg: set(registry_store.load_registry(reg)["image_shells"]), {"k0", "k1"}),
+  "register_standalone": (
+    None,
+    lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
+    lambda reg: set(registry_store.load_standalone(reg)),
+    {"b0", "b1"},
+  ),
+  "unregister_standalone": (
+    lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
+    lambda reg, i: registry_store.unregister_standalone(reg, f"b{i}"),
+    lambda reg: set(registry_store.load_standalone(reg)),
+    set(),
+  ),
+  "register_deregistered": (
+    None,
+    lambda reg, i: registry_store.register_deregistered(
+      reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)
+    ),
+    lambda reg: set(registry_store.load_deregistered(reg)),
+    {"d0", "d1"},
+  ),
+  "unregister_deregistered": (
+    lambda reg, i: registry_store.register_deregistered(
+      reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)
+    ),
+    lambda reg, i: registry_store.unregister_deregistered(reg, f"d{i}"),
+    lambda reg: set(registry_store.load_deregistered(reg)),
+    set(),
+  ),
+  "names.register_name": (
+    None,
+    lambda reg, i: names.register_name(reg, f"w{i}", str(reg.parent / f"w{i}")),
+    lambda reg: set(registry_store.load_registry(reg)["worksets"]),
+    {"w0", "w1"},
+  ),
+  "names.unregister_name": (
+    lambda reg, i: names.register_name(reg, f"w{i}", str(reg.parent / f"w{i}")),
+    lambda reg, i: names.unregister_name(reg, f"w{i}"),
+    lambda reg: set(registry_store.load_registry(reg)["worksets"]),
+    set(),
+  ),
+  "rig_registry.upsert": (
+    None,
+    lambda reg, i: rig_registry.upsert(reg, _rig(f"g{i}")),
+    lambda reg: set(registry_store.load_registry(reg)["rigs"]),
+    {"g0", "g1"},
+  ),
+  "rig_registry.remove": (
+    lambda reg, i: rig_registry.upsert(reg, _rig(f"g{i}")),
+    lambda reg, i: rig_registry.remove(reg, f"g{i}"),
+    lambda reg: set(registry_store.load_registry(reg)["rigs"]),
+    set(),
+  ),
+  "shells.save_image_shell": (
+    None,
+    lambda reg, i: shells.save_image_shell(SimpleNamespace(registry=reg), f"k{i}", "bash"),
+    lambda reg: set(registry_store.load_registry(reg)["image_shells"]),
+    {"k0", "k1"},
+  ),
 }
 
 
 @pytest.mark.parametrize("writer", sorted(_WRITERS))
 def test_concurrent_writers_never_lose_a_row(writer, tmp_path: Path, monkeypatch) -> None:
-    """Two writers that read the registry at once must not undo each other's row.
+  """Two writers that read the registry at once must not undo each other's row.
 
-    Each read is held until both have read — the interleaving that lost rows when
-    concurrent ``create --standalone --register`` runs shared one registry.
-    """
-    import threading
+  Each read is held until both have read — the interleaving that lost rows when
+  concurrent ``create --standalone --register`` runs shared one registry.
+  """
+  import threading
 
-    seed, write, read, expected = _WRITERS[writer]
-    registry = tmp_path / "registry.yaml"
-    for i in (0, 1):
-        if seed is not None:
-            seed(registry, i)
-    real_load = registry_store.load_registry
-    both_read = threading.Barrier(2, timeout=1)
+  seed, write, read, expected = _WRITERS[writer]
+  registry = tmp_path / "registry.yaml"
+  for i in (0, 1):
+    if seed is not None:
+      seed(registry, i)
+  real_load = registry_store.load_registry
+  both_read = threading.Barrier(2, timeout=1)
 
-    def _slow_load(path):
-        got = real_load(path)
-        try:
-            both_read.wait()
-        except threading.BrokenBarrierError:
-            pass  # serialized: the other writer is waiting on the lock
-        return got
+  def _slow_load(path):
+    got = real_load(path)
+    try:
+      both_read.wait()
+    except threading.BrokenBarrierError:
+      pass  # serialized: the other writer is waiting on the lock
+    return got
 
-    monkeypatch.setattr(registry_store, "load_registry", _slow_load)
-    threads = [threading.Thread(target=write, args=(registry, i)) for i in (0, 1)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    monkeypatch.setattr(registry_store, "load_registry", real_load)
+  monkeypatch.setattr(registry_store, "load_registry", _slow_load)
+  threads = [threading.Thread(target=write, args=(registry, i)) for i in (0, 1)]
+  for t in threads:
+    t.start()
+  for t in threads:
+    t.join()
+  monkeypatch.setattr(registry_store, "load_registry", real_load)
 
-    assert read(registry) == expected
+  assert read(registry) == expected

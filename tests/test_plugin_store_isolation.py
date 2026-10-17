@@ -56,10 +56,12 @@ import pytest
 from tests.support.repo import REPO_ROOT
 
 #: The store modules, by dotted path — what a dynamic import would name.
-STORE_MODULES = frozenset({
-  "kanibako.settings.keystore",
-  "kanibako.settings.kb_store",
-})
+STORE_MODULES = frozenset(
+  {
+    "kanibako.settings.keystore",
+    "kanibako.settings.kb_store",
+  }
+)
 
 #: The store names, matched EXACTLY as identifiers: the two module leaves and the
 #: class itself.  ``keystore_strings`` is deliberately absent — it is a message
@@ -93,10 +95,7 @@ def _plugin_sources(root: Path) -> dict[str, list[Path]]:
   """
   found: dict[str, list[Path]] = {}
   for src in sorted((root / "packages").glob("*/src")):
-    files = [
-      path for path in sorted(src.rglob("*.py"))
-      if not _NOT_SOURCE & set(path.parts)
-    ]
+    files = [path for path in sorted(src.rglob("*.py")) if not _NOT_SOURCE & set(path.parts)]
     if files:
       found[src.parent.name] = files
   return found
@@ -166,6 +165,7 @@ def _offenders(root: Path) -> list[str]:
 
 ### The pin ###
 
+
 def test_no_plugin_source_touches_a_key_store() -> None:
   """No shipped plugin module imports, names, or dynamically loads a key store."""
   offenders = _offenders(REPO_ROOT)
@@ -173,12 +173,13 @@ def test_no_plugin_source_touches_a_key_store() -> None:
     "plugin source reached for a key store:\n  "
     + "\n  ".join(offenders)
     + "\n\nA plugin describes an agent; it receives RESOLVED settings values and "
-      "has no business holding the store they came out of. Take the value from "
-      "the resolved settings it is handed, not the store."
+    "has no business holding the store they came out of. Take the value from "
+    "the resolved settings it is handed, not the store."
   )
 
 
 ### Anti-vacuity: the scan has to be looking at something ###
+
 
 def test_every_expected_plugin_is_in_the_corpus() -> None:
   """A wrong glob or a renamed tree must RED, not pass by finding nothing.
@@ -210,13 +211,13 @@ def test_the_scanner_catches_a_planted_reference(tmp_path: Path) -> None:
   pkg = tmp_path / "packages" / "agent-fake" / "src" / "kanibako" / "plugins" / "fake"
   pkg.mkdir(parents=True)
   (pkg / "target.py").write_text(
-    "from kanibako.settings.keystore import KeyStore\n"   # from-import, dotted module
-    "import kanibako.settings.kb_store\n"                 # import
-    "from kanibako.settings import kb_store\n"            # from-import, module as name
+    "from kanibako.settings.keystore import KeyStore\n"  # from-import, dotted module
+    "import kanibako.settings.kb_store\n"  # import
+    "from kanibako.settings import kb_store\n"  # from-import, module as name
     "import importlib\n"
     "mod = importlib.import_module('kanibako.settings.keystore')\n"  # string
-    "store = KeyStore({})\n"                              # name
-    "held = mod.keystore\n",                              # attribute
+    "store = KeyStore({})\n"  # name
+    "held = mod.keystore\n",  # attribute
     encoding="utf-8",
   )
   offenders = _offenders(tmp_path)

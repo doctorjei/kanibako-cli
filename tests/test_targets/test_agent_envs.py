@@ -34,10 +34,10 @@ import yaml
 
 from kanibako.settings.agent_representation import agent_env_for_node
 from kanibako.settings.settings_launch import (
-    build_launch_snapshot,
-    meta_agent_path_floor,
-    meta_identity_floor,
-    snapshot_category_entries,
+  build_launch_snapshot,
+  meta_agent_path_floor,
+  meta_identity_floor,
+  snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 from kanibako.settings.store_collapse import collapse_env
@@ -46,708 +46,808 @@ from kanibako.targets.shell import ShellTarget
 # The SHIPPED declarations, spelled out so a silent change to a plugin's defaults file
 # fails here by name. Values are GUEST-side and already ``{$GUEST_HOME}``-expanded.
 DECLARED = {
-    "claude": {
-        "DISABLE_AUTOUPDATER": "1",
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-        "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
-    },
-    "codex": {
-        "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
-    },
-    "goose": {
-        "GOOSE_DISABLE_KEYRING": "true",
-        "CONTEXT_FILE_NAMES": '[".additionalContext.md","AGENTS.md",".goosehints"]',
-        "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.config/goose/.additionalContext.md",
-    },
+  "claude": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
+  },
+  "codex": {
+    "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
+  },
+  "goose": {
+    "GOOSE_DISABLE_KEYRING": "true",
+    "CONTEXT_FILE_NAMES": '[".additionalContext.md","AGENTS.md",".goosehints"]',
+    "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.config/goose/.additionalContext.md",
+  },
 }
 
 
 def target_for(harness: str):
-    """The SHIPPED plugin target for *harness* (skipped when its wheel is absent)."""
-    module = pytest.importorskip(f"kanibako.plugins.{harness}")
-    return getattr(module, f"{harness.capitalize()}Target")()
+  """The SHIPPED plugin target for *harness* (skipped when its wheel is absent)."""
+  module = pytest.importorskip(f"kanibako.plugins.{harness}")
+  return getattr(module, f"{harness.capitalize()}Target")()
 
 
 def make_ctx(node: str) -> ResolveCtx:
-    return ResolveCtx(
-        agent_name=node,
-        workset_name=None,
-        host_home="/home/u",
-        xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
-        config={"config.data": "/data", "config.agents": "/data/agents"},
-    )
+  return ResolveCtx(
+    agent_name=node,
+    workset_name=None,
+    host_home="/home/u",
+    xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
+    config={"config.data": "/data", "config.agents": "/data/agents"},
+  )
 
 
 def env_floor(target, *, node: str, rekey: bool = True) -> dict[str, object]:
-    """The launch floor a real launch builds for *target*, carrying its declared envs.
+  """The launch floor a real launch builds for *target*, carrying its declared envs.
 
-    Mirrors the aggregation ``commands.start`` does: the identity anchors the resolve
-    needs, plus the plugin's ``default_envs()`` table re-keyed to the ACTIVE NODE.
+  Mirrors the aggregation ``commands.start`` does: the identity anchors the resolve
+  needs, plus the plugin's ``default_envs()`` table re-keyed to the ACTIVE NODE.
 
-    *rekey* False builds the floor the launch would have WITHOUT that re-key — the
-    negative control, used to show the re-key is what makes a persona work.
-    """
-    floor: dict[str, object] = {}
-    floor.update(meta_identity_floor(
-        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, agent_name=node,
-    ))
-    floor.update(meta_agent_path_floor(node))
-    table = target.default_envs()
-    floor.update(
-        agent_env_for_node(table, node_name=node, harness=target.name)
-        if rekey else table
+  *rekey* False builds the floor the launch would have WITHOUT that re-key — the
+  negative control, used to show the re-key is what makes a persona work.
+  """
+  floor: dict[str, object] = {}
+  floor.update(
+    meta_identity_floor(
+      box_name="b",
+      project_path="/p",
+      inbox="/i",
+      share_global="/sg",
+      share_workset=None,
+      agent_name=node,
     )
-    return floor
+  )
+  floor.update(meta_agent_path_floor(node))
+  table = target.default_envs()
+  floor.update(agent_env_for_node(table, node_name=node, harness=target.name) if rekey else table)
+  return floor
 
 
 def resolve_envs(target, *, node: str | None = None, rekey: bool = True, **files):
-    """Run the real chain and return ``collapse_env``'s VAR → winner map."""
-    node = node or target.name
-    ctx = make_ctx(node)
-    paths = {
-        "system_path": None, "agent_path": None,
-        "workset_path": None, "box_path": None,
-    }
-    paths.update(files)
-    snapshot = build_launch_snapshot(
-        agent_name=node, ctx=ctx,
-        default_categories=env_floor(target, node=node, rekey=rekey),
-        **paths,
+  """Run the real chain and return ``collapse_env``'s VAR → winner map."""
+  node = node or target.name
+  ctx = make_ctx(node)
+  paths = {
+    "system_path": None,
+    "agent_path": None,
+    "workset_path": None,
+    "box_path": None,
+  }
+  paths.update(files)
+  snapshot = build_launch_snapshot(
+    agent_name=node,
+    ctx=ctx,
+    default_categories=env_floor(target, node=node, rekey=rekey),
+    **paths,
+  )
+  return collapse_env(
+    snapshot_category_entries(
+      snapshot,
+      active_agent=node,
+      box_ctx=ctx,
     )
-    return collapse_env(snapshot_category_entries(
-        snapshot, active_agent=node, box_ctx=ctx,
-    ))
+  )
 
 
 def resolve_realized(
-    target, *, node: str | None = None, safe_mode: bool = False,
-    autonomous: bool = False, agent_behavior_floor=None, model=None, cli_env=None,
-    **files,
+  target,
+  *,
+  node: str | None = None,
+  safe_mode: bool = False,
+  autonomous: bool = False,
+  agent_behavior_floor=None,
+  model=None,
+  cli_env=None,
+  **files,
 ):
-    """The same chain WITH the launch REALIZATION installed, collapsed to ``env``.
+  """The same chain WITH the launch REALIZATION installed, collapsed to ``env``.
 
-    :func:`realized_entries`, then ``collapse_env`` (with *cli_env*, the ``-e`` map).
-    """
-    return collapse_env(
-        realized_entries(
-            target, node=node, safe_mode=safe_mode, autonomous=autonomous,
-            agent_behavior_floor=agent_behavior_floor, model=model, **files,
-        ),
-        cli_env,
-    )
+  :func:`realized_entries`, then ``collapse_env`` (with *cli_env*, the ``-e`` map).
+  """
+  return collapse_env(
+    realized_entries(
+      target,
+      node=node,
+      safe_mode=safe_mode,
+      autonomous=autonomous,
+      agent_behavior_floor=agent_behavior_floor,
+      model=model,
+      **files,
+    ),
+    cli_env,
+  )
 
 
 def realized_entries(
-    target, *, node: str | None = None, safe_mode: bool = False,
-    autonomous: bool = False, agent_behavior_floor=None, model=None, **files,
+  target,
+  *,
+  node: str | None = None,
+  safe_mode: bool = False,
+  autonomous: bool = False,
+  agent_behavior_floor=None,
+  model=None,
+  **files,
 ):
-    """The chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
+  """The chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
 
-    Returns the category entry list, the input both ``collapse_env`` and
-    ``launch_deliveries`` read.
+  Returns the category entry list, the input both ``collapse_env`` and
+  ``launch_deliveries`` read.
 
-    ⚑⚑ THE SEAM IS THE POSITION, so this helper reproduces the position and nothing
-    else: build the snapshot, run ``_LaunchRealizer`` against it, install what it
-    derived, THEN adapt to entries. Every step is a CALL to the one
-    production implementation — a hand-made realized map here would pin the harness.
+  ⚑⚑ THE SEAM IS THE POSITION, so this helper reproduces the position and nothing
+  else: build the snapshot, run ``_LaunchRealizer`` against it, install what it
+  derived, THEN adapt to entries. Every step is a CALL to the one
+  production implementation — a hand-made realized map here would pin the harness.
 
-    *model*, *safe_mode* and *autonomous* (``-M``, ``-S``, ``-A``) ride the §1A CLI
-    LEVEL, because that is how a flag reaches the behavior read. *agent_behavior_floor*
-    stands in for the plugin's descriptor floor, at ``agent.<node>.<key>`` as the
-    launch places it.
-    """
-    from kanibako.commands.start import _LaunchRealizer, _install_realized_env
-    from kanibako.settings.settings_cli_level import build_cli_level
+  *model*, *safe_mode* and *autonomous* (``-M``, ``-S``, ``-A``) ride the §1A CLI
+  LEVEL, because that is how a flag reaches the behavior read. *agent_behavior_floor*
+  stands in for the plugin's descriptor floor, at ``agent.<node>.<key>`` as the
+  launch places it.
+  """
+  from kanibako.commands.start import _LaunchRealizer, _install_realized_env
+  from kanibako.settings.settings_cli_level import build_cli_level
 
-    node = node or target.name
-    ctx = make_ctx(node)
-    paths = {
-        "system_path": None, "agent_path": None,
-        "workset_path": None, "box_path": None,
-    }
-    paths.update(files)
-    desc = target.descriptor
-    cli_level = build_cli_level(
-        active_agent=node, model=model, secure=safe_mode, autonomous=autonomous,
-    )
-    snapshot = build_launch_snapshot(
-        agent_name=node, ctx=ctx,
-        default_categories=env_floor(target, node=node),
-        agent_behavior_floor=agent_behavior_floor,
-        cli_level=cli_level,
-        **paths,
-    )
-    realizer = _LaunchRealizer(desc=desc, agent_id=node, cli_level=cli_level)
-    _install_realized_env(
-        snapshot, realizer(snapshot).env, agent_id=node, desc=desc,
-    )
-    return snapshot_category_entries(snapshot, active_agent=node, box_ctx=ctx)
+  node = node or target.name
+  ctx = make_ctx(node)
+  paths = {
+    "system_path": None,
+    "agent_path": None,
+    "workset_path": None,
+    "box_path": None,
+  }
+  paths.update(files)
+  desc = target.descriptor
+  cli_level = build_cli_level(
+    active_agent=node,
+    model=model,
+    secure=safe_mode,
+    autonomous=autonomous,
+  )
+  snapshot = build_launch_snapshot(
+    agent_name=node,
+    ctx=ctx,
+    default_categories=env_floor(target, node=node),
+    agent_behavior_floor=agent_behavior_floor,
+    cli_level=cli_level,
+    **paths,
+  )
+  realizer = _LaunchRealizer(desc=desc, agent_id=node, cli_level=cli_level)
+  _install_realized_env(
+    snapshot,
+    realizer(snapshot).env,
+    agent_id=node,
+    desc=desc,
+  )
+  return snapshot_category_entries(snapshot, active_agent=node, box_ctx=ctx)
 
 
 def write_yaml(path, doc):
-    path.write_text(yaml.safe_dump(doc))
-    return path
+  path.write_text(yaml.safe_dump(doc))
+  return path
 
 
 class TestTheDeclaredValuesArrive:
-    """T-D — the plugin's declared value comes out of the resolve under its VAR name."""
+  """T-D — the plugin's declared value comes out of the resolve under its VAR name."""
 
-    @pytest.mark.parametrize("harness", sorted(DECLARED))
-    def test_every_declared_variable_arrives_with_its_value(self, harness):
-        target = target_for(harness)
-        slots = resolve_envs(target)
-        for var, value in DECLARED[harness].items():
-            assert var in slots, f"{harness} lost {var}"
-            assert slots[var].value == value
+  @pytest.mark.parametrize("harness", sorted(DECLARED))
+  def test_every_declared_variable_arrives_with_its_value(self, harness):
+    target = target_for(harness)
+    slots = resolve_envs(target)
+    for var, value in DECLARED[harness].items():
+      assert var in slots, f"{harness} lost {var}"
+      assert slots[var].value == value
 
-    @pytest.mark.parametrize("harness", sorted(DECLARED))
-    def test_the_winner_names_the_discriminated_key_that_declared_it(self, harness):
-        # Provenance is required, not decoration: ``box show --effective`` renders it
-        # and the twin refusal names it. A bare ``agent.env.<VAR>`` is not a key (§0).
-        target = target_for(harness)
-        slots = resolve_envs(target)
-        for var in DECLARED[harness]:
-            assert slots[var].scope == "agent"
-            assert slots[var].key == f"agent.{harness}.env.{var}"
+  @pytest.mark.parametrize("harness", sorted(DECLARED))
+  def test_the_winner_names_the_discriminated_key_that_declared_it(self, harness):
+    # Provenance is required, not decoration: ``box show --effective`` renders it
+    # and the twin refusal names it. A bare ``agent.env.<VAR>`` is not a key (§0).
+    target = target_for(harness)
+    slots = resolve_envs(target)
+    for var in DECLARED[harness]:
+      assert slots[var].scope == "agent"
+      assert slots[var].key == f"agent.{harness}.env.{var}"
 
-    @pytest.mark.parametrize("harness", sorted(DECLARED))
-    def test_the_declaration_table_is_exactly_the_shipped_set(self, harness):
-        target = target_for(harness)
-        assert target.default_envs() == {
-            f"agent.{harness}.env.{var}": value
-            for var, value in DECLARED[harness].items()
-        }
+  @pytest.mark.parametrize("harness", sorted(DECLARED))
+  def test_the_declaration_table_is_exactly_the_shipped_set(self, harness):
+    target = target_for(harness)
+    assert target.default_envs() == {
+      f"agent.{harness}.env.{var}": value for var, value in DECLARED[harness].items()
+    }
 
 
 class TestTheOverrideStory:
-    """keyspec §2a env.<VAR>, ordering 1: a user overrides a declared default BY THE SAME KEY.
+  """keyspec §2a env.<VAR>, ordering 1: a user overrides a declared default BY THE SAME KEY.
 
-    The declared table is a FLOOR default, so any settings file that may write
-    ``agent.<node>.env.<VAR>`` beats it — the keys are ordinary write-many settings keys
-    and the nearest file wins. Naming the same VARIABLE at a DIFFERENT scope is the other
-    story entirely (the collapse refusal below), never an override.
+  The declared table is a FLOOR default, so any settings file that may write
+  ``agent.<node>.env.<VAR>`` beats it — the keys are ordinary write-many settings keys
+  and the nearest file wins. Naming the same VARIABLE at a DIFFERENT scope is the other
+  story entirely (the collapse refusal below), never an override.
+  """
+
+  def test_the_agent_file_beats_the_plugin_default(self, tmp_path):
+    # ⚑ The FLAT table is the agent file's only env spelling: ``self:`` IS
+    # ``agent.goose``, so a second ``goose:`` level under it would read
+    # ``agent.goose.goose.env`` and refuses ([spec:14-18, "self"]; pinned in
+    # ``TestTheNestedSpellingRefuses`` below).
+    target = target_for("goose")
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}},
+    )
+    slots = resolve_envs(target, agent_path=agent_file)
+    assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
+    # Still the SAME key: an override moves the value, never the owner.
+    assert slots["GOOSE_DISABLE_KEYRING"].key == ("agent.goose.env.GOOSE_DISABLE_KEYRING")
+
+  def test_the_system_file_beats_the_plugin_default(self, tmp_path):
+    # A CONTAINING scope's file may write an agent-tier key (§0 directional
+    # enforcement runs the other way), and it is still the same key.
+    target = target_for("goose")
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+    )
+    slots = resolve_envs(target, system_path=system_file)
+    assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
+
+  def test_the_all_agents_default_tier_arrives_at_all(self, tmp_path):
+    """The POSITIVE CONTROL for the pair below: the all-agents tier is a LIVE route.
+
+    ⚑ Without this, the negative next door passes just as well when nothing reaches the
+    cascade — a dead route and a losing route are indistinguishable from the winner alone.
+    The tier is written in the SYSTEM file (``agent: default: env:``); the agent file has
+    no spelling for it, since its flat table is re-rooted for the ACTIVE node only.
     """
+    target = target_for("goose")
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"default": {"env": {"PAGER": "less"}}}},
+    )
+    slots = resolve_envs(target, system_path=system_file)
+    assert slots["PAGER"].value == "less"
+    assert slots["PAGER"].key == "agent.default.env.PAGER"
 
-    def test_the_agent_file_beats_the_plugin_default(self, tmp_path):
-        # ⚑ The FLAT table is the agent file's only env spelling: ``self:`` IS
-        # ``agent.goose``, so a second ``goose:`` level under it would read
-        # ``agent.goose.goose.env`` and refuses ([spec:14-18, "self"]; pinned in
-        # ``TestTheNestedSpellingRefuses`` below).
-        target = target_for("goose")
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml",
-            {"self": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}},
-        )
-        slots = resolve_envs(target, agent_path=agent_file)
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
-        # Still the SAME key: an override moves the value, never the owner.
-        assert slots["GOOSE_DISABLE_KEYRING"].key == (
-            "agent.goose.env.GOOSE_DISABLE_KEYRING"
-        )
+  def test_the_all_agents_default_tier_does_not_beat_it(self, tmp_path):
+    """``agent.default`` is the BACKSTOP tier and loses to the active slot.
 
-    def test_the_system_file_beats_the_plugin_default(self, tmp_path):
-        # A CONTAINING scope's file may write an agent-tier key (§0 directional
-        # enforcement runs the other way), and it is still the same key.
-        target = target_for("goose")
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
-        )
-        slots = resolve_envs(target, system_path=system_file)
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
-
-    def test_the_all_agents_default_tier_arrives_at_all(self, tmp_path):
-        """The POSITIVE CONTROL for the pair below: the all-agents tier is a LIVE route.
-
-        ⚑ Without this, the negative next door passes just as well when nothing reaches the
-        cascade — a dead route and a losing route are indistinguishable from the winner alone.
-        The tier is written in the SYSTEM file (``agent: default: env:``); the agent file has
-        no spelling for it, since its flat table is re-rooted for the ACTIVE node only.
-        """
-        target = target_for("goose")
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"default": {"env": {"PAGER": "less"}}}},
-        )
-        slots = resolve_envs(target, system_path=system_file)
-        assert slots["PAGER"].value == "less"
-        assert slots["PAGER"].key == "agent.default.env.PAGER"
-
-    def test_the_all_agents_default_tier_does_not_beat_it(self, tmp_path):
-        """``agent.default`` is the BACKSTOP tier and loses to the active slot.
-
-        The §2d pick is active-over-default PER NAME, and a plugin declares under its own
-        node — so a value written at the all-agents tier fills a gap, it does not override.
-        """
-        target = target_for("goose")
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"default": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
-        )
-        slots = resolve_envs(target, system_path=system_file)
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+    The §2d pick is active-over-default PER NAME, and a plugin declares under its own
+    node — so a value written at the all-agents tier fills a gap, it does not override.
+    """
+    target = target_for("goose")
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"default": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+    )
+    slots = resolve_envs(target, system_path=system_file)
+    assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
 
 
 class TestTheNestedSpellingRefuses:
-    """[spec:14-18, "self"] — a second ``<node>`` level under ``self:``
-    refuses, through the REAL chain.
+  """[spec:14-18, "self"] — a second ``<node>`` level under ``self:``
+  refuses, through the REAL chain.
 
-    ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the
-    refusal is REACHABLE from the path a launch actually walks, not only from
-    ``agent_file_partial`` called on its own. It is a DIFFERENT raise from the twin refusal
-    below — assembly-time file spelling, not collapse-time slot arbitration.
-    """
+  ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the
+  refusal is REACHABLE from the path a launch actually walks, not only from
+  ``agent_file_partial`` called on its own. It is a DIFFERENT raise from the twin refusal
+  below — assembly-time file spelling, not collapse-time slot arbitration.
+  """
 
-    def test_a_second_node_level_under_self_refuses_naming_the_spelling(self, tmp_path):
-        target = target_for("goose")
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml",
-            {"self": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
-        )
-        with pytest.raises(SettingsError) as exc:
-            resolve_envs(target, agent_path=agent_file)
-        message = str(exc.value)
-        assert "self.goose.env" in message
-        # The cure names the flat table the ``agent set`` verb writes.
-        assert "kanibako agent set goose env.GOOSE_DISABLE_KEYRING=false" in message
+  def test_a_second_node_level_under_self_refuses_naming_the_spelling(self, tmp_path):
+    target = target_for("goose")
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+      resolve_envs(target, agent_path=agent_file)
+    message = str(exc.value)
+    assert "self.goose.env" in message
+    # The cure names the flat table the ``agent set`` verb writes.
+    assert "kanibako agent set goose env.GOOSE_DISABLE_KEYRING=false" in message
 
 
 class TestATwinAtAnotherScopeRefuses:
-    """Row 38: two scopes' keys naming ONE variable REFUSE the launch, naming both.
+  """Row 38: two scopes' keys naming ONE variable REFUSE the launch, naming both.
 
-    This is the user-visible break the fold introduces. Before it, the plugin literal rode
-    ABOVE the whole settings channel (``state_env``) and silently beat a user's
-    ``box.env.<VAR>``; now the two are ordinary keys contesting one write-once slot.
-    """
+  This is the user-visible break the fold introduces. Before it, the plugin literal rode
+  ABOVE the whole settings channel (``state_env``) and silently beat a user's
+  ``box.env.<VAR>``; now the two are ordinary keys contesting one write-once slot.
+  """
 
-    def test_a_box_scope_twin_of_a_declared_variable_refuses(self, tmp_path):
-        target = target_for("goose")
-        box_file = write_yaml(
-            tmp_path / "box.yaml",
-            {"box": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_envs(target, box_path=box_file)
-        message = str(excinfo.value)
-        assert "agent.goose.env.GOOSE_DISABLE_KEYRING" in message
-        assert "box.env.GOOSE_DISABLE_KEYRING" in message
+  def test_a_box_scope_twin_of_a_declared_variable_refuses(self, tmp_path):
+    target = target_for("goose")
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_envs(target, box_path=box_file)
+    message = str(excinfo.value)
+    assert "agent.goose.env.GOOSE_DISABLE_KEYRING" in message
+    assert "box.env.GOOSE_DISABLE_KEYRING" in message
 
-    def test_an_unrelated_box_variable_is_untouched(self, tmp_path):
-        target = target_for("goose")
-        box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"EDITOR": "vim"}}},
-        )
-        slots = resolve_envs(target, box_path=box_file)
-        assert slots["EDITOR"].value == "vim"
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+  def test_an_unrelated_box_variable_is_untouched(self, tmp_path):
+    target = target_for("goose")
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"EDITOR": "vim"}}},
+    )
+    slots = resolve_envs(target, box_path=box_file)
+    assert slots["EDITOR"].value == "vim"
+    assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
 
 
 class TestTheDeclarationIsRefusedRatherThanBent:
-    """A plugin's declaration is checked AT LOAD, against the CLOSED keyspace (§0).
+  """A plugin's declaration is checked AT LOAD, against the CLOSED keyspace (§0).
 
-    Every refusal here names what is wrong. The alternative — a floor entry that only
-    fails at the next launch, or a coerced value — is exactly the deferred surprise §0
-    forbids, and on this channel a silently absent variable is a box that misbehaves
-    rather than one that fails.
-    """
+  Every refusal here names what is wrong. The alternative — a floor entry that only
+  fails at the next launch, or a coerced value — is exactly the deferred surprise §0
+  forbids, and on this channel a silently absent variable is a box that misbehaves
+  rather than one that fails.
+  """
 
-    @staticmethod
-    def _load(monkeypatch, doc):
-        from kanibako.settings import agent_defaults
+  @staticmethod
+  def _load(monkeypatch, doc):
+    from kanibako.settings import agent_defaults
 
-        monkeypatch.setattr(agent_defaults, "_load_doc", lambda pkg, fn: doc)
-        return agent_defaults
+    monkeypatch.setattr(agent_defaults, "_load_doc", lambda pkg, fn: doc)
+    return agent_defaults
 
-    def test_an_illegal_variable_name_is_refused_by_name(self, monkeypatch):
-        agent_defaults = self._load(monkeypatch, {"env": {"2FA": "x"}})
-        with pytest.raises(SettingsError) as excinfo:
-            agent_defaults.load_envs("pkg", "f.yaml", "goose")
-        assert "2FA" in str(excinfo.value)
+  def test_an_illegal_variable_name_is_refused_by_name(self, monkeypatch):
+    agent_defaults = self._load(monkeypatch, {"env": {"2FA": "x"}})
+    with pytest.raises(SettingsError) as excinfo:
+      agent_defaults.load_envs("pkg", "f.yaml", "goose")
+    assert "2FA" in str(excinfo.value)
 
-    def test_a_non_string_value_is_refused_rather_than_coerced(self, monkeypatch):
-        # YAML would turn an unquoted ``true`` into a bool whose str() is "True".
-        agent_defaults = self._load(monkeypatch, {"env": {"GOOSE_DISABLE_KEYRING": True}})
-        with pytest.raises(SettingsError) as excinfo:
-            agent_defaults.load_envs("pkg", "f.yaml", "goose")
-        assert "GOOSE_DISABLE_KEYRING" in str(excinfo.value)
+  def test_a_non_string_value_is_refused_rather_than_coerced(self, monkeypatch):
+    # YAML would turn an unquoted ``true`` into a bool whose str() is "True".
+    agent_defaults = self._load(monkeypatch, {"env": {"GOOSE_DISABLE_KEYRING": True}})
+    with pytest.raises(SettingsError) as excinfo:
+      agent_defaults.load_envs("pkg", "f.yaml", "goose")
+    assert "GOOSE_DISABLE_KEYRING" in str(excinfo.value)
 
-    def test_no_env_section_declares_nothing(self, monkeypatch):
-        agent_defaults = self._load(monkeypatch, {"descriptor": {"command": ["x"]}})
-        assert agent_defaults.load_envs("pkg", "f.yaml", "goose") == {}
+  def test_no_env_section_declares_nothing(self, monkeypatch):
+    agent_defaults = self._load(monkeypatch, {"descriptor": {"command": ["x"]}})
+    assert agent_defaults.load_envs("pkg", "f.yaml", "goose") == {}
 
-    def test_the_retired_descriptor_block_is_refused_by_name(self, monkeypatch):
-        # A plugin still declaring ``container_env:`` under ``descriptor:`` would
-        # otherwise load with an unread key and launch with none of its variables.
-        agent_defaults = self._load(monkeypatch, {
-            "descriptor": {"command": ["x"], "container_env": {"A": "1"}},
-        })
-        with pytest.raises(SettingsError) as excinfo:
-            agent_defaults.load_descriptor("pkg", "f.yaml")
-        assert "container_env" in str(excinfo.value)
-        assert "env:" in str(excinfo.value)
+  def test_the_retired_descriptor_block_is_refused_by_name(self, monkeypatch):
+    # A plugin still declaring ``container_env:`` under ``descriptor:`` would
+    # otherwise load with an unread key and launch with none of its variables.
+    agent_defaults = self._load(
+      monkeypatch,
+      {
+        "descriptor": {"command": ["x"], "container_env": {"A": "1"}},
+      },
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      agent_defaults.load_descriptor("pkg", "f.yaml")
+    assert "container_env" in str(excinfo.value)
+    assert "env:" in str(excinfo.value)
 
 
 class TestAPersonaNodeSeesThem:
-    """The §2d pick reads ``agent.default`` ∪ ``agent.<ACTIVE NODE>``.
+  """The §2d pick reads ``agent.default`` ∪ ``agent.<ACTIVE NODE>``.
 
-    A plugin declares against its HARNESS name, so without the re-key a PERSONA box would
-    launch with none of its harness's required variables — the same live bug
-    ``agent_categories_for_node`` was written to close, on the env half.
+  A plugin declares against its HARNESS name, so without the re-key a PERSONA box would
+  launch with none of its harness's required variables — the same live bug
+  ``agent_categories_for_node`` was written to close, on the env half.
+  """
+
+  def test_the_declared_variables_arrive_for_a_persona_node(self):
+    target = target_for("goose")
+    node = "navigator℘goose"
+    slots = resolve_envs(target, node=node)
+    for var, value in DECLARED["goose"].items():
+      assert slots[var].value == value
+      assert slots[var].key == f"agent.{node}.env.{var}"
+
+  def test_a_bare_node_is_the_identity(self):
+    target = target_for("goose")
+    table = target.default_envs()
+    assert (
+      agent_env_for_node(
+        table,
+        node_name=target.name,
+        harness=target.name,
+      )
+      == table
+    )
+
+  def test_a_harness_keyed_floor_reaches_a_persona_with_nothing(self):
+    """⚑ THE NEGATIVE CONTROL, measured through the real chain: 3 → 0.
+
+    Feed the launch floor the plugin's own HARNESS-keyed table — the floor a
+    launch would build if it dropped the re-key — and a persona node resolves
+    NONE of the variables its harness requires. Nothing raises and nothing warns;
+    the box simply comes up wrong, which is why the positive case above is not
+    enough on its own.
     """
-
-    def test_the_declared_variables_arrive_for_a_persona_node(self):
-        target = target_for("goose")
-        node = "navigator℘goose"
-        slots = resolve_envs(target, node=node)
-        for var, value in DECLARED["goose"].items():
-            assert slots[var].value == value
-            assert slots[var].key == f"agent.{node}.env.{var}"
-
-    def test_a_bare_node_is_the_identity(self):
-        target = target_for("goose")
-        table = target.default_envs()
-        assert agent_env_for_node(
-            table, node_name=target.name, harness=target.name,
-        ) == table
-
-    def test_a_harness_keyed_floor_reaches_a_persona_with_nothing(self):
-        """⚑ THE NEGATIVE CONTROL, measured through the real chain: 3 → 0.
-
-        Feed the launch floor the plugin's own HARNESS-keyed table — the floor a
-        launch would build if it dropped the re-key — and a persona node resolves
-        NONE of the variables its harness requires. Nothing raises and nothing warns;
-        the box simply comes up wrong, which is why the positive case above is not
-        enough on its own.
-        """
-        target = target_for("goose")
-        node = "navigator℘goose"
-        slots = resolve_envs(target, node=node, rekey=False)
-        for var in DECLARED["goose"]:
-            assert var not in slots, f"{var} arrived without the re-key"
+    target = target_for("goose")
+    node = "navigator℘goose"
+    slots = resolve_envs(target, node=node, rekey=False)
+    for var in DECLARED["goose"]:
+      assert var not in slots, f"{var} arrived without the re-key"
 
 
 class TestTheLaunchWireCarriesTheDeclaration:
-    """The REAL launch seam folds ``default_envs()`` into its floor, re-keyed.
+  """The REAL launch seam folds ``default_envs()`` into its floor, re-keyed.
 
-    Everything above resolves a floor this module assembles, so it stays green even
-    if ``commands.start`` never asks a plugin for its table. These two ask the seam
-    itself, through ``_resolve_launch_snapshot``, and read the winner off the
-    ``meta.assembly.env`` leaf the launch consumes.
+  Everything above resolves a floor this module assembles, so it stays green even
+  if ``commands.start`` never asks a plugin for its table. These two ask the seam
+  itself, through ``_resolve_launch_snapshot``, and read the winner off the
+  ``meta.assembly.env`` leaf the launch consumes.
+  """
+
+  VAR = "KANI_WIRED"
+
+  class _DeclaringTarget(ShellTarget):
+    """A REAL target declaring ONE variable against its own HARNESS name."""
+
+    @property
+    def name(self) -> str:
+      return "claude"
+
+    def default_envs(self) -> dict[str, str]:
+      return {"agent.claude.env.KANI_WIRED": "wired"}
+
+    def rom_root(self):
+      return None
+
+  def _launch_slots(self, std, config, project_dir, *, node: str):
+    from kanibako.commands.start import (
+      _launch_env_map,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.settings.paths import resolve_project
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name=node,
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=self._DeclaringTarget(),
+      deliver_creds=True,
+      cli_level=None,
+    )
+    return _launch_env_map(snapshot)
+
+  def test_a_bare_agent_launch_carries_the_declaration(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    slots = self._launch_slots(std, config, project_dir, node="claude")
+    assert slots[self.VAR].value == "wired"
+    assert slots[self.VAR].key == "agent.claude.env.KANI_WIRED"
+
+  def test_a_persona_launch_carries_it_under_the_NODE_key(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """RED if the seam folds the table in bare: the winner is the NODE's key.
+
+    A harness-keyed entry is invisible to the §2d pick for a persona, so dropping
+    the re-key empties this slot entirely — and empties it on the one launch shape
+    no bare-agent test can see.
     """
+    node = "navigator℘claude"
+    slots = self._launch_slots(std, config, project_dir, node=node)
+    assert slots[self.VAR].value == "wired"
+    assert slots[self.VAR].key == f"agent.{node}.env.KANI_WIRED"
 
-    VAR = "KANI_WIRED"
+  @pytest.mark.parametrize("harness", sorted(DECLARED))
+  def test_every_shipped_declaration_reaches_the_leaf(
+    self,
+    harness,
+    std,
+    config,
+    project_dir,
+  ):
+    """The SHIPPED plugins, through the real seam: every variable, in the leaf.
 
-    class _DeclaringTarget(ShellTarget):
-        """A REAL target declaring ONE variable against its own HARNESS name."""
+    The cases at the top of this module resolve a floor assembled here; this one
+    asks ``commands.start`` for the floor, so it fails if the seam ever stops
+    carrying a plugin's declaration — with the plugin's own table, not a stand-in.
+    """
+    from kanibako.commands.start import (
+      _launch_env_map,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.settings.paths import resolve_project
 
-        @property
-        def name(self) -> str:
-            return "claude"
-
-        def default_envs(self) -> dict[str, str]:
-            return {"agent.claude.env.KANI_WIRED": "wired"}
-
-        def rom_root(self):
-            return None
-
-    def _launch_slots(self, std, config, project_dir, *, node: str):
-        from kanibako.commands.start import (
-            _launch_env_map,
-            _resolve_launch_snapshot,
-        )
-        from kanibako.settings.paths import resolve_project
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name=node,
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=self._DeclaringTarget(),
-            deliver_creds=True,
-            cli_level=None,
-        )
-        return _launch_env_map(snapshot)
-
-    def test_a_bare_agent_launch_carries_the_declaration(
-        self, std, config, project_dir,
-    ):
-        slots = self._launch_slots(std, config, project_dir, node="claude")
-        assert slots[self.VAR].value == "wired"
-        assert slots[self.VAR].key == "agent.claude.env.KANI_WIRED"
-
-    def test_a_persona_launch_carries_it_under_the_NODE_key(
-        self, std, config, project_dir,
-    ):
-        """RED if the seam folds the table in bare: the winner is the NODE's key.
-
-        A harness-keyed entry is invisible to the §2d pick for a persona, so dropping
-        the re-key empties this slot entirely — and empties it on the one launch shape
-        no bare-agent test can see.
-        """
-        node = "navigator℘claude"
-        slots = self._launch_slots(std, config, project_dir, node=node)
-        assert slots[self.VAR].value == "wired"
-        assert slots[self.VAR].key == f"agent.{node}.env.KANI_WIRED"
-
-    @pytest.mark.parametrize("harness", sorted(DECLARED))
-    def test_every_shipped_declaration_reaches_the_leaf(
-        self, harness, std, config, project_dir,
-    ):
-        """The SHIPPED plugins, through the real seam: every variable, in the leaf.
-
-        The cases at the top of this module resolve a floor assembled here; this one
-        asks ``commands.start`` for the floor, so it fails if the seam ever stops
-        carrying a plugin's declaration — with the plugin's own table, not a stand-in.
-        """
-        from kanibako.commands.start import (
-            _launch_env_map,
-            _resolve_launch_snapshot,
-        )
-        from kanibako.settings.paths import resolve_project
-
-        target = target_for(harness)
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name=harness,
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=target,
-            deliver_creds=True,
-            cli_level=None,
-        )
-        slots = _launch_env_map(snapshot)
-        for var, value in DECLARED[harness].items():
-            assert var in slots, f"{harness} lost {var} at the launch seam"
-            assert slots[var].value == value
-            assert slots[var].scope == "agent"
-            assert slots[var].key == f"agent.{harness}.env.{var}"
+    target = target_for(harness)
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name=harness,
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=target,
+      deliver_creds=True,
+      cli_level=None,
+    )
+    slots = _launch_env_map(snapshot)
+    for var, value in DECLARED[harness].items():
+      assert var in slots, f"{harness} lost {var} at the launch seam"
+      assert slots[var].value == value
+      assert slots[var].scope == "agent"
+      assert slots[var].key == f"agent.{harness}.env.{var}"
 
 
 class TestTheCoreStampsRideTheSameWire:
-    """MBR-1 P4b: the four core ``KANIBAKO_*`` stamps as ``system.env.<VAR>`` keys.
+  """MBR-1 P4b: the four core ``KANIBAKO_*`` stamps as ``system.env.<VAR>`` keys.
 
-    The class above pins the PLUGIN half of keyspec §2a env.<VAR> ([Jei:2026-08-14]:
-    *"the 'KANIBAKO_' stuff should be in system.env, agent stuff should be in
-    agent.env"*); this one pins the CORE half, in the same shape and through the same
-    seam. Each case reads the ``meta.assembly.env`` leaf the launch consumes, so what
-    it asserts is what a box gets — and the KEY it asserts beside the value is the
-    whole point: a stamp written onto the container after the resolve has no key, no
-    scope and no way for a user to override or contest it, which is the arrangement
-    this replaces.
+  The class above pins the PLUGIN half of keyspec §2a env.<VAR> ([Jei:2026-08-14]:
+  *"the 'KANIBAKO_' stuff should be in system.env, agent stuff should be in
+  agent.env"*); this one pins the CORE half, in the same shape and through the same
+  seam. Each case reads the ``meta.assembly.env`` leaf the launch consumes, so what
+  it asserts is what a box gets — and the KEY it asserts beside the value is the
+  whole point: a stamp written onto the container after the resolve has no key, no
+  scope and no way for a user to override or contest it, which is the arrangement
+  this replaces.
 
-    ⚑ VALUES ARE INDEPENDENT LITERALS, not a second call to the code under test.
-    They are GUEST-side and fixed by construction (``GUEST_HOME`` is a constant), so
-    a change to either one fails here by name rather than agreeing with itself.
+  ⚑ VALUES ARE INDEPENDENT LITERALS, not a second call to the code under test.
+  They are GUEST-side and fixed by construction (``GUEST_HOME`` is a constant), so
+  a change to either one fails here by name rather than agreeing with itself.
+  """
+
+  #: VAR → the value a launch of ``project_dir`` under node ``claude`` must carry.
+  #: ⚑ ``KANIBAKO_NAME`` is the project directory's name — ``project_dir`` is the
+  #: shared fixture, so this is that fixture's leaf name, not a free choice.
+  STAMPS = {
+    "KANIBAKO_NAME": "project",
+    "KANIBAKO_DIRECTIVE_SEED": "/home/agent/.config/kanibako/kickoff.md",
+    "KANIBAKO_AGENT": "claude",
+    "KANIBAKO_AGENT_MARKERS_DIR": "/tmp/kanibako/agents",
+  }
+
+  class _CoreTarget(ShellTarget):
+    """A REAL target declaring NO env of its own — every VAR here is core's."""
+
+    @property
+    def name(self) -> str:
+      return "claude"
+
+    def rom_root(self):
+      return None
+
+  def _launch_slots(self, std, config, project_dir, *, node="claude", target=...):
+    from kanibako.commands.start import (
+      _launch_env_map,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.settings.paths import resolve_project
+
+    if target is ...:
+      target = self._CoreTarget()
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name=node,
+      system_settings_path=None,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=target,
+      deliver_creds=True,
+      cli_level=None,
+    )
+    return _launch_env_map(snapshot)
+
+  @pytest.mark.parametrize("var", sorted(STAMPS))
+  def test_each_core_stamp_arrives_under_its_system_scope_key(
+    self,
+    var,
+    std,
+    config,
+    project_dir,
+  ):
+    """The VALUE, the SCOPE and the KEY — the three a post-resolve stamp lacked."""
+    slots = self._launch_slots(std, config, project_dir)
+    assert var in slots, f"the launch seam lost {var}"
+    assert slots[var].value == self.STAMPS[var]
+    assert slots[var].scope == "system"
+    assert slots[var].key == f"system.env.{var}"
+
+  def test_a_shell_launch_carries_the_other_three_without_an_agent_stamp(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """The ONE gate that is not unconditional, kept where a shell launch sees it.
+
+    ⚑ ``KANIBAKO_DIRECTIVE_SEED`` is asserted PRESENT here on purpose: its
+    kickoff BIND is descriptor-gated and the variable is not, so a no-agent box
+    gets it today. Tidying the variable onto the bind's gate would pass every
+    agent case above and silently break exactly this one.
     """
+    slots = self._launch_slots(std, config, project_dir, target=None)
+    assert "KANIBAKO_AGENT" not in slots
+    for var in ("KANIBAKO_NAME", "KANIBAKO_DIRECTIVE_SEED", "KANIBAKO_AGENT_MARKERS_DIR"):
+      assert slots[var].value == self.STAMPS[var]
 
-    #: VAR → the value a launch of ``project_dir`` under node ``claude`` must carry.
-    #: ⚑ ``KANIBAKO_NAME`` is the project directory's name — ``project_dir`` is the
-    #: shared fixture, so this is that fixture's leaf name, not a free choice.
-    STAMPS = {
-        "KANIBAKO_NAME": "project",
-        "KANIBAKO_DIRECTIVE_SEED": "/home/agent/.config/kanibako/kickoff.md",
-        "KANIBAKO_AGENT": "claude",
-        "KANIBAKO_AGENT_MARKERS_DIR": "/tmp/kanibako/agents",
-    }
+  def test_a_system_file_entry_overrides_a_stamp_by_the_same_key(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+  ):
+    """The override story keyspec §2a env.<VAR> states: same key, nearer file, no refusal.
 
-    class _CoreTarget(ShellTarget):
-        """A REAL target declaring NO env of its own — every VAR here is core's."""
+    The derived stamps are the BASE FLOOR, below every settings file — which is
+    what makes this the ordinary cascade rather than a special case. A twin at
+    ANOTHER scope is the refusal instead, in the case below.
+    """
+    from kanibako.commands.start import (
+      _launch_env_map,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.settings.paths import resolve_project
 
-        @property
-        def name(self) -> str:
-            return "claude"
+    var = "KANIBAKO_AGENT_MARKERS_DIR"
+    # ⚑ THE CONTROL FIRST: without the file the slot carries the DERIVED value.
+    # Without it this case would pass on a build that derives nothing at all,
+    # asserting only that a system file is read — which is not the claim.
+    assert (
+      self._launch_slots(
+        std,
+        config,
+        project_dir,
+      )[var].value
+      == self.STAMPS[var]
+    )
 
-        def rom_root(self):
-            return None
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "system": {"env": {var: "/tmp/mine"}},
+      },
+    )
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    snapshot, _ = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_settings_path=system_file,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=self._CoreTarget(),
+      deliver_creds=True,
+      cli_level=None,
+    )
+    slots = _launch_env_map(snapshot)
+    assert slots[var].value == "/tmp/mine"
+    assert slots[var].key == f"system.env.{var}"
 
-    def _launch_slots(self, std, config, project_dir, *, node="claude", target=...):
-        from kanibako.commands.start import (
-            _launch_env_map,
-            _resolve_launch_snapshot,
-        )
-        from kanibako.settings.paths import resolve_project
+  def test_a_twin_of_a_core_stamp_at_another_scope_refuses_naming_both(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """The BREAKING half of the fold, at the seam a user meets it.
 
-        if target is ...:
-            target = self._CoreTarget()
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name=node,
-            system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=target,
-            deliver_creds=True,
-            cli_level=None,
-        )
-        return _launch_env_map(snapshot)
+    A ``box.env.KANIBAKO_NAME`` used to launch, with kanibako's own value written
+    over it a moment later and nothing said. The stamps are ordinary keys now, so
+    the two contest one write-once slot and the launch refuses naming both — the
+    same rule ``TestATwinAtAnotherScopeRefuses`` pins for a plugin's declaration.
+    """
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.paths import resolve_project
 
-    @pytest.mark.parametrize("var", sorted(STAMPS))
-    def test_each_core_stamp_arrives_under_its_system_scope_key(
-        self, var, std, config, project_dir,
-    ):
-        """The VALUE, the SCOPE and the KEY — the three a post-resolve stamp lacked."""
-        slots = self._launch_slots(std, config, project_dir)
-        assert var in slots, f"the launch seam lost {var}"
-        assert slots[var].value == self.STAMPS[var]
-        assert slots[var].scope == "system"
-        assert slots[var].key == f"system.env.{var}"
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    with pytest.raises(SettingsError) as excinfo:
+      _resolve_launch_snapshot(
+        std=std,
+        proj=proj,
+        agent_name="claude",
+        system_settings_path=None,
+        agent_cfg_path=None,
+        desc=None,
+        install=None,
+        target=self._CoreTarget(),
+        deliver_creds=True,
+        extra_default_categories={"box.env.KANIBAKO_NAME": "mine"},
+        cli_level=None,
+      )
+    message = str(excinfo.value)
+    assert "system.env.KANIBAKO_NAME" in message
+    assert "box.env.KANIBAKO_NAME" in message
 
-    def test_a_shell_launch_carries_the_other_three_without_an_agent_stamp(
-        self, std, config, project_dir,
-    ):
-        """The ONE gate that is not unconditional, kept where a shell launch sees it.
+  def test_an_unnamed_project_declares_no_name_stamp(self):
+    """The ``proj.name`` gate, which no real launch can reach.
 
-        ⚑ ``KANIBAKO_DIRECTIVE_SEED`` is asserted PRESENT here on purpose: its
-        kickoff BIND is descriptor-gated and the variable is not, so a no-agent box
-        gets it today. Tidying the variable onto the bind's gate would pass every
-        agent case above and silently break exactly this one.
-        """
-        slots = self._launch_slots(std, config, project_dir, target=None)
-        assert "KANIBAKO_AGENT" not in slots
-        for var in ("KANIBAKO_NAME", "KANIBAKO_DIRECTIVE_SEED",
-                    "KANIBAKO_AGENT_MARKERS_DIR"):
-            assert slots[var].value == self.STAMPS[var]
+    ⚑ THE ONE CASE DRIVEN AT THE FUNCTION rather than through the seam, and
+    deliberately: ``resolve_project`` always names a project, so the falsy branch
+    has no production path to probe. Everything else in this class goes through
+    ``_resolve_launch_snapshot``.
+    """
+    from types import SimpleNamespace
 
-    def test_a_system_file_entry_overrides_a_stamp_by_the_same_key(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """The override story keyspec §2a env.<VAR> states: same key, nearer file, no refusal.
+    from kanibako.commands.start import _core_env_default_categories
 
-        The derived stamps are the BASE FLOOR, below every settings file — which is
-        what makes this the ordinary cascade rather than a special case. A twin at
-        ANOTHER scope is the refusal instead, in the case below.
-        """
-        from kanibako.commands.start import (
-            _launch_env_map,
-            _resolve_launch_snapshot,
-        )
-        from kanibako.settings.paths import resolve_project
-
-        var = "KANIBAKO_AGENT_MARKERS_DIR"
-        # ⚑ THE CONTROL FIRST: without the file the slot carries the DERIVED value.
-        # Without it this case would pass on a build that derives nothing at all,
-        # asserting only that a system file is read — which is not the claim.
-        assert self._launch_slots(
-            std, config, project_dir,
-        )[var].value == self.STAMPS[var]
-
-        system_file = write_yaml(tmp_path / "system.yaml", {
-            "system": {"env": {var: "/tmp/mine"}},
-        })
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _ = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name="claude",
-            system_settings_path=system_file, agent_cfg_path=None,
-            desc=None, install=None, target=self._CoreTarget(),
-            deliver_creds=True,
-            cli_level=None,
-        )
-        slots = _launch_env_map(snapshot)
-        assert slots[var].value == "/tmp/mine"
-        assert slots[var].key == f"system.env.{var}"
-
-    def test_a_twin_of_a_core_stamp_at_another_scope_refuses_naming_both(
-        self, std, config, project_dir,
-    ):
-        """The BREAKING half of the fold, at the seam a user meets it.
-
-        A ``box.env.KANIBAKO_NAME`` used to launch, with kanibako's own value written
-        over it a moment later and nothing said. The stamps are ordinary keys now, so
-        the two contest one write-once slot and the launch refuses naming both — the
-        same rule ``TestATwinAtAnotherScopeRefuses`` pins for a plugin's declaration.
-        """
-        from kanibako.commands.start import _resolve_launch_snapshot
-        from kanibako.settings.paths import resolve_project
-
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        with pytest.raises(SettingsError) as excinfo:
-            _resolve_launch_snapshot(
-                std=std, proj=proj, agent_name="claude",
-                system_settings_path=None, agent_cfg_path=None,
-                desc=None, install=None, target=self._CoreTarget(),
-                deliver_creds=True,
-                extra_default_categories={"box.env.KANIBAKO_NAME": "mine"},
-                cli_level=None,
-            )
-        message = str(excinfo.value)
-        assert "system.env.KANIBAKO_NAME" in message
-        assert "box.env.KANIBAKO_NAME" in message
-
-    def test_an_unnamed_project_declares_no_name_stamp(self):
-        """The ``proj.name`` gate, which no real launch can reach.
-
-        ⚑ THE ONE CASE DRIVEN AT THE FUNCTION rather than through the seam, and
-        deliberately: ``resolve_project`` always names a project, so the falsy branch
-        has no production path to probe. Everything else in this class goes through
-        ``_resolve_launch_snapshot``.
-        """
-        from types import SimpleNamespace
-
-        from kanibako.commands.start import _core_env_default_categories
-
-        table = _core_env_default_categories(
-            proj=SimpleNamespace(name=""), target=None, agent_id="claude",
-        )
-        assert "system.env.KANIBAKO_NAME" not in table
-        assert "system.env.KANIBAKO_DIRECTIVE_SEED" in table
+    table = _core_env_default_categories(
+      proj=SimpleNamespace(name=""),
+      target=None,
+      agent_id="claude",
+    )
+    assert "system.env.KANIBAKO_NAME" not in table
+    assert "system.env.KANIBAKO_DIRECTIVE_SEED" in table
 
 
 class TestNothingRestampsThemAboveTheChannel:
-    """The launch layer that used to sit ABOVE every settings file is empty now.
+  """The launch layer that used to sit ABOVE every settings file is empty now.
 
-    ``assemble_env`` USED TO feed ``state_env``, which the launch applied OVER the
-    resolved config levels. While a plugin's static literals were seeded into it, a
-    user who overrode one by key had the plugin's value written back on top a moment
-    later — which is what made the override story impossible to tell. It realizes
-    RESOLVED values only now, and since MBR-1 P4c-2 that layer is GONE outright: the
-    realizations enter the channel as ``agent.<node>.env.<VAR>`` keys.
+  ``assemble_env`` USED TO feed ``state_env``, which the launch applied OVER the
+  resolved config levels. While a plugin's static literals were seeded into it, a
+  user who overrode one by key had the plugin's value written back on top a moment
+  later — which is what made the override story impossible to tell. It realizes
+  RESOLVED values only now, and since MBR-1 P4c-2 that layer is GONE outright: the
+  realizations enter the channel as ``agent.<node>.env.<VAR>`` keys.
 
-    ⚑ AND SINCE MBR-1 P4b THE SAME HOLDS FOR CORE'S OWN FOUR (below). They were the
-    LAST writers above the channel, and the reason the class above can assert an
-    override at all is that nothing re-stamps the winner afterwards.
+  ⚑ AND SINCE MBR-1 P4b THE SAME HOLDS FOR CORE'S OWN FOUR (below). They were the
+  LAST writers above the channel, and the reason the class above can assert an
+  override at all is that nothing re-stamps the winner afterwards.
+  """
+
+  @pytest.mark.parametrize("harness", sorted(DECLARED))
+  def test_no_declared_variable_is_realized_over_the_resolved_value(self, harness):
+    from kanibako.targets.assembly import assemble_env
+
+    descriptor = target_for(harness).descriptor
+    for tier in ("restricted", "full"):
+      realized = assemble_env(descriptor, access=tier, setting_values={})
+      for var in DECLARED[harness]:
+        assert var not in realized, f"{var} would re-stamp the user's value"
+
+  def test_nothing_above_the_channel_writes_the_core_stamps(self):
+    """MBR-1 P4b: ``_assemble_launch_env`` is a PROJECTION of the leaf now.
+
+    Handed an EMPTY slot map it must return an EMPTY env — the four
+    ``KANIBAKO_*`` variables included. Anything it adds of its own is above every
+    settings file and above ``-e`` by construction, which is the arrangement the
+    fold removed; a fifth stamp reintroduced anywhere in that function fails here
+    without needing to be named in advance.
+
+    ⚑ Driven at the CONSUMER on purpose. The arrival half is
+    ``TestTheCoreStampsRideTheSameWire``; what this pins is the ABSENCE of a
+    second writer, which no arrival assertion can see — a stamp restored beside
+    the channel would leave every arrival case green.
+
+    ⚑⚑ NOW TOTAL (MBR-1 P4c-2). P4c-1 took the ``cli_env`` parameter away and
+    P4c-2 took ``state_env``, so the function has NO input but the slot map and
+    no layer of its own left to add: an empty map must produce an empty
+    environment, with no exception to carve out. Restoring EITHER parameter fails
+    this case at the CALL, before the assertion.
     """
+    from types import SimpleNamespace
 
-    @pytest.mark.parametrize("harness", sorted(DECLARED))
-    def test_no_declared_variable_is_realized_over_the_resolved_value(self, harness):
-        from kanibako.targets.assembly import assemble_env
+    from kanibako.commands.start import _assemble_launch_env
 
-        descriptor = target_for(harness).descriptor
-        for tier in ("restricted", "full"):
-            realized = assemble_env(descriptor, access=tier, setting_values={})
-            for var in DECLARED[harness]:
-                assert var not in realized, f"{var} would re-stamp the user's value"
-
-    def test_nothing_above_the_channel_writes_the_core_stamps(self):
-        """MBR-1 P4b: ``_assemble_launch_env`` is a PROJECTION of the leaf now.
-
-        Handed an EMPTY slot map it must return an EMPTY env — the four
-        ``KANIBAKO_*`` variables included. Anything it adds of its own is above every
-        settings file and above ``-e`` by construction, which is the arrangement the
-        fold removed; a fifth stamp reintroduced anywhere in that function fails here
-        without needing to be named in advance.
-
-        ⚑ Driven at the CONSUMER on purpose. The arrival half is
-        ``TestTheCoreStampsRideTheSameWire``; what this pins is the ABSENCE of a
-        second writer, which no arrival assertion can see — a stamp restored beside
-        the channel would leave every arrival case green.
-
-        ⚑⚑ NOW TOTAL (MBR-1 P4c-2). P4c-1 took the ``cli_env`` parameter away and
-        P4c-2 took ``state_env``, so the function has NO input but the slot map and
-        no layer of its own left to add: an empty map must produce an empty
-        environment, with no exception to carve out. Restoring EITHER parameter fails
-        this case at the CALL, before the assertion.
-        """
-        from types import SimpleNamespace
-
-        from kanibako.commands.start import _assemble_launch_env
-
-        extra_mounts: list = []
-        env, secret_vars = _assemble_launch_env(
-            deliveries=SimpleNamespace(secrets=[]),
-            env_slots={},
-            extra_mounts=extra_mounts,
-            logger=logging.getLogger("test.p4b"),
-        )
-        assert env == {}
-        assert secret_vars == []
-        assert extra_mounts == []
+    extra_mounts: list = []
+    env, secret_vars = _assemble_launch_env(
+      deliveries=SimpleNamespace(secrets=[]),
+      env_slots={},
+      extra_mounts=extra_mounts,
+      logger=logging.getLogger("test.p4b"),
+    )
+    assert env == {}
+    assert secret_vars == []
+    assert extra_mounts == []
 
 
 # ---------------------------------------------------------------------------
@@ -756,514 +856,576 @@ class TestNothingRestampsThemAboveTheChannel:
 
 
 class TestTheRealizedVariablesArriveAsKeys:
-    """The last layer above the channel is gone: a realization IS a settings entry.
+  """The last layer above the channel is gone: a realization IS a settings entry.
 
-    ⚑ WHAT MAKES THESE DIFFERENT FROM THE DECLARED CASES ABOVE: a declared
-    ``agent.<node>.env.<VAR>`` is a FLOOR value a plugin ships, present whatever the
-    launch resolves. A REALIZATION is computed FROM the resolved cascade — the
-    permission tier, the model, the provider, the persona endpoint — so it cannot be
-    a floor at all, and folding it in is the whole of P4c-2.
+  ⚑ WHAT MAKES THESE DIFFERENT FROM THE DECLARED CASES ABOVE: a declared
+  ``agent.<node>.env.<VAR>`` is a FLOOR value a plugin ships, present whatever the
+  launch resolves. A REALIZATION is computed FROM the resolved cascade — the
+  permission tier, the model, the provider, the persona endpoint — so it cannot be
+  a floor at all, and folding it in is the whole of P4c-2.
 
-    ⚑ Provenance is asserted, not just presence: the point of the fold is that the
-    variable now has an OWNER a display can name and a refusal can quote. A
-    realization delivered with no key attached would satisfy a presence check and
-    still be the layer this replaced.
+  ⚑ Provenance is asserted, not just presence: the point of the fold is that the
+  variable now has an OWNER a display can name and a refusal can quote. A
+  realization delivered with no key attached would satisfy a presence check and
+  still be the layer this replaced.
+  """
+
+  def test_the_access_tier_is_realized_as_an_agent_scope_key(self):
+    """goose ``GOOSE_MODE`` — the UNCONDITIONAL one, on every goose launch."""
+    slots = resolve_realized(target_for("goose"))
+    assert slots["GOOSE_MODE"].value == "auto"
+    assert slots["GOOSE_MODE"].scope == "agent"
+    assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
+
+  def test_the_launch_flags_reach_the_realized_value(self):
+    """``-S`` / ``-A`` ride the §1A CLI level, and the SLOT shows it.
+
+    ⚑ This is the half a stored-key test cannot see: a level that dropped the
+    flags would deliver the box's stored permission under a ``-S`` and still
+    pass every arrival assertion.
     """
+    secure = resolve_realized(target_for("goose"), safe_mode=True)
+    assert secure["GOOSE_MODE"].value == "approve"
+    loose = resolve_realized(target_for("goose"), autonomous=True)
+    assert loose["GOOSE_MODE"].value == "auto"
 
-    def test_the_access_tier_is_realized_as_an_agent_scope_key(self):
-        """goose ``GOOSE_MODE`` — the UNCONDITIONAL one, on every goose launch."""
-        slots = resolve_realized(target_for("goose"))
-        assert slots["GOOSE_MODE"].value == "auto"
-        assert slots["GOOSE_MODE"].scope == "agent"
-        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
+  @pytest.mark.parametrize("scope", ["system_default", "system_agent", "agent_file"])
+  @pytest.mark.parametrize(
+    "stored,flag,expected",
+    [("full", "safe_mode", "approve"), ("restricted", "autonomous", "auto")],
+  )
+  def test_an_access_flag_outranks_every_scope_and_writes_nothing(
+    self,
+    tmp_path,
+    scope,
+    stored,
+    flag,
+    expected,
+  ):
+    """``-S``/``-A`` sit on the §1A CLI level, above EVERY file that can store
+    ``access`` (agent scope only: the system file's ``agent.default`` and
+    ``agent.<node>``, and the agent's own file), and the stored file is
+    byte-identical afterwards — the level is ephemeral.
 
-    def test_the_launch_flags_reach_the_realized_value(self):
-        """``-S`` / ``-A`` ride the §1A CLI level, and the SLOT shows it.
+    ⚑ The no-flag run is the control: it proves the stored value is read at
+    all, so the flag's win is not a default showing through.
+    """
+    doc, kwarg = {
+      "system_default": ({"agent": {"default": {"access": stored}}}, "system_path"),
+      "system_agent": ({"agent": {"goose": {"access": stored}}}, "system_path"),
+      "agent_file": ({"self": {"access": stored}}, "agent_path"),
+    }[scope]
+    path = write_yaml(tmp_path / f"{scope}.yaml", doc)
+    before = path.read_bytes()
+    target = target_for("goose")
+    control = resolve_realized(target, **{kwarg: path})
+    assert control["GOOSE_MODE"].value != expected
+    slots = resolve_realized(target, **{flag: True, kwarg: path})
+    assert slots["GOOSE_MODE"].value == expected
+    assert path.read_bytes() == before
 
-        ⚑ This is the half a stored-key test cannot see: a level that dropped the
-        flags would deliver the box's stored permission under a ``-S`` and still
-        pass every arrival assertion.
-        """
-        secure = resolve_realized(target_for("goose"), safe_mode=True)
-        assert secure["GOOSE_MODE"].value == "approve"
-        loose = resolve_realized(target_for("goose"), autonomous=True)
-        assert loose["GOOSE_MODE"].value == "auto"
-
-    @pytest.mark.parametrize("scope", ["system_default", "system_agent", "agent_file"])
-    @pytest.mark.parametrize(
-        "stored,flag,expected",
-        [("full", "safe_mode", "approve"), ("restricted", "autonomous", "auto")],
+  def test_a_driving_key_that_resolves_truthy_realizes_its_variable(self):
+    """``agent.<node>.model`` → ``GOOSE_MODEL``, provenance on the agent scope."""
+    slots = resolve_realized(
+      target_for("goose"),
+      agent_behavior_floor={"model": "some-model"},
     )
-    def test_an_access_flag_outranks_every_scope_and_writes_nothing(
-        self, tmp_path, scope, stored, flag, expected,
-    ):
-        """``-S``/``-A`` sit on the §1A CLI level, above EVERY file that can store
-        ``access`` (agent scope only: the system file's ``agent.default`` and
-        ``agent.<node>``, and the agent's own file), and the stored file is
-        byte-identical afterwards — the level is ephemeral.
+    assert slots["GOOSE_MODEL"].value == "some-model"
+    assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
 
-        ⚑ The no-flag run is the control: it proves the stored value is read at
-        all, so the flag's win is not a default showing through.
-        """
-        doc, kwarg = {
-            "system_default": ({"agent": {"default": {"access": stored}}}, "system_path"),
-            "system_agent": ({"agent": {"goose": {"access": stored}}}, "system_path"),
-            "agent_file": ({"self": {"access": stored}}, "agent_path"),
-        }[scope]
-        path = write_yaml(tmp_path / f"{scope}.yaml", doc)
-        before = path.read_bytes()
-        target = target_for("goose")
-        control = resolve_realized(target, **{kwarg: path})
-        assert control["GOOSE_MODE"].value != expected
-        slots = resolve_realized(target, **{flag: True, kwarg: path})
-        assert slots["GOOSE_MODE"].value == expected
-        assert path.read_bytes() == before
+  def test_a_driving_key_that_resolves_empty_realizes_nothing(self):
+    """The CONDITIONAL four are conditional, and the absence is the assertion.
 
-    def test_a_driving_key_that_resolves_truthy_realizes_its_variable(self):
-        """``agent.<node>.model`` → ``GOOSE_MODEL``, provenance on the agent scope."""
-        slots = resolve_realized(
-            target_for("goose"), agent_behavior_floor={"model": "some-model"},
-        )
-        assert slots["GOOSE_MODEL"].value == "some-model"
-        assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
+    ⚑⚑ THE WHOLE MAP IS CHECKED, not the one variable: a fold that realized an
+    EMPTY value would put ``GOOSE_MODEL=''`` in the box's environment, which
+    overrides goose's own config file with nothing — a presence check on a truthy
+    value would not see it, and neither would ``in slots``.
+    """
+    slots = resolve_realized(target_for("goose"))
+    for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
+      assert var not in slots, f"{var} was realized from an unset key"
 
-    def test_a_driving_key_that_resolves_empty_realizes_nothing(self):
-        """The CONDITIONAL four are conditional, and the absence is the assertion.
+  def test_a_NONE_floor_at_the_AGENT_tier_realizes_nothing(self):
+    """🛑 THE ``<None>`` CASE, END TO END, at the tier the plugin floor lands on.
 
-        ⚑⚑ THE WHOLE MAP IS CHECKED, not the one variable: a fold that realized an
-        EMPTY value would put ``GOOSE_MODEL=''`` in the box's environment, which
-        overrides goose's own config file with nothing — a presence check on a truthy
-        value would not see it, and neither would ``in slots``.
-        """
-        slots = resolve_realized(target_for("goose"))
-        for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
-            assert var not in slots, f"{var} was realized from an unset key"
+    The case above resolves ``provider`` from NO floor at all, so it would pass on a
+    build that had lost the declaration entirely. This one drives goose's real
+    shipped floor — ``provider: null``, which ``goose-defaults.yaml`` keeps
+    deliberately so its own ``config.yaml`` stays in charge, and no value for
+    ``model``/``endpoint`` (they inherit ``agent.default``'s ``<None>``) — through
+    the plugin floor, which lands at ``agent.goose.*``. ``provider`` must arrive as
+    a PRESENT ``None`` and nothing may realize, NOT ``GOOSE_PROVIDER=''`` (or
+    ``'None'``) overriding goose's own config.
+    """
+    from kanibako.plugins.goose import GooseTarget
+    from kanibako.targets.base import descriptor_floor
 
-    def test_a_NONE_floor_at_the_AGENT_tier_realizes_nothing(self):
-        """🛑 THE ``<None>`` CASE, END TO END, at the tier the plugin floor lands on.
+    floor = descriptor_floor(GooseTarget().setting_descriptors())
+    assert floor["provider"] is None and "model" not in floor
+    slots = resolve_realized(target_for("goose"), agent_behavior_floor=floor)
+    for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
+      assert var not in slots, f"{var} was realized from a <None> declared floor"
 
-        The case above resolves ``provider`` from NO floor at all, so it would pass on a
-        build that had lost the declaration entirely. This one drives goose's real
-        shipped floor — ``provider: null``, which ``goose-defaults.yaml`` keeps
-        deliberately so its own ``config.yaml`` stays in charge, and no value for
-        ``model``/``endpoint`` (they inherit ``agent.default``'s ``<None>``) — through
-        the plugin floor, which lands at ``agent.goose.*``. ``provider`` must arrive as
-        a PRESENT ``None`` and nothing may realize, NOT ``GOOSE_PROVIDER=''`` (or
-        ``'None'``) overriding goose's own config.
-        """
-        from kanibako.plugins.goose import GooseTarget
-        from kanibako.targets.base import descriptor_floor
+  def test_a_PLUGIN_ONLY_floor_key_realizes_from_the_AGENT_tier(self):
+    """The other direction: a NON-empty plugin-only floor still reaches the box.
 
-        floor = descriptor_floor(GooseTarget().setting_descriptors())
-        assert floor["provider"] is None and "model" not in floor
-        slots = resolve_realized(target_for("goose"), agent_behavior_floor=floor)
-        for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
-            assert var not in slots, f"{var} was realized from a <None> declared floor"
-
-    def test_a_PLUGIN_ONLY_floor_key_realizes_from_the_AGENT_tier(self):
-        """The other direction: a NON-empty plugin-only floor still reaches the box.
-
-        Without this the case above would pass on a build that had simply stopped
-        carrying ``provider`` anywhere — the exact regression a tier move invites.
-        """
-        slots = resolve_realized(
-            target_for("goose"), agent_behavior_floor={"provider": "openai"},
-        )
-        assert slots["GOOSE_PROVIDER"].value == "openai"
-        assert slots["GOOSE_PROVIDER"].key == "agent.goose.env.GOOSE_PROVIDER"
-
-    def test_the_model_flag_drives_the_realization(self):
-        """``-M`` rides the §1A CLI level, so the realized variable carries it.
-
-        🛑 THE URGENCY P4c-2 CLOSES. Between P4c-1 and this fold, a declared
-        ``agent.<node>.env.GOOSE_MODEL`` beat the realization, so ``-M`` — a flag
-        ABOVE every settings file — lost to a stored key. It cannot now: the flag
-        drives the realization through the cascade, and a key naming the same
-        variable refuses instead of winning.
-        """
-        slots = resolve_realized(target_for("goose"), model="flag-model")
-        assert slots["GOOSE_MODEL"].value == "flag-model"
-
-    def test_the_endpoint_key_is_realized_for_claude_too(self):
-        """``ANTHROPIC_BASE_URL`` — the claude half of the closed inventory."""
-        slots = resolve_realized(
-            target_for("claude"), agent_behavior_floor={"endpoint": "https://e.example"},
-        )
-        assert slots["ANTHROPIC_BASE_URL"].value == "https://e.example"
-        assert slots["ANTHROPIC_BASE_URL"].key == (
-            "agent.claude.env.ANTHROPIC_BASE_URL"
-        )
-
-    def test_codex_realizes_nothing_at_all(self):
-        """The inventory is CLOSED and codex is not in it — measured, not assumed.
-
-        ⚑ The positive control rides along: codex's DECLARED key still arrives, so
-        this is "codex realizes nothing", not "codex's env is empty".
-        """
-        target = target_for("codex")
-        slots = resolve_realized(
-            target,
-            agent_behavior_floor={"model": "gpt-5.5", "endpoint": "https://e.example"},
-        )
-        assert set(slots) == set(DECLARED["codex"])
-
-    @pytest.mark.parametrize(
-        "flags,expected", [({}, "full"), ({"secure": True}, "restricted")],
+    Without this the case above would pass on a build that had simply stopped
+    carrying ``provider`` anywhere — the exact regression a tier move invites.
+    """
+    slots = resolve_realized(
+      target_for("goose"),
+      agent_behavior_floor={"provider": "openai"},
     )
-    def test_an_EMPTY_access_setting_key_still_honors_the_flags(
-        self, tmp_path, flags, expected,
-    ):
-        """``setting_key: ""`` redeems NO stored key — ``-S``/``-A`` only
-        (``docs/writing-targets.md``) — so the realizer reads the level entry itself.
+    assert slots["GOOSE_PROVIDER"].value == "openai"
+    assert slots["GOOSE_PROVIDER"].key == "agent.goose.env.GOOSE_PROVIDER"
 
-        The stored ``restricted`` is the control: ignored without a flag (``full``),
-        and ``-S`` still reaches the tier although no ``access`` key is redeemed.
-        """
-        import dataclasses
+  def test_the_model_flag_drives_the_realization(self):
+    """``-M`` rides the §1A CLI level, so the realized variable carries it.
 
-        from kanibako.commands.start import _LaunchRealizer
-        from kanibako.settings.settings_cli_level import build_cli_level
+    🛑 THE URGENCY P4c-2 CLOSES. Between P4c-1 and this fold, a declared
+    ``agent.<node>.env.GOOSE_MODEL`` beat the realization, so ``-M`` — a flag
+    ABOVE every settings file — lost to a stored key. It cannot now: the flag
+    drives the realization through the cascade, and a key naming the same
+    variable refuses instead of winning.
+    """
+    slots = resolve_realized(target_for("goose"), model="flag-model")
+    assert slots["GOOSE_MODEL"].value == "flag-model"
 
-        desc = target_for("goose").descriptor
-        desc = dataclasses.replace(
-            desc,
-            access_realization=dataclasses.replace(
-                desc.access_realization, setting_key="",
-            ),
-        )
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml", {"self": {"access": "restricted"}},
-        )
-        cli_level = build_cli_level(active_agent="goose", **flags)
-        snapshot = build_launch_snapshot(
-            agent_name="goose", ctx=make_ctx("goose"),
-            system_path=None, agent_path=agent_file, workset_path=None,
-            box_path=None, cli_level=cli_level,
-        )
-        realized = _LaunchRealizer(
-            desc=desc, agent_id="goose", cli_level=cli_level,
-        )(snapshot)
-        assert realized.access == expected
+  def test_the_endpoint_key_is_realized_for_claude_too(self):
+    """``ANTHROPIC_BASE_URL`` — the claude half of the closed inventory."""
+    slots = resolve_realized(
+      target_for("claude"),
+      agent_behavior_floor={"endpoint": "https://e.example"},
+    )
+    assert slots["ANTHROPIC_BASE_URL"].value == "https://e.example"
+    assert slots["ANTHROPIC_BASE_URL"].key == ("agent.claude.env.ANTHROPIC_BASE_URL")
 
-    def test_a_target_with_no_descriptor_realizes_nothing(self):
-        """The no-agent box: nothing to realize from, and no attempt to."""
-        from kanibako.commands.start import _LaunchRealizer
+  def test_codex_realizes_nothing_at_all(self):
+    """The inventory is CLOSED and codex is not in it — measured, not assumed.
 
-        realizer = _LaunchRealizer(desc=None, agent_id="shell")
-        ctx = make_ctx("shell")
-        snapshot = build_launch_snapshot(
-            agent_name="shell", ctx=ctx,
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
-        )
-        realized = realizer(snapshot)
-        assert realized.env == {}
-        assert realized.access == ""
+    ⚑ The positive control rides along: codex's DECLARED key still arrives, so
+    this is "codex realizes nothing", not "codex's env is empty".
+    """
+    target = target_for("codex")
+    slots = resolve_realized(
+      target,
+      agent_behavior_floor={"model": "gpt-5.5", "endpoint": "https://e.example"},
+    )
+    assert set(slots) == set(DECLARED["codex"])
+
+  @pytest.mark.parametrize(
+    "flags,expected",
+    [({}, "full"), ({"secure": True}, "restricted")],
+  )
+  def test_an_EMPTY_access_setting_key_still_honors_the_flags(
+    self,
+    tmp_path,
+    flags,
+    expected,
+  ):
+    """``setting_key: ""`` redeems NO stored key — ``-S``/``-A`` only
+    (``docs/writing-targets.md``) — so the realizer reads the level entry itself.
+
+    The stored ``restricted`` is the control: ignored without a flag (``full``),
+    and ``-S`` still reaches the tier although no ``access`` key is redeemed.
+    """
+    import dataclasses
+
+    from kanibako.commands.start import _LaunchRealizer
+    from kanibako.settings.settings_cli_level import build_cli_level
+
+    desc = target_for("goose").descriptor
+    desc = dataclasses.replace(
+      desc,
+      access_realization=dataclasses.replace(
+        desc.access_realization,
+        setting_key="",
+      ),
+    )
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"access": "restricted"}},
+    )
+    cli_level = build_cli_level(active_agent="goose", **flags)
+    snapshot = build_launch_snapshot(
+      agent_name="goose",
+      ctx=make_ctx("goose"),
+      system_path=None,
+      agent_path=agent_file,
+      workset_path=None,
+      box_path=None,
+      cli_level=cli_level,
+    )
+    realized = _LaunchRealizer(
+      desc=desc,
+      agent_id="goose",
+      cli_level=cli_level,
+    )(snapshot)
+    assert realized.access == expected
+
+  def test_a_target_with_no_descriptor_realizes_nothing(self):
+    """The no-agent box: nothing to realize from, and no attempt to."""
+    from kanibako.commands.start import _LaunchRealizer
+
+    realizer = _LaunchRealizer(desc=None, agent_id="shell")
+    ctx = make_ctx("shell")
+    snapshot = build_launch_snapshot(
+      agent_name="shell",
+      ctx=ctx,
+      system_path=None,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+    )
+    realized = realizer(snapshot)
+    assert realized.env == {}
+    assert realized.access == ""
 
 
 class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
-    """system-design § "Delivery at launch": the refusals SHIP — no carve-out, no skip.
+  """system-design § "Delivery at launch": the refusals SHIP — no carve-out, no skip.
 
-    Once a variable is realized there is no env-key spelling for it at any scope:
-    every scope refuses AT THE INSTALL, naming the declared key AND the driving key.
-    That is the user-visible break, and it is deliberate — a carve-out would mint a
-    second CLASS of key, which is the disease the fold cures.
+  Once a variable is realized there is no env-key spelling for it at any scope:
+  every scope refuses AT THE INSTALL, naming the declared key AND the driving key.
+  That is the user-visible break, and it is deliberate — a carve-out would mint a
+  second CLASS of key, which is the disease the fold cures.
+  """
+
+  def test_a_same_scope_declaration_refuses_naming_both_keys(self, tmp_path):
+    """The agent file's own ``env.GOOSE_MODEL`` against the realization of it."""
+    target = target_for("goose")
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"env": {"GOOSE_MODEL": "mine"}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(
+        target,
+        agent_path=agent_file,
+        agent_behavior_floor={"model": "some-model"},
+      )
+    message = str(excinfo.value)
+    # BOTH keys — the one the user wrote, and the one that drives the variable.
+    assert "agent.goose.env.GOOSE_MODEL" in message
+    assert "agent.goose.model" in message
+    assert "GOOSE_MODEL" in message
+
+  def test_the_all_agents_tier_is_checked_too(self, tmp_path):
+    """``agent.default.env.<VAR>`` is the SAME scope and is named as itself.
+
+    ⚑ The §2d pick merges the two agent tiers into one effective node, so a
+    declaration at either would be the value that silently vanished. Checking
+    only ``agent.<node>`` would let this one through — and the message names the
+    DISCRIMINATED tier the user actually wrote, not a bare ``agent.env.<VAR>``
+    the keyspace forbids.
     """
+    target = target_for("goose")
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"default": {"env": {"GOOSE_MODE": "chat"}}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(target, system_path=system_file)
+    assert "agent.default.env.GOOSE_MODE" in excinfo.value.args[0]
 
-    def test_a_same_scope_declaration_refuses_naming_both_keys(self, tmp_path):
-        """The agent file's own ``env.GOOSE_MODEL`` against the realization of it."""
-        target = target_for("goose")
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODEL": "mine"}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(
-                target, agent_path=agent_file,
-                agent_behavior_floor={"model": "some-model"},
-            )
-        message = str(excinfo.value)
-        # BOTH keys — the one the user wrote, and the one that drives the variable.
-        assert "agent.goose.env.GOOSE_MODEL" in message
-        assert "agent.goose.model" in message
-        assert "GOOSE_MODEL" in message
+  def test_the_access_realizations_cure_names_the_flags(self, tmp_path):
+    """``GOOSE_MODE`` is access-derived, so the cure is ``access`` / ``-S`` / ``-A``."""
+    target = target_for("goose")
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"env": {"GOOSE_MODE": "chat"}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(target, agent_path=agent_file)
+    message = str(excinfo.value)
+    assert "agent.goose.access" in message
+    assert "-S" in message and "-A" in message
 
-    def test_the_all_agents_tier_is_checked_too(self, tmp_path):
-        """``agent.default.env.<VAR>`` is the SAME scope and is named as itself.
+  @pytest.mark.parametrize("scope", ["system", "workset", "box"])
+  @pytest.mark.parametrize(
+    ("harness", "var", "driver", "behavior"),
+    [
+      ("goose", "GOOSE_MODEL", "model", {"model": "m"}),
+      ("goose", "GOOSE_PROVIDER", "provider", {"provider": "openai"}),
+      ("goose", "OPENAI_HOST", "endpoint", {"endpoint": "http://h"}),
+      ("goose", "GOOSE_MODE", "access", None),
+      ("claude", "ANTHROPIC_BASE_URL", "endpoint", {"endpoint": "http://h"}),
+    ],
+  )
+  def test_a_twin_at_another_scope_names_the_driving_key(
+    self,
+    tmp_path,
+    scope,
+    harness,
+    var,
+    driver,
+    behavior,
+  ):
+    """191-G1: the key the user wrote and the key that drives the variable.
 
-        ⚑ The §2d pick merges the two agent tiers into one effective node, so a
-        declaration at either would be the value that silently vanished. Checking
-        only ``agent.<node>`` would let this one through — and the message names the
-        DISCRIMINATED tier the user actually wrote, not a bare ``agent.env.<VAR>``
-        the keyspace forbids.
-        """
-        target = target_for("goose")
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"default": {"env": {"GOOSE_MODE": "chat"}}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(target, system_path=system_file)
-        assert "agent.default.env.GOOSE_MODE" in excinfo.value.args[0]
+    Not the generic two-keys refusal, which named an ``agent.<node>.env.<VAR>``
+    the user never wrote and whose cure led into the same-scope refusal.
+    """
+    target = target_for(harness)
+    doc = {scope: {"env": {var: "mine"}}}
+    path = write_yaml(tmp_path / f"{scope}.yaml", doc)
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(
+        target,
+        agent_behavior_floor=behavior,
+        **{f"{scope}_path": path},
+      )
+    message = str(excinfo.value)
+    assert message.startswith(
+      f"'{scope}.env.{var}' conflicts with 'agent.{harness}.{driver}', which "
+      f"kanibako turns into {var}; remove the env entry"
+    ), message
+    assert f"agent.{harness}.env.{var}" not in message
+    assert "claimed by two keys" not in message
 
-    def test_the_access_realizations_cure_names_the_flags(self, tmp_path):
-        """``GOOSE_MODE`` is access-derived, so the cure is ``access`` / ``-S`` / ``-A``."""
-        target = target_for("goose")
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODE": "chat"}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(target, agent_path=agent_file)
-        message = str(excinfo.value)
-        assert "agent.goose.access" in message
-        assert "-S" in message and "-A" in message
+  @pytest.mark.parametrize(
+    ("family", "var", "driver"),
+    [
+      ("env", "GOOSE_MODEL", "model"),
+      ("secret_path", "GOOSE_MODEL", "model"),
+      ("env", "GOOSE_MODE", "access"),
+    ],
+  )
+  def test_a_persona_node_is_named_as_the_user_spells_it(
+    self,
+    tmp_path,
+    family,
+    var,
+    driver,
+  ):
+    """193-D1: both keys render the node as ``kimi+goose``, never the store form."""
+    from kanibako.agent_ref import canonicalize_agent_ref
 
-    @pytest.mark.parametrize("scope", ["system", "workset", "box"])
-    @pytest.mark.parametrize(("harness", "var", "driver", "behavior"), [
-        ("goose", "GOOSE_MODEL", "model", {"model": "m"}),
-        ("goose", "GOOSE_PROVIDER", "provider", {"provider": "openai"}),
-        ("goose", "OPENAI_HOST", "endpoint", {"endpoint": "http://h"}),
-        ("goose", "GOOSE_MODE", "access", None),
-        ("claude", "ANTHROPIC_BASE_URL", "endpoint", {"endpoint": "http://h"}),
-    ])
-    def test_a_twin_at_another_scope_names_the_driving_key(
-        self, tmp_path, scope, harness, var, driver, behavior,
-    ):
-        """191-G1: the key the user wrote and the key that drives the variable.
+    secret = tmp_path / "secret.txt"
+    secret.write_text("mine\n")
+    value = str(secret) if family == "secret_path" else "mine"
+    box_file = write_yaml(tmp_path / "box.yaml", {"box": {family: {var: value}}})
+    agent_file = write_yaml(tmp_path / "agent.yaml", {"self": {"model": "m"}})
+    with pytest.raises(SettingsError) as excinfo:
+      realized_entries(
+        target_for("goose"),
+        node=canonicalize_agent_ref("kimi+goose"),
+        box_path=box_file,
+        agent_path=agent_file,
+      )
+    message = str(excinfo.value)
+    assert message.startswith(
+      f"'box.{family}.{var}' conflicts with 'agent.kimi+goose.{driver}', which "
+      f"kanibako turns into {var}; remove the {family} entry"
+    ), message
+    assert "\u2118" not in message
 
-        Not the generic two-keys refusal, which named an ``agent.<node>.env.<VAR>``
-        the user never wrote and whose cure led into the same-scope refusal.
-        """
-        target = target_for(harness)
-        doc = {scope: {"env": {var: "mine"}}}
-        path = write_yaml(tmp_path / f"{scope}.yaml", doc)
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(
-                target, agent_behavior_floor=behavior, **{f"{scope}_path": path},
-            )
-        message = str(excinfo.value)
-        assert message.startswith(
-            f"'{scope}.env.{var}' conflicts with 'agent.{harness}.{driver}', which "
-            f"kanibako turns into {var}; remove the env entry"
-        ), message
-        assert f"agent.{harness}.env.{var}" not in message
-        assert "claimed by two keys" not in message
+  def test_the_model_cure_names_its_flag(self, tmp_path):
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"GOOSE_MODEL": "mine"}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(
+        target_for("goose"),
+        box_path=box_file,
+        agent_behavior_floor={"model": "m"},
+      )
+    assert "set the model with `model` (or `-M/--model`)" in str(excinfo.value)
 
-    @pytest.mark.parametrize(("family", "var", "driver"), [
-        ("env", "GOOSE_MODEL", "model"),
-        ("secret_path", "GOOSE_MODEL", "model"),
-        ("env", "GOOSE_MODE", "access"),
-    ])
-    def test_a_persona_node_is_named_as_the_user_spells_it(
-        self, tmp_path, family, var, driver,
-    ):
-        """193-D1: both keys render the node as ``kimi+goose``, never the store form."""
-        from kanibako.agent_ref import canonicalize_agent_ref
+  def test_a_null_at_another_scope_names_nothing(self, tmp_path):
+    """Control: a ``null`` env entry is skipped by the adapter, so it never refused."""
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"GOOSE_MODE": None}}},
+    )
+    slots = resolve_realized(target_for("goose"), box_path=box_file)
+    assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
 
-        secret = tmp_path / "secret.txt"
-        secret.write_text("mine\n")
-        value = str(secret) if family == "secret_path" else "mine"
-        box_file = write_yaml(tmp_path / "box.yaml", {"box": {family: {var: value}}})
-        agent_file = write_yaml(tmp_path / "agent.yaml", {"self": {"model": "m"}})
-        with pytest.raises(SettingsError) as excinfo:
-            realized_entries(
-                target_for("goose"), node=canonicalize_agent_ref("kimi+goose"),
-                box_path=box_file, agent_path=agent_file,
-            )
-        message = str(excinfo.value)
-        assert message.startswith(
-            f"'box.{family}.{var}' conflicts with 'agent.kimi+goose.{driver}', which "
-            f"kanibako turns into {var}; remove the {family} entry"
-        ), message
-        assert "\u2118" not in message
+  def test_an_unrealized_variable_at_another_scope_is_untouched(self):
+    """The POSITIVE CONTROL: only the realized names refuse.
 
-    def test_the_model_cure_names_its_flag(self, tmp_path):
-        box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(
-                target_for("goose"), box_path=box_file,
-                agent_behavior_floor={"model": "m"},
-            )
-        assert "set the model with `model` (or `-M/--model`)" in str(excinfo.value)
-
-    def test_a_null_at_another_scope_names_nothing(self, tmp_path):
-        """Control: a ``null`` env entry is skipped by the adapter, so it never refused."""
-        box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODE": None}}},
-        )
-        slots = resolve_realized(target_for("goose"), box_path=box_file)
-        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
-
-    def test_an_unrealized_variable_at_another_scope_is_untouched(self):
-        """The POSITIVE CONTROL: only the realized names refuse.
-
-        Without it, a fold that refused every ``env`` key at every scope would pass
-        all four cases above.
-        """
-        slots = resolve_realized(target_for("goose"))
-        assert slots["GOOSE_MODE"].value == "auto"
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+    Without it, a fold that refused every ``env`` key at every scope would pass
+    all four cases above.
+    """
+    slots = resolve_realized(target_for("goose"))
+    assert slots["GOOSE_MODE"].value == "auto"
+    assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
 
 
 class TestAnEmptyModelRealizesTheEmptyModel:
-    """A ``""`` ``model`` from a settings file drives ``GOOSE_MODEL=`` (keyspec §2d
-    ``agent.goose.*``; system-design § "Delivery at launch").
+  """A ``""`` ``model`` from a settings file drives ``GOOSE_MODEL=`` (keyspec §2d
+  ``agent.goose.*``; system-design § "Delivery at launch").
 
-    So ``model`` drives the variable, and a hand-set ``GOOSE_MODEL`` beside it meets
-    the existing twin refusals: the conflict rule (his 190-GM), with no new check.
-    """
+  So ``model`` drives the variable, and a hand-set ``GOOSE_MODEL`` beside it meets
+  the existing twin refusals: the conflict rule (his 190-GM), with no new check.
+  """
 
-    @staticmethod
-    def _empty_model_agent_file(tmp_path, **extra):
-        return write_yaml(
-            tmp_path / "agent.yaml", {"self": {"model": "", **extra}},
-        )
+  @staticmethod
+  def _empty_model_agent_file(tmp_path, **extra):
+    return write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"model": "", **extra}},
+    )
 
-    def test_an_empty_model_in_an_agent_file_realizes_an_empty_variable(self, tmp_path):
-        slots = resolve_realized(
-            target_for("goose"), agent_path=self._empty_model_agent_file(tmp_path),
-        )
-        assert slots["GOOSE_MODEL"].value == ""
-        assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
+  def test_an_empty_model_in_an_agent_file_realizes_an_empty_variable(self, tmp_path):
+    slots = resolve_realized(
+      target_for("goose"),
+      agent_path=self._empty_model_agent_file(tmp_path),
+    )
+    assert slots["GOOSE_MODEL"].value == ""
+    assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
 
-    def test_a_same_scope_env_twin_refuses_naming_both_keys(self, tmp_path):
-        agent_file = self._empty_model_agent_file(
-            tmp_path, env={"GOOSE_MODEL": "mine"},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(target_for("goose"), agent_path=agent_file)
-        message = str(excinfo.value)
-        assert "agent.goose.env.GOOSE_MODEL" in message
-        assert "agent.goose.model" in message
+  def test_a_same_scope_env_twin_refuses_naming_both_keys(self, tmp_path):
+    agent_file = self._empty_model_agent_file(
+      tmp_path,
+      env={"GOOSE_MODEL": "mine"},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(target_for("goose"), agent_path=agent_file)
+    message = str(excinfo.value)
+    assert "agent.goose.env.GOOSE_MODEL" in message
+    assert "agent.goose.model" in message
 
-    def test_an_all_agents_env_twin_refuses_naming_itself(self, tmp_path):
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"default": {"env": {"GOOSE_MODEL": "mine"}}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(
-                target_for("goose"), system_path=system_file,
-                agent_path=self._empty_model_agent_file(tmp_path),
-            )
-        message = str(excinfo.value)
-        assert "agent.default.env.GOOSE_MODEL" in message
-        assert "agent.goose.model" in message
+  def test_an_all_agents_env_twin_refuses_naming_itself(self, tmp_path):
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"default": {"env": {"GOOSE_MODEL": "mine"}}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(
+        target_for("goose"),
+        system_path=system_file,
+        agent_path=self._empty_model_agent_file(tmp_path),
+      )
+    message = str(excinfo.value)
+    assert "agent.default.env.GOOSE_MODEL" in message
+    assert "agent.goose.model" in message
 
-    def test_an_env_twin_at_another_scope_names_the_driving_key(self, tmp_path):
-        """191-G1: the install's refusal, naming ``model``."""
-        box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
-        )
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(
-                target_for("goose"), box_path=box_file,
-                agent_path=self._empty_model_agent_file(tmp_path),
-            )
-        message = str(excinfo.value)
-        assert message.startswith(
-            "'box.env.GOOSE_MODEL' conflicts with 'agent.goose.model'"
-        ), message
-        assert "agent.goose.env.GOOSE_MODEL" not in message
+  def test_an_env_twin_at_another_scope_names_the_driving_key(self, tmp_path):
+    """191-G1: the install's refusal, naming ``model``."""
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"GOOSE_MODEL": "mine"}}},
+    )
+    with pytest.raises(SettingsError) as excinfo:
+      resolve_realized(
+        target_for("goose"),
+        box_path=box_file,
+        agent_path=self._empty_model_agent_file(tmp_path),
+      )
+    message = str(excinfo.value)
+    assert message.startswith("'box.env.GOOSE_MODEL' conflicts with 'agent.goose.model'"), message
+    assert "agent.goose.env.GOOSE_MODEL" not in message
 
-    @staticmethod
-    def _secret_box_file(tmp_path):
-        secret = tmp_path / "goose-model.txt"
-        secret.write_text("mine\n")
-        return write_yaml(
-            tmp_path / "box.yaml",
-            {"box": {"secret_path": {"GOOSE_MODEL": str(secret)}}},
-        )
+  @staticmethod
+  def _secret_box_file(tmp_path):
+    secret = tmp_path / "goose-model.txt"
+    secret.write_text("mine\n")
+    return write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"secret_path": {"GOOSE_MODEL": str(secret)}}},
+    )
 
-    def test_a_secret_path_twin_names_the_driving_key(self, tmp_path):
-        """191-G4: refused at the install, naming ``model``, not a key nobody wrote."""
-        with pytest.raises(SettingsError) as excinfo:
-            realized_entries(
-                target_for("goose"), box_path=self._secret_box_file(tmp_path),
-                agent_path=self._empty_model_agent_file(tmp_path),
-            )
-        message = str(excinfo.value)
-        assert message.startswith(
-            "'box.secret_path.GOOSE_MODEL' conflicts with 'agent.goose.model', which "
-            "kanibako turns into GOOSE_MODEL; remove the secret_path entry"
-        ), message
-        assert "agent.goose.env.GOOSE_MODEL" not in message
+  def test_a_secret_path_twin_names_the_driving_key(self, tmp_path):
+    """191-G4: refused at the install, naming ``model``, not a key nobody wrote."""
+    with pytest.raises(SettingsError) as excinfo:
+      realized_entries(
+        target_for("goose"),
+        box_path=self._secret_box_file(tmp_path),
+        agent_path=self._empty_model_agent_file(tmp_path),
+      )
+    message = str(excinfo.value)
+    assert message.startswith(
+      "'box.secret_path.GOOSE_MODEL' conflicts with 'agent.goose.model', which "
+      "kanibako turns into GOOSE_MODEL; remove the secret_path entry"
+    ), message
+    assert "agent.goose.env.GOOSE_MODEL" not in message
 
-    def test_an_active_null_pointer_shadows_an_all_agents_one(self, tmp_path):
-        """Control: the §2d pick lets ``agent.goose``'s ``null`` win, so no pointer."""
-        from kanibako.settings.settings_categories import launch_deliveries
+  def test_an_active_null_pointer_shadows_an_all_agents_one(self, tmp_path):
+    """Control: the §2d pick lets ``agent.goose``'s ``null`` win, so no pointer."""
+    from kanibako.settings.settings_categories import launch_deliveries
 
-        secret = tmp_path / "goose-model.txt"
-        secret.write_text("mine\n")
-        system_file = write_yaml(
-            tmp_path / "system.yaml",
-            {"agent": {"default": {"secret_path": {"GOOSE_MODEL": str(secret)}}}},
-        )
-        agent_file = self._empty_model_agent_file(
-            tmp_path, secret_path={"GOOSE_MODEL": None},
-        )
-        entries = realized_entries(
-            target_for("goose"), system_path=system_file, agent_path=agent_file,
-        )
-        launch_deliveries(entries, agent_dests=frozenset())
+    secret = tmp_path / "goose-model.txt"
+    secret.write_text("mine\n")
+    system_file = write_yaml(
+      tmp_path / "system.yaml",
+      {"agent": {"default": {"secret_path": {"GOOSE_MODEL": str(secret)}}}},
+    )
+    agent_file = self._empty_model_agent_file(
+      tmp_path,
+      secret_path={"GOOSE_MODEL": None},
+    )
+    entries = realized_entries(
+      target_for("goose"),
+      system_path=system_file,
+      agent_path=agent_file,
+    )
+    launch_deliveries(entries, agent_dests=frozenset())
 
-    def test_an_unset_model_leaves_a_secret_path_alone(self, tmp_path):
-        """Control: the refusal above comes from the ``""`` ``model``, nothing else."""
-        from kanibako.settings.settings_categories import launch_deliveries
+  def test_an_unset_model_leaves_a_secret_path_alone(self, tmp_path):
+    """Control: the refusal above comes from the ``""`` ``model``, nothing else."""
+    from kanibako.settings.settings_categories import launch_deliveries
 
-        entries = realized_entries(
-            target_for("goose"), box_path=self._secret_box_file(tmp_path),
-        )
-        launch_deliveries(entries, agent_dests=frozenset())
+    entries = realized_entries(
+      target_for("goose"),
+      box_path=self._secret_box_file(tmp_path),
+    )
+    launch_deliveries(entries, agent_dests=frozenset())
 
-    @pytest.mark.parametrize("model", ["unset", None])
-    def test_an_unset_or_null_model_delivers_the_hand_set_value(self, tmp_path, model):
-        """Controls: a ``model`` that drives nothing is no conflict."""
-        box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
-        )
-        files = {"box_path": box_file}
-        if model != "unset":
-            files["agent_path"] = write_yaml(
-                tmp_path / "agent.yaml", {"self": {"model": model}},
-            )
-        slots = resolve_realized(target_for("goose"), **files)
-        assert slots["GOOSE_MODEL"].value == "mine"
-        assert slots["GOOSE_MODEL"].key == "box.env.GOOSE_MODEL"
+  @pytest.mark.parametrize("model", ["unset", None])
+  def test_an_unset_or_null_model_delivers_the_hand_set_value(self, tmp_path, model):
+    """Controls: a ``model`` that drives nothing is no conflict."""
+    box_file = write_yaml(
+      tmp_path / "box.yaml",
+      {"box": {"env": {"GOOSE_MODEL": "mine"}}},
+    )
+    files = {"box_path": box_file}
+    if model != "unset":
+      files["agent_path"] = write_yaml(
+        tmp_path / "agent.yaml",
+        {"self": {"model": model}},
+      )
+    slots = resolve_realized(target_for("goose"), **files)
+    assert slots["GOOSE_MODEL"].value == "mine"
+    assert slots["GOOSE_MODEL"].key == "box.env.GOOSE_MODEL"
 
 
 class TestThePerRunFlagStillBeatsARealization:
-    """Spec env.<VAR> (*"-e beats a realization uniformly"* — the CLI level overrides the
-    owning key, §1A) survives the fold — BY CONSTRUCTION, not by order.
+  """Spec env.<VAR> (*"-e beats a realization uniformly"* — the CLI level overrides the
+  owning key, §1A) survives the fold — BY CONSTRUCTION, not by order.
 
-    ``-e`` is the CLI level applied to the SETTLED slot, above every scope, so it
-    overrides a realized variable exactly as it overrides a declared one. Before
-    P4c-2 this held only because the realization layer was carefully placed BENEATH
-    the slots; now there is no layer to place.
+  ``-e`` is the CLI level applied to the SETTLED slot, above every scope, so it
+  overrides a realized variable exactly as it overrides a declared one. Before
+  P4c-2 this held only because the realization layer was carefully placed BENEATH
+  the slots; now there is no layer to place.
+  """
+
+  def test_a_per_run_flag_overrides_a_realized_variable(self):
+    slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
+    assert slots["GOOSE_MODE"].value == "chat"
+
+  def test_the_override_keeps_the_realizations_provenance(self):
+    """The key still OWNS the variable; ``-e`` supplies a value for one launch."""
+    slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
+    assert slots["GOOSE_MODE"].scope == "agent"
+    assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
+
+  def test_a_per_run_flag_does_not_dodge_the_refusal(self, tmp_path):
+    """⚑ ``-e`` is not a cure for a declared twin: the refusal is upstream of it.
+
+    The twin refusal raises at the install site, upstream of the slot pass, so a
+    user cannot paper over a contested declaration by passing the flag — they are
+    told to fix the keys.
     """
-
-    def test_a_per_run_flag_overrides_a_realized_variable(self):
-        slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
-        assert slots["GOOSE_MODE"].value == "chat"
-
-    def test_the_override_keeps_the_realizations_provenance(self):
-        """The key still OWNS the variable; ``-e`` supplies a value for one launch."""
-        slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
-        assert slots["GOOSE_MODE"].scope == "agent"
-        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
-
-    def test_a_per_run_flag_does_not_dodge_the_refusal(self, tmp_path):
-        """⚑ ``-e`` is not a cure for a declared twin: the refusal is upstream of it.
-
-        The twin refusal raises at the install site, upstream of the slot pass, so a
-        user cannot paper over a contested declaration by passing the flag — they are
-        told to fix the keys.
-        """
-        target = target_for("goose")
-        agent_file = write_yaml(
-            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODE": "chat"}}},
-        )
-        with pytest.raises(SettingsError):
-            resolve_realized(
-                target, agent_path=agent_file, cli_env={"GOOSE_MODE": "auto"},
-            )
+    target = target_for("goose")
+    agent_file = write_yaml(
+      tmp_path / "agent.yaml",
+      {"self": {"env": {"GOOSE_MODE": "chat"}}},
+    )
+    with pytest.raises(SettingsError):
+      resolve_realized(
+        target,
+        agent_path=agent_file,
+        cli_env={"GOOSE_MODE": "auto"},
+      )

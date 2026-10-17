@@ -22,13 +22,13 @@ from pathlib import Path
 
 from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
-    AgentInstall,
-    BindKind,
-    BindScope,
-    Binding,
-    HostSrcOrigin,
-    PluginDescriptor,
-    Target,
+  AgentInstall,
+  BindKind,
+  BindScope,
+  Binding,
+  HostSrcOrigin,
+  PluginDescriptor,
+  Target,
 )
 
 # Per-agent contract path (mirrors goose/claude): detection + the delivery bind
@@ -39,55 +39,58 @@ _BINARY = Path.home() / ".local" / "bin" / "dead-agent"
 # executable into the box read-only, ``command`` runs it, ``mode`` adds no
 # flags.  No creds, no settings, no setup — it is meant to crash on launch.
 _DEAD_DESCRIPTOR = PluginDescriptor(
-    command=("dead-agent",),
-    bindings=(
-        Binding(
-            key="binary",
-            origin=HostSrcOrigin.BINARY,
-            box_dest=f"{GUEST_HOME}/.local/bin/dead-agent",
-            kind=BindKind.FILE,
-            scope=BindScope.AGENT_CRITICAL,
-            ro=True,
-        ),
+  command=("dead-agent",),
+  bindings=(
+    Binding(
+      key="binary",
+      origin=HostSrcOrigin.BINARY,
+      box_dest=f"{GUEST_HOME}/.local/bin/dead-agent",
+      kind=BindKind.FILE,
+      scope=BindScope.AGENT_CRITICAL,
+      ro=True,
     ),
-    mode={"start": (), "continue": ()},
+  ),
+  mode={"start": (), "continue": ()},
 )
 
 
 class DeadTarget(Target):
-    """A real agent target whose binary always exits non-zero on launch."""
+  """A real agent target whose binary always exits non-zero on launch."""
 
-    @property
-    def name(self) -> str:
-        return "dead"
+  @property
+  def name(self) -> str:
+    return "dead"
 
-    @property
-    def display_name(self) -> str:
-        return "Dead Agent (test)"
+  @property
+  def display_name(self) -> str:
+    return "Dead Agent (test)"
 
-    @property
-    def descriptor(self) -> PluginDescriptor | None:
-        return _DEAD_DESCRIPTOR
+  @property
+  def descriptor(self) -> PluginDescriptor | None:
+    return _DEAD_DESCRIPTOR
 
-    @property
-    def default_entrypoint(self) -> str | None:
-        return "dead-agent"
+  @property
+  def default_entrypoint(self) -> str | None:
+    return "dead-agent"
 
-    def detect(self) -> AgentInstall | None:
-        if not (_BINARY.exists() or _BINARY.is_symlink()):
-            return None
-        try:
-            resolved = _BINARY.resolve()
-        except OSError:
-            resolved = _BINARY
-        return AgentInstall(
-            name="dead",
-            binary=resolved,
-            install_dir=resolved.parent,
-        )
+  def detect(self) -> AgentInstall | None:
+    if not (_BINARY.exists() or _BINARY.is_symlink()):
+      return None
+    try:
+      resolved = _BINARY.resolve()
+    except OSError:
+      resolved = _BINARY
+    return AgentInstall(
+      name="dead",
+      binary=resolved,
+      install_dir=resolved.parent,
+    )
 
-    def check_auth(
-        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
-    ) -> bool:
-        # No auth — it is supposed to fail at run time, not auth time.
-        return True
+  def check_auth(
+    self,
+    *,
+    box_home: Path | None = None,
+    delivered: frozenset[str] = frozenset(),
+  ) -> bool:
+    # No auth — it is supposed to fail at run time, not auth time.
+    return True

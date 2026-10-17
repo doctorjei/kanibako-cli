@@ -18,11 +18,11 @@ from typing import Any, Generic, TypeVar
 from kanibako.errors import KanibakoError
 
 from .keystore_strings import (
-    ERR_ATTRIBUTE_NO_KEY,
-    ERR_RESERVEDKEY_DUNDER,
-    ERR_RESERVEDKEY_SHADOW,
-    ERR_TYPE_KEYSTORE_ARGS,
-    ERR_TYPE_NONSTRING_KEY,
+  ERR_ATTRIBUTE_NO_KEY,
+  ERR_RESERVEDKEY_DUNDER,
+  ERR_RESERVEDKEY_SHADOW,
+  ERR_TYPE_KEYSTORE_ARGS,
+  ERR_TYPE_NONSTRING_KEY,
 )
 
 # Leaf value space of a :class:`KeyStore`
@@ -30,6 +30,7 @@ V = TypeVar("V")
 
 
 ### Errors / Exceptions ###
+
 
 # ⚑ BOTH BASES ARE LOAD-BEARING, and neither may be dropped.
 #
@@ -47,164 +48,180 @@ V = TypeVar("V")
 # ``KanibakoError`` FIRST keeps the MRO linearizable
 # (ReservedKeyError → KanibakoError → KeyError → LookupError → Exception).
 class ReservedKeyError(KanibakoError, KeyError):
-    """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
+  """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
 
-    # ⚑ Without this, ``KeyError.__str__`` wins the MRO (``KanibakoError`` defines none) and
-    # REPR-WRAPS the message, so the CLI's ``Error: {e}`` line reaches the user wearing a pair of
-    # stray double quotes no other refusal has. The message is already a sentence; print it.
-    def __str__(self) -> str:
-        """The message verbatim — ``KeyError`` would repr-wrap it into the user's error line."""
-        if len(self.args) == 1:
-            return str(self.args[0])
-        return Exception.__str__(self)
+  # ⚑ Without this, ``KeyError.__str__`` wins the MRO (``KanibakoError`` defines none) and
+  # REPR-WRAPS the message, so the CLI's ``Error: {e}`` line reaches the user wearing a pair of
+  # stray double quotes no other refusal has. The message is already a sentence; print it.
+  def __str__(self) -> str:
+    """The message verbatim — ``KeyError`` would repr-wrap it into the user's error line."""
+    if len(self.args) == 1:
+      return str(self.args[0])
+    return Exception.__str__(self)
 
 
 ### Main KeyStore Class ###
 
+
 class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
-    """Recursive attribute-dict: ``dict[str, V | KeyStore[V]]`` w. attr access. Inherits `dict`."""
+  """Recursive attribute-dict: ``dict[str, V | KeyStore[V]]`` w. attr access. Inherits `dict`."""
 
-    # Public, non-dunder methods of :class:`dict`, PLUS KeyStore's public members - all forbidden
-    # as user keys.
-    #
-    # ⚑ EXPOSURE, stated correctly: ``__getattr__`` fires on lookup MISS ONLY, so class members
-    # ALWAYS win. A key spelled like a member becomes SILENTLY UNREADABLE through attribute access
-    # (``store[name]`` still available); ``store.name`` still returns member. That's intentional.
-    #
-    # EVERY CLASS MEMER satisfies this rule: it is NAME-MANGLED (``_KeyStore__*``), a DUNDER, or is
-    # LISTED HERE. Mangled & dunder names cannot be keys by construction; no key is spelled
-    # ``_KeyStore__*``, & dunder keys are refused at write time; internals need no entry. PUBLIC
-    # members lack these protections & must be named, hence this set of member named.
-    RESERVED_KEY_NAMES: frozenset[str] = frozenset({"get", "keys", "values",
-        "items", "pop", "popitem", "setdefault", "update", "clear", "copy", "fromkeys",
-        "RESERVED_KEY_NAMES", "insert_segments",})
+  # Public, non-dunder methods of :class:`dict`, PLUS KeyStore's public members - all forbidden
+  # as user keys.
+  #
+  # ⚑ EXPOSURE, stated correctly: ``__getattr__`` fires on lookup MISS ONLY, so class members
+  # ALWAYS win. A key spelled like a member becomes SILENTLY UNREADABLE through attribute access
+  # (``store[name]`` still available); ``store.name`` still returns member. That's intentional.
+  #
+  # EVERY CLASS MEMER satisfies this rule: it is NAME-MANGLED (``_KeyStore__*``), a DUNDER, or is
+  # LISTED HERE. Mangled & dunder names cannot be keys by construction; no key is spelled
+  # ``_KeyStore__*``, & dunder keys are refused at write time; internals need no entry. PUBLIC
+  # members lack these protections & must be named, hence this set of member named.
+  RESERVED_KEY_NAMES: frozenset[str] = frozenset(
+    {
+      "get",
+      "keys",
+      "values",
+      "items",
+      "pop",
+      "popitem",
+      "setdefault",
+      "update",
+      "clear",
+      "copy",
+      "fromkeys",
+      "RESERVED_KEY_NAMES",
+      "insert_segments",
+    }
+  )
 
-    # No ``__slots__`` instance ``__dict__`` for storage; state is in inherited `dict`. ⚑ ``self``
-    # is pinned to ``KeyStore[Any]``: an arg-free ``KeyStore()`` has nothing to solve ``V`` from,
-    # & unsolved ``V`` makes mypy demand an annotation on bare construction. Explicit
-    # ``KeyStore[StoreValue]`` annotations bind as usual.
-    def __init__(self: KeyStore[Any], *args: Any, **kwargs: Any) -> None:
-        super().__init__()
-        # Funnel everything through dict.update -> __setitem__ to wrap nested dicts uniformly.
-        if args:
-            if len(args) > 1:
-                raise TypeError(ERR_TYPE_KEYSTORE_ARGS % len(args))
-            source = args[0]
-            # dict.items(source) (NOT source.items()) — reads REAL storage of the received mapping.
-            # ⚑ For KeyStore, they're identical: ``items`` is a reserved, & even if force-written
-            # past the check, METHOD still wins lookup (__getattr__ fires only on a MISS). Unbound
-            # calls earn their keep against OTHER dict subclasses, whose items() may be overridden
-            # to provide something other than its contents.
-            items = dict.items(source) if isinstance(source, dict) else source
-            for key, value in items:
-                self[key] = value
-        for key, value in kwargs.items():
-            self[key] = value
+  # No ``__slots__`` instance ``__dict__`` for storage; state is in inherited `dict`. ⚑ ``self``
+  # is pinned to ``KeyStore[Any]``: an arg-free ``KeyStore()`` has nothing to solve ``V`` from,
+  # & unsolved ``V`` makes mypy demand an annotation on bare construction. Explicit
+  # ``KeyStore[StoreValue]`` annotations bind as usual.
+  def __init__(self: KeyStore[Any], *args: Any, **kwargs: Any) -> None:
+    super().__init__()
+    # Funnel everything through dict.update -> __setitem__ to wrap nested dicts uniformly.
+    if args:
+      if len(args) > 1:
+        raise TypeError(ERR_TYPE_KEYSTORE_ARGS % len(args))
+      source = args[0]
+      # dict.items(source) (NOT source.items()) — reads REAL storage of the received mapping.
+      # ⚑ For KeyStore, they're identical: ``items`` is a reserved, & even if force-written
+      # past the check, METHOD still wins lookup (__getattr__ fires only on a MISS). Unbound
+      # calls earn their keep against OTHER dict subclasses, whose items() may be overridden
+      # to provide something other than its contents.
+      items = dict.items(source) if isinstance(source, dict) else source
+      for key, value in items:
+        self[key] = value
+    for key, value in kwargs.items():
+      self[key] = value
 
-    # ⚑ PUBLIC, so it is SELF-LISTED in RESERVED_KEY_NAMES. Called from other modules, it can be
-    # neither mangled nor dundered, and as a plain name it would win over a same-named KEY at the
-    # attr surface (__getattr__ fires on MISS only) — leaving that key readable by [] but not by
-    # attribute. Naming it in the reserved set refuses the key instead, at write time.
-    def insert_segments(self, segments: "Sequence[str]", value: Any) -> None:
-        """Install *value* at the path *segments* VERBATIM; each segment is _one_ node."""
-        # ⚑ Entry-point of box-dest, terminal path ``binding_derivations.<declaration-key>.<dest>``.
-        # Routinely contain dots (``.``, ``~/.cache/uv``, etc.).
-        parts = tuple(segments)
-        if not parts:
-            raise ValueError("insert_segments needs at least one segment")
-        node: KeyStore = self
-        for seg in parts[:-1]:
-            child = dict.get(node, seg, None)
-            if not isinstance(child, KeyStore):
-                child = KeyStore()
-                node[seg] = child
-            node = child
-        node[parts[-1]] = value
+  # ⚑ PUBLIC, so it is SELF-LISTED in RESERVED_KEY_NAMES. Called from other modules, it can be
+  # neither mangled nor dundered, and as a plain name it would win over a same-named KEY at the
+  # attr surface (__getattr__ fires on MISS only) — leaving that key readable by [] but not by
+  # attribute. Naming it in the reserved set refuses the key instead, at write time.
+  def insert_segments(self, segments: "Sequence[str]", value: Any) -> None:
+    """Install *value* at the path *segments* VERBATIM; each segment is _one_ node."""
+    # ⚑ Entry-point of box-dest, terminal path ``binding_derivations.<declaration-key>.<dest>``.
+    # Routinely contain dots (``.``, ``~/.cache/uv``, etc.).
+    parts = tuple(segments)
+    if not parts:
+      raise ValueError("insert_segments needs at least one segment")
+    node: KeyStore = self
+    for seg in parts[:-1]:
+      child = dict.get(node, seg, None)
+      if not isinstance(child, KeyStore):
+        child = KeyStore()
+        node[seg] = child
+      node = child
+    node[parts[-1]] = value
 
-    # --- item access: canonical surface; wraps nested dicts on write. ---
+  # --- item access: canonical surface; wraps nested dicts on write. ---
 
-    @staticmethod
-    def __check_key_name(key: Any) -> str:
-        """Validate key; return unchanged if non-dunder str & NOT a reserved name, or raise."""
-        if not isinstance(key, str):
-            raise TypeError(ERR_TYPE_NONSTRING_KEY % (type(key).__name__, repr(key)))
+  @staticmethod
+  def __check_key_name(key: Any) -> str:
+    """Validate key; return unchanged if non-dunder str & NOT a reserved name, or raise."""
+    if not isinstance(key, str):
+      raise TypeError(ERR_TYPE_NONSTRING_KEY % (type(key).__name__, repr(key)))
 
-        if key.startswith("__") and key.endswith("__"):
-            raise ReservedKeyError(ERR_RESERVEDKEY_DUNDER % repr(key))
-        if key in KeyStore.RESERVED_KEY_NAMES:
-            raise ReservedKeyError(
-                ERR_RESERVEDKEY_SHADOW % (repr(key), sorted(KeyStore.RESERVED_KEY_NAMES))
-            )
-        return key
+    if key.startswith("__") and key.endswith("__"):
+      raise ReservedKeyError(ERR_RESERVEDKEY_DUNDER % repr(key))
+    if key in KeyStore.RESERVED_KEY_NAMES:
+      raise ReservedKeyError(
+        ERR_RESERVEDKEY_SHADOW % (repr(key), sorted(KeyStore.RESERVED_KEY_NAMES))
+      )
+    return key
 
-    @staticmethod
-    def __wrap(value: Any) -> V | KeyStore[V]:
-        """Coerce raw value into stored space (``V`` | node); a plain `dict` becomes a node."""
-        if isinstance(value, KeyStore):
-            return value
-        if isinstance(value, dict):
-            return KeyStore(value)
-        return value
+  @staticmethod
+  def __wrap(value: Any) -> V | KeyStore[V]:
+    """Coerce raw value into stored space (``V`` | node); a plain `dict` becomes a node."""
+    if isinstance(value, KeyStore):
+      return value
+    if isinstance(value, dict):
+      return KeyStore(value)
+    return value
 
-    # THE single write funnel — construction, ``[]``-set & attribute-set all arrive here, so the
-    # reserved-name check cannot be routed around. ⚑ It is not the METHOD that needs protecting: a
-    # class attribute ALWAYS wins the lookup, so no stored key can break ``store.get``. What needs
-    # protecting is the VALUE. A key spelled like a member would be stored where ``store.<name>``
-    # can never read it while ``store[name]`` still returns it — a silent split. Refusing the key
-    # at write time is what keeps that unreadable state from ever existing.
-    def __setitem__(self, key: str, value: Any) -> None:
-        super().__setitem__(self.__check_key_name(key), self.__wrap(value))
+  # THE single write funnel — construction, ``[]``-set & attribute-set all arrive here, so the
+  # reserved-name check cannot be routed around. ⚑ It is not the METHOD that needs protecting: a
+  # class attribute ALWAYS wins the lookup, so no stored key can break ``store.get``. What needs
+  # protecting is the VALUE. A key spelled like a member would be stored where ``store.<name>``
+  # can never read it while ``store[name]`` still returns it — a silent split. Refusing the key
+  # at write time is what keeps that unreadable state from ever existing.
+  def __setitem__(self, key: str, value: Any) -> None:
+    super().__setitem__(self.__check_key_name(key), self.__wrap(value))
 
-    # --- attribute access: maps keys; dict methods are reserved; key cannot shadow real attr. ---
+  # --- attribute access: maps keys; dict methods are reserved; key cannot shadow real attr. ---
 
-    # Fires ONLY on lookup miss; as reserved names cannot be stored as keys, no method collision.
-    def __getattr__(self, name: str) -> V | KeyStore[V]:
-        if dict.__contains__(self, name):
-            return dict.__getitem__(self, name)
-        # Not stored key or attribute, so raise AttributeError (not KeyError).
-        raise AttributeError(ERR_ATTRIBUTE_NO_KEY % (repr(type(self).__name__), repr(name)))
+  # Fires ONLY on lookup miss; as reserved names cannot be stored as keys, no method collision.
+  def __getattr__(self, name: str) -> V | KeyStore[V]:
+    if dict.__contains__(self, name):
+      return dict.__getitem__(self, name)
+    # Not stored key or attribute, so raise AttributeError (not KeyError).
+    raise AttributeError(ERR_ATTRIBUTE_NO_KEY % (repr(type(self).__name__), repr(name)))
 
-    # Dunder attributes are real (not used for storage; this helps avoid accidents).
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name.startswith("__") and name.endswith("__"):
-            object.__setattr__(self, name, value)
-            return
-        self[name] = value
+  # Dunder attributes are real (not used for storage; this helps avoid accidents).
+  def __setattr__(self, name: str, value: Any) -> None:
+    if name.startswith("__") and name.endswith("__"):
+      object.__setattr__(self, name, value)
+      return
+    self[name] = value
 
-    def __delattr__(self, name: str) -> None:
-        try:
-            del self[name]
-        except KeyError:
-            raise AttributeError(
-                ERR_ATTRIBUTE_NO_KEY % (repr(type(self).__name__), repr(name))
-            ) from None
+  def __delattr__(self, name: str) -> None:
+    try:
+      del self[name]
+    except KeyError:
+      raise AttributeError(
+        ERR_ATTRIBUTE_NO_KEY % (repr(type(self).__name__), repr(name))
+      ) from None
 
-    # --- representation ---
+  # --- representation ---
 
-    # Use dict.items(self) — NOT self.items() — the unbound form reads storage directly and cannot
-    # be answered by an override. (A key named ``items`` could not break this in any case: it is
-    # reserved, and an attribute lookup finds the method whatever is stored.)
-    def __repr__(self) -> str:
-        inner = ", ".join(f"{k!r}: {v!r}" for k, v in dict.items(self))
-        return f"{type(self).__name__}({{{inner}}})"
+  # Use dict.items(self) — NOT self.items() — the unbound form reads storage directly and cannot
+  # be answered by an override. (A key named ``items`` could not break this in any case: it is
+  # reserved, and an attribute lookup finds the method whatever is stored.)
+  def __repr__(self) -> str:
+    inner = ", ".join(f"{k!r}: {v!r}" for k, v in dict.items(self))
+    return f"{type(self).__name__}({{{inner}}})"
 
-    # Remaining `dict` methods (accessors, equality, operators, etc.) are inherited from `dict`.
+  # Remaining `dict` methods (accessors, equality, operators, etc.) are inherited from `dict`.
 
 
 ### Copying ###
 
+
 # ⚑ A MODULE FUNCTION, NOT A METHOD: a public method would have to join RESERVED_KEY_NAMES and so
 # refuse a stored key of the same name that is accepted today.
 def clone_store(store: KeyStore[V]) -> KeyStore[V]:
-    """A deep copy of *store* that aliases no mutable part: every node is rebuilt and every
-    list copied; other leaves are shared. Iterates storage unbound, so no key can shadow it."""
-    out: KeyStore[V] = KeyStore()
-    for key in dict.keys(store):
-        value = dict.__getitem__(store, key)
-        if isinstance(value, KeyStore):
-            out[key] = clone_store(value)
-        elif isinstance(value, list):
-            out[key] = list(value)
-        else:
-            out[key] = value
-    return out
+  """A deep copy of *store* that aliases no mutable part: every node is rebuilt and every
+  list copied; other leaves are shared. Iterates storage unbound, so no key can shadow it."""
+  out: KeyStore[V] = KeyStore()
+  for key in dict.keys(store):
+    value = dict.__getitem__(store, key)
+    if isinstance(value, KeyStore):
+      out[key] = clone_store(value)
+    elif isinstance(value, list):
+      out[key] = list(value)
+    else:
+      out[key] = value
+  return out

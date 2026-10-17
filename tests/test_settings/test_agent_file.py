@@ -11,18 +11,18 @@ import pytest
 
 from kanibako.settings.agent_config import AgentConfig, agent_settings_path
 from kanibako.settings.agent_file import (
-    AgentFileLevel,
-    _FLAT_AGENT_CATEGORIES,
-    _MODELED_KEYS,
-    clear_overrides,
-    file_spelling,
-    level_table,
-    read_leaf,
-    remove_leaf,
-    save,
-    slot_for,
-    stored_leaf_text,
-    write_leaf,
+  AgentFileLevel,
+  _FLAT_AGENT_CATEGORIES,
+  _MODELED_KEYS,
+  clear_overrides,
+  file_spelling,
+  level_table,
+  read_leaf,
+  remove_leaf,
+  save,
+  slot_for,
+  stored_leaf_text,
+  write_leaf,
 )
 from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 from kanibako.settings.config_io import dump_doc
@@ -32,1783 +32,1855 @@ from kanibako.settings.settings_resolve import SettingsError
 
 
 class TestSecretPathSection:
-    """The secret_path POINTER family (VAR -> host path; secret stays in the file).
+  """The secret_path POINTER family (VAR -> host path; secret stays in the file).
 
-    RENAMED from ``env_file`` (rc0-rc2, clean break). Stored DIRECTLY under the file's root
-    (``self.secret_path.<VAR>``) — ``self`` IS ``agent.<node>`` (the per-agent store dir
-    ``agents/<node>/agent.yaml``), so there is NO second ``<node>`` embedding; the whole root
-    table is what ``agent_file_partial`` re-roots into the launch cascade.  The value is a PATH
-    only (never the secret contents).
-    """
+  RENAMED from ``env_file`` (rc0-rc2, clean break). Stored DIRECTLY under the file's root
+  (``self.secret_path.<VAR>``) — ``self`` IS ``agent.<node>`` (the per-agent store dir
+  ``agents/<node>/agent.yaml``), so there is NO second ``<node>`` embedding; the whole root
+  table is what ``agent_file_partial`` re-roots into the launch cascade.  The value is a PATH
+  only (never the secret contents).
+  """
 
-    def _node_file(self, tmp_path, node="nav℘claude"):
-        p = tmp_path / node / "agent.yaml"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return p
+  def _node_file(self, tmp_path, node="nav℘claude"):
+    p = tmp_path / node / "agent.yaml"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
-    def test_load_secret_path_section(self, tmp_path):
-        cfg_path = self._node_file(tmp_path)
-        cfg_path.write_text(
-            'self:\n'
-            '  secret_path:\n'
-            '    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        # Only the PATH is loaded (a pointer), never any secret value. secret_path
-        # sits DIRECTLY under the root (self IS agent.<node>) and does NOT leak into
-        # flat state (it is a dict, not a scalar knob).
-        assert cfg.secret_path == {
-            "ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"
-        }
-        assert "secret_path" not in cfg.state
+  def test_load_secret_path_section(self, tmp_path):
+    cfg_path = self._node_file(tmp_path)
+    cfg_path.write_text(
+      'self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
+    )
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    # Only the PATH is loaded (a pointer), never any secret value. secret_path
+    # sits DIRECTLY under the root (self IS agent.<node>) and does NOT leak into
+    # flat state (it is a dict, not a scalar knob).
+    assert cfg.secret_path == {"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+    assert "secret_path" not in cfg.state
 
-    def test_load_missing_secret_path_section(self, tmp_path):
-        cfg_path = self._node_file(tmp_path)
-        cfg_path.write_text('self:\n  model: "opus"\n')
-        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).secret_path == {}
+  def test_load_missing_secret_path_section(self, tmp_path):
+    cfg_path = self._node_file(tmp_path)
+    cfg_path.write_text('self:\n  model: "opus"\n')
+    assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).secret_path == {}
 
-    def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
-        # keyspec §2a secret_path.<VAR>: the token/key MAY hold an explicit null to mean "no
-        # key" — this endpoint is deliberately KEYLESS. A ``None`` value must
-        # survive the load VERBATIM (never coerced through ``str()``, which
-        # would turn it into the four-byte garbage string ``"None"`` —
-        # indistinguishable from a typo'd path). Membership (``var in
-        # cfg.secret_path``) still says the VAR was configured; only the value
-        # differs from a real pointer. (Mutation: restore the old
-        # ``str(v)``-for-every-entry load and this comes back as the string
-        # ``"None"`` → RED.)
-        cfg_path = self._node_file(tmp_path)
-        cfg_path.write_text(
-            'self:\n'
-            '  secret_path:\n'
-            '    ANTHROPIC_AUTH_TOKEN: null\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
-        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
-        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] != "None"
+  def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
+    # keyspec §2a secret_path.<VAR>: the token/key MAY hold an explicit null to mean "no
+    # key" — this endpoint is deliberately KEYLESS. A ``None`` value must
+    # survive the load VERBATIM (never coerced through ``str()``, which
+    # would turn it into the four-byte garbage string ``"None"`` —
+    # indistinguishable from a typo'd path). Membership (``var in
+    # cfg.secret_path``) still says the VAR was configured; only the value
+    # differs from a real pointer. (Mutation: restore the old
+    # ``str(v)``-for-every-entry load and this comes back as the string
+    # ``"None"`` → RED.)
+    cfg_path = self._node_file(tmp_path)
+    cfg_path.write_text("self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: null\n")
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
+    assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
+    assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] != "None"
 
-    def test_round_trip_secret_path(self, tmp_path):
-        path = self._node_file(tmp_path)
-        original = AgentConfig(
-            secret_path={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
-        )
-        save(path, original)
-        # The written file stores the PATH (directly under the root's secret_path
-        # table), not any token contents, and NO legacy env_file section.
-        content = path.read_text()
-        assert "/secure/token" in content
-        assert "env_file" not in content
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
+  def test_round_trip_secret_path(self, tmp_path):
+    path = self._node_file(tmp_path)
+    original = AgentConfig(
+      secret_path={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
+    )
+    save(path, original)
+    # The written file stores the PATH (directly under the root's secret_path
+    # table), not any token contents, and NO legacy env_file section.
+    content = path.read_text()
+    assert "/secure/token" in content
+    assert "env_file" not in content
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
 
-    def test_round_trip_present_null_secret_path(self, tmp_path):
-        # A deliberately-keyless VAR (keyspec §2a secret_path.<VAR>) survives save→load as a
-        # real ``None``, not the string "None" — and a sparse write still
-        # materializes the table (a dict with one None-valued entry is
-        # non-empty, so it is NOT dropped as an empty category).
-        path = self._node_file(tmp_path)
-        original = AgentConfig(
-            secret_path={"ANTHROPIC_AUTH_TOKEN": None},
-        )
-        save(path, original)
-        content = path.read_text()
-        assert "secret_path" in content
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": None}
+  def test_round_trip_present_null_secret_path(self, tmp_path):
+    # A deliberately-keyless VAR (keyspec §2a secret_path.<VAR>) survives save→load as a
+    # real ``None``, not the string "None" — and a sparse write still
+    # materializes the table (a dict with one None-valued entry is
+    # non-empty, so it is NOT dropped as an empty category).
+    path = self._node_file(tmp_path)
+    original = AgentConfig(
+      secret_path={"ANTHROPIC_AUTH_TOKEN": None},
+    )
+    save(path, original)
+    content = path.read_text()
+    assert "secret_path" in content
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": None}
 
 
 class TestLoad:
-    def test_nonexistent_file_returns_defaults(self, tmp_path):
-        cfg = agent_record(tmp_path / "missing.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
-        # ⚑ ``None``, NOT ``[]``: the record is three-state and a file that does not
-        # exist says NOTHING about the argv, which is not the same as saying "none".
-        assert cfg.run_args is None
-        assert cfg.state == {}
+  def test_nonexistent_file_returns_defaults(self, tmp_path):
+    cfg = agent_record(tmp_path / "missing.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
+    # ⚑ ``None``, NOT ``[]``: the record is three-state and a file that does not
+    # exist says NOTHING about the argv, which is not the same as saying "none".
+    assert cfg.run_args is None
+    assert cfg.state == {}
 
-    def test_load_all_sections(self, tmp_path):
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  run_args: ["--verbose", "--debug"]\n'
-            '  model: "opus"\n'
-            '  access: "permissive"\n'
-            '  env:\n'
-            '    MY_VAR: "hello"\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.run_args == ["--verbose", "--debug"]
-        assert cfg.state == {"model": "opus", "access": "permissive"}
-        assert cfg.env == {"MY_VAR": "hello"}
+  def test_load_all_sections(self, tmp_path):
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text(
+      "self:\n"
+      '  run_args: ["--verbose", "--debug"]\n'
+      '  model: "opus"\n'
+      '  access: "permissive"\n'
+      "  env:\n"
+      '    MY_VAR: "hello"\n'
+    )
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.run_args == ["--verbose", "--debug"]
+    assert cfg.state == {"model": "opus", "access": "permissive"}
+    assert cfg.env == {"MY_VAR": "hello"}
 
-    def test_load_present_null_state_is_kept_as_none(self, tmp_path):
-        # keyspec §2h present-``None`` rule (a scalar leaf keeps ``None``):
-        # a flat state scalar (e.g. ``model``)
-        # explicitly ``null`` must survive load as a real ``None`` — never
-        # coerced through ``str()`` into the four-byte garbage string
-        # ``"None"``, which would reach the launch cascade as a BOGUS model id
-        # and silently defeat the persona's-default declaration (keyspec §2d).
-        # (Mutation: restore the unconditional ``str(v)`` and this comes back as
-        # the string ``"None"`` → RED.)
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  model: null\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert "model" in cfg.state
-        assert cfg.state["model"] is None
-        assert cfg.state["model"] != "None"
+  def test_load_present_null_state_is_kept_as_none(self, tmp_path):
+    # keyspec §2h present-``None`` rule (a scalar leaf keeps ``None``):
+    # a flat state scalar (e.g. ``model``)
+    # explicitly ``null`` must survive load as a real ``None`` — never
+    # coerced through ``str()`` into the four-byte garbage string
+    # ``"None"``, which would reach the launch cascade as a BOGUS model id
+    # and silently defeat the persona's-default declaration (keyspec §2d).
+    # (Mutation: restore the unconditional ``str(v)`` and this comes back as
+    # the string ``"None"`` → RED.)
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text("self:\n  model: null\n")
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert "model" in cfg.state
+    assert cfg.state["model"] is None
+    assert cfg.state["model"] != "None"
 
-    def test_load_agent_section_only(self, tmp_path):
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  run_args: ["--verbose"]\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.run_args == ["--verbose"]
-        assert cfg.state == {}
-        assert cfg.env == {}
+  def test_load_agent_section_only(self, tmp_path):
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text('self:\n  run_args: ["--verbose"]\n')
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.run_args == ["--verbose"]
+    assert cfg.state == {}
+    assert cfg.env == {}
 
-    def test_load_state_keys_without_identity(self, tmp_path):
-        # A root table with only state keys (no identity keys) → all land in state.
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  access: "safe"\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.state == {"access": "safe"}
+  def test_load_state_keys_without_identity(self, tmp_path):
+    # A root table with only state keys (no identity keys) → all land in state.
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text('self:\n  access: "safe"\n')
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.state == {"access": "safe"}
 
-    def test_load_missing_agent_section(self, tmp_path):
-        # A root table holding only env (no identity/state keys): env still
-        # loads, state stays empty.
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  env:\n'
-            '    FOO: "bar"\n'
-        )
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.state == {}
-        assert cfg.env == {"FOO": "bar"}
+  def test_load_missing_agent_section(self, tmp_path):
+    # A root table holding only env (no identity/state keys): env still
+    # loads, state stays empty.
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text('self:\n  env:\n    FOO: "bar"\n')
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.state == {}
+    assert cfg.env == {"FOO": "bar"}
 
-    def test_load_empty_file(self, tmp_path):
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text("")
-        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.run_args is None
-        assert cfg.state == {}
+  def test_load_empty_file(self, tmp_path):
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text("")
+    cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.run_args is None
+    assert cfg.state == {}
 
-    def test_a_stored_run_args_STRING_is_split_not_discarded(self, tmp_path):
-        """REPLACES ``test_run_args_must_be_list``, which pinned the DEFECT.
+  def test_a_stored_run_args_STRING_is_split_not_discarded(self, tmp_path):
+    """REPLACES ``test_run_args_must_be_list``, which pinned the DEFECT.
 
-        That row asserted ``cfg.run_args == []`` for a stored string — the reader
-        taking a list or nothing.  It was true of the code and wrong about the
-        product: ``config set agent.<node>.run_args="--c --d"`` wrote exactly that
-        string, so the value a user was told had been set reached no launch.
-        ⚑ MUTATION: restore ``[str(a) for a in raw] if isinstance(raw, list) else []``
-        and this reds on the empty list.
-        """
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text(
-            'self:\n'
-            '  run_args: "--c --d"\n'
-        )
-        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
+    That row asserted ``cfg.run_args == []`` for a stored string — the reader
+    taking a list or nothing.  It was true of the code and wrong about the
+    product: ``config set agent.<node>.run_args="--c --d"`` wrote exactly that
+    string, so the value a user was told had been set reached no launch.
+    ⚑ MUTATION: restore ``[str(a) for a in raw] if isinstance(raw, list) else []``
+    and this reds on the empty list.
+    """
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text('self:\n  run_args: "--c --d"\n')
+    assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == [
+      "--c",
+      "--d",
+    ]
 
-    def test_a_bare_run_args_is_no_arguments_not_the_word_None(self, tmp_path):
-        """``run_args:`` parses to ``None``; coercing it through ``str`` would make
-        the four-byte argument ``None`` — the same trap the ``model: null`` row
-        above records."""
-        cfg_path = tmp_path / "test.yaml"
-        cfg_path.write_text('self:\n  run_args:\n')
-        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
+  def test_a_bare_run_args_is_no_arguments_not_the_word_None(self, tmp_path):
+    """``run_args:`` parses to ``None``; coercing it through ``str`` would make
+    the four-byte argument ``None`` — the same trap the ``model: null`` row
+    above records."""
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text("self:\n  run_args:\n")
+    assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
 
 
 class TestSave:
-    def test_write_defaults(self, tmp_path):
-        path = tmp_path / "agents" / "test.yaml"
-        cfg = AgentConfig()
-        save(path, cfg)
+  def test_write_defaults(self, tmp_path):
+    path = tmp_path / "agents" / "test.yaml"
+    cfg = AgentConfig()
+    save(path, cfg)
 
-        assert path.exists()
-        content = path.read_text()
-        assert 'self:' in content
-        assert 'state:' not in content
-        # Sparse write: an empty env is NOT materialized (no phantom override).
-        assert 'env:' not in content
+    assert path.exists()
+    content = path.read_text()
+    assert "self:" in content
+    assert "state:" not in content
+    # Sparse write: an empty env is NOT materialized (no phantom override).
+    assert "env:" not in content
 
-    def test_write_with_values(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        cfg = AgentConfig(
-            run_args=["--verbose"],
-            state={"access": "permissive"},
-            env={"FOO": "bar"},
-        )
-        save(path, cfg)
+  def test_write_with_values(self, tmp_path):
+    path = tmp_path / "test.yaml"
+    cfg = AgentConfig(
+      run_args=["--verbose"],
+      state={"access": "permissive"},
+      env={"FOO": "bar"},
+    )
+    save(path, cfg)
 
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.run_args == ["--verbose"]
-        assert loaded.state == {"access": "permissive"}
-        assert loaded.env == {"FOO": "bar"}
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.run_args == ["--verbose"]
+    assert loaded.state == {"access": "permissive"}
+    assert loaded.env == {"FOO": "bar"}
 
-    def test_state_folded_into_agent_section(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        cfg = AgentConfig(state={"access": "permissive"})
-        save(path, cfg)
+  def test_state_folded_into_agent_section(self, tmp_path):
+    path = tmp_path / "test.yaml"
+    cfg = AgentConfig(state={"access": "permissive"})
+    save(path, cfg)
 
-        content = path.read_text()
-        # No separate state section; state knobs live under the root table.
-        assert 'state:' not in content
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.state == {"access": "permissive"}
+    content = path.read_text()
+    # No separate state section; state knobs live under the root table.
+    assert "state:" not in content
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.state == {"access": "permissive"}
 
-    def test_a_defaulted_run_args_is_not_materialized(self, tmp_path):
-        """Sparse: an empty ``run_args`` is a PHANTOM override, not the default on-disk state.
+  def test_a_defaulted_run_args_is_not_materialized(self, tmp_path):
+    """Sparse: an empty ``run_args`` is a PHANTOM override, not the default on-disk state.
 
-        (Mutation: emit ``run_args`` unconditionally again → ``run_args: []`` is in the file
-        → RED.)
-        """
-        path = tmp_path / "agents" / "test.yaml"
-        save(path, AgentConfig())
-        assert "run_args" not in path.read_text()
+    (Mutation: emit ``run_args`` unconditionally again → ``run_args: []`` is in the file
+    → RED.)
+    """
+    path = tmp_path / "agents" / "test.yaml"
+    save(path, AgentConfig())
+    assert "run_args" not in path.read_text()
 
-    def test_a_seeded_file_holds_zero_overrides(self, tmp_path):
-        """THE END-TO-END RULE the sparse write is FOR, pinned in its own case.
+  def test_a_seeded_file_holds_zero_overrides(self, tmp_path):
+    """THE END-TO-END RULE the sparse write is FOR, pinned in its own case.
 
-        A freshly seeded file holds nothing the user wrote, so ``agent reset --all`` — which
-        counts each removed leaf (:func:`clear_overrides`) — must count ZERO on it.  The
-        unconditional ``run_args`` emission made every seeded file count 1, and the command
-        reported an override nobody had set.
-        ⚑ SEPARATE FROM THE CASE ABOVE ON PURPOSE: :func:`clear_overrides` REWRITES the file,
-        so a text assertion after it would pass on the value it just deleted.
-        (Mutation: emit ``run_args`` unconditionally again → the count is 1 → RED.)
-        """
-        path = tmp_path / "agents" / "test.yaml"
-        save(path, AgentConfig())
-        assert clear_overrides(path) == 0
+    A freshly seeded file holds nothing the user wrote, so ``agent reset --all`` — which
+    counts each removed leaf (:func:`clear_overrides`) — must count ZERO on it.  The
+    unconditional ``run_args`` emission made every seeded file count 1, and the command
+    reported an override nobody had set.
+    ⚑ SEPARATE FROM THE CASE ABOVE ON PURPOSE: :func:`clear_overrides` REWRITES the file,
+    so a text assertion after it would pass on the value it just deleted.
+    (Mutation: emit ``run_args`` unconditionally again → the count is 1 → RED.)
+    """
+    path = tmp_path / "agents" / "test.yaml"
+    save(path, AgentConfig())
+    assert clear_overrides(path) == 0
 
-    def test_a_real_run_args_is_still_emitted(self, tmp_path):
-        """The other half: sparse drops the EMPTY list only — a real one still round-trips
-        and still counts as the one override it is."""
-        path = tmp_path / "agents" / "test.yaml"
-        save(path, AgentConfig(run_args=["--verbose", "--debug"]))
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--verbose", "--debug"]
-        assert clear_overrides(path) == 1
+  def test_a_real_run_args_is_still_emitted(self, tmp_path):
+    """The other half: sparse drops the EMPTY list only — a real one still round-trips
+    and still counts as the one override it is."""
+    path = tmp_path / "agents" / "test.yaml"
+    save(path, AgentConfig(run_args=["--verbose", "--debug"]))
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == [
+      "--verbose",
+      "--debug",
+    ]
+    assert clear_overrides(path) == 1
 
-    def test_creates_parent_dirs(self, tmp_path):
-        path = tmp_path / "deep" / "nested" / "agent.yaml"
-        save(path, AgentConfig())
-        assert path.exists()
+  def test_creates_parent_dirs(self, tmp_path):
+    path = tmp_path / "deep" / "nested" / "agent.yaml"
+    save(path, AgentConfig())
+    assert path.exists()
 
 
 class TestRoundTrip:
-    def test_write_then_load(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        original = AgentConfig(
-            run_args=["--verbose", "--debug"],
-            state={"model": "opus", "access": "permissive"},
-            env={"MY_VAR": "hello"},
-        )
-        save(path, original)
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+  def test_write_then_load(self, tmp_path):
+    path = tmp_path / "test.yaml"
+    original = AgentConfig(
+      run_args=["--verbose", "--debug"],
+      state={"model": "opus", "access": "permissive"},
+      env={"MY_VAR": "hello"},
+    )
+    save(path, original)
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
-        assert loaded.run_args == original.run_args
-        assert loaded.state == original.state
-        assert loaded.env == original.env
+    assert loaded.run_args == original.run_args
+    assert loaded.state == original.state
+    assert loaded.env == original.env
 
-    def test_round_trip_present_null_state(self, tmp_path):
-        # A deliberately-null state scalar (e.g. a persona's ``model: null``)
-        # survives save→load as a real ``None``, not the string "None".
-        path = tmp_path / "test.yaml"
-        original = AgentConfig(state={"model": None})
-        save(path, original)
-        content = path.read_text()
-        assert "model:" in content
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.state == {"model": None}
+  def test_round_trip_present_null_state(self, tmp_path):
+    # A deliberately-null state scalar (e.g. a persona's ``model: null``)
+    # survives save→load as a real ``None``, not the string "None".
+    path = tmp_path / "test.yaml"
+    original = AgentConfig(state={"model": None})
+    save(path, original)
+    content = path.read_text()
+    assert "model:" in content
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.state == {"model": None}
 
-    def test_round_trip_empty_config(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        original = AgentConfig()
-        save(path, original)
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+  def test_round_trip_empty_config(self, tmp_path):
+    path = tmp_path / "test.yaml"
+    original = AgentConfig()
+    save(path, original)
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
-        assert loaded.run_args is None
-        assert loaded.state == {}
-        assert loaded.env == {}
+    assert loaded.run_args is None
+    assert loaded.state == {}
+    assert loaded.env == {}
 
-    def test_state_folded_into_single_agent_section(self, tmp_path):
-        # Writing state must produce ONE root table (identity + state),
-        # with no separate state section, and load back intact.
-        path = tmp_path / "test.yaml"
-        original = AgentConfig(
-            run_args=["--verbose"],
-            state={"model": "sonnet"},
-        )
-        save(path, original)
-        content = path.read_text()
-        assert 'state:' not in content
-        assert content.count("self:") == 1
-        assert 'run_args:' in content
-        assert 'model: sonnet' in content
+  def test_state_folded_into_single_agent_section(self, tmp_path):
+    # Writing state must produce ONE root table (identity + state),
+    # with no separate state section, and load back intact.
+    path = tmp_path / "test.yaml"
+    original = AgentConfig(
+      run_args=["--verbose"],
+      state={"model": "sonnet"},
+    )
+    save(path, original)
+    content = path.read_text()
+    assert "state:" not in content
+    assert content.count("self:") == 1
+    assert "run_args:" in content
+    assert "model: sonnet" in content
 
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.state == {"model": "sonnet"}
-        assert loaded.run_args == ["--verbose"]
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.state == {"model": "sonnet"}
+    assert loaded.run_args == ["--verbose"]
 
-    def test_round_trip_multiple_run_args(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        original = AgentConfig(run_args=["--foo", "--bar", "baz"])
-        save(path, original)
-        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert loaded.run_args == ["--foo", "--bar", "baz"]
+  def test_round_trip_multiple_run_args(self, tmp_path):
+    path = tmp_path / "test.yaml"
+    original = AgentConfig(run_args=["--foo", "--bar", "baz"])
+    save(path, original)
+    loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert loaded.run_args == ["--foo", "--bar", "baz"]
 
 
 class TestCategoryTablesCarryThrough:
-    """The CATEGORY tables the record does not model (bindings, caches, seeded, common,
-    synced, masks) must survive the load→write round trip OPAQUELY.  AgentConfig does not
-    model them (they ride ``agent_file_partial`` into the launch cascade), but before the
-    ``category_tables`` carry a read-modify-write persist silently DROPPED a user's binds.
+  """The CATEGORY tables the record does not model (bindings, caches, seeded, common,
+  synced, masks) must survive the load→write round trip OPAQUELY.  AgentConfig does not
+  model them (they ride ``agent_file_partial`` into the launch cascade), but before the
+  ``category_tables`` carry a read-modify-write persist silently DROPPED a user's binds.
 
-    ⚑ RENAMED FROM ``node_tables`` WITH THE S2 FLATTEN, and the name is the fact: there is no
-    per-node sub-table any more (``self`` IS ``agent.<node>``), so what the carrier holds is
-    exactly the flat categories the record has no field for.
-    """
+  ⚑ RENAMED FROM ``node_tables`` WITH THE S2 FLATTEN, and the name is the fact: there is no
+  per-node sub-table any more (``self`` IS ``agent.<node>``), so what the carrier holds is
+  exactly the flat categories the record has no field for.
+  """
 
-    _FLAT_YAML = (
-        "self:\n"
-        "  model: gemma4\n"
-        "  bindings:\n"
-        "    ro:\n"
-        "      /box/share: [/host/share]\n"
+  _FLAT_YAML = "self:\n  model: gemma4\n  bindings:\n    ro:\n      /box/share: [/host/share]\n"
+
+  def test_load_captures_the_unmodeled_categories(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    path.write_text(self._FLAT_YAML)
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.category_tables == {"bindings": {"ro": {"/box/share": ["/host/share"]}}}
+    # And it is NOT mistaken for flat state (dict-valued entries excluded).
+    assert "bindings" not in cfg.state
+
+  def test_round_trip_preserves_the_category_tables(self, tmp_path):
+    from kanibako.settings.config_io import load_doc
+
+    path = tmp_path / "agent.yaml"
+    path.write_text(self._FLAT_YAML)
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
+    save(path, cfg)
+
+    data = load_doc(path)
+    assert data["self"]["bindings"]["ro"] == {"/box/share": ["/host/share"]}
+    assert data["self"]["endpoint"] == "https://e.example"
+
+  def test_every_unmodeled_category_rides_the_carrier(self, tmp_path):
+    # The carrier is derived from the flat-category tuple MINUS what the record
+    # models, so widening one widens the other — no second list to keep in step.
+    path = tmp_path / "agent.yaml"
+    path.write_text(
+      "self:\n"
+      "  caches: {~/.cache/uv: [/store/uv]}\n"
+      "  seeded: {~: [/store/template]}\n"
+      "  common: {~/.claude/plugins: [/store/plugins]}\n"
+      "  synced: {~/.config/x: [/store/x]}\n"
+      "  masks: {~/.ssh: true}\n"
     )
+    assert set(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).category_tables) == {
+      "caches",
+      "seeded",
+      "common",
+      "synced",
+      "masks",
+    }
 
-    def test_load_captures_the_unmodeled_categories(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        path.write_text(self._FLAT_YAML)
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.category_tables == {
-            "bindings": {"ro": {"/box/share": ["/host/share"]}}
-        }
-        # And it is NOT mistaken for flat state (dict-valued entries excluded).
-        assert "bindings" not in cfg.state
+  def test_env_secret_transform_not_double_captured(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    path.write_text(
+      "self:\n"
+      "  env:\n"
+      "    A: b\n"
+      "  secret_path:\n"
+      "    TOK: /t\n"
+      "  transform_settings:\n"
+      "    theme: dark\n"
+    )
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.category_tables == {}
 
-    def test_round_trip_preserves_the_category_tables(self, tmp_path):
-        from kanibako.settings.config_io import load_doc
+  def test_empty_category_table_not_materialized(self, tmp_path):
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text(self._FLAT_YAML)
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
-        save(path, cfg)
+    path = tmp_path / "agent.yaml"
+    save(path, AgentConfig(category_tables={"caches": {}}))
+    assert "caches" not in load_doc(path)["self"]
 
-        data = load_doc(path)
-        assert data["self"]["bindings"]["ro"] == {"/box/share": ["/host/share"]}
-        assert data["self"]["endpoint"] == "https://e.example"
+  def test_schema_owned_dict_keys_never_captured(self, tmp_path):
+    # A malformed dict-valued MODELED key must not ride category_tables (it would
+    # clobber the emitted value on the next write) — and it is NOT refused as a nested
+    # sub-table either: a mistyped scalar is not a nesting.
+    # ⚑ ``run_args`` is the scalar-writable one (``_SCALAR_WRITABLE_KEYS``); ``name`` was
+    # beside it until D8b retired it, so a dict-valued ``name:`` IS a nested sub-table
+    # now and DOES refuse.
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  run_args:\n    weird: 2\n")
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.category_tables == {}
 
-    def test_every_unmodeled_category_rides_the_carrier(self, tmp_path):
-        # The carrier is derived from the flat-category tuple MINUS what the record
-        # models, so widening one widens the other — no second list to keep in step.
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  caches: {~/.cache/uv: [/store/uv]}\n"
-            "  seeded: {~: [/store/template]}\n"
-            "  common: {~/.claude/plugins: [/store/plugins]}\n"
-            "  synced: {~/.config/x: [/store/x]}\n"
-            "  masks: {~/.ssh: true}\n"
-        )
-        assert set(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).category_tables) == {
-            "caches", "seeded", "common", "synced", "masks",
-        }
+  def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
+    # A hand-built config cannot smuggle a carrier entry named after a modeled
+    # key over the real category: ONE set guards both ends, and ``env`` is not in
+    # it. Nor can the carrier emit a table ``load`` would refuse.
+    from kanibako.settings.config_io import load_doc
 
-    def test_env_secret_transform_not_double_captured(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  env:\n"
-            "    A: b\n"
-            "  secret_path:\n"
-            "    TOK: /t\n"
-            "  transform_settings:\n"
-            "    theme: dark\n"
-        )
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.category_tables == {}
+    path = tmp_path / "agent.yaml"
+    save(
+      path,
+      AgentConfig(
+        env={"A": "b"},
+        category_tables={"env": {"EVIL": "x"}, "nav℘codex": {"evil": "y"}},
+      ),
+    )
+    data = load_doc(path)
+    assert data["self"]["env"] == {"A": "b"}
+    assert "nav℘codex" not in data["self"]
+    # And what was written loads back without a refusal.
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
 
-    def test_empty_category_table_not_materialized(self, tmp_path):
-        from kanibako.settings.config_io import load_doc
-
-        path = tmp_path / "agent.yaml"
-        save(path, AgentConfig(category_tables={"caches": {}}))
-        assert "caches" not in load_doc(path)["self"]
-
-    def test_schema_owned_dict_keys_never_captured(self, tmp_path):
-        # A malformed dict-valued MODELED key must not ride category_tables (it would
-        # clobber the emitted value on the next write) — and it is NOT refused as a nested
-        # sub-table either: a mistyped scalar is not a nesting.
-        # ⚑ ``run_args`` is the scalar-writable one (``_SCALAR_WRITABLE_KEYS``); ``name`` was
-        # beside it until D8b retired it, so a dict-valued ``name:`` IS a nested sub-table
-        # now and DOES refuse.
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  run_args:\n"
-            "    weird: 2\n"
-        )
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.category_tables == {}
-
-    def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
-        # A hand-built config cannot smuggle a carrier entry named after a modeled
-        # key over the real category: ONE set guards both ends, and ``env`` is not in
-        # it. Nor can the carrier emit a table ``load`` would refuse.
-        from kanibako.settings.config_io import load_doc
-
-        path = tmp_path / "agent.yaml"
-        save(path, AgentConfig(
-            env={"A": "b"},
-            category_tables={"env": {"EVIL": "x"}, "nav℘codex": {"evil": "y"}},
-        ))
-        data = load_doc(path)
-        assert data["self"]["env"] == {"A": "b"}
-        assert "nav℘codex" not in data["self"]
-        # And what was written loads back without a refusal.
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
-
-    def test_transform_is_not_a_modeled_key(self):
-        # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
-        # rides flat state, so it must not be swept into the opaque carrier.
-        assert "transform" not in _MODELED_KEYS
+  def test_transform_is_not_a_modeled_key(self):
+    # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
+    # rides flat state, so it must not be swept into the opaque carrier.
+    assert "transform" not in _MODELED_KEYS
 
 
 class TestSlotRouting:
-    """``slot_for`` + read/write/remove — the per-value half of the boundary."""
+  """``slot_for`` + read/write/remove — the per-value half of the boundary."""
 
-    _TAILS = ("model", "env.FOO", "secret_path.TOK")
+  _TAILS = ("model", "env.FOO", "secret_path.TOK")
 
-    @pytest.mark.parametrize("tail", _TAILS)
-    def test_write_read_remove_round_trip(self, tail, tmp_path):
-        slot = slot_for(tmp_path, "claude", tail)
-        assert slot.path == tmp_path / "claude" / "agent.yaml"
-        assert read_leaf(slot) is None
-        write_leaf(slot, "v")
-        assert read_leaf(slot) == "v"
-        assert remove_leaf(slot) is True
-        assert read_leaf(slot) is None
-        assert remove_leaf(slot) is False
+  @pytest.mark.parametrize("tail", _TAILS)
+  def test_write_read_remove_round_trip(self, tail, tmp_path):
+    slot = slot_for(tmp_path, "claude", tail)
+    assert slot.path == tmp_path / "claude" / "agent.yaml"
+    assert read_leaf(slot) is None
+    write_leaf(slot, "v")
+    assert read_leaf(slot) == "v"
+    assert remove_leaf(slot) is True
+    assert read_leaf(slot) is None
+    assert remove_leaf(slot) is False
 
-    def test_leaf_lands_where_the_cascade_reads_it(self, tmp_path):
-        # The WRITE side and the cascade READ side are one fact; a flat category
-        # written through a slot must be the table ``level_table`` splices back.
-        from kanibako.settings.config_io import load_doc
+  def test_leaf_lands_where_the_cascade_reads_it(self, tmp_path):
+    # The WRITE side and the cascade READ side are one fact; a flat category
+    # written through a slot must be the table ``level_table`` splices back.
+    from kanibako.settings.config_io import load_doc
 
-        slot = slot_for(tmp_path, "claude", "env.NAV_X")
-        write_leaf(slot, "from-the-file")
-        level = level_table(load_doc(slot.path), sub_key="claude", node="claude")
-        assert level.table["env"] == {"NAV_X": "from-the-file"}
+    slot = slot_for(tmp_path, "claude", "env.NAV_X")
+    write_leaf(slot, "from-the-file")
+    level = level_table(load_doc(slot.path), sub_key="claude", node="claude")
+    assert level.table["env"] == {"NAV_X": "from-the-file"}
 
-    def test_the_bindings_write_arm_is_gone(self, tmp_path):
-        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN ([spec:14-18, "self"]; D-4).
-        # Through S2 this
-        # arm WROTE a ``self.<node>: bindings:`` sub-table that the flattened read then
-        # REFUSED — a value laid down where nothing reads it. S3 does not "flatten" the
-        # write arm, it DELETES it: ``bindings`` is dest-keyed, its entries are DATA inside
-        # the arm's value, so there is no scalar slot to address and the boundary cannot
-        # produce one. The verb refuses by name long before this; this is the backstop.
-        slot = slot_for(tmp_path, "claude", "bindings.ro.share")
-        with pytest.raises(SettingsError, match=r"no scalar slot"):
-            write_leaf(slot, "/host:/box")
-        assert not slot.path.exists()
+  def test_the_bindings_write_arm_is_gone(self, tmp_path):
+    # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN ([spec:14-18, "self"]; D-4).
+    # Through S2 this
+    # arm WROTE a ``self.<node>: bindings:`` sub-table that the flattened read then
+    # REFUSED — a value laid down where nothing reads it. S3 does not "flatten" the
+    # write arm, it DELETES it: ``bindings`` is dest-keyed, its entries are DATA inside
+    # the arm's value, so there is no scalar slot to address and the boundary cannot
+    # produce one. The verb refuses by name long before this; this is the backstop.
+    slot = slot_for(tmp_path, "claude", "bindings.ro.share")
+    with pytest.raises(SettingsError, match=r"no scalar slot"):
+      write_leaf(slot, "/host:/box")
+    assert not slot.path.exists()
 
-    @pytest.mark.parametrize(
-        "tail", ("caches", "masks", "bindings.ro", "transform_settings", "synced"),
-    )
-    def test_no_write_address_for_a_whole_table(self, tail, tmp_path):
-        # The rule is the KEY's value shape, not a list of bad names: every root key
-        # holding a TABLE is unaddressable by a scalar write, and a REMOVE is a write.
-        slot = slot_for(tmp_path, "claude", tail)
-        with pytest.raises(SettingsError, match=r"no scalar slot"):
-            write_leaf(slot, "v")
-        with pytest.raises(SettingsError, match=r"no scalar slot"):
-            remove_leaf(slot)
+  @pytest.mark.parametrize(
+    "tail",
+    ("caches", "masks", "bindings.ro", "transform_settings", "synced"),
+  )
+  def test_no_write_address_for_a_whole_table(self, tail, tmp_path):
+    # The rule is the KEY's value shape, not a list of bad names: every root key
+    # holding a TABLE is unaddressable by a scalar write, and a REMOVE is a write.
+    slot = slot_for(tmp_path, "claude", tail)
+    with pytest.raises(SettingsError, match=r"no scalar slot"):
+      write_leaf(slot, "v")
+    with pytest.raises(SettingsError, match=r"no scalar slot"):
+      remove_leaf(slot)
 
-    def test_read_does_not_re_render(self, tmp_path):
-        # ⚑ ``read_stored_leaf``'s conventions are load-bearing for every ``get`` and the
-        # boundary must not layer a second rendering on them.  ⚑ A stored ``""`` reads back
-        # as ``""``, not as the absent answer: spec §2h's terminal empty string is ≠ unset,
-        # and this slot is NOT list-valued, so nothing above intercepts it.
-        slot = slot_for(tmp_path, "claude", "allow_helpers")
-        write_leaf(slot, True)
-        assert read_leaf(slot) == "true"
-        write_leaf(slot, "")
-        assert read_leaf(slot) == '""'
-        assert read_leaf(slot_for(tmp_path, "claude", "model")) is None  # absent, still
+  def test_read_does_not_re_render(self, tmp_path):
+    # ⚑ ``read_stored_leaf``'s conventions are load-bearing for every ``get`` and the
+    # boundary must not layer a second rendering on them.  ⚑ A stored ``""`` reads back
+    # as ``""``, not as the absent answer: spec §2h's terminal empty string is ≠ unset,
+    # and this slot is NOT list-valued, so nothing above intercepts it.
+    slot = slot_for(tmp_path, "claude", "allow_helpers")
+    write_leaf(slot, True)
+    assert read_leaf(slot) == "true"
+    write_leaf(slot, "")
+    assert read_leaf(slot) == '""'
+    assert read_leaf(slot_for(tmp_path, "claude", "model")) is None  # absent, still
 
 
 class TestTheDestIsData:
-    """D-4: a per-entry DESTINATION is DATA and is never split on ``.``.
+  """D-4: a per-entry DESTINATION is DATA and is never split on ``.``.
 
-    [spec:14-18, "self"].
+  [spec:14-18, "self"].
 
-    The fifth instance of one root cause ([[dest-is-data-never-split-on-dot]]).  The old bindings
-    arm did ``tail.split(".")`` and scattered ``bindings.ro.~/.cache/uv`` across YAML levels, so a
-    hand-authored entry read back "(not set)" while the sibling box scope handled the identical
-    destination fine.
-    """
+  The fifth instance of one root cause ([[dest-is-data-never-split-on-dot]]).  The old bindings
+  arm did ``tail.split(".")`` and scattered ``bindings.ro.~/.cache/uv`` across YAML levels, so a
+  hand-authored entry read back "(not set)" while the sibling box scope handled the identical
+  destination fine.
+  """
 
-    _DOTTED = "~/.cache/uv"
+  _DOTTED = "~/.cache/uv"
 
-    def _file_with(self, tmp_path, body):
-        path = agent_settings_path(tmp_path, "claude")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(body)
-        return path
+  def _file_with(self, tmp_path, body):
+    path = agent_settings_path(tmp_path, "claude")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body)
+    return path
 
-    def test_a_dotted_bindings_dest_reads_back_whole(self, tmp_path):
-        # MUTATION PROOF: restore ``segs = tail.split(".")`` in the address rule and the
-        # read lands on ``self/bindings/ro/~/`` + leaf ``cache/uv`` — a slot no file has.
-        self._file_with(
-            tmp_path,
-            "self:\n"
-            "  bindings:\n"
-            "    ro:\n"
-            f"      {self._DOTTED}: [/store/uv]\n",
-        )
-        slot = slot_for(tmp_path, "claude", f"bindings.ro.{self._DOTTED}")
-        assert read_leaf(slot) == "['/store/uv']"
+  def test_a_dotted_bindings_dest_reads_back_whole(self, tmp_path):
+    # MUTATION PROOF: restore ``segs = tail.split(".")`` in the address rule and the
+    # read lands on ``self/bindings/ro/~/`` + leaf ``cache/uv`` — a slot no file has.
+    self._file_with(
+      tmp_path,
+      f"self:\n  bindings:\n    ro:\n      {self._DOTTED}: [/store/uv]\n",
+    )
+    slot = slot_for(tmp_path, "claude", f"bindings.ro.{self._DOTTED}")
+    assert read_leaf(slot) == "['/store/uv']"
 
-    @pytest.mark.parametrize("category", ("caches", "seeded", "common", "synced"))
-    def test_a_dotted_dest_reads_back_whole_for_every_dest_keyed_category(
-        self, category, tmp_path,
-    ):
-        # The four one-segment-shallower families: the category token IS the whole key,
-        # so EVERYTHING after it is the destination.
-        self._file_with(
-            tmp_path,
-            f"self:\n  {category}:\n    {self._DOTTED}: [/store/x]\n",
-        )
-        slot = slot_for(tmp_path, "claude", f"{category}.{self._DOTTED}")
-        assert read_leaf(slot) == "['/store/x']"
+  @pytest.mark.parametrize("category", ("caches", "seeded", "common", "synced"))
+  def test_a_dotted_dest_reads_back_whole_for_every_dest_keyed_category(
+    self,
+    category,
+    tmp_path,
+  ):
+    # The four one-segment-shallower families: the category token IS the whole key,
+    # so EVERYTHING after it is the destination.
+    self._file_with(
+      tmp_path,
+      f"self:\n  {category}:\n    {self._DOTTED}: [/store/x]\n",
+    )
+    slot = slot_for(tmp_path, "claude", f"{category}.{self._DOTTED}")
+    assert read_leaf(slot) == "['/store/x']"
 
-    def test_a_dotted_masks_dest_reads_back_whole(self, tmp_path):
-        self._file_with(tmp_path, "self:\n  masks:\n    ~/.ssh: true\n")
-        assert read_leaf(slot_for(tmp_path, "claude", "masks.~/.ssh")) == "true"
+  def test_a_dotted_masks_dest_reads_back_whole(self, tmp_path):
+    self._file_with(tmp_path, "self:\n  masks:\n    ~/.ssh: true\n")
+    assert read_leaf(slot_for(tmp_path, "claude", "masks.~/.ssh")) == "true"
 
-    def test_a_non_category_head_is_a_flat_leaf(self, tmp_path):
-        # The fallthrough: a tail whose head is not a category is a root leaf, dots and
-        # all — it is NOT exploded into sections a settings_categories claim depends on.
-        self._file_with(tmp_path, "self:\n  model: opus\n")
-        assert read_leaf(slot_for(tmp_path, "claude", "model")) == "opus"
+  def test_a_non_category_head_is_a_flat_leaf(self, tmp_path):
+    # The fallthrough: a tail whose head is not a category is a root leaf, dots and
+    # all — it is NOT exploded into sections a settings_categories claim depends on.
+    self._file_with(tmp_path, "self:\n  model: opus\n")
+    assert read_leaf(slot_for(tmp_path, "claude", "model")) == "opus"
 
 
 class TestTableValuedKeysTakeNoScalar:
-    """D-7: a declared key whose VALUE is a table takes no scalar, and says so."""
+  """D-7: a declared key whose VALUE is a table takes no scalar, and says so."""
 
-    def test_transform_settings_is_refused_with_its_shape(self, tmp_path):
-        from kanibako.settings.agent_file import table_value_error
+  def test_transform_settings_is_refused_with_its_shape(self, tmp_path):
+    from kanibako.settings.agent_file import table_value_error
 
-        msg = table_value_error(
-            "transform_settings", path=tmp_path / "agent.yaml", verb="set",
-        )
-        assert msg is not None
-        assert "holds a TABLE" in msg
-        # The cure QUOTES the file's own spelling — the allowed residue
-        # ([spec:14-18, "self"]).
-        assert "self.transform_settings" in msg
+    msg = table_value_error(
+      "transform_settings",
+      path=tmp_path / "agent.yaml",
+      verb="set",
+    )
+    assert msg is not None
+    assert "holds a TABLE" in msg
+    # The cure QUOTES the file's own spelling — the allowed residue
+    # ([spec:14-18, "self"]).
+    assert "self.transform_settings" in msg
 
-    def test_a_dotted_arm_renders_whole_in_the_cure(self, tmp_path):
-        from kanibako.settings.agent_file import table_value_error
+  def test_a_dotted_arm_renders_whole_in_the_cure(self, tmp_path):
+    from kanibako.settings.agent_file import table_value_error
 
-        msg = table_value_error(
-            "bindings.ro", path=tmp_path / "agent.yaml", verb="set",
-        )
-        assert msg is not None and "self.bindings.ro" in msg
+    msg = table_value_error(
+      "bindings.ro",
+      path=tmp_path / "agent.yaml",
+      verb="set",
+    )
+    assert msg is not None and "self.bindings.ro" in msg
 
-    def test_one_builder_spells_the_refusal_for_every_door(self, tmp_path):
-        """The agent noun, the config verbs' agent leaf and the terminal categories share
-        ONE sentence; only the shape, the spec cite and the cure vary."""
-        from kanibako.settings.agent_file import table_value_error, table_valued_refusal
-        from kanibako.settings.config_keys import (
-            agent_leaf_table_error, terminal_category_write_error,
-        )
+  def test_one_builder_spells_the_refusal_for_every_door(self, tmp_path):
+    """The agent noun, the config verbs' agent leaf and the terminal categories share
+    ONE sentence; only the shape, the spec cite and the cure vary."""
+    from kanibako.settings.agent_file import table_value_error, table_valued_refusal
+    from kanibako.settings.config_keys import (
+      agent_leaf_table_error,
+      terminal_category_write_error,
+    )
 
-        assert table_valued_refusal("k", "set", "Do X.", spec="§2a") == (
-            "Error: 'k' holds a TABLE, not a scalar, so it cannot be set from the command "
-            "line — its entries are DATA inside the table, not keys of their own "
-            "(spec §2a). Do X."
-        )
-        assert table_valued_refusal("k", "reset", "do X.", fix_line=True).endswith(
-            "not keys of their own.\n  Fix: do X."
-        )
-        path = tmp_path / "agent.yaml"
-        assert table_value_error("masks", path=path, verb="set") == table_valued_refusal(
-            "masks", "set",
-            f"edit the `self.masks` table of {path} directly; the launch reads it from there.",
-            fix_line=True,
-        )
-        leaf_msg = agent_leaf_table_error("agent.claude.transform_settings", verb="set")
-        terminal_msg = terminal_category_write_error("box.masks", verb="set")
-        for msg in (leaf_msg, terminal_msg):
-            assert msg is not None
-            assert "so it cannot be set from the command line — its entries are DATA" in msg
+    assert table_valued_refusal("k", "set", "Do X.", spec="§2a") == (
+      "Error: 'k' holds a TABLE, not a scalar, so it cannot be set from the command "
+      "line — its entries are DATA inside the table, not keys of their own "
+      "(spec §2a). Do X."
+    )
+    assert table_valued_refusal("k", "reset", "do X.", fix_line=True).endswith(
+      "not keys of their own.\n  Fix: do X."
+    )
+    path = tmp_path / "agent.yaml"
+    assert table_value_error("masks", path=path, verb="set") == table_valued_refusal(
+      "masks",
+      "set",
+      f"edit the `self.masks` table of {path} directly; the launch reads it from there.",
+      fix_line=True,
+    )
+    leaf_msg = agent_leaf_table_error("agent.claude.transform_settings", verb="set")
+    terminal_msg = terminal_category_write_error("box.masks", verb="set")
+    for msg in (leaf_msg, terminal_msg):
+      assert msg is not None
+      assert "so it cannot be set from the command line — its entries are DATA" in msg
 
-    @pytest.mark.parametrize("tail", ("model", "label", "env.FOO", "secret_path.TOK"))
-    def test_the_scalar_tails_are_not_refused(self, tail, tmp_path):
-        from kanibako.settings.agent_file import table_value_error
+  @pytest.mark.parametrize("tail", ("model", "label", "env.FOO", "secret_path.TOK"))
+  def test_the_scalar_tails_are_not_refused(self, tail, tmp_path):
+    from kanibako.settings.agent_file import table_value_error
 
-        assert table_value_error(
-            tail, path=tmp_path / "agent.yaml", verb="set",
-        ) is None
+    assert (
+      table_value_error(
+        tail,
+        path=tmp_path / "agent.yaml",
+        verb="set",
+      )
+      is None
+    )
 
 
 class TestTheArgvSHAPEIsTheFileS:
-    """``run_args`` is stored as a LIST OF WORDS, and this module owns that fact.
+  """``run_args`` is stored as a LIST OF WORDS, and this module owns that fact.
 
-    ⚑ THE DEFECT THIS CLASS EXISTS TO MAKE IMPOSSIBLE (P15).  The space-split lived in
-    ``agent_cmd``'s own writer and NOWHERE ELSE, so the file had two write routes with
-    two shapes: ``kanibako agent set claude run_args="--e --f"`` stored a list and
-    ``kanibako system set agent.claude.run_args="--c --d"`` stored the string.  :func:`load`
-    read a list or nothing, so the second route's value was accepted, echoed back at rc 0
-    and then DISCARDED — the launch got no arguments and the user was never told.
-    Measured both ways on a real store, 2026-08-29.
+  ⚑ THE DEFECT THIS CLASS EXISTS TO MAKE IMPOSSIBLE (P15).  The space-split lived in
+  ``agent_cmd``'s own writer and NOWHERE ELSE, so the file had two write routes with
+  two shapes: ``kanibako agent set claude run_args="--e --f"`` stored a list and
+  ``kanibako system set agent.claude.run_args="--c --d"`` stored the string.  :func:`load`
+  read a list or nothing, so the second route's value was accepted, echoed back at rc 0
+  and then DISCARDED — the launch got no arguments and the user was never told.
+  Measured both ways on a real store, 2026-08-29.
 
-    ⚑ THE ROWS BELOW PIN THE RULE AT :func:`write_leaf`, not at either caller: that is
-    the seam every write route already goes through, and it is the reason there is no
-    second copy to keep in step.
+  ⚑ THE ROWS BELOW PIN THE RULE AT :func:`write_leaf`, not at either caller: that is
+  the seam every write route already goes through, and it is the reason there is no
+  second copy to keep in step.
+  """
+
+  def _slot(self, tmp_path):
+    return slot_for(tmp_path, "claude", "run_args")
+
+  def test_write_leaf_stores_the_words(self, tmp_path):
+    """⚑ MUTATION: drop ``stored_leaf_shape`` from ``write_leaf`` and this reds with
+    the bare string — which is exactly what ``config set`` used to store."""
+    from kanibako.settings.config_io import load_doc
+
+    write_leaf(self._slot(tmp_path), "--c --d")
+    data = load_doc(agent_settings_path(tmp_path, "claude"))
+    assert data["self"]["run_args"] == ["--c", "--d"]
+
+  def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
+    """The whole defect in one row: the write route and the record must agree."""
+    write_leaf(self._slot(tmp_path), "--c --d")
+    assert agent_record(
+      agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE
+    ).run_args == ["--c", "--d"]
+
+  def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
+    """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
+    answered ``['--e', '--f']`` — a value the user cannot type back in — because
+    the scalar renderer ``str()``'d the list."""
+    write_leaf(self._slot(tmp_path), "--c --d")
+    assert read_leaf(self._slot(tmp_path)) == "--c --d"
+
+  def test_a_legacy_STRING_on_disk_still_reads_back(self, tmp_path):
+    """The files the retired write route already wrote keep working, unedited."""
+    path = agent_settings_path(tmp_path, "claude")
+    path.parent.mkdir(parents=True)
+    path.write_text('self:\n  run_args: "--c --d"\n')
+    assert read_leaf(self._slot(tmp_path)) == "--c --d"
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == [
+      "--c",
+      "--d",
+    ]
+
+  def test_the_next_save_normalizes_a_legacy_string(self, tmp_path):
+    """No migration step, and no second shape left on disk afterwards."""
+    from kanibako.settings.config_io import load_doc
+
+    path = agent_settings_path(tmp_path, "claude")
+    path.parent.mkdir(parents=True)
+    path.write_text('self:\n  run_args: "--c --d"\n')
+    save(path, agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE))
+    assert load_doc(path)["self"]["run_args"] == ["--c", "--d"]
+
+  def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
+    """The three states stay apart: absent, present-and-empty, present-with-words.
+
+    ⚑ A BLANK, NOT ``None``, for the empty list, deliberately: an empty argv line is
+    the user's explicit "no arguments", and the absent answer would print "(not set)"
+    over an override that is really in the file.  ⚑ It is also not the scalar
+    convention's ``""`` (spec §2h's terminal empty STRING) — two different stored
+    shapes, two spellings.
     """
+    slot = self._slot(tmp_path)
+    assert read_leaf(slot) is None  # absent
+    write_leaf(slot, "")
+    assert read_leaf(slot) == ""  # present, no arguments
+    assert (
+      agent_record(
+        agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE
+      ).run_args
+      == []
+    )
+    write_leaf(slot, "--c")
+    assert read_leaf(slot) == "--c"  # present, one argument
+    assert remove_leaf(slot) is True
+    assert read_leaf(slot) is None  # absent again
 
-    def _slot(self, tmp_path):
-        return slot_for(tmp_path, "claude", "run_args")
+  def test_a_null_is_a_SUPPRESSION_never_an_empty_argv_line(self, tmp_path):
+    """``--null`` routes a real ``None`` here; splitting it would forge a ``[]``."""
+    from kanibako.settings.config_io import load_doc
 
-    def test_write_leaf_stores_the_words(self, tmp_path):
-        """⚑ MUTATION: drop ``stored_leaf_shape`` from ``write_leaf`` and this reds with
-        the bare string — which is exactly what ``config set`` used to store."""
-        from kanibako.settings.config_io import load_doc
+    write_leaf(self._slot(tmp_path), None)
+    assert load_doc(agent_settings_path(tmp_path, "claude"))["self"]["run_args"] is None
 
-        write_leaf(self._slot(tmp_path), "--c --d")
-        data = load_doc(agent_settings_path(tmp_path, "claude"))
-        assert data["self"]["run_args"] == ["--c", "--d"]
+  def test_stored_leaf_text_joins_the_words_for_every_list_valued_leaf(self):
+    """The PUBLIC renderer the display surfaces outside this module call.
 
-    def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
-        """The whole defect in one row: the write route and the record must agree."""
-        write_leaf(self._slot(tmp_path), "--c --d")
-        assert agent_record(agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
+    ⚑ P13 — the subject is the module's own predicate, not the name ``run_args``: a
+    leaf added to :data:`_LIST_VALUED_KEYS` tomorrow is covered here without an edit,
+    which is the point of asking this module instead of each view deciding for itself.
+    ⚑ MUTATION, MEASURED: return ``None`` unconditionally and rows in this class red —
+    ``read_leaf``'s two among them, which is what proves the join DELEGATES to this
+    function rather than keeping a copy of its own — and the entry-point class
+    ``test_commands/test_system_cmd_config.py::TestAListValuedLeafReadsBackAsItsCommandLine``
+    reds with it.  ⚑ Nothing else in the suite moves: a surface not pinned there is not
+    pinned anywhere, so THAT class is the only evidence a new view asked this question.
+    """
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
-    def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
-        """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
-        answered ``['--e', '--f']`` — a value the user cannot type back in — because
-        the scalar renderer ``str()``'d the list."""
-        write_leaf(self._slot(tmp_path), "--c --d")
-        assert read_leaf(self._slot(tmp_path)) == "--c --d"
+    assert _LIST_VALUED_KEYS, "an empty predicate would make every row below vacuous"
+    for tail in _LIST_VALUED_KEYS:
+      assert stored_leaf_text(tail, ["--c", "--d"]) == "--c --d"
 
-    def test_a_legacy_STRING_on_disk_still_reads_back(self, tmp_path):
-        """The files the retired write route already wrote keep working, unedited."""
-        path = agent_settings_path(tmp_path, "claude")
-        path.parent.mkdir(parents=True)
-        path.write_text('self:\n  run_args: "--c --d"\n')
-        assert read_leaf(self._slot(tmp_path)) == "--c --d"
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
+  def test_stored_leaf_text_answers_NOT_MINE_for_anything_else(self):
+    """``None`` means "this module owns no rule for the pair", NEVER "absent".
 
-    def test_the_next_save_normalizes_a_legacy_string(self, tmp_path):
-        """No migration step, and no second shape left on disk afterwards."""
-        from kanibako.settings.config_io import load_doc
+    The callers' empty-and-bool idioms differ from each other — the idioms the read
+    verbs spell apart (spec §2h) against the launch table's raw ``str()`` — so a shape
+    this module does not own must come back untouched for the caller to render.
+    """
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
-        path = agent_settings_path(tmp_path, "claude")
-        path.parent.mkdir(parents=True)
-        path.write_text('self:\n  run_args: "--c --d"\n')
-        save(path, agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE))
-        assert load_doc(path)["self"]["run_args"] == ["--c", "--d"]
+    tail = next(iter(_LIST_VALUED_KEYS))
+    assert stored_leaf_text(tail, "--c --d") is None  # right leaf, scalar already
+    assert stored_leaf_text(tail, None) is None  # the --null suppression
+    assert stored_leaf_text(tail, True) is None  # a bool the caller lowercases
+    assert stored_leaf_text("model", ["--c"]) is None  # a list at a leaf that has none
 
-    def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
-        """The three states stay apart: absent, present-and-empty, present-with-words.
+  def test_stored_leaf_text_renders_an_EMPTY_list_as_empty_not_NOT_MINE(self):
+    """The one case where the two meanings of ``None`` would collide, kept apart.
 
-        ⚑ A BLANK, NOT ``None``, for the empty list, deliberately: an empty argv line is
-        the user's explicit "no arguments", and the absent answer would print "(not set)"
-        over an override that is really in the file.  ⚑ It is also not the scalar
-        convention's ``""`` (spec §2h's terminal empty STRING) — two different stored
-        shapes, two spellings.
-        """
-        slot = self._slot(tmp_path)
-        assert read_leaf(slot) is None                    # absent
-        write_leaf(slot, "")
-        assert read_leaf(slot) == ""                      # present, no arguments
-        assert agent_record(agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
-        write_leaf(slot, "--c")
-        assert read_leaf(slot) == "--c"                   # present, one argument
-        assert remove_leaf(slot) is True
-        assert read_leaf(slot) is None                    # absent again
+    An empty ``run_args`` is the user's explicit "no arguments" (see
+    ``test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not``).  Answering ``None``
+    here would hand it back to the caller's scalar convention, which spells the empty
+    STRING ``""`` — a different stored shape, and a user who typed no arguments would
+    read back a pair of quotes they never wrote.
+    """
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
-    def test_a_null_is_a_SUPPRESSION_never_an_empty_argv_line(self, tmp_path):
-        """``--null`` routes a real ``None`` here; splitting it would forge a ``[]``."""
-        from kanibako.settings.config_io import load_doc
+    assert stored_leaf_text(next(iter(_LIST_VALUED_KEYS)), []) == ""
 
-        write_leaf(self._slot(tmp_path), None)
-        assert load_doc(agent_settings_path(tmp_path, "claude"))["self"]["run_args"] is None
+  def test_no_OTHER_leaf_is_split(self, tmp_path):
+    """The rule is one leaf's, not every leaf's — a model name keeps its spaces."""
+    from kanibako.settings.config_io import load_doc
 
-    def test_stored_leaf_text_joins_the_words_for_every_list_valued_leaf(self):
-        """The PUBLIC renderer the display surfaces outside this module call.
+    write_leaf(slot_for(tmp_path, "claude", "model"), "opus 4 5")
+    data = load_doc(agent_settings_path(tmp_path, "claude"))
+    assert data["self"]["model"] == "opus 4 5"
 
-        ⚑ P13 — the subject is the module's own predicate, not the name ``run_args``: a
-        leaf added to :data:`_LIST_VALUED_KEYS` tomorrow is covered here without an edit,
-        which is the point of asking this module instead of each view deciding for itself.
-        ⚑ MUTATION, MEASURED: return ``None`` unconditionally and rows in this class red —
-        ``read_leaf``'s two among them, which is what proves the join DELEGATES to this
-        function rather than keeping a copy of its own — and the entry-point class
-        ``test_commands/test_system_cmd_config.py::TestAListValuedLeafReadsBackAsItsCommandLine``
-        reds with it.  ⚑ Nothing else in the suite moves: a surface not pinned there is not
-        pinned anywhere, so THAT class is the only evidence a new view asked this question.
-        """
-        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+  def test_the_list_valued_set_is_exactly_AgentConfig_s_list_FIELDS(self):
+    """SIBLING GUARD (P13): a second list-shaped field must not get the old
+    treatment by default.
 
-        assert _LIST_VALUED_KEYS, "an empty predicate would make every row below vacuous"
-        for tail in _LIST_VALUED_KEYS:
-            assert stored_leaf_text(tail, ["--c", "--d"]) == "--c --d"
+    The subject is :class:`AgentConfig`'s own annotations, not a name typed twice —
+    so a field added tomorrow reds HERE, where the split is decided, instead of
+    silently reaching a write route that does not split for it.
 
-    def test_stored_leaf_text_answers_NOT_MINE_for_anything_else(self):
-        """``None`` means "this module owns no rule for the pair", NEVER "absent".
+    ⚑ OPTIONALITY IS STRIPPED BEFORE THE TEST, and that is the rule this pin means:
+    the question is what SHAPE the value has, never whether the field can also be
+    absent.  ``run_args`` is ``list[str] | None`` — three-state, keyspec §2d
+    agent.default.run_args — and a ``startswith("list")`` read of the raw annotation
+    stopped seeing it, which would have let the set drift to empty and passed the
+    guard vacuously (P15).
+    """
+    import dataclasses
 
-        The callers' empty-and-bool idioms differ from each other — the idioms the read
-        verbs spell apart (spec §2h) against the launch table's raw ``str()`` — so a shape
-        this module does not own must come back untouched for the caller to render.
-        """
-        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
-        tail = next(iter(_LIST_VALUED_KEYS))
-        assert stored_leaf_text(tail, "--c --d") is None   # right leaf, scalar already
-        assert stored_leaf_text(tail, None) is None        # the --null suppression
-        assert stored_leaf_text(tail, True) is None        # a bool the caller lowercases
-        assert stored_leaf_text("model", ["--c"]) is None  # a list at a leaf that has none
+    def _shapes(annotation: object) -> set[str]:
+      """The value shapes an annotation admits, ``None`` not being one."""
+      return {part.strip() for part in str(annotation).split("|") if part.strip() != "None"}
 
-    def test_stored_leaf_text_renders_an_EMPTY_list_as_empty_not_NOT_MINE(self):
-        """The one case where the two meanings of ``None`` would collide, kept apart.
-
-        An empty ``run_args`` is the user's explicit "no arguments" (see
-        ``test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not``).  Answering ``None``
-        here would hand it back to the caller's scalar convention, which spells the empty
-        STRING ``""`` — a different stored shape, and a user who typed no arguments would
-        read back a pair of quotes they never wrote.
-        """
-        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
-
-        assert stored_leaf_text(next(iter(_LIST_VALUED_KEYS)), []) == ""
-
-    def test_no_OTHER_leaf_is_split(self, tmp_path):
-        """The rule is one leaf's, not every leaf's — a model name keeps its spaces."""
-        from kanibako.settings.config_io import load_doc
-
-        write_leaf(slot_for(tmp_path, "claude", "model"), "opus 4 5")
-        data = load_doc(agent_settings_path(tmp_path, "claude"))
-        assert data["self"]["model"] == "opus 4 5"
-
-    def test_the_list_valued_set_is_exactly_AgentConfig_s_list_FIELDS(self):
-        """SIBLING GUARD (P13): a second list-shaped field must not get the old
-        treatment by default.
-
-        The subject is :class:`AgentConfig`'s own annotations, not a name typed twice —
-        so a field added tomorrow reds HERE, where the split is decided, instead of
-        silently reaching a write route that does not split for it.
-
-        ⚑ OPTIONALITY IS STRIPPED BEFORE THE TEST, and that is the rule this pin means:
-        the question is what SHAPE the value has, never whether the field can also be
-        absent.  ``run_args`` is ``list[str] | None`` — three-state, keyspec §2d
-        agent.default.run_args — and a ``startswith("list")`` read of the raw annotation
-        stopped seeing it, which would have let the set drift to empty and passed the
-        guard vacuously (P15).
-        """
-        import dataclasses
-
-        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
-
-        def _shapes(annotation: object) -> set[str]:
-            """The value shapes an annotation admits, ``None`` not being one."""
-            return {
-                part.strip() for part in str(annotation).split("|")
-                if part.strip() != "None"
-            }
-
-        list_fields = {
-            f.name for f in dataclasses.fields(AgentConfig)
-            if any(shape.startswith("list") for shape in _shapes(f.type))
-        }
-        assert list_fields == set(_LIST_VALUED_KEYS), (
-            "AgentConfig holds a list-shaped field the file's write route does not "
-            f"split for: record says {sorted(list_fields)}, agent_file says "
-            f"{sorted(_LIST_VALUED_KEYS)}"
-        )
+    list_fields = {
+      f.name
+      for f in dataclasses.fields(AgentConfig)
+      if any(shape.startswith("list") for shape in _shapes(f.type))
+    }
+    assert list_fields == set(_LIST_VALUED_KEYS), (
+      "AgentConfig holds a list-shaped field the file's write route does not "
+      f"split for: record says {sorted(list_fields)}, agent_file says "
+      f"{sorted(_LIST_VALUED_KEYS)}"
+    )
 
 
 class TestLoadSurvivesAMalformedTable:
-    """D-7's other half: a wrong-SHAPE value must not kill the verbs that SHOW it.
+  """D-7's other half: a wrong-SHAPE value must not kill the verbs that SHOW it.
 
-    A scalar where a table belongs used to raise out of :func:`load` (``dict("foo")``), so every
-    caller inherited it — ``agent info``, ``list``, ``show``, and every launch.  The repair verbs
-    have to stay reachable, so the READ side coerces and the WRITE side refuses.
-    """
+  A scalar where a table belongs used to raise out of :func:`load` (``dict("foo")``), so every
+  caller inherited it — ``agent info``, ``list``, ``show``, and every launch.  The repair verbs
+  have to stay reachable, so the READ side coerces and the WRITE side refuses.
+  """
 
-    def test_a_scalar_at_a_table_key_does_not_raise(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        path.write_text("self:\n  model: opus\n  transform_settings: oops\n")
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)          # must not raise
-        assert cfg.state == {"model": "opus"}
-        assert cfg.transform_settings == {}
-        # ...and the garbage does NOT ride into the launch as an agent-state knob.
-        assert "transform_settings" not in cfg.state
+  def test_a_scalar_at_a_table_key_does_not_raise(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  model: opus\n  transform_settings: oops\n")
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)  # must not raise
+    assert cfg.state == {"model": "opus"}
+    assert cfg.transform_settings == {}
+    # ...and the garbage does NOT ride into the launch as an agent-state knob.
+    assert "transform_settings" not in cfg.state
 
-    @pytest.mark.parametrize("key", ("env", "secret_path"))
-    def test_a_scalar_at_a_category_refuses_by_name(self, key, tmp_path):
-        # ⚑ NOT coerced away: ``agent.<node>.<key>`` is a NAMESPACE, and a value there is
-        # refused under ``agent: <node>:`` — so under ``self:`` too, where the launch used to
-        # drop it without a word. The repair door (``reset --all``) never reads through here.
-        path = tmp_path / "agent.yaml"
-        path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert f"'agent.claude.{key}' is a namespace" in str(exc.value)
-        assert f"remove `self.{key}`" in str(exc.value)
-        assert clear_overrides(path) == 2
+  @pytest.mark.parametrize("key", ("env", "secret_path"))
+  def test_a_scalar_at_a_category_refuses_by_name(self, key, tmp_path):
+    # ⚑ NOT coerced away: ``agent.<node>.<key>`` is a NAMESPACE, and a value there is
+    # refused under ``agent: <node>:`` — so under ``self:`` too, where the launch used to
+    # drop it without a word. The repair door (``reset --all``) never reads through here.
+    path = tmp_path / "agent.yaml"
+    path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert f"'agent.claude.{key}' is a namespace" in str(exc.value)
+    assert f"remove `self.{key}`" in str(exc.value)
+    assert clear_overrides(path) == 2
 
 
 class TestClearOverrides:
-    """``agent reset --all``'s read-modify-write, now owned by the boundary."""
+  """``agent reset --all``'s read-modify-write, now owned by the boundary."""
 
-    def test_clears_every_root_key_and_counts_its_leaves(self, tmp_path):
-        from kanibako.settings.config_io import load_doc
+  def test_clears_every_root_key_and_counts_its_leaves(self, tmp_path):
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  model: opus\n"
-            "  access: full\n"
-            "  secret_path:\n"
-            "    TOK_A: /a\n"
-            "    TOK_B: /b\n"
-            "  bindings:\n"
-            "    ro:\n"
-            "      /box/share: [/h/share]\n"
-        )
-        # FIVE LEAVES, the unit every scope's ``reset --all`` counts in
-        # (``config_io.count_leaves``): model + access + TOK_A + TOK_B + one ``ro`` bind.
-        # (Mutation: count ``len`` of the root again → 4 → RED.)
-        # ⚑ NOTHING IS PRESERVED (D8b). ``name`` was the one exempt key and it was not a key
-        # at all; with it retired the root goes whole, and the root table goes with it.
-        assert clear_overrides(path) == 5
-        assert load_doc(path) == {}
+    path = tmp_path / "agent.yaml"
+    path.write_text(
+      "self:\n"
+      "  model: opus\n"
+      "  access: full\n"
+      "  secret_path:\n"
+      "    TOK_A: /a\n"
+      "    TOK_B: /b\n"
+      "  bindings:\n"
+      "    ro:\n"
+      "      /box/share: [/h/share]\n"
+    )
+    # FIVE LEAVES, the unit every scope's ``reset --all`` counts in
+    # (``config_io.count_leaves``): model + access + TOK_A + TOK_B + one ``ro`` bind.
+    # (Mutation: count ``len`` of the root again → 4 → RED.)
+    # ⚑ NOTHING IS PRESERVED (D8b). ``name`` was the one exempt key and it was not a key
+    # at all; with it retired the root goes whole, and the root table goes with it.
+    assert clear_overrides(path) == 5
+    assert load_doc(path) == {}
 
-    def test_prunes_the_root_when_nothing_survives(self, tmp_path):
-        from kanibako.settings.config_io import load_doc
+  def test_prunes_the_root_when_nothing_survives(self, tmp_path):
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text("self:\n  model: opus\n")
-        assert clear_overrides(path) == 1
-        assert load_doc(path) == {}
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  model: opus\n")
+    assert clear_overrides(path) == 1
+    assert load_doc(path) == {}
 
-    @pytest.mark.parametrize("stray", ("model", "Self"))
-    def test_a_stray_does_not_refuse_the_reset(self, stray, tmp_path):
-        # ⚑ THE REPAIR DOOR: the reset clears what the file contributes and judges nothing,
-        # so a stray that stops ``load`` and the launch cannot also stop its own cure. The
-        # stray is not an override: it stays, uncounted, for the user to move or delete.
-        # (Mutation: read through ``_contribution`` here → SettingsError → RED.)
-        from kanibako.settings.config_io import load_doc
+  @pytest.mark.parametrize("stray", ("model", "Self"))
+  def test_a_stray_does_not_refuse_the_reset(self, stray, tmp_path):
+    # ⚑ THE REPAIR DOOR: the reset clears what the file contributes and judges nothing,
+    # so a stray that stops ``load`` and the launch cannot also stop its own cure. The
+    # stray is not an override: it stays, uncounted, for the user to move or delete.
+    # (Mutation: read through ``_contribution`` here → SettingsError → RED.)
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text(f"self:\n  model: opus\n{stray}: x\n")
-        with pytest.raises(SettingsError):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert clear_overrides(path) == 1
-        assert load_doc(path) == {stray: "x"}
+    path = tmp_path / "agent.yaml"
+    path.write_text(f"self:\n  model: opus\n{stray}: x\n")
+    with pytest.raises(SettingsError):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert clear_overrides(path) == 1
+    assert load_doc(path) == {stray: "x"}
 
-    @pytest.mark.parametrize("value", ("null", "5"))
-    def test_a_value_at_the_root_is_removed_and_counted(self, value, tmp_path):
-        # ⚑ THE REPAIR DOOR REACHES WHAT THE READERS REFUSE: ``self: null`` stops every reader,
-        # so ``agent reset --all`` must remove it, counted as the one value it is.
-        # (Mutation: keep the ``isinstance(table, dict)`` guard → the entry stays → RED.)
-        from kanibako.settings.config_io import load_doc
+  @pytest.mark.parametrize("value", ("null", "5"))
+  def test_a_value_at_the_root_is_removed_and_counted(self, value, tmp_path):
+    # ⚑ THE REPAIR DOOR REACHES WHAT THE READERS REFUSE: ``self: null`` stops every reader,
+    # so ``agent reset --all`` must remove it, counted as the one value it is.
+    # (Mutation: keep the ``isinstance(table, dict)`` guard → the entry stays → RED.)
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text(f"self: {value}\n")
-        with pytest.raises(SettingsError):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert clear_overrides(path) == 1
-        assert load_doc(path) == {}
+    path = tmp_path / "agent.yaml"
+    path.write_text(f"self: {value}\n")
+    with pytest.raises(SettingsError):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert clear_overrides(path) == 1
+    assert load_doc(path) == {}
 
-    def test_a_contained_scope_value_is_removed_and_counted(self, tmp_path):
-        # The repair door for a ``box: null`` the readers refuse (2E, N7).
-        from kanibako.settings.config_io import load_doc
+  def test_a_contained_scope_value_is_removed_and_counted(self, tmp_path):
+    # The repair door for a ``box: null`` the readers refuse (2E, N7).
+    from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "agent.yaml"
-        path.write_text("self: {}\nbox: null\nworkset:\n  env:\n    A: '1'\n")
-        assert clear_overrides(path) == 2
-        assert load_doc(path) == {}
+    path = tmp_path / "agent.yaml"
+    path.write_text("self: {}\nbox: null\nworkset:\n  env:\n    A: '1'\n")
+    assert clear_overrides(path) == 2
+    assert load_doc(path) == {}
 
-    def test_no_overrides_is_zero(self, tmp_path):
-        # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
-        # It used to hold the one unconditional ``name`` line, which is why this case named
-        # that key before.
-        path = tmp_path / "agent.yaml"
-        path.write_text("self: {}\n")
-        assert clear_overrides(path) == 0
+  def test_no_overrides_is_zero(self, tmp_path):
+    # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
+    # It used to hold the one unconditional ``name`` line, which is why this case named
+    # that key before.
+    path = tmp_path / "agent.yaml"
+    path.write_text("self: {}\n")
+    assert clear_overrides(path) == 0
 
 
 class TestLevelTable:
-    """The cascade half: which table a level reads, and the refusal that guards it."""
+  """The cascade half: which table a level reads, and the refusal that guards it."""
 
-    def test_active_level_reads_the_flat_categories(self):
-        raw = {"self": {"env": {"A": "b"}, "secret_path": {"T": "/t"}}}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level == AgentFileLevel("claude", {"env": {"A": "b"},
-                                                  "secret_path": {"T": "/t"}})
+  def test_active_level_reads_the_flat_categories(self):
+    raw = {"self": {"env": {"A": "b"}, "secret_path": {"T": "/t"}}}
+    level = level_table(raw, sub_key="claude", node="claude")
+    assert level == AgentFileLevel("claude", {"env": {"A": "b"}, "secret_path": {"T": "/t"}})
 
-    @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
-    def test_every_flat_category_reaches_the_active_level(self, category):
-        # ⚑ PARAMETRIZED OFF THE CONSTANT, so widening the tuple widens the pin and a
-        # narrowing shows up as a missing case rather than as silence. ``bindings`` rides
-        # as ONE token — its ``{ro, rw}`` table is re-rooted whole.
-        # ⚑⚑ THE BIND CATEGORIES ARE PICKED BY :data:`BIND_LEAF_CATEGORIES`, never by a
-        # second list: this read judges a dest-keyed entry's SHAPE (spec §2a makes it a
-        # list), so a fixture that put a bare scalar under a bind dest would be testing a
-        # refusal here instead of the routing this case is for. ``env`` / ``secret_path``
-        # / ``masks`` take a scalar per name and keep it.
-        if category == "bindings":
-            table = {"ro": {"/box/x": ["/h/x"]}}
-        elif category in BIND_LEAF_CATEGORIES:
-            table = {"/box/x": ["/h/x"]}
-        else:
-            table = {"X": "y"}
-        raw = {"self": {category: table}}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level.table == {category: table}
+  @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
+  def test_every_flat_category_reaches_the_active_level(self, category):
+    # ⚑ PARAMETRIZED OFF THE CONSTANT, so widening the tuple widens the pin and a
+    # narrowing shows up as a missing case rather than as silence. ``bindings`` rides
+    # as ONE token — its ``{ro, rw}`` table is re-rooted whole.
+    # ⚑⚑ THE BIND CATEGORIES ARE PICKED BY :data:`BIND_LEAF_CATEGORIES`, never by a
+    # second list: this read judges a dest-keyed entry's SHAPE (spec §2a makes it a
+    # list), so a fixture that put a bare scalar under a bind dest would be testing a
+    # refusal here instead of the routing this case is for. ``env`` / ``secret_path``
+    # / ``masks`` take a scalar per name and keep it.
+    if category == "bindings":
+      table = {"ro": {"/box/x": ["/h/x"]}}
+    elif category in BIND_LEAF_CATEGORIES:
+      table = {"/box/x": ["/h/x"]}
+    else:
+      table = {"X": "y"}
+    raw = {"self": {category: table}}
+    level = level_table(raw, sub_key="claude", node="claude")
+    assert level.table == {category: table}
 
-    def test_the_root_is_split_by_key_not_by_value(self):
-        # 2C: a category key goes to the category channel WHATEVER it holds — ``caches: null``
-        # is the §2a reset and must reach the cascade — and every other key to the state
-        # channel. (Mutation: restore the ``isinstance(flat, dict) and flat`` filter → the
-        # null and the empty table vanish → RED.)
-        raw = {"self": {"caches": None, "masks": {}, "env": 5, "model": "opus"}}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level.table == {"caches": None, "masks": {}, "env": 5}
-        assert level.state == {"model": "opus"}
+  def test_the_root_is_split_by_key_not_by_value(self):
+    # 2C: a category key goes to the category channel WHATEVER it holds — ``caches: null``
+    # is the §2a reset and must reach the cascade — and every other key to the state
+    # channel. (Mutation: restore the ``isinstance(flat, dict) and flat`` filter → the
+    # null and the empty table vanish → RED.)
+    raw = {"self": {"caches": None, "masks": {}, "env": 5, "model": "opus"}}
+    level = level_table(raw, sub_key="claude", node="claude")
+    assert level.table == {"caches": None, "masks": {}, "env": 5}
+    assert level.state == {"model": "opus"}
 
-    @pytest.mark.parametrize(("value", "shown"), ((None, "null"), (5, "5"), ("x", "x"), (["a"], "['a']")))
-    def test_a_value_at_the_root_refuses_like_the_agent_table(self, value, shown, tmp_path):
-        # ``self:`` IS ``agent.<node>``, so a VALUE there is the system file's
-        # ``agent: {claude: null}`` and gets that verdict, naming the file — at every reader.
-        path = tmp_path / "agent.yaml"
-        with pytest.raises(SettingsError) as exc:
-            level_table({"self": value}, sub_key="claude", node="claude", path=path)
-        message = str(exc.value)
-        assert f"`self` in {path} holds {shown}," in message
-        assert "`agent.claude`" in message
-        assert "spec §2d" in message
+  @pytest.mark.parametrize(
+    ("value", "shown"), ((None, "null"), (5, "5"), ("x", "x"), (["a"], "['a']"))
+  )
+  def test_a_value_at_the_root_refuses_like_the_agent_table(self, value, shown, tmp_path):
+    # ``self:`` IS ``agent.<node>``, so a VALUE there is the system file's
+    # ``agent: {claude: null}`` and gets that verdict, naming the file — at every reader.
+    path = tmp_path / "agent.yaml"
+    with pytest.raises(SettingsError) as exc:
+      level_table({"self": value}, sub_key="claude", node="claude", path=path)
+    message = str(exc.value)
+    assert f"`self` in {path} holds {shown}," in message
+    assert "`agent.claude`" in message
+    assert "spec §2d" in message
 
-    def test_the_contained_scope_tables_ride_the_active_level(self):
-        # 2E (Q85): ``workset:`` / ``box:`` in an agent file are INPUTS, read defaults-down on
-        # the active tier only. (Mutation: leave them out of ``_CONTRIBUTED`` → the stray
-        # refusal fires → RED.)
-        raw = {"self": {}, "box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level.contained == {"box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
-        assert level_table(raw, sub_key="default", node="claude").contained == {}
+  def test_the_contained_scope_tables_ride_the_active_level(self):
+    # 2E (Q85): ``workset:`` / ``box:`` in an agent file are INPUTS, read defaults-down on
+    # the active tier only. (Mutation: leave them out of ``_CONTRIBUTED`` → the stray
+    # refusal fires → RED.)
+    raw = {"self": {}, "box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
+    level = level_table(raw, sub_key="claude", node="claude")
+    assert level.contained == {"box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
+    assert level_table(raw, sub_key="default", node="claude").contained == {}
 
-    @pytest.mark.parametrize(("token", "value", "shown"), (("box", None, "null"), ("workset", 5, "5")))
-    def test_a_value_at_a_contained_scope_refuses_naming_file_and_key(
-        self, token, value, shown, tmp_path,
+  @pytest.mark.parametrize(
+    ("token", "value", "shown"), (("box", None, "null"), ("workset", 5, "5"))
+  )
+  def test_a_value_at_a_contained_scope_refuses_naming_file_and_key(
+    self,
+    token,
+    value,
+    shown,
+    tmp_path,
+  ):
+    # N7: ``box: null`` gets the verdict any settings file gives a scope table holding a
+    # value — refused, naming the file and key — at every reader of the file.
+    path = tmp_path / "agent.yaml"
+    with pytest.raises(SettingsError) as exc:
+      level_table({"self": {}, token: value}, sub_key="claude", node="claude", path=path)
+    message = str(exc.value)
+    assert f"`{token}: {shown}` at the top level of {path}" in message
+    assert f"`{token}` is a scope" in message
+
+  def test_default_level_is_structurally_empty(self):
+    # The flat tables are THIS node's, never every agent's — and since the flatten
+    # the file has NO spelling for the all-agents tier at all; that tier is the
+    # SYSTEM file's ``agent: default:`` table.
+    raw = {"self": {"env": {"A": "b"}, "bindings": {"ro": {"/x": ["/y"]}}}}
+    assert level_table(raw, sub_key="default", node="claude").table == {}
+
+  def test_missing_root_is_an_empty_level(self):
+    assert level_table({"system": {}}, sub_key="claude").table == {}
+    assert level_table("not-a-dict", sub_key="claude").table == {}
+
+  @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
+  @pytest.mark.parametrize("sub", ("claude", "default"))
+  def test_nested_category_refuses_by_name(self, category, sub):
+    # [spec:14-18, "self"] — ``self.<sub>.<category>`` reads
+    # ``agent.<agent>.<sub>.<category>``, which is never syntactically correct.
+    # ⚑ EVERY category, from the constant: the refusal is ONE PREDICATE over the root
+    # table, so it cannot be true of some categories and not others.
+    raw = {"self": {sub: {category: {"X": "y"}}}}
+    with pytest.raises(SettingsError) as exc:
+      level_table(raw, sub_key=sub, node="claude")
+    assert file_spelling(sub, category) in str(exc.value)
+
+  def test_nested_state_refuses_too(self):
+    # ⚑ THE STATE CASE (defect D-3), which a per-category loop could not express:
+    # ``self: claude: model:`` is a scalar carrier, not a category table. It used to
+    # resolve, and to LOSE silently to the flat spelling. One predicate closes it.
+    raw = {"self": {"claude": {"model": "opus"}}}
+    with pytest.raises(SettingsError) as exc:
+      level_table(raw, sub_key="claude", node="claude")
+    message = str(exc.value)
+    assert "self.claude" in message
+    assert "model" in message
+    # No category to point at, so the cure is the rule itself — never a verb.
+    assert "kanibako agent set" not in message
+
+  def test_the_refusal_indicts_the_nested_table_not_the_legal_flat_one(self):
+    # ⚑⚑ THE MESSAGE IS WHAT DISCRIMINATES, NOT THE RAISE. A file carrying a LEGAL
+    # flat table beside a nested sub-table must be refused for the nested one and
+    # must not name the flat table's entries — a predicate written over the wrong
+    # table would indict the innocent half.
+    raw = {
+      "self": {
+        "env": {"ONLY_FLAT": "b"},
+        "claude": {"env": {"ONLY_NESTED": "y"}},
+      }
+    }
+    with pytest.raises(SettingsError) as exc:
+      level_table(raw, sub_key="claude", node="claude")
+    message = str(exc.value)
+    assert "self.claude.env" in message
+    assert "ONLY_NESTED" in message
+    assert "ONLY_FLAT" not in message
+
+  def test_an_unknown_root_table_refuses_even_with_no_category_in_it(self):
+    # The closed keyspace, not a list of known-bad names: a table nobody declared
+    # refuses by name, and the cure states the rule rather than guessing an intent.
+    raw = {"self": {"claude": {"whatever": {"X": "y"}}}}
+    with pytest.raises(SettingsError, match=r"self\.claude"):
+      level_table(raw, sub_key="claude", node="claude")
+
+  @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
+  def test_a_top_level_stray_beside_the_root_refuses_by_name(self, stray, tmp_path):
+    # spec §0 — an undeclared key is an ERROR that names it. The file contributes
+    # only its root table, so a key BESIDE ``self:`` never reached the snapshot's §0
+    # audit and used to vanish silently: a ``model:`` one level too high set nothing.
+    # ⚑ Scalar and table alike, with a legal root beside it and with none.
+    path = tmp_path / "agent.yaml"
+    for raw in (
+      {"self": {"env": {"A": "b"}}, stray: "foo"},
+      {stray: {"X": "y"}},
     ):
-        # N7: ``box: null`` gets the verdict any settings file gives a scope table holding a
-        # value — refused, naming the file and key — at every reader of the file.
-        path = tmp_path / "agent.yaml"
-        with pytest.raises(SettingsError) as exc:
-            level_table({"self": {}, token: value}, sub_key="claude", node="claude", path=path)
-        message = str(exc.value)
-        assert f"`{token}: {shown}` at the top level of {path}" in message
-        assert f"`{token}` is a scope" in message
+      with pytest.raises(SettingsError) as exc:
+        level_table(raw, sub_key="claude", node="claude", path=path)
+      message = str(exc.value)
+      assert f"`{stray}` at the top level of {path}" in message
+      assert "agent.claude" in message
 
-    def test_default_level_is_structurally_empty(self):
-        # The flat tables are THIS node's, never every agent's — and since the flatten
-        # the file has NO spelling for the all-agents tier at all; that tier is the
-        # SYSTEM file's ``agent: default:`` table.
-        raw = {"self": {"env": {"A": "b"}, "bindings": {"ro": {"/x": ["/y"]}}}}
-        assert level_table(raw, sub_key="default", node="claude").table == {}
+  @pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
+  def test_a_scope_table_is_not_this_refusals_to_judge(self, scope, tmp_path):
+    # ⚑ The CONTROL: a scope token at the top level is not a stray — ``system:`` is
+    # dropped upstream (§0 directional enforcement), the own-scope ``agent:`` table is
+    # READ (Q92, riding the level as ``scope``), and the contained-scope tables are inputs
+    # (§0 defaults-down) whose read has not landed (Q85). The stray refusal must not
+    # decide any of them by accident, in EITHER reader.
+    # The ``agent:`` table holds NODE tables, so its control is one; the other scopes' tables
+    # hold their own keys.
+    table = {"claude": {"env": {"X": "1"}}} if scope == "agent" else {"env": {"X": "1"}}
+    raw = {"self": {"env": {"A": "b"}}, scope: table}
+    level = level_table(raw, sub_key="claude", node="claude")
+    assert level.table == {"env": {"A": "b"}}
+    assert level.scope == (table if scope == "agent" else {})
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, raw)
+    # The own node's ``agent:`` entry is the file's own settings too (Q92).
+    expected_env = {"A": "b", "X": "1"} if scope == "agent" else {"A": "b"}
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == expected_env
 
-    def test_missing_root_is_an_empty_level(self):
-        assert level_table({"system": {}}, sub_key="claude").table == {}
-        assert level_table("not-a-dict", sub_key="claude").table == {}
+  @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
+  def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
+    # ONE VERDICT for one file (``_contribution``): ``agent show`` / ``info`` / ``list``
+    # read through ``load``, and used to display a file every launch refused.
+    # (Mutation: read ``data.get(_ROOT)`` in ``load`` again → no raise → RED.)
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"env": {"A": "b"}}, stray: "foo"})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert f"`{stray}` at the top level of {path}" in str(exc.value)
 
-    @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
-    @pytest.mark.parametrize("sub", ("claude", "default"))
-    def test_nested_category_refuses_by_name(self, category, sub):
-        # [spec:14-18, "self"] — ``self.<sub>.<category>`` reads
-        # ``agent.<agent>.<sub>.<category>``, which is never syntactically correct.
-        # ⚑ EVERY category, from the constant: the refusal is ONE PREDICATE over the root
-        # table, so it cannot be true of some categories and not others.
-        raw = {"self": {sub: {category: {"X": "y"}}}}
-        with pytest.raises(SettingsError) as exc:
-            level_table(raw, sub_key=sub, node="claude")
-        assert file_spelling(sub, category) in str(exc.value)
+  def test_load_passes_every_table_the_cascade_drops(self, tmp_path):
+    # ⚑ DERIVED FROM THE DROP RULE, never listed (P13): ``load`` sees the file BEFORE any
+    # drop, so a table the launch drops with a warning must not refuse here.
+    from kanibako.settings.settings_drops import cascade_drop_set
 
-    def test_nested_state_refuses_too(self):
-        # ⚑ THE STATE CASE (defect D-3), which a per-category loop could not express:
-        # ``self: claude: model:`` is a scalar carrier, not a category table. It used to
-        # resolve, and to LOSE silently to the flat spelling. One predicate closes it.
-        raw = {"self": {"claude": {"model": "opus"}}}
-        with pytest.raises(SettingsError) as exc:
-            level_table(raw, sub_key="claude", node="claude")
-        message = str(exc.value)
-        assert "self.claude" in message
-        assert "model" in message
-        # No category to point at, so the cure is the rule itself — never a verb.
-        assert "kanibako agent set" not in message
+    dropped = sorted(cascade_drop_set("agent"))
+    assert dropped, "an empty drop-set would pass this vacuously"
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"env": {"A": "b"}}, **{t: {"x": 1} for t in dropped}})
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
 
-    def test_the_refusal_indicts_the_nested_table_not_the_legal_flat_one(self):
-        # ⚑⚑ THE MESSAGE IS WHAT DISCRIMINATES, NOT THE RAISE. A file carrying a LEGAL
-        # flat table beside a nested sub-table must be refused for the nested one and
-        # must not name the flat table's entries — a predicate written over the wrong
-        # table would indict the innocent half.
-        raw = {"self": {
-            "env": {"ONLY_FLAT": "b"},
-            "claude": {"env": {"ONLY_NESTED": "y"}},
-        }}
-        with pytest.raises(SettingsError) as exc:
-            level_table(raw, sub_key="claude", node="claude")
-        message = str(exc.value)
-        assert "self.claude.env" in message
-        assert "ONLY_NESTED" in message
-        assert "ONLY_FLAT" not in message
-
-    def test_an_unknown_root_table_refuses_even_with_no_category_in_it(self):
-        # The closed keyspace, not a list of known-bad names: a table nobody declared
-        # refuses by name, and the cure states the rule rather than guessing an intent.
-        raw = {"self": {"claude": {"whatever": {"X": "y"}}}}
-        with pytest.raises(SettingsError, match=r"self\.claude"):
-            level_table(raw, sub_key="claude", node="claude")
-
-    @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
-    def test_a_top_level_stray_beside_the_root_refuses_by_name(self, stray, tmp_path):
-        # spec §0 — an undeclared key is an ERROR that names it. The file contributes
-        # only its root table, so a key BESIDE ``self:`` never reached the snapshot's §0
-        # audit and used to vanish silently: a ``model:`` one level too high set nothing.
-        # ⚑ Scalar and table alike, with a legal root beside it and with none.
-        path = tmp_path / "agent.yaml"
-        for raw in (
-            {"self": {"env": {"A": "b"}}, stray: "foo"},
-            {stray: {"X": "y"}},
-        ):
-            with pytest.raises(SettingsError) as exc:
-                level_table(raw, sub_key="claude", node="claude", path=path)
-            message = str(exc.value)
-            assert f"`{stray}` at the top level of {path}" in message
-            assert "agent.claude" in message
-
-    @pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
-    def test_a_scope_table_is_not_this_refusals_to_judge(self, scope, tmp_path):
-        # ⚑ The CONTROL: a scope token at the top level is not a stray — ``system:`` is
-        # dropped upstream (§0 directional enforcement), the own-scope ``agent:`` table is
-        # READ (Q92, riding the level as ``scope``), and the contained-scope tables are inputs
-        # (§0 defaults-down) whose read has not landed (Q85). The stray refusal must not
-        # decide any of them by accident, in EITHER reader.
-        # The ``agent:`` table holds NODE tables, so its control is one; the other scopes' tables
-        # hold their own keys.
-        table = {"claude": {"env": {"X": "1"}}} if scope == "agent" else {"env": {"X": "1"}}
-        raw = {"self": {"env": {"A": "b"}}, scope: table}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level.table == {"env": {"A": "b"}}
-        assert level.scope == (table if scope == "agent" else {})
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, raw)
-        # The own node's ``agent:`` entry is the file's own settings too (Q92).
-        expected_env = {"A": "b", "X": "1"} if scope == "agent" else {"A": "b"}
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == expected_env
-
-    @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
-    def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
-        # ONE VERDICT for one file (``_contribution``): ``agent show`` / ``info`` / ``list``
-        # read through ``load``, and used to display a file every launch refused.
-        # (Mutation: read ``data.get(_ROOT)`` in ``load`` again → no raise → RED.)
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"env": {"A": "b"}}, stray: "foo"})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert f"`{stray}` at the top level of {path}" in str(exc.value)
-
-    def test_load_passes_every_table_the_cascade_drops(self, tmp_path):
-        # ⚑ DERIVED FROM THE DROP RULE, never listed (P13): ``load`` sees the file BEFORE any
-        # drop, so a table the launch drops with a warning must not refuse here.
-        from kanibako.settings.settings_drops import cascade_drop_set
-
-        dropped = sorted(cascade_drop_set("agent"))
-        assert dropped, "an empty drop-set would pass this vacuously"
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"env": {"A": "b"}}, **{t: {"x": 1} for t in dropped}})
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
-
-    def test_a_bare_sub_key_leaf_is_not_a_table(self):
-        # ``claude:`` with nothing under it parses to None. It carries nothing and
-        # delivers nothing, so it is a stray scalar, not a nested sub-table.
-        assert level_table(
-            {"self": {"claude": None}}, sub_key="claude", node="claude",
-        ).table == {}
+  def test_a_bare_sub_key_leaf_is_not_a_table(self):
+    # ``claude:`` with nothing under it parses to None. It carries nothing and
+    # delivers nothing, so it is a stray scalar, not a nested sub-table.
+    assert (
+      level_table(
+        {"self": {"claude": None}},
+        sub_key="claude",
+        node="claude",
+      ).table
+      == {}
+    )
 
 
 class TestTheStrayRuleOnTheProductionPath:
-    """The stray refusal as the cascade reaches it — through ``assemble_levels``, whose
-    upstream DROPS (§0 directional enforcement, §2h) must run before it, or a table the
-    spec says to drop with a warning would refuse instead."""
+  """The stray refusal as the cascade reaches it — through ``assemble_levels``, whose
+  upstream DROPS (§0 directional enforcement, §2h) must run before it, or a table the
+  spec says to drop with a warning would refuse instead."""
 
-    @staticmethod
-    def _assemble(tmp_path, text):
-        from tests.support.assembly import assemble_levels_at
+  @staticmethod
+  def _assemble(tmp_path, text):
+    from tests.support.assembly import assemble_levels_at
 
-        agent_path = tmp_path / "agent.yaml"
-        agent_path.write_text(text)
-        return assemble_levels_at(
-            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
-            agent_path=agent_path,
-        )
+    agent_path = tmp_path / "agent.yaml"
+    agent_path.write_text(text)
+    return assemble_levels_at(
+      agent_name="claude",
+      base_path=tmp_path / "absent-base.yaml",
+      agent_path=agent_path,
+    )
 
-    def test_a_stray_refuses_the_resolve_naming_the_file(self, tmp_path):
-        with pytest.raises(SettingsError) as exc:
-            self._assemble(tmp_path, "self:\n  env:\n    A: b\nmodel: opus\n")
-        assert f"`model` at the top level of {tmp_path / 'agent.yaml'}" in str(exc.value)
+  def test_a_stray_refuses_the_resolve_naming_the_file(self, tmp_path):
+    with pytest.raises(SettingsError) as exc:
+      self._assemble(tmp_path, "self:\n  env:\n    A: b\nmodel: opus\n")
+    assert f"`model` at the top level of {tmp_path / 'agent.yaml'}" in str(exc.value)
 
-    def test_every_table_the_cascade_drops_still_drops(self, tmp_path, caplog):
-        # ⚑ DERIVED FROM THE DROP RULES, never listed (P13): the agent file's directional
-        # drop-set, plus ``pref:`` exactly when §2h's legal levels exclude this file. Each
-        # must build, and warn naming itself.
-        from kanibako.settings.settings_drops import cascade_drop_set
+  def test_every_table_the_cascade_drops_still_drops(self, tmp_path, caplog):
+    # ⚑ DERIVED FROM THE DROP RULES, never listed (P13): the agent file's directional
+    # drop-set, plus ``pref:`` exactly when §2h's legal levels exclude this file. Each
+    # must build, and warn naming itself.
+    from kanibako.settings.settings_drops import cascade_drop_set
 
-        dropped = sorted(cascade_drop_set("agent"))
-        assert dropped, "an empty drop-set would pass this vacuously"
-        text = "self:\n  env:\n    A: b\n" + "".join(f"{t}:\n  x: 1\n" for t in dropped)
-        with caplog.at_level("WARNING"):
-            self._assemble(tmp_path, text)
-        for token in dropped:
-            assert any(f"'{token}'" in m for m in caplog.messages), (token, caplog.messages)
+    dropped = sorted(cascade_drop_set("agent"))
+    assert dropped, "an empty drop-set would pass this vacuously"
+    text = "self:\n  env:\n    A: b\n" + "".join(f"{t}:\n  x: 1\n" for t in dropped)
+    with caplog.at_level("WARNING"):
+      self._assemble(tmp_path, text)
+    for token in dropped:
+      assert any(f"'{token}'" in m for m in caplog.messages), (token, caplog.messages)
 
 
 class TestTheAgentTable:
-    """Q92: the file's top-level ``agent:`` table is READ, like that table in any settings file;
-    Q103: ``self:`` beside ``agent: <own node>:`` setting one leaf REFUSES, naming both."""
+  """Q92: the file's top-level ``agent:`` table is READ, like that table in any settings file;
+  Q103: ``self:`` beside ``agent: <own node>:`` setting one leaf REFUSES, naming both."""
 
-    @staticmethod
-    def _assemble(tmp_path, doc):
-        from tests.support.assembly import assemble_levels_at
+  @staticmethod
+  def _assemble(tmp_path, doc):
+    from tests.support.assembly import assemble_levels_at
 
-        agent_path = tmp_path / "agent.yaml"
-        dump_doc(agent_path, doc)
-        return assemble_levels_at(
-            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
-            agent_path=agent_path,
-        )
+    agent_path = tmp_path / "agent.yaml"
+    dump_doc(agent_path, doc)
+    return assemble_levels_at(
+      agent_name="claude",
+      base_path=tmp_path / "absent-base.yaml",
+      agent_path=agent_path,
+    )
 
-    def test_the_table_rides_both_tiers_raw(self):
-        raw = {"self": {"model": "a"}, "agent": {"bar": {"model": "b"}}}
-        active = level_table(raw, sub_key="claude", node="claude")
-        default = level_table(raw, sub_key="default", node="claude")
-        assert active.scope == default.scope == {"bar": {"model": "b"}}
+  def test_the_table_rides_both_tiers_raw(self):
+    raw = {"self": {"model": "a"}, "agent": {"bar": {"model": "b"}}}
+    active = level_table(raw, sub_key="claude", node="claude")
+    default = level_table(raw, sub_key="default", node="claude")
+    assert active.scope == default.scope == {"bar": {"model": "b"}}
 
-    def test_each_tier_takes_its_nodes_beside_the_rerooted_root(self, tmp_path):
-        # "By construction" (Q92): in claude's file, ``agent: {bar: …}`` MERGES (on the active
-        # rung, where bar is never the one picked) and ``agent: {default: …}`` merges on the
-        # all-agents rung. Disjoint leaves of one node merge with the root's.
-        levels = self._assemble(tmp_path, {
-            "self": {"env": {"A": "1"}},
-            "agent": {
-                "claude": {"env": {"B": "2"}}, "bar": {"model": "b"},
-                "default": {"model": "d"},
-            },
-        })
-        active, default = levels[2], levels[3]
-        assert active == {"agent": {
-            "claude": {"env": {"A": "1", "B": "2"}}, "bar": {"model": "b"},
-        }}
-        assert default == {"agent": {"default": {"model": "d"}}}
+  def test_each_tier_takes_its_nodes_beside_the_rerooted_root(self, tmp_path):
+    # "By construction" (Q92): in claude's file, ``agent: {bar: …}`` MERGES (on the active
+    # rung, where bar is never the one picked) and ``agent: {default: …}`` merges on the
+    # all-agents rung. Disjoint leaves of one node merge with the root's.
+    levels = self._assemble(
+      tmp_path,
+      {
+        "self": {"env": {"A": "1"}},
+        "agent": {
+          "claude": {"env": {"B": "2"}},
+          "bar": {"model": "b"},
+          "default": {"model": "d"},
+        },
+      },
+    )
+    active, default = levels[2], levels[3]
+    assert active == {
+      "agent": {
+        "claude": {"env": {"A": "1", "B": "2"}},
+        "bar": {"model": "b"},
+      }
+    }
+    assert default == {"agent": {"default": {"model": "d"}}}
 
-    def test_an_agent_table_alone_is_read(self, tmp_path):
-        # No ``self:`` at all: the table is still an input, not a table waiting on the root.
-        levels = self._assemble(tmp_path, {"agent": {"claude": {"env": {"B": "2"}}}})
-        assert levels[2] == {"agent": {"claude": {"env": {"B": "2"}}}}
+  def test_an_agent_table_alone_is_read(self, tmp_path):
+    # No ``self:`` at all: the table is still an input, not a table waiting on the root.
+    levels = self._assemble(tmp_path, {"agent": {"claude": {"env": {"B": "2"}}}})
+    assert levels[2] == {"agent": {"claude": {"env": {"B": "2"}}}}
 
-    @pytest.mark.parametrize(("own", "other", "pair"), (
-        ({"model": "a"}, {"claude": {"model": "b"}}, ("self.model", "agent.claude.model")),
-        (
-            {"env": {"A": "1"}}, {"claude": {"env": {"A": "2"}}},
-            ("self.env.A", "agent.claude.env.A"),
-        ),
-        # A capital node folds (Q87) — and is then the SAME node as the root.
-        ({"model": "a"}, {"Claude": {"model": "b"}}, ("self.model", "agent.Claude.model")),
-        # A TABLE-VALUED key (§2d) is ONE setting, whole — different sub-keys still clash.
-        (
-            {"transform_settings": {"a": 1}}, {"claude": {"transform_settings": {"b": 2}}},
-            ("self.transform_settings", "agent.claude.transform_settings"),
-        ),
-        # A bind DEST is compared canonically (``/a/`` IS ``/a``) and named as written.
-        (
-            {"bindings": {"ro": {"/a/": ["/x"]}}},
-            {"claude": {"bindings": {"ro": {"/a": ["/y"]}}}},
-            ("self.bindings.ro./a/", "agent.claude.bindings.ro./a"),
-        ),
-        ({"caches": {"~/c": ["/x"]}}, {"claude": {"caches": {"~/c/": ["/y"]}}},
-         ("self.caches.~/c", "agent.claude.caches.~/c/")),
-    ))
-    def test_one_setting_spelled_twice_refuses_naming_both(self, tmp_path, own, other, pair):
-        # Q103 (FA): neither spelling may silently win — in the launch AND in ``load``, the
-        # record every ``agent`` verb reads (one verdict per file, ``_contribution``).
-        # (Mutation: drop the ``_refuse_two_spellings`` call → no raise → RED.)
-        path = tmp_path / "agent.yaml"
-        for read in (
-            lambda: self._assemble(tmp_path, {"self": own, "agent": other}),
-            lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
-        ):
-            with pytest.raises(SettingsError) as exc:
-                read()
-            message = str(exc.value)
-            assert f"`{pair[0]}` and `{pair[1]}`" in message
-            assert str(path) in message
+  @pytest.mark.parametrize(
+    ("own", "other", "pair"),
+    (
+      ({"model": "a"}, {"claude": {"model": "b"}}, ("self.model", "agent.claude.model")),
+      (
+        {"env": {"A": "1"}},
+        {"claude": {"env": {"A": "2"}}},
+        ("self.env.A", "agent.claude.env.A"),
+      ),
+      # A capital node folds (Q87) — and is then the SAME node as the root.
+      ({"model": "a"}, {"Claude": {"model": "b"}}, ("self.model", "agent.Claude.model")),
+      # A TABLE-VALUED key (§2d) is ONE setting, whole — different sub-keys still clash.
+      (
+        {"transform_settings": {"a": 1}},
+        {"claude": {"transform_settings": {"b": 2}}},
+        ("self.transform_settings", "agent.claude.transform_settings"),
+      ),
+      # A bind DEST is compared canonically (``/a/`` IS ``/a``) and named as written.
+      (
+        {"bindings": {"ro": {"/a/": ["/x"]}}},
+        {"claude": {"bindings": {"ro": {"/a": ["/y"]}}}},
+        ("self.bindings.ro./a/", "agent.claude.bindings.ro./a"),
+      ),
+      (
+        {"caches": {"~/c": ["/x"]}},
+        {"claude": {"caches": {"~/c/": ["/y"]}}},
+        ("self.caches.~/c", "agent.claude.caches.~/c/"),
+      ),
+    ),
+  )
+  def test_one_setting_spelled_twice_refuses_naming_both(self, tmp_path, own, other, pair):
+    # Q103 (FA): neither spelling may silently win — in the launch AND in ``load``, the
+    # record every ``agent`` verb reads (one verdict per file, ``_contribution``).
+    # (Mutation: drop the ``_refuse_two_spellings`` call → no raise → RED.)
+    path = tmp_path / "agent.yaml"
+    for read in (
+      lambda: self._assemble(tmp_path, {"self": own, "agent": other}),
+      lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
+    ):
+      with pytest.raises(SettingsError) as exc:
+        read()
+      message = str(exc.value)
+      assert f"`{pair[0]}` and `{pair[1]}`" in message
+      assert str(path) in message
 
-    @pytest.mark.parametrize(("own", "other", "pair"), (
-        # A PREFIX is the same setting: ``env`` as a table and as a value.
-        ({"env": {"A": "1"}}, {"claude": {"env": 5}}, ("self.env.A", "agent.claude.env")),
-    ))
-    def test_a_prefix_is_the_same_setting(self, tmp_path, own, other, pair):
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": own, "agent": other})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert f"`{pair[0]}` and `{pair[1]}`" in str(exc.value)
+  @pytest.mark.parametrize(
+    ("own", "other", "pair"),
+    (
+      # A PREFIX is the same setting: ``env`` as a table and as a value.
+      ({"env": {"A": "1"}}, {"claude": {"env": 5}}, ("self.env.A", "agent.claude.env")),
+    ),
+  )
+  def test_a_prefix_is_the_same_setting(self, tmp_path, own, other, pair):
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": own, "agent": other})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert f"`{pair[0]}` and `{pair[1]}`" in str(exc.value)
 
-    def test_a_table_at_a_scalar_leaf_is_refused_by_the_read(self, tmp_path):
-        # The file's read refuses a table at ``model`` (its shape) before this file's
-        # two-spellings check runs; both name the file.
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert "holds a table where a single value belongs" in message
-        assert "agent.claude.model" in message
-        assert str(path) in message
+  def test_a_table_at_a_scalar_leaf_is_refused_by_the_read(self, tmp_path):
+    # The file's read refuses a table at ``model`` (its shape) before this file's
+    # two-spellings check runs; both name the file.
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert "holds a table where a single value belongs" in message
+    assert "agent.claude.model" in message
+    assert str(path) in message
 
-    @pytest.mark.parametrize("other", ({"claude": 5}, {"claude": None}, {"Claude": "x"}))
-    def test_the_own_node_as_a_value_beside_self_refuses(self, tmp_path, other):
-        # D1: merged, the value would REPLACE ``agent.claude`` — every ``self:`` category gone.
-        # (Mutation: drop ``_refuse_node_values`` → ``load`` passes → RED.)
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "a", "env": {"A": "1"}}, "agent": other})
-        (seg,) = other
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert f"`agent.{seg}` in {path}" in message
-        assert "writes agent 'claude' a second time" in message
-        assert "`self:` IS `agent.claude`" in message
+  @pytest.mark.parametrize("other", ({"claude": 5}, {"claude": None}, {"Claude": "x"}))
+  def test_the_own_node_as_a_value_beside_self_refuses(self, tmp_path, other):
+    # D1: merged, the value would REPLACE ``agent.claude`` — every ``self:`` category gone.
+    # (Mutation: drop ``_refuse_node_values`` → ``load`` passes → RED.)
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "a", "env": {"A": "1"}}, "agent": other})
+    (seg,) = other
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert f"`agent.{seg}` in {path}" in message
+    assert "writes agent 'claude' a second time" in message
+    assert "`self:` IS `agent.claude`" in message
 
-    def test_any_node_as_a_value_refuses_as_the_launch_does(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"agent": {"bar": 5}})
-        with pytest.raises(SettingsError, match=r"`agent\.bar` in .* holds 5"):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+  def test_any_node_as_a_value_refuses_as_the_launch_does(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"agent": {"bar": 5}})
+    with pytest.raises(SettingsError, match=r"`agent\.bar` in .* holds 5"):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
-    @pytest.mark.parametrize(("scope", "shown"), (
-        ({"claude": {"bogus": 1}}, "agent.claude.bogus"),
-        ({"default": {"bogus": 1}}, "agent.default.bogus"),
-        ({"Claude": {"bogus": 1}}, "agent.Claude.bogus"),
-        ({"claude": {"self": {"model": "x"}}}, "agent.claude.self"),
-        # A category key holding a VALUE is judged like any key (the launch: a namespace).
-        ({"claude": {"env": 5}}, "agent.claude.env"),
-        ({"bar": {"bindings": None}}, "agent.bar.bindings"),
-    ))
-    def test_an_undeclared_key_in_the_table_refuses_by_name(self, tmp_path, scope, shown):
-        # The fold-in: ``load`` judges the table's keys as it judges ``self:``'s state.
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "a"}, "agent": scope})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert f"carries '{shown}'" in str(exc.value)
+  @pytest.mark.parametrize(
+    ("scope", "shown"),
+    (
+      ({"claude": {"bogus": 1}}, "agent.claude.bogus"),
+      ({"default": {"bogus": 1}}, "agent.default.bogus"),
+      ({"Claude": {"bogus": 1}}, "agent.Claude.bogus"),
+      ({"claude": {"self": {"model": "x"}}}, "agent.claude.self"),
+      # A category key holding a VALUE is judged like any key (the launch: a namespace).
+      ({"claude": {"env": 5}}, "agent.claude.env"),
+      ({"bar": {"bindings": None}}, "agent.bar.bindings"),
+    ),
+  )
+  def test_an_undeclared_key_in_the_table_refuses_by_name(self, tmp_path, scope, shown):
+    # The fold-in: ``load`` judges the table's keys as it judges ``self:``'s state.
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "a"}, "agent": scope})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert f"carries '{shown}'" in str(exc.value)
 
-    @pytest.mark.parametrize("scope", (
-        {"Claude": {"model": "a"}, "claude": {"model": "b"}},
-        {"nav+Claude": {"model": "a"}, "nav℘claude": {"model": "b"}},
-    ))
-    def test_one_node_spelled_twice_in_the_table_refuses(self, tmp_path, scope):
-        # ``load`` gives the launch's verdict (``refuse_node_spelled_twice``, one carrier).
-        # (Mutation: drop the call from ``_contribution`` → ``load`` returns → RED.)
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"agent": scope})
-        with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+  @pytest.mark.parametrize(
+    "scope",
+    (
+      {"Claude": {"model": "a"}, "claude": {"model": "b"}},
+      {"nav+Claude": {"model": "a"}, "nav℘claude": {"model": "b"}},
+    ),
+  )
+  def test_one_node_spelled_twice_in_the_table_refuses(self, tmp_path, scope):
+    # ``load`` gives the launch's verdict (``refuse_node_spelled_twice``, one carrier).
+    # (Mutation: drop the call from ``_contribution`` → ``load`` returns → RED.)
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"agent": scope})
+    with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
-    @pytest.mark.parametrize("spelled", ("nav+claude", "nav\u2118claude"))
-    def test_both_separators_in_the_table_read_the_same_way(self, tmp_path, spelled):
-        """GUARD (not a mutation pin): a node table is user input, so a node spelled ``+``
-        reaches this file's reader exactly as the canonical spelling does -- neither refuses."""
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "own"}, "agent": {spelled: {"model": "a"}}})
-        assert dict(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state) == {
-            "model": "own",
+  @pytest.mark.parametrize("spelled", ("nav+claude", "nav\u2118claude"))
+  def test_both_separators_in_the_table_read_the_same_way(self, tmp_path, spelled):
+    """GUARD (not a mutation pin): a node table is user input, so a node spelled ``+``
+    reaches this file's reader exactly as the canonical spelling does -- neither refuses."""
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "own"}, "agent": {spelled: {"model": "a"}}})
+    assert dict(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state) == {
+      "model": "own",
+    }
+
+  def test_one_node_spelled_with_both_separators_refuses_at_the_table(self, tmp_path):
+    """A file carrying BOTH spellings of one node is told the two collide -- the more
+    specific diagnosis -- not that one of them is not a node."""
+    path = tmp_path / "agent.yaml"
+    dump_doc(
+      path,
+      {
+        "agent": {
+          "nav+claude": {"model": "a"},
+          "nav\u2118claude": {"model": "b"},
         }
+      },
+    )
+    with pytest.raises(SettingsError, match="ONE agent node .* spelled twice") as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    # ⚑ The node is named as the user writes it. The two KEYS stay as the file spells them --
+    # one of them really is written ``℘``, and that entry is the one to delete.
+    assert "ONE agent node ('nav+claude') spelled twice" in message, message
+    assert "'agent.nav+claude'" in message and "'agent.nav\u2118claude'" in message, message
 
-    def test_one_node_spelled_with_both_separators_refuses_at_the_table(self, tmp_path):
-        """A file carrying BOTH spellings of one node is told the two collide -- the more
-        specific diagnosis -- not that one of them is not a node."""
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"agent": {
-            "nav+claude": {"model": "a"}, "nav\u2118claude": {"model": "b"},
-        }})
-        with pytest.raises(SettingsError, match="ONE agent node .* spelled twice") as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        # ⚑ The node is named as the user writes it. The two KEYS stay as the file spells them --
-        # one of them really is written ``℘``, and that entry is the one to delete.
-        assert "ONE agent node ('nav+claude') spelled twice" in message, message
-        assert "'agent.nav+claude'" in message and "'agent.nav\u2118claude'" in message, message
+  def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
+    # The cure is a hand-edit: one refusal names every entry, as the launch does.
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "a", "bogus": 1, "zippity": 2}})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert "has 2 entries that are not settings keys" in message
+    assert "carries 'bogus'" in message and "carries 'zippity'" in message
+    assert "`self.bogus`, `self.zippity`" in message
 
-    def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
-        # The cure is a hand-edit: one refusal names every entry, as the launch does.
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "a", "bogus": 1, "zippity": 2}})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert "has 2 entries that are not settings keys" in message
-        assert "carries 'bogus'" in message and "carries 'zippity'" in message
-        assert "`self.bogus`, `self.zippity`" in message
+  def test_the_alias_is_no_node_for_any_reader(self, tmp_path):
+    # A leftover ``agents/self/`` (1.8.0-rc2's ``system set agent.self.<key>``) is refused
+    # by ``load``, which every ``agent`` reader shares.
+    path = tmp_path / "self" / "agent.yaml"
+    path.parent.mkdir()
+    dump_doc(path, {"self": {"model": "a"}})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="self", purpose=ReadPurpose.RESOLVE)
+    assert f"{path.parent} is not an agent store" in str(exc.value)
+    assert "'self' is not an agent" in str(exc.value)
 
-    def test_the_alias_is_no_node_for_any_reader(self, tmp_path):
-        # A leftover ``agents/self/`` (1.8.0-rc2's ``system set agent.self.<key>``) is refused
-        # by ``load``, which every ``agent`` reader shares.
-        path = tmp_path / "self" / "agent.yaml"
-        path.parent.mkdir()
-        dump_doc(path, {"self": {"model": "a"}})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="self", purpose=ReadPurpose.RESOLVE)
-        assert f"{path.parent} is not an agent store" in str(exc.value)
-        assert "'self' is not an agent" in str(exc.value)
+  def test_the_reserved_tier_is_no_store_for_any_reader(self, tmp_path):
+    """A leftover ``agents/default/`` is refused by ``load``, beside the alias above.
 
-    def test_the_reserved_tier_is_no_store_for_any_reader(self, tmp_path):
-        """A leftover ``agents/default/`` is refused by ``load``, beside the alias above.
+    The tier's settings live in the SYSTEM file's ``agent: default:`` table, so a
+    folder beside the real agents is never one -- yet it was read at rc 0 by every
+    reader here (``agent get/show/info``, ``agent list``), while the WRITE route
+    refused the same node. ``config_dest._missing_store_error``'s docstring already
+    named ``load`` as the PRESENT-store route for this refusal; that route did not
+    exist until this pin.
 
-        The tier's settings live in the SYSTEM file's ``agent: default:`` table, so a
-        folder beside the real agents is never one -- yet it was read at rc 0 by every
-        reader here (``agent get/show/info``, ``agent list``), while the WRITE route
-        refused the same node. ``config_dest._missing_store_error``'s docstring already
-        named ``load`` as the PRESENT-store route for this refusal; that route did not
-        exist until this pin.
+    MUTATION: drop the ``node == AGENT_DEFAULT_SUB`` gate from ``load`` and this
+    returns a record built from the folder instead of raising.
+    """
+    path = tmp_path / "default" / "agent.yaml"
+    path.parent.mkdir()
+    dump_doc(path, {"self": {"label": "y"}})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="default", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert f"{path.parent} is not an agent store" in message
+    assert "'default' is the reserved any-agent tier" in message
+    # ⚑ THE PREFIX IS SPLIT OUT FOR THIS CALLER, AND THE DOUBLED ONE IS THE BUG IT
+    # EXISTED FOR: an embedded sentence carrying the stderr ``Error:`` reads
+    # "is not an agent store: Error: 'default' …".
+    assert "Error:" not in message
 
-        MUTATION: drop the ``node == AGENT_DEFAULT_SUB`` gate from ``load`` and this
-        returns a record built from the folder instead of raising.
-        """
-        path = tmp_path / "default" / "agent.yaml"
-        path.parent.mkdir()
-        dump_doc(path, {"self": {"label": "y"}})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="default", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert f"{path.parent} is not an agent store" in message
-        assert "'default' is the reserved any-agent tier" in message
-        # ⚑ THE PREFIX IS SPLIT OUT FOR THIS CALLER, AND THE DOUBLED ONE IS THE BUG IT
-        # EXISTED FOR: an embedded sentence carrying the stderr ``Error:`` reads
-        # "is not an agent store: Error: 'default' …".
-        assert "Error:" not in message
+  def test_an_absent_reserved_tier_store_is_not_a_refusal(self, tmp_path):
+    """The gate is a STORE LOOKUP, not a second key-space one.
 
-    def test_an_absent_reserved_tier_store_is_not_a_refusal(self, tmp_path):
-        """The gate is a STORE LOOKUP, not a second key-space one.
+    ``default`` is a legal ``agent.<HERE>`` segment -- it addresses the tier -- so a
+    reader that asks for a store that is not there still gets the empty record, and
+    only a folder that EXISTS is the refusal. Pinning the other half keeps the gate
+    from widening into ``file_alias_reason``'s job.
+    """
+    path = tmp_path / "default" / "agent.yaml"
+    assert agent_record(path, node="default", purpose=ReadPurpose.RESOLVE) == AgentConfig()
 
-        ``default`` is a legal ``agent.<HERE>`` segment -- it addresses the tier -- so a
-        reader that asks for a store that is not there still gets the empty record, and
-        only a folder that EXISTS is the refusal. Pinning the other half keeps the gate
-        from widening into ``file_alias_reason``'s job.
-        """
-        path = tmp_path / "default" / "agent.yaml"
-        assert agent_record(path, node="default", purpose=ReadPurpose.RESOLVE) == AgentConfig()
+  @pytest.mark.parametrize(
+    "scope",
+    (
+      # conceded: no readable vocabulary (keyspec §0 "The leaf VOCABULARY is partitioned
+      # by TIER")
+      {"nosuchharness": {"x": 1}},
+      {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
+      {"bar": {"env": {"A": "1"}}},  # a category's entries are data, not keys
+      {"claude": {"caches": "x"}},  # load coerces a wrong shape; the launch refuses it
+    ),
+  )
+  def test_load_reads_past_these_node_tables(self, tmp_path, scope):
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "a"}, "agent": scope})
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state["model"] == "a"
 
-    @pytest.mark.parametrize("scope", (
-        # conceded: no readable vocabulary (keyspec §0 "The leaf VOCABULARY is partitioned
-        # by TIER")
-        {"nosuchharness": {"x": 1}},
-        {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
-        {"bar": {"env": {"A": "1"}}},           # a category's entries are data, not keys
-        {"claude": {"caches": "x"}},            # load coerces a wrong shape; the launch refuses it
-    ))
-    def test_load_reads_past_these_node_tables(self, tmp_path, scope):
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": {"model": "a"}, "agent": scope})
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state["model"] == "a"
+  def test_different_leaves_of_one_table_merge(self, tmp_path):
+    # Two dests of one arm, two VARs of one family: different settings, as across files.
+    levels = self._assemble(
+      tmp_path,
+      {
+        "self": {"env": {"A": "1"}, "bindings": {"ro": {"/a": ["/x"]}}},
+        "agent": {"claude": {"env": {"B": "2"}, "bindings": {"ro": {"/b": ["/y"]}}}},
+      },
+    )
+    node = levels[2]["agent"]["claude"]
+    assert dict(node["env"]) == {"A": "1", "B": "2"}
+    assert set(node["bindings"]["ro"]) == {"/a", "/b"}
 
-    def test_different_leaves_of_one_table_merge(self, tmp_path):
-        # Two dests of one arm, two VARs of one family: different settings, as across files.
-        levels = self._assemble(tmp_path, {
-            "self": {"env": {"A": "1"}, "bindings": {"ro": {"/a": ["/x"]}}},
-            "agent": {"claude": {"env": {"B": "2"}, "bindings": {"ro": {"/b": ["/y"]}}}},
-        })
-        node = levels[2]["agent"]["claude"]
-        assert dict(node["env"]) == {"A": "1", "B": "2"}
-        assert set(node["bindings"]["ro"]) == {"/a", "/b"}
+  def test_another_nodes_same_leaf_is_not_a_second_spelling(self, tmp_path):
+    # ``agent.bar.model`` and ``agent.default.model`` are other keys than ``self.model``.
+    levels = self._assemble(
+      tmp_path,
+      {
+        "self": {"model": "a"},
+        "agent": {"bar": {"model": "b"}, "default": {"model": "d"}},
+      },
+    )
+    # ``self.model`` rides the active level too (K4 Step 1), beside ``agent.bar``.
+    assert levels[2] == {"agent": {"claude": {"model": "a"}, "bar": {"model": "b"}}}
+    assert levels[3] == {"agent": {"default": {"model": "d"}}}
 
-    def test_another_nodes_same_leaf_is_not_a_second_spelling(self, tmp_path):
-        # ``agent.bar.model`` and ``agent.default.model`` are other keys than ``self.model``.
-        levels = self._assemble(tmp_path, {
-            "self": {"model": "a"},
-            "agent": {"bar": {"model": "b"}, "default": {"model": "d"}},
-        })
-        # ``self.model`` rides the active level too (K4 Step 1), beside ``agent.bar``.
-        assert levels[2] == {"agent": {"claude": {"model": "a"}, "bar": {"model": "b"}}}
-        assert levels[3] == {"agent": {"default": {"model": "d"}}}
+  def test_a_value_where_the_node_tables_go_refuses(self, tmp_path):
+    with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
+      self._assemble(tmp_path, {"self": {"model": "a"}, "agent": 5})
+    with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
+      agent_record(tmp_path / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
 
-    def test_a_value_where_the_node_tables_go_refuses(self, tmp_path):
-        with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
-            self._assemble(tmp_path, {"self": {"model": "a"}, "agent": 5})
-        with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
-            agent_record(tmp_path / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
+  def test_a_bare_agent_key_refuses_as_a_null_scope(self, tmp_path):
+    # One shape, one verdict: a bare ``agent:`` is ``null``, refused like a bare
+    # ``box:`` here and ``agent: null`` in the system file.
+    # (Mutation: exempt a ``None`` ``agent:`` again → both reads pass → RED.)
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  env:\n    A: '1'\nagent:\n")
+    from tests.support.assembly import assemble_levels_at
 
-    def test_a_bare_agent_key_refuses_as_a_null_scope(self, tmp_path):
-        # One shape, one verdict: a bare ``agent:`` is ``null``, refused like a bare
-        # ``box:`` here and ``agent: null`` in the system file.
-        # (Mutation: exempt a ``None`` ``agent:`` again → both reads pass → RED.)
-        path = tmp_path / "agent.yaml"
-        path.write_text("self:\n  env:\n    A: '1'\nagent:\n")
-        from tests.support.assembly import assemble_levels_at
+    for read in (
+      lambda: assemble_levels_at(
+        agent_name="claude",
+        base_path=tmp_path / "absent-base.yaml",
+        agent_path=path,
+      ),
+      lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
+    ):
+      with pytest.raises(SettingsError, match=r"`agent: null` at the top level of"):
+        read()
 
-        for read in (
-            lambda: assemble_levels_at(
-                agent_name="claude", base_path=tmp_path / "absent-base.yaml", agent_path=path,
-            ),
-            lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
-        ):
-            with pytest.raises(SettingsError, match=r"`agent: null` at the top level of"):
-                read()
+  def test_the_verbs_judge_the_table_the_cascade_merges(self, tmp_path):
+    # The reader's view is what the retirement checks and ``config show`` judge: it must
+    # carry the table the merge reads, folded as the merge folds it.
+    from tests.support.assembly import display_view
 
-    def test_the_verbs_judge_the_table_the_cascade_merges(self, tmp_path):
-        # The reader's view is what the retirement checks and ``config show`` judge: it must
-        # carry the table the merge reads, folded as the merge folds it.
-        from tests.support.assembly import display_view
+    path = tmp_path / "agent.yaml"
+    dump_doc(
+      path,
+      {
+        "self": {"model": "a"},
+        "agent": {"bar": {"model": "b"}},
+        "workset": {"x": 1},
+      },
+    )
+    assert display_view(path, "agent") == {
+      "self": {"model": "a"},
+      "agent": {"bar": {"model": "b"}},
+      "workset": {"x": 1},
+    }
 
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {
-            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1},
-        })
-        assert display_view(path, "agent") == {
-            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1},
-        }
+  def test_reset_clears_the_table_and_counts_its_leaves(self, tmp_path):
+    # The table is a contribution, so it is an override the repair door clears; so is a
+    # contained-scope table, read since 2E (Q85).
+    from kanibako.settings.config_io import load_doc
 
-    def test_reset_clears_the_table_and_counts_its_leaves(self, tmp_path):
-        # The table is a contribution, so it is an override the repair door clears; so is a
-        # contained-scope table, read since 2E (Q85).
-        from kanibako.settings.config_io import load_doc
-
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {
-            "self": {"model": "a"},
-            "agent": {"bar": {"model": "b"}, "default": {"env": {"X": "1"}}},
-            "workset": {"x": 1},
-        })
-        assert clear_overrides(path) == 4
-        assert load_doc(path) == {}
+    path = tmp_path / "agent.yaml"
+    dump_doc(
+      path,
+      {
+        "self": {"model": "a"},
+        "agent": {"bar": {"model": "b"}, "default": {"env": {"X": "1"}}},
+        "workset": {"x": 1},
+      },
+    )
+    assert clear_overrides(path) == 4
+    assert load_doc(path) == {}
 
 
 class TestTheForwardCompatPassthroughIsClosed:
-    """S3b / D-5's other end: an undeclared scalar no longer rides into the launch.
+  """S3b / D-5's other end: an undeclared scalar no longer rides into the launch.
 
-    The retired agent-state rung documented that "undeclared agent-scope scalar keys ride through
-    verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behavior"* spec §0
-    SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
-    was not merely dead: it reached the box.
+  The retired agent-state rung documented that "undeclared agent-scope scalar keys ride through
+  verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behavior"* spec §0
+  SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
+  was not merely dead: it reached the box.
 
-    ⚑ The refusal runs as the file is READ (``settings_assemble.agent_record``, Q101 option 1), so every reader —
-    ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — refuses it by name.
+  ⚑ The refusal runs as the file is READ (``settings_assemble.agent_record``, Q101 option 1), so every reader —
+  ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — refuses it by name.
+  """
+
+  @staticmethod
+  def _file(tmp_path, state: dict):
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": state})
+    return path
+
+  def test_an_undeclared_scalar_refuses_the_read_by_name(self, tmp_path):
+    path = self._file(tmp_path, {"model": "opus", "junk": "x"})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert "'junk'" in message
+    assert "'claude'" in message
+    assert str(path) in message
+    # The repair route stays NAMED — the one verb that still works on a poisoned file.
+    assert "agent reset claude --all" in message
+    # The old cure sent the user to a reader that now refuses too.
+    assert "agent info" not in message
+
+  def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
+    # [spec:14-18, "self"]: nothing past the parse boundary recognizes ``self``. A
+    # hand-authored ``self.model:`` root leaf is a scalar the loader sweeps into state
+    # — and it stops here rather than becoming ``agent.claude.self.model`` in the
+    # snapshot.
+    path = self._file(tmp_path, {"self.model": "opus"})
+    with pytest.raises(SettingsError, match=r"self\.model"):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+
+  def test_every_core_declared_leaf_still_loads(self, tmp_path):
+    # The CONTROL. A refusal that also refused the real keys would be caught by the
+    # rest of the suite, but not by anything that says WHY this list is the list.
+    state = {
+      "model": "opus",
+      "access": "full",
+      "endpoint": "https://e",
+      "allow_helpers": "true",
+      "continue_mode": "true",
+      "bootstrap": "x",
+      "template": "t",
+      "canon": "c",
+      "transform": "tweakcc",
+    }
+    cfg = agent_record(self._file(tmp_path, state), node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.state == state
+
+  def test_a_plugin_declared_leaf_still_loads(self, tmp_path):
+    """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
+
+    ``provider`` is declared by the goose target via ``setting_descriptors()``, not by core's
+    §2d table. MUTATION: drop ``agent_leaf_map=`` from ``config_keys.agent_key_reason``'s
+    ``key_validity`` call and this reddens — a refusal without goose's own vocabulary kills a
+    working box.
+
+    🛑 THE GUARD READS ``leaf_map``, AND THAT SPELLING IS LOAD-BEARING. It was a ``getattr``
+    for ``leaves`` — the pre-map attribute — which went on answering ``None`` after the rename,
+    so the skip fired every run and this control silently stopped guarding anything. A
+    ``getattr`` guard survives the rename that should have reded it; ask for the attribute.
     """
+    from kanibako.settings.settings_prefs import default_valid_agents
 
-    @staticmethod
-    def _file(tmp_path, state: dict):
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {"self": state})
-        return path
+    leaves = default_valid_agents().leaf_map.get("goose", ())
+    if "provider" not in leaves:
+      pytest.skip("the goose plugin does not declare 'provider' in this environment")
+    path = self._file(tmp_path, {"provider": "ollama"})
+    assert agent_record(path, node="goose", purpose=ReadPurpose.RESOLVE).state == {
+      "provider": "ollama"
+    }
 
-    def test_an_undeclared_scalar_refuses_the_read_by_name(self, tmp_path):
-        path = self._file(tmp_path, {"model": "opus", "junk": "x"})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert "'junk'" in message
-        assert "'claude'" in message
-        assert str(path) in message
-        # The repair route stays NAMED — the one verb that still works on a poisoned file.
-        assert "agent reset claude --all" in message
-        # The old cure sent the user to a reader that now refuses too.
-        assert "agent info" not in message
+  def test_a_persona_file_is_judged_by_its_harness(self, tmp_path):
+    """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d,
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
 
-    def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
-        # [spec:14-18, "self"]: nothing past the parse boundary recognizes ``self``. A
-        # hand-authored ``self.model:`` root leaf is a scalar the loader sweeps into state
-        # — and it stops here rather than becoming ``agent.claude.self.model`` in the
-        # snapshot.
-        path = self._file(tmp_path, {"self.model": "opus"})
-        with pytest.raises(SettingsError, match=r"self\.model"):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    ``nav℘claude`` is persona ``nav`` on harness ``claude``, so an undeclared leaf refuses
+    exactly as it does on ``claude``'s own file, and a declared one loads.  The launch reads
+    the file through this same ``load`` (``start.py``), so it inherits both halves.
+    """
+    refused = self._file(tmp_path, {"model": "opus", "zippity": 1})
+    with pytest.raises(SettingsError) as exc:
+      agent_record(refused, node="nav℘claude", purpose=ReadPurpose.RESOLVE)
+    assert "'zippity'" in str(exc.value)
+    assert "agent.nav+claude" in str(exc.value)
 
-    def test_every_core_declared_leaf_still_loads(self, tmp_path):
-        # The CONTROL. A refusal that also refused the real keys would be caught by the
-        # rest of the suite, but not by anything that says WHY this list is the list.
-        state = {
-            "model": "opus", "access": "full", "endpoint": "https://e",
-            "allow_helpers": "true", "continue_mode": "true", "bootstrap": "x",
-            "template": "t", "canon": "c", "transform": "tweakcc",
-        }
-        cfg = agent_record(self._file(tmp_path, state), node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.state == state
+    declared = self._file(tmp_path, {"model": "opus", "endpoint": "https://e"})
+    assert agent_record(declared, node="nav℘claude", purpose=ReadPurpose.RESOLVE).state == {
+      "model": "opus",
+      "endpoint": "https://e",
+    }
 
-    def test_a_plugin_declared_leaf_still_loads(self, tmp_path):
-        """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
+  def test_a_persona_on_an_uninstalled_harness_concedes(self, tmp_path):
+    # keyspec §0 "The leaf VOCABULARY is partitioned by TIER": where the harness plugin
+    # is not here its vocabulary is unreadable, so a leaf it might declare is CONCEDED,
+    # never refused — for a persona as for a bare agent.
+    # ⚑ ``claude+work`` is THIS case (persona ``claude`` on harness ``work``), not a hole.
+    path = self._file(tmp_path, {"zippity": "1"})
+    assert agent_record(path, node="nav℘nosuchharness", purpose=ReadPurpose.RESOLVE).state == {
+      "zippity": "1"
+    }
 
-        ``provider`` is declared by the goose target via ``setting_descriptors()``, not by core's
-        §2d table. MUTATION: drop ``agent_leaf_map=`` from ``config_keys.agent_key_reason``'s
-        ``key_validity`` call and this reddens — a refusal without goose's own vocabulary kills a
-        working box.
-
-        🛑 THE GUARD READS ``leaf_map``, AND THAT SPELLING IS LOAD-BEARING. It was a ``getattr``
-        for ``leaves`` — the pre-map attribute — which went on answering ``None`` after the rename,
-        so the skip fired every run and this control silently stopped guarding anything. A
-        ``getattr`` guard survives the rename that should have reded it; ask for the attribute.
-        """
-        from kanibako.settings.settings_prefs import default_valid_agents
-
-        leaves = default_valid_agents().leaf_map.get("goose", ())
-        if "provider" not in leaves:
-            pytest.skip("the goose plugin does not declare 'provider' in this environment")
-        path = self._file(tmp_path, {"provider": "ollama"})
-        assert agent_record(path, node="goose", purpose=ReadPurpose.RESOLVE).state == {"provider": "ollama"}
-
-    def test_a_persona_file_is_judged_by_its_harness(self, tmp_path):
-        """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d,
-        keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
-
-        ``nav℘claude`` is persona ``nav`` on harness ``claude``, so an undeclared leaf refuses
-        exactly as it does on ``claude``'s own file, and a declared one loads.  The launch reads
-        the file through this same ``load`` (``start.py``), so it inherits both halves.
-        """
-        refused = self._file(tmp_path, {"model": "opus", "zippity": 1})
-        with pytest.raises(SettingsError) as exc:
-            agent_record(refused, node="nav℘claude", purpose=ReadPurpose.RESOLVE)
-        assert "'zippity'" in str(exc.value)
-        assert "agent.nav+claude" in str(exc.value)
-
-        declared = self._file(tmp_path, {"model": "opus", "endpoint": "https://e"})
-        assert agent_record(declared, node="nav℘claude", purpose=ReadPurpose.RESOLVE).state == {
-            "model": "opus", "endpoint": "https://e",
-        }
-
-    def test_a_persona_on_an_uninstalled_harness_concedes(self, tmp_path):
-        # keyspec §0 "The leaf VOCABULARY is partitioned by TIER": where the harness plugin
-        # is not here its vocabulary is unreadable, so a leaf it might declare is CONCEDED,
-        # never refused — for a persona as for a bare agent.
-        # ⚑ ``claude+work`` is THIS case (persona ``claude`` on harness ``work``), not a hole.
-        path = self._file(tmp_path, {"zippity": "1"})
-        assert agent_record(path, node="nav℘nosuchharness", purpose=ReadPurpose.RESOLVE).state == {"zippity": "1"}
-
-    def test_the_repair_door_does_not_go_through_here(self, tmp_path):
-        # ⚑ A poisoned file must still be clearable: ``clear_overrides`` reads raw YAML and
-        # never calls ``load``, so this is the escape hatch, pinned rather than assumed.
-        # ⚑ ``name`` IS ONE OF THE UNDECLARED ENTRIES NOW (D8b), and the case is the live one:
-        # every file `kanibako setup` ever wrote carries that line, so this IS the poisoned
-        # file a user meets. Every reader refuses it, and it still clears.
-        path = tmp_path / "agent.yaml"
-        path.write_text("self:\n  name: Nav\n  junk: x\n")
-        with pytest.raises(SettingsError, match="'name'"):
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert clear_overrides(path) == 2
-        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
+  def test_the_repair_door_does_not_go_through_here(self, tmp_path):
+    # ⚑ A poisoned file must still be clearable: ``clear_overrides`` reads raw YAML and
+    # never calls ``load``, so this is the escape hatch, pinned rather than assumed.
+    # ⚑ ``name`` IS ONE OF THE UNDECLARED ENTRIES NOW (D8b), and the case is the live one:
+    # every file `kanibako setup` ever wrote carries that line, so this IS the poisoned
+    # file a user meets. Every reader refuses it, and it still clears.
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  name: Nav\n  junk: x\n")
+    with pytest.raises(SettingsError, match="'name'"):
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert clear_overrides(path) == 2
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
 
 
 class TestFileSpelling:
-    def test_the_root_alone(self):
-        assert file_spelling() == "self"
+  def test_the_root_alone(self):
+    assert file_spelling() == "self"
 
-    def test_one_segment_is_the_flat_table(self):
-        # What every CURE names since the flatten: the file IS the node's, so the
-        # category table sits directly under the root.
-        assert file_spelling("caches") == "self.caches"
+  def test_one_segment_is_the_flat_table(self):
+    # What every CURE names since the flatten: the file IS the node's, so the
+    # category table sits directly under the root.
+    assert file_spelling("caches") == "self.caches"
 
-    def test_segments_join_under_the_root(self):
-        # What every REFUSAL names: the nested shape the user actually wrote.
-        assert file_spelling("claude", "bindings") == "self.claude.bindings"
+  def test_segments_join_under_the_root(self):
+    # What every REFUSAL names: the nested shape the user actually wrote.
+    assert file_spelling("claude", "bindings") == "self.claude.bindings"
 
-    def test_empty_segments_are_dropped(self):
-        # Lets the refusal pass an optional category without a branch of its own.
-        assert file_spelling("claude", "") == "self.claude"
+  def test_empty_segments_are_dropped(self):
+    # Lets the refusal pass an optional category without a branch of its own.
+    assert file_spelling("claude", "") == "self.claude"
 
 
 class TestLoadSharesTheRefusal:
-    """Two readers of ONE file must not disagree about what the file means (call (b))."""
+  """Two readers of ONE file must not disagree about what the file means (call (b))."""
 
-    def test_load_refuses_what_the_cascade_refuses(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  model: opus\n"
-            "  claude:\n"
-            "    env:\n"
-            "      EDITOR: vim\n"
-        )
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        message = str(exc.value)
-        assert "self.claude.env" in message
-        assert str(path) in message
+  def test_load_refuses_what_the_cascade_refuses(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    path.write_text("self:\n  model: opus\n  claude:\n    env:\n      EDITOR: vim\n")
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    message = str(exc.value)
+    assert "self.claude.env" in message
+    assert str(path) in message
 
-    def test_a_flat_file_loads(self, tmp_path):
-        # The control: the predicate must not refuse the shape the flatten blesses.
-        path = tmp_path / "agent.yaml"
-        path.write_text(
-            "self:\n"
-            "  model: opus\n"
-            "  env:\n"
-            "    EDITOR: vim\n"
-            "  bindings:\n"
-            "    ro:\n"
-            "      /box/x: [/h/x]\n"
-        )
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.env == {"EDITOR": "vim"}
-        assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}
+  def test_a_flat_file_loads(self, tmp_path):
+    # The control: the predicate must not refuse the shape the flatten blesses.
+    path = tmp_path / "agent.yaml"
+    path.write_text(
+      "self:\n  model: opus\n  env:\n    EDITOR: vim\n  bindings:\n    ro:\n      /box/x: [/h/x]\n"
+    )
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.env == {"EDITOR": "vim"}
+    assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}
 
 
 class TestOneNodeTwoSpellings:
-    """``self:`` IS ``agent.<node>`` (Q92), so ``agent: <own node>:`` spells the same settings:
-    the record every ``agent`` verb displays holds both, and the slot addresses whichever holds
-    the value. (Two spellings of ONE setting refuse — Q103, :class:`TestTheAgentTable`.)"""
+  """``self:`` IS ``agent.<node>`` (Q92), so ``agent: <own node>:`` spells the same settings:
+  the record every ``agent`` verb displays holds both, and the slot addresses whichever holds
+  the value. (Two spellings of ONE setting refuse — Q103, :class:`TestTheAgentTable`.)"""
 
-    def test_the_record_holds_both_spellings(self, tmp_path):
-        path = tmp_path / "agent.yaml"
-        dump_doc(path, {
-            "self": {"label": "L", "env": {"A": "1"}},
-            "agent": {
-                "Claude": {"model": "b", "env": {"B": "2"}, "run_args": ["--x"],
-                           "masks": {"/m": True}},
-                "goose": {"model": "g"},
-            },
-        })
-        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert cfg.state == {"label": "L", "model": "b"}
-        assert cfg.env == {"A": "1", "B": "2"}
-        assert cfg.run_args == ["--x"]
-        assert cfg.category_tables == {"masks": {"/m": True}}
+  def test_the_record_holds_both_spellings(self, tmp_path):
+    path = tmp_path / "agent.yaml"
+    dump_doc(
+      path,
+      {
+        "self": {"label": "L", "env": {"A": "1"}},
+        "agent": {
+          "Claude": {"model": "b", "env": {"B": "2"}, "run_args": ["--x"], "masks": {"/m": True}},
+          "goose": {"model": "g"},
+        },
+      },
+    )
+    cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert cfg.state == {"label": "L", "model": "b"}
+    assert cfg.env == {"A": "1", "B": "2"}
+    assert cfg.run_args == ["--x"]
+    assert cfg.category_tables == {"masks": {"/m": True}}
 
-    @pytest.mark.parametrize("tail", ("model", "env.FOO"))
-    def test_the_slot_reads_writes_and_removes_where_the_value_is(self, tail, tmp_path):
-        from kanibako.settings.config_io import load_doc
+  @pytest.mark.parametrize("tail", ("model", "env.FOO"))
+  def test_the_slot_reads_writes_and_removes_where_the_value_is(self, tail, tmp_path):
+    from kanibako.settings.config_io import load_doc
 
-        slot = slot_for(tmp_path, "claude", tail)
-        spelled = {"model": {"model": "b"}, "env.FOO": {"env": {"FOO": "b"}}}[tail]
-        dump_doc(slot.path, {"agent": {"claude": spelled}})
-        assert read_leaf(slot) == "b"
-        write_leaf(slot, "c")
-        # Rewritten in place: a second spelling under ``self:`` would refuse every read.
-        assert "self" not in load_doc(slot.path)
-        assert read_leaf(slot) == "c"
-        assert remove_leaf(slot) is True
-        assert load_doc(slot.path) == {}
+    slot = slot_for(tmp_path, "claude", tail)
+    spelled = {"model": {"model": "b"}, "env.FOO": {"env": {"FOO": "b"}}}[tail]
+    dump_doc(slot.path, {"agent": {"claude": spelled}})
+    assert read_leaf(slot) == "b"
+    write_leaf(slot, "c")
+    # Rewritten in place: a second spelling under ``self:`` would refuse every read.
+    assert "self" not in load_doc(slot.path)
+    assert read_leaf(slot) == "c"
+    assert remove_leaf(slot) is True
+    assert load_doc(slot.path) == {}
 
-    def test_a_new_value_is_written_under_the_root(self, tmp_path):
-        from kanibako.settings.config_io import load_doc
+  def test_a_new_value_is_written_under_the_root(self, tmp_path):
+    from kanibako.settings.config_io import load_doc
 
-        slot = slot_for(tmp_path, "claude", "env.NEW")
-        dump_doc(slot.path, {"agent": {"claude": {"env": {"OLD": "1"}}}})
-        write_leaf(slot, "2")
-        assert load_doc(slot.path) == {
-            "agent": {"claude": {"env": {"OLD": "1"}}}, "self": {"env": {"NEW": "2"}},
-        }
-        agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE)  # one setting per spelling: still reads
+    slot = slot_for(tmp_path, "claude", "env.NEW")
+    dump_doc(slot.path, {"agent": {"claude": {"env": {"OLD": "1"}}}})
+    write_leaf(slot, "2")
+    assert load_doc(slot.path) == {
+      "agent": {"claude": {"env": {"OLD": "1"}}},
+      "self": {"env": {"NEW": "2"}},
+    }
+    agent_record(
+      slot.path, node="claude", purpose=ReadPurpose.RESOLVE
+    )  # one setting per spelling: still reads
 
-    def test_another_nodes_value_is_not_this_nodes(self, tmp_path):
-        slot = slot_for(tmp_path, "claude", "model")
-        dump_doc(slot.path, {"agent": {"goose": {"model": "g"}, "default": {"model": "d"}}})
-        assert read_leaf(slot) is None
-        assert agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
+  def test_another_nodes_value_is_not_this_nodes(self, tmp_path):
+    slot = slot_for(tmp_path, "claude", "model")
+    dump_doc(slot.path, {"agent": {"goose": {"model": "g"}, "default": {"model": "d"}}})
+    assert read_leaf(slot) is None
+    assert agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
 
 
 class TestAStoredBoolReachesTheVerbUnrendered:
-    """A stored YAML bool is carried by the RECORD as a bool, so ``get``/``show``/``info``
-    can spell it the way every other ``get`` route does.
+  """A stored YAML bool is carried by the RECORD as a bool, so ``get``/``show``/``info``
+  can spell it the way every other ``get`` route does.
 
-    The record used to coerce every leaf through ``str()``, which turned a YAML ``true``
-    into the four-byte string ``True`` — indistinguishable, in the record, from a user who
-    wrote ``"True"``. The two must render DIFFERENTLY (``true`` vs ``True``), so the
-    distinction has to survive the load; no renderer can recover it afterwards. (Mutation:
-    restore ``v if v is None else str(v)`` at any of the three tables and this class red.)
-    """
+  The record used to coerce every leaf through ``str()``, which turned a YAML ``true``
+  into the four-byte string ``True`` — indistinguishable, in the record, from a user who
+  wrote ``"True"``. The two must render DIFFERENTLY (``true`` vs ``True``), so the
+  distinction has to survive the load; no renderer can recover it afterwards. (Mutation:
+  restore ``v if v is None else str(v)`` at any of the three tables and this class red.)
+  """
 
-    def _file(self, tmp_path, body):
-        p = tmp_path / "claude" / "agent.yaml"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("self:\n" + body)
-        return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
+  def _file(self, tmp_path, body):
+    p = tmp_path / "claude" / "agent.yaml"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("self:\n" + body)
+    return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
 
-    def test_env_bool_is_carried_as_a_bool(self, tmp_path):
-        # ⚑ NOT `ON:`/`OFF:` — YAML 1.1 reads those as boolean KEYS, so the VAR names
-        # here are prefixed to keep them strings. Only VALUES are coerced, never keys.
-        cfg = self._file(tmp_path, "  env:\n    FLAG_ON: true\n    FLAG_OFF: false\n")
-        assert cfg.env["FLAG_ON"] is True
-        assert cfg.env["FLAG_OFF"] is False
+  def test_env_bool_is_carried_as_a_bool(self, tmp_path):
+    # ⚑ NOT `ON:`/`OFF:` — YAML 1.1 reads those as boolean KEYS, so the VAR names
+    # here are prefixed to keep them strings. Only VALUES are coerced, never keys.
+    cfg = self._file(tmp_path, "  env:\n    FLAG_ON: true\n    FLAG_OFF: false\n")
+    assert cfg.env["FLAG_ON"] is True
+    assert cfg.env["FLAG_OFF"] is False
 
-    def test_state_bool_is_carried_as_a_bool(self, tmp_path):
-        assert self._file(tmp_path, "  model: true\n").state["model"] is True
+  def test_state_bool_is_carried_as_a_bool(self, tmp_path):
+    assert self._file(tmp_path, "  model: true\n").state["model"] is True
 
-    def test_secret_path_bool_is_carried_as_a_bool(self, tmp_path):
-        cfg = self._file(tmp_path, "  secret_path:\n    TOKEN: true\n")
-        assert cfg.secret_path["TOKEN"] is True
+  def test_secret_path_bool_is_carried_as_a_bool(self, tmp_path):
+    cfg = self._file(tmp_path, "  secret_path:\n    TOKEN: true\n")
+    assert cfg.secret_path["TOKEN"] is True
 
-    def test_the_state_bool_renders_through_the_show_pair(self, tmp_path):
-        from kanibako.settings.agent_file import stored_leaf_display
-        assert stored_leaf_display("model", self._file(
-            tmp_path, "  model: true\n").state["model"]) == "true"
+  def test_the_state_bool_renders_through_the_show_pair(self, tmp_path):
+    from kanibako.settings.agent_file import stored_leaf_display
+
+    assert (
+      stored_leaf_display("model", self._file(tmp_path, "  model: true\n").state["model"])
+      == "true"
+    )
 
 
 class TestEveryNeighborOfABoolIsUntouched:
-    """Only a real bool changes. Its neighbors — the values that merely LOOK like one —
-    were already rendered correctly and must stay byte-identical.
+  """Only a real bool changes. Its neighbors — the values that merely LOOK like one —
+  were already rendered correctly and must stay byte-identical.
 
-    ⚑ THE STRING TRAP, pinned: a truthiness test would read ``"false"`` and ``0`` as
-    falsy and print ``false``'s neighbor as ``true``. Each row here is one value the
-    widening must leave exactly as it found it.
-    """
+  ⚑ THE STRING TRAP, pinned: a truthiness test would read ``"false"`` and ``0`` as
+  falsy and print ``false``'s neighbor as ``true``. Each row here is one value the
+  widening must leave exactly as it found it.
+  """
 
-    ROWS = [
-        # (yaml, what `get` must print) — the ten stored spellings and their neighbors.
-        ("true", "true"),
-        ("false", "false"),
-        ('"false"', "false"),
-        ('"true"', "true"),
-        ('"True"', "True"),
-        ('"None"', "None"),
-        ("0", "0"),
-        ("1", "1"),
-        ("null", "null"),
-        ('""', '""'),
-        # A non-bool that looks bool-ish: a YAML 1.1 reader would call these True, and
-        # only quoting keeps them strings. A truthy test would print `true` for each.
-        ('"TRUE"', "TRUE"),
-        ('"yes"', "yes"),
-        ('"true "', "true "),
-    ]
+  ROWS = [
+    # (yaml, what `get` must print) — the ten stored spellings and their neighbors.
+    ("true", "true"),
+    ("false", "false"),
+    ('"false"', "false"),
+    ('"true"', "true"),
+    ('"True"', "True"),
+    ('"None"', "None"),
+    ("0", "0"),
+    ("1", "1"),
+    ("null", "null"),
+    ('""', '""'),
+    # A non-bool that looks bool-ish: a YAML 1.1 reader would call these True, and
+    # only quoting keeps them strings. A truthy test would print `true` for each.
+    ('"TRUE"', "TRUE"),
+    ('"yes"', "yes"),
+    ('"true "', "true "),
+  ]
 
-    def _file(self, tmp_path, body):
-        p = tmp_path / "claude" / "agent.yaml"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("self:\n" + body)
-        return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
+  def _file(self, tmp_path, body):
+    p = tmp_path / "claude" / "agent.yaml"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("self:\n" + body)
+    return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
 
-    @pytest.mark.parametrize("stored, rendered", ROWS)
-    def test_an_env_value_renders_exactly_as_before(self, tmp_path, stored, rendered):
-        from kanibako.settings.agent_file import stored_leaf_display
-        cfg = self._file(tmp_path, f"  env:\n    V: {stored}\n")
-        assert stored_leaf_display("env.V", cfg.env["V"]) == rendered
+  @pytest.mark.parametrize("stored, rendered", ROWS)
+  def test_an_env_value_renders_exactly_as_before(self, tmp_path, stored, rendered):
+    from kanibako.settings.agent_file import stored_leaf_display
 
-    def test_an_absent_key_is_still_not_reported_as_a_value(self, tmp_path):
-        from kanibako.settings.agent_file import stored_leaf_display
-        cfg = self._file(tmp_path, "  env:\n    V: true\n")
-        # A missing VAR answers None, and the READ decides that is "(not set)" —
-        # the renderer's own `null` spelling must not be reachable by accident.
-        assert cfg.env.get("ABSENT") is None
-        assert stored_leaf_display("env.ABSENT", None) == "null"
+    cfg = self._file(tmp_path, f"  env:\n    V: {stored}\n")
+    assert stored_leaf_display("env.V", cfg.env["V"]) == rendered
+
+  def test_an_absent_key_is_still_not_reported_as_a_value(self, tmp_path):
+    from kanibako.settings.agent_file import stored_leaf_display
+
+    cfg = self._file(tmp_path, "  env:\n    V: true\n")
+    # A missing VAR answers None, and the READ decides that is "(not set)" —
+    # the renderer's own `null` spelling must not be reachable by accident.
+    assert cfg.env.get("ABSENT") is None
+    assert stored_leaf_display("env.ABSENT", None) == "null"

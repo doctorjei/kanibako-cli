@@ -18,730 +18,759 @@ from kanibako.targets.base import TargetSetting
 
 
 class TestKanibakoMounts:
-    """Tests for _kanibako_mounts() in start.py: the helper's copy of the kani binds."""
+  """Tests for _kanibako_mounts() in start.py: the helper's copy of the kani binds."""
 
-    _PKG_DEST = "/opt/kanibako/kanibako"
-    _BIN_DEST = "/home/agent/.local/bin/kanibako"
+  _PKG_DEST = "/opt/kanibako/kanibako"
+  _BIN_DEST = "/home/agent/.local/bin/kanibako"
 
-    def _by_dest(self):
-        from kanibako.commands.start import _kanibako_mounts
+  def _by_dest(self):
+    from kanibako.commands.start import _kanibako_mounts
 
-        return {m.destination: m for m in _kanibako_mounts()}
+    return {m.destination: m for m in _kanibako_mounts()}
 
-    def test_helper_mounts_are_the_kani_table(self):
-        """The helper gets EXACTLY the declared kani rows — one carrier (Single Route)."""
-        from kanibako.settings import core_defaults
+  def test_helper_mounts_are_the_kani_table(self):
+    """The helper gets EXACTLY the declared kani rows — one carrier (Single Route)."""
+    from kanibako.settings import core_defaults
 
-        declared = {
-            (dest, src, options)
-            for arm in core_defaults.kani_default_categories().values()
-            for dest, (src, options) in arm.items()
-        }
-        got = {(m.destination, str(m.source), m.options) for m in self._by_dest().values()}
-        assert got == declared
-        assert "/etc/profile.d/kanibako-secrets.sh" in self._by_dest()
+    declared = {
+      (dest, src, options)
+      for arm in core_defaults.kani_default_categories().values()
+      for dest, (src, options) in arm.items()
+    }
+    got = {(m.destination, str(m.source), m.options) for m in self._by_dest().values()}
+    assert got == declared
+    assert "/etc/profile.d/kanibako-secrets.sh" in self._by_dest()
 
-    def test_reads_the_table_not_a_private_list(self, monkeypatch):
-        """A row added to the table reaches the helper with no second edit."""
-        from kanibako.commands.start import _kanibako_mounts
-        from kanibako.settings import core_defaults
+  def test_reads_the_table_not_a_private_list(self, monkeypatch):
+    """A row added to the table reaches the helper with no second edit."""
+    from kanibako.commands.start import _kanibako_mounts
+    from kanibako.settings import core_defaults
 
-        monkeypatch.setattr(
-            core_defaults, "kani_default_categories",
-            lambda: {"box.bindings.ro": {"/opt/x": ("/host/x", "ro")}},
-        )
-        assert [m.to_volume_arg() for m in _kanibako_mounts()] == ["/host/x:/opt/x:ro"]
+    monkeypatch.setattr(
+      core_defaults,
+      "kani_default_categories",
+      lambda: {"box.bindings.ro": {"/opt/x": ("/host/x", "ro")}},
+    )
+    assert [m.to_volume_arg() for m in _kanibako_mounts()] == ["/host/x:/opt/x:ro"]
 
-    def test_package_dest_is_the_supervisor_root(self):
-        """The table's literal must match the PYTHONPATH root PID-1 imports from."""
-        from kanibako.box_supervisor import KANIBAKO_PKG_MOUNT_ROOT
+  def test_package_dest_is_the_supervisor_root(self):
+    """The table's literal must match the PYTHONPATH root PID-1 imports from."""
+    from kanibako.box_supervisor import KANIBAKO_PKG_MOUNT_ROOT
 
-        assert f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako" == self._PKG_DEST
-        assert self._by_dest()[self._PKG_DEST].options == "ro"
+    assert f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako" == self._PKG_DEST
+    assert self._by_dest()[self._PKG_DEST].options == "ro"
 
-    def test_entry_script_mount_destination(self):
-        assert self._by_dest()[self._BIN_DEST].options == "ro"
+  def test_entry_script_mount_destination(self):
+    assert self._by_dest()[self._BIN_DEST].options == "ro"
 
-    def test_package_source_is_kanibako_dir(self):
-        pkg_mount = self._by_dest()[self._PKG_DEST]
-        assert pkg_mount.source.is_dir()
-        assert (pkg_mount.source / "__init__.py").is_file()
+  def test_package_source_is_kanibako_dir(self):
+    pkg_mount = self._by_dest()[self._PKG_DEST]
+    assert pkg_mount.source.is_dir()
+    assert (pkg_mount.source / "__init__.py").is_file()
 
-    def test_entry_script_source_exists(self):
-        entry_mount = self._by_dest()[self._BIN_DEST]
-        assert entry_mount.source.is_file()
-        assert "kanibako.cli" in entry_mount.source.read_text()
+  def test_entry_script_source_exists(self):
+    entry_mount = self._by_dest()[self._BIN_DEST]
+    assert entry_mount.source.is_file()
+    assert "kanibako.cli" in entry_mount.source.read_text()
 
 
 class TestSecretExportBind:
-    """D2: the universal `/etc/profile.d` secret-export snippet, delivered as an
-    UNCONDITIONAL kani ro bind (models on kani_pkg/kani_bin).  It reaches the
-    non-login `podman exec` paths (VS Code terminal, codex panel app-server) that
-    the PID-1 `_secret_export_shim` cannot; the shim stays for the supervised
-    PID-1 path (non-login `sh -c`, no profile.d)."""
+  """D2: the universal `/etc/profile.d` secret-export snippet, delivered as an
+  UNCONDITIONAL kani ro bind (models on kani_pkg/kani_bin).  It reaches the
+  non-login `podman exec` paths (VS Code terminal, codex panel app-server) that
+  the PID-1 `_secret_export_shim` cannot; the shim stays for the supervised
+  PID-1 path (non-login `sh -c`, no profile.d)."""
 
-    _SNIPPET_NAME = "kanibako-secrets.sh"
+  _SNIPPET_NAME = "kanibako-secrets.sh"
 
-    def _snippet_path(self):
-        import importlib.resources
-        from pathlib import Path
+  def _snippet_path(self):
+    import importlib.resources
+    from pathlib import Path
 
-        ref = importlib.resources.files("kanibako.scripts").joinpath(self._SNIPPET_NAME)
-        return Path(str(ref))
+    ref = importlib.resources.files("kanibako.scripts").joinpath(self._SNIPPET_NAME)
+    return Path(str(ref))
 
-    def test_bind_emitted_with_dest_options_and_real_source(self):
-        """`kani_default_categories()` binds the snippet at `/etc/profile.d/…`, ro,
-        from a REAL regular-file host source.
+  def test_bind_emitted_with_dest_options_and_real_source(self):
+    """`kani_default_categories()` binds the snippet at `/etc/profile.d/…`, ro,
+    from a REAL regular-file host source.
 
-        ⚑ Re-derived for dest-keying (R-3/R-5): the ``secret_export`` NAME is
-        retired (R-10) and the destination IS the identity, so what pins the bind's
-        existence is its dest being present in the terminal ``box.bindings.ro``
-        arm.
-        """
-        from pathlib import Path
+    ⚑ Re-derived for dest-keying (R-3/R-5): the ``secret_export`` NAME is
+    retired (R-10) and the destination IS the identity, so what pins the bind's
+    existence is its dest being present in the terminal ``box.bindings.ro``
+    arm.
+    """
+    from pathlib import Path
 
-        from kanibako.settings import core_defaults
+    from kanibako.settings import core_defaults
 
-        dest = "/etc/profile.d/kanibako-secrets.sh"
-        arm = core_defaults.kani_default_categories()["box.bindings.ro"]
-        assert dest in arm
-        src, opts = arm[dest]
-        assert opts == "ro"
-        assert Path(src).is_file()
-        # The resolved source IS the packaged snippet.
-        assert Path(src) == self._snippet_path()
+    dest = "/etc/profile.d/kanibako-secrets.sh"
+    arm = core_defaults.kani_default_categories()["box.bindings.ro"]
+    assert dest in arm
+    src, opts = arm[dest]
+    assert opts == "ro"
+    assert Path(src).is_file()
+    # The resolved source IS the packaged snippet.
+    assert Path(src) == self._snippet_path()
 
-    def test_snippet_drift_guard_matches_secret_mount_dir(self):
-        """The shipped snippet hardcodes SECRET_MOUNT_DIR's value — a change to the
-        constant that forgot the snippet would desync silently, so lock it here."""
-        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+  def test_snippet_drift_guard_matches_secret_mount_dir(self):
+    """The shipped snippet hardcodes SECRET_MOUNT_DIR's value — a change to the
+    constant that forgot the snippet would desync silently, so lock it here."""
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
-        text = self._snippet_path().read_text()
-        assert SECRET_MOUNT_DIR in text
-        # The self-adapting glob + empty-dir guard + read/export mechanics.
-        assert f"{SECRET_MOUNT_DIR}/*" in text
-        assert '[ -e "$f" ]' in text
-        assert "basename" in text and "cat" in text and "export" in text
+    text = self._snippet_path().read_text()
+    assert SECRET_MOUNT_DIR in text
+    # The self-adapting glob + empty-dir guard + read/export mechanics.
+    assert f"{SECRET_MOUNT_DIR}/*" in text
+    assert '[ -e "$f" ]' in text
+    assert "basename" in text and "cat" in text and "export" in text
 
-    def test_snippet_passes_sh_syntax_check(self):
-        """`sh -n` must accept the snippet (it is sourced by every login shell)."""
-        import subprocess
+  def test_snippet_passes_sh_syntax_check(self):
+    """`sh -n` must accept the snippet (it is sourced by every login shell)."""
+    import subprocess
 
-        r = subprocess.run(
-            ["sh", "-n", str(self._snippet_path())],
-            capture_output=True, text=True,
-        )
-        assert r.returncode == 0, r.stderr
+    r = subprocess.run(
+      ["sh", "-n", str(self._snippet_path())],
+      capture_output=True,
+      text=True,
+    )
+    assert r.returncode == 0, r.stderr
 
-    def test_snippet_exports_mounted_secrets(self, tmp_path):
-        """Runtime exercise: with token files present, the snippet exports each
-        var with the file's (newline-stripped) contents."""
-        import subprocess
+  def test_snippet_exports_mounted_secrets(self, tmp_path):
+    """Runtime exercise: with token files present, the snippet exports each
+    var with the file's (newline-stripped) contents."""
+    import subprocess
 
-        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
-        secrets = tmp_path / "secrets"
-        secrets.mkdir()
-        (secrets / "FOO").write_text("foo-token-value\n")
-        (secrets / "BAR").write_text("bar-val")  # no trailing newline
-        body = self._snippet_path().read_text().replace(str(SECRET_MOUNT_DIR), str(secrets))
-        script = body + '\nprintf "FOO=[%s]\\nBAR=[%s]\\n" "$FOO" "$BAR"\n'
-        r = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
-        assert r.returncode == 0, r.stderr
-        assert "FOO=[foo-token-value]" in r.stdout
-        assert "BAR=[bar-val]" in r.stdout
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "FOO").write_text("foo-token-value\n")
+    (secrets / "BAR").write_text("bar-val")  # no trailing newline
+    body = self._snippet_path().read_text().replace(str(SECRET_MOUNT_DIR), str(secrets))
+    script = body + '\nprintf "FOO=[%s]\\nBAR=[%s]\\n" "$FOO" "$BAR"\n'
+    r = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "FOO=[foo-token-value]" in r.stdout
+    assert "BAR=[bar-val]" in r.stdout
 
-    def test_snippet_is_noop_when_empty_or_absent(self, tmp_path):
-        """No secrets mounted → the literal glob is guarded to a clean no-op (both
-        an empty dir and an absent dir), even under `set -e`."""
-        import subprocess
+  def test_snippet_is_noop_when_empty_or_absent(self, tmp_path):
+    """No secrets mounted → the literal glob is guarded to a clean no-op (both
+    an empty dir and an absent dir), even under `set -e`."""
+    import subprocess
 
-        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        absent = tmp_path / "does-not-exist"
-        for target in (empty, absent):
-            body = self._snippet_path().read_text().replace(
-                str(SECRET_MOUNT_DIR), str(target)
-            )
-            r = subprocess.run(
-                ["sh", "-c", "set -e\n" + body + '\necho DONE\n'],
-                capture_output=True, text=True,
-            )
-            assert r.returncode == 0, r.stderr
-            assert "DONE" in r.stdout
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    absent = tmp_path / "does-not-exist"
+    for target in (empty, absent):
+      body = self._snippet_path().read_text().replace(str(SECRET_MOUNT_DIR), str(target))
+      r = subprocess.run(
+        ["sh", "-c", "set -e\n" + body + "\necho DONE\n"],
+        capture_output=True,
+        text=True,
+      )
+      assert r.returncode == 0, r.stderr
+      assert "DONE" in r.stdout
 
 
 def _real_primary_box(root):
-    """``(std, proj)`` for a real PRIMARY box at *root*, under the ``tmp_home`` tree.
+  """``(std, proj)`` for a real PRIMARY box at *root*, under the ``tmp_home`` tree.
 
-    The ``--effective`` behavior read resolves with the launch's own inputs
-    (``settings_launch.resolve_inputs``), which need a resolved box.
-    """
-    from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import load_std_paths, resolve_project
+  The ``--effective`` behavior read resolves with the launch's own inputs
+  (``settings_launch.resolve_inputs``), which need a resolved box.
+  """
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import load_std_paths, resolve_project
 
-    root.mkdir(parents=True, exist_ok=True)
-    config = load_config(user_config_file())
-    std = load_std_paths(config)
-    return std, resolve_project(std, config, str(root), initialize=True)
+  root.mkdir(parents=True, exist_ok=True)
+  config = load_config(user_config_file())
+  std = load_std_paths(config)
+  return std, resolve_project(std, config, str(root), initialize=True)
 
 
 @pytest.mark.usefixtures("config_file")
 class TestBuildEffectiveState:
-    """Tests for the ``config --effective`` behavior read
-    (``start._effective_behavior_for_display``, block 7c — the snapshot-based
-    successor to the retired ``_build_effective_state`` precedence walk). The
-    discriminated ``agent.<name>.*`` / ``agent.default.*`` file shapes
-    (``config_io.write_nested_key``) feed the snapshot; the §2d active-over-default pick
-    yields the launch-correct effective state."""
+  """Tests for the ``config --effective`` behavior read
+  (``start._effective_behavior_for_display``, block 7c — the snapshot-based
+  successor to the retired ``_build_effective_state`` precedence walk). The
+  discriminated ``agent.<name>.*`` / ``agent.default.*`` file shapes
+  (``config_io.write_nested_key``) feed the snapshot; the §2d active-over-default pick
+  yields the launch-correct effective state."""
 
-    def _make_target(self, descriptors, name="claude"):
-        target = MagicMock()
-        target.setting_descriptors.return_value = descriptors
-        target.name = name
-        return target
+  def _make_target(self, descriptors, name="claude"):
+    target = MagicMock()
+    target.setting_descriptors.return_value = descriptors
+    target.name = name
+    return target
 
-    def _make_agent_file(self, tmp_path, state):
-        """Write the per-agent file holding *state* at its root; the display reads it there."""
-        from kanibako.settings.config_io import dump_doc
+  def _make_agent_file(self, tmp_path, state):
+    """Write the per-agent file holding *state* at its root; the display reads it there."""
+    from kanibako.settings.config_io import dump_doc
 
-        path = tmp_path / "agent-file" / "agent.yaml"
-        dump_doc(path, {"self": dict(state)})
-        return path
+    path = tmp_path / "agent-file" / "agent.yaml"
+    dump_doc(path, {"self": dict(state)})
+    return path
 
-    def _make_system_settings(self, tmp_path, settings=None):
-        """Create a minimal system SETTINGS file, optionally with ``agent.claude.*`` rows.
+  def _make_system_settings(self, tmp_path, settings=None):
+    """Create a minimal system SETTINGS file, optionally with ``agent.claude.*`` rows.
 
-        The callers pass it as ``system_settings_path`` — the ``global/settings.yaml``
-        tier — so it is named like one; ``kanibako.cfg`` carries ``config.*`` alone.
-        """
-        from kanibako.settings.config_io import write_nested_key
+    The callers pass it as ``system_settings_path`` — the ``global/settings.yaml``
+    tier — so it is named like one; ``kanibako.cfg`` carries ``config.*`` alone.
+    """
+    from kanibako.settings.config_io import write_nested_key
 
-        ssp = tmp_path / "settings.yaml"
-        ssp.write_text("")
-        if settings:
-            for k, v in settings.items():
-                write_nested_key(ssp, ("agent", "claude"), k, v)
-        return ssp
+    ssp = tmp_path / "settings.yaml"
+    ssp.write_text("")
+    if settings:
+      for k, v in settings.items():
+        write_nested_key(ssp, ("agent", "claude"), k, v)
+    return ssp
 
-    def _make_workset_config(self, box, settings=None, agent="claude"):
-        """Write *box*'s workset-tier file, optionally with a box→agent tweak.
+  def _make_workset_config(self, box, settings=None, agent="claude"):
+    """Write *box*'s workset-tier file, optionally with a box→agent tweak.
 
-        A workset-scope per-agent behavior override rides the §2h REQUEST
-        ``pref.agent.<agent>.<key>`` — prefs are legal in the WORKSET and BOX
-        files, and a workset's request applies to its boxes. (A workset file may
-        NOT set ``agent.<name>.*`` directly — that is an upward write dropped at
-        RESOLVE, spec §0; workset ⊂ agent. ⮕ P7: was the ``box.agent.*``
-        defaults-down mirror, retired by §2b.)
-        """
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import box_workset_settings_paths
+    A workset-scope per-agent behavior override rides the §2h REQUEST
+    ``pref.agent.<agent>.<key>`` — prefs are legal in the WORKSET and BOX
+    files, and a workset's request applies to its boxes. (A workset file may
+    NOT set ``agent.<name>.*`` directly — that is an upward write dropped at
+    RESOLVE, spec §0; workset ⊂ agent. ⮕ P7: was the ``box.agent.*``
+    defaults-down mirror, retired by §2b.)
+    """
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import box_workset_settings_paths
 
-        ws_file = box_workset_settings_paths(box["proj"])[1]
-        assert ws_file is not None
-        if settings:
-            dump_doc(ws_file, {"pref": {"agent": {agent: dict(settings)}}})
-        else:
-            ws_file.write_text("")
-        return ws_file
+    ws_file = box_workset_settings_paths(box["proj"])[1]
+    assert ws_file is not None
+    if settings:
+      dump_doc(ws_file, {"pref": {"agent": {agent: dict(settings)}}})
+    else:
+      ws_file.write_text("")
+    return ws_file
 
-    def _make_box_file(self, tmp_path, settings=None, agent="claude"):
-        """Create a PRIMARY box under *tmp_path*, optionally with a box→agent tweak.
+  def _make_box_file(self, tmp_path, settings=None, agent="claude"):
+    """Create a PRIMARY box under *tmp_path*, optionally with a box→agent tweak.
 
-        Returns the keywords the display read takes for it (``std``, ``proj``, no
-        selection): it resolves with the launch's own inputs, which need a real box.
+    Returns the keywords the display read takes for it (``std``, ``proj``, no
+    selection): it resolves with the launch's own inputs, which need a real box.
 
-        A per-agent behavior override at the BOX scope rides the §2h REQUEST
-        ``pref.agent.<agent>.<key>``. (A box file may NOT set ``agent.<name>.*``
-        directly: that is an upward write dropped at RESOLVE, spec §0.) ⮕ P7: this
-        used the ``box.agent.*`` mirror, which spec §2b RETIRED.
-        """
-        from kanibako.settings.config import persist_creation_flags
-        from kanibako.settings.config_io import dump_doc, load_doc
+    A per-agent behavior override at the BOX scope rides the §2h REQUEST
+    ``pref.agent.<agent>.<key>``. (A box file may NOT set ``agent.<name>.*``
+    directly: that is an upward write dropped at RESOLVE, spec §0.) ⮕ P7: this
+    used the ``box.agent.*`` mirror, which spec §2b RETIRED.
+    """
+    from kanibako.settings.config import persist_creation_flags
+    from kanibako.settings.config_io import dump_doc, load_doc
 
-        std, proj = _real_primary_box(tmp_path / "box")
-        box_file = box_workset_settings_paths(proj)[0]
-        # A minimal box-tier settings file (P8b sparse create writes no identity
-        # section; the pref requests below are what this scoping test cares about).
-        persist_creation_flags(box_file, materializing=True, image="base:image")
-        if settings:
-            doc = load_doc(box_file)
-            node = doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
-                agent, {},
-            )
-            node.update(settings)
-            dump_doc(box_file, doc)
-        return {"std": std, "proj": proj, "selection_level": None}
-
-    def test_target_defaults_only(self, tmp_path):
-        """With no agent state and no project overrides, the DECLARED floors apply.
-
-        Two of them, and the display shows BOTH (D1-1): the target's descriptor
-        defaults, plus the core behavior floor from ``core-defaults.yaml``
-        (``agent_default:`` → ``agent.default.<key>``, spec §2d). The core keys are
-        listed here rather than filtered out because the launch applies them too —
-        omitting them from the display was the DISPLAY==LAUNCH lie this read exists
-        to prevent.
-        """
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-            TargetSetting(key="access", description="Access", default="permissive"),
-        ]
-        target = self._make_target(descriptors)
-        agent_cfg = AgentConfig()  # empty state
-        box_file = self._make_box_file(tmp_path)
-
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
+    std, proj = _real_primary_box(tmp_path / "box")
+    box_file = box_workset_settings_paths(proj)[0]
+    # A minimal box-tier settings file (P8b sparse create writes no identity
+    # section; the pref requests below are what this scoping test cares about).
+    persist_creation_flags(box_file, materializing=True, image="base:image")
+    if settings:
+      doc = load_doc(box_file)
+      node = (
+        doc.setdefault("pref", {})
+        .setdefault("agent", {})
+        .setdefault(
+          agent,
+          {},
         )
-        assert result == {
-            # The DESCRIPTOR floor.
-            "model": "opus",
-            "access": "permissive",
-            # The CORE behavior floor (core-defaults.yaml ``agent_default:``).
-            "allow_helpers": "true",
-            "continue_mode": "true",
-            "bootstrap": "tmux",
-            "label": "claude",
-        }
+      )
+      node.update(settings)
+      dump_doc(box_file, doc)
+    return {"std": std, "proj": proj, "selection_level": None}
 
-    def test_agent_overrides_default(self, tmp_path):
-        """Agent config state overrides target defaults."""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+  def test_target_defaults_only(self, tmp_path):
+    """With no agent state and no project overrides, the DECLARED floors apply.
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
-        box_file = self._make_box_file(tmp_path)
+    Two of them, and the display shows BOTH (D1-1): the target's descriptor
+    defaults, plus the core behavior floor from ``core-defaults.yaml``
+    (``agent_default:`` → ``agent.default.<key>``, spec §2d). The core keys are
+    listed here rather than filtered out because the launch applies them too —
+    omitting them from the display was the DISPLAY==LAUNCH lie this read exists
+    to prevent.
+    """
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None,
-            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
-        )
-        assert result["model"] == "sonnet"
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+      TargetSetting(key="access", description="Access", default="permissive"),
+    ]
+    target = self._make_target(descriptors)
+    agent_cfg = AgentConfig()  # empty state
+    box_file = self._make_box_file(tmp_path)
 
-    def test_project_override_wins(self, tmp_path):
-        """Project overrides take highest precedence."""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    result = _build_effective_state(target, agent_cfg, **box_file, system_settings_path=None)
+    assert result == {
+      # The DESCRIPTOR floor.
+      "model": "opus",
+      "access": "permissive",
+      # The CORE behavior floor (core-defaults.yaml ``agent_default:``).
+      "allow_helpers": "true",
+      "continue_mode": "true",
+      "bootstrap": "tmux",
+      "label": "claude",
+    }
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
-        box_file = self._make_box_file(tmp_path, settings={"model": "haiku"})
+  def test_agent_overrides_default(self, tmp_path):
+    """Agent config state overrides target defaults."""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None,
-            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
-        )
-        assert result["model"] == "haiku"
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    target = self._make_target(descriptors)
+    agent_cfg = AgentConfig(state={"model": "sonnet"})
+    box_file = self._make_box_file(tmp_path)
 
-    def test_an_undeclared_agent_state_key_is_REFUSED_not_passed_through(self, tmp_path):
-        """⚑⚑ INVERTED AT S3 (D-5's other end), and the inversion is the point.
+    result = _build_effective_state(
+      target,
+      agent_cfg,
+      **box_file,
+      system_settings_path=None,
+      agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
+    )
+    assert result["model"] == "sonnet"
 
-        This asserted that "undeclared keys from agent state are passed through" — the *"old
-        ``agent.<name>.<anyleaf>`` behavior"* spec §0 SPECIFICALLY EXCLUDES. Together with the
-        then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
-        box. The refusal lives where the file is READ (``settings_assemble.agent_record``), so it fires before
-        any record reaches this display — and before every launch, ``agent list`` and ``info``.
-        """
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_project_override_wins(self, tmp_path):
+    """Project overrides take highest precedence."""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        target = self._make_target(descriptors)
-        box_file = self._make_box_file(tmp_path)
-        path = tmp_path / "agent-file" / "agent.yaml"
-        dump_doc(path, {"self": {"model": "sonnet", "custom_key": "custom_value"}})
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    target = self._make_target(descriptors)
+    agent_cfg = AgentConfig(state={"model": "sonnet"})
+    box_file = self._make_box_file(tmp_path, settings={"model": "haiku"})
 
-        with pytest.raises(SettingsError) as exc:
-            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert "custom_key" in str(exc.value)
+    result = _build_effective_state(
+      target,
+      agent_cfg,
+      **box_file,
+      system_settings_path=None,
+      agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
+    )
+    assert result["model"] == "haiku"
 
-        # The CONTROL: the declared key alone still resolves, so the refusal is about
-        # declaredness and not about having any agent state at all.
-        dump_doc(path, {"self": {"model": "sonnet"}})
-        agent_cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
-        assert _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None, agent_cfg_path=path,
-        )["model"] == "sonnet"
+  def test_an_undeclared_agent_state_key_is_REFUSED_not_passed_through(self, tmp_path):
+    """⚑⚑ INVERTED AT S3 (D-5's other end), and the inversion is the point.
 
-    def test_no_descriptors_returns_agent_state(self, tmp_path):
-        """When target has no setting_descriptors, return agent state as-is."""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    This asserted that "undeclared keys from agent state are passed through" — the *"old
+    ``agent.<name>.<anyleaf>`` behavior"* spec §0 SPECIFICALLY EXCLUDES. Together with the
+    then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
+    box. The refusal lives where the file is READ (``settings_assemble.agent_record``), so it fires before
+    any record reaches this display — and before every launch, ``agent list`` and ``info``.
+    """
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_resolve import SettingsError
 
-        target = self._make_target([])  # no descriptors
-        agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
-        box_file = self._make_box_file(tmp_path)
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    target = self._make_target(descriptors)
+    box_file = self._make_box_file(tmp_path)
+    path = tmp_path / "agent-file" / "agent.yaml"
+    dump_doc(path, {"self": {"model": "sonnet", "custom_key": "custom_value"}})
 
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
-        )
-        assert result == {"model": "opus", "access": "permissive"}
+    with pytest.raises(SettingsError) as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert "custom_key" in str(exc.value)
 
-    def test_system_level_provides_value(self, tmp_path):
-        """The system SETTINGS file's ``agent.claude`` table supplies a value when
-        nothing more specific sets it."""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    # The CONTROL: the declared key alone still resolves, so the refusal is about
+    # declaredness and not about having any agent state at all.
+    dump_doc(path, {"self": {"model": "sonnet"}})
+    agent_cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert (
+      _build_effective_state(
+        target,
+        agent_cfg,
+        **box_file,
+        system_settings_path=None,
+        agent_cfg_path=path,
+      )["model"]
+      == "sonnet"
+    )
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        target = self._make_target(descriptors)
-        agent_cfg = AgentConfig()  # empty state
-        box_file = self._make_box_file(tmp_path)
-        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+  def test_no_descriptors_returns_agent_state(self, tmp_path):
+    """When target has no setting_descriptors, return agent state as-is."""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        # System set value beats the target-default floor.
-        assert result["model"] == "sonnet"
+    target = self._make_target([])  # no descriptors
+    agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
+    box_file = self._make_box_file(tmp_path)
 
-    def test_precedence_box_workset_agent_system(self, tmp_path):
-        """Precedence is box > workset > agent > system; system beats the floor.
+    result = _build_effective_state(target, agent_cfg, **box_file, system_settings_path=None)
+    assert result == {"model": "opus", "access": "permissive"}
 
-        Levels are most-specific-first ``[box, workset, agent, system]``, so a
-        value set at the workset level beats one set in agent state. The box- and
-        workset-scope per-agent overrides ride the §2h request
-        ``pref.agent.<agent>.<key>``, and a box-file request beats a workset-file
-        one, which still beats the agent-state default. (Neither a box nor a
-        workset file may set ``agent.<name>.*`` directly — upward, dropped at
-        RESOLVE, spec §0; the request is the legal path.)
-        """
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+  def test_system_level_provides_value(self, tmp_path):
+    """The system SETTINGS file's ``agent.claude`` table supplies a value when
+    nothing more specific sets it."""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-            TargetSetting(key="access", description="Access", default="permissive"),
-        ]
-        target = self._make_target(descriptors)
-        ssp = self._make_system_settings(
-            tmp_path, settings={"model": "sys-model", "access": "default"}
-        )
-        # agent state also sets model — but workset is more specific, so workset
-        # wins.  access is left for the system level only.
-        agent_cfg = AgentConfig(state={"model": "agent-model"})
-        agent_path = self._make_agent_file(tmp_path, agent_cfg.state)
-        box_file = self._make_box_file(tmp_path / "proj")
-        # The box's workset tier (both boxes below share the primary workset's).
-        self._make_workset_config(box_file, settings={"model": "ws-model"})
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    target = self._make_target(descriptors)
+    agent_cfg = AgentConfig()  # empty state
+    box_file = self._make_box_file(tmp_path)
+    ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
 
-        result = _build_effective_state(
-            target,
-            agent_cfg,
-            **box_file,
-            system_settings_path=ssp,
-            agent_cfg_path=agent_path,
-        )
-        # model: box unset → workset (more specific than agent/system) wins.
-        assert result["model"] == "ws-model"
-        # access: only system sets it; nothing more specific does, so the
-        # system set value wins over the "permissive" floor.
-        assert result["access"] == "default"
+    result = _build_effective_state(target, agent_cfg, **box_file, system_settings_path=ssp)
+    # System set value beats the target-default floor.
+    assert result["model"] == "sonnet"
 
-        # Now set model at the box level too → box beats workset.
-        box2_file = self._make_box_file(
-            tmp_path / "proj2", settings={"model": "box-model"}
-        )
-        result2 = _build_effective_state(
-            target,
-            agent_cfg,
-            **box2_file,
-            system_settings_path=ssp,
-            agent_cfg_path=agent_path,
-        )
-        assert result2["model"] == "box-model"
+  def test_precedence_box_workset_agent_system(self, tmp_path):
+    """Precedence is box > workset > agent > system; system beats the floor.
 
-    def test_empty_string_is_terminal(self, tmp_path):
-        """An explicit '' at a level suppresses fall-through to the floor."""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    Levels are most-specific-first ``[box, workset, agent, system]``, so a
+    value set at the workset level beats one set in agent state. The box- and
+    workset-scope per-agent overrides ride the §2h request
+    ``pref.agent.<agent>.<key>``, and a box-file request beats a workset-file
+    one, which still beats the agent-state default. (Neither a box nor a
+    workset file may set ``agent.<name>.*`` directly — upward, dropped at
+    RESOLVE, spec §0; the request is the legal path.)
+    """
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        target = self._make_target(descriptors)
-        # agent state explicitly clears model.
-        agent_cfg = AgentConfig(state={"model": ""})
-        box_file = self._make_box_file(tmp_path)
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+      TargetSetting(key="access", description="Access", default="permissive"),
+    ]
+    target = self._make_target(descriptors)
+    ssp = self._make_system_settings(
+      tmp_path, settings={"model": "sys-model", "access": "default"}
+    )
+    # agent state also sets model — but workset is more specific, so workset
+    # wins.  access is left for the system level only.
+    agent_cfg = AgentConfig(state={"model": "agent-model"})
+    agent_path = self._make_agent_file(tmp_path, agent_cfg.state)
+    box_file = self._make_box_file(tmp_path / "proj")
+    # The box's workset tier (both boxes below share the primary workset's).
+    self._make_workset_config(box_file, settings={"model": "ws-model"})
 
-        result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None,
-            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
-        )
-        # Terminal "" — does not fall back to the "opus" floor.
-        assert result["model"] == ""
+    result = _build_effective_state(
+      target,
+      agent_cfg,
+      **box_file,
+      system_settings_path=ssp,
+      agent_cfg_path=agent_path,
+    )
+    # model: box unset → workset (more specific than agent/system) wins.
+    assert result["model"] == "ws-model"
+    # access: only system sets it; nothing more specific does, so the
+    # system set value wins over the "permissive" floor.
+    assert result["access"] == "default"
 
-    def test_box_override_does_not_bleed_across_agents(self, tmp_path):
-        """B3 regression: an agent.claude override must NOT apply when the
-        effective state is resolved for agent goose (and vice-versa).
+    # Now set model at the box level too → box beats workset.
+    box2_file = self._make_box_file(tmp_path / "proj2", settings={"model": "box-model"})
+    result2 = _build_effective_state(
+      target,
+      agent_cfg,
+      **box2_file,
+      system_settings_path=ssp,
+      agent_cfg_path=agent_path,
+    )
+    assert result2["model"] == "box-model"
 
-        The per-agent override rides the SYSTEM file — a spec-legal downward
-        source that carries a non-active agent's table (system ⊃ agent). (A box
-        file may NOT set agent.<name>.* — upward, dropped at RESOLVE, spec §0 — and
-        the box.agent.* mirror only targets the ACTIVE agent, so it cannot express
-        the claude-vs-goose discrimination this test pins.)"""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+  def test_empty_string_is_terminal(self, tmp_path):
+    """An explicit '' at a level suppresses fall-through to the floor."""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        # An override for claude, carried by the (legal) system file.
-        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
-        box_file = self._make_box_file(tmp_path / "proj")
-        agent_cfg = AgentConfig()
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    target = self._make_target(descriptors)
+    # agent state explicitly clears model.
+    agent_cfg = AgentConfig(state={"model": ""})
+    box_file = self._make_box_file(tmp_path)
 
-        # claude sees its override.
-        claude = self._make_target(descriptors, name="claude")
-        res_claude = _build_effective_state(
-            claude, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert res_claude["model"] == "sonnet"
+    result = _build_effective_state(
+      target,
+      agent_cfg,
+      **box_file,
+      system_settings_path=None,
+      agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
+    )
+    # Terminal "" — does not fall back to the "opus" floor.
+    assert result["model"] == ""
 
-        # goose does NOT — it falls back to its declared default floor.
-        goose = self._make_target(descriptors, name="goose")
-        res_goose = _build_effective_state(
-            goose, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert res_goose["model"] == "opus"
+  def test_box_override_does_not_bleed_across_agents(self, tmp_path):
+    """B3 regression: an agent.claude override must NOT apply when the
+    effective state is resolved for agent goose (and vice-versa).
 
-    def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
-        """agent.default applies to every agent whose plugin declares no row for the
-        key; agent.<name> overrides it, and so does a plugin's declared row ([Q91]:
-        ``agent.<a>`` builtin outranks an ``agent.default`` setting).
+    The per-agent override rides the SYSTEM file — a spec-legal downward
+    source that carries a non-active agent's table (system ⊃ agent). (A box
+    file may NOT set agent.<name>.* — upward, dropped at RESOLVE, spec §0 — and
+    the box.agent.* mirror only targets the ACTIVE agent, so it cannot express
+    the claude-vs-goose discrimination this test pins.)"""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
-        Both the any-agent default and the claude-specific override ride the
-        SYSTEM file — the legal downward source that carries per-agent /
-        agent.default tables (system ⊃ agent). (A box file may not set agent.*;
-        see test_box_override_does_not_bleed_across_agents.)"""
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.settings.config_io import write_nested_key
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    # An override for claude, carried by the (legal) system file.
+    ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+    box_file = self._make_box_file(tmp_path / "proj")
+    agent_cfg = AgentConfig()
 
-        descriptors = [
-            TargetSetting(key="model", description="Model", default="opus"),
-        ]
-        # Any-agent default + a claude-specific override, both on the system file.
-        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
-        write_nested_key(ssp, ("agent", "default"), "model", "haiku")
-        box_file = self._make_box_file(tmp_path / "proj")
-        agent_cfg = AgentConfig()
+    # claude sees its override.
+    claude = self._make_target(descriptors, name="claude")
+    res_claude = _build_effective_state(claude, agent_cfg, **box_file, system_settings_path=ssp)
+    assert res_claude["model"] == "sonnet"
 
-        claude = self._make_target(descriptors, name="claude")
-        res_claude = _build_effective_state(
-            claude, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert res_claude["model"] == "sonnet"  # agent-specific wins
+    # goose does NOT — it falls back to its declared default floor.
+    goose = self._make_target(descriptors, name="goose")
+    res_goose = _build_effective_state(goose, agent_cfg, **box_file, system_settings_path=ssp)
+    assert res_goose["model"] == "opus"
 
-        goose = self._make_target(descriptors, name="goose")
-        res_goose = _build_effective_state(
-            goose, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert res_goose["model"] == "opus"  # the plugin's own row beats agent.default
+  def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
+    """agent.default applies to every agent whose plugin declares no row for the
+    key; agent.<name> overrides it, and so does a plugin's declared row ([Q91]:
+    ``agent.<a>`` builtin outranks an ``agent.default`` setting).
 
-        codex = self._make_target(
-            [TargetSetting(key="label", description="Label", default="Codex")],
-            name="codex",
-        )
-        res_codex = _build_effective_state(
-            codex, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert res_codex["model"] == "haiku"  # no plugin row: default tier applies
+    Both the any-agent default and the claude-specific override ride the
+    SYSTEM file — the legal downward source that carries per-agent /
+    agent.default tables (system ⊃ agent). (A box file may not set agent.*;
+    see test_box_override_does_not_bleed_across_agents.)"""
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    from kanibako.settings.config_io import write_nested_key
 
-    @pytest.mark.parametrize("route", ["persona", "system-file"])
-    def test_the_printed_endpoint_drops_its_userinfo(self, tmp_path, monkeypatch, route):
-        """``box show --effective`` prints this dict, so the endpoint's userinfo is
-        scrubbed, through both routes an endpoint arrives by: the persona store and
-        a settings file (where the endpoint is text, written as is).
+    descriptors = [
+      TargetSetting(key="model", description="Model", default="opus"),
+    ]
+    # Any-agent default + a claude-specific override, both on the system file.
+    ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+    write_nested_key(ssp, ("agent", "default"), "model", "haiku")
+    box_file = self._make_box_file(tmp_path / "proj")
+    agent_cfg = AgentConfig()
 
-        The persona route is the incident: its ``@host`` was read as a ``{key}``-ref and
-        expanded to ``""``, so the credential printed with no ``@`` left to find it.
-        """
-        from kanibako.commands import start
-        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+    claude = self._make_target(descriptors, name="claude")
+    res_claude = _build_effective_state(claude, agent_cfg, **box_file, system_settings_path=ssp)
+    assert res_claude["model"] == "sonnet"  # agent-specific wins
 
-        raw = "https://SEKRITU:SEKRITP@host.invalid/v1"
-        descriptors = [TargetSetting(key="endpoint", description="Endpoint", default="")]
-        if route == "persona":
-            monkeypatch.setattr(
-                start, "_persona_values_for", lambda node, target: {"endpoint": raw},
-            )
-            ssp = None
-        else:
-            ssp = self._make_system_settings(
-                tmp_path, settings={"endpoint": raw},
-            )
-        result = _build_effective_state(
-            self._make_target(descriptors), AgentConfig(),
-            **self._make_box_file(tmp_path / "proj"), system_settings_path=ssp,
-        )
-        assert result["endpoint"] == "https://<redacted>@host.invalid/v1"
-        assert "SEKRIT" not in repr(result)
+    goose = self._make_target(descriptors, name="goose")
+    res_goose = _build_effective_state(goose, agent_cfg, **box_file, system_settings_path=ssp)
+    assert res_goose["model"] == "opus"  # the plugin's own row beats agent.default
+
+    codex = self._make_target(
+      [TargetSetting(key="label", description="Label", default="Codex")],
+      name="codex",
+    )
+    res_codex = _build_effective_state(codex, agent_cfg, **box_file, system_settings_path=ssp)
+    assert res_codex["model"] == "haiku"  # no plugin row: default tier applies
+
+  @pytest.mark.parametrize("route", ["persona", "system-file"])
+  def test_the_printed_endpoint_drops_its_userinfo(self, tmp_path, monkeypatch, route):
+    """``box show --effective`` prints this dict, so the endpoint's userinfo is
+    scrubbed, through both routes an endpoint arrives by: the persona store and
+    a settings file (where the endpoint is text, written as is).
+
+    The persona route is the incident: its ``@host`` was read as a ``{key}``-ref and
+    expanded to ``""``, so the credential printed with no ``@`` left to find it.
+    """
+    from kanibako.commands import start
+    from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+
+    raw = "https://SEKRITU:SEKRITP@host.invalid/v1"
+    descriptors = [TargetSetting(key="endpoint", description="Endpoint", default="")]
+    if route == "persona":
+      monkeypatch.setattr(
+        start,
+        "_persona_values_for",
+        lambda node, target: {"endpoint": raw},
+      )
+      ssp = None
+    else:
+      ssp = self._make_system_settings(
+        tmp_path,
+        settings={"endpoint": raw},
+      )
+    result = _build_effective_state(
+      self._make_target(descriptors),
+      AgentConfig(),
+      **self._make_box_file(tmp_path / "proj"),
+      system_settings_path=ssp,
+    )
+    assert result["endpoint"] == "https://<redacted>@host.invalid/v1"
+    assert "SEKRIT" not in repr(result)
 
 
 class TestDisplayAnswersLikeTheLaunch:
-    """The ``--effective`` behavior read resolves an anchor-spelled value as the launch does."""
+  """The ``--effective`` behavior read resolves an anchor-spelled value as the launch does."""
 
-    def test_a_workset_anchored_template_matches_the_main_launch(
-        self, std, config, project_dir,
-    ):
-        """``agent.claude.template: {meta.workset.path}/tpl`` — one answer at both reads.
+  def test_a_workset_anchored_template_matches_the_main_launch(
+    self,
+    std,
+    config,
+    project_dir,
+  ):
+    """``agent.claude.template: {meta.workset.path}/tpl`` — one answer at both reads.
 
-        The oracle is the MAIN launch resolve (``_resolve_launch_snapshot``), not a
-        restated path.  INVERT: build the display's snapshot without the
-        ``resolve_inputs`` floors and ``{meta.workset.path}`` has nothing to name.
-        """
-        from kanibako.commands.start import (
-            _effective_behavior_for_display,
-            _resolve_launch_snapshot,
-        )
-        from kanibako.settings.agent_select import AgentSelection
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import resolve_project
-        from kanibako.settings.settings_launch import snapshot_leaf
+    The oracle is the MAIN launch resolve (``_resolve_launch_snapshot``), not a
+    restated path.  INVERT: build the display's snapshot without the
+    ``resolve_inputs`` floors and ``{meta.workset.path}`` has nothing to name.
+    """
+    from kanibako.commands.start import (
+      _effective_behavior_for_display,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.settings.agent_select import AgentSelection
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import resolve_project
+    from kanibako.settings.settings_launch import snapshot_leaf
 
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        system_file = std.settings
-        dump_doc(system_file, {
-            "agent": {"claude": {"template": "{meta.workset.path}/tpl"}},
-        })
-        selection = AgentSelection(node="claude", source="settings").selection_level
-        target = MagicMock()
-        target.name = "claude"
-        target.setting_descriptors.return_value = [
-            TargetSetting(key="template", description="Template", default="unset"),
-        ]
-        display = _effective_behavior_for_display(
-            target, AgentConfig(), std=std, proj=proj,
-            system_settings_path=system_file, selection_level=selection,
-            node_name="claude",
-        )
-        launch, _deliveries = _resolve_launch_snapshot(
-            std=std, proj=proj, agent_name="claude",
-            system_settings_path=system_file, agent_cfg_path=None,
-            desc=None, install=None, target=None,
-            cli_level=selection,
-        )
-        expected = snapshot_leaf(launch, "agent.claude.template")
-        assert expected == f"{snapshot_leaf(launch, 'meta.workset.path')}/tpl"
-        assert display["template"] == expected
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    system_file = std.settings
+    dump_doc(
+      system_file,
+      {
+        "agent": {"claude": {"template": "{meta.workset.path}/tpl"}},
+      },
+    )
+    selection = AgentSelection(node="claude", source="settings").selection_level
+    target = MagicMock()
+    target.name = "claude"
+    target.setting_descriptors.return_value = [
+      TargetSetting(key="template", description="Template", default="unset"),
+    ]
+    display = _effective_behavior_for_display(
+      target,
+      AgentConfig(),
+      std=std,
+      proj=proj,
+      system_settings_path=system_file,
+      selection_level=selection,
+      node_name="claude",
+    )
+    launch, _deliveries = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_settings_path=system_file,
+      agent_cfg_path=None,
+      desc=None,
+      install=None,
+      target=None,
+      cli_level=selection,
+    )
+    expected = snapshot_leaf(launch, "agent.claude.template")
+    assert expected == f"{snapshot_leaf(launch, 'meta.workset.path')}/tpl"
+    assert display["template"] == expected
 
 
 @pytest.mark.usefixtures("config_file")
 class TestXdgFallbackRegression:
-    """Stored ``{$XDG_*}`` values must expand through the ``config --effective``
-    behavior-snapshot ctx — the 2026-07-02 live-dogfood XDG-fallback bug.
+  """Stored ``{$XDG_*}`` values must expand through the ``config --effective``
+  behavior-snapshot ctx — the 2026-07-02 live-dogfood XDG-fallback bug.
 
-    Pre-fix, ``start._effective_behavior_for_display`` built its ResolveCtx with
-    ``xdg={}``, so ANY stored ``{$XDG_CACHE_HOME}/...`` value (e.g. the
-    setup-materialized ``system.cache`` in a 1.6.0-era global config, expanded
-    eagerly by the strict launch-snapshot pipeline) raised ``Variable
-    $XDG_CACHE_HOME is not set in this context`` — even with the env var
-    exported, because the resolver reads ONLY the ctx map, never the
-    environment.  The fix routes every host-side ResolveCtx through the
-    canonical ``paths.host_xdg_map()`` ([Jei:2026-07-02]: XDG vars have fallbacks).
+  Pre-fix, ``start._effective_behavior_for_display`` built its ResolveCtx with
+  ``xdg={}``, so ANY stored ``{$XDG_CACHE_HOME}/...`` value (e.g. the
+  setup-materialized ``system.cache`` in a 1.6.0-era global config, expanded
+  eagerly by the strict launch-snapshot pipeline) raised ``Variable
+  $XDG_CACHE_HOME is not set in this context`` — even with the env var
+  exported, because the resolver reads ONLY the ctx map, never the
+  environment.  The fix routes every host-side ResolveCtx through the
+  canonical ``paths.host_xdg_map()`` ([Jei:2026-07-02]: XDG vars have fallbacks).
 
-    All three tests were verified to FAIL on the pre-fix baseline
-    (``SettingsError: Variable $XDG_CACHE_HOME is not set in this context``)
-    and pass with the fix.
+  All three tests were verified to FAIL on the pre-fix baseline
+  (``SettingsError: Variable $XDG_CACHE_HOME is not set in this context``)
+  and pass with the fix.
+  """
+
+  def _seeded_setup(self, tmp_path):
+    """Build a target + stored configs carrying raw ``{$XDG_CACHE_HOME}``.
+
+    The system SETTINGS file mirrors the live carrier state: the
+    setup-materialized ``system.cache`` entry (the value that crashed the
+    launch) PLUS a declared agent leaf carrying the same token, so the
+    expanded value is assertable end-to-end through the display read.
+    ⚑ It is the file the callers pass as ``system_settings_path``, so it is
+    named like one — ``kanibako.cfg`` may not carry a ``system:`` or
+    ``agent:`` table.
+
+    ⚑ The leaf is ``template`` — a DECLARED §2d agent leaf (the keyspace is
+    CLOSED, so a made-up probe name is not a key).  Its NAME is incidental
+    to the subject: what is under test is the expansion of a stored
+    ``{$XDG_CACHE_HOME}`` value through the agent tier, and ``template`` is
+    the path-valued leaf, so a path value reads honestly there.
     """
+    from kanibako.settings.config import persist_creation_flags
 
-    def _seeded_setup(self, tmp_path):
-        """Build a target + stored configs carrying raw ``{$XDG_CACHE_HOME}``.
+    target = MagicMock()
+    target.setting_descriptors.return_value = [
+      TargetSetting(key="template", description="Per-agent template source", default="unset"),
+    ]
+    target.name = "claude"
 
-        The system SETTINGS file mirrors the live carrier state: the
-        setup-materialized ``system.cache`` entry (the value that crashed the
-        launch) PLUS a declared agent leaf carrying the same token, so the
-        expanded value is assertable end-to-end through the display read.
-        ⚑ It is the file the callers pass as ``system_settings_path``, so it is
-        named like one — ``kanibako.cfg`` may not carry a ``system:`` or
-        ``agent:`` table.
+    ssp = tmp_path / "settings.yaml"
+    ssp.write_text(
+      "system:\n"
+      "  cache: '{$XDG_CACHE_HOME}/kanibako'\n"
+      "agent:\n"
+      "  claude:\n"
+      "    template: '{$XDG_CACHE_HOME}/kanibako/probe'\n"
+    )
 
-        ⚑ The leaf is ``template`` — a DECLARED §2d agent leaf (the keyspace is
-        CLOSED, so a made-up probe name is not a key).  Its NAME is incidental
-        to the subject: what is under test is the expansion of a stored
-        ``{$XDG_CACHE_HOME}`` value through the agent tier, and ``template`` is
-        the path-valued leaf, so a path value reads honestly there.
-        """
-        from kanibako.settings.config import persist_creation_flags
+    std, proj = _real_primary_box(tmp_path / "proj")
+    box_file = box_workset_settings_paths(proj)[0]
+    # A minimal box-tier settings file (P8b sparse create writes no identity
+    # section); the XDG expansion under test rides the global/agent tiers.
+    persist_creation_flags(box_file, materializing=True, image="base:image")
+    return (
+      target,
+      AgentConfig(),
+      {
+        "std": std,
+        "proj": proj,
+        "selection_level": None,
+      },
+      ssp,
+    )
 
-        target = MagicMock()
-        target.setting_descriptors.return_value = [
-            TargetSetting(
-                key="template", description="Per-agent template source", default="unset"
-            ),
-        ]
-        target.name = "claude"
+  def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):
+    """THE dogfood repro (map-not-env): the env var IS exported, yet the
+    pre-fix ctx still raised — its map simply lacked the key.  With the fix
+    the stored value expands to the env var's value."""
+    from kanibako.commands.start import _effective_behavior_for_display
 
-        ssp = tmp_path / "settings.yaml"
-        ssp.write_text(
-            "system:\n"
-            "  cache: '{$XDG_CACHE_HOME}/kanibako'\n"
-            "agent:\n"
-            "  claude:\n"
-            "    template: '{$XDG_CACHE_HOME}/kanibako/probe'\n"
-        )
+    monkeypatch.setenv("XDG_CACHE_HOME", "/custom/cache")
+    target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
-        std, proj = _real_primary_box(tmp_path / "proj")
-        box_file = box_workset_settings_paths(proj)[0]
-        # A minimal box-tier settings file (P8b sparse create writes no identity
-        # section); the XDG expansion under test rides the global/agent tiers.
-        persist_creation_flags(box_file, materializing=True, image="base:image")
-        return target, AgentConfig(), {
-            "std": std, "proj": proj, "selection_level": None,
-        }, ssp
+    result = _effective_behavior_for_display(
+      target, agent_cfg, **box_file, system_settings_path=ssp
+    )
+    assert result["template"] == "/custom/cache/kanibako/probe"
 
-    def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):
-        """THE dogfood repro (map-not-env): the env var IS exported, yet the
-        pre-fix ctx still raised — its map simply lacked the key.  With the fix
-        the stored value expands to the env var's value."""
-        from kanibako.commands.start import _effective_behavior_for_display
+  def test_stored_xdg_cache_value_env_unset_falls_back(self, tmp_path, monkeypatch):
+    """Unset env var → the stored value expands to the XDG-spec default
+    ``<home>/.cache/...`` instead of raising."""
+    from pathlib import Path
 
-        monkeypatch.setenv("XDG_CACHE_HOME", "/custom/cache")
-        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
+    from kanibako.commands.start import _effective_behavior_for_display
 
-        result = _effective_behavior_for_display(
-            target, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        assert result["template"] == "/custom/cache/kanibako/probe"
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
-    def test_stored_xdg_cache_value_env_unset_falls_back(self, tmp_path, monkeypatch):
-        """Unset env var → the stored value expands to the XDG-spec default
-        ``<home>/.cache/...`` instead of raising."""
-        from pathlib import Path
+    result = _effective_behavior_for_display(
+      target, agent_cfg, **box_file, system_settings_path=ssp
+    )
+    expected = str(Path.home() / ".cache" / "kanibako" / "probe")
+    assert result["template"] == expected
 
-        from kanibako.commands.start import _effective_behavior_for_display
+  def test_stored_xdg_cache_value_env_empty_falls_back(self, tmp_path, monkeypatch):
+    """An EMPTY env var is as good as unset (per the spec) → default."""
+    from pathlib import Path
 
-        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
+    from kanibako.commands.start import _effective_behavior_for_display
 
-        result = _effective_behavior_for_display(
-            target, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        expected = str(Path.home() / ".cache" / "kanibako" / "probe")
-        assert result["template"] == expected
+    monkeypatch.setenv("XDG_CACHE_HOME", "")
+    target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
-    def test_stored_xdg_cache_value_env_empty_falls_back(self, tmp_path, monkeypatch):
-        """An EMPTY env var is as good as unset (per the spec) → default."""
-        from pathlib import Path
-
-        from kanibako.commands.start import _effective_behavior_for_display
-
-        monkeypatch.setenv("XDG_CACHE_HOME", "")
-        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
-
-        result = _effective_behavior_for_display(
-            target, agent_cfg, **box_file, system_settings_path=ssp
-        )
-        expected = str(Path.home() / ".cache" / "kanibako" / "probe")
-        assert result["template"] == expected
+    result = _effective_behavior_for_display(
+      target, agent_cfg, **box_file, system_settings_path=ssp
+    )
+    expected = str(Path.home() / ".cache" / "kanibako" / "probe")
+    assert result["template"] == expected

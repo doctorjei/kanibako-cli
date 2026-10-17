@@ -48,9 +48,14 @@ def clean_census():
   paths written and every marker as stale.)
   """
   saved = (
-    dict(census._rows), dict(census._pending), dict(census._verdicts),
-    list(census._collector_errors), census._original_setitem, census._finalized,
-    set(census._declared_negative), set(census._hit_negative),
+    dict(census._rows),
+    dict(census._pending),
+    dict(census._verdicts),
+    list(census._collector_errors),
+    census._original_setitem,
+    census._finalized,
+    set(census._declared_negative),
+    set(census._hit_negative),
   )
   saved_funnel = KeyStore.__setitem__
   census._rows.clear()
@@ -127,7 +132,8 @@ class TestClassification:
     assert "box.caches.~/.cache/uv" != rendered
 
   def test_a_dotted_segment_stops_the_walk_and_is_never_asked_as_a_key(
-    self, clean_census,
+    self,
+    clean_census,
   ):
     """The oracle must not be handed a path forged out of a dotted DATA segment.
 
@@ -177,10 +183,17 @@ class TestContainerRule:
     """
     key = census.RowKey(tuple(segments), is_node)
     census._rows[key] = {
-      "path": census.render(segments), "segments": list(segments),
-      "verdict": verdict, "key": "", "note": "", "negative": negative, "count": 1,
-      "site": "x:1", "outer_site": "y:2", "value_type": "KeyStore" if is_node
-      else "str", "is_node": is_node,
+      "path": census.render(segments),
+      "segments": list(segments),
+      "verdict": verdict,
+      "key": "",
+      "note": "",
+      "negative": negative,
+      "count": 1,
+      "site": "x:1",
+      "outer_site": "y:2",
+      "value_type": "KeyStore" if is_node else "str",
+      "is_node": is_node,
     }
     return key
 
@@ -192,8 +205,7 @@ class TestContainerRule:
 
   def test_an_empty_fabricated_node_stays_a_violation(self, clean_census):
     """Nothing declared underneath ⇒ not scaffolding.  ``box.bogus = {}`` still reds."""
-    bogus = self._row(("box", "bogus"), verdict=census.Verdict.UNDECLARED,
-                      is_node=True)
+    bogus = self._row(("box", "bogus"), verdict=census.Verdict.UNDECLARED, is_node=True)
     census._apply_container_rule()
     assert census._rows[bogus]["verdict"] == census.Verdict.UNDECLARED
 
@@ -213,8 +225,7 @@ class TestContainerRule:
     ``len(segments) == 1``, so an interior at depth 2+ — ``agent.claude``,
     ``meta.box.agent`` — was reported as a fabrication the moment its last child
     was legitimately dropped.  Depth is not the question; the keyspace is."""
-    mirror = self._row(("meta", "box", "agent"),
-                       verdict=census.Verdict.NAMESPACE, is_node=True)
+    mirror = self._row(("meta", "box", "agent"), verdict=census.Verdict.NAMESPACE, is_node=True)
     census._apply_container_rule()
     assert census._rows[mirror]["verdict"] == census.Verdict.CONTAINER
 
@@ -225,12 +236,12 @@ class TestContainerRule:
     survives the rescue is a finding, which is why ``violations()`` filters on
     ``FINDING_VERDICTS`` and never on ``UNDECLARED`` alone."""
     box = self._row(("box",), verdict=census.Verdict.NAMESPACE, is_node=False)
-    self._row(("meta", "box", "agent"), verdict=census.Verdict.NAMESPACE,
-              is_node=False)
+    self._row(("meta", "box", "agent"), verdict=census.Verdict.NAMESPACE, is_node=False)
     census._apply_container_rule()
     assert census._rows[box]["verdict"] == census.Verdict.NAMESPACE
     assert {tuple(r["segments"]) for r in census.violations()} == {
-      ("box",), ("meta", "box", "agent"),
+      ("box",),
+      ("meta", "box", "agent"),
     }
 
   def test_one_path_written_in_BOTH_shapes_is_judged_in_BOTH(self, clean_census):
@@ -257,10 +268,8 @@ class TestContainerRule:
     assert [r["is_node"] for r in census.violations()] == [False]
 
   def test_a_leaf_is_never_rescued_by_the_rule(self, clean_census):
-    bogus = self._row(("box", "bogus"), verdict=census.Verdict.UNDECLARED,
-                      is_node=False)
-    self._row(("box", "bogus", "image"), verdict=census.Verdict.DECLARED,
-              is_node=False)
+    bogus = self._row(("box", "bogus"), verdict=census.Verdict.UNDECLARED, is_node=False)
+    self._row(("box", "bogus", "image"), verdict=census.Verdict.DECLARED, is_node=False)
     census._apply_container_rule()
     assert census._rows[bogus]["verdict"] == census.Verdict.UNDECLARED
 
@@ -269,24 +278,31 @@ class TestReservedInternalNode:
   """The one non-key node the SPEC names — structural, not an exemption."""
 
   def test_the_reserved_node_is_its_own_class_for_its_whole_subtree(
-    self, clean_census,
+    self,
+    clean_census,
   ):
     judged = _judge(
       (BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
     )
     assert judged.verdict == census.Verdict.RESERVED
     assert judged.key_len == 1
-    assert census.render(
-      (BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
-      judged.key_len,
-    ) == "binding_derivations ⟨system | seeded | /home/agent⟩"
+    assert (
+      census.render(
+        (BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
+        judged.key_len,
+      )
+      == "binding_derivations ⟨system | seeded | /home/agent⟩"
+    )
 
   def test_a_scope_local_derivations_table_is_NOT_reserved(self, clean_census):
     """The class is the ROOT node, not the spelling: ``box.binding_derivations``
     is an ordinary undeclared key."""
-    assert _judge(
-      ("box", BINDING_DERIVATIONS_NODE),
-    ).verdict == census.Verdict.UNDECLARED
+    assert (
+      _judge(
+        ("box", BINDING_DERIVATIONS_NODE),
+      ).verdict
+      == census.Verdict.UNDECLARED
+    )
 
   def test_there_is_no_exemption_list_to_grow(self, clean_census):
     """⚑ Rule: a name-keyed exemption hides the next finding behind it.  The
@@ -299,30 +315,46 @@ class TestNegativeMarker:
   """A test that exercises a refusal DECLARES the undeclared paths it writes."""
 
   def test_a_declared_path_is_reclassed_and_does_not_fail_the_run(
-    self, clean_census,
+    self,
+    clean_census,
   ):
     key = census.RowKey(("box", "bogus"), False)
     census._rows[key] = {
-      "path": "box.bogus", "segments": ["box", "bogus"],
-      "verdict": census.Verdict.UNDECLARED, "key": "", "note": "not a key",
-      "negative": True, "count": 1, "site": "x:1", "outer_site": "y:2",
-      "value_type": "str", "is_node": False,
+      "path": "box.bogus",
+      "segments": ["box", "bogus"],
+      "verdict": census.Verdict.UNDECLARED,
+      "key": "",
+      "note": "not a key",
+      "negative": True,
+      "count": 1,
+      "site": "x:1",
+      "outer_site": "y:2",
+      "value_type": "str",
+      "is_node": False,
     }
     census._apply_negative_rule()
     assert census._rows[key]["verdict"] == census.Verdict.NEGATIVE
     assert census.violations() == []
 
   def test_the_same_path_written_from_anywhere_else_is_still_a_violation(
-    self, clean_census,
+    self,
+    clean_census,
   ):
     """⚑ The AND in :func:`census.drain`: a declaration covers ONE test's writes,
     never the path.  One write from outside the declaring test and it reds again."""
     key = census.RowKey(("box", "bogus"), False)
     census._rows[key] = {
-      "path": "box.bogus", "segments": ["box", "bogus"],
-      "verdict": census.Verdict.UNDECLARED, "key": "", "note": "not a key",
-      "negative": False, "count": 2, "site": "x:1", "outer_site": "y:2",
-      "value_type": "str", "is_node": False,
+      "path": "box.bogus",
+      "segments": ["box", "bogus"],
+      "verdict": census.Verdict.UNDECLARED,
+      "key": "",
+      "note": "not a key",
+      "negative": False,
+      "count": 2,
+      "site": "x:1",
+      "outer_site": "y:2",
+      "value_type": "str",
+      "is_node": False,
     }
     census._apply_negative_rule()
     assert census._rows[key]["verdict"] == census.Verdict.UNDECLARED
@@ -339,8 +371,8 @@ class TestNegativeMarker:
   @pytest.mark.writes_undeclared(
     "box.declared_by_this_very_test",
     reason="drives the marker end to end: this test writes the path it names, so "
-           "the census must class it NEGATIVE instead of failing the run, and the "
-           "path must count as EXERCISED rather than as a stale declaration.",
+    "the census must class it NEGATIVE instead of failing the run, and the "
+    "path must count as EXERCISED rather than as a stale declaration.",
   )
   def test_the_marker_reaches_the_collector_at_write_time(self, interposed):
     store: KeyStore = KeyStore()
@@ -348,9 +380,7 @@ class TestNegativeMarker:
     interposed.drain()
     interposed._apply_container_rule()
     interposed._apply_negative_rule()
-    row = interposed._rows[
-      census.RowKey(("box", "declared_by_this_very_test"), False)
-    ]
+    row = interposed._rows[census.RowKey(("box", "declared_by_this_very_test"), False)]
     assert row["verdict"] == census.Verdict.NEGATIVE
     assert "box.declared_by_this_very_test" in interposed._hit_negative
     assert interposed.violations() == []
@@ -360,7 +390,8 @@ class TestEnforcement:
   """The interposition records real writes and names the violation."""
 
   def test_a_fabricated_key_written_through_the_funnel_fails_the_run(
-    self, interposed,
+    self,
+    interposed,
   ):
     store: KeyStore = KeyStore()
     store["box"] = {"image": "img", "fabricated_by_code": "x"}

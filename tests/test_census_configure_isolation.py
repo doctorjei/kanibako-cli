@@ -70,9 +70,22 @@ def _child_env(root: Path) -> dict[str, str]:
 
 def _run_child(env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
   return subprocess.run(
-    [sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider",
-     *extra, str(REPO_ROOT / CHILD_TEST)],
-    cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=300,
+    [
+      sys.executable,
+      "-m",
+      "pytest",
+      "-q",
+      "--no-header",
+      "-p",
+      "no:cacheprovider",
+      *extra,
+      str(REPO_ROOT / CHILD_TEST),
+    ],
+    cwd=REPO_ROOT,
+    env=env,
+    capture_output=True,
+    text=True,
+    timeout=300,
   )
 
 
@@ -137,7 +150,6 @@ def test_census_still_primes_the_memo_at_configure_time(tmp_path):
 
 
 def test_throwaway_user_dirs_restores_the_environment_on_the_exception_path():
-
   """⚑ THE ``finally`` IS THE POINT. A restore that only ran on success leaks the
   throwaway tree into every later caller after a single priming failure — the same
   class of leak, moved. This is the one claim a child pytest cannot make, because the

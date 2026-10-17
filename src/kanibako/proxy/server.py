@@ -55,17 +55,19 @@ _RELAY_CHUNK = 8192
 # cross a proxy in either direction.  ``transfer-encoding`` especially: urllib has
 # already de-chunked the body by the time we see it, so relaying the header would
 # describe a framing that is no longer there.
-_HOP_BY_HOP = frozenset({
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "proxy-connection",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-})
+_HOP_BY_HOP = frozenset(
+  {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "proxy-connection",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+  }
+)
 
 # On the way out: ``host`` is re-derived from the upstream URL and
 # ``content-length`` is recomputed, because FIXUP rewrites the body.
@@ -83,9 +85,9 @@ class ProxyConfig:
   question that does not need answering to run one.
   """
 
-  upstream_base: str                            # scheme://host[:port], no trailing path
-  fixup_models: frozenset[str] = frozenset()    # model ids to de-stream
-  timeout: float = 600.0                        # seconds; a de-streamed call returns all at once
+  upstream_base: str  # scheme://host[:port], no trailing path
+  fixup_models: frozenset[str] = frozenset()  # model ids to de-stream
+  timeout: float = 600.0  # seconds; a de-streamed call returns all at once
 
 
 def fixup_request_body(
@@ -307,13 +309,15 @@ class _AnthropicProxyHandler(BaseHTTPRequestHandler):
     if self._headers_sent:
       self.close_connection = True
       return
-    payload = json.dumps({
-      "type": "error",
-      "error": {
-        "type": "api_error",
-        "message": f"kanibako proxy: upstream request failed ({type(exc).__name__})",
-      },
-    }).encode("utf-8")
+    payload = json.dumps(
+      {
+        "type": "error",
+        "error": {
+          "type": "api_error",
+          "message": f"kanibako proxy: upstream request failed ({type(exc).__name__})",
+        },
+      }
+    ).encode("utf-8")
     self.send_response_only(502)
     self.send_header("Date", self.date_time_string())
     self.send_header("Content-Type", "application/json")
@@ -355,7 +359,8 @@ class ProxyServer:
 
   def __init__(self, config: ProxyConfig, host: str = "127.0.0.1", port: int = 0) -> None:
     self._httpd = ThreadingHTTPServer(
-      (host, port), partial(_AnthropicProxyHandler, config=config),
+      (host, port),
+      partial(_AnthropicProxyHandler, config=config),
     )
     self._thread: threading.Thread | None = None
 

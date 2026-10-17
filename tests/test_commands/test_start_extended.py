@@ -20,659 +20,833 @@ from tests.support.early import early_record
 # Concurrency lock
 # ---------------------------------------------------------------------------
 
+
 class TestConcurrencyLock:
-    def test_lock_acquired_and_released(self, start_mocks):
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 0
-            # fcntl.flock called twice: LOCK_EX|LOCK_NB for acquire, LOCK_UN for release
-            flock_calls = m.fcntl.flock.call_args_list
-            assert len(flock_calls) == 2
+  def test_lock_acquired_and_released(self, start_mocks):
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 0
+      # fcntl.flock called twice: LOCK_EX|LOCK_NB for acquire, LOCK_UN for release
+      flock_calls = m.fcntl.flock.call_args_list
+      assert len(flock_calls) == 2
 
-    def test_lock_contention_returns_1(self, start_mocks):
-        with start_mocks() as m:
-            m.fcntl.flock.side_effect = OSError("locked")
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
+  def test_lock_contention_returns_1(self, start_mocks):
+    with start_mocks() as m:
+      m.fcntl.flock.side_effect = OSError("locked")
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
 
-    def test_lock_released_on_failure(self, start_mocks):
-        with start_mocks() as m:
-            m.runtime.run.side_effect = RuntimeError("boom")
-            with pytest.raises(RuntimeError):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            # Lock should still be released in finally block
-            flock_calls = m.fcntl.flock.call_args_list
-            assert len(flock_calls) == 2
+  def test_lock_released_on_failure(self, start_mocks):
+    with start_mocks() as m:
+      m.runtime.run.side_effect = RuntimeError("boom")
+      with pytest.raises(RuntimeError):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+      # Lock should still be released in finally block
+      flock_calls = m.fcntl.flock.call_args_list
+      assert len(flock_calls) == 2
 
-    def test_lock_file_path(self, start_mocks):
-        """Lock file is created under metadata_path."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # metadata_path / ".kanibako.lock" was accessed
-            m.proj.metadata_path.__truediv__.assert_any_call(".kanibako.lock")
+  def test_lock_file_path(self, start_mocks):
+    """Lock file is created under metadata_path."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # metadata_path / ".kanibako.lock" was accessed
+      m.proj.metadata_path.__truediv__.assert_any_call(".kanibako.lock")
 
 
 # ---------------------------------------------------------------------------
 # Flag combinations
 # ---------------------------------------------------------------------------
 
+
 class TestFlagCombinations:
-    def test_new_session_skips_continue(self, start_mocks):
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=True, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
-            assert "--dangerously-skip-permissions" in cli_args
+  def test_new_session_skips_continue(self, start_mocks):
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=True,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args
+      assert "--dangerously-skip-permissions" in cli_args
 
-    def test_new_project_skips_continue(self, start_mocks):
-        with start_mocks() as m:
-            m.proj.is_new = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
+  def test_new_project_skips_continue(self, start_mocks):
+    with start_mocks() as m:
+      m.proj.is_new = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args
 
-    def test_existing_project_adds_continue(self, start_mocks):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" in cli_args
+  def test_existing_project_adds_continue(self, start_mocks):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" in cli_args
 
-    def test_resume_falls_through_to_continue(self, start_mocks):
-        """Resume was cut from claude's descriptor (user 2026-06-17).
+  def test_resume_falls_through_to_continue(self, start_mocks):
+    """Resume was cut from claude's descriptor (user 2026-06-17).
 
-        ``-R``/resume_mode has no ``"resume"`` mode key to select, so
-        assembly.resolve_mode falls through to ``--continue`` (continue-last) and
-        never emits ``--resume`` for claude.
-        """
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=True,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--resume" not in cli_args
-            assert "--continue" in cli_args
+    ``-R``/resume_mode has no ``"resume"`` mode key to select, so
+    assembly.resolve_mode falls through to ``--continue`` (continue-last) and
+    never emits ``--resume`` for claude.
+    """
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=True,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--resume" not in cli_args
+      assert "--continue" in cli_args
 
-    def test_extra_resume_skips_continue(self, start_mocks):
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=["--resume"],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
-            assert "--resume" in cli_args
+  def test_extra_resume_skips_continue(self, start_mocks):
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=["--resume"],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args
+      assert "--resume" in cli_args
 
-    def test_continue_skipped_when_no_resumable_session(self, start_mocks):
-        """First-launch death-race fix: when the target positively reports no
-        resumable session, the DOOMED continue is never ATTEMPTED — the built
-        command is the new-session form on the one and only launch.
-        (Mutation-proof: removing the has_resumable_session consult in
-        start.py re-adds --continue and fails this test.)"""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            m.target.has_resumable_session.return_value = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
-            # No doomed attempt: exactly ONE launch, already new-session.
-            assert m.runtime.run.call_count == 1
-            # The hook reads the HOST-side box home (the home bind source).
-            m.target.has_resumable_session.assert_called_once_with(
-                m.proj.shell_path
-            )
+  def test_continue_skipped_when_no_resumable_session(self, start_mocks):
+    """First-launch death-race fix: when the target positively reports no
+    resumable session, the DOOMED continue is never ATTEMPTED — the built
+    command is the new-session form on the one and only launch.
+    (Mutation-proof: removing the has_resumable_session consult in
+    start.py re-adds --continue and fails this test.)"""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      m.target.has_resumable_session.return_value = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args
+      # No doomed attempt: exactly ONE launch, already new-session.
+      assert m.runtime.run.call_count == 1
+      # The hook reads the HOST-side box home (the home bind source).
+      m.target.has_resumable_session.assert_called_once_with(m.proj.shell_path)
 
-    def test_continue_kept_when_session_resumable(self, start_mocks):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            m.target.has_resumable_session.return_value = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" in cli_args
+  def test_continue_kept_when_session_resumable(self, start_mocks):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      m.target.has_resumable_session.return_value = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" in cli_args
 
-    def test_hook_not_consulted_when_new_session_forced(self, start_mocks):
-        """Explicit -N never selects continue, so the hook is not consulted
-        (the explicit-new path is byte-identical, per the brief)."""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=True, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            m.target.has_resumable_session.assert_not_called()
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
+  def test_hook_not_consulted_when_new_session_forced(self, start_mocks):
+    """Explicit -N never selects continue, so the hook is not consulted
+    (the explicit-new path is byte-identical, per the brief)."""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=True,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      m.target.has_resumable_session.assert_not_called()
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args
 
-    def test_explicit_resume_unaffected_by_hook(self, start_mocks):
-        """Brief constraint: explicit resume flags are UNAFFECTED.  For a
-        picker-less agent -R resolves to "continue" (continue-last), and the
-        skip guard must leave that alone — `not resume_mode` short-circuits
-        BEFORE the hook, so even a False hook cannot flip an explicit -R."""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            m.target.has_resumable_session.return_value = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=True,
-                extra_args=[],
-            )
-            m.target.has_resumable_session.assert_not_called()
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" in cli_args
+  def test_explicit_resume_unaffected_by_hook(self, start_mocks):
+    """Brief constraint: explicit resume flags are UNAFFECTED.  For a
+    picker-less agent -R resolves to "continue" (continue-last), and the
+    skip guard must leave that alone — `not resume_mode` short-circuits
+    BEFORE the hook, so even a False hook cannot flip an explicit -R."""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      m.target.has_resumable_session.return_value = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=True,
+        extra_args=[],
+      )
+      m.target.has_resumable_session.assert_not_called()
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" in cli_args
 
-    def test_launch_grammar_single_source_snapshot_wins(self, start_mocks):
-        """B5 single-source pin at the REAL argv seam: the launch splices the
-        SNAPSHOT's ``meta.agent.<a>.mode`` fragment, never the descriptor's.
+  def test_launch_grammar_single_source_snapshot_wins(self, start_mocks):
+    """B5 single-source pin at the REAL argv seam: the launch splices the
+    SNAPSHOT's ``meta.agent.<a>.mode`` fragment, never the descriptor's.
 
-        The materialization seam (``meta_agent_grammar_floor``) is patched to
-        emit a continue fragment that DIVERGES from the descriptor's
-        ``--continue``; the diverged (keyspace) value must reach argv and the
-        descriptor's must NOT.  If the descriptor-direct read is ever
-        reintroduced at the composition seam, ``--continue`` reappears here →
-        RED.  (The drift shape B5 replaced: two sources for one fragment.)"""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            with patch(
-                "kanibako.settings.settings_launch.meta_agent_grammar_floor",
-                return_value={
-                    "meta.agent.claude.mode": {
-                        "start": [], "continue": ["--SNAPSHOT-DIVERGED"],
-                    },
-                    "meta.agent.claude.exec": ["-p"],
-                },
-            ):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--SNAPSHOT-DIVERGED" in cli_args
-            assert "--continue" not in cli_args
+    The materialization seam (``meta_agent_grammar_floor``) is patched to
+    emit a continue fragment that DIVERGES from the descriptor's
+    ``--continue``; the diverged (keyspace) value must reach argv and the
+    descriptor's must NOT.  If the descriptor-direct read is ever
+    reintroduced at the composition seam, ``--continue`` reappears here →
+    RED.  (The drift shape B5 replaced: two sources for one fragment.)"""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      with patch(
+        "kanibako.settings.settings_launch.meta_agent_grammar_floor",
+        return_value={
+          "meta.agent.claude.mode": {
+            "start": [],
+            "continue": ["--SNAPSHOT-DIVERGED"],
+          },
+          "meta.agent.claude.exec": ["-p"],
+        },
+      ):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--SNAPSHOT-DIVERGED" in cli_args
+      assert "--continue" not in cli_args
 
-    def test_entrypoint_disables_claude_mode(self, start_mocks):
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint="/bin/bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--dangerously-skip-permissions" not in cli_args
-            assert "--continue" not in cli_args
+  def test_entrypoint_disables_claude_mode(self, start_mocks):
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint="/bin/bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--dangerously-skip-permissions" not in cli_args
+      assert "--continue" not in cli_args
 
-    def test_safe_and_resume(self, start_mocks):
-        """Secure (-S) drops the bypass flag; resume_mode falls through to
-        --continue (claude's descriptor declares no "resume" mode key)."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=True, resume_mode=True,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--dangerously-skip-permissions" not in cli_args
-            assert "--resume" not in cli_args
-            assert "--continue" in cli_args
+  def test_safe_and_resume(self, start_mocks):
+    """Secure (-S) drops the bypass flag; resume_mode falls through to
+    --continue (claude's descriptor declares no "resume" mode key)."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=True,
+        resume_mode=True,
+        extra_args=[],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--dangerously-skip-permissions" not in cli_args
+      assert "--resume" not in cli_args
+      assert "--continue" in cli_args
 
-    def test_image_override(self, start_mocks):
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # load_merged_config should have been called with cli_overrides
-            call_kwargs = m.load_merged_config.call_args
-            assert call_kwargs.kwargs["cli_overrides"] == {"box_image": "custom:v1"}
+  def test_image_override(self, start_mocks):
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # load_merged_config should have been called with cli_overrides
+      call_kwargs = m.load_merged_config.call_args
+      assert call_kwargs.kwargs["cli_overrides"] == {"box_image": "custom:v1"}
 
-    def test_runtime_not_found_returns_1(self, start_mocks):
-        with start_mocks() as m:
-            m.runtime_cls.side_effect = ContainerError("No runtime")
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
+  def test_runtime_not_found_returns_1(self, start_mocks):
+    with start_mocks() as m:
+      m.runtime_cls.side_effect = ContainerError("No runtime")
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
 
-    def test_ensure_image_failure_returns_1(self, start_mocks):
-        with start_mocks() as m:
-            m.runtime.ensure_image.side_effect = ContainerError("pull failed")
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
+  def test_ensure_image_failure_returns_1(self, start_mocks):
+    with start_mocks() as m:
+      m.runtime.ensure_image.side_effect = ContainerError("pull failed")
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
 
-    def test_exit_code_propagation(self, start_mocks):
-        with start_mocks() as m:
-            m.runtime.run.return_value = 42
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 42
+  def test_exit_code_propagation(self, start_mocks):
+    with start_mocks() as m:
+      m.runtime.run.return_value = 42
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 42
 
-    def test_target_refresh_called(self, start_mocks):
-        """The credsync refresh runs pre-launch against the box's shell path."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            m.credsync.refresh_box_credentials.assert_called_once()
-            assert (
-                m.credsync.refresh_box_credentials.call_args.kwargs["project_home"]
-                is m.proj.shell_path
-            )
+  def test_target_refresh_called(self, start_mocks):
+    """The credsync refresh runs pre-launch against the box's shell path."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      m.credsync.refresh_box_credentials.assert_called_once()
+      assert (
+        m.credsync.refresh_box_credentials.call_args.kwargs["project_home"] is m.proj.shell_path
+      )
 
-    def test_target_writeback_after_run(self, start_mocks):
-        """The credsync writeback runs after the container run."""
-        call_order = []
-        with start_mocks() as m:
-            def track_run(*a, **kw):
-                call_order.append("run")
-                return 0
-            m.runtime.run.side_effect = track_run
-            m.credsync.writeback_box_credentials.side_effect = (
-                lambda *a, **kw: call_order.append("writeback")
-            )
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert call_order == ["run", "writeback"]
+  def test_target_writeback_after_run(self, start_mocks):
+    """The credsync writeback runs after the container run."""
+    call_order = []
+    with start_mocks() as m:
 
-    def test_argv_assembled_from_descriptor(self, start_mocks):
-        """The agent argv is assembled from the descriptor (build_cli_args is gone).
+      def track_run(*a, **kw):
+        call_order.append("run")
+        return 0
 
-        With new_session=True (no --continue), secure safe_mode=True (no
-        --dangerously-skip-permissions), the only argv tail is the passed
-        extra_args; assert the observable cli_args that reach runtime.run.
-        """
-        with start_mocks() as m:
-            m.target.setting_descriptors.return_value = []
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=True, safe_mode=True, resume_mode=False,
-                extra_args=["--foo"],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args            # new session
-            assert "--dangerously-skip-permissions" not in cli_args  # secure
-            assert "--foo" in cli_args                      # extra args appended
+      m.runtime.run.side_effect = track_run
+      m.credsync.writeback_box_credentials.side_effect = lambda *a, **kw: call_order.append(
+        "writeback"
+      )
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert call_order == ["run", "writeback"]
+
+  def test_argv_assembled_from_descriptor(self, start_mocks):
+    """The agent argv is assembled from the descriptor (build_cli_args is gone).
+
+    With new_session=True (no --continue), secure safe_mode=True (no
+    --dangerously-skip-permissions), the only argv tail is the passed
+    extra_args; assert the observable cli_args that reach runtime.run.
+    """
+    with start_mocks() as m:
+      m.target.setting_descriptors.return_value = []
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=True,
+        safe_mode=True,
+        resume_mode=False,
+        extra_args=["--foo"],
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--continue" not in cli_args  # new session
+      assert "--dangerously-skip-permissions" not in cli_args  # secure
+      assert "--foo" in cli_args  # extra args appended
 
 
 # ---------------------------------------------------------------------------
 # First-boot image persistence (Item 3)
 # ---------------------------------------------------------------------------
 
+
 class TestFirstBootImagePersistence:
-    """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the materialization
-    ruling [Jei:2026-08-02]): a CREATING launch hands its whole CLI level to the
-    ONE helper (``config_interface.persist_creation_level``); a launch that does
-    not create never calls it.  The helper's writes are pinned in
-    ``tests/test_commands/test_create_exception.py``.
-    """
+  """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the materialization
+  ruling [Jei:2026-08-02]): a CREATING launch hands its whole CLI level to the
+  ONE helper (``config_interface.persist_creation_level``); a launch that does
+  not create never calls it.  The helper's writes are pinned in
+  ``tests/test_commands/test_create_exception.py``.
+  """
 
-    def test_materializing_launch_calls_the_gate_with_the_flag(self, start_mocks):
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override="custom:v1",
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-                m_gate.assert_called_once()
-                assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
+  def test_materializing_launch_calls_the_gate_with_the_flag(self, start_mocks):
+    with start_mocks() as m:
+      m.proj.is_new = True
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override="custom:v1",
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+        m_gate.assert_called_once()
+        assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
 
-    def test_existing_box_never_reaches_the_helper(self, start_mocks):
-        """`start --image` on an EXISTING box is strictly ephemeral: the helper
-        is not called (the byte-identical box file is pinned with real files in
-        ``test_create_exception.py``)."""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override="custom:v1",
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-                m_gate.assert_not_called()
+  def test_existing_box_never_reaches_the_helper(self, start_mocks):
+    """`start --image` on an EXISTING box is strictly ephemeral: the helper
+    is not called (the byte-identical box file is pinned with real files in
+    ``test_create_exception.py``)."""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override="custom:v1",
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+        m_gate.assert_not_called()
 
-    def test_no_flags_pass_no_values_to_the_gate(self, start_mocks):
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-                m_gate.assert_called_once()
-                level = m_gate.call_args.args[0] or {}
-                assert not [k for k in level if k.startswith(("box.", "agent."))]
-                assert m_gate.call_args.kwargs["typed_agent"] is None
+  def test_no_flags_pass_no_values_to_the_gate(self, start_mocks):
+    with start_mocks() as m:
+      m.proj.is_new = True
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+        m_gate.assert_called_once()
+        level = m_gate.call_args.args[0] or {}
+        assert not [k for k in level if k.startswith(("box.", "agent."))]
+        assert m_gate.call_args.kwargs["typed_agent"] is None
 
-    def test_share_images_flag_reaches_the_gate(self, start_mocks):
-        """`--share-images` on a materializing launch persists too (ALL shadowing
-        flags act uniformly [Jei:2026-08-02])."""
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], share_images=True,
-                )
-                m_gate.assert_called_once()
-                assert m_gate.call_args.args[0]["box.share_images"] is True
+  def test_share_images_flag_reaches_the_gate(self, start_mocks):
+    """`--share-images` on a materializing launch persists too (ALL shadowing
+    flags act uniformly [Jei:2026-08-02])."""
+    with start_mocks() as m:
+      m.proj.is_new = True
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          share_images=True,
+        )
+        m_gate.assert_called_once()
+        assert m_gate.call_args.args[0]["box.share_images"] is True
 
 
 class TestPersistWindow:
-    """Arm (a) — the persist WINDOW ([Jei:2026-08-02], "(c) BOTH").
+  """Arm (a) — the persist WINDOW ([Jei:2026-08-02], "(c) BOTH").
 
-    A materializing launch that fails between materialization and the persist
-    leaves the box EXISTING with the flag unstored, so the user's retry is
-    non-materializing and their ``--image`` is silently dropped on every attempt
-    after the first.  The gate call therefore sits at the EARLIEST point where
-    the rig is prepped AND the box is materialized — not after the rest of the
-    launch.
+  A materializing launch that fails between materialization and the persist
+  leaves the box EXISTING with the flag unstored, so the user's retry is
+  non-materializing and their ``--image`` is silently dropped on every attempt
+  after the first.  The gate call therefore sits at the EARLIEST point where
+  the rig is prepped AND the box is materialized — not after the rest of the
+  launch.
+  """
+
+  def test_persist_survives_a_failure_after_the_rig_prep(self, start_mocks):
+    """MUTATION-PROOF window test: the launch dies at the tier-1 baseline
+    hard stop — which is AFTER the rig prep and BEFORE where the gate used
+    to be called — and the flag is stored anyway, so the retry is not
+    silently ephemeral.  Moving the call back down the function fails this.
     """
+    from kanibako.commands.start import _BOOTSTRAP_MISSING
 
-    def test_persist_survives_a_failure_after_the_rig_prep(self, start_mocks):
-        """MUTATION-PROOF window test: the launch dies at the tier-1 baseline
-        hard stop — which is AFTER the rig prep and BEFORE where the gate used
-        to be called — and the flag is stored anyway, so the retry is not
-        silently ephemeral.  Moving the call back down the function fails this.
-        """
-        from kanibako.commands.start import _BOOTSTRAP_MISSING
+    with start_mocks() as m:
+      m.proj.is_new = True
+      m.launch_check.return_value = _BOOTSTRAP_MISSING
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override="custom:v1",
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+        )
+      assert rc == 1  # the launch really did fail
+      m_gate.assert_called_once()  # ...and the flag was still stored
+      assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
 
-        with start_mocks() as m:
-            m.proj.is_new = True
-            m.launch_check.return_value = _BOOTSTRAP_MISSING
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override="custom:v1",
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True,
-                )
-            assert rc == 1                       # the launch really did fail
-            m_gate.assert_called_once()          # ...and the flag was still stored
-            assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
-
-    def test_no_persist_when_the_rig_prep_fails(self, start_mocks):
-        """The other side of the tension named: an image that never pulled
-        is NEVER stored, so the gate is not reached when the prep fails."""
-        with start_mocks() as m:
-            m.proj.is_new = True
-            m.runtime.ensure_image.side_effect = ContainerError("no such image")
-            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override="bogus:v1",
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            assert rc == 1
-            m_gate.assert_not_called()
+  def test_no_persist_when_the_rig_prep_fails(self, start_mocks):
+    """The other side of the tension named: an image that never pulled
+    is NEVER stored, so the gate is not reached when the prep fails."""
+    with start_mocks() as m:
+      m.proj.is_new = True
+      m.runtime.ensure_image.side_effect = ContainerError("no such image")
+      with patch("kanibako.commands.start.persist_creation_level") as m_gate:
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override="bogus:v1",
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+      assert rc == 1
+      m_gate.assert_not_called()
 
 
 class TestEphemeralImageHint:
-    """Arm (b) [Jei:2026-08-02] — a shadowing flag on a NON-materializing launch says so.
+  """Arm (b) [Jei:2026-08-02] — a shadowing flag on a NON-materializing launch says so.
 
-    [Jei:2026-08-02b] — *"yes, same hint"*: ``--share-images`` has the identical
-    silent gap as ``--image`` and gets the identical treatment.
+  [Jei:2026-08-02b] — *"yes, same hint"*: ``--share-images`` has the identical
+  silent gap as ``--image`` and gets the identical treatment.
+  """
+
+  def test_hint_names_the_ephemerality_and_the_cure(self, start_mocks, capsys):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      err = capsys.readouterr().err
+    assert "--image custom:v1 applies to THIS launch only" in err
+    assert "testproject" in err  # names the box
+    # The cure is a REAL, copy-pasteable command (`kanibako box set` — there
+    # is no `box config` subcommand) and it NAMES ITS SUBJECT (F-2).
+    assert f"kanibako box set {subject} box.image=custom:v1" in err
+
+  def test_no_hint_without_the_flag(self, start_mocks, capsys):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      err = capsys.readouterr().err
+    assert "applies to THIS launch only" not in err
+
+  def test_no_hint_when_the_flag_persists(self, start_mocks, capsys):
+    """A MATERIALIZING launch stores the value, so there is nothing to warn
+    about — the hint is the ephemeral case ONLY."""
+    with start_mocks() as m:
+      m.proj.is_new = True
+      with patch("kanibako.commands.start.persist_creation_level"):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override="custom:v1",
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+      err = capsys.readouterr().err
+    assert "applies to THIS launch only" not in err
+
+  # -- ``--share-images``: the same hint [Jei:2026-08-02b] ----------------
+
+  def test_share_images_hint_names_the_ephemerality_and_the_cure(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        share_images=True,
+      )
+      err = capsys.readouterr().err
+    assert "--share-images applies to THIS launch only" in err
+    assert "testproject" in err  # names the box
+    assert "its stored image-sharing setting is unchanged" in err
+    # LIVE-CHECKED cure: `kanibako box set` takes a `[project] key=value`
+    # pair (there is no `box config` subcommand), and box.share_images is a
+    # bool key whose coercion accepts `true`.
+    assert f"kanibako box set {subject} box.share_images=true" in err
+    # ...and it does NOT drag the unrelated --image key in.
+    assert "box.image" not in err
+
+  def test_no_share_images_hint_without_the_flag(self, start_mocks, capsys):
+    with start_mocks() as m:
+      m.proj.is_new = False
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        share_images=False,
+      )
+      err = capsys.readouterr().err
+    assert "applies to THIS launch only" not in err
+    assert "box.share_images" not in err
+
+  def test_no_share_images_hint_when_the_flag_persists(self, start_mocks, capsys):
+    """A MATERIALIZING launch stores the value — nothing to warn about."""
+    with start_mocks() as m:
+      m.proj.is_new = True
+      with patch("kanibako.commands.start.persist_creation_level"):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          share_images=True,
+        )
+      err = capsys.readouterr().err
+    assert "applies to THIS launch only" not in err
+
+  def test_both_flags_share_ONE_notice(self, start_mocks, capsys):
+    """Both flags on one non-materializing launch → ONE notice, not two.
+
+    The explanation ("the box already exists, so nothing was stored") is the
+    same sentence for both flags, so it is said ONCE and each flag gets its
+    own cure line.  Two notices would make the reader diff two
+    near-identical paragraphs.
     """
+    with start_mocks() as m:
+      m.proj.is_new = False
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        share_images=True,
+      )
+      err = capsys.readouterr().err
+    assert err.count("Notice:") == 1
+    assert err.count("already exists") == 1
+    # One sentence naming BOTH flags and BOTH nouns, plural-agreed.
+    assert ("--image custom:v1 and --share-images apply to THIS launch only") in err
+    assert "its stored image and image-sharing setting are unchanged" in err
+    # ...and one cure line per flag, both copy-pasteable — and EACH names the
+    # subject box, so neither writes into whatever box the cwd happens to be.
+    assert "  To persist them:" in err
+    assert f"    kanibako box set {subject} box.image=custom:v1" in err
+    assert f"    kanibako box set {subject} box.share_images=true" in err
 
-    def test_hint_names_the_ephemerality_and_the_cure(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            err = capsys.readouterr().err
-        assert "--image custom:v1 applies to THIS launch only" in err
-        assert "testproject" in err                       # names the box
-        # The cure is a REAL, copy-pasteable command (`kanibako box set` — there
-        # is no `box config` subcommand) and it NAMES ITS SUBJECT (F-2).
-        assert f"kanibako box set {subject} box.image=custom:v1" in err
+  def test_single_flag_wording_stays_singular(self, start_mocks, capsys):
+    """The one-flag rendering keeps ``ade2570``'s wording: singular verb,
+    singular copula, inline cure — now with the F-2 subject added."""
+    with start_mocks() as m:
+      m.proj.is_new = False
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        share_images=False,
+      )
+      err = capsys.readouterr().err
+    assert (
+      "Notice: --image custom:v1 applies to THIS launch only — box "
+      "'testproject' already exists, so its stored image is unchanged.\n"
+      f"  To persist it: kanibako box set {subject} box.image=custom:v1"
+    ) in err
 
-    def test_no_hint_without_the_flag(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            err = capsys.readouterr().err
-        assert "applies to THIS launch only" not in err
+  # -- F-2: the cure must name its SUBJECT, never the cwd -----------------
 
-    def test_no_hint_when_the_flag_persists(self, start_mocks, capsys):
-        """A MATERIALIZING launch stores the value, so there is nothing to warn
-        about — the hint is the ephemeral case ONLY."""
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_level"):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override="custom:v1",
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            err = capsys.readouterr().err
-        assert "applies to THIS launch only" not in err
+  def test_cure_names_the_subject_box_not_the_cwd(self, start_mocks, capsys):
+    """REGRESSION PIN (F-2): a subject-less ``box set box.image=…`` is a
+    single ``=``-bearing positional, which the box-config parser reads as the
+    key=value with ``project_dir`` left None — i.e. it writes to the CWD box.
+    ``kanibako start otherbox --image X`` from inside THIS box's workspace
+    would therefore hand the user a SILENT WRONG-BOX WRITE.
 
-    # -- ``--share-images``: the same hint [Jei:2026-08-02b] ----------------
+    Mutation-proof: dropping the subject from either cure line fails here.
+    """
+    with start_mocks() as m:
+      m.proj.is_new = False
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        share_images=True,
+      )
+      err = capsys.readouterr().err
+    # No cure line anywhere goes straight from the verb to the key.
+    assert "box set box." not in err
+    for line in err.splitlines():
+      if "kanibako box set" in line:
+        assert f"kanibako box set {subject} box." in line, line
 
-    def test_share_images_hint_names_the_ephemerality_and_the_cure(
-        self, start_mocks, capsys,
-    ):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], share_images=True,
-            )
-            err = capsys.readouterr().err
-        assert "--share-images applies to THIS launch only" in err
-        assert "testproject" in err                       # names the box
-        assert "its stored image-sharing setting is unchanged" in err
-        # LIVE-CHECKED cure: `kanibako box set` takes a `[project] key=value`
-        # pair (there is no `box config` subcommand), and box.share_images is a
-        # bool key whose coercion accepts `true`.
-        assert f"kanibako box set {subject} box.share_images=true" in err
-        # ...and it does NOT drag the unrelated --image key in.
-        assert "box.image" not in err
+  def test_cure_subject_is_the_path_not_the_name(self, start_mocks, capsys):
+    """The subject is a PATH.  ``box set`` resolves names through
+    ``resolve_any_project`` → ``project.names.resolve_name``, which does not
+    index the standalone section — live-checked, a name-based cure dies with
+    "Unknown project or workset" for a standalone box, while the path form is
+    accepted in all three project modes.
+    """
+    with start_mocks() as m:
+      m.proj.is_new = False
+      m.proj.name = "testproject"
+      subject = m.proj.project_path
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      err = capsys.readouterr().err
+    assert f"kanibako box set {subject} box.image=custom:v1" in err
+    # ...and NOT the bare name, which would not resolve for a standalone box.
+    assert "kanibako box set testproject box.image" not in err
 
-    def test_no_share_images_hint_without_the_flag(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], share_images=False,
-            )
-            err = capsys.readouterr().err
-        assert "applies to THIS launch only" not in err
-        assert "box.share_images" not in err
-
-    def test_no_share_images_hint_when_the_flag_persists(self, start_mocks, capsys):
-        """A MATERIALIZING launch stores the value — nothing to warn about."""
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_level"):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], share_images=True,
-                )
-            err = capsys.readouterr().err
-        assert "applies to THIS launch only" not in err
-
-    def test_both_flags_share_ONE_notice(self, start_mocks, capsys):
-        """Both flags on one non-materializing launch → ONE notice, not two.
-
-        The explanation ("the box already exists, so nothing was stored") is the
-        same sentence for both flags, so it is said ONCE and each flag gets its
-        own cure line.  Two notices would make the reader diff two
-        near-identical paragraphs.
-        """
-        with start_mocks() as m:
-            m.proj.is_new = False
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], share_images=True,
-            )
-            err = capsys.readouterr().err
-        assert err.count("Notice:") == 1
-        assert err.count("already exists") == 1
-        # One sentence naming BOTH flags and BOTH nouns, plural-agreed.
-        assert (
-            "--image custom:v1 and --share-images apply to THIS launch only"
-        ) in err
-        assert "its stored image and image-sharing setting are unchanged" in err
-        # ...and one cure line per flag, both copy-pasteable — and EACH names the
-        # subject box, so neither writes into whatever box the cwd happens to be.
-        assert "  To persist them:" in err
-        assert f"    kanibako box set {subject} box.image=custom:v1" in err
-        assert f"    kanibako box set {subject} box.share_images=true" in err
-
-    def test_single_flag_wording_stays_singular(self, start_mocks, capsys):
-        """The one-flag rendering keeps ``ade2570``'s wording: singular verb,
-        singular copula, inline cure — now with the F-2 subject added."""
-        with start_mocks() as m:
-            m.proj.is_new = False
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], share_images=False,
-            )
-            err = capsys.readouterr().err
-        assert (
-            "Notice: --image custom:v1 applies to THIS launch only — box "
-            "'testproject' already exists, so its stored image is unchanged.\n"
-            f"  To persist it: kanibako box set {subject} box.image=custom:v1"
-        ) in err
-
-    # -- F-2: the cure must name its SUBJECT, never the cwd -----------------
-
-    def test_cure_names_the_subject_box_not_the_cwd(self, start_mocks, capsys):
-        """REGRESSION PIN (F-2): a subject-less ``box set box.image=…`` is a
-        single ``=``-bearing positional, which the box-config parser reads as the
-        key=value with ``project_dir`` left None — i.e. it writes to the CWD box.
-        ``kanibako start otherbox --image X`` from inside THIS box's workspace
-        would therefore hand the user a SILENT WRONG-BOX WRITE.
-
-        Mutation-proof: dropping the subject from either cure line fails here.
-        """
-        with start_mocks() as m:
-            m.proj.is_new = False
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], share_images=True,
-            )
-            err = capsys.readouterr().err
-        # No cure line anywhere goes straight from the verb to the key.
-        assert "box set box." not in err
-        for line in err.splitlines():
-            if "kanibako box set" in line:
-                assert f"kanibako box set {subject} box." in line, line
-
-    def test_cure_subject_is_the_path_not_the_name(self, start_mocks, capsys):
-        """The subject is a PATH.  ``box set`` resolves names through
-        ``resolve_any_project`` → ``project.names.resolve_name``, which does not
-        index the standalone section — live-checked, a name-based cure dies with
-        "Unknown project or workset" for a standalone box, while the path form is
-        accepted in all three project modes.
-        """
-        with start_mocks() as m:
-            m.proj.is_new = False
-            m.proj.name = "testproject"
-            subject = m.proj.project_path
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            err = capsys.readouterr().err
-        assert f"kanibako box set {subject} box.image=custom:v1" in err
-        # ...and NOT the bare name, which would not resolve for a standalone box.
-        assert "kanibako box set testproject box.image" not in err
-
-    def test_cure_subject_is_quoted_when_the_path_has_a_space(
-        self, start_mocks, capsys, tmp_path,
-    ):
-        """A workspace path with a space, pasted unquoted, would split into a
-        THIRD positional and be refused ("too many arguments") — so the subject
-        is shell-quoted."""
-        spaced = tmp_path / "my projects" / "box one"
-        spaced.mkdir(parents=True)
-        with start_mocks() as m:
-            m.proj.is_new = False
-            m.proj.project_path = spaced
-            _run_container(
-                project_dir=None, entrypoint=None, image_override="custom:v1",
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            err = capsys.readouterr().err
-        assert f"kanibako box set '{spaced}' box.image=custom:v1" in err
+  def test_cure_subject_is_quoted_when_the_path_has_a_space(
+    self,
+    start_mocks,
+    capsys,
+    tmp_path,
+  ):
+    """A workspace path with a space, pasted unquoted, would split into a
+    THIRD positional and be refused ("too many arguments") — so the subject
+    is shell-quoted."""
+    spaced = tmp_path / "my projects" / "box one"
+    spaced.mkdir(parents=True)
+    with start_mocks() as m:
+      m.proj.is_new = False
+      m.proj.project_path = spaced
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override="custom:v1",
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      err = capsys.readouterr().err
+    assert f"kanibako box set '{spaced}' box.image=custom:v1" in err
 
 
 # ---------------------------------------------------------------------------
@@ -692,3059 +866,3725 @@ class TestEphemeralImageHint:
 # Agent config first-use generation
 # ---------------------------------------------------------------------------
 
+
 class TestAgentConfigFirstUse:
-    def test_generates_config_on_first_use(self, start_mocks):
-        """When agent config doesn't exist, target.generate_agent_config() is called."""
-        with start_mocks() as m:
-            m.agent_config_path.exists.return_value = False
-            # Return a real AgentConfig so the (now YAML) write path can
-            # serialize it — a bare MagicMock is not representable.
-            from kanibako.settings.agent_config import AgentConfig
-            m.target.generate_agent_config.return_value = AgentConfig()
-            # The derived agent-config path (std.agents / "<id>.yaml") is a
-            # MagicMock here; stub the writer so it never coerces that mock to a
-            # literal "MagicMock" path and mkdir's it into the CWD.
-            with patch("kanibako.settings.agent_file.save"):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            m.target.generate_agent_config.assert_called_once()
+  def test_generates_config_on_first_use(self, start_mocks):
+    """When agent config doesn't exist, target.generate_agent_config() is called."""
+    with start_mocks() as m:
+      m.agent_config_path.exists.return_value = False
+      # Return a real AgentConfig so the (now YAML) write path can
+      # serialize it — a bare MagicMock is not representable.
+      from kanibako.settings.agent_config import AgentConfig
 
-    def test_does_not_generate_when_exists(self, start_mocks):
-        """When agent config exists, generate_agent_config() is NOT called."""
-        with start_mocks() as m:
-            m.agent_config_path.exists.return_value = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            m.target.generate_agent_config.assert_not_called()
+      m.target.generate_agent_config.return_value = AgentConfig()
+      # The derived agent-config path (std.agents / "<id>.yaml") is a
+      # MagicMock here; stub the writer so it never coerces that mock to a
+      # literal "MagicMock" path and mkdir's it into the CWD.
+      with patch("kanibako.settings.agent_file.save"):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+      m.target.generate_agent_config.assert_called_once()
 
-    def test_template_layers_applied_for_new_box(self, start_mocks):
-        """A new box stages three ordered layers into each of TWO host destinations,
-        by TWO routes (``templates.stage_layers`` is the shared mechanism):
+  def test_does_not_generate_when_exists(self, start_mocks):
+    """When agent config exists, generate_agent_config() is NOT called."""
+    with start_mocks() as m:
+      m.agent_config_path.exists.return_value = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      m.target.generate_agent_config.assert_not_called()
 
-        * the box HOME — the keystore-routed ``seeded`` category (spec §2a layers
-          1-3), applied by ``_apply_init_seeds`` (Q1);
-        * ``{box.canon}/handbook`` — the HOST-side handbook template copy
-          (``_install_box_handbook``, step 3), which since 2026-08-07g is the only
-          route that fills it — no ``seeded`` entry names that dest any more.
+  def test_template_layers_applied_for_new_box(self, start_mocks):
+    """A new box stages three ordered layers into each of TWO host destinations,
+    by TWO routes (``templates.stage_layers`` is the shared mechanism):
 
-        Both dests are HOST paths under the box STORE, and the handbook one is a
-        SIBLING of the home, not a path inside it: a handbook layer staged under the
-        home would land in the root-owned managed canon region and fail with EACCES
-        at create (and where it could land, the RO chapter mount would shadow it)."""
-        import kanibako.launch.templates
-        with start_mocks() as m:
-            # B7 seed-at-create / membership model: the one-time home seed is
-            # gated SOLELY on ``proj.is_new`` (a box that already exists in the
-            # registry was already seeded).  ``_box_already_seeded`` was deleted,
-            # so ``is_new = True`` alone drives the first-start seed path.
-            m.proj.is_new = True
-            m.load_agent_config.return_value = m.agent_cfg
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            mock_fn = kanibako.launch.templates.stage_layers
-            dests = {call[0][0] for call in mock_fn.call_args_list}
-            box_root = m.proj.shell_path.parent
-            assert dests == {
-                m.proj.shell_path,                      # {meta.box.path}/home
-                box_root / "canon" / "handbook",        # {box.canon}/handbook
-            }, dests
-            # Each dest gets its THREE ordered layers (system -> agent -> workset).
-            assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)
+    * the box HOME — the keystore-routed ``seeded`` category (spec §2a layers
+      1-3), applied by ``_apply_init_seeds`` (Q1);
+    * ``{box.canon}/handbook`` — the HOST-side handbook template copy
+      (``_install_box_handbook``, step 3), which since 2026-08-07g is the only
+      route that fills it — no ``seeded`` entry names that dest any more.
 
-    def test_shell_target_uses_shell_id(self, start_mocks):
-        """The built-in shell target's name is used as agent_id."""
-        with start_mocks() as m:
-            m.target.name = "shell"
-            # Production's shell target has no descriptor (conftest's note).
-            m.target.descriptor = None
-            m.target.has_binary = False
-            m.target.detect.return_value = None
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # The agent config path is std.agents / "shell" / "agent.yaml"
-            # (settings live inside the per-agent store dir); std.agents also gets
-            # a / "shell" / "share" call from the scoped-share resolver, so
-            # check the full call list.
-            div_args = [
-                c[0][0]
-                for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
-            ]
-            assert "shell" in div_args
-            assert "no_agent" not in div_args
-            sub_args = [
-                c[0][0]
-                for c in m.load_std_paths.return_value.agents.__truediv__
-                .return_value.__truediv__.call_args_list
-            ]
-            assert "agent.yaml" in sub_args
+    Both dests are HOST paths under the box STORE, and the handbook one is a
+    SIBLING of the home, not a path inside it: a handbook layer staged under the
+    home would land in the root-owned managed canon region and fail with EACCES
+    at create (and where it could land, the RO chapter mount would shadow it)."""
+    import kanibako.launch.templates
+
+    with start_mocks() as m:
+      # B7 seed-at-create / membership model: the one-time home seed is
+      # gated SOLELY on ``proj.is_new`` (a box that already exists in the
+      # registry was already seeded).  ``_box_already_seeded`` was deleted,
+      # so ``is_new = True`` alone drives the first-start seed path.
+      m.proj.is_new = True
+      m.load_agent_config.return_value = m.agent_cfg
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      mock_fn = kanibako.launch.templates.stage_layers
+      dests = {call[0][0] for call in mock_fn.call_args_list}
+      box_root = m.proj.shell_path.parent
+      assert dests == {
+        m.proj.shell_path,  # {meta.box.path}/home
+        box_root / "canon" / "handbook",  # {box.canon}/handbook
+      }, dests
+      # Each dest gets its THREE ordered layers (system -> agent -> workset).
+      assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)
+
+  def test_shell_target_uses_shell_id(self, start_mocks):
+    """The built-in shell target's name is used as agent_id."""
+    with start_mocks() as m:
+      m.target.name = "shell"
+      # Production's shell target has no descriptor (conftest's note).
+      m.target.descriptor = None
+      m.target.has_binary = False
+      m.target.detect.return_value = None
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # The agent config path is std.agents / "shell" / "agent.yaml"
+      # (settings live inside the per-agent store dir); std.agents also gets
+      # a / "shell" / "share" call from the scoped-share resolver, so
+      # check the full call list.
+      div_args = [c[0][0] for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list]
+      assert "shell" in div_args
+      assert "no_agent" not in div_args
+      sub_args = [
+        c[0][0]
+        for c in m.load_std_paths.return_value.agents.__truediv__.return_value.__truediv__.call_args_list
+      ]
+      assert "agent.yaml" in sub_args
 
 
 # ---------------------------------------------------------------------------
 # Persistent mode (#24)
 # ---------------------------------------------------------------------------
 
+
 class TestPersistentMode:
-    """Verify persistent mode (tmux wrapping, reattach, lifecycle)."""
+  """Verify persistent mode (tmux wrapping, reattach, lifecycle)."""
 
-    def test_persistent_launches_detached_with_tmux(self, start_mocks):
-        """Persistent AGENT mode (E2c): the container runs detached; PID-1 is the
-        SUPERVISOR (foreground `teardown` policy), which manages the tmux session."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            run_kwargs = m.runtime.run.call_args.kwargs
-            assert run_kwargs["detach"] is True
-            # Supervisor PID-1 (import-gated `sh -c`), not a bare tmux wrap.
-            assert run_kwargs["entrypoint"] == "sh"
-            cli_args = run_kwargs.get("cli_args") or []
-            assert cli_args[0] == "-c"
-            script = cli_args[1]
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            # Foreground launch → teardown-on-agent-exit policy.
-            assert "--on-agent-exit teardown" in script
-            assert "claude" in script
+  def test_persistent_launches_detached_with_tmux(self, start_mocks):
+    """Persistent AGENT mode (E2c): the container runs detached; PID-1 is the
+    SUPERVISOR (foreground `teardown` policy), which manages the tmux session."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      run_kwargs = m.runtime.run.call_args.kwargs
+      assert run_kwargs["detach"] is True
+      # Supervisor PID-1 (import-gated `sh -c`), not a bare tmux wrap.
+      assert run_kwargs["entrypoint"] == "sh"
+      cli_args = run_kwargs.get("cli_args") or []
+      assert cli_args[0] == "-c"
+      script = cli_args[1]
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      # Foreground launch → teardown-on-agent-exit policy.
+      assert "--on-agent-exit teardown" in script
+      assert "claude" in script
 
-    def test_persistent_attaches_after_launch(self, start_mocks):
-        """After detached launch, exec attaches to the tmux session."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            m.runtime.exec.assert_called_once()
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+  def test_persistent_attaches_after_launch(self, start_mocks):
+    """After detached launch, exec attaches to the tmux session."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      m.runtime.exec.assert_called_once()
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
 
-    def test_persistent_reattach_when_running(self, start_mocks):
-        """If container is already running, reattach without launching."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.run.assert_not_called()
-            m.runtime.exec.assert_called_once()
+  def test_persistent_reattach_when_running(self, start_mocks):
+    """If container is already running, reattach without launching."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.run.assert_not_called()
+      m.runtime.exec.assert_called_once()
 
-    def test_persistent_reattach_refreshes_credentials(self, start_mocks):
-        """Reattach refreshes credentials (credsync's refresh_box_credentials)."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            m.credsync.refresh_box_credentials.assert_called_once()
-            assert (
-                m.credsync.refresh_box_credentials.call_args.kwargs["project_home"]
-                is m.proj.shell_path
-            )
+  def test_persistent_reattach_refreshes_credentials(self, start_mocks):
+    """Reattach refreshes credentials (credsync's refresh_box_credentials)."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      m.credsync.refresh_box_credentials.assert_called_once()
+      assert (
+        m.credsync.refresh_box_credentials.call_args.kwargs["project_home"] is m.proj.shell_path
+      )
 
-    def test_persistent_removes_stale_container(self, start_mocks):
-        """Stopped container is removed before recreating."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = False
-            m.runtime.container_exists.return_value = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            m.runtime.rm.assert_called_once()
-            m.runtime.run.assert_called_once()
+  def test_persistent_removes_stale_container(self, start_mocks):
+    """Stopped container is removed before recreating."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = False
+      m.runtime.container_exists.return_value = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      m.runtime.rm.assert_called_once()
+      m.runtime.run.assert_called_once()
 
-    def test_persistent_skips_flock(self, start_mocks):
-        """Persistent mode does not acquire file lock."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            m.fcntl.flock.assert_not_called()
+  def test_persistent_skips_flock(self, start_mocks):
+    """Persistent mode does not acquire file lock."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      m.fcntl.flock.assert_not_called()
 
-    # --- 184-S2 (a) [Jei:2026-10-13]: a persistent box has helpers, and its hub outlives start ---
+  # --- 184-S2 (a) [Jei:2026-10-13]: a persistent box has helpers, and its hub outlives start ---
 
-    def _launch(self, m, tmp_path, *, persistent, no_helpers=False, allow="true",
-                box_up=True):
-        """Run a launch with the hub process stubbed; return the stub class."""
-        from unittest.mock import patch as _patch
+  def _launch(self, m, tmp_path, *, persistent, no_helpers=False, allow="true", box_up=True):
+    """Run a launch with the hub process stubbed; return the stub class."""
+    from unittest.mock import patch as _patch
 
-        from kanibako.channels import hub_daemon
+    from kanibako.channels import hub_daemon
 
-        m.agent_cfg.state["allow_helpers"] = allow
-        m.load_std_paths.return_value.runtime = tmp_path / "run"
-        if not box_up:
-            # The fixture's run brings the box up; this one leaves it down.
-            m.runtime.run.side_effect = lambda *a, **kw: 0
-        with _patch.object(hub_daemon, "HubProcess") as m_hub:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=persistent, no_helpers=no_helpers,
-            )
-        return m_hub
+    m.agent_cfg.state["allow_helpers"] = allow
+    m.load_std_paths.return_value.runtime = tmp_path / "run"
+    if not box_up:
+      # The fixture's run brings the box up; this one leaves it down.
+      m.runtime.run.side_effect = lambda *a, **kw: 0
+    with _patch.object(hub_daemon, "HubProcess") as m_hub:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=persistent,
+        no_helpers=no_helpers,
+      )
+    return m_hub
 
-    def test_persistent_starts_the_hub_and_leaves_it_running(self, start_mocks, tmp_path):
-        """The force-set is gone: a persistent launch with helpers allowed starts the
-        hub, and the box that came up keeps it after this command returns.
-        (Mutation: restore ``no_helpers = True`` -> no start -> RED; restore the
-        unconditional ``hub.stop()`` -> RED.)"""
-        with start_mocks() as m:
-            m_hub = self._launch(m, tmp_path, persistent=True)
-        assert m.runtime.run.call_args.kwargs["detach"] is True
-        assert m_hub.return_value.start.call_count == 1
-        m_hub.return_value.release.assert_called_once()
-        m_hub.return_value.stop.assert_not_called()
+  def test_persistent_starts_the_hub_and_leaves_it_running(self, start_mocks, tmp_path):
+    """The force-set is gone: a persistent launch with helpers allowed starts the
+    hub, and the box that came up keeps it after this command returns.
+    (Mutation: restore ``no_helpers = True`` -> no start -> RED; restore the
+    unconditional ``hub.stop()`` -> RED.)"""
+    with start_mocks() as m:
+      m_hub = self._launch(m, tmp_path, persistent=True)
+    assert m.runtime.run.call_args.kwargs["detach"] is True
+    assert m_hub.return_value.start.call_count == 1
+    m_hub.return_value.release.assert_called_once()
+    m_hub.return_value.stop.assert_not_called()
 
-    def test_persistent_box_that_did_not_come_up_stops_its_hub(self, start_mocks, tmp_path):
-        with start_mocks() as m:
-            m_hub = self._launch(m, tmp_path, persistent=True, box_up=False)
-        assert m.runtime.run.call_count == 1
-        assert m_hub.return_value.start.call_count == 1
-        m_hub.return_value.stop.assert_called_once()
-        m_hub.return_value.release.assert_not_called()
+  def test_persistent_box_that_did_not_come_up_stops_its_hub(self, start_mocks, tmp_path):
+    with start_mocks() as m:
+      m_hub = self._launch(m, tmp_path, persistent=True, box_up=False)
+    assert m.runtime.run.call_count == 1
+    assert m_hub.return_value.start.call_count == 1
+    m_hub.return_value.stop.assert_called_once()
+    m_hub.return_value.release.assert_not_called()
 
-    def test_ephemeral_launch_stops_its_hub_when_the_box_exits(self, start_mocks, tmp_path):
-        with start_mocks() as m:
-            m_hub = self._launch(m, tmp_path, persistent=False)
-        assert m_hub.return_value.start.call_count == 1
-        m_hub.return_value.stop.assert_called_once()
+  def test_ephemeral_launch_stops_its_hub_when_the_box_exits(self, start_mocks, tmp_path):
+    with start_mocks() as m:
+      m_hub = self._launch(m, tmp_path, persistent=False)
+    assert m_hub.return_value.start.call_count == 1
+    m_hub.return_value.stop.assert_called_once()
 
-    @pytest.mark.parametrize(("no_helpers", "allow"), [(True, "true"), (False, "false")])
-    def test_persistent_without_helpers_starts_no_hub(self, start_mocks, tmp_path,
-                                                      no_helpers, allow):
-        """``--no-helpers`` and ``allow_helpers: false`` still decide."""
-        with start_mocks() as m:
-            m_hub = self._launch(m, tmp_path, persistent=True, no_helpers=no_helpers,
-                                 allow=allow)
-        m_hub.return_value.start.assert_not_called()
+  @pytest.mark.parametrize(("no_helpers", "allow"), [(True, "true"), (False, "false")])
+  def test_persistent_without_helpers_starts_no_hub(
+    self, start_mocks, tmp_path, no_helpers, allow
+  ):
+    """``--no-helpers`` and ``allow_helpers: false`` still decide."""
+    with start_mocks() as m:
+      m_hub = self._launch(m, tmp_path, persistent=True, no_helpers=no_helpers, allow=allow)
+    m_hub.return_value.start.assert_not_called()
 
-    def test_persistent_custom_entrypoint(self, start_mocks):
-        """Custom entrypoint is wrapped inside tmux."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint="/bin/bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            run_kwargs = m.runtime.run.call_args.kwargs
-            assert run_kwargs["entrypoint"] == "tmux"
-            cli_args = run_kwargs.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            assert "/bin/bash" in cli_args
+  def test_persistent_custom_entrypoint(self, start_mocks):
+    """Custom entrypoint is wrapped inside tmux."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint="/bin/bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      run_kwargs = m.runtime.run.call_args.kwargs
+      assert run_kwargs["entrypoint"] == "tmux"
+      cli_args = run_kwargs.get("cli_args") or []
+      assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+      assert "/bin/bash" in cli_args
 
-    def test_detach_print_container_is_final_stdout_line(
-        self, start_mocks, capsys,
-    ):
-        """--detach --print-container: the cname is the FINAL stdout line."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-                print_container=True,
-            )
-            assert rc == 0
-            cname = m.runtime.run.call_args.kwargs["name"]
-            out = capsys.readouterr().out
-            stdout_lines = [ln for ln in out.splitlines() if ln.strip()]
-            assert stdout_lines[-1] == cname
+  def test_detach_print_container_is_final_stdout_line(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """--detach --print-container: the cname is the FINAL stdout line."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+        print_container=True,
+      )
+      assert rc == 0
+      cname = m.runtime.run.call_args.kwargs["name"]
+      out = capsys.readouterr().out
+      stdout_lines = [ln for ln in out.splitlines() if ln.strip()]
+      assert stdout_lines[-1] == cname
 
-    def test_the_container_carries_the_box_labels(self, start_mocks):
-        """system-design § Box and helper identity: set at creation, and naming the
-        same ``(<W>, <B>)`` pair the container name renders from."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            kwargs = m.runtime.run.call_args.kwargs
-        labels = kwargs["labels"]
-        assert set(labels) == {"kanibako.workset", "kanibako.box", "kanibako.workset_kuid"}
-        assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
+  def test_the_container_carries_the_box_labels(self, start_mocks):
+    """system-design § Box and helper identity: set at creation, and naming the
+    same ``(<W>, <B>)`` pair the container name renders from."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      kwargs = m.runtime.run.call_args.kwargs
+    labels = kwargs["labels"]
+    assert set(labels) == {"kanibako.workset", "kanibako.box", "kanibako.workset_kuid"}
+    assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
 
-    def test_a_live_labeled_container_is_reattached_by_its_own_name(self, start_mocks):
-        """The labels find the box's container even under a name it no longer renders;
-        the reattach goes to THAT container (``utils.box_container``)."""
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.run.assert_not_called()
-            assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
+  def test_a_live_labeled_container_is_reattached_by_its_own_name(self, start_mocks):
+    """The labels find the box's container even under a name it no longer renders;
+    the reattach goes to THAT container (``utils.box_container``)."""
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.run.assert_not_called()
+      assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
 
-    def test_a_new_container_is_created_under_the_rendered_name(self, start_mocks):
-        """A labeled container found under another name never names a NEW one: start
-        creates under ``meta.box.container``, the rendered name."""
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.return_value = False
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            kwargs = m.runtime.run.call_args.kwargs
-        labels = kwargs["labels"]
-        assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
-        assert kwargs["name"] != "kb-primary-renamed"
+  def test_a_new_container_is_created_under_the_rendered_name(self, start_mocks):
+    """A labeled container found under another name never names a NEW one: start
+    creates under ``meta.box.container``, the rendered name."""
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.return_value = False
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      kwargs = m.runtime.run.call_args.kwargs
+    labels = kwargs["labels"]
+    assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
+    assert kwargs["name"] != "kb-primary-renamed"
 
-    def test_a_stopped_labeled_container_under_another_name_is_removed(self, start_mocks):
-        """A persistent start removes the box's stopped labeled container even under a
-        name it no longer renders, so the new one does not sit beside it."""
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.return_value = False
-            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            m.runtime.rm.assert_any_call("kb-primary-renamed")
-            assert m.runtime.run.call_args.kwargs["name"] != "kb-primary-renamed"
+  def test_a_stopped_labeled_container_under_another_name_is_removed(self, start_mocks):
+    """A persistent start removes the box's stopped labeled container even under a
+    name it no longer renders, so the new one does not sit beside it."""
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.return_value = False
+      m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      m.runtime.rm.assert_any_call("kb-primary-renamed")
+      assert m.runtime.run.call_args.kwargs["name"] != "kb-primary-renamed"
 
-    def test_a_running_labeled_container_under_another_name_is_never_removed(
-        self, start_mocks,
-    ):
-        """The stale-container sweep re-reads liveness: a labeled container that came
-        up between the reattach read and the sweep is left alone."""
-        reads: list[str] = []
+  def test_a_running_labeled_container_under_another_name_is_never_removed(
+    self,
+    start_mocks,
+  ):
+    """The stale-container sweep re-reads liveness: a labeled container that came
+    up between the reattach read and the sweep is left alone."""
+    reads: list[str] = []
 
-        def is_running(name):
-            reads.append(name)
-            # Down at the reattach read, up from the sweep's own read onward.
-            return name == "kb-primary-renamed" and reads.count(name) > 1
+    def is_running(name):
+      reads.append(name)
+      # Down at the reattach read, up from the sweep's own read onward.
+      return name == "kb-primary-renamed" and reads.count(name) > 1
 
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.side_effect = is_running
-            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert reads.count("kb-primary-renamed") >= 2
-            assert ("kb-primary-renamed",) not in [c.args for c in m.runtime.rm.call_args_list]
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.side_effect = is_running
+      m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert reads.count("kb-primary-renamed") >= 2
+      assert ("kb-primary-renamed",) not in [c.args for c in m.runtime.rm.call_args_list]
 
-    def test_shell_exec_goes_to_a_live_labeled_container_under_another_name(
-        self, start_mocks,
-    ):
-        """``shell -- cmd`` execs into the box's live container, found by its labels;
-        it never launches a second one under the rendered name."""
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
-            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
-            _run_container(
-                project_dir=None, entrypoint="/bin/sh", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=["-c", "true"],
-            )
-            m.runtime.run.assert_not_called()
-            assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
+  def test_shell_exec_goes_to_a_live_labeled_container_under_another_name(
+    self,
+    start_mocks,
+  ):
+    """``shell -- cmd`` execs into the box's live container, found by its labels;
+    it never launches a second one under the rendered name."""
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+      m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+      _run_container(
+        project_dir=None,
+        entrypoint="/bin/sh",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=["-c", "true"],
+      )
+      m.runtime.run.assert_not_called()
+      assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
 
-    def test_an_ephemeral_launch_refuses_a_box_live_under_another_name(
-        self, start_mocks, capsys,
-    ):
-        """No exec door (no entrypoint): a box live under a labeled other name refuses
-        the launch instead of gaining a second container."""
-        with start_mocks() as m:
-            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
-            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
-            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        assert "already running" in capsys.readouterr().err
+  def test_an_ephemeral_launch_refuses_a_box_live_under_another_name(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """No exec door (no entrypoint): a box live under a labeled other name refuses
+    the launch instead of gaining a second container."""
+    with start_mocks() as m:
+      m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+      m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+      m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    assert "already running" in capsys.readouterr().err
 
-    def test_detach_without_print_container_no_stdout_cname(
-        self, start_mocks, capsys,
-    ):
-        """Absent the flag, detach prints no container name to stdout."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            cname = m.runtime.run.call_args.kwargs["name"]
-            out = capsys.readouterr().out
-            assert cname not in out
+  def test_detach_without_print_container_no_stdout_cname(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """Absent the flag, detach prints no container name to stdout."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      cname = m.runtime.run.call_args.kwargs["name"]
+      out = capsys.readouterr().out
+      assert cname not in out
 
-    def test_persistent_returns_exec_exit_code(self, start_mocks):
-        """Return code comes from exec, not from detached run."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 0  # detach always returns 0
-            m.runtime.exec.return_value = 7
-            # Container dies after exec so we don't retry.
-            _exec_calls = [0]
-            def _exec_side(*a, **kw):
-                _exec_calls[0] += 1
-                m.runtime.is_running.return_value = False
-                return 7
-            m.runtime.exec.side_effect = _exec_side
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 7
-            assert _exec_calls[0] == 1  # no retry when container died
+  def test_persistent_returns_exec_exit_code(self, start_mocks):
+    """Return code comes from exec, not from detached run."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 0  # detach always returns 0
+      m.runtime.exec.return_value = 7
+      # Container dies after exec so we don't retry.
+      _exec_calls = [0]
 
-    def test_persistent_exec_retries_on_transient_failure(self, start_mocks, capsys):
-        """Exec retries when it fails but container is still running."""
-        with start_mocks() as m:
-            # First two execs fail (transient), third succeeds.
-            m.runtime.exec.side_effect = [1, 1, 0]
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            assert m.runtime.exec.call_count == 3
-            captured = capsys.readouterr()
-            assert "attempt 1/5" in captured.err
-            assert "attempt 2/5" in captured.err
+      def _exec_side(*a, **kw):
+        _exec_calls[0] += 1
+        m.runtime.is_running.return_value = False
+        return 7
 
-    def test_persistent_exec_no_retry_when_container_dies(self, start_mocks):
-        """No retry when exec fails and container is no longer running."""
-        with start_mocks() as m:
-            def _exec_then_die(*a, **kw):
-                m.runtime.is_running.return_value = False
-                return 1
-            m.runtime.exec.side_effect = _exec_then_die
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 1
-            m.runtime.exec.assert_called_once()
+      m.runtime.exec.side_effect = _exec_side
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 7
+      assert _exec_calls[0] == 1  # no retry when container died
 
-    def test_persistent_exec_exhausts_retries(self, start_mocks, capsys):
-        """After exhausting retries, returns last non-zero exit code."""
-        with start_mocks() as m:
-            m.runtime.session_missing = True
-            m.runtime.exec.return_value = 1
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 1
-            assert m.runtime.exec.call_count == 5
-            captured = capsys.readouterr()
-            # Warnings printed for attempts 1-4, not for the last one.
-            assert "attempt 4/5" in captured.err
-            assert "attempt 5/5" not in captured.err
+  def test_persistent_exec_retries_on_transient_failure(self, start_mocks, capsys):
+    """Exec retries when it fails but container is still running."""
+    with start_mocks() as m:
+      # First two execs fail (transient), third succeeds.
+      m.runtime.exec.side_effect = [1, 1, 0]
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      assert m.runtime.exec.call_count == 3
+      captured = capsys.readouterr()
+      assert "attempt 1/5" in captured.err
+      assert "attempt 2/5" in captured.err
 
-    @staticmethod
-    def _drive_fresh_exit(m, exit_rc: int = 0):
-        """Model a fresh persistent launch that EXITS after attach.
+  def test_persistent_exec_no_retry_when_container_dies(self, start_mocks):
+    """No retry when exec fails and container is no longer running."""
+    with start_mocks() as m:
 
-        Fresh start => no stale container at the top (``container_exists`` False,
-        so the pre-launch cleanup never fires).  ``run`` creates it (is_running
-        True, exists True).  The attach exec returns and the box has exited
-        (is_running False) but the container record still exists until removed,
-        so the teardown can remove it.
-        """
-        exists = {"v": False}
-        m.runtime.container_exists.side_effect = lambda *a, **kw: exists["v"]
-        _orig_run = m.runtime.run.side_effect
+      def _exec_then_die(*a, **kw):
+        m.runtime.is_running.return_value = False
+        return 1
 
-        def _run_side(*a, **kw):
-            exists["v"] = True
-            return _orig_run(*a, **kw) if _orig_run else 0
-        m.runtime.run.side_effect = _run_side
+      m.runtime.exec.side_effect = _exec_then_die
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 1
+      m.runtime.exec.assert_called_once()
 
-        def _exec_then_exit(*a, **kw):
-            m.runtime.is_running.return_value = False  # tmux session ended
-            return exit_rc
-        m.runtime.exec.side_effect = _exec_then_exit
+  def test_persistent_exec_exhausts_retries(self, start_mocks, capsys):
+    """After exhausting retries, returns last non-zero exit code."""
+    with start_mocks() as m:
+      m.runtime.session_missing = True
+      m.runtime.exec.return_value = 1
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 1
+      assert m.runtime.exec.call_count == 5
+      captured = capsys.readouterr()
+      # Warnings printed for attempts 1-4, not for the last one.
+      assert "attempt 4/5" in captured.err
+      assert "attempt 5/5" not in captured.err
 
-        def _rm_side(*a, **kw):
-            exists["v"] = False
-            return True
-        m.runtime.rm.side_effect = _rm_side
+  @staticmethod
+  def _drive_fresh_exit(m, exit_rc: int = 0):
+    """Model a fresh persistent launch that EXITS after attach.
 
-    def test_persistent_removes_box_on_clean_exit(self, start_mocks):
-        """Two-state lifecycle: an exited box is torn down after writeback.
+    Fresh start => no stale container at the top (``container_exists`` False,
+    so the pre-launch cleanup never fires).  ``run`` creates it (is_running
+    True, exists True).  The attach exec returns and the box has exited
+    (is_running False) but the container record still exists until removed,
+    so the teardown can remove it.
+    """
+    exists = {"v": False}
+    m.runtime.container_exists.side_effect = lambda *a, **kw: exists["v"]
+    _orig_run = m.runtime.run.side_effect
 
-        The in-box shell/agent exited -> tmux session ended -> container is not
-        running after attach returns.  Writeback runs, then the container is
-        removed so the next start/shell is fresh.
-        """
-        with start_mocks() as m:
-            self._drive_fresh_exit(m)
-            wb = MagicMock()
-            with patch(
-                "kanibako.commands.start.writeback_session_credentials", wb
-            ):
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True,
-                )
-            assert rc == 0
-            m.runtime.rm.assert_called_once()
-            assert wb.called
+    def _run_side(*a, **kw):
+      exists["v"] = True
+      return _orig_run(*a, **kw) if _orig_run else 0
 
-    def test_persistent_writeback_before_remove(self, start_mocks):
-        """On clean exit, writeback is invoked before the container is removed."""
-        with start_mocks() as m:
-            self._drive_fresh_exit(m)
-            events: list[str] = []
-            _rm_state = m.runtime.rm.side_effect
+    m.runtime.run.side_effect = _run_side
 
-            def _rm_side(*a, **kw):
-                events.append("rm")
-                return _rm_state(*a, **kw)
-            m.runtime.rm.side_effect = _rm_side
-            with patch(
-                "kanibako.commands.start.writeback_session_credentials",
-                side_effect=lambda *a, **kw: events.append("writeback"),
-            ):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True,
-                )
-            assert events == ["writeback", "rm"]
+    def _exec_then_exit(*a, **kw):
+      m.runtime.is_running.return_value = False  # tmux session ended
+      return exit_rc
 
-    def test_persistent_keeps_box_on_detach(self, start_mocks):
-        """A detached box (still running after attach) is kept, not removed."""
-        with start_mocks() as m:
-            # After the detached launch + attach, the container is STILL running
-            # (Ctrl-b d / dropped client): is_running stays True (run side-effect
-            # sets it True and exec doesn't clear it).
-            m.runtime.exec.return_value = 0  # attach returns, container alive
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.rm.assert_not_called()
+    m.runtime.exec.side_effect = _exec_then_exit
 
-    def test_persistent_removes_box_on_nonzero_exit(self, start_mocks):
-        """Crisp model: a non-zero in-box exit still tears down the box."""
-        with start_mocks() as m:
-            self._drive_fresh_exit(m, exit_rc=3)
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 3
-            m.runtime.rm.assert_called_once()
+    def _rm_side(*a, **kw):
+      exists["v"] = False
+      return True
 
-    def test_persistent_remove_failure_does_not_crash(self, start_mocks, capsys):
-        """A removal failure logs a warning, never crashes or changes exit code."""
-        with start_mocks() as m:
-            self._drive_fresh_exit(m)
-            m.runtime.rm.side_effect = RuntimeError("boom")
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            # Exit code preserved; no exception propagated.
-            assert rc == 0
+    m.runtime.rm.side_effect = _rm_side
 
-    def test_persistent_reattach_removes_box_on_exit(self, start_mocks):
-        """Reattach path also tears down an exited box after writeback."""
-        with start_mocks() as m:
-            # Container already running -> reattach branch.
-            m.runtime.is_running.return_value = True
+  def test_persistent_removes_box_on_clean_exit(self, start_mocks):
+    """Two-state lifecycle: an exited box is torn down after writeback.
 
-            def _exec_then_exit(*a, **kw):
-                m.runtime.is_running.return_value = False
-                return 0
-            m.runtime.exec.side_effect = _exec_then_exit
-            m.runtime.container_exists.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.run.assert_not_called()  # reattach, no new launch
-            m.runtime.rm.assert_called_once()
+    The in-box shell/agent exited -> tmux session ended -> container is not
+    running after attach returns.  Writeback runs, then the container is
+    removed so the next start/shell is fresh.
+    """
+    with start_mocks() as m:
+      self._drive_fresh_exit(m)
+      wb = MagicMock()
+      with patch("kanibako.commands.start.writeback_session_credentials", wb):
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+        )
+      assert rc == 0
+      m.runtime.rm.assert_called_once()
+      assert wb.called
 
-    def test_persistent_reattach_keeps_box_on_detach(self, start_mocks):
-        """Reattach + detach (still running) keeps the box."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True  # stays running (detach)
-            m.runtime.exec.return_value = 0
-            m.runtime.container_exists.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.rm.assert_not_called()
+  def test_persistent_writeback_before_remove(self, start_mocks):
+    """On clean exit, writeback is invoked before the container is removed."""
+    with start_mocks() as m:
+      self._drive_fresh_exit(m)
+      events: list[str] = []
+      _rm_state = m.runtime.rm.side_effect
+
+      def _rm_side(*a, **kw):
+        events.append("rm")
+        return _rm_state(*a, **kw)
+
+      m.runtime.rm.side_effect = _rm_side
+      with patch(
+        "kanibako.commands.start.writeback_session_credentials",
+        side_effect=lambda *a, **kw: events.append("writeback"),
+      ):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+        )
+      assert events == ["writeback", "rm"]
+
+  def test_persistent_keeps_box_on_detach(self, start_mocks):
+    """A detached box (still running after attach) is kept, not removed."""
+    with start_mocks() as m:
+      # After the detached launch + attach, the container is STILL running
+      # (Ctrl-b d / dropped client): is_running stays True (run side-effect
+      # sets it True and exec doesn't clear it).
+      m.runtime.exec.return_value = 0  # attach returns, container alive
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.rm.assert_not_called()
+
+  def test_persistent_removes_box_on_nonzero_exit(self, start_mocks):
+    """Crisp model: a non-zero in-box exit still tears down the box."""
+    with start_mocks() as m:
+      self._drive_fresh_exit(m, exit_rc=3)
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 3
+      m.runtime.rm.assert_called_once()
+
+  def test_persistent_remove_failure_does_not_crash(self, start_mocks, capsys):
+    """A removal failure logs a warning, never crashes or changes exit code."""
+    with start_mocks() as m:
+      self._drive_fresh_exit(m)
+      m.runtime.rm.side_effect = RuntimeError("boom")
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      # Exit code preserved; no exception propagated.
+      assert rc == 0
+
+  def test_persistent_reattach_removes_box_on_exit(self, start_mocks):
+    """Reattach path also tears down an exited box after writeback."""
+    with start_mocks() as m:
+      # Container already running -> reattach branch.
+      m.runtime.is_running.return_value = True
+
+      def _exec_then_exit(*a, **kw):
+        m.runtime.is_running.return_value = False
+        return 0
+
+      m.runtime.exec.side_effect = _exec_then_exit
+      m.runtime.container_exists.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.run.assert_not_called()  # reattach, no new launch
+      m.runtime.rm.assert_called_once()
+
+  def test_persistent_reattach_keeps_box_on_detach(self, start_mocks):
+    """Reattach + detach (still running) keeps the box."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True  # stays running (detach)
+      m.runtime.exec.return_value = 0
+      m.runtime.container_exists.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.rm.assert_not_called()
 
 
 class TestCredsWatcherSpawnAndFlagHygiene:
-    """Increment D: the detached-launch creds-watcher spawn + writeback flag hygiene."""
+  """Increment D: the detached-launch creds-watcher spawn + writeback flag hygiene."""
 
-    def test_writeback_clears_creds_dirty_flag(self, tmp_path):
-        """D Part 3: a successful host writeback clears the box's creds-dirty flag."""
-        from kanibako.commands.start import writeback_session_credentials
-        from kanibako.launch.creds_watcher import creds_dirty_flag_path
-        from tests.test_commands.test_start import _SHARED_AUTH
+  def test_writeback_clears_creds_dirty_flag(self, tmp_path):
+    """D Part 3: a successful host writeback clears the box's creds-dirty flag."""
+    from kanibako.commands.start import writeback_session_credentials
+    from kanibako.launch.creds_watcher import creds_dirty_flag_path
+    from tests.test_commands.test_start import _SHARED_AUTH
 
-        home = tmp_path / "home"
-        flag = creds_dirty_flag_path(home)
-        flag.parent.mkdir(parents=True)
-        flag.write_text("1")
+    home = tmp_path / "home"
+    flag = creds_dirty_flag_path(home)
+    flag.parent.mkdir(parents=True)
+    flag.write_text("1")
 
-        proj = MagicMock()
-        proj.shell_path = home
-        target = MagicMock()
-        target.descriptor = MagicMock()  # non-None -> credsync path
+    proj = MagicMock()
+    proj.shell_path = home
+    target = MagicMock()
+    target.descriptor = MagicMock()  # non-None -> credsync path
 
-        with patch("kanibako.commands.start.credsync") as mc:
-            mc.selected_source_root.return_value = None  # skip writeback_extra
-            writeback_session_credentials(target, proj, auth_src=_SHARED_AUTH)
+    with patch("kanibako.commands.start.credsync") as mc:
+      mc.selected_source_root.return_value = None  # skip writeback_extra
+      writeback_session_credentials(target, proj, auth_src=_SHARED_AUTH)
 
-        assert not flag.exists()  # cleared after the successful writeback
+    assert not flag.exists()  # cleared after the successful writeback
 
-    def test_writeback_private_box_leaves_flag_untouched(self, tmp_path):
-        """A PRIVATE box writeback is a no-op (early return) — the flag is not cleared."""
-        from kanibako.commands.start import writeback_session_credentials
-        from kanibako.launch.creds_watcher import creds_dirty_flag_path
-        from tests.test_commands.test_start import _PRIVATE_AUTH
+  def test_writeback_private_box_leaves_flag_untouched(self, tmp_path):
+    """A PRIVATE box writeback is a no-op (early return) — the flag is not cleared."""
+    from kanibako.commands.start import writeback_session_credentials
+    from kanibako.launch.creds_watcher import creds_dirty_flag_path
+    from tests.test_commands.test_start import _PRIVATE_AUTH
 
-        home = tmp_path / "home"
-        flag = creds_dirty_flag_path(home)
-        flag.parent.mkdir(parents=True)
-        flag.write_text("1")
+    home = tmp_path / "home"
+    flag = creds_dirty_flag_path(home)
+    flag.parent.mkdir(parents=True)
+    flag.write_text("1")
 
-        proj = MagicMock()
-        proj.shell_path = home
-        target = MagicMock()
-        target.descriptor = MagicMock()
+    proj = MagicMock()
+    proj.shell_path = home
+    target = MagicMock()
+    target.descriptor = MagicMock()
 
-        writeback_session_credentials(target, proj, auth_src=_PRIVATE_AUTH)
-        assert flag.exists()  # private box never propagates -> flag left as-is
+    writeback_session_credentials(target, proj, auth_src=_PRIVATE_AUTH)
+    assert flag.exists()  # private box never propagates -> flag left as-is
 
-    @staticmethod
-    def _record_store_lock(tmp_path, *, descriptor, global_sync):
-        """Drive a writeback with ``creds_store_lock`` swapped for a recorder.
+  @staticmethod
+  def _record_store_lock(tmp_path, *, descriptor, global_sync):
+    """Drive a writeback with ``creds_store_lock`` swapped for a recorder.
 
-        Returns the destination sets it was entered with, so a test can pin the
-        ``dests`` computation itself rather than the lock's own behavior.
-        """
-        from kanibako.commands.start import writeback_session_credentials
-        from kanibako.settings.settings_launch import AuthSource
+    Returns the destination sets it was entered with, so a test can pin the
+    ``dests`` computation itself rather than the lock's own behavior.
+    """
+    from kanibako.commands.start import writeback_session_credentials
+    from kanibako.settings.settings_launch import AuthSource
 
-        auth = AuthSource(
-            tier="workset", global_enabled=global_sync, workset_enabled=True,
-            global_sync=global_sync, workset_source="ws",
-        )
-        workset_root = tmp_path / "workset-store"
-        locked: list[set[Path]] = []
+    auth = AuthSource(
+      tier="workset",
+      global_enabled=global_sync,
+      workset_enabled=True,
+      global_sync=global_sync,
+      workset_source="ws",
+    )
+    workset_root = tmp_path / "workset-store"
+    locked: list[set[Path]] = []
 
-        @contextlib.contextmanager
-        def _recorder(*dests: Path):
-            locked.append(set(dests))
-            yield
+    @contextlib.contextmanager
+    def _recorder(*dests: Path):
+      locked.append(set(dests))
+      yield
 
-        proj = MagicMock()
-        proj.shell_path = tmp_path / "home"
-        target = MagicMock()
-        target.descriptor = descriptor
+    proj = MagicMock()
+    proj.shell_path = tmp_path / "home"
+    target = MagicMock()
+    target.descriptor = descriptor
 
-        with patch("kanibako.commands.start.credsync") as mc, patch(
-            "kanibako.launch.creds_watcher.creds_store_lock", _recorder
-        ):
-            mc.selected_source_root.return_value = workset_root
-            writeback_session_credentials(target, proj, auth_src=auth)
-
-        # The writeback swallows its own exceptions, so an unentered lock would let
-        # every assertion below pass vacuously.
-        assert len(locked) == 1, "the writeback never entered the store lock"
-        return workset_root, locked[0]
-
-    def test_writeback_locks_host_home_too_when_globally_synced(self, tmp_path):
-        """global_sync mirrors the workset store UP to host home, so BOTH are locked.
-
-        Host home is not the selected source here; it is locked because the mirror
-        writes it anyway.
-        """
-        workset_root, dests = self._record_store_lock(
-            tmp_path, descriptor=MagicMock(), global_sync=True,
-        )
-        assert dests == {workset_root, Path.home()}
-
-    @pytest.mark.parametrize("has_descriptor", [True, False])
-    def test_writeback_locks_only_the_selected_source_without_global_sync(
-        self, tmp_path, has_descriptor,
+    with (
+      patch("kanibako.commands.start.credsync") as mc,
+      patch("kanibako.launch.creds_watcher.creds_store_lock", _recorder),
     ):
-        """Without global_sync nothing writes host home, so only the source is locked.
+      mc.selected_source_root.return_value = workset_root
+      writeback_session_credentials(target, proj, auth_src=auth)
 
-        A descriptor-less target (the built-in shell) writes nothing at all.
-        """
-        workset_root, dests = self._record_store_lock(
-            tmp_path, descriptor=MagicMock() if has_descriptor else None,
-            global_sync=False,
-        )
-        assert dests == {workset_root}
+    # The writeback swallows its own exceptions, so an unentered lock would let
+    # every assertion below pass vacuously.
+    assert len(locked) == 1, "the writeback never entered the store lock"
+    return workset_root, locked[0]
 
-    def test_spawn_creds_watcher_builds_a_detached_popen(self, tmp_path):
-        """D Part 2: the watcher is spawned DETACHED with the box subject argv."""
-        import kanibako.commands.start as start_mod
+  def test_writeback_locks_host_home_too_when_globally_synced(self, tmp_path):
+    """global_sync mirrors the workset store UP to host home, so BOTH are locked.
 
-        proj = MagicMock()
-        proj.project_path = tmp_path / "proj"
+    Host home is not the selected source here; it is locked because the mirror
+    writes it anyway.
+    """
+    workset_root, dests = self._record_store_lock(
+      tmp_path,
+      descriptor=MagicMock(),
+      global_sync=True,
+    )
+    assert dests == {workset_root, Path.home()}
 
-        with (
-            patch.object(start_mod.subprocess, "Popen") as popen,
-            patch.object(start_mod, "creds_watcher_log_path",
-                         return_value=tmp_path / "logs" / "b.creds-watcher.log"),
-        ):
-            start_mod._spawn_creds_watcher(MagicMock(), proj)
+  @pytest.mark.parametrize("has_descriptor", [True, False])
+  def test_writeback_locks_only_the_selected_source_without_global_sync(
+    self,
+    tmp_path,
+    has_descriptor,
+  ):
+    """Without global_sync nothing writes host home, so only the source is locked.
 
-        popen.assert_called_once()
-        argv = popen.call_args.args[0]
-        assert argv[1:5] == ["-P", "-m", "kanibako.launch.creds_watcher", "--box"]
-        assert argv[5] == str(proj.project_path)
-        # 🛑 Never from the launcher's (box-writable) cwd: see the planted-module test.
-        assert popen.call_args.kwargs["cwd"] == "/"
-        # Detached: own session + no inherited std streams.
-        assert popen.call_args.kwargs["start_new_session"] is True
-        assert popen.call_args.kwargs["stdout"] == start_mod.subprocess.DEVNULL
+    A descriptor-less target (the built-in shell) writes nothing at all.
+    """
+    workset_root, dests = self._record_store_lock(
+      tmp_path,
+      descriptor=MagicMock() if has_descriptor else None,
+      global_sync=False,
+    )
+    assert dests == {workset_root}
 
-    def test_spawn_creds_watcher_tolerates_popen_failure(self, tmp_path):
-        """A spawn failure is swallowed — it must never crash the launch."""
-        import kanibako.commands.start as start_mod
+  def test_spawn_creds_watcher_builds_a_detached_popen(self, tmp_path):
+    """D Part 2: the watcher is spawned DETACHED with the box subject argv."""
+    import kanibako.commands.start as start_mod
 
-        proj = MagicMock()
-        proj.project_path = tmp_path / "proj"
-        with (
-            patch.object(start_mod.subprocess, "Popen", side_effect=OSError("nope")),
-            patch.object(start_mod, "creds_watcher_log_path",
-                         return_value=tmp_path / "b.creds-watcher.log"),
-        ):
-            start_mod._spawn_creds_watcher(MagicMock(), proj)  # no raise
+    proj = MagicMock()
+    proj.project_path = tmp_path / "proj"
 
-    def test_spawn_creds_watcher_appends_stderr_to_its_log(self, tmp_path):
-        """🛑 The watcher runs detached, so its stderr is the ONLY place its WARNING (a
-        settings refusal) or ERROR can reach the user: it is APPENDED to the box's
-        watcher log, whose missing parent is created, and never sent to DEVNULL."""
-        import kanibako.commands.start as start_mod
-
-        std, proj = MagicMock(), MagicMock()
-        std.early_system = early_record(tmp_path)
-        log_path = tmp_path / "logs" / "b.creds-watcher.log"
-        with (
-            patch.object(start_mod.subprocess, "Popen") as popen,
-            patch.object(start_mod, "creds_watcher_log_path",
-                         return_value=log_path) as m_path,
-        ):
-            start_mod._spawn_creds_watcher(std, proj)
-
-        m_path.assert_called_once_with(std, proj)
-        sink = popen.call_args.kwargs["stderr"]
-        assert sink is not start_mod.subprocess.DEVNULL
-        assert Path(sink.name) == log_path
-        assert sink.mode == "a"
-        assert sink.closed  # the child holds its own descriptor
-
-    def test_spawn_creds_watcher_runs_without_a_log(self, tmp_path, caplog):
-        """A log that cannot be opened loses only the log: the watcher still spawns,
-        its stderr to DEVNULL, and the launch says its warnings will be discarded."""
-        import logging
-
-        import kanibako.commands.start as start_mod
-
-        blocker = tmp_path / "not-a-dir"
-        blocker.write_text("")
-        with (
-            patch.object(start_mod.subprocess, "Popen") as popen,
-            patch.object(start_mod, "creds_watcher_log_path",
-                         return_value=blocker / "b.creds-watcher.log"),
-            caplog.at_level(logging.WARNING, logger="kanibako.start"),
-        ):
-            start_mod._spawn_creds_watcher(MagicMock(), MagicMock())
-
-        popen.assert_called_once()
-        assert popen.call_args.kwargs["stderr"] == start_mod.subprocess.DEVNULL
-        [record] = [r for r in caplog.records if r.name == "kanibako.start"]
-        assert record.levelno == logging.WARNING
-        assert "its warnings will be discarded" in record.getMessage()
-
-    def test_spawn_creds_watcher_ignores_modules_planted_in_the_launch_dir(
-        self, tmp_home, monkeypatch,
+    with (
+      patch.object(start_mod.subprocess, "Popen") as popen,
+      patch.object(
+        start_mod, "creds_watcher_log_path", return_value=tmp_path / "logs" / "b.creds-watcher.log"
+      ),
     ):
-        """🛑 SECURITY: the launcher's cwd is usually the box's rw workspace, and
-        ``python -m`` puts cwd first on ``sys.path``.  A box-planted ``argparse.py``
-        (the watcher imports argparse) must NOT run on the host; the watcher still starts.
-        A REAL spawn — the child runs the real module from the planted directory."""
-        import subprocess
+      start_mod._spawn_creds_watcher(MagicMock(), proj)
 
-        import kanibako
-        import kanibako.commands.start as start_mod
+    popen.assert_called_once()
+    argv = popen.call_args.args[0]
+    assert argv[1:5] == ["-P", "-m", "kanibako.launch.creds_watcher", "--box"]
+    assert argv[5] == str(proj.project_path)
+    # 🛑 Never from the launcher's (box-writable) cwd: see the planted-module test.
+    assert popen.call_args.kwargs["cwd"] == "/"
+    # Detached: own session + no inherited std streams.
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert popen.call_args.kwargs["stdout"] == start_mod.subprocess.DEVNULL
 
-        launch_dir = Path.cwd()  # tmp_home's project dir, the box workspace stand-in
-        marker = tmp_home / "PLANTED-MODULE-RAN"
-        (launch_dir / "argparse.py").write_text(
-            f"open({str(marker)!r}, 'w').close()\nraise SystemExit(7)\n"
+  def test_spawn_creds_watcher_tolerates_popen_failure(self, tmp_path):
+    """A spawn failure is swallowed — it must never crash the launch."""
+    import kanibako.commands.start as start_mod
+
+    proj = MagicMock()
+    proj.project_path = tmp_path / "proj"
+    with (
+      patch.object(start_mod.subprocess, "Popen", side_effect=OSError("nope")),
+      patch.object(
+        start_mod, "creds_watcher_log_path", return_value=tmp_path / "b.creds-watcher.log"
+      ),
+    ):
+      start_mod._spawn_creds_watcher(MagicMock(), proj)  # no raise
+
+  def test_spawn_creds_watcher_appends_stderr_to_its_log(self, tmp_path):
+    """🛑 The watcher runs detached, so its stderr is the ONLY place its WARNING (a
+    settings refusal) or ERROR can reach the user: it is APPENDED to the box's
+    watcher log, whose missing parent is created, and never sent to DEVNULL."""
+    import kanibako.commands.start as start_mod
+
+    std, proj = MagicMock(), MagicMock()
+    std.early_system = early_record(tmp_path)
+    log_path = tmp_path / "logs" / "b.creds-watcher.log"
+    with (
+      patch.object(start_mod.subprocess, "Popen") as popen,
+      patch.object(start_mod, "creds_watcher_log_path", return_value=log_path) as m_path,
+    ):
+      start_mod._spawn_creds_watcher(std, proj)
+
+    m_path.assert_called_once_with(std, proj)
+    sink = popen.call_args.kwargs["stderr"]
+    assert sink is not start_mod.subprocess.DEVNULL
+    assert Path(sink.name) == log_path
+    assert sink.mode == "a"
+    assert sink.closed  # the child holds its own descriptor
+
+  def test_spawn_creds_watcher_runs_without_a_log(self, tmp_path, caplog):
+    """A log that cannot be opened loses only the log: the watcher still spawns,
+    its stderr to DEVNULL, and the launch says its warnings will be discarded."""
+    import logging
+
+    import kanibako.commands.start as start_mod
+
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")
+    with (
+      patch.object(start_mod.subprocess, "Popen") as popen,
+      patch.object(
+        start_mod, "creds_watcher_log_path", return_value=blocker / "b.creds-watcher.log"
+      ),
+      caplog.at_level(logging.WARNING, logger="kanibako.start"),
+    ):
+      start_mod._spawn_creds_watcher(MagicMock(), MagicMock())
+
+    popen.assert_called_once()
+    assert popen.call_args.kwargs["stderr"] == start_mod.subprocess.DEVNULL
+    [record] = [r for r in caplog.records if r.name == "kanibako.start"]
+    assert record.levelno == logging.WARNING
+    assert "its warnings will be discarded" in record.getMessage()
+
+  def test_spawn_creds_watcher_ignores_modules_planted_in_the_launch_dir(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """🛑 SECURITY: the launcher's cwd is usually the box's rw workspace, and
+    ``python -m`` puts cwd first on ``sys.path``.  A box-planted ``argparse.py``
+    (the watcher imports argparse) must NOT run on the host; the watcher still starts.
+    A REAL spawn — the child runs the real module from the planted directory."""
+    import subprocess
+
+    import kanibako
+    import kanibako.commands.start as start_mod
+
+    launch_dir = Path.cwd()  # tmp_home's project dir, the box workspace stand-in
+    marker = tmp_home / "PLANTED-MODULE-RAN"
+    (launch_dir / "argparse.py").write_text(
+      f"open({str(marker)!r}, 'w').close()\nraise SystemExit(7)\n"
+    )
+    # The child imports the SAME kanibako as this test (-P keeps PYTHONPATH).
+    src = str(Path(kanibako.__file__).resolve().parents[1])
+    monkeypatch.setenv(
+      "PYTHONPATH",
+      os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+    )
+    log_path = tmp_home / "logs" / "b.creds-watcher.log"
+    proj = MagicMock()
+    proj.project_path = tmp_home / "no-such-box"  # resolution fails; the watcher exits 0
+
+    real_popen, children = subprocess.Popen, []
+
+    def _spy(*args, **kwargs):
+      child = real_popen(*args, **kwargs)
+      children.append(child)
+      return child
+
+    with (
+      patch.object(start_mod.subprocess, "Popen", _spy),
+      patch.object(start_mod, "creds_watcher_log_path", return_value=log_path),
+    ):
+      start_mod._spawn_creds_watcher(MagicMock(), proj)
+
+    [child] = children
+    rc = child.wait(timeout=60)
+    assert not marker.exists(), "a module planted in the launch dir ran on the host"
+    assert rc == 0, log_path.read_text()
+    # It started and ran the real watcher: its resolution failure is in its log.
+    assert "could not resolve its box" in log_path.read_text()
+
+  def test_detached_shared_box_spawns_the_watcher(self, start_mocks):
+    """A DETACHED shared-tier launch spawns the creds watcher."""
+    with start_mocks():
+      # Harness default: is_running False at the reattach check, then True after
+      # run() -> a FRESH detached launch that the detach block confirms is up.
+      spawn = MagicMock()
+      with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+          detach=True,
         )
-        # The child imports the SAME kanibako as this test (-P keeps PYTHONPATH).
-        src = str(Path(kanibako.__file__).resolve().parents[1])
-        monkeypatch.setenv(
-            "PYTHONPATH", os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+      assert rc == 0
+      spawn.assert_called_once()
+
+  def test_detached_private_box_does_not_spawn_the_watcher(self, start_mocks):
+    """A DETACHED private box does NOT spawn a watcher (nothing to write back)."""
+    from tests.test_commands.test_start import _PRIVATE_AUTH
+
+    with (
+      start_mocks(),
+      patch(
+        "kanibako.commands.start._resolve_box_launch_decisions",
+        return_value=(_PRIVATE_AUTH, None, None, {}),
+      ),
+    ):
+      spawn = MagicMock()
+      with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+          detach=True,
         )
-        log_path = tmp_home / "logs" / "b.creds-watcher.log"
-        proj = MagicMock()
-        proj.project_path = tmp_home / "no-such-box"  # resolution fails; the watcher exits 0
+      assert rc == 0
+      spawn.assert_not_called()
 
-        real_popen, children = subprocess.Popen, []
-
-        def _spy(*args, **kwargs):
-            child = real_popen(*args, **kwargs)
-            children.append(child)
-            return child
-
-        with (
-            patch.object(start_mod.subprocess, "Popen", _spy),
-            patch.object(start_mod, "creds_watcher_log_path", return_value=log_path),
-        ):
-            start_mod._spawn_creds_watcher(MagicMock(), proj)
-
-        [child] = children
-        rc = child.wait(timeout=60)
-        assert not marker.exists(), "a module planted in the launch dir ran on the host"
-        assert rc == 0, log_path.read_text()
-        # It started and ran the real watcher: its resolution failure is in its log.
-        assert "could not resolve its box" in log_path.read_text()
-
-    def test_detached_shared_box_spawns_the_watcher(self, start_mocks):
-        """A DETACHED shared-tier launch spawns the creds watcher."""
-        with start_mocks():
-            # Harness default: is_running False at the reattach check, then True after
-            # run() -> a FRESH detached launch that the detach block confirms is up.
-            spawn = MagicMock()
-            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, detach=True,
-                )
-            assert rc == 0
-            spawn.assert_called_once()
-
-    def test_detached_private_box_does_not_spawn_the_watcher(self, start_mocks):
-        """A DETACHED private box does NOT spawn a watcher (nothing to write back)."""
-        from tests.test_commands.test_start import _PRIVATE_AUTH
-
-        with start_mocks(), patch(
-            "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None, {}),
-        ):
-            spawn = MagicMock()
-            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, detach=True,
-                )
-            assert rc == 0
-            spawn.assert_not_called()
-
-    def test_foreground_start_does_not_spawn_the_watcher(self, start_mocks):
-        """A FOREGROUND persistent start does NOT spawn a watcher (its attach-return
-        writeback already covers the session)."""
-        with start_mocks() as m:
-            TestPersistentMode._drive_fresh_exit(m)
-            spawn = MagicMock()
-            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True,
-                )
-            assert rc == 0
-            spawn.assert_not_called()
+  def test_foreground_start_does_not_spawn_the_watcher(self, start_mocks):
+    """A FOREGROUND persistent start does NOT spawn a watcher (its attach-return
+    writeback already covers the session)."""
+    with start_mocks() as m:
+      TestPersistentMode._drive_fresh_exit(m)
+      spawn = MagicMock()
+      with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+        rc = _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+        )
+      assert rc == 0
+      spawn.assert_not_called()
 
 
 class TestNoConversationHint:
-    """Hint when agent exits non-zero with --continue/--resume."""
+  """Hint when agent exits non-zero with --continue/--resume."""
 
-    def test_hint_on_nonzero_exit_with_continue(self, start_mocks, capsys):
-        """Non-zero exit in continue mode shows -N hint."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 1
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" in captured.err
+  def test_hint_on_nonzero_exit_with_continue(self, start_mocks, capsys):
+    """Non-zero exit in continue mode shows -N hint."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 1
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" in captured.err
 
-    def test_no_hint_on_zero_exit(self, start_mocks, capsys):
-        """Successful exit does not show the hint."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 0
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" not in captured.err
+  def test_no_hint_on_zero_exit(self, start_mocks, capsys):
+    """Successful exit does not show the hint."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 0
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" not in captured.err
 
-    def test_no_hint_with_new_session(self, start_mocks, capsys):
-        """No hint when -N was already used."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 1
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=True, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" not in captured.err
+  def test_no_hint_with_new_session(self, start_mocks, capsys):
+    """No hint when -N was already used."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 1
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=True,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" not in captured.err
 
-    def test_no_hint_in_shell_mode(self, start_mocks, capsys):
-        """No hint in shell mode (entrypoint set)."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 1
-            _run_container(
-                project_dir=None, entrypoint="/bin/bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" not in captured.err
+  def test_no_hint_in_shell_mode(self, start_mocks, capsys):
+    """No hint in shell mode (entrypoint set)."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 1
+      _run_container(
+        project_dir=None,
+        entrypoint="/bin/bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" not in captured.err
 
-    def test_no_hint_for_a_target_with_no_plugin(self, start_mocks, capsys):
-        """``--agent shell`` has no conversation, so it must not be advised to use ``-N``.
+  def test_no_hint_for_a_target_with_no_plugin(self, start_mocks, capsys):
+    """``--agent shell`` has no conversation, so it must not be advised to use ``-N``.
 
-        The hint is about CONTINUING a conversation, and it is printed on
-        ``is_agent_mode`` alone — which is ``entrypoint is None and not
-        box_shell_mode``, TRUE for the agent-less shell. So a non-zero exit of a
-        target with no plugin told the user to start fresh with ``-N`` to fix a
-        problem only a continuing agent can have.
+    The hint is about CONTINUING a conversation, and it is printed on
+    ``is_agent_mode`` alone — which is ``entrypoint is None and not
+    box_shell_mode``, TRUE for the agent-less shell. So a non-zero exit of a
+    target with no plugin told the user to start fresh with ``-N`` to fix a
+    problem only a continuing agent can have.
 
-        ⚑ The mock's ``descriptor``/``default_entrypoint`` are set to ``None`` to
-        give it the built-in ``ShellTarget``'s shape, exactly as ``tests/conftest.py``
-        prescribes for a descriptor-less target; ``entrypoint=None`` and
-        ``new_session=False`` are the other two terms of the printed condition, so
-        this is the one case where all of them are true and the hint must still be
-        withheld.
-        """
-        with start_mocks() as m:
-            m.target.descriptor = None
-            m.target.default_entrypoint = None
-            m.runtime.run.return_value = 1
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" not in captured.err
+    ⚑ The mock's ``descriptor``/``default_entrypoint`` are set to ``None`` to
+    give it the built-in ``ShellTarget``'s shape, exactly as ``tests/conftest.py``
+    prescribes for a descriptor-less target; ``entrypoint=None`` and
+    ``new_session=False`` are the other two terms of the printed condition, so
+    this is the one case where all of them are true and the hint must still be
+    withheld.
+    """
+    with start_mocks() as m:
+      m.target.descriptor = None
+      m.target.default_entrypoint = None
+      m.runtime.run.return_value = 1
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" not in captured.err
 
-    def test_a_plugin_still_gets_the_hint(self, start_mocks, capsys):
-        """Non-vacuity: the guard is ``has_plugin``, not "silence the hint"."""
-        with start_mocks() as m:
-            m.runtime.run.return_value = 1
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-        captured = capsys.readouterr()
-        assert "start -N" in captured.err
+  def test_a_plugin_still_gets_the_hint(self, start_mocks, capsys):
+    """Non-vacuity: the guard is ``has_plugin``, not "silence the hint"."""
+    with start_mocks() as m:
+      m.runtime.run.return_value = 1
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+    captured = capsys.readouterr()
+    assert "start -N" in captured.err
 
 
 class TestPersistentAttachFailureIsSaid:
-    """A foreground persistent launch whose attach fails says what happened and what to do.
+  """A foreground persistent launch whose attach fails says what happened and what to do.
 
-    The retry loop used to fall off its last attempt in silence (the last line was
-    ``attempt 4/5``), and the ``-N`` hint was reachable only from the ephemeral arm.
-    """
+  The retry loop used to fall off its last attempt in silence (the last line was
+  ``attempt 4/5``), and the ``-N`` hint was reachable only from the ephemeral arm.
+  """
 
-    @staticmethod
-    def _launch(**over):
-        kw = dict(
-            project_dir=None, entrypoint=None, image_override=None,
-            new_session=False, safe_mode=False, resume_mode=False,
-            extra_args=[], persistent=True,
-        )
-        kw.update(over)
-        with patch("time.sleep"):
-            return _run_container(**kw)
+  @staticmethod
+  def _launch(**over):
+    kw = dict(
+      project_dir=None,
+      entrypoint=None,
+      image_override=None,
+      new_session=False,
+      safe_mode=False,
+      resume_mode=False,
+      extra_args=[],
+      persistent=True,
+    )
+    kw.update(over)
+    with patch("time.sleep"):
+      return _run_container(**kw)
 
-    def test_exhausted_attach_on_a_live_box_is_an_error_naming_the_cures(
-        self, start_mocks, capsys,
+  def test_exhausted_attach_on_a_live_box_is_an_error_naming_the_cures(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """tmux has no session, every attempt: the box stays up and the user is told so."""
+    with start_mocks() as m:
+      m.runtime.session_missing = True
+      m.runtime.exec.return_value = 1
+      rc = self._launch()
+      teardown_rm = m.runtime.rm.called
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "Could not attach to box 'testproject' after 5 attempts" in err
+    assert "kanibako shell testproject" in err
+    assert "kanibako stop testproject" in err
+    assert "start -N" in err
+    # The live box is kept for inspection, not reaped.
+    assert not teardown_rm
+
+  def test_retry_warning_does_not_claim_the_container_is_not_ready(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """A failed attach into a RUNNING container is a missing session, not a
+    not-ready container — it is also what a box whose agent already died shows."""
+    with start_mocks() as m:
+      m.runtime.session_missing = True
+      m.runtime.exec.return_value = 1
+      self._launch()
+    err = capsys.readouterr().err
+    assert "could not attach to the agent session (attempt 4/5)" in err
+    assert "container not ready for exec" not in err
+
+  def test_exhausted_readiness_probe_is_an_error_too(self, start_mocks, capsys):
+    """``podman exec`` never accepted the probe, with the container up."""
+    with start_mocks() as m:
+      m.runtime.exec_ready.side_effect = lambda *a, **kw: False
+      rc = self._launch()
+      attached = m.runtime.exec.called
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert not attached
+    assert "container not ready for exec (attempt 4/5)" in err
+    assert "Could not attach to box 'testproject' after 5 attempts" in err
+
+  def test_no_exhaustion_error_with_new_session_hint_withheld(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """``-N`` already given: the attach error still prints, the ``-N`` hint does not."""
+    with start_mocks() as m:
+      m.runtime.session_missing = True
+      m.runtime.exec.return_value = 1
+      rc = self._launch(new_session=True)
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "Could not attach to box" in err
+    assert "start -N" not in err
+
+  def test_agent_death_after_attach_reaches_the_new_session_hint(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """The supervised (persistent) arm reaches the ``-N`` hint the ephemeral arm has."""
+
+    def _exec_then_exit(*a, **kw):
+      m.runtime.is_running.return_value = False
+      return 0
+
+    with (
+      start_mocks() as m,
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=1,
+      ),
     ):
-        """tmux has no session, every attempt: the box stays up and the user is told so."""
-        with start_mocks() as m:
-            m.runtime.session_missing = True
-            m.runtime.exec.return_value = 1
-            rc = self._launch()
-            teardown_rm = m.runtime.rm.called
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "Could not attach to box 'testproject' after 5 attempts" in err
-        assert "kanibako shell testproject" in err
-        assert "kanibako stop testproject" in err
-        assert "start -N" in err
-        # The live box is kept for inspection, not reaped.
-        assert not teardown_rm
+      m.runtime.exec.side_effect = _exec_then_exit
+      rc = self._launch()
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "start -N" in err
+    assert "Could not attach" not in err
 
-    def test_retry_warning_does_not_claim_the_container_is_not_ready(
-        self, start_mocks, capsys,
+  def test_clean_persistent_exit_gets_no_hint(self, start_mocks, capsys):
+    def _exec_then_exit(*a, **kw):
+      m.runtime.is_running.return_value = False
+      return 0
+
+    with (
+      start_mocks() as m,
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=0,
+      ),
     ):
-        """A failed attach into a RUNNING container is a missing session, not a
-        not-ready container — it is also what a box whose agent already died shows."""
-        with start_mocks() as m:
-            m.runtime.session_missing = True
-            m.runtime.exec.return_value = 1
-            self._launch()
-        err = capsys.readouterr().err
-        assert "could not attach to the agent session (attempt 4/5)" in err
-        assert "container not ready for exec" not in err
+      m.runtime.exec.side_effect = _exec_then_exit
+      rc = self._launch()
+    assert rc == 0
+    assert "start -N" not in capsys.readouterr().err
 
-    def test_exhausted_readiness_probe_is_an_error_too(self, start_mocks, capsys):
-        """``podman exec`` never accepted the probe, with the container up."""
-        with start_mocks() as m:
-            m.runtime.exec_ready.side_effect = lambda *a, **kw: False
-            rc = self._launch()
-            attached = m.runtime.exec.called
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert not attached
-        assert "container not ready for exec (attempt 4/5)" in err
-        assert "Could not attach to box 'testproject' after 5 attempts" in err
-
-    def test_no_exhaustion_error_with_new_session_hint_withheld(
-        self, start_mocks, capsys,
-    ):
-        """``-N`` already given: the attach error still prints, the ``-N`` hint does not."""
-        with start_mocks() as m:
-            m.runtime.session_missing = True
-            m.runtime.exec.return_value = 1
-            rc = self._launch(new_session=True)
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "Could not attach to box" in err
-        assert "start -N" not in err
-
-    def test_agent_death_after_attach_reaches_the_new_session_hint(
-        self, start_mocks, capsys,
-    ):
-        """The supervised (persistent) arm reaches the ``-N`` hint the ephemeral arm has."""
-        def _exec_then_exit(*a, **kw):
-            m.runtime.is_running.return_value = False
-            return 0
-        with start_mocks() as m, patch(
-            "kanibako.commands.start._container_exit_code", return_value=1,
-        ):
-            m.runtime.exec.side_effect = _exec_then_exit
-            rc = self._launch()
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "start -N" in err
-        assert "Could not attach" not in err
-
-    def test_clean_persistent_exit_gets_no_hint(self, start_mocks, capsys):
-        def _exec_then_exit(*a, **kw):
-            m.runtime.is_running.return_value = False
-            return 0
-        with start_mocks() as m, patch(
-            "kanibako.commands.start._container_exit_code", return_value=0,
-        ):
-            m.runtime.exec.side_effect = _exec_then_exit
-            rc = self._launch()
-        assert rc == 0
-        assert "start -N" not in capsys.readouterr().err
-
-    def test_box_dead_before_attach_reaches_the_new_session_hint(
-        self, start_mocks, capsys,
-    ):
-        """The container never came up: the error is followed by the ``-N`` hint."""
-        with start_mocks() as m:
-            m.runtime.run.side_effect = None
-            m.runtime.run.return_value = 0
-            rc = self._launch()
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "Container exited before session could attach" in err
-        assert "start -N" in err
+  def test_box_dead_before_attach_reaches_the_new_session_hint(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """The container never came up: the error is followed by the ``-N`` hint."""
+    with start_mocks() as m:
+      m.runtime.run.side_effect = None
+      m.runtime.run.return_value = 0
+      rc = self._launch()
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "Container exited before session could attach" in err
+    assert "start -N" in err
 
 
 class TestForegroundAgentExitStopsTheBox:
-    """SD "A foreground box stops when its agent exits" — even when the attach
-    returns before the supervisor's poll has stopped the container.
+  """SD "A foreground box stops when its agent exits" — even when the attach
+  returns before the supervisor's poll has stopped the container.
 
-    The session's existence, not the container's running state, tells an agent
-    exit from a detach; an agent exit then waits (bounded) for the box to stop.
-    """
+  The session's existence, not the container's running state, tells an agent
+  exit from a detach; an agent exit then waits (bounded) for the box to stop.
+  """
 
-    @staticmethod
-    def _launch(**over):
-        kw = dict(
-            project_dir=None, entrypoint=None, image_override=None,
-            new_session=False, safe_mode=False, resume_mode=False,
-            extra_args=[], persistent=True,
+  @staticmethod
+  def _launch(**over):
+    kw = dict(
+      project_dir=None,
+      entrypoint=None,
+      image_override=None,
+      new_session=False,
+      safe_mode=False,
+      resume_mode=False,
+      extra_args=[],
+      persistent=True,
+    )
+    kw.update(over)
+    return _run_container(**kw)
+
+  @contextlib.contextmanager
+  def _box(self, start_mocks, *, attach_rc=0, session_after=False, lag=None, code=3):
+    """The attach returns *attach_rc*; afterwards the session lives iff
+    *session_after*, and the container runs for *lag* more checks (None: forever)."""
+    with (
+      start_mocks() as m,
+      patch("time.sleep") as m_sleep,
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=code,
+      ),
+    ):
+
+      def _exec(*_a, **_k):
+        m.runtime.container_exists.return_value = True
+        states = iter([True] * lag) if lag is not None else None
+        m.runtime.is_running.side_effect = (
+          (lambda *_x, **_y: next(states, False))
+          if states is not None
+          else (lambda *_x, **_y: True)
         )
-        kw.update(over)
-        return _run_container(**kw)
+        m.runtime.exec_succeeds.side_effect = lambda *_x, **_y: session_after
+        return attach_rc
 
-    @contextlib.contextmanager
-    def _box(self, start_mocks, *, attach_rc=0, session_after=False, lag=None,
-             code=3):
-        """The attach returns *attach_rc*; afterwards the session lives iff
-        *session_after*, and the container runs for *lag* more checks (None: forever)."""
-        with start_mocks() as m, patch("time.sleep") as m_sleep, patch(
-            "kanibako.commands.start._container_exit_code", return_value=code,
-        ):
-            def _exec(*_a, **_k):
-                m.runtime.container_exists.return_value = True
-                states = iter([True] * lag) if lag is not None else None
-                m.runtime.is_running.side_effect = (
-                    (lambda *_x, **_y: next(states, False)) if states is not None
-                    else (lambda *_x, **_y: True)
-                )
-                m.runtime.exec_succeeds.side_effect = lambda *_x, **_y: session_after
-                return attach_rc
-            m.runtime.exec.side_effect = _exec
-            m.sleep = m_sleep
-            yield m
+      m.runtime.exec.side_effect = _exec
+      m.sleep = m_sleep
+      yield m
 
-    def test_agent_exit_after_the_check_still_stops_the_box(self, start_mocks):
-        """The race: the container still runs when the attach returns."""
-        with self._box(start_mocks, lag=5) as m:
-            rc = self._launch()
-            m.runtime.rm.assert_called_once()
-        assert rc == 3
+  def test_agent_exit_after_the_check_still_stops_the_box(self, start_mocks):
+    """The race: the container still runs when the attach returns."""
+    with self._box(start_mocks, lag=5) as m:
+      rc = self._launch()
+      m.runtime.rm.assert_called_once()
+    assert rc == 3
 
-    def test_agent_exit_before_the_check_stops_the_box(self, start_mocks):
-        with self._box(start_mocks, lag=0) as m:
-            rc = self._launch()
-            m.runtime.rm.assert_called_once()
-        assert rc == 3
+  def test_agent_exit_before_the_check_stops_the_box(self, start_mocks):
+    with self._box(start_mocks, lag=0) as m:
+      rc = self._launch()
+      m.runtime.rm.assert_called_once()
+    assert rc == 3
 
-    def test_detach_leaves_the_box_running(self, start_mocks):
-        with self._box(start_mocks, session_after=True) as m:
-            rc = self._launch()
-            m.runtime.rm.assert_not_called()
-            m.sleep.assert_not_called()
-        assert rc == 0
+  def test_detach_leaves_the_box_running(self, start_mocks):
+    with self._box(start_mocks, session_after=True) as m:
+      rc = self._launch()
+      m.runtime.rm.assert_not_called()
+      m.sleep.assert_not_called()
+    assert rc == 0
 
-    def test_a_session_not_created_yet_is_retried_without_a_stall(
-        self, start_mocks, capsys,
+  def test_a_session_not_created_yet_is_retried_without_a_stall(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """has-session fails on a live box (the supervisor has not created the
+    session yet): the attach is retried, not read as an agent exit."""
+    from kanibako.commands.start import _AGENT_EXIT_STOP_STEP
+
+    with start_mocks() as m, patch("time.sleep") as m_sleep:
+      m.runtime.session_missing = True
+      attaches = iter([1, 0])
+
+      def _exec(*_a, **_k):
+        rc = next(attaches)
+        if rc == 0:  # the session exists by the second attempt
+          m.runtime.session_missing = False
+        return rc
+
+      m.runtime.exec.side_effect = _exec
+      rc = self._launch()
+      assert m.runtime.exec.call_count == 2
+      m.runtime.rm.assert_not_called()
+      assert (_AGENT_EXIT_STOP_STEP,) not in [c.args for c in m_sleep.call_args_list]
+    assert rc == 0
+    assert "could not attach to the agent session (attempt 1/5)" in (capsys.readouterr().err)
+
+  @pytest.mark.parametrize("code", [0, 3])
+  @pytest.mark.parametrize("attach_rc, up_checks", [(1, 2), (1, 1), (255, 1)])
+  def test_an_agent_that_exits_before_any_attach_reports_the_box_code(
+    self,
+    start_mocks,
+    capsys,
+    code,
+    attach_rc,
+    up_checks,
+  ):
+    """No session is ever seen and the box stops: the agent ran and exited
+    before the attach.  rc is the box's code, uncoerced — never the attach's
+    1 or 255.  up_checks=2 reaches the retry's readiness probe; 1 stops the
+    box before the loop's own liveness check."""
+    with (
+      start_mocks() as m,
+      patch("time.sleep"),
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=code,
+      ),
     ):
-        """has-session fails on a live box (the supervisor has not created the
-        session yet): the attach is retried, not read as an agent exit."""
-        from kanibako.commands.start import _AGENT_EXIT_STOP_STEP
-        with start_mocks() as m, patch("time.sleep") as m_sleep:
-            m.runtime.session_missing = True
-            attaches = iter([1, 0])
+      m.runtime.session_missing = True
+      states = iter([True] * up_checks)
 
-            def _exec(*_a, **_k):
-                rc = next(attaches)
-                if rc == 0:  # the session exists by the second attempt
-                    m.runtime.session_missing = False
-                return rc
-            m.runtime.exec.side_effect = _exec
-            rc = self._launch()
-            assert m.runtime.exec.call_count == 2
-            m.runtime.rm.assert_not_called()
-            assert (_AGENT_EXIT_STOP_STEP,) not in [c.args for c in m_sleep.call_args_list]
-        assert rc == 0
-        assert "could not attach to the agent session (attempt 1/5)" in (
-            capsys.readouterr().err
-        )
+      def _up(*_x, **_y):
+        up = next(states, False)
+        m.runtime.is_running.return_value = up
+        return up
 
-    @pytest.mark.parametrize("code", [0, 3])
-    @pytest.mark.parametrize("attach_rc, up_checks", [(1, 2), (1, 1), (255, 1)])
-    def test_an_agent_that_exits_before_any_attach_reports_the_box_code(
-        self, start_mocks, capsys, code, attach_rc, up_checks,
+      def _exec(*_a, **_k):
+        m.runtime.container_exists.return_value = True
+        # From the attach on, every liveness read (readiness probe
+        # included) moves the box toward stopped.
+        m.runtime.is_running.side_effect = _up
+        m.runtime.exec_ready.side_effect = _up
+        return attach_rc
+
+      m.runtime.exec.side_effect = _exec
+      rc = self._launch()
+      m.runtime.rm.assert_called_once()
+    err = capsys.readouterr().err
+    assert rc == code
+    assert "Error" not in err and "Could not attach" not in err
+    assert ("start -N" in err) is (code != 0)
+
+  @staticmethod
+  def _unsupervised(m):
+    """The ``--agent shell`` shape: no plugin, so no supervisor."""
+    m.target.descriptor = None
+    m.target.default_entrypoint = None
+    m.runtime.inspect_env.return_value = "shell"
+
+  @pytest.mark.parametrize("supervised", [True, False])
+  @pytest.mark.parametrize("live_at_launch", [False, True])
+  @pytest.mark.parametrize("code", [0, 3])
+  @pytest.mark.parametrize("attach_rc", [1, 255])
+  def test_a_box_down_at_the_first_read_after_the_attach(
+    self,
+    start_mocks,
+    supervised,
+    live_at_launch,
+    code,
+    attach_rc,
+  ):
+    """No session seen, and the box is down when the attach returns.  A
+    supervised box reports its code as is; an unsupervised one keeps
+    ``code or rc``.  live_at_launch: a reattach rather than a fresh launch."""
+    with (
+      start_mocks() as m,
+      patch("time.sleep"),
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=code,
+      ),
     ):
-        """No session is ever seen and the box stops: the agent ran and exited
-        before the attach.  rc is the box's code, uncoerced — never the attach's
-        1 or 255.  up_checks=2 reaches the retry's readiness probe; 1 stops the
-        box before the loop's own liveness check."""
-        with start_mocks() as m, patch("time.sleep"), patch(
-            "kanibako.commands.start._container_exit_code", return_value=code,
-        ):
-            m.runtime.session_missing = True
-            states = iter([True] * up_checks)
+      if not supervised:
+        self._unsupervised(m)
+      m.runtime.is_running.return_value = live_at_launch
+      m.runtime.session_missing = True
 
-            def _up(*_x, **_y):
-                up = next(states, False)
-                m.runtime.is_running.return_value = up
-                return up
+      def _exec(*_a, **_k):
+        m.runtime.container_exists.return_value = True
+        m.runtime.is_running.return_value = False
+        return attach_rc
 
-            def _exec(*_a, **_k):
-                m.runtime.container_exists.return_value = True
-                # From the attach on, every liveness read (readiness probe
-                # included) moves the box toward stopped.
-                m.runtime.is_running.side_effect = _up
-                m.runtime.exec_ready.side_effect = _up
-                return attach_rc
-            m.runtime.exec.side_effect = _exec
-            rc = self._launch()
-            m.runtime.rm.assert_called_once()
-        err = capsys.readouterr().err
-        assert rc == code
-        assert "Error" not in err and "Could not attach" not in err
-        assert ("start -N" in err) is (code != 0)
+      m.runtime.exec.side_effect = _exec
+      rc = self._launch()
+      assert m.runtime.run.called is not live_at_launch
+      assert m.runtime.exec.call_count == 1
+      m.runtime.rm.assert_called_once()
+    if supervised:
+      assert rc == code
+    else:
+      assert rc == (code or attach_rc if not live_at_launch else attach_rc)
 
-    @staticmethod
-    def _unsupervised(m):
-        """The ``--agent shell`` shape: no plugin, so no supervisor."""
-        m.target.descriptor = None
-        m.target.default_entrypoint = None
-        m.runtime.inspect_env.return_value = "shell"
-
-    @pytest.mark.parametrize("supervised", [True, False])
-    @pytest.mark.parametrize("live_at_launch", [False, True])
-    @pytest.mark.parametrize("code", [0, 3])
-    @pytest.mark.parametrize("attach_rc", [1, 255])
-    def test_a_box_down_at_the_first_read_after_the_attach(
-        self, start_mocks, supervised, live_at_launch, code, attach_rc,
+  @pytest.mark.parametrize("seen", [False, True])
+  def test_logs_of_a_session_never_seen_are_echoed_at_a_tty(
+    self,
+    start_mocks,
+    capsys,
+    seen,
+  ):
+    """A clean exit skips the log echo at a tty because the user watched the
+    session; one that never attached was not watched, so its logs print."""
+    with (
+      start_mocks() as m,
+      patch("time.sleep"),
+      patch(
+        "kanibako.commands.start._container_exit_code",
+        return_value=0,
+      ),
+      patch(
+        "kanibako.commands.start._interactive_host",
+        return_value=True,
+      ),
+      patch(
+        "kanibako.commands.start._container_logs",
+        return_value="agent said bye",
+      ),
     ):
-        """No session seen, and the box is down when the attach returns.  A
-        supervised box reports its code as is; an unsupervised one keeps
-        ``code or rc``.  live_at_launch: a reattach rather than a fresh launch."""
-        with start_mocks() as m, patch("time.sleep"), patch(
-            "kanibako.commands.start._container_exit_code", return_value=code,
-        ):
-            if not supervised:
-                self._unsupervised(m)
-            m.runtime.is_running.return_value = live_at_launch
-            m.runtime.session_missing = True
+      m.runtime.session_missing = not seen
 
-            def _exec(*_a, **_k):
-                m.runtime.container_exists.return_value = True
-                m.runtime.is_running.return_value = False
-                return attach_rc
-            m.runtime.exec.side_effect = _exec
-            rc = self._launch()
-            assert m.runtime.run.called is not live_at_launch
-            assert m.runtime.exec.call_count == 1
-            m.runtime.rm.assert_called_once()
-        if supervised:
-            assert rc == code
-        else:
-            assert rc == (code or attach_rc if not live_at_launch else attach_rc)
+      def _exec(*_a, **_k):
+        m.runtime.container_exists.return_value = True
+        m.runtime.is_running.return_value = False
+        return 0 if seen else 1
 
-    @pytest.mark.parametrize("seen", [False, True])
-    def test_logs_of_a_session_never_seen_are_echoed_at_a_tty(
-        self, start_mocks, capsys, seen,
-    ):
-        """A clean exit skips the log echo at a tty because the user watched the
-        session; one that never attached was not watched, so its logs print."""
-        with start_mocks() as m, patch("time.sleep"), patch(
-            "kanibako.commands.start._container_exit_code", return_value=0,
-        ), patch(
-            "kanibako.commands.start._interactive_host", return_value=True,
-        ), patch(
-            "kanibako.commands.start._container_logs", return_value="agent said bye",
-        ):
-            m.runtime.session_missing = not seen
+      m.runtime.exec.side_effect = _exec
+      rc = self._launch()
+    assert rc == 0
+    assert ("agent said bye" in capsys.readouterr().err) is not seen
 
-            def _exec(*_a, **_k):
-                m.runtime.container_exists.return_value = True
-                m.runtime.is_running.return_value = False
-                return 0 if seen else 1
-            m.runtime.exec.side_effect = _exec
-            rc = self._launch()
-        assert rc == 0
-        assert ("agent said bye" in capsys.readouterr().err) is not seen
+  @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
+  def test_a_reattach_tells_exit_from_detach_too(
+    self,
+    start_mocks,
+    session_after,
+    lag,
+  ):
+    with self._box(start_mocks, session_after=session_after, lag=lag) as m:
+      m.runtime.is_running.return_value = True  # a live box: the reattach path
+      rc = self._launch()
+      m.runtime.run.assert_not_called()
+      assert m.runtime.rm.called is not session_after
+    assert rc == (0 if session_after else 3)
 
-    @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
-    def test_a_reattach_tells_exit_from_detach_too(
-        self, start_mocks, session_after, lag,
-    ):
-        with self._box(start_mocks, session_after=session_after, lag=lag) as m:
-            m.runtime.is_running.return_value = True  # a live box: the reattach path
-            rc = self._launch()
-            m.runtime.run.assert_not_called()
-            assert m.runtime.rm.called is not session_after
-        assert rc == (0 if session_after else 3)
+  def test_a_missed_reattach_stops_the_box(self, start_mocks):
+    """Reattach: the session was there before the attach, gone when it ran (rc 1)."""
+    with self._box(start_mocks, attach_rc=1, lag=3) as m:
+      m.runtime.is_running.return_value = True  # a live box: the reattach path
+      rc = self._launch()
+      m.runtime.run.assert_not_called()
+      m.runtime.rm.assert_called_once()
+    assert rc == 3
 
-    def test_a_missed_reattach_stops_the_box(self, start_mocks):
-        """Reattach: the session was there before the attach, gone when it ran (rc 1)."""
-        with self._box(start_mocks, attach_rc=1, lag=3) as m:
-            m.runtime.is_running.return_value = True  # a live box: the reattach path
-            rc = self._launch()
-            m.runtime.run.assert_not_called()
-            m.runtime.rm.assert_called_once()
-        assert rc == 3
+  def test_a_missed_attach_reports_the_agents_code(self, start_mocks, capsys):
+    """The agent ended before tmux attached: the attach's own failure (1) is
+    not the agent's code, and the box still stops."""
+    with self._box(start_mocks, attach_rc=1, lag=3, code=0) as m:
+      rc = self._launch()
+      m.runtime.rm.assert_called_once()
+      assert m.runtime.exec.call_count == 1
+    assert rc == 0
+    assert "Could not attach" not in capsys.readouterr().err
 
-    def test_a_missed_attach_reports_the_agents_code(self, start_mocks, capsys):
-        """The agent ended before tmux attached: the attach's own failure (1) is
-        not the agent's code, and the box still stops."""
-        with self._box(start_mocks, attach_rc=1, lag=3, code=0) as m:
-            rc = self._launch()
-            m.runtime.rm.assert_called_once()
-            assert m.runtime.exec.call_count == 1
-        assert rc == 0
-        assert "Could not attach" not in capsys.readouterr().err
+  def test_the_wait_is_bounded_and_keeps_a_box_that_stays_up(self, start_mocks):
+    """A supervisor that keeps the box up (another surface attached) does not
+    hang the launch; the box is kept."""
+    from kanibako.commands.start import (
+      _AGENT_EXIT_STOP_BOUND,
+      _AGENT_EXIT_STOP_STEP,
+    )
 
-    def test_the_wait_is_bounded_and_keeps_a_box_that_stays_up(self, start_mocks):
-        """A supervisor that keeps the box up (another surface attached) does not
-        hang the launch; the box is kept."""
-        from kanibako.commands.start import (
-            _AGENT_EXIT_STOP_BOUND, _AGENT_EXIT_STOP_STEP,
-        )
-        with self._box(start_mocks) as m:
-            self._launch()
-            m.runtime.rm.assert_not_called()
-            waits = [c for c in m.sleep.call_args_list
-                     if c.args == (_AGENT_EXIT_STOP_STEP,)]
-        assert len(waits) == round(_AGENT_EXIT_STOP_BOUND / _AGENT_EXIT_STOP_STEP)
+    with self._box(start_mocks) as m:
+      self._launch()
+      m.runtime.rm.assert_not_called()
+      waits = [c for c in m.sleep.call_args_list if c.args == (_AGENT_EXIT_STOP_STEP,)]
+    assert len(waits) == round(_AGENT_EXIT_STOP_BOUND / _AGENT_EXIT_STOP_STEP)
 
 
 class TestInteractivePersistentGuard:
-    """Interactive mode rejects launch when a container already exists.
+  """Interactive mode rejects launch when a container already exists.
 
-    ⚑ EXISTENCE is the refusal's condition and it stays that way — the launch
-    creates the container BY NAME, so an exited one blocks it just as hard as a
-    live one.  LIVENESS only picks which true sentence is printed.
-    """
+  ⚑ EXISTENCE is the refusal's condition and it stays that way — the launch
+  creates the container BY NAME, so an exited one blocks it just as hard as a
+  live one.  LIVENESS only picks which true sentence is printed.
+  """
 
-    def test_existing_container_blocks_interactive(self, start_mocks, capsys):
-        """If a container exists, interactive start returns 1 with a message."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            m.runtime.is_running.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        captured = capsys.readouterr()
-        assert "already running" in captured.err.lower()
-        assert "kanibako start" in captured.err
+  def test_existing_container_blocks_interactive(self, start_mocks, capsys):
+    """If a container exists, interactive start returns 1 with a message."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      m.runtime.is_running.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    captured = capsys.readouterr()
+    assert "already running" in captured.err.lower()
+    assert "kanibako start" in captured.err
 
-    def test_exited_container_blocks_without_claiming_it_runs(
-        self, start_mocks, capsys,
-    ):
-        """🐞 REGRESSION, observed on ``droste`` 2026-09-08: an EXITED container
-        (exists, not running) was refused with "A box is already running for this
-        project" — ``kanibako list`` reported that box as ``stopped`` and ``kanibako ps``
-        omitted it entirely, both correctly.  Every cure that message named was wrong
-        there, so a dead box was a permanent lockout.  The refusal is KEPT (the name is
-        still taken); only
-        the claim is corrected, and it names the cure that works."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            m.runtime.is_running.return_value = False
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        err = capsys.readouterr().err
-        assert "already running" not in err.lower()
-        assert "is not running" in err
-        assert "kanibako stop testproject" in err
+  def test_exited_container_blocks_without_claiming_it_runs(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    """🐞 REGRESSION, observed on ``droste`` 2026-09-08: an EXITED container
+    (exists, not running) was refused with "A box is already running for this
+    project" — ``kanibako list`` reported that box as ``stopped`` and ``kanibako ps``
+    omitted it entirely, both correctly.  Every cure that message named was wrong
+    there, so a dead box was a permanent lockout.  The refusal is KEPT (the name is
+    still taken); only
+    the claim is corrected, and it names the cure that works."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      m.runtime.is_running.return_value = False
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "already running" not in err.lower()
+    assert "is not running" in err
+    assert "kanibako stop testproject" in err
 
-    def test_no_container_proceeds_normally(self, start_mocks):
-        """When no container exists, interactive mode proceeds."""
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = False
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            assert rc == 0
-            m.runtime.run.assert_called_once()
+  def test_no_container_proceeds_normally(self, start_mocks):
+    """When no container exists, interactive mode proceeds."""
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = False
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      assert rc == 0
+      m.runtime.run.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
 # New Phase 6 features: model override, CLI env, project extraction
 # ---------------------------------------------------------------------------
 
+
 class TestModelOverride:
-    """Verify -M/--model override is applied to effective state."""
+  """Verify -M/--model override is applied to effective state."""
 
-    def test_model_override_applied(self, start_mocks):
-        """-M/--model overrides effective state -> --model <value> in the argv.
+  def test_model_override_applied(self, start_mocks):
+    """-M/--model overrides effective state -> --model <value> in the argv.
 
-        The model value flows through effective_state into assembly's SettingArg
-        emission; assert the observable --model flag on the launched argv.
-        """
-        with start_mocks() as m:
-            m.target.setting_descriptors.return_value = []
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], model_override="opus",
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert cli_args[cli_args.index("--model") + 1] == "opus"
+    The model value flows through effective_state into assembly's SettingArg
+    emission; assert the observable --model flag on the launched argv.
+    """
+    with start_mocks() as m:
+      m.target.setting_descriptors.return_value = []
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        model_override="opus",
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert cli_args[cli_args.index("--model") + 1] == "opus"
 
-    def test_no_model_override(self, start_mocks):
-        """Without a model override (and no crab model state), no --model flag."""
-        with start_mocks() as m:
-            m.target.setting_descriptors.return_value = []
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], model_override=None,
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--model" not in cli_args
+  def test_no_model_override(self, start_mocks):
+    """Without a model override (and no crab model state), no --model flag."""
+    with start_mocks() as m:
+      m.target.setting_descriptors.return_value = []
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        model_override=None,
+      )
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--model" not in cli_args
 
 
 class TestCliEnv:
-    """Verify ``-e/--env VAR=VALUE`` vars reach the box — END TO END, through the launch.
+  """Verify ``-e/--env VAR=VALUE`` vars reach the box — END TO END, through the launch.
 
-    ⚑⚑ THESE STAY GREEN BY BEHAVIOR ACROSS MBR-1 P4c-1, and that is the point of
-    keeping them unchanged: the MECHANISM underneath moved from a dict paste over the
-    finished env to the CLI level of the cascade, applied inside
-    ``store_collapse.collapse_env``. The user-visible promise did not move, so a case
-    written against the promise rather than against the sequence still holds.
+  ⚑⚑ THESE STAY GREEN BY BEHAVIOR ACROSS MBR-1 P4c-1, and that is the point of
+  keeping them unchanged: the MECHANISM underneath moved from a dict paste over the
+  finished env to the CLI level of the cascade, applied inside
+  ``store_collapse.collapse_env``. The user-visible promise did not move, so a case
+  written against the promise rather than against the sequence still holds.
 
-    ⚑ THEY ARE ALSO THE CONFTEST-FORWARD PIN. ``-e`` now reaches the container ONLY
-    through the collapse the stubbed ``_resolve_launch_snapshot`` runs, so a stub that
-    dropped the ``cli_env`` kwarg would red every arrival case here rather than let it
-    pass while asserting nothing.
+  ⚑ THEY ARE ALSO THE CONFTEST-FORWARD PIN. ``-e`` now reaches the container ONLY
+  through the collapse the stubbed ``_resolve_launch_snapshot`` runs, so a stub that
+  dropped the ``cli_env`` kwarg would red every arrival case here rather than let it
+  pass while asserting nothing.
+  """
+
+  def test_cli_env_merged(self, start_mocks):
+    """Per-run env vars from -e are included in container env."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        cli_env=["MY_KEY=my_val", "OTHER=123"],
+      )
+      env = m.runtime.run.call_args.kwargs.get("env") or {}
+      assert env.get("MY_KEY") == "my_val"
+      assert env.get("OTHER") == "123"
+
+  def test_cli_env_overrides_agent_env(self, start_mocks):
+    """``-e`` wins over an agent-scope value — the HELD-SLOT case, end to end.
+
+    ⚑ The loser here rides the ``start_mocks`` FLOOR mirror, not the agent-FILE
+    rung it takes in production; what is pinned is that ``-e`` outranks an
+    agent-scope value, not which rung supplied it (T-B in
+    ``test_start_assembly.py`` pins the real route).
+
+    ⚑⚑ SINCE P4c-1 THIS IS A REAL KEY BEING OVERRIDDEN, not a paste over the
+    result: ``m.agent_cfg.env`` folds into ``agent.<node>.env.MY_KEY``, which owns
+    the slot, and ``-e`` replaces that key's VALUE inside the collapse. The
+    provenance half — that the slot still names the owning key — is pinned pure in
+    ``tests/test_settings/test_store_collapse.py``.
     """
+    with start_mocks() as m:
+      m.agent_cfg.env = {"MY_KEY": "agent_val"}
+      m.load_agent_config.return_value = m.agent_cfg
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        cli_env=["MY_KEY=cli_val"],
+      )
+      env = m.runtime.run.call_args.kwargs.get("env") or {}
+      assert env.get("MY_KEY") == "cli_val"
 
-    def test_cli_env_merged(self, start_mocks):
-        """Per-run env vars from -e are included in container env."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], cli_env=["MY_KEY=my_val", "OTHER=123"],
-            )
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("MY_KEY") == "my_val"
-            assert env.get("OTHER") == "123"
+  def test_no_cli_env(self, start_mocks):
+    """No error when cli_env is None."""
+    with start_mocks():
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        cli_env=None,
+      )
+      assert rc == 0
 
-    def test_cli_env_overrides_agent_env(self, start_mocks):
-        """``-e`` wins over an agent-scope value — the HELD-SLOT case, end to end.
+  def test_cli_env_passed_to_exec_into_running(self, start_mocks):
+    """Per-run -e vars reach the exec'd process when the box is running.
 
-        ⚑ The loser here rides the ``start_mocks`` FLOOR mirror, not the agent-FILE
-        rung it takes in production; what is pinned is that ``-e`` outranks an
-        agent-scope value, not which rung supplied it (T-B in
-        ``test_start_assembly.py`` pins the real route).
-
-        ⚑⚑ SINCE P4c-1 THIS IS A REAL KEY BEING OVERRIDDEN, not a paste over the
-        result: ``m.agent_cfg.env`` folds into ``agent.<node>.env.MY_KEY``, which owns
-        the slot, and ``-e`` replaces that key's VALUE inside the collapse. The
-        provenance half — that the slot still names the owning key — is pinned pure in
-        ``tests/test_settings/test_store_collapse.py``.
-        """
-        with start_mocks() as m:
-            m.agent_cfg.env = {"MY_KEY": "agent_val"}
-            m.load_agent_config.return_value = m.agent_cfg
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], cli_env=["MY_KEY=cli_val"],
-            )
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("MY_KEY") == "cli_val"
-
-    def test_no_cli_env(self, start_mocks):
-        """No error when cli_env is None."""
-        with start_mocks():
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], cli_env=None,
-            )
-            assert rc == 0
-
-    def test_cli_env_passed_to_exec_into_running(self, start_mocks):
-        """Per-run -e vars reach the exec'd process when the box is running.
-
-        Shell mode (entrypoint set) against an already-running container execs
-        in instead of launching; the per-run -e vars must still be applied
-        (previously they were silently dropped on this path).
-        """
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint="/bin/sh", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=["-c", "printenv"], cli_env=["MY_KEY=my_val"],
-            )
-            assert rc == 0
-            m.runtime.run.assert_not_called()
-            m.runtime.exec.assert_called_once()
-            env = m.runtime.exec.call_args.kwargs.get("env") or {}
-            assert env.get("MY_KEY") == "my_val"
+    Shell mode (entrypoint set) against an already-running container execs
+    in instead of launching; the per-run -e vars must still be applied
+    (previously they were silently dropped on this path).
+    """
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint="/bin/sh",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=["-c", "printenv"],
+        cli_env=["MY_KEY=my_val"],
+      )
+      assert rc == 0
+      m.runtime.run.assert_not_called()
+      m.runtime.exec.assert_called_once()
+      env = m.runtime.exec.call_args.kwargs.get("env") or {}
+      assert env.get("MY_KEY") == "my_val"
 
 
 class TestTheRealizedVariablesReachTheContainerEndToEnd:
-    """MBR-1 P4c-2: a realized variable arrives at ``runtime.run(env=)`` — as a KEY.
+  """MBR-1 P4c-2: a realized variable arrives at ``runtime.run(env=)`` — as a KEY.
 
-    ⚑⚑ THIS IS THE CONFTEST-FORWARD PIN for the realization seam, and it is the
-    reason the case is driven end to end rather than at the collapse. The realizer
-    reaches the launch ONLY as ``_resolve_launch_snapshot``'s ``realize`` callback,
-    so a stub that dropped the kwarg would launch every mocked box with none of the
-    five realized variables — and every arrival assertion in the suite would pass
-    while asserting nothing. It fails HERE, loudly, instead.
+  ⚑⚑ THIS IS THE CONFTEST-FORWARD PIN for the realization seam, and it is the
+  reason the case is driven end to end rather than at the collapse. The realizer
+  reaches the launch ONLY as ``_resolve_launch_snapshot``'s ``realize`` callback,
+  so a stub that dropped the kwarg would launch every mocked box with none of the
+  five realized variables — and every arrival assertion in the suite would pass
+  while asserting nothing. It fails HERE, loudly, instead.
 
-    ⚑ The fixture's target is claude, whose only realization is ``endpoint`` ->
-    ``ANTHROPIC_BASE_URL``; the goose inventory is exercised against the real chain
-    in ``tests/test_targets/test_agent_envs.py``.
-    """
+  ⚑ The fixture's target is claude, whose only realization is ``endpoint`` ->
+  ``ANTHROPIC_BASE_URL``; the goose inventory is exercised against the real chain
+  in ``tests/test_targets/test_agent_envs.py``.
+  """
 
-    @staticmethod
-    def _launch_env(m, **kwargs):
-        _run_container(
-            project_dir=None, entrypoint=None, image_override=None,
-            new_session=False, safe_mode=False, resume_mode=False,
-            extra_args=[], **kwargs,
-        )
-        return m.runtime.run.call_args.kwargs.get("env") or {}
+  @staticmethod
+  def _launch_env(m, **kwargs):
+    _run_container(
+      project_dir=None,
+      entrypoint=None,
+      image_override=None,
+      new_session=False,
+      safe_mode=False,
+      resume_mode=False,
+      extra_args=[],
+      **kwargs,
+    )
+    return m.runtime.run.call_args.kwargs.get("env") or {}
 
-    def test_a_realized_variable_reaches_the_box(self, start_mocks):
-        with start_mocks() as m:
-            m.agent_cfg.state = {"endpoint": "https://e.example"}
-            m.load_agent_config.return_value = m.agent_cfg
-            env = self._launch_env(m)
-            assert env.get("ANTHROPIC_BASE_URL") == "https://e.example"
+  def test_a_realized_variable_reaches_the_box(self, start_mocks):
+    with start_mocks() as m:
+      m.agent_cfg.state = {"endpoint": "https://e.example"}
+      m.load_agent_config.return_value = m.agent_cfg
+      env = self._launch_env(m)
+      assert env.get("ANTHROPIC_BASE_URL") == "https://e.example"
 
-    def test_a_driving_key_left_unset_realizes_nothing(self, start_mocks):
-        """The NEGATIVE CONTROL. Without it the case above passes on any constant."""
-        with start_mocks() as m:
-            assert "ANTHROPIC_BASE_URL" not in self._launch_env(m)
+  def test_a_driving_key_left_unset_realizes_nothing(self, start_mocks):
+    """The NEGATIVE CONTROL. Without it the case above passes on any constant."""
+    with start_mocks() as m:
+      assert "ANTHROPIC_BASE_URL" not in self._launch_env(m)
 
-    def test_a_per_run_flag_beats_the_realization_end_to_end(self, start_mocks):
-        """Spec env.<VAR> (*-e* beats a realization uniformly, §1A) through the whole
-        launch: ``-e`` is the CLI level over the slot."""
-        with start_mocks() as m:
-            m.agent_cfg.state = {"endpoint": "https://e.example"}
-            m.load_agent_config.return_value = m.agent_cfg
-            env = self._launch_env(
-                m, cli_env=["ANTHROPIC_BASE_URL=https://flag.example"],
-            )
-            assert env.get("ANTHROPIC_BASE_URL") == "https://flag.example"
+  def test_a_per_run_flag_beats_the_realization_end_to_end(self, start_mocks):
+    """Spec env.<VAR> (*-e* beats a realization uniformly, §1A) through the whole
+    launch: ``-e`` is the CLI level over the slot."""
+    with start_mocks() as m:
+      m.agent_cfg.state = {"endpoint": "https://e.example"}
+      m.load_agent_config.return_value = m.agent_cfg
+      env = self._launch_env(
+        m,
+        cli_env=["ANTHROPIC_BASE_URL=https://flag.example"],
+      )
+      assert env.get("ANTHROPIC_BASE_URL") == "https://flag.example"
 
-    def test_a_declared_twin_of_a_realized_variable_stops_the_launch(self, start_mocks):
-        """system-design § "Delivery at launch": the refusal ships, and it stops the box
-        rather than the display."""
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_a_declared_twin_of_a_realized_variable_stops_the_launch(self, start_mocks):
+    """system-design § "Delivery at launch": the refusal ships, and it stops the box
+    rather than the display."""
+    from kanibako.settings.settings_resolve import SettingsError
 
-        with start_mocks() as m:
-            m.agent_cfg.state = {"endpoint": "https://e.example"}
-            m.agent_cfg.env = {"ANTHROPIC_BASE_URL": "https://mine.example"}
-            m.load_agent_config.return_value = m.agent_cfg
-            with pytest.raises(SettingsError) as excinfo:
-                self._launch_env(m)
-            assert "ANTHROPIC_BASE_URL" in str(excinfo.value)
-            m.runtime.run.assert_not_called()
+    with start_mocks() as m:
+      m.agent_cfg.state = {"endpoint": "https://e.example"}
+      m.agent_cfg.env = {"ANTHROPIC_BASE_URL": "https://mine.example"}
+      m.load_agent_config.return_value = m.agent_cfg
+      with pytest.raises(SettingsError) as excinfo:
+        self._launch_env(m)
+      assert "ANTHROPIC_BASE_URL" in str(excinfo.value)
+      m.runtime.run.assert_not_called()
 
 
 class TestTheCliEnvParseRefusesAMalformedItem:
-    """MBR-1 P4c-1: a ``-e`` item that is not a legal ``VAR=VALUE`` is a NAMED error.
+  """MBR-1 P4c-1: a ``-e`` item that is not a legal ``VAR=VALUE`` is a NAMED error.
 
-    🛑 IT USED TO BE SILENT, in two different ways, and both were losses a user could
-    not see: an item with no ``=`` was skipped, and ``=v`` was accepted as a variable
-    whose name is the empty string. A dropped flag was always the deferred surprise §0
-    forbids; it is worse now that ``-e`` OVERRIDES A KEY, because a typo reads as a
-    settings override that quietly did not take.
+  🛑 IT USED TO BE SILENT, in two different ways, and both were losses a user could
+  not see: an item with no ``=`` was skipped, and ``=v`` was accepted as a variable
+  whose name is the empty string. A dropped flag was always the deferred surprise §0
+  forbids; it is worse now that ``-e`` OVERRIDES A KEY, because a typo reads as a
+  settings override that quietly did not take.
 
-    ⚑ EVERY CASE ASSERTS THE OFFENDING ITEM IS IN THE MESSAGE. "It raises" is not the
-    behavior — a user with four ``-e`` flags needs to be told WHICH one.
+  ⚑ EVERY CASE ASSERTS THE OFFENDING ITEM IS IN THE MESSAGE. "It raises" is not the
+  behavior — a user with four ``-e`` flags needs to be told WHICH one.
+  """
+
+  @staticmethod
+  def _refusal(item):
+    from kanibako.commands.start import _parse_cli_env
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as excinfo:
+      _parse_cli_env([item])
+    return str(excinfo.value)
+
+  def test_an_item_with_no_equals_is_refused_by_name(self):
+    message = self._refusal("JUST_A_NAME")
+    assert "JUST_A_NAME" in message
+    # The cure is spelled, not merely implied.
+    assert "JUST_A_NAME=" in message
+
+  def test_an_item_with_an_empty_variable_name_is_refused(self):
+    """``-e =v`` used to enter a variable named ``''`` into the container env."""
+    assert "=v" in self._refusal("=v")
+
+  @pytest.mark.parametrize("item", ["2FA=x", "A-B=x", "A.B=x", "A B=x"])
+  def test_an_illegal_variable_name_is_refused_by_name(self, item):
+    """The shape is the keyspace's own — the plain env identifier, nothing else.
+
+    ⚑ ``A.B`` matters on its own: a dotted spelling is what a user reaches for
+    when they think ``-e`` takes a KEY. It does not; it takes a variable.
     """
+    assert item in self._refusal(item)
 
-    @staticmethod
-    def _refusal(item):
-        from kanibako.commands.start import _parse_cli_env
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_a_reserved_name_is_refused_by_the_shared_floor(self):
+    """§0's reserved-leaf floor, applied through ``leaf_name_reason`` — not a copy.
 
-        with pytest.raises(SettingsError) as excinfo:
-            _parse_cli_env([item])
-        return str(excinfo.value)
+    ⚑ The mutation this kills: dropping the floor call and keeping only the shape
+    check. Every case above would stay green, because a reserved name IS a legal
+    identifier.
+    """
+    from kanibako.settings.settings_keyspace import RESERVED_LEAF_NAMES
 
-    def test_an_item_with_no_equals_is_refused_by_name(self):
-        message = self._refusal("JUST_A_NAME")
-        assert "JUST_A_NAME" in message
-        # The cure is spelled, not merely implied.
-        assert "JUST_A_NAME=" in message
+    reserved = sorted(RESERVED_LEAF_NAMES)[0]
+    assert reserved in self._refusal(f"{reserved}=x")
 
-    def test_an_item_with_an_empty_variable_name_is_refused(self):
-        """``-e =v`` used to enter a variable named ``''`` into the container env."""
-        assert "=v" in self._refusal("=v")
+  def test_a_wellformed_item_keeps_every_character_of_its_value(self):
+    """The ONE ``=`` split is the FIRST one; the value is data from there on."""
+    from kanibako.commands.start import _parse_cli_env
 
-    @pytest.mark.parametrize("item", ["2FA=x", "A-B=x", "A.B=x", "A B=x"])
-    def test_an_illegal_variable_name_is_refused_by_name(self, item):
-        """The shape is the keyspace's own — the plain env identifier, nothing else.
+    assert _parse_cli_env(["K=a=b=c", "EMPTY="]) == {"K": "a=b=c", "EMPTY": ""}
 
-        ⚑ ``A.B`` matters on its own: a dotted spelling is what a user reaches for
-        when they think ``-e`` takes a KEY. It does not; it takes a variable.
-        """
-        assert item in self._refusal(item)
+  def test_the_refusal_lands_before_the_launch_touches_anything(self, start_mocks):
+    """Parsed at the door: a bad ``-e`` fails with no container and no runtime call.
 
-    def test_a_reserved_name_is_refused_by_the_shared_floor(self):
-        """§0's reserved-leaf floor, applied through ``leaf_name_reason`` — not a copy.
+    ⚑ Driven through ``_run_container`` because "it raises somewhere" is not the
+    contract — WHERE it raises is. A parse deferred to the assembly seam would
+    refuse only after the box had been resolved, seeded and locked.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
 
-        ⚑ The mutation this kills: dropping the floor call and keeping only the shape
-        check. Every case above would stay green, because a reserved name IS a legal
-        identifier.
-        """
-        from kanibako.settings.settings_keyspace import RESERVED_LEAF_NAMES
-
-        reserved = sorted(RESERVED_LEAF_NAMES)[0]
-        assert reserved in self._refusal(f"{reserved}=x")
-
-    def test_a_wellformed_item_keeps_every_character_of_its_value(self):
-        """The ONE ``=`` split is the FIRST one; the value is data from there on."""
-        from kanibako.commands.start import _parse_cli_env
-
-        assert _parse_cli_env(["K=a=b=c", "EMPTY="]) == {"K": "a=b=c", "EMPTY": ""}
-
-    def test_the_refusal_lands_before_the_launch_touches_anything(self, start_mocks):
-        """Parsed at the door: a bad ``-e`` fails with no container and no runtime call.
-
-        ⚑ Driven through ``_run_container`` because "it raises somewhere" is not the
-        contract — WHERE it raises is. A parse deferred to the assembly seam would
-        refuse only after the box had been resolved, seeded and locked.
-        """
-        from kanibako.settings.settings_resolve import SettingsError
-
-        with start_mocks() as m:
-            with pytest.raises(SettingsError):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], cli_env=["OOPS"],
-                )
-            m.runtime.run.assert_not_called()
-            m.runtime.exec.assert_not_called()
-            m.resolve_launch_snapshot.assert_not_called()
+    with start_mocks() as m:
+      with pytest.raises(SettingsError):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          cli_env=["OOPS"],
+        )
+      m.runtime.run.assert_not_called()
+      m.runtime.exec.assert_not_called()
+      m.resolve_launch_snapshot.assert_not_called()
 
 
 class TestOnlyTheLaunchResolveCarriesThePerRunEnv:
-    """MBR-1 P4c-1: ``cli_env`` reaches the ONE resolve that describes this launch.
+  """MBR-1 P4c-1: ``cli_env`` reaches the ONE resolve that describes this launch.
 
-    🛑 THE OTHER RESOLVES MUST NOT SEE IT. The conditional image / helper resolves
-    describe an injected table and write no env leaf; ``_sync_box_at_create`` and
-    ``box show --effective`` describe STORED configuration, and a per-run flag
-    appearing there would report a box as configured with something no file says.
-    """
+  🛑 THE OTHER RESOLVES MUST NOT SEE IT. The conditional image / helper resolves
+  describe an injected table and write no env leaf; ``_sync_box_at_create`` and
+  ``box show --effective`` describe STORED configuration, and a per-run flag
+  appearing there would report a box as configured with something no file says.
+  """
 
-    def test_the_whole_box_resolve_carries_the_per_run_env(self, start_mocks):
-        # ⚑ Only the WHOLE-BOX half is pinnable here: under ``start_mocks`` no
-        # narrow resolve runs at all, so a they-did-not-see-it assertion over them
-        # is vacuously green (measured at the P4c-1 review — ``all([])``). The
-        # narrow resolves cannot receive ``cli_env`` TODAY by construction — the
-        # parameter is out of scope at their call sites, so a regression must add
-        # one first. The structural claim lives in the class docstring; this test
-        # pins what actually runs.
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], cli_env=["SCRATCH=1"],
-            )
-            carried = [
-                kw.get("cli_env")
-                for _a, kw in m.resolve_launch_snapshot.call_args_list
-                if kw.get("include_base_families", True)
-            ]
-            # Exactly one whole-box resolve per launch, and it carries the map.
-            assert carried == [{"SCRATCH": "1"}]
+  def test_the_whole_box_resolve_carries_the_per_run_env(self, start_mocks):
+    # ⚑ Only the WHOLE-BOX half is pinnable here: under ``start_mocks`` no
+    # narrow resolve runs at all, so a they-did-not-see-it assertion over them
+    # is vacuously green (measured at the P4c-1 review — ``all([])``). The
+    # narrow resolves cannot receive ``cli_env`` TODAY by construction — the
+    # parameter is out of scope at their call sites, so a regression must add
+    # one first. The structural claim lives in the class docstring; this test
+    # pins what actually runs.
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        cli_env=["SCRATCH=1"],
+      )
+      carried = [
+        kw.get("cli_env")
+        for _a, kw in m.resolve_launch_snapshot.call_args_list
+        if kw.get("include_base_families", True)
+      ]
+      # Exactly one whole-box resolve per launch, and it carries the map.
+      assert carried == [{"SCRATCH": "1"}]
 
-    def test_a_launch_with_no_flag_carries_nothing_to_override_with(self, start_mocks):
-        """No ``-e`` typed → no variable named anywhere, so the collapse is the keys alone."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            for _a, kw in m.resolve_launch_snapshot.call_args_list:
-                assert not kw.get("cli_env"), "an untyped -e named a variable"
+  def test_a_launch_with_no_flag_carries_nothing_to_override_with(self, start_mocks):
+    """No ``-e`` typed → no variable named anywhere, so the collapse is the keys alone."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      for _a, kw in m.resolve_launch_snapshot.call_args_list:
+        assert not kw.get("cli_env"), "an untyped -e named a variable"
 
 
 class TestProjectPositional:
-    """Verify args.project is read directly by run_start."""
+  """Verify args.project is read directly by run_start."""
 
-    def test_project_passed_through(self, start_mocks):
-        """args.project is forwarded to resolve_any_project."""
-        from kanibako.commands.start import run_start
-        import argparse
+  def test_project_passed_through(self, start_mocks):
+    """args.project is forwarded to resolve_any_project."""
+    from kanibako.commands.start import run_start
+    import argparse
 
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                project="/tmp/myproject",
-                agent_args=[],
-            )
-            run_start(args)
-            m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
-            call_args = m.resolve_any_project.call_args
-            assert call_args[0][2] == "/tmp/myproject"
+    with start_mocks() as m:
+      args = argparse.Namespace(
+        entrypoint=None,
+        image=None,
+        new_session=False,
+        continue_session=False,
+        resume_session=False,
+        autonomous=False,
+        secure=False,
+        model=None,
+        env=None,
+        persistent=False,
+        ephemeral=False,
+        no_helpers=False,
+        project="/tmp/myproject",
+        agent_args=[],
+      )
+      run_start(args)
+      m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
+      call_args = m.resolve_any_project.call_args
+      assert call_args[0][2] == "/tmp/myproject"
 
-    def test_project_none_uses_cwd(self, start_mocks):
-        """args.project=None lets resolve_any_project default to cwd."""
-        from kanibako.commands.start import run_start
-        import argparse
+  def test_project_none_uses_cwd(self, start_mocks):
+    """args.project=None lets resolve_any_project default to cwd."""
+    from kanibako.commands.start import run_start
+    import argparse
 
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                project=None,
-                agent_args=[],
-            )
-            run_start(args)
-            m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
-            call_args = m.resolve_any_project.call_args
-            assert call_args[0][2] is None
+    with start_mocks() as m:
+      args = argparse.Namespace(
+        entrypoint=None,
+        image=None,
+        new_session=False,
+        continue_session=False,
+        resume_session=False,
+        autonomous=False,
+        secure=False,
+        model=None,
+        env=None,
+        persistent=False,
+        ephemeral=False,
+        no_helpers=False,
+        project=None,
+        agent_args=[],
+      )
+      run_start(args)
+      m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
+      call_args = m.resolve_any_project.call_args
+      assert call_args[0][2] is None
 
 
 class TestACreatingLaunchSavesWhatItWasTold:
-    """§1A CREATE EXCEPTION, observed at the ONE settings writer both trees share.
+  """§1A CREATE EXCEPTION, observed at the ONE settings writer both trees share.
 
-    Every flag a creating launch installs reaches ``set_config_value`` as its stored
-    key; a launch on an existing box reaches it with nothing.  Written against
-    names that predate the helper so it reads RED on the pre-helper base.
-    """
+  Every flag a creating launch installs reaches ``set_config_value`` as its stored
+  key; a launch on an existing box reaches it with nothing.  Written against
+  names that predate the helper so it reads RED on the pre-helper base.
+  """
 
-    _CASES = [
-        (dict(model_override="m-1"), ("pref.agent.claude.model", "m-1")),
-        (dict(new_session=True), ("pref.agent.claude.continue_mode", "false")),
-        (dict(safe_mode=True), ("pref.agent.claude.access", "restricted")),
-        (dict(autonomous=True), ("pref.agent.claude.access", "full")),
-        (dict(explicit_agent="claude"), ("pref.system.agent", "claude")),
-        (dict(cli_env=["FOO=1"]), ("box.env.FOO", "1")),
-    ]
+  _CASES = [
+    (dict(model_override="m-1"), ("pref.agent.claude.model", "m-1")),
+    (dict(new_session=True), ("pref.agent.claude.continue_mode", "false")),
+    (dict(safe_mode=True), ("pref.agent.claude.access", "restricted")),
+    (dict(autonomous=True), ("pref.agent.claude.access", "full")),
+    (dict(explicit_agent="claude"), ("pref.system.agent", "claude")),
+    (dict(cli_env=["FOO=1"]), ("box.env.FOO", "1")),
+  ]
 
-    def _launch(self, start_mocks, *, is_new, **flags):
-        from kanibako.commands.start import _run_container
-        from kanibako.settings.store_collapse import CLI_PROVENANCE_SCOPE, CollapsedEnv
+  def _launch(self, start_mocks, *, is_new, **flags):
+    from kanibako.commands.start import _run_container
+    from kanibako.settings.store_collapse import CLI_PROVENANCE_SCOPE, CollapsedEnv
 
-        slots = {"FOO": CollapsedEnv("1", CLI_PROVENANCE_SCOPE, "-e FOO")}
-        kw = dict(
-            project_dir=None, entrypoint=None, image_override=None,
-            new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
-        )
-        kw.update(flags)
-        with start_mocks() as m, patch(
-            "kanibako.settings.config_interface.set_config_value",
-            return_value="Set it",
-        ) as m_set, patch(
-            "kanibako.settings.config_interface.stat_unless_gone", return_value=None,
-        ), patch(
-            "kanibako.commands.start._launch_env_map", return_value=slots,
-        ):
-            m.proj.is_new = is_new
-            _run_container(**kw)
-        return [c.args[:2] for c in m_set.call_args_list]
+    slots = {"FOO": CollapsedEnv("1", CLI_PROVENANCE_SCOPE, "-e FOO")}
+    kw = dict(
+      project_dir=None,
+      entrypoint=None,
+      image_override=None,
+      new_session=False,
+      safe_mode=False,
+      resume_mode=False,
+      extra_args=[],
+    )
+    kw.update(flags)
+    with (
+      start_mocks() as m,
+      patch(
+        "kanibako.settings.config_interface.set_config_value",
+        return_value="Set it",
+      ) as m_set,
+      patch(
+        "kanibako.settings.config_interface.stat_unless_gone",
+        return_value=None,
+      ),
+      patch(
+        "kanibako.commands.start._launch_env_map",
+        return_value=slots,
+      ),
+    ):
+      m.proj.is_new = is_new
+      _run_container(**kw)
+    return [c.args[:2] for c in m_set.call_args_list]
 
-    @pytest.mark.parametrize(("flags", "write"), _CASES)
-    def test_a_creating_launch_writes_the_flag(self, start_mocks, flags, write):
-        assert write in self._launch(start_mocks, is_new=True, **flags)
+  @pytest.mark.parametrize(("flags", "write"), _CASES)
+  def test_a_creating_launch_writes_the_flag(self, start_mocks, flags, write):
+    assert write in self._launch(start_mocks, is_new=True, **flags)
 
-    @pytest.mark.parametrize(("flags", "write"), _CASES)
-    def test_an_existing_box_writes_nothing(self, start_mocks, flags, write):
-        assert self._launch(start_mocks, is_new=False, **flags) == []
+  @pytest.mark.parametrize(("flags", "write"), _CASES)
+  def test_an_existing_box_writes_nothing(self, start_mocks, flags, write):
+    assert self._launch(start_mocks, is_new=False, **flags) == []
 
 
 class TestSecureAutonomousFlags:
-    """Verify -A/--autonomous and -S/--secure flag mapping."""
+  """Verify -A/--autonomous and -S/--secure flag mapping."""
 
-    def test_secure_maps_to_safe_mode(self, start_mocks):
-        """-S/--secure should enable safe_mode (no --dangerously-skip-permissions)."""
-        from kanibako.commands.start import run_start
-        import argparse
+  def test_secure_maps_to_safe_mode(self, start_mocks):
+    """-S/--secure should enable safe_mode (no --dangerously-skip-permissions)."""
+    from kanibako.commands.start import run_start
+    import argparse
 
-        # ⚑ A creating launch now SAVES -S (§1A CREATE EXCEPTION); the mock box path
-        # is not a file, so the helper is observed instead of writing.
-        with start_mocks() as m, patch(
-            "kanibako.commands.start.persist_creation_level",
-        ) as m_persist:
-            m.proj.is_new = True
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=True,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                agent_args=[],
-            )
-            run_start(args)
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--dangerously-skip-permissions" not in cli_args
-        saved = m_persist.call_args.args[0]
-        assert [v for k, v in saved.items() if k.endswith(".access")] == ["restricted"]
+    # ⚑ A creating launch now SAVES -S (§1A CREATE EXCEPTION); the mock box path
+    # is not a file, so the helper is observed instead of writing.
+    with (
+      start_mocks() as m,
+      patch(
+        "kanibako.commands.start.persist_creation_level",
+      ) as m_persist,
+    ):
+      m.proj.is_new = True
+      args = argparse.Namespace(
+        entrypoint=None,
+        image=None,
+        new_session=False,
+        continue_session=False,
+        resume_session=False,
+        autonomous=False,
+        secure=True,
+        model=None,
+        env=None,
+        persistent=False,
+        ephemeral=False,
+        no_helpers=False,
+        agent_args=[],
+      )
+      run_start(args)
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      assert "--dangerously-skip-permissions" not in cli_args
+    saved = m_persist.call_args.args[0]
+    assert [v for k, v in saved.items() if k.endswith(".access")] == ["restricted"]
 
-    def test_autonomous_maps_to_unsafe_mode(self, start_mocks):
-        """-A/--autonomous should disable safe_mode (adds --dangerously-skip-permissions)."""
-        from kanibako.commands.start import run_start
-        import argparse
+  def test_autonomous_maps_to_unsafe_mode(self, start_mocks):
+    """-A/--autonomous should disable safe_mode (adds --dangerously-skip-permissions)."""
+    from kanibako.commands.start import run_start
+    import argparse
 
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=True, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                agent_args=[],
-            )
-            run_start(args)
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            # The default box mode is persistent → the AGENT command is nested in the
-            # supervisor PID-1 `sh -c` script (E2c), so match the flag anywhere in the
-            # launch argv rather than as a bare top-level list element.
-            assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
+    with start_mocks() as m:
+      args = argparse.Namespace(
+        entrypoint=None,
+        image=None,
+        new_session=False,
+        continue_session=False,
+        resume_session=False,
+        autonomous=True,
+        secure=False,
+        model=None,
+        env=None,
+        persistent=False,
+        ephemeral=False,
+        no_helpers=False,
+        agent_args=[],
+      )
+      run_start(args)
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      # The default box mode is persistent → the AGENT command is nested in the
+      # supervisor PID-1 `sh -c` script (E2c), so match the flag anywhere in the
+      # launch argv rather than as a bare top-level list element.
+      assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
 
-    def test_default_is_autonomous(self, start_mocks):
-        """Without -A or -S, default behavior is autonomous."""
-        from kanibako.commands.start import run_start
-        import argparse
+  def test_default_is_autonomous(self, start_mocks):
+    """Without -A or -S, default behavior is autonomous."""
+    from kanibako.commands.start import run_start
+    import argparse
 
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                agent_args=[],
-            )
-            run_start(args)
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            # Default box mode is persistent → the flag rides inside the supervisor
-            # PID-1 `sh -c` script (E2c); match it anywhere in the launch argv.
-            assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
+    with start_mocks() as m:
+      args = argparse.Namespace(
+        entrypoint=None,
+        image=None,
+        new_session=False,
+        continue_session=False,
+        resume_session=False,
+        autonomous=False,
+        secure=False,
+        model=None,
+        env=None,
+        persistent=False,
+        ephemeral=False,
+        no_helpers=False,
+        agent_args=[],
+      )
+      run_start(args)
+      cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+      # Default box mode is persistent → the flag rides inside the supervisor
+      # PID-1 `sh -c` script (E2c); match it anywhere in the launch argv.
+      assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
 
 
 class TestAgentOnlyFlagsWithEntrypoint:
-    """``start --entrypoint X`` runs no agent: each agent-only flag gets a Note."""
+  """``start --entrypoint X`` runs no agent: each agent-only flag gets a Note."""
 
-    @staticmethod
-    def _args(*argv: str):
-        import argparse
+  @staticmethod
+  def _args(*argv: str):
+    import argparse
 
-        from kanibako.commands.start import add_start_parser
+    from kanibako.commands.start import add_start_parser
 
-        parser = argparse.ArgumentParser()
-        add_start_parser(parser.add_subparsers())
-        args = parser.parse_args(["start", *argv])
-        args.agent_args = []
-        return args
+    parser = argparse.ArgumentParser()
+    add_start_parser(parser.add_subparsers())
+    args = parser.parse_args(["start", *argv])
+    args.agent_args = []
+    return args
 
-    @pytest.mark.parametrize("argv, flag", [
-        (["-N"], "-N/--new"),
-        (["-C"], "-C/--continue"),
-        (["-R"], "-R/--resume"),
-        (["-M", "opus"], "-M/--model"),
-        (["-A"], "-A/--autonomous"),
-        (["-S"], "-S/--secure"),
-        (["--no-auto-auth"], "--no-auto-auth"),
-    ])
-    def test_each_flag_is_noted_and_the_launch_proceeds(
-        self, start_mocks, capsys, argv, flag,
-    ):
-        from kanibako.commands.start import run_start
+  @pytest.mark.parametrize(
+    "argv, flag",
+    [
+      (["-N"], "-N/--new"),
+      (["-C"], "-C/--continue"),
+      (["-R"], "-R/--resume"),
+      (["-M", "opus"], "-M/--model"),
+      (["-A"], "-A/--autonomous"),
+      (["-S"], "-S/--secure"),
+      (["--no-auto-auth"], "--no-auto-auth"),
+    ],
+  )
+  def test_each_flag_is_noted_and_the_launch_proceeds(
+    self,
+    start_mocks,
+    capsys,
+    argv,
+    flag,
+  ):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", *argv))
-            m.runtime.run.assert_called_once()
-        err = capsys.readouterr().err
-        assert f"Note: {flag} has no effect with --entrypoint" in err
-        assert err.count("has no effect with --entrypoint") == 1
+    with start_mocks() as m:
+      run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", *argv))
+      m.runtime.run.assert_called_once()
+    err = capsys.readouterr().err
+    assert f"Note: {flag} has no effect with --entrypoint" in err
+    assert err.count("has no effect with --entrypoint") == 1
 
-    def test_every_flag_at_once_is_named_once_each(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_every_flag_at_once_is_named_once_each(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            run_start(self._args(
-                "--entrypoint", "/bin/bash", "--ephemeral",
-                "-N", "-M", "opus", "-A", "--no-auto-auth",
-            ))
-            m.runtime.run.assert_called_once()
-        err = capsys.readouterr().err
-        for flag in ("-N/--new", "-M/--model", "-A/--autonomous", "--no-auto-auth"):
-            assert f"Note: {flag} has no effect with --entrypoint" in err
-        assert err.count("has no effect with --entrypoint") == 4
+    with start_mocks() as m:
+      run_start(
+        self._args(
+          "--entrypoint",
+          "/bin/bash",
+          "--ephemeral",
+          "-N",
+          "-M",
+          "opus",
+          "-A",
+          "--no-auto-auth",
+        )
+      )
+      m.runtime.run.assert_called_once()
+    err = capsys.readouterr().err
+    for flag in ("-N/--new", "-M/--model", "-A/--autonomous", "--no-auto-auth"):
+      assert f"Note: {flag} has no effect with --entrypoint" in err
+    assert err.count("has no effect with --entrypoint") == 4
 
-    def test_no_note_without_entrypoint(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_no_note_without_entrypoint(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            run_start(self._args("--ephemeral", "-N", "-M", "opus", "-S", "--no-auto-auth"))
-            m.runtime.run.assert_called_once()
-        assert "has no effect" not in capsys.readouterr().err
+    with start_mocks() as m:
+      run_start(self._args("--ephemeral", "-N", "-M", "opus", "-S", "--no-auto-auth"))
+      m.runtime.run.assert_called_once()
+    assert "has no effect" not in capsys.readouterr().err
 
-    def test_no_note_for_a_bare_entrypoint(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_no_note_for_a_bare_entrypoint(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral"))
-            m.runtime.run.assert_called_once()
-        assert "has no effect" not in capsys.readouterr().err
+    with start_mocks() as m:
+      run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral"))
+      m.runtime.run.assert_called_once()
+    assert "has no effect" not in capsys.readouterr().err
 
-    _DETACH_NOTE = "Note: --entrypoint has no effect with --detach; the box runs its shell"
+  _DETACH_NOTE = "Note: --entrypoint has no effect with --detach; the box runs its shell"
 
-    def test_detach_on_a_new_launch_notes_the_dropped_entrypoint(
-        self, start_mocks, capsys,
-    ):
-        from kanibako.commands.start import run_start
+  def test_detach_on_a_new_launch_notes_the_dropped_entrypoint(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
-            assert rc == 0
-            m.runtime.run.assert_called_once()
-            # What runs is unchanged: the bare-shell keep-alive, not the entrypoint.
-            kw = m.runtime.run.call_args.kwargs
-            assert kw["entrypoint"] == "tmux"
-            assert not any("/bin/bash" in str(a) for a in kw.get("cli_args") or [])
-        assert capsys.readouterr().err.count(self._DETACH_NOTE) == 1
+    with start_mocks() as m:
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
+      assert rc == 0
+      m.runtime.run.assert_called_once()
+      # What runs is unchanged: the bare-shell keep-alive, not the entrypoint.
+      kw = m.runtime.run.call_args.kwargs
+      assert kw["entrypoint"] == "tmux"
+      assert not any("/bin/bash" in str(a) for a in kw.get("cli_args") or [])
+    assert capsys.readouterr().err.count(self._DETACH_NOTE) == 1
 
-    def test_warm_only_names_itself_in_the_detach_note(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_warm_only_names_itself_in_the_detach_note(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--warm-only"))
-            assert rc == 0
-            m.runtime.run.assert_called_once()
-        err = capsys.readouterr().err
-        assert err.count(
-            "Note: --entrypoint has no effect with --warm-only; the box runs its shell"
-        ) == 1
-        assert "with --detach" not in err
+    with start_mocks() as m:
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--warm-only"))
+      assert rc == 0
+      m.runtime.run.assert_called_once()
+    err = capsys.readouterr().err
+    assert (
+      err.count("Note: --entrypoint has no effect with --warm-only; the box runs its shell") == 1
+    )
+    assert "with --detach" not in err
 
-    def test_no_detach_note_without_entrypoint(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_no_detach_note_without_entrypoint(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            run_start(self._args("--detach"))
-            m.runtime.run.assert_called_once()
-        assert "--entrypoint has no effect" not in capsys.readouterr().err
+    with start_mocks() as m:
+      run_start(self._args("--detach"))
+      m.runtime.run.assert_called_once()
+    assert "--entrypoint has no effect" not in capsys.readouterr().err
 
-    def test_a_running_box_refuses_the_pair_without_a_note(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_a_running_box_refuses_the_pair_without_a_note(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        err = capsys.readouterr().err
-        assert "--entrypoint cannot be applied" in err
-        assert "Note:" not in err
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "--entrypoint cannot be applied" in err
+    assert "Note:" not in err
 
-    # ⚑ ORDERING: a Note prints only past the last refusal, so a refused launch
-    # shows its Error alone.  Each refusal is probed both ways.
+  # ⚑ ORDERING: a Note prints only past the last refusal, so a refused launch
+  # shows its Error alone.  Each refusal is probed both ways.
 
-    def test_a_stopped_container_refusal_prints_no_note(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_a_stopped_container_refusal_prints_no_note(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            m.runtime.container_exists.return_value = True
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        err = capsys.readouterr().err
-        assert "a stopped container is still holding its name" in err
-        assert "Note:" not in err
+    with start_mocks() as m:
+      m.runtime.container_exists.return_value = True
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "a stopped container is still holding its name" in err
+    assert "Note:" not in err
 
-    def test_a_virtiofs_refusal_prints_no_note(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_a_virtiofs_refusal_prints_no_note(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            m.virtiofs_check.return_value = "Error: virtiofs probe refusal"
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
-            assert rc == 1
-            m.runtime.run.assert_not_called()
-        err = capsys.readouterr().err
-        assert "Error: virtiofs probe refusal" in err
-        assert "Note:" not in err
+    with start_mocks() as m:
+      m.virtiofs_check.return_value = "Error: virtiofs probe refusal"
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
+      assert rc == 1
+      m.runtime.run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "Error: virtiofs probe refusal" in err
+    assert "Note:" not in err
 
-    def test_the_notes_follow_every_refusal_on_a_launch_that_proceeds(
-        self, start_mocks, capsys,
-    ):
-        from kanibako.commands.start import run_start
+  def test_the_notes_follow_every_refusal_on_a_launch_that_proceeds(
+    self,
+    start_mocks,
+    capsys,
+  ):
+    from kanibako.commands.start import run_start
 
-        notes_at_run: list[str] = []
-        with start_mocks() as m:
-            _run = m.runtime.run.side_effect
+    notes_at_run: list[str] = []
+    with start_mocks() as m:
+      _run = m.runtime.run.side_effect
 
-            def _record_then_run(*a, **k):
-                notes_at_run.append(capsys.readouterr().err)
-                return _run(*a, **k)
+      def _record_then_run(*a, **k):
+        notes_at_run.append(capsys.readouterr().err)
+        return _run(*a, **k)
 
-            m.runtime.run.side_effect = _record_then_run
-            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
-            assert rc == 0
-            m.virtiofs_check.assert_called_once()
-        # Both Notes were already printed when the container was run.
-        assert "Note: -S/--secure has no effect with --entrypoint" in notes_at_run[0]
-        assert self._DETACH_NOTE in notes_at_run[0]
+      m.runtime.run.side_effect = _record_then_run
+      rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
+      assert rc == 0
+      m.virtiofs_check.assert_called_once()
+    # Both Notes were already printed when the container was run.
+    assert "Note: -S/--secure has no effect with --entrypoint" in notes_at_run[0]
+    assert self._DETACH_NOTE in notes_at_run[0]
 
-    def test_the_live_box_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_the_live_box_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            run_start(self._args("--entrypoint", "/bin/bash", "-S"))
-            m.runtime.run.assert_not_called()
-            assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
-        err = capsys.readouterr().err
-        assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      run_start(self._args("--entrypoint", "/bin/bash", "-S"))
+      m.runtime.run.assert_not_called()
+      assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
+    err = capsys.readouterr().err
+    assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
 
-    def test_the_ephemeral_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
-        from kanibako.commands.start import run_start
+  def test_the_ephemeral_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
+    from kanibako.commands.start import run_start
 
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
-            m.runtime.run.assert_not_called()
-            assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
-        err = capsys.readouterr().err
-        assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
+      m.runtime.run.assert_not_called()
+      assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
+    err = capsys.readouterr().err
+    assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
 
 
 # ---------------------------------------------------------------------------
 # Characterization: vault_tmpfs is mode-specific (pins behavior for #71 B0)
 # ---------------------------------------------------------------------------
 
+
 class TestVaultTmpfsMode:
-    """Pin that there is NO default tmpfs mask in any box mode.
+  """Pin that there is NO default tmpfs mask in any box mode.
 
-    The old unconditional ``~/workspace/vault`` mask default was DROPPED in
-    1.6.0 — the vault was relocated out of the workspace, so there is nothing in
-    ``~/workspace`` to mask.  start.py resolves masks through the ``box.masks``
-    category model with no default, so with no config the mask list is empty in
-    every box mode (default / workset / standalone).  A box (or any scope) may
-    still declare masks via ``box.masks`` / ``<scope>.masks``.
-    """
+  The old unconditional ``~/workspace/vault`` mask default was DROPPED in
+  1.6.0 — the vault was relocated out of the workspace, so there is nothing in
+  ``~/workspace`` to mask.  start.py resolves masks through the ``box.masks``
+  category model with no default, so with no config the mask list is empty in
+  every box mode (default / workset / standalone).  A box (or any scope) may
+  still declare masks via ``box.masks`` / ``<scope>.masks``.
+  """
 
-    def test_default_mode_has_no_mask(self, start_mocks):
-        from pathlib import Path
+  def test_default_mode_has_no_mask(self, start_mocks):
+    from pathlib import Path
 
-        from kanibako.settings.paths import ProjectGroup, BoxMode
+    from kanibako.settings.paths import ProjectGroup, BoxMode
 
-        with start_mocks() as m:
-            m.proj.mode = BoxMode.primary
-            m.proj.group = ProjectGroup(
-                name="default", root=Path("/data"),
-                is_default=True,
-            )
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # Empty mask list -> runtime.run is passed tmpfs_masks=None
-            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
-            # args are emitted.
-            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks is None
+    with start_mocks() as m:
+      m.proj.mode = BoxMode.primary
+      m.proj.group = ProjectGroup(
+        name="default",
+        root=Path("/data"),
+        is_default=True,
+      )
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # Empty mask list -> runtime.run is passed tmpfs_masks=None
+      # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+      # args are emitted.
+      masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+      assert masks is None
 
-    def test_workset_mode_has_no_mask(self, start_mocks):
-        from pathlib import Path
+  def test_workset_mode_has_no_mask(self, start_mocks):
+    from pathlib import Path
 
-        from kanibako.settings.paths import ProjectGroup, BoxMode
+    from kanibako.settings.paths import ProjectGroup, BoxMode
 
-        with start_mocks() as m:
-            m.proj.mode = BoxMode.named
-            m.proj.group = ProjectGroup(
-                name="ws", root=Path("/ws"),
-                is_default=False,
-            )
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # Empty mask list -> runtime.run is passed tmpfs_masks=None
-            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
-            # args are emitted.
-            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks is None
+    with start_mocks() as m:
+      m.proj.mode = BoxMode.named
+      m.proj.group = ProjectGroup(
+        name="ws",
+        root=Path("/ws"),
+        is_default=False,
+      )
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # Empty mask list -> runtime.run is passed tmpfs_masks=None
+      # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+      # args are emitted.
+      masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+      assert masks is None
 
-    def test_standalone_mode_has_no_mask(self, start_mocks, tmp_path):
-        from kanibako.settings.paths import BoxMode
+  def test_standalone_mode_has_no_mask(self, start_mocks, tmp_path):
+    from kanibako.settings.paths import BoxMode
 
-        with start_mocks() as m:
-            m.proj.mode = BoxMode.standalone
-            m.proj.group = None
-            # A REAL standalone layout: its ``{meta.box.path}`` is
-            # ``<metadata_path>/box_data``, which every start's spawn-budget bind
-            # resolves; a MagicMock ``metadata_path`` makes it a relative mock string.
-            m.proj.metadata_path = tmp_path / ".kanibako"
-            m.proj.shell_path = m.proj.metadata_path / "box_data" / "home"
-            m.proj.shell_path.mkdir(parents=True)
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            # Empty mask list -> runtime.run is passed tmpfs_masks=None
-            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
-            # args are emitted.
-            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks is None
+    with start_mocks() as m:
+      m.proj.mode = BoxMode.standalone
+      m.proj.group = None
+      # A REAL standalone layout: its ``{meta.box.path}`` is
+      # ``<metadata_path>/box_data``, which every start's spawn-budget bind
+      # resolves; a MagicMock ``metadata_path`` makes it a relative mock string.
+      m.proj.metadata_path = tmp_path / ".kanibako"
+      m.proj.shell_path = m.proj.metadata_path / "box_data" / "home"
+      m.proj.shell_path.mkdir(parents=True)
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+      )
+      # Empty mask list -> runtime.run is passed tmpfs_masks=None
+      # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+      # args are emitted.
+      masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+      assert masks is None
 
 
 class TestConfigurableBootstrap:
-    """PART C: the persistent bootstrap program is configurable (default tmux).
+  """PART C: the persistent bootstrap program is configurable (default tmux).
 
-    ⚑ E2c: the configurable bootstrap program governs the NO-AGENT persistent path
-    (and the supervisor's forward-compat FALLBACK keep-alive) — a supervised AGENT
-    launch runs its session under the supervisor's OWN tmux (:mod:`box_lifecycle` is
-    tmux-based), so these tests drive the no-agent (``box_shell_mode``) path where the
-    bootstrap program still wraps the inner command directly.
-    """
+  ⚑ E2c: the configurable bootstrap program governs the NO-AGENT persistent path
+  (and the supervisor's forward-compat FALLBACK keep-alive) — a supervised AGENT
+  launch runs its session under the supervisor's OWN tmux (:mod:`box_lifecycle` is
+  tmux-based), so these tests drive the no-agent (``box_shell_mode``) path where the
+  bootstrap program still wraps the inner command directly.
+  """
 
-    def test_default_bootstrap_is_tmux(self, start_mocks):
-        with start_mocks() as m:
-            # A persistent no-agent launch reads ``_resolve_bootstrap_program``,
-            # whose fixture stub answers ``tmux``.
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, box_shell_mode=True,
-            )
-            run_kwargs = m.runtime.run.call_args.kwargs
-            assert run_kwargs["entrypoint"] == "tmux"
-            assert run_kwargs["cli_args"][:4] == [
-                "new-session", "-s", "kanibako", "--",
-            ]
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+  def test_default_bootstrap_is_tmux(self, start_mocks):
+    with start_mocks() as m:
+      # A persistent no-agent launch reads ``_resolve_bootstrap_program``,
+      # whose fixture stub answers ``tmux``.
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        box_shell_mode=True,
+      )
+      run_kwargs = m.runtime.run.call_args.kwargs
+      assert run_kwargs["entrypoint"] == "tmux"
+      assert run_kwargs["cli_args"][:4] == [
+        "new-session",
+        "-s",
+        "kanibako",
+        "--",
+      ]
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
 
-    def test_non_tmux_bootstrap_execs_program_directly(self, start_mocks):
-        with start_mocks() as m:
-            # A no-agent launch takes the BOX agent's bootstrap, the value
-            # ``run_start`` reads (``_resolve_bootstrap_program``), not the shell
-            # node's (``_bootstrap_choice``), so this is the stub it consults.
-            from kanibako.commands.start import BootstrapChoice
-            m.resolve_bootstrap_program.return_value = BootstrapChoice(
-                "zellij", "claude",
-            )
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, box_shell_mode=True,
-            )
-            run_kwargs = m.runtime.run.call_args.kwargs
-            # Non-tmux: program is exec'd with the inner command + args (no
-            # tmux new-session shape).
-            assert run_kwargs["entrypoint"] == "zellij"
-            cli_args = run_kwargs["cli_args"]
-            assert "new-session" not in cli_args
-            assert cli_args[0] == "sh"  # inner command (resolved box shell)
-            # Reattach uses the program bare (no -t kanibako session contract).
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["zellij"]
+  def test_non_tmux_bootstrap_execs_program_directly(self, start_mocks):
+    with start_mocks() as m:
+      # A no-agent launch takes the BOX agent's bootstrap, the value
+      # ``run_start`` reads (``_resolve_bootstrap_program``), not the shell
+      # node's (``_bootstrap_choice``), so this is the stub it consults.
+      from kanibako.commands.start import BootstrapChoice
 
-    def test_non_tmux_reattach_when_running(self, start_mocks):
-        with start_mocks() as m:
-            m.bootstrap_program.return_value = "zellij"
-            m.runtime.is_running.return_value = True
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["zellij"]
+      m.resolve_bootstrap_program.return_value = BootstrapChoice(
+        "zellij",
+        "claude",
+      )
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        box_shell_mode=True,
+      )
+      run_kwargs = m.runtime.run.call_args.kwargs
+      # Non-tmux: program is exec'd with the inner command + args (no
+      # tmux new-session shape).
+      assert run_kwargs["entrypoint"] == "zellij"
+      cli_args = run_kwargs["cli_args"]
+      assert "new-session" not in cli_args
+      assert cli_args[0] == "sh"  # inner command (resolved box shell)
+      # Reattach uses the program bare (no -t kanibako session contract).
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["zellij"]
+
+  def test_non_tmux_reattach_when_running(self, start_mocks):
+    with start_mocks() as m:
+      m.bootstrap_program.return_value = "zellij"
+      m.runtime.is_running.return_value = True
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["zellij"]
 
 
 class TestLaunchBaselineCheckIntegration:
-    """PART D: the two-tier launch check gates / warns in _run_container."""
+  """PART D: the two-tier launch check gates / warns in _run_container."""
 
-    def test_bootstrap_missing_hard_stops(self, start_mocks, capsys):
-        from kanibako.commands.start import _BOOTSTRAP_MISSING
+  def test_bootstrap_missing_hard_stops(self, start_mocks, capsys):
+    from kanibako.commands.start import _BOOTSTRAP_MISSING
 
-        with start_mocks() as m:
-            m.launch_check.return_value = _BOOTSTRAP_MISSING
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-        assert rc == 1
-        m.runtime.run.assert_not_called()
+    with start_mocks() as m:
+      m.launch_check.return_value = _BOOTSTRAP_MISSING
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+    assert rc == 1
+    m.runtime.run.assert_not_called()
 
-    def test_baseline_missing_proceeds(self, start_mocks):
-        """Tier-2 missing baseline tools never block the launch."""
-        with start_mocks() as m:
-            m.launch_check.return_value = [("ripgrep", "rg")]
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            # Launch proceeds despite the tier-2 warning.
-            m.runtime.run.assert_called_once()
-        assert rc == 0
+  def test_baseline_missing_proceeds(self, start_mocks):
+    """Tier-2 missing baseline tools never block the launch."""
+    with start_mocks() as m:
+      m.launch_check.return_value = [("ripgrep", "rg")]
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      # Launch proceeds despite the tier-2 warning.
+      m.runtime.run.assert_called_once()
+    assert rc == 0
 
-    def test_check_skipped_when_ephemeral(self, start_mocks):
-        """Ephemeral launches don't use the bootstrap program, so the launch
-        check (and its hard stop) is skipped entirely — even if the image lacks
-        the bootstrap program."""
-        from kanibako.commands.start import _BOOTSTRAP_MISSING
+  def test_check_skipped_when_ephemeral(self, start_mocks):
+    """Ephemeral launches don't use the bootstrap program, so the launch
+    check (and its hard stop) is skipped entirely — even if the image lacks
+    the bootstrap program."""
+    from kanibako.commands.start import _BOOTSTRAP_MISSING
 
-        with start_mocks() as m:
-            m.launch_check.return_value = _BOOTSTRAP_MISSING
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=False,
-            )
-            # Check never runs; launch proceeds despite the bootstrap sentinel.
-            m.launch_check.assert_not_called()
-            m.runtime.run.assert_called_once()
-        assert rc == 0
+    with start_mocks() as m:
+      m.launch_check.return_value = _BOOTSTRAP_MISSING
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=False,
+      )
+      # Check never runs; launch proceeds despite the bootstrap sentinel.
+      m.launch_check.assert_not_called()
+      m.runtime.run.assert_called_once()
+    assert rc == 0
 
 
 class TestCheckLaunchBaselineUnit:
-    """PART D: _check_launch_baseline tiers + state-file surfacing (probe mocked)."""
+  """PART D: _check_launch_baseline tiers + state-file surfacing (probe mocked)."""
 
-    def _std(self, tmp_path):
-        from types import SimpleNamespace
-        # ``_launch_issues_path``/``_shadow_issues_path`` read ``std.state`` — the
-        # resolved ``system.state`` (keyspec §2g system.state) — so the stand-in must
-        # carry it; this
-        # mirrors a real ``load_std_paths()`` resolving the key's own default against
-        # ``XDG_STATE_HOME=<tmp_path>/state``.
-        return SimpleNamespace(state=tmp_path / "state" / "kanibako")
+  def _std(self, tmp_path):
+    from types import SimpleNamespace
 
-    def test_tier1_missing_returns_sentinel_with_shell_reminder(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        from kanibako.commands import start as start_mod
+    # ``_launch_issues_path``/``_shadow_issues_path`` read ``std.state`` — the
+    # resolved ``system.state`` (keyspec §2g system.state) — so the stand-in must
+    # carry it; this
+    # mirrors a real ``load_std_paths()`` resolving the key's own default against
+    # ``XDG_STATE_HOME=<tmp_path>/state``.
+    return SimpleNamespace(state=tmp_path / "state" / "kanibako")
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        # Probe: bootstrap program 'tmux' is among the missing.
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["tmux", "rg"]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        assert result is start_mod._BOOTSTRAP_MISSING
-        err = capsys.readouterr().err
-        assert "bootstrap program 'tmux'" in err
-        # Shell-availability reminder so the user can investigate.
-        assert "shell IS still available" in err
-        assert "bash" in err
-        # No known setting: the install cure alone, and no key the user never wrote.
-        assert "Install it in the image, or start without it:" in err
-        assert "agent.default.bootstrap" not in err
-        # An ephemeral start skips the bootstrap program, so the refusal names it as a
-        # cure; both cures name the box.
-        assert "kanibako start 'my box' --ephemeral" in err
-        assert "kanibako shell 'my box'" in err
+  def test_tier1_missing_returns_sentinel_with_shell_reminder(self, tmp_path, monkeypatch, capsys):
+    from kanibako.commands import start as start_mod
 
-    def test_tier1_on_a_detached_start_offers_no_ephemeral_cure(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """``--detach`` and ``kanibako code`` refuse ``--ephemeral``, so it is no cure there."""
-        from kanibako.commands import start as start_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    # Probe: bootstrap program 'tmux' is among the missing.
+    with patch.object(start_mod, "probe_missing_executables", return_value=["tmux", "rg"]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert result is start_mod._BOOTSTRAP_MISSING
+    err = capsys.readouterr().err
+    assert "bootstrap program 'tmux'" in err
+    # Shell-availability reminder so the user can investigate.
+    assert "shell IS still available" in err
+    assert "bash" in err
+    # No known setting: the install cure alone, and no key the user never wrote.
+    assert "Install it in the image, or start without it:" in err
+    assert "agent.default.bootstrap" not in err
+    # An ephemeral start skips the bootstrap program, so the refusal names it as a
+    # cure; both cures name the box.
+    assert "kanibako start 'my box' --ephemeral" in err
+    assert "kanibako shell 'my box'" in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["tmux"]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting="agent.shell.bootstrap", cure_ref="'my box'", attached=False,
-            )
-        assert result is start_mod._BOOTSTRAP_MISSING
-        err = capsys.readouterr().err
-        assert "--ephemeral" not in err
-        assert "start without it" not in err
-        assert (
-            "Install it in the image, or set agent.shell.bootstrap to an installed program."
-            in err
-        )
-        assert "kanibako shell 'my box'" in err
+  def test_tier1_on_a_detached_start_offers_no_ephemeral_cure(self, tmp_path, monkeypatch, capsys):
+    """``--detach`` and ``kanibako code`` refuse ``--ephemeral``, so it is no cure there."""
+    from kanibako.commands import start as start_mod
 
-    def test_tier1_on_a_shell_box_names_the_shell_tier_key(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """When a plain-shell box's ``tmux`` came from its own ``agent.shell.bootstrap``,
-        the cure names that key, not ``agent.default.bootstrap``."""
-        from kanibako.commands import start as start_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    with patch.object(start_mod, "probe_missing_executables", return_value=["tmux"]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting="agent.shell.bootstrap",
+        cure_ref="'my box'",
+        attached=False,
+      )
+    assert result is start_mod._BOOTSTRAP_MISSING
+    err = capsys.readouterr().err
+    assert "--ephemeral" not in err
+    assert "start without it" not in err
+    assert "Install it in the image, or set agent.shell.bootstrap to an installed program." in err
+    assert "kanibako shell 'my box'" in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        setting = start_mod._bootstrap_setting(
-            start_mod.BootstrapChoice("tmux", "shell"),
-        )
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["tmux"]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=setting, cure_ref="'my box'", attached=True,
-            )
-        assert result is start_mod._BOOTSTRAP_MISSING
-        err = capsys.readouterr().err
-        assert "or set agent.shell.bootstrap to an installed program, or start without it:" in err
-        assert "kanibako start 'my box' --ephemeral" in err
-        assert "agent.default.bootstrap" not in err
+  def test_tier1_on_a_shell_box_names_the_shell_tier_key(self, tmp_path, monkeypatch, capsys):
+    """When a plain-shell box's ``tmux`` came from its own ``agent.shell.bootstrap``,
+    the cure names that key, not ``agent.default.bootstrap``."""
+    from kanibako.commands import start as start_mod
 
-    def test_tier2_missing_warns_and_persists(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        from kanibako.commands import start as start_mod
-        from kanibako.runtime import baseline as baseline_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    setting = start_mod._bootstrap_setting(
+      start_mod.BootstrapChoice("tmux", "shell"),
+    )
+    with patch.object(start_mod, "probe_missing_executables", return_value=["tmux"]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting=setting,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert result is start_mod._BOOTSTRAP_MISSING
+    err = capsys.readouterr().err
+    assert "or set agent.shell.bootstrap to an installed program, or start without it:" in err
+    assert "kanibako start 'my box' --ephemeral" in err
+    assert "agent.default.bootstrap" not in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
+  def test_tier2_missing_warns_and_persists(self, tmp_path, monkeypatch, capsys):
+    from kanibako.commands import start as start_mod
+    from kanibako.runtime import baseline as baseline_mod
 
-        # Use a known baseline so we can assert the missing exe maps to a pkg.
-        monkeypatch.setattr(
-            baseline_mod, "load_baseline",
-            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
-        )
-        # Bootstrap present (tmux), but 'rg' missing.
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["rg"]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        assert result == [("ripgrep", "rg")]
-        # Persisted to the state file.
-        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
-        assert issues.is_file()
-        assert "ripgrep: rg" in issues.read_text()
-        # No pre-launch print: the warning is surfaced once, post-session.
-        assert capsys.readouterr().err == ""
-        # Reprint surfaces the missing tools.
-        start_mod._print_launch_issues(self._std(tmp_path), "box1")
-        err = capsys.readouterr().err
-        assert "missing baseline tools" in err
-        assert "ripgrep: rg" in err
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
 
-    def test_tier2_clean_clears_stale_state(self, tmp_path, monkeypatch):
-        from kanibako.commands import start as start_mod
-        from kanibako.runtime import baseline as baseline_mod
+    # Use a known baseline so we can assert the missing exe maps to a pkg.
+    monkeypatch.setattr(
+      baseline_mod,
+      "load_baseline",
+      lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+    )
+    # Bootstrap present (tmux), but 'rg' missing.
+    with patch.object(start_mod, "probe_missing_executables", return_value=["rg"]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert result == [("ripgrep", "rg")]
+    # Persisted to the state file.
+    issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+    assert issues.is_file()
+    assert "ripgrep: rg" in issues.read_text()
+    # No pre-launch print: the warning is surfaced once, post-session.
+    assert capsys.readouterr().err == ""
+    # Reprint surfaces the missing tools.
+    start_mod._print_launch_issues(self._std(tmp_path), "box1")
+    err = capsys.readouterr().err
+    assert "missing baseline tools" in err
+    assert "ripgrep: rg" in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        monkeypatch.setattr(
-            baseline_mod, "load_baseline", lambda: {"tmux": ["tmux"]},
-        )
-        # Pre-seed a stale issues file.
-        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
-        issues.parent.mkdir(parents=True, exist_ok=True)
-        issues.write_text("ripgrep: rg\n")
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=[]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        assert result == []
-        assert not issues.exists()
+  def test_tier2_clean_clears_stale_state(self, tmp_path, monkeypatch):
+    from kanibako.commands import start as start_mod
+    from kanibako.runtime import baseline as baseline_mod
 
-    def test_print_launch_issues_reprints(self, tmp_path, monkeypatch, capsys):
-        from kanibako.commands import start as start_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    monkeypatch.setattr(
+      baseline_mod,
+      "load_baseline",
+      lambda: {"tmux": ["tmux"]},
+    )
+    # Pre-seed a stale issues file.
+    issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+    issues.parent.mkdir(parents=True, exist_ok=True)
+    issues.write_text("ripgrep: rg\n")
+    with patch.object(start_mod, "probe_missing_executables", return_value=[]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert result == []
+    assert not issues.exists()
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
-        issues.parent.mkdir(parents=True, exist_ok=True)
-        issues.write_text("ripgrep: rg\n")
-        start_mod._print_launch_issues(self._std(tmp_path), "box1")
-        err = capsys.readouterr().err
-        assert "missing baseline tools" in err
-        assert "ripgrep: rg" in err
+  def test_print_launch_issues_reprints(self, tmp_path, monkeypatch, capsys):
+    from kanibako.commands import start as start_mod
 
-    def test_shadow_issues_persist_and_reprint(self, tmp_path, monkeypatch, capsys):
-        from kanibako.commands import start as start_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+    issues.parent.mkdir(parents=True, exist_ok=True)
+    issues.write_text("ripgrep: rg\n")
+    start_mod._print_launch_issues(self._std(tmp_path), "box1")
+    err = capsys.readouterr().err
+    assert "missing baseline tools" in err
+    assert "ripgrep: rg" in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        std = self._std(tmp_path)
-        dests = ["/home/agent/vault/rw", "/home/agent/.local/bin/foo"]
-        start_mod._persist_shadow_issues(std, "box1", dests)
-        # Persisted one-per-line.
-        issues = start_mod._shadow_issues_path(std, "box1")
-        assert issues.is_file()
-        assert issues.read_text() == "/home/agent/vault/rw\n/home/agent/.local/bin/foo\n"
-        # No pre-launch print: the warning is surfaced once, post-session.
-        assert capsys.readouterr().err == ""
-        # Reprint surfaces the dests.
-        start_mod._print_shadow_issues(std, "box1")
-        err = capsys.readouterr().err
-        assert "shadow pre-existing files" in err
-        assert "/home/agent/vault/rw" in err
-        assert "/home/agent/.local/bin/foo" in err
+  def test_shadow_issues_persist_and_reprint(self, tmp_path, monkeypatch, capsys):
+    from kanibako.commands import start as start_mod
 
-    def test_shadow_issues_empty_clears_state(self, tmp_path, monkeypatch):
-        from kanibako.commands import start as start_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    std = self._std(tmp_path)
+    dests = ["/home/agent/vault/rw", "/home/agent/.local/bin/foo"]
+    start_mod._persist_shadow_issues(std, "box1", dests)
+    # Persisted one-per-line.
+    issues = start_mod._shadow_issues_path(std, "box1")
+    assert issues.is_file()
+    assert issues.read_text() == "/home/agent/vault/rw\n/home/agent/.local/bin/foo\n"
+    # No pre-launch print: the warning is surfaced once, post-session.
+    assert capsys.readouterr().err == ""
+    # Reprint surfaces the dests.
+    start_mod._print_shadow_issues(std, "box1")
+    err = capsys.readouterr().err
+    assert "shadow pre-existing files" in err
+    assert "/home/agent/vault/rw" in err
+    assert "/home/agent/.local/bin/foo" in err
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        std = self._std(tmp_path)
-        issues = start_mod._shadow_issues_path(std, "box1")
-        issues.parent.mkdir(parents=True, exist_ok=True)
-        issues.write_text("/home/agent/vault/rw\n")
-        start_mod._persist_shadow_issues(std, "box1", [])
-        assert not issues.exists()
+  def test_shadow_issues_empty_clears_state(self, tmp_path, monkeypatch):
+    from kanibako.commands import start as start_mod
 
-    def test_launch_and_shadow_issues_follow_a_repointed_state_root(self, tmp_path):
-        """⚑ MUTATION PROOF (keyspec §2g system.state): both state-file paths must
-        follow ``std.state``, the resolved ``system.state``, so a user who repoints that
-        key takes them with it.  Either a path composed from ``$XDG_STATE_HOME``
-        directly or one derived from ``config.data`` would ignore *std* and fail these
-        assertions.
-        """
-        from types import SimpleNamespace
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    std = self._std(tmp_path)
+    issues = start_mod._shadow_issues_path(std, "box1")
+    issues.parent.mkdir(parents=True, exist_ok=True)
+    issues.write_text("/home/agent/vault/rw\n")
+    start_mod._persist_shadow_issues(std, "box1", [])
+    assert not issues.exists()
 
-        from kanibako.commands import start as start_mod
+  def test_launch_and_shadow_issues_follow_a_repointed_state_root(self, tmp_path):
+    """⚑ MUTATION PROOF (keyspec §2g system.state): both state-file paths must
+    follow ``std.state``, the resolved ``system.state``, so a user who repoints that
+    key takes them with it.  Either a path composed from ``$XDG_STATE_HOME``
+    directly or one derived from ``config.data`` would ignore *std* and fail these
+    assertions.
+    """
+    from types import SimpleNamespace
 
-        std = SimpleNamespace(state=tmp_path / "elsewhere" / "kanibako-state")
-        launch_issues = start_mod._launch_issues_path(std, "box1")
-        shadow_issues = start_mod._shadow_issues_path(std, "box1")
-        assert launch_issues == std.state / "launch-issues.box1"
-        assert shadow_issues == std.state / "launch-shadows.box1"
+    from kanibako.commands import start as start_mod
 
-    def test_single_probe_covers_bootstrap_and_baseline(
-        self, tmp_path, monkeypatch
-    ):
-        """Only ONE ephemeral probe runs, checking bootstrap + all baseline."""
-        from kanibako.commands import start as start_mod
-        from kanibako.runtime import baseline as baseline_mod
+    std = SimpleNamespace(state=tmp_path / "elsewhere" / "kanibako-state")
+    launch_issues = start_mod._launch_issues_path(std, "box1")
+    shadow_issues = start_mod._shadow_issues_path(std, "box1")
+    assert launch_issues == std.state / "launch-issues.box1"
+    assert shadow_issues == std.state / "launch-shadows.box1"
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        monkeypatch.setattr(
-            baseline_mod, "load_baseline",
-            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
-        )
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=[]
-        ) as mock_probe:
-            start_mod._check_launch_baseline(
-                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        assert mock_probe.call_count == 1
-        probed = mock_probe.call_args[0][2]
-        # tmux appears once (bootstrap + baseline dedup), rg included.
-        assert probed[0] == "tmux"
-        assert probed.count("tmux") == 1
-        assert "rg" in probed
+  def test_single_probe_covers_bootstrap_and_baseline(self, tmp_path, monkeypatch):
+    """Only ONE ephemeral probe runs, checking bootstrap + all baseline."""
+    from kanibako.commands import start as start_mod
+    from kanibako.runtime import baseline as baseline_mod
 
-    def test_none_skips_bootstrap_tier_but_runs_tier2(
-        self, tmp_path, monkeypatch
-    ):
-        """`none` opt-out: the bootstrap exe is NOT probed and tier-1 cannot
-        hard-stop, but tier-2 (baseline) still runs and reports missing exes."""
-        from kanibako.commands import start as start_mod
-        from kanibako.runtime import baseline as baseline_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    monkeypatch.setattr(
+      baseline_mod,
+      "load_baseline",
+      lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+    )
+    with patch.object(start_mod, "probe_missing_executables", return_value=[]) as mock_probe:
+      start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "tmux",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert mock_probe.call_count == 1
+    probed = mock_probe.call_args[0][2]
+    # tmux appears once (bootstrap + baseline dedup), rg included.
+    assert probed[0] == "tmux"
+    assert probed.count("tmux") == 1
+    assert "rg" in probed
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        monkeypatch.setattr(
-            baseline_mod, "load_baseline",
-            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
-        )
-        # Even if a program literally named 'none' were "missing", no hard stop.
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["none", "rg"]
-        ) as mock_probe:
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "none", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        # Not a tier-1 hard stop; tier-2 still surfaces the missing baseline exe.
-        assert result == [("ripgrep", "rg")]
-        # 'none' was NOT included in the probe (no bootstrap exe to check).
-        probed = mock_probe.call_args[0][2]
-        assert "none" not in probed
-        assert "rg" in probed
+  def test_none_skips_bootstrap_tier_but_runs_tier2(self, tmp_path, monkeypatch):
+    """`none` opt-out: the bootstrap exe is NOT probed and tier-1 cannot
+    hard-stop, but tier-2 (baseline) still runs and reports missing exes."""
+    from kanibako.commands import start as start_mod
+    from kanibako.runtime import baseline as baseline_mod
 
-    def test_none_never_returns_bootstrap_missing_sentinel(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """Under `none`, the tier-1 hard-stop path is unreachable even if the
-        probe reports 'none' missing — no _BOOTSTRAP_MISSING, no error print."""
-        from kanibako.commands import start as start_mod
-        from kanibako.runtime import baseline as baseline_mod
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    monkeypatch.setattr(
+      baseline_mod,
+      "load_baseline",
+      lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+    )
+    # Even if a program literally named 'none' were "missing", no hard stop.
+    with patch.object(
+      start_mod, "probe_missing_executables", return_value=["none", "rg"]
+    ) as mock_probe:
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "none",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    # Not a tier-1 hard stop; tier-2 still surfaces the missing baseline exe.
+    assert result == [("ripgrep", "rg")]
+    # 'none' was NOT included in the probe (no bootstrap exe to check).
+    probed = mock_probe.call_args[0][2]
+    assert "none" not in probed
+    assert "rg" in probed
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        runtime = MagicMock()
-        runtime.cmd = "podman"
-        monkeypatch.setattr(baseline_mod, "load_baseline", lambda: {"tmux": ["tmux"]})
-        with patch.object(
-            start_mod, "probe_missing_executables", return_value=["none"]
-        ):
-            result = start_mod._check_launch_baseline(
-                runtime, "img:latest", "none", "box1", self._std(tmp_path),
-                setting=None, cure_ref="'my box'", attached=True,
-            )
-        assert result is not start_mod._BOOTSTRAP_MISSING
-        assert result == []  # tier-2 clean
-        assert capsys.readouterr().err == ""
+  def test_none_never_returns_bootstrap_missing_sentinel(self, tmp_path, monkeypatch, capsys):
+    """Under `none`, the tier-1 hard-stop path is unreachable even if the
+    probe reports 'none' missing — no _BOOTSTRAP_MISSING, no error print."""
+    from kanibako.commands import start as start_mod
+    from kanibako.runtime import baseline as baseline_mod
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    runtime = MagicMock()
+    runtime.cmd = "podman"
+    monkeypatch.setattr(baseline_mod, "load_baseline", lambda: {"tmux": ["tmux"]})
+    with patch.object(start_mod, "probe_missing_executables", return_value=["none"]):
+      result = start_mod._check_launch_baseline(
+        runtime,
+        "img:latest",
+        "none",
+        "box1",
+        self._std(tmp_path),
+        setting=None,
+        cure_ref="'my box'",
+        attached=True,
+      )
+    assert result is not start_mod._BOOTSTRAP_MISSING
+    assert result == []  # tier-2 clean
+    assert capsys.readouterr().err == ""
 
 
 # ---------------------------------------------------------------------------
 # Reattach: source the agent from the running container (no selection refusal)
 # ---------------------------------------------------------------------------
 
+
 class TestReattachAgentSourcing:
-    """A persistent box that is ALREADY RUNNING reattaches by sourcing its
-    agent from the container's KANIBAKO_AGENT stamp, bypassing the selection
-    seam's refusal (which would otherwise fire with no default agent set)."""
+  """A persistent box that is ALREADY RUNNING reattaches by sourcing its
+  agent from the container's KANIBAKO_AGENT stamp, bypassing the selection
+  seam's refusal (which would otherwise fire with no default agent set)."""
 
-    def _refuse_unless_explicit(self):
-        """``select_agent`` stand-in: REFUSES unless an explicit agent is
-        supplied — i.e. only the container-sourced injection can satisfy it."""
-        from kanibako.settings.agent_select import AgentSelection
-        from kanibako.errors import AgentUnsetError
+  def _refuse_unless_explicit(self):
+    """``select_agent`` stand-in: REFUSES unless an explicit agent is
+    supplied — i.e. only the container-sourced injection can satisfy it."""
+    from kanibako.settings.agent_select import AgentSelection
+    from kanibako.errors import AgentUnsetError
 
-        def _fn(*, explicit_agent, **kw):
-            if explicit_agent:
-                return AgentSelection(node=explicit_agent, source="cli")
-            raise AgentUnsetError("run setup")
-        return _fn
+    def _fn(*, explicit_agent, **kw):
+      if explicit_agent:
+        return AgentSelection(node=explicit_agent, source="cli")
+      raise AgentUnsetError("run setup")
 
-    def test_reattach_sources_stored_agent_no_refusal(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = "claude"
-            m.resolve_agent.side_effect = self._refuse_unless_explicit()
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, explicit_agent=None,
-            )
-            assert rc == 0
-            # Reattach exec'd (not a fresh run).
-            assert m.runtime.exec.called
-            assert not m.runtime.run.called
-            # Cred refresh ran for the sourced agent (descriptor path).
-            assert m.credsync.refresh_box_credentials.called
-            # Heads-up went to STDERR, names the box + agent.
-            err = capsys.readouterr().err
-            assert "Reattaching to running box 'testproject'" in err
-            assert "agent: claude" in err
+    return _fn
 
-    def test_reattach_matching_explicit_agent_ok(self, start_mocks):
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = "claude"
-            m.resolve_agent.side_effect = self._refuse_unless_explicit()
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, explicit_agent="claude",
-            )
-            assert rc == 0
-            assert m.runtime.exec.called
+  def test_reattach_sources_stored_agent_no_refusal(self, start_mocks, capsys):
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = "claude"
+      m.resolve_agent.side_effect = self._refuse_unless_explicit()
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        explicit_agent=None,
+      )
+      assert rc == 0
+      # Reattach exec'd (not a fresh run).
+      assert m.runtime.exec.called
+      assert not m.runtime.run.called
+      # Cred refresh ran for the sourced agent (descriptor path).
+      assert m.credsync.refresh_box_credentials.called
+      # Heads-up went to STDERR, names the box + agent.
+      err = capsys.readouterr().err
+      assert "Reattaching to running box 'testproject'" in err
+      assert "agent: claude" in err
 
-    def test_reattach_mismatched_explicit_agent_errors(self, start_mocks):
-        from kanibako.errors import KanibakoError
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = "claude"
-            with pytest.raises(KanibakoError) as exc:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, explicit_agent="goose",
-                )
-            msg = str(exc.value)
-            assert "already running agent 'claude'" in msg
-            assert "--agent 'goose'" in msg
-            assert "kanibako stop testproject" in msg
+  def test_reattach_matching_explicit_agent_ok(self, start_mocks):
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = "claude"
+      m.resolve_agent.side_effect = self._refuse_unless_explicit()
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        explicit_agent="claude",
+      )
+      assert rc == 0
+      assert m.runtime.exec.called
 
-    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
-    def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks, stamp):
-        """A PERSONA mismatch must render the user-facing ``+`` separator, never the
-        canonical ``℘`` (display-swap rule): the error text shows
-        ``navigator+claude`` / ``pilot+goose``.
+  def test_reattach_mismatched_explicit_agent_errors(self, start_mocks):
+    from kanibako.errors import KanibakoError
 
-        ⚑ BOTH STAMP SPELLINGS: ``+`` is what this version emits, ``℘`` what a box
-        already running under an older version carries.  The reader canonicalizes,
-        so the two are indistinguishable from here down — that is the back-compat
-        guarantee, pinned rather than asserted in prose.
-        """
-        from kanibako.errors import KanibakoError
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = stamp
-            with pytest.raises(KanibakoError) as exc:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, explicit_agent="pilot+goose",
-                )
-            msg = str(exc.value)
-            # Mutation-check: BOTH refs shown with '+', and the raw '℘' must NOT leak.
-            assert "navigator+claude" in msg
-            assert "pilot+goose" in msg
-            assert "℘" not in msg
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = "claude"
+      with pytest.raises(KanibakoError) as exc:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+          explicit_agent="goose",
+        )
+      msg = str(exc.value)
+      assert "already running agent 'claude'" in msg
+      assert "--agent 'goose'" in msg
+      assert "kanibako stop testproject" in msg
 
-    def test_reattach_differing_default_superseded_silently(
-        self, start_mocks, capsys
-    ):
-        """A differing system DEFAULT (not an explicit --agent) does NOT error;
-        the running box's stored agent wins."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = "claude"
-            # explicit_agent is None (default would resolve to something else),
-            # so the stored agent is injected and used — no error.
-            m.resolve_agent.side_effect = self._refuse_unless_explicit()
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, explicit_agent=None,
-            )
-            assert rc == 0
-            # resolve_agent saw the injected stored agent.
-            assert m.resolve_agent.call_args.kwargs["explicit_agent"] == "claude"
+  @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+  def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks, stamp):
+    """A PERSONA mismatch must render the user-facing ``+`` separator, never the
+    canonical ``℘`` (display-swap rule): the error text shows
+    ``navigator+claude`` / ``pilot+goose``.
 
-    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
-    def test_reattach_injects_the_CANONICAL_node_not_the_raw_stamp(
-        self, start_mocks, stamp,
-    ):
-        """🛑 The stamp is canonicalized ONCE and *that* value is what propagates.
+    ⚑ BOTH STAMP SPELLINGS: ``+`` is what this version emits, ``℘`` what a box
+    already running under an older version carries.  The reader canonicalizes,
+    so the two are indistinguishable from here down — that is the back-compat
+    guarantee, pinned rather than asserted in prose.
+    """
+    from kanibako.errors import KanibakoError
 
-        This path used to canonicalize for the mismatch COMPARISON only and then
-        assign the RAW stamp to ``explicit_agent``, which now means a ``+`` ref
-        flowing on into agent resolution.  It survived by luck — the resolver
-        canonicalizes too — and luck is not the shape: a node is what discriminates
-        the agent tier, so it is a node that must be handed on.
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = stamp
+      with pytest.raises(KanibakoError) as exc:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+          explicit_agent="pilot+goose",
+        )
+      msg = str(exc.value)
+      # Mutation-check: BOTH refs shown with '+', and the raw '℘' must NOT leak.
+      assert "navigator+claude" in msg
+      assert "pilot+goose" in msg
+      assert "℘" not in msg
 
-        A bare agent cannot show it (the sibling above is the control): only a
-        persona has two spellings to confuse.
-        """
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = stamp
-            m.resolve_agent.side_effect = self._refuse_unless_explicit()
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, explicit_agent=None,
-            )
-            assert rc == 0
-            assert m.resolve_agent.call_args.kwargs["explicit_agent"] == (
-                "navigator℘claude"
-            )
+  def test_reattach_differing_default_superseded_silently(self, start_mocks, capsys):
+    """A differing system DEFAULT (not an explicit --agent) does NOT error;
+    the running box's stored agent wins."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = "claude"
+      # explicit_agent is None (default would resolve to something else),
+      # so the stored agent is injected and used — no error.
+      m.resolve_agent.side_effect = self._refuse_unless_explicit()
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        explicit_agent=None,
+      )
+      assert rc == 0
+      # resolve_agent saw the injected stored agent.
+      assert m.resolve_agent.call_args.kwargs["explicit_agent"] == "claude"
 
-    def test_preexisting_running_box_no_stamp_falls_back(self, start_mocks):
-        """A box running before this change has no KANIBAKO_AGENT (inspect_env
-        -> None): no injection, normal resolution applies (the refusal if no
-        default — unchanged behavior)."""
-        from kanibako.errors import AgentUnsetError
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            m.runtime.inspect_env.return_value = None
-            m.resolve_agent.side_effect = self._refuse_unless_explicit()
-            with pytest.raises(AgentUnsetError):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, explicit_agent=None,
-                )
+  @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+  def test_reattach_injects_the_CANONICAL_node_not_the_raw_stamp(
+    self,
+    start_mocks,
+    stamp,
+  ):
+    """🛑 The stamp is canonicalized ONCE and *that* value is what propagates.
+
+    This path used to canonicalize for the mismatch COMPARISON only and then
+    assign the RAW stamp to ``explicit_agent``, which now means a ``+`` ref
+    flowing on into agent resolution.  It survived by luck — the resolver
+    canonicalizes too — and luck is not the shape: a node is what discriminates
+    the agent tier, so it is a node that must be handed on.
+
+    A bare agent cannot show it (the sibling above is the control): only a
+    persona has two spellings to confuse.
+    """
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = stamp
+      m.resolve_agent.side_effect = self._refuse_unless_explicit()
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        explicit_agent=None,
+      )
+      assert rc == 0
+      assert m.resolve_agent.call_args.kwargs["explicit_agent"] == ("navigator℘claude")
+
+  def test_preexisting_running_box_no_stamp_falls_back(self, start_mocks):
+    """A box running before this change has no KANIBAKO_AGENT (inspect_env
+    -> None): no injection, normal resolution applies (the refusal if no
+    default — unchanged behavior)."""
+    from kanibako.errors import AgentUnsetError
+
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      m.runtime.inspect_env.return_value = None
+      m.resolve_agent.side_effect = self._refuse_unless_explicit()
+      with pytest.raises(AgentUnsetError):
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          persistent=True,
+          explicit_agent=None,
+        )
 
 
 # ---------------------------------------------------------------------------
 # Fresh launch stamps KANIBAKO_AGENT on the container
 # ---------------------------------------------------------------------------
 
+
 class TestAgentStamp:
-    def test_fresh_launch_stamps_agent_env(self, start_mocks):
-        """A real agent launch sets KANIBAKO_AGENT=<agent> in the built env."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            env = m.runtime.run.call_args.kwargs["env"]
-            assert env["KANIBAKO_AGENT"] == "claude"
+  def test_fresh_launch_stamps_agent_env(self, start_mocks):
+    """A real agent launch sets KANIBAKO_AGENT=<agent> in the built env."""
+    with start_mocks() as m:
+      _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      env = m.runtime.run.call_args.kwargs["env"]
+      assert env["KANIBAKO_AGENT"] == "claude"
 
-    def test_a_persona_is_stamped_in_the_typable_spelling(self):
-        """⚑ THE SPELLING PIN for the stamp — literal, and a bare agent cannot show
-        it (node == harness ⇒ one string), so only a persona pins it.
+  def test_a_persona_is_stamped_in_the_typable_spelling(self):
+    """⚑ THE SPELLING PIN for the stamp — literal, and a bare agent cannot show
+    it (node == harness ⇒ one string), so only a persona pins it.
 
-        An env var is a place a HUMAN looks: the shipped ROM directive tells an
-        in-box agent to read ``$KANIBAKO_AGENT``, and documents it as
-        ``kimi_k3+codex``.  ``℘`` exists only so a node is spellable inside a KEY
-        path, and this is not one.
+    An env var is a place a HUMAN looks: the shipped ROM directive tells an
+    in-box agent to read ``$KANIBAKO_AGENT``, and documents it as
+    ``kimi_k3+codex``.  ``℘`` exists only so a node is spellable inside a KEY
+    path, and this is not one.
 
-        Driven AT THE FUNCTION: the emitter is pure, and the sibling test above
-        already proves the value reaches ``runtime.run``'s env through the seam.
-        """
-        from types import SimpleNamespace
+    Driven AT THE FUNCTION: the emitter is pure, and the sibling test above
+    already proves the value reaches ``runtime.run``'s env through the seam.
+    """
+    from types import SimpleNamespace
 
-        from kanibako.commands.start import _core_env_default_categories
+    from kanibako.commands.start import _core_env_default_categories
 
-        table = _core_env_default_categories(
-            proj=SimpleNamespace(name="b"),
-            target=SimpleNamespace(name="claude"),
-            agent_id="navigator℘claude",
-        )
-        assert table["system.env.KANIBAKO_AGENT"] == "navigator+claude"
-        # A bare agent is unchanged — ``display_agent_ref`` is identity on a name
-        # with no separator.
-        bare = _core_env_default_categories(
-            proj=SimpleNamespace(name="b"),
-            target=SimpleNamespace(name="claude"), agent_id="claude",
-        )
-        assert bare["system.env.KANIBAKO_AGENT"] == "claude"
+    table = _core_env_default_categories(
+      proj=SimpleNamespace(name="b"),
+      target=SimpleNamespace(name="claude"),
+      agent_id="navigator℘claude",
+    )
+    assert table["system.env.KANIBAKO_AGENT"] == "navigator+claude"
+    # A bare agent is unchanged — ``display_agent_ref`` is identity on a name
+    # with no separator.
+    bare = _core_env_default_categories(
+      proj=SimpleNamespace(name="b"),
+      target=SimpleNamespace(name="claude"),
+      agent_id="claude",
+    )
+    assert bare["system.env.KANIBAKO_AGENT"] == "claude"
 
-    def test_shell_launch_does_not_stamp_agent_env(self, start_mocks):
-        """A no-agent / shell launch (target None) carries no KANIBAKO_AGENT."""
-        with start_mocks() as m:
-            m.resolve_target.return_value.descriptor = None
-            _run_container(
-                project_dir=None, entrypoint="bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, box_shell_mode=True,
-            )
-            env = m.runtime.run.call_args.kwargs["env"]
-            assert "KANIBAKO_AGENT" not in env
+  def test_shell_launch_does_not_stamp_agent_env(self, start_mocks):
+    """A no-agent / shell launch (target None) carries no KANIBAKO_AGENT."""
+    with start_mocks() as m:
+      m.resolve_target.return_value.descriptor = None
+      _run_container(
+        project_dir=None,
+        entrypoint="bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        box_shell_mode=True,
+      )
+      env = m.runtime.run.call_args.kwargs["env"]
+      assert "KANIBAKO_AGENT" not in env
 
 
 class TestAllowHelpersGate:
-    """The helper-hub gate now reads the AGENT-scope ``allow_helpers`` key (spec
-    §2d) resolved off the launch snapshot, then ANDs in the ephemeral
-    ``--no-helpers`` flag: ``helpers_enabled = not no_helpers and helpers_allowed``.
+  """The helper-hub gate now reads the AGENT-scope ``allow_helpers`` key (spec
+  §2d) resolved off the launch snapshot, then ANDs in the ephemeral
+  ``--no-helpers`` flag: ``helpers_enabled = not no_helpers and helpers_allowed``.
 
-    The start_mocks fixture seeds the ``agent.default`` FLOOR with
-    ``allow_helpers=false`` (helpers OFF by default in unit tests). A per-agent
-    override on ``agent_cfg.state`` WINS that default (§2d active-over-default), so
-    these tests flip the resolved value via the active slot. Observation seam: for
-    a real-agent launch (``shell_launch`` is False), ``resolve_box_shell`` is
-    reached ONLY when ``helpers_enabled`` is True.
-    """
+  The start_mocks fixture seeds the ``agent.default`` FLOOR with
+  ``allow_helpers=false`` (helpers OFF by default in unit tests). A per-agent
+  override on ``agent_cfg.state`` WINS that default (§2d active-over-default), so
+  these tests flip the resolved value via the active slot. Observation seam: for
+  a real-agent launch (``shell_launch`` is False), ``resolve_box_shell`` is
+  reached ONLY when ``helpers_enabled`` is True.
+  """
 
-    def test_unset_snapshot_defaults_helpers_on(self, start_mocks):
-        # The UNSET default (spec §2d ``agent.default.allow_helpers | true``): with
-        # NO allow_helpers anywhere in the snapshot, the launch read resolves None
-        # and start.py falls back to the True floor (helpers ON). Mutation guard on
-        # ``helpers_allowed = True if _ah is None else _ah`` — flipping that ``True``
-        # to ``False`` makes helpers_enabled False → resolve_box_shell is never
-        # reached → the sentinel never raises → pytest.raises reddens this test.
-        #
-        # The start_mocks stub seeds the agent.default FLOOR with allow_helpers=false
-        # (so every OTHER unit test keeps helpers off). Simulate a genuinely-unset
-        # box by stripping allow_helpers from the live behavior read for THIS test —
-        # exactly what a snapshot with no allow_helpers in either agent slot yields.
-        import kanibako.settings.settings_launch as _sl
-        _real_eff = _sl.effective_behavior
+  def test_unset_snapshot_defaults_helpers_on(self, start_mocks):
+    # The UNSET default (spec §2d ``agent.default.allow_helpers | true``): with
+    # NO allow_helpers anywhere in the snapshot, the launch read resolves None
+    # and start.py falls back to the True floor (helpers ON). Mutation guard on
+    # ``helpers_allowed = True if _ah is None else _ah`` — flipping that ``True``
+    # to ``False`` makes helpers_enabled False → resolve_box_shell is never
+    # reached → the sentinel never raises → pytest.raises reddens this test.
+    #
+    # The start_mocks stub seeds the agent.default FLOOR with allow_helpers=false
+    # (so every OTHER unit test keeps helpers off). Simulate a genuinely-unset
+    # box by stripping allow_helpers from the live behavior read for THIS test —
+    # exactly what a snapshot with no allow_helpers in either agent slot yields.
+    import kanibako.settings.settings_launch as _sl
 
-        def _eff_without_allow_helpers(*a, **k):
-            out = _real_eff(*a, **k)
-            out.pop("allow_helpers", None)
-            return out
+    _real_eff = _sl.effective_behavior
 
-        with start_mocks():
-            sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
-            with (
-                patch(
-                    "kanibako.settings.settings_launch.effective_behavior",
-                    side_effect=_eff_without_allow_helpers,
-                ),
-                patch(
-                    "kanibako.launch.shells.resolve_box_shell", side_effect=sentinel,
-                ) as m_shell,
-            ):
-                with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
-                    _run_container(
-                        project_dir=None, entrypoint=None, image_override=None,
-                        new_session=False, safe_mode=False, resume_mode=False,
-                        extra_args=[], no_helpers=False,
-                    )
-            m_shell.assert_called_once()
+    def _eff_without_allow_helpers(*a, **k):
+      out = _real_eff(*a, **k)
+      out.pop("allow_helpers", None)
+      return out
 
-    def test_per_agent_override_true_enables_helper_gate(self, start_mocks):
-        # active agent.<claude>.allow_helpers=true beats the default-false floor →
-        # helpers_enabled True → the real-agent launch reaches resolve_box_shell.
-        with start_mocks() as m:
-            m.agent_cfg.state["allow_helpers"] = "true"
-            sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
-            with patch(
-                "kanibako.launch.shells.resolve_box_shell", side_effect=sentinel,
-            ) as m_shell:
-                with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
-                    _run_container(
-                        project_dir=None, entrypoint=None, image_override=None,
-                        new_session=False, safe_mode=False, resume_mode=False,
-                        extra_args=[], no_helpers=False,
-                    )
-            m_shell.assert_called_once()
+    with start_mocks():
+      sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
+      with (
+        patch(
+          "kanibako.settings.settings_launch.effective_behavior",
+          side_effect=_eff_without_allow_helpers,
+        ),
+        patch(
+          "kanibako.launch.shells.resolve_box_shell",
+          side_effect=sentinel,
+        ) as m_shell,
+      ):
+        with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
+          _run_container(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            no_helpers=False,
+          )
+      m_shell.assert_called_once()
 
-    def test_no_helpers_flag_forces_off_even_when_key_true(self, start_mocks):
-        # --no-helpers ANDs in: even with the key resolved True, helpers_enabled is
-        # False → a real-agent launch never reaches resolve_box_shell.
-        with start_mocks() as m:
-            m.agent_cfg.state["allow_helpers"] = "true"
-            with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], no_helpers=True,
-                )
-            m_shell.assert_not_called()
+  def test_per_agent_override_true_enables_helper_gate(self, start_mocks):
+    # active agent.<claude>.allow_helpers=true beats the default-false floor →
+    # helpers_enabled True → the real-agent launch reaches resolve_box_shell.
+    with start_mocks() as m:
+      m.agent_cfg.state["allow_helpers"] = "true"
+      sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
+      with patch(
+        "kanibako.launch.shells.resolve_box_shell",
+        side_effect=sentinel,
+      ) as m_shell:
+        with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
+          _run_container(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            no_helpers=False,
+          )
+      m_shell.assert_called_once()
 
-    def test_default_false_floor_keeps_helper_gate_off(self, start_mocks):
-        # No per-agent override → the agent.default floor (false) resolves →
-        # helpers OFF → a real-agent launch never reaches resolve_box_shell.
-        with start_mocks():
-            with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], no_helpers=False,
-                )
-            m_shell.assert_not_called()
+  def test_no_helpers_flag_forces_off_even_when_key_true(self, start_mocks):
+    # --no-helpers ANDs in: even with the key resolved True, helpers_enabled is
+    # False → a real-agent launch never reaches resolve_box_shell.
+    with start_mocks() as m:
+      m.agent_cfg.state["allow_helpers"] = "true"
+      with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          no_helpers=True,
+        )
+      m_shell.assert_not_called()
+
+  def test_default_false_floor_keeps_helper_gate_off(self, start_mocks):
+    # No per-agent override → the agent.default floor (false) resolves →
+    # helpers OFF → a real-agent launch never reaches resolve_box_shell.
+    with start_mocks():
+      with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
+        _run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+          no_helpers=False,
+        )
+      m_shell.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # E2b — always-on box supervisor as PID-1 on a detached AGENT launch.
 # ---------------------------------------------------------------------------
 
+
 class TestDetachedSupervisor:
-    """Detached AGENT boxes make ``kanibako.box_supervisor`` PID-1 (E2b).
+  """Detached AGENT boxes make ``kanibako.box_supervisor`` PID-1 (E2b).
 
-    A detached AGENT box no longer runs a bare-shell keep-alive: PID-1 is the
-    always-on supervisor, which runs the agent in a detached ``kanibako`` tmux
-    session and self-heals it.  PID-1 is an import-GATED ``sh -c`` so an old box
-    image lacking the supervisor module degrades to today's bare-shell keep-alive.
-    A NO-AGENT detached box keeps the unchanged bare-shell keep-alive.
-    """
+  A detached AGENT box no longer runs a bare-shell keep-alive: PID-1 is the
+  always-on supervisor, which runs the agent in a detached ``kanibako`` tmux
+  session and self-heals it.  PID-1 is an import-GATED ``sh -c`` so an old box
+  image lacking the supervisor module degrades to today's bare-shell keep-alive.
+  A NO-AGENT detached box keeps the unchanged bare-shell keep-alive.
+  """
 
-    @staticmethod
-    def _detach_script(m) -> str:
-        """The PID-1 ``sh -c`` script the container was launched with."""
-        kw = m.runtime.run.call_args.kwargs
-        assert kw["entrypoint"] == "sh"
-        cli_args = kw.get("cli_args") or []
-        assert cli_args[0] == "-c"
-        return cli_args[1]
+  @staticmethod
+  def _detach_script(m) -> str:
+    """The PID-1 ``sh -c`` script the container was launched with."""
+    kw = m.runtime.run.call_args.kwargs
+    assert kw["entrypoint"] == "sh"
+    cli_args = kw.get("cli_args") or []
+    assert cli_args[0] == "-c"
+    return cli_args[1]
 
-    def test_detached_agent_launches_supervisor_pid1(self, start_mocks):
-        """Detached agent → sh -c import-gated supervisor with a tmux fallback."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = self._detach_script(m)
-            # Forward-compat import gate.
-            assert "import kanibako.box_supervisor" in script
-            assert "kb_diag=/home/agent/.kanibako/supervisor-fallback.log;" in script
-            assert '2>>"$kb_diag"' in script
-            # Supervisor PID-1 invocation (NOT tmux-wrapped).
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "--session kanibako" in script
-            assert CONTINUE_MARKER in script
-            # The supervised agent entrypoint appears in the -- payload.
-            assert "claude" in script
-            # `|| exec` degrade path = today's bare-shell tmux keep-alive.
-            assert "|| {" in script  # fallback is a brace group now
-            assert "new-session -s kanibako" in script
+  def test_detached_agent_launches_supervisor_pid1(self, start_mocks):
+    """Detached agent → sh -c import-gated supervisor with a tmux fallback."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = self._detach_script(m)
+      # Forward-compat import gate.
+      assert "import kanibako.box_supervisor" in script
+      assert "kb_diag=/home/agent/.kanibako/supervisor-fallback.log;" in script
+      assert '2>>"$kb_diag"' in script
+      # Supervisor PID-1 invocation (NOT tmux-wrapped).
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "--session kanibako" in script
+      assert CONTINUE_MARKER in script
+      # The supervised agent entrypoint appears in the -- payload.
+      assert "claude" in script
+      # `|| exec` degrade path = today's bare-shell tmux keep-alive.
+      assert "|| {" in script  # fallback is a brace group now
+      assert "new-session -s kanibako" in script
 
-    def test_detached_shell_keeps_bare_shell_keepalive(self, start_mocks):
-        """Detached NO-AGENT box → unchanged bare-shell tmux keep-alive."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True, box_shell_mode=True,
-            )
-            assert rc == 0
-            kw = m.runtime.run.call_args.kwargs
-            assert kw["entrypoint"] == "tmux"
-            cli_args = kw.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            # No supervisor anywhere in the launch command.
-            assert not any("box_supervisor" in str(a) for a in cli_args)
+  def test_detached_shell_keeps_bare_shell_keepalive(self, start_mocks):
+    """Detached NO-AGENT box → unchanged bare-shell tmux keep-alive."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+        box_shell_mode=True,
+      )
+      assert rc == 0
+      kw = m.runtime.run.call_args.kwargs
+      assert kw["entrypoint"] == "tmux"
+      cli_args = kw.get("cli_args") or []
+      assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+      # No supervisor anywhere in the launch command.
+      assert not any("box_supervisor" in str(a) for a in cli_args)
 
-    def test_detached_custom_entrypoint_keeps_bare_shell_keepalive(self, start_mocks):
-        """A detached custom --entrypoint box is not a real agent → bare shell."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint="/bin/bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            kw = m.runtime.run.call_args.kwargs
-            assert kw["entrypoint"] == "tmux"
-            cli_args = kw.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            assert not any("box_supervisor" in str(a) for a in cli_args)
+  def test_detached_custom_entrypoint_keeps_bare_shell_keepalive(self, start_mocks):
+    """A detached custom --entrypoint box is not a real agent → bare shell."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint="/bin/bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      kw = m.runtime.run.call_args.kwargs
+      assert kw["entrypoint"] == "tmux"
+      cli_args = kw.get("cli_args") or []
+      assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+      assert not any("box_supervisor" in str(a) for a in cli_args)
 
-    def test_reattach_to_running_box_attaches_kanibako_session(self, start_mocks):
-        """Reattach to a running (detached) box still `tmux attach -t kanibako`."""
-        with start_mocks() as m:
-            m.runtime.is_running.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            m.runtime.run.assert_not_called()
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+  def test_reattach_to_running_box_attaches_kanibako_session(self, start_mocks):
+    """Reattach to a running (detached) box still `tmux attach -t kanibako`."""
+    with start_mocks() as m:
+      m.runtime.is_running.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      m.runtime.run.assert_not_called()
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
 
-    def test_detached_agent_supervisor_carries_continue_cmd(self, start_mocks):
-        """A descriptor with a continue mode threads --continue-cmd to the supervisor."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = self._detach_script(m)
-            assert "--continue-cmd" in script
-            # claude's continue grammar (`claude --continue`) rides in the VALUE of
-            # --continue-cmd (parse it back out — a bare ``"--continue" in script``
-            # would pass on the flag NAME alone, proving nothing about the value).
-            import shlex
+  def test_detached_agent_supervisor_carries_continue_cmd(self, start_mocks):
+    """A descriptor with a continue mode threads --continue-cmd to the supervisor."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = self._detach_script(m)
+      assert "--continue-cmd" in script
+      # claude's continue grammar (`claude --continue`) rides in the VALUE of
+      # --continue-cmd (parse it back out — a bare ``"--continue" in script``
+      # would pass on the flag NAME alone, proving nothing about the value).
+      import shlex
 
-            sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
-            argv = shlex.split(sup)
-            cont_val = argv[argv.index("--continue-cmd") + 1]
-            assert "--continue" in shlex.split(cont_val)
+      sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
+      argv = shlex.split(sup)
+      cont_val = argv[argv.index("--continue-cmd") + 1]
+      assert "--continue" in shlex.split(cont_val)
 
-    def test_detached_agent_omits_continue_cmd_when_no_continue_mode(self, start_mocks):
-        """No continue mode in the descriptor → --continue-cmd omitted (supervisor
-        safely defaults its self-heal restart to the start grammar)."""
-        import dataclasses
+  def test_detached_agent_omits_continue_cmd_when_no_continue_mode(self, start_mocks):
+    """No continue mode in the descriptor → --continue-cmd omitted (supervisor
+    safely defaults its self-heal restart to the start grammar)."""
+    import dataclasses
 
-        with start_mocks() as m:
-            m.target.descriptor = dataclasses.replace(
-                m.target.descriptor, mode={"start": ()},
-            )
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = self._detach_script(m)
-            assert "--continue-cmd" not in script
-            # Still the supervisor PID-1.
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
+    with start_mocks() as m:
+      m.target.descriptor = dataclasses.replace(
+        m.target.descriptor,
+        mode={"start": ()},
+      )
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = self._detach_script(m)
+      assert "--continue-cmd" not in script
+      # Still the supervisor PID-1.
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
 
-    def test_detached_goose_agent_payload_carries_directive_flatten(self, start_mocks):
-        """goose detached agent → the supervised payload runs the directive flatten."""
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_detached_goose_agent_payload_carries_directive_flatten(self, start_mocks):
+    """goose detached agent → the supervised payload runs the directive flatten."""
+    from kanibako.plugins.goose.target import GooseTarget
 
-        with start_mocks() as m:
-            m.target.name = "goose"
-            m.target.default_entrypoint = "goose"
-            m.target.descriptor = GooseTarget().descriptor
-            # The real plugin's env, FINAL slot included: the shim gate reads it.
-            m.target.default_envs.return_value = GooseTarget().default_envs()
-            m.target.has_resumable_session.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = self._detach_script(m)
-            # The goose directive-flatten shim wraps the supervised agent payload.
-            assert "import-directives.py" in script
-            # ... and it is still supervised as PID-1.
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "goose" in script
+    with start_mocks() as m:
+      m.target.name = "goose"
+      m.target.default_entrypoint = "goose"
+      m.target.descriptor = GooseTarget().descriptor
+      # The real plugin's env, FINAL slot included: the shim gate reads it.
+      m.target.default_envs.return_value = GooseTarget().default_envs()
+      m.target.has_resumable_session.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = self._detach_script(m)
+      # The goose directive-flatten shim wraps the supervised agent payload.
+      assert "import-directives.py" in script
+      # ... and it is still supervised as PID-1.
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "goose" in script
 
-    def test_detached_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
-        """A secret-bearing detached agent → the supervised payload exports the
-        secret from its ro mount (never the VALUE on the argv)."""
-        tok = tmp_path / "token"
-        tok.write_text("sk-bearer-value\n")
-        with start_mocks() as m:
-            m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
-            m.load_agent_config.return_value = m.agent_cfg
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = self._detach_script(m)
-            # The export STATEMENT (referencing the mount path) is in the payload.
-            assert "export MY_SECRET=" in script
-            # Still supervised; the secret VALUE never reaches the argv.
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "sk-bearer-value" not in script
+  def test_detached_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
+    """A secret-bearing detached agent → the supervised payload exports the
+    secret from its ro mount (never the VALUE on the argv)."""
+    tok = tmp_path / "token"
+    tok.write_text("sk-bearer-value\n")
+    with start_mocks() as m:
+      m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
+      m.load_agent_config.return_value = m.agent_cfg
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = self._detach_script(m)
+      # The export STATEMENT (referencing the mount path) is in the payload.
+      assert "export MY_SECRET=" in script
+      # Still supervised; the secret VALUE never reaches the argv.
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "sk-bearer-value" not in script
 
 
 # The exact PYTHONPATH-injection token _build_supervisor_pid1 prepends to the probe
@@ -3756,123 +4596,136 @@ _PP = '"PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}"'
 
 
 class TestBuildSupervisorPid1:
-    """The pure PID-1 composition helper (unit-tested without _run_container)."""
+  """The pure PID-1 composition helper (unit-tested without _run_container)."""
 
-    def test_returns_sh_c_import_gated_script(self):
-        from kanibako.commands.start import _build_supervisor_pid1
+  def test_returns_sh_c_import_gated_script(self):
+    from kanibako.commands.start import _build_supervisor_pid1
 
-        ep, args = _build_supervisor_pid1(
-            [
-                "python3", "-m", "kanibako.box_supervisor",
-                "--session", "kanibako", "--", "claude", "--continue",
-            ],
-            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
-        )
-        assert ep == "sh"
-        assert args[0] == "-c"
-        script = args[1]
-        assert "python3 -c 'import kanibako.box_supervisor'" in script
-        assert f"&& exec env {_PP} python3 -m kanibako.box_supervisor" in script
-        # Fallback exec is UNCHANGED — bare-shell keep-alive, no PYTHONPATH injected.
-        assert "exec tmux new-session -s kanibako -- sh;" in script
+    ep, args = _build_supervisor_pid1(
+      [
+        "python3",
+        "-m",
+        "kanibako.box_supervisor",
+        "--session",
+        "kanibako",
+        "--",
+        "claude",
+        "--continue",
+      ],
+      ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+    )
+    assert ep == "sh"
+    assert args[0] == "-c"
+    script = args[1]
+    assert "python3 -c 'import kanibako.box_supervisor'" in script
+    assert f"&& exec env {_PP} python3 -m kanibako.box_supervisor" in script
+    # Fallback exec is UNCHANGED — bare-shell keep-alive, no PYTHONPATH injected.
+    assert "exec tmux new-session -s kanibako -- sh;" in script
 
-    def test_probe_retries_once_before_falling_back(self):
-        """The import probe runs TWICE, not once.
+  def test_probe_retries_once_before_falling_back(self):
+    """The import probe runs TWICE, not once.
 
-        It fires at the noisiest moment of a box's life; a one-shot check there is
-        a race.  Measured 2026-08-17: a launch that had correctly resolved claude
-        came up at a bare bash prompt, and the SAME import in the SAME container
-        succeeded when probed minutes later.
-        """
-        from kanibako.commands.start import _build_supervisor_pid1
+    It fires at the noisiest moment of a box's life; a one-shot check there is
+    a race.  Measured 2026-08-17: a launch that had correctly resolved claude
+    came up at a bare bash prompt, and the SAME import in the SAME container
+    succeeded when probed minutes later.
+    """
+    from kanibako.commands.start import _build_supervisor_pid1
 
-        _ep, args = _build_supervisor_pid1(
-            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
-            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
-        )
-        script = args[1]
-        assert script.count("python3 -c 'import kanibako.box_supervisor'") == 2
-        assert "sleep 1;" in script
+    _ep, args = _build_supervisor_pid1(
+      ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+      ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+    )
+    script = args[1]
+    assert script.count("python3 -c 'import kanibako.box_supervisor'") == 2
+    assert "sleep 1;" in script
 
-    def test_fallback_is_not_silent(self):
-        """Taking the fallback must leave a trace on stderr AND on disk.
+  def test_fallback_is_not_silent(self):
+    """Taking the fallback must leave a trace on stderr AND on disk.
 
-        `kanibako start` returns SUCCESS whichever branch runs, so without this the
-        only symptom of a failed gate is a bash prompt and the reason is gone.  The
-        probe's own stderr is APPENDED to the marker rather than discarded.
-        """
-        from kanibako.commands.start import (
-            SUPERVISOR_FALLBACK_RELPATH,
-            _build_supervisor_pid1,
-        )
+    `kanibako start` returns SUCCESS whichever branch runs, so without this the
+    only symptom of a failed gate is a bash prompt and the reason is gone.  The
+    probe's own stderr is APPENDED to the marker rather than discarded.
+    """
+    from kanibako.commands.start import (
+      SUPERVISOR_FALLBACK_RELPATH,
+      _build_supervisor_pid1,
+    )
 
-        _ep, args = _build_supervisor_pid1(
-            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
-            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
-        )
-        script = args[1]
-        # The reason is kept, not thrown away.
-        assert script.count("import kanibako.box_supervisor' 2>>\"$kb_diag\"") == 2
-        assert f"kb_diag=/home/agent/{SUPERVISOR_FALLBACK_RELPATH};" in script
-        # And the fallback announces itself on stderr (-> `podman logs`).
-        fallback_branch = script.rsplit("|| {", 1)[1]
-        assert "echo " in fallback_branch
-        assert ">&2" in fallback_branch
-        assert "WILL NOT START" in fallback_branch
+    _ep, args = _build_supervisor_pid1(
+      ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+      ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+    )
+    script = args[1]
+    # The reason is kept, not thrown away.
+    assert script.count('import kanibako.box_supervisor\' 2>>"$kb_diag"') == 2
+    assert f"kb_diag=/home/agent/{SUPERVISOR_FALLBACK_RELPATH};" in script
+    # And the fallback announces itself on stderr (-> `podman logs`).
+    fallback_branch = script.rsplit("|| {", 1)[1]
+    assert "echo " in fallback_branch
+    assert ">&2" in fallback_branch
+    assert "WILL NOT START" in fallback_branch
 
-    def test_probe_and_supervisor_exec_carry_pythonpath_fallback_does_not(self):
-        """BOTH the import probe and the supervisor exec run with the host-mount
-        PYTHONPATH prepended (so PID-1 imports the FRESH host supervisor, not the
-        image's baked copy); the `|| exec` fallback keeps NO PYTHONPATH (it never
-        imports kanibako)."""
-        from kanibako.commands.start import _build_supervisor_pid1
+  def test_probe_and_supervisor_exec_carry_pythonpath_fallback_does_not(self):
+    """BOTH the import probe and the supervisor exec run with the host-mount
+    PYTHONPATH prepended (so PID-1 imports the FRESH host supervisor, not the
+    image's baked copy); the `|| exec` fallback keeps NO PYTHONPATH (it never
+    imports kanibako)."""
+    from kanibako.commands.start import _build_supervisor_pid1
 
-        ep, args = _build_supervisor_pid1(
-            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
-            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
-        )
-        script = args[1]
-        # Probe carries the PYTHONPATH.
-        assert f"env {_PP} python3 -c 'import kanibako.box_supervisor'" in script
-        # Supervisor exec carries the PYTHONPATH.
-        assert f"exec env {_PP} python3 -m kanibako.box_supervisor" in script
-        # The fallback branch does NOT inject PYTHONPATH.  rsplit, not split: the
-        # probe's own retry group also contains a `|| {`, and the LAST one opens
-        # the fallback.
-        fb = script.rsplit("|| {", 1)[1]
-        assert "PYTHONPATH" not in fb
-        assert "exec tmux new-session -s kanibako -- sh;" in fb
+    ep, args = _build_supervisor_pid1(
+      ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+      ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+    )
+    script = args[1]
+    # Probe carries the PYTHONPATH.
+    assert f"env {_PP} python3 -c 'import kanibako.box_supervisor'" in script
+    # Supervisor exec carries the PYTHONPATH.
+    assert f"exec env {_PP} python3 -m kanibako.box_supervisor" in script
+    # The fallback branch does NOT inject PYTHONPATH.  rsplit, not split: the
+    # probe's own retry group also contains a `|| {`, and the LAST one opens
+    # the fallback.
+    fb = script.rsplit("|| {", 1)[1]
+    assert "PYTHONPATH" not in fb
+    assert "exec tmux new-session -s kanibako -- sh;" in fb
 
-    def test_quotes_agent_args_with_spaces_round_trip(self):
-        """Agent args with spaces / quotes survive the shlex quoting round-trip."""
-        import shlex
+  def test_quotes_agent_args_with_spaces_round_trip(self):
+    """Agent args with spaces / quotes survive the shlex quoting round-trip."""
+    import shlex
 
-        from kanibako.commands.start import _build_supervisor_pid1
+    from kanibako.commands.start import _build_supervisor_pid1
 
-        supervisor_argv = [
-            "python3", "-m", "kanibako.box_supervisor",
-            "--marker", "[Agent handoff - Continue prior task(s)]",
-            "--continue-cmd", "claude --continue",
-            "--", "claude", "-p", "do a thing with 'quotes' and spaces",
-        ]
-        fallback_argv = ["tmux", "new-session", "-s", "kanibako", "--", "sh"]
-        ep, args = _build_supervisor_pid1(supervisor_argv, fallback_argv)
-        assert ep == "sh"
-        script = args[1]
-        # The exact shlex.join of each argv appears verbatim after its `exec` (the
-        # supervisor exec is prefixed by the PYTHONPATH-injecting `env`).
-        assert f"exec env {_PP} {shlex.join(supervisor_argv)}" in script
-        assert f"exec {shlex.join(fallback_argv)}" in script
-        # And the supervisor command round-trips back to the original argv once the
-        # `env "PYTHONPATH=..."` prefix (two tokens) is stripped.  shlex.split strips
-        # the shell quotes off the assignment, so compare against the unquoted value.
-        after = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
-        after_tokens = shlex.split(after)
-        assert after_tokens[0] == "env"
-        assert after_tokens[1] == _PP.strip('"')
-        assert after_tokens[2:] == supervisor_argv
-        fb = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
-        assert shlex.split(fb) == fallback_argv
+    supervisor_argv = [
+      "python3",
+      "-m",
+      "kanibako.box_supervisor",
+      "--marker",
+      "[Agent handoff - Continue prior task(s)]",
+      "--continue-cmd",
+      "claude --continue",
+      "--",
+      "claude",
+      "-p",
+      "do a thing with 'quotes' and spaces",
+    ]
+    fallback_argv = ["tmux", "new-session", "-s", "kanibako", "--", "sh"]
+    ep, args = _build_supervisor_pid1(supervisor_argv, fallback_argv)
+    assert ep == "sh"
+    script = args[1]
+    # The exact shlex.join of each argv appears verbatim after its `exec` (the
+    # supervisor exec is prefixed by the PYTHONPATH-injecting `env`).
+    assert f"exec env {_PP} {shlex.join(supervisor_argv)}" in script
+    assert f"exec {shlex.join(fallback_argv)}" in script
+    # And the supervisor command round-trips back to the original argv once the
+    # `env "PYTHONPATH=..."` prefix (two tokens) is stripped.  shlex.split strips
+    # the shell quotes off the assignment, so compare against the unquoted value.
+    after = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
+    after_tokens = shlex.split(after)
+    assert after_tokens[0] == "env"
+    assert after_tokens[1] == _PP.strip('"')
+    assert after_tokens[2:] == supervisor_argv
+    fb = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
+    assert shlex.split(fb) == fallback_argv
 
 
 _POSIX_SHELLS = [["sh"]] + ([["bash", "--posix"]] if shutil.which("bash") else [])
@@ -3882,529 +4735,629 @@ _POSIX_SHELLS = [["sh"]] + ([["bash", "--posix"]] if shutil.which("bash") else [
 @pytest.mark.parametrize("import_ok", [True, False], ids=["import-ok", "import-fails"])
 @pytest.mark.parametrize("log_dir_is_file", [False, True], ids=["log-ok", "log-dir-is-file"])
 def test_pid1_script_runs_whatever_the_log_can_do(
-    tmp_path, monkeypatch, shell, import_ok, log_dir_is_file,
+  tmp_path,
+  monkeypatch,
+  shell,
+  import_ok,
+  log_dir_is_file,
 ):
-    """PID 1 reaches the supervisor or the fallback even when the log cannot open.
+  """PID 1 reaches the supervisor or the fallback even when the log cannot open.
 
-    Measured: with the box home's ``.kanibako`` a FILE, the ``: >log`` truncate
-    (``:`` is a special builtin) ended the POSIX shell, rc=1, and neither ran.
-    """
+  Measured: with the box home's ``.kanibako`` a FILE, the ``: >log`` truncate
+  (``:`` is a special builtin) ended the POSIX shell, rc=1, and neither ran.
+  """
+  import subprocess
+
+  from kanibako.commands import start
+
+  log_dir = tmp_path / ".kanibako"
+  if log_dir_is_file:
+    log_dir.write_text("")
+  log = log_dir / "supervisor-fallback.log"
+  monkeypatch.setattr(start, "_supervisor_fallback_guest_path", lambda: str(log))
+  _ep, args = start._build_supervisor_pid1(
+    ["sh", "-c", "echo SUPERVISOR"],
+    ["sh", "-c", "echo FALLBACK"],
+  )
+  env = dict(os.environ, PYTHONPATH=str(Path(start.__file__).parents[2]))
+  if not import_ok:
+    env["PYTHONHOME"] = "/nonexistent"
+  out = subprocess.run([*shell, *args], capture_output=True, text=True, env=env)
+  assert out.returncode == 0, out.stderr
+  assert out.stdout == ("SUPERVISOR\n" if import_ok else "FALLBACK\n")
+  if not log_dir_is_file and not import_ok:
+    assert start.SUPERVISOR_FALLBACK_WARNING in log.read_text()
+
+
+class TestFallbackNotice:
+  """The fallback keep-alive shows the attaching user why the agent did not start.
+
+  Measured on bifrost: with both import probes failing, PID 1's fallback tmux
+  session ran a bare bash, the host attach succeeded, and the warning reached only
+  ``podman logs``.
+  """
+
+  @staticmethod
+  def _run_notice(tmp_path, monkeypatch, log_text):
     import subprocess
 
     from kanibako.commands import start
 
-    log_dir = tmp_path / ".kanibako"
-    if log_dir_is_file:
-        log_dir.write_text("")
-    log = log_dir / "supervisor-fallback.log"
+    log = tmp_path / "supervisor-fallback.log"
+    if log_text is not None:
+      log.write_text(log_text)
     monkeypatch.setattr(start, "_supervisor_fallback_guest_path", lambda: str(log))
-    _ep, args = start._build_supervisor_pid1(
-        ["sh", "-c", "echo SUPERVISOR"], ["sh", "-c", "echo FALLBACK"],
-    )
-    env = dict(os.environ, PYTHONPATH=str(Path(start.__file__).parents[2]))
-    if not import_ok:
-        env["PYTHONHOME"] = "/nonexistent"
-    out = subprocess.run([*shell, *args], capture_output=True, text=True, env=env)
-    assert out.returncode == 0, out.stderr
-    assert out.stdout == ("SUPERVISOR\n" if import_ok else "FALLBACK\n")
-    if not log_dir_is_file and not import_ok:
-        assert start.SUPERVISOR_FALLBACK_WARNING in log.read_text()
+    prog, args = start._fallback_notice_shim("sh", ["-c", "echo SHELL-STARTED"])
+    out = subprocess.run([prog, *args], capture_output=True, text=True, check=True)
+    return out.stdout.splitlines()
 
+  def test_log_tail_then_shell(self, tmp_path, monkeypatch):
+    from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
 
-class TestFallbackNotice:
-    """The fallback keep-alive shows the attaching user why the agent did not start.
+    lines = [f"trace {i}" for i in range(30)] + [SUPERVISOR_FALLBACK_WARNING + " Reason."]
+    out = self._run_notice(tmp_path, monkeypatch, "\n".join(lines) + "\n")
+    assert out == lines[-20:] + ["SHELL-STARTED"]
 
-    Measured on bifrost: with both import probes failing, PID 1's fallback tmux
-    session ran a bare bash, the host attach succeeded, and the warning reached only
-    ``podman logs``.
-    """
+  def test_warning_alone_when_log_lacks_it(self, tmp_path, monkeypatch):
+    from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
 
-    @staticmethod
-    def _run_notice(tmp_path, monkeypatch, log_text):
-        import subprocess
+    for log_text in (None, "stale line from an earlier launch\n"):
+      out = self._run_notice(tmp_path, monkeypatch, log_text)
+      assert out == [SUPERVISOR_FALLBACK_WARNING, "SHELL-STARTED"]
 
-        from kanibako.commands import start
+  def test_detached_fallback_pane_runs_the_notice(self, start_mocks):
+    import shlex
 
-        log = tmp_path / "supervisor-fallback.log"
-        if log_text is not None:
-            log.write_text(log_text)
-        monkeypatch.setattr(start, "_supervisor_fallback_guest_path", lambda: str(log))
-        prog, args = start._fallback_notice_shim("sh", ["-c", "echo SHELL-STARTED"])
-        out = subprocess.run([prog, *args], capture_output=True, text=True, check=True)
-        return out.stdout.splitlines()
+    from kanibako.commands.start import SUPERVISOR_FALLBACK_RELPATH
 
-    def test_log_tail_then_shell(self, tmp_path, monkeypatch):
-        from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
-
-        lines = [f"trace {i}" for i in range(30)] + [SUPERVISOR_FALLBACK_WARNING + " Reason."]
-        out = self._run_notice(tmp_path, monkeypatch, "\n".join(lines) + "\n")
-        assert out == lines[-20:] + ["SHELL-STARTED"]
-
-    def test_warning_alone_when_log_lacks_it(self, tmp_path, monkeypatch):
-        from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
-
-        for log_text in (None, "stale line from an earlier launch\n"):
-            out = self._run_notice(tmp_path, monkeypatch, log_text)
-            assert out == [SUPERVISOR_FALLBACK_WARNING, "SHELL-STARTED"]
-
-    def test_detached_fallback_pane_runs_the_notice(self, start_mocks):
-        import shlex
-
-        from kanibako.commands.start import SUPERVISOR_FALLBACK_RELPATH
-
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = TestDetachedSupervisor._detach_script(m)
-        fb = shlex.split(script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}"))
-        inner = fb[fb.index("--") + 1:]
-        assert inner[:2] == ["sh", "-c"]
-        assert f"tail -n 20 /home/agent/{SUPERVISOR_FALLBACK_RELPATH}" in inner[2]
-        assert inner[2].endswith('exec "$@"')
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = TestDetachedSupervisor._detach_script(m)
+    fb = shlex.split(script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}"))
+    inner = fb[fb.index("--") + 1 :]
+    assert inner[:2] == ["sh", "-c"]
+    assert f"tail -n 20 /home/agent/{SUPERVISOR_FALLBACK_RELPATH}" in inner[2]
+    assert inner[2].endswith('exec "$@"')
 
 
 class TestWarmOnlyPanelWatch:
-    """`kanibako code` warm-up fronts the box AGENT-INDEPENDENTLY (E2f).
+  """`kanibako code` warm-up fronts the box AGENT-INDEPENDENTLY (E2f).
 
-    ``start_detached`` (the ``code`` auto-start entry) launches the box_supervisor
-    PID-1 in PANEL-WATCH mode: it starts NO CLI agent (the panel is the sole agent —
-    no two-agent split-brain on one ``~/.claude``), watches the panel-agent liveness
-    marker (``--agent-markers-dir`` / ``KANIBAKO_AGENT_MARKERS_DIR``), and self-heals a CLI
-    agent only if the panel agent dies with the panel still connected.  ``kanibako
-    start --detach`` (no ``warm_only``) stays the E2b supervised-agent path.
-    """
+  ``start_detached`` (the ``code`` auto-start entry) launches the box_supervisor
+  PID-1 in PANEL-WATCH mode: it starts NO CLI agent (the panel is the sole agent —
+  no two-agent split-brain on one ``~/.claude``), watches the panel-agent liveness
+  marker (``--agent-markers-dir`` / ``KANIBAKO_AGENT_MARKERS_DIR``), and self-heals a CLI
+  agent only if the panel agent dies with the panel still connected.  ``kanibako
+  start --detach`` (no ``warm_only``) stays the E2b supervised-agent path.
+  """
 
-    @staticmethod
-    def _pid1_script(m) -> str:
-        """The PID-1 ``sh -c`` script the container was launched with."""
-        kw = m.runtime.run.call_args.kwargs
-        assert kw["entrypoint"] == "sh"
-        cli_args = kw.get("cli_args") or []
-        assert cli_args[0] == "-c"
-        return cli_args[1]
+  @staticmethod
+  def _pid1_script(m) -> str:
+    """The PID-1 ``sh -c`` script the container was launched with."""
+    kw = m.runtime.run.call_args.kwargs
+    assert kw["entrypoint"] == "sh"
+    cli_args = kw.get("cli_args") or []
+    assert cli_args[0] == "-c"
+    return cli_args[1]
 
-    @staticmethod
-    def _supervisor_argv(script: str) -> list[str]:
-        """shlex-split the supervisor invocation out of the import-gated script."""
-        import shlex
+  @staticmethod
+  def _supervisor_argv(script: str) -> list[str]:
+    """shlex-split the supervisor invocation out of the import-gated script."""
+    import shlex
 
-        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
-        return shlex.split(sup)
+    sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
+    return shlex.split(sup)
 
-    @staticmethod
-    def _supervisor_config(argv: list[str]):
-        """The :class:`SupervisorConfig` PID 1 parses out of *argv*."""
-        from kanibako.box_supervisor import config_from_argv
+  @staticmethod
+  def _supervisor_config(argv: list[str]):
+    """The :class:`SupervisorConfig` PID 1 parses out of *argv*."""
+    from kanibako.box_supervisor import config_from_argv
 
-        return config_from_argv(argv[argv.index("kanibako.box_supervisor") + 1:])
+    return config_from_argv(argv[argv.index("kanibako.box_supervisor") + 1 :])
 
-    def test_start_detached_warm_up_is_agentless_panel_watch(self, start_mocks):
-        """REGRESSION-PIN (the bug no test caught): the warm-up supervisor is
-        AGENTLESS — panel-watch, NO agent runs at start.  The panel-watch loop is
-        what keeps it agentless (``test_panel_watch_startup_is_agentless_and_stays_up``);
-        the START grammar still rides along, because the marker scan judges the
-        panel's session by it — without it a codex panel's live marker was reaped
-        and a second agent self-healed beside it."""
-        from kanibako.box_supervisor import agent_launch_heads
-        from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
+  def test_start_detached_warm_up_is_agentless_panel_watch(self, start_mocks):
+    """REGRESSION-PIN (the bug no test caught): the warm-up supervisor is
+    AGENTLESS — panel-watch, NO agent runs at start.  The panel-watch loop is
+    what keeps it agentless (``test_panel_watch_startup_is_agentless_and_stays_up``);
+    the START grammar still rides along, because the marker scan judges the
+    panel's session by it — without it a codex panel's live marker was reaped
+    and a second agent self-healed beside it."""
+    from kanibako.box_supervisor import agent_launch_heads
+    from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
 
-        with start_mocks() as m:
-            rc = start_detached(None)
-            assert rc == 0
-            script = self._pid1_script(m)
-            argv = self._supervisor_argv(script)
-            # Panel-watch, agent-independent warm-up.
-            assert "--panel-watch" in argv
-            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
-            cfg = self._supervisor_config(argv)
-            assert cfg.panel_watch is True
-            assert "claude" in cfg.start_argv
-            assert ("claude", None) in agent_launch_heads(cfg.start_argv)
+    with start_mocks() as m:
+      rc = start_detached(None)
+      assert rc == 0
+      script = self._pid1_script(m)
+      argv = self._supervisor_argv(script)
+      # Panel-watch, agent-independent warm-up.
+      assert "--panel-watch" in argv
+      assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
+      cfg = self._supervisor_config(argv)
+      assert cfg.panel_watch is True
+      assert "claude" in cfg.start_argv
+      assert ("claude", None) in agent_launch_heads(cfg.start_argv)
 
-    def test_warm_up_self_heal_grammar_is_the_box_agent(self, start_mocks):
-        """The panel-death self-heal launches the BOX's agent: --continue-cmd carries
-        claude's grammar."""
-        import shlex
+  def test_warm_up_self_heal_grammar_is_the_box_agent(self, start_mocks):
+    """The panel-death self-heal launches the BOX's agent: --continue-cmd carries
+    claude's grammar."""
+    import shlex
 
-        from kanibako.commands.start import start_detached
+    from kanibako.commands.start import start_detached
 
-        with start_mocks() as m:
-            assert start_detached(None) == 0
-            argv = self._supervisor_argv(self._pid1_script(m))
-            assert "--continue-cmd" in argv
-            cont = argv[argv.index("--continue-cmd") + 1]
-            assert "claude" in shlex.split(cont)
+    with start_mocks() as m:
+      assert start_detached(None) == 0
+      argv = self._supervisor_argv(self._pid1_script(m))
+      assert "--continue-cmd" in argv
+      cont = argv[argv.index("--continue-cmd") + 1]
+      assert "claude" in shlex.split(cont)
 
-    def test_warm_up_forward_compat_fallback_is_agent_independent_bare_shell(
-        self, start_mocks,
-    ):
-        """The `|| exec` degrade path (old image, no supervisor module) is the
-        bare-shell tmux keep-alive — still AGENT-INDEPENDENT (the case-3a floor)."""
-        from kanibako.commands.start import start_detached
+  def test_warm_up_forward_compat_fallback_is_agent_independent_bare_shell(
+    self,
+    start_mocks,
+  ):
+    """The `|| exec` degrade path (old image, no supervisor module) is the
+    bare-shell tmux keep-alive — still AGENT-INDEPENDENT (the case-3a floor)."""
+    from kanibako.commands.start import start_detached
 
-        with start_mocks() as m:
-            assert start_detached(None) == 0
-            script = self._pid1_script(m)
-            fallback = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
-            # No supervisor run (the notice's warning text names the module).
-            assert "-m kanibako.box_supervisor" not in fallback
-            assert "new-session -s kanibako" in fallback   # bare-shell tmux keep-alive
+    with start_mocks() as m:
+      assert start_detached(None) == 0
+      script = self._pid1_script(m)
+      fallback = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
+      # No supervisor run (the notice's warning text names the module).
+      assert "-m kanibako.box_supervisor" not in fallback
+      assert "new-session -s kanibako" in fallback  # bare-shell tmux keep-alive
 
-    def test_warm_up_seeds_agent_markers_dir_env(self, start_mocks):
-        """The box seeds KANIBAKO_AGENT_MARKERS_DIR (E2g's write side) = the supervisor's
-        --agent-markers-dir (this read side): ONE shared markers dir."""
-        from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
+  def test_warm_up_seeds_agent_markers_dir_env(self, start_mocks):
+    """The box seeds KANIBAKO_AGENT_MARKERS_DIR (E2g's write side) = the supervisor's
+    --agent-markers-dir (this read side): ONE shared markers dir."""
+    from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
 
-        with start_mocks() as m:
-            assert start_detached(None) == 0
-            env = m.runtime.run.call_args.kwargs["env"]
-            assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
+    with start_mocks() as m:
+      assert start_detached(None) == 0
+      env = m.runtime.run.call_args.kwargs["env"]
+      assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
 
-    def test_start_detach_stays_supervised_agent_not_panel_watch(self, start_mocks):
-        """REGRESSION GUARD (no over-reach): `kanibako start --detach` (no warm_only)
-        stays the E2b supervised-agent path — the agent runs at start, NO panel-watch.
-        Increment 4a: it NOW also carries the markers dir (+ env) so run_forever can
-        LOG-ONLY detect a panel newcomer; that is detection substrate, not eviction."""
-        from kanibako.commands.start import AGENT_MARKERS_DIR
+  def test_start_detach_stays_supervised_agent_not_panel_watch(self, start_mocks):
+    """REGRESSION GUARD (no over-reach): `kanibako start --detach` (no warm_only)
+    stays the E2b supervised-agent path — the agent runs at start, NO panel-watch.
+    Increment 4a: it NOW also carries the markers dir (+ env) so run_forever can
+    LOG-ONLY detect a panel newcomer; that is detection substrate, not eviction."""
+    from kanibako.commands.start import AGENT_MARKERS_DIR
 
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,  # NO warm_only
-            )
-            assert rc == 0
-            script = self._pid1_script(m)
-            argv = self._supervisor_argv(script)
-            assert "--panel-watch" not in argv
-            # The supervised agent runs at start: a standalone `--` payload with the
-            # agent entrypoint after it.
-            assert "--" in argv
-            assert "claude" in argv[argv.index("--") + 1:]
-            # 4a: the markers dir IS threaded (both modes) for newcomer detection —
-            # but this remains the supervised agent path (agent runs at start).
-            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
-            assert m.runtime.run.call_args.kwargs["env"][
-                "KANIBAKO_AGENT_MARKERS_DIR"
-            ] == AGENT_MARKERS_DIR
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,  # NO warm_only
+      )
+      assert rc == 0
+      script = self._pid1_script(m)
+      argv = self._supervisor_argv(script)
+      assert "--panel-watch" not in argv
+      # The supervised agent runs at start: a standalone `--` payload with the
+      # agent entrypoint after it.
+      assert "--" in argv
+      assert "claude" in argv[argv.index("--") + 1 :]
+      # 4a: the markers dir IS threaded (both modes) for newcomer detection —
+      # but this remains the supervised agent path (agent runs at start).
+      assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
+      assert (
+        m.runtime.run.call_args.kwargs["env"]["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
+      )
 
-    @staticmethod
-    def _warm_only_args(**over):
-        """A full `start` Namespace with --warm-only (detach unset = attach default)."""
-        import argparse
+  @staticmethod
+  def _warm_only_args(**over):
+    """A full `start` Namespace with --warm-only (detach unset = attach default)."""
+    import argparse
 
-        ns = argparse.Namespace(
-            project=None, box=None, agent_args=[], entrypoint=None, image=None,
-            new_session=False, continue_session=False, resume_session=False,
-            autonomous=False, secure=False, model=None, env=None,
-            no_helpers=False, no_auto_auth=False, browser=False,
-            share_images=False, persistent=False, ephemeral=False,
-            detach=None, warm_only=True, agent=None, print_container=False,
-        )
-        for k, v in over.items():
-            setattr(ns, k, v)
-        return ns
+    ns = argparse.Namespace(
+      project=None,
+      box=None,
+      agent_args=[],
+      entrypoint=None,
+      image=None,
+      new_session=False,
+      continue_session=False,
+      resume_session=False,
+      autonomous=False,
+      secure=False,
+      model=None,
+      env=None,
+      no_helpers=False,
+      no_auto_auth=False,
+      browser=False,
+      share_images=False,
+      persistent=False,
+      ephemeral=False,
+      detach=None,
+      warm_only=True,
+      agent=None,
+      print_container=False,
+    )
+    for k, v in over.items():
+      setattr(ns, k, v)
+    return ns
 
-    def test_run_start_warm_only_matches_start_detached_panel_watch(self, start_mocks):
-        """E2h: `kanibako start --warm-only` yields the SAME launch shape as
-        start_detached(warm_only=True) — the panel-watch supervisor argv (agentless,
-        --agent-markers-dir), the seeded KANIBAKO_AGENT_MARKERS_DIR env, and NO attach.
-        Mutation-proof: fails if run_start does not thread warm_only through."""
-        from kanibako.commands.start import AGENT_MARKERS_DIR, run_start
+  def test_run_start_warm_only_matches_start_detached_panel_watch(self, start_mocks):
+    """E2h: `kanibako start --warm-only` yields the SAME launch shape as
+    start_detached(warm_only=True) — the panel-watch supervisor argv (agentless,
+    --agent-markers-dir), the seeded KANIBAKO_AGENT_MARKERS_DIR env, and NO attach.
+    Mutation-proof: fails if run_start does not thread warm_only through."""
+    from kanibako.commands.start import AGENT_MARKERS_DIR, run_start
 
-        with start_mocks() as m:
-            rc = run_start(self._warm_only_args())
-            assert rc == 0
-            argv = self._supervisor_argv(self._pid1_script(m))
-            # Panel-watch, agent-independent — the start_detached(warm_only=True) shape.
-            assert "--panel-watch" in argv
-            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
-            # The same panel-watch config, start grammar included.
-            cfg = self._supervisor_config(argv)
-            assert cfg.panel_watch is True
-            assert "claude" in cfg.start_argv
-            # The shared marker env is seeded (E2g write side == this read side).
-            env = m.runtime.run.call_args.kwargs["env"]
-            assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
-            # A warm-only launch is DETACHED: this terminal never attaches.
-            m.runtime.exec.assert_not_called()
+    with start_mocks() as m:
+      rc = run_start(self._warm_only_args())
+      assert rc == 0
+      argv = self._supervisor_argv(self._pid1_script(m))
+      # Panel-watch, agent-independent — the start_detached(warm_only=True) shape.
+      assert "--panel-watch" in argv
+      assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
+      # The same panel-watch config, start grammar included.
+      cfg = self._supervisor_config(argv)
+      assert cfg.panel_watch is True
+      assert "claude" in cfg.start_argv
+      # The shared marker env is seeded (E2g write side == this read side).
+      env = m.runtime.run.call_args.kwargs["env"]
+      assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
+      # A warm-only launch is DETACHED: this terminal never attaches.
+      m.runtime.exec.assert_not_called()
 
 
 class TestForegroundSupervisor:
-    """FOREGROUND AGENT `start` routes through the supervisor too (E2c).
+  """FOREGROUND AGENT `start` routes through the supervisor too (E2c).
 
-    E2c unifies the launch model: a persistent AGENT launch makes the box_supervisor
-    PID-1 whether or not ``--detach``.  They differ ONLY in the launch-intent exit
-    policy — FOREGROUND (attaching) passes ``--on-agent-exit teardown`` (an agent exit
-    closes the box, a human is present); DETACHED keeps ``--on-agent-exit self-heal``
-    (always-on).  A NO-AGENT foreground box keeps the unchanged agent-as-session /
-    shell tmux wrap (nothing to supervise), and the attach stays ``tmux attach``.
-    """
+  E2c unifies the launch model: a persistent AGENT launch makes the box_supervisor
+  PID-1 whether or not ``--detach``.  They differ ONLY in the launch-intent exit
+  policy — FOREGROUND (attaching) passes ``--on-agent-exit teardown`` (an agent exit
+  closes the box, a human is present); DETACHED keeps ``--on-agent-exit self-heal``
+  (always-on).  A NO-AGENT foreground box keeps the unchanged agent-as-session /
+  shell tmux wrap (nothing to supervise), and the attach stays ``tmux attach``.
+  """
 
-    @staticmethod
-    def _script(m) -> str:
-        """The PID-1 ``sh -c`` script the container was launched with."""
-        kw = m.runtime.run.call_args.kwargs
-        assert kw["entrypoint"] == "sh"
-        cli_args = kw.get("cli_args") or []
-        assert cli_args[0] == "-c"
-        return cli_args[1]
+  @staticmethod
+  def _script(m) -> str:
+    """The PID-1 ``sh -c`` script the container was launched with."""
+    kw = m.runtime.run.call_args.kwargs
+    assert kw["entrypoint"] == "sh"
+    cli_args = kw.get("cli_args") or []
+    assert cli_args[0] == "-c"
+    return cli_args[1]
 
-    @staticmethod
-    def _supervisor_argv(script: str) -> list[str]:
-        """Parse the supervisor argv out of the import-gated ``sh -c`` script."""
-        import shlex
+  @staticmethod
+  def _supervisor_argv(script: str) -> list[str]:
+    """Parse the supervisor argv out of the import-gated ``sh -c`` script."""
+    import shlex
 
-        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
-        return shlex.split(sup)
+    sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
+    return shlex.split(sup)
 
-    def test_foreground_agent_launches_supervisor_pid1(self, start_mocks):
-        """Foreground agent → sh -c import-gated supervisor with a tmux fallback."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,  # NOT detach
-            )
-            assert rc == 0
-            script = self._script(m)
-            assert "import kanibako.box_supervisor" in script
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "--session kanibako" in script
-            assert CONTINUE_MARKER in script
-            assert "claude" in script
-            # Forward-compat fallback keep-alive present.
-            assert "|| {" in script  # fallback is a brace group now
-            assert "new-session -s kanibako" in script
+  def test_foreground_agent_launches_supervisor_pid1(self, start_mocks):
+    """Foreground agent → sh -c import-gated supervisor with a tmux fallback."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,  # NOT detach
+      )
+      assert rc == 0
+      script = self._script(m)
+      assert "import kanibako.box_supervisor" in script
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "--session kanibako" in script
+      assert CONTINUE_MARKER in script
+      assert "claude" in script
+      # Forward-compat fallback keep-alive present.
+      assert "|| {" in script  # fallback is a brace group now
+      assert "new-session -s kanibako" in script
 
-    def test_foreground_agent_carries_teardown_policy(self, start_mocks):
-        """FOREGROUND → --on-agent-exit teardown (agent exit closes the box)."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            argv = self._supervisor_argv(self._script(m))
-            assert argv[argv.index("--on-agent-exit") + 1] == "teardown"
+  def test_foreground_agent_carries_teardown_policy(self, start_mocks):
+    """FOREGROUND → --on-agent-exit teardown (agent exit closes the box)."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      argv = self._supervisor_argv(self._script(m))
+      assert argv[argv.index("--on-agent-exit") + 1] == "teardown"
 
-    def test_detached_agent_carries_self_heal_policy_regression(self, start_mocks):
-        """REGRESSION: DETACHED (E2b) still carries --on-agent-exit self-heal."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=True,
-            )
-            assert rc == 0
-            script = TestDetachedSupervisor._detach_script(m)
-            argv = self._supervisor_argv(script)
-            assert argv[argv.index("--on-agent-exit") + 1] == "self-heal"
+  def test_detached_agent_carries_self_heal_policy_regression(self, start_mocks):
+    """REGRESSION: DETACHED (E2b) still carries --on-agent-exit self-heal."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+      )
+      assert rc == 0
+      script = TestDetachedSupervisor._detach_script(m)
+      argv = self._supervisor_argv(script)
+      assert argv[argv.index("--on-agent-exit") + 1] == "self-heal"
 
-    def test_foreground_agent_attaches_kanibako_session(self, start_mocks):
-        """Foreground supervised launch still attaches via `tmux attach -t kanibako`."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            exec_args = m.runtime.exec.call_args[0]
-            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+  def test_foreground_agent_attaches_kanibako_session(self, start_mocks):
+    """Foreground supervised launch still attaches via `tmux attach -t kanibako`."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      exec_args = m.runtime.exec.call_args[0]
+      assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
 
-    def test_foreground_agent_supervisor_carries_continue_cmd(self, start_mocks):
-        """A descriptor with a continue mode threads --continue-cmd (foreground)."""
-        import shlex
+  def test_foreground_agent_supervisor_carries_continue_cmd(self, start_mocks):
+    """A descriptor with a continue mode threads --continue-cmd (foreground)."""
+    import shlex
 
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            argv = self._supervisor_argv(self._script(m))
-            cont_val = argv[argv.index("--continue-cmd") + 1]
-            assert "--continue" in shlex.split(cont_val)
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      argv = self._supervisor_argv(self._script(m))
+      cont_val = argv[argv.index("--continue-cmd") + 1]
+      assert "--continue" in shlex.split(cont_val)
 
-    def test_session_takeover_flag_dormant_by_default(self, start_mocks, monkeypatch):
-        """4b: KANIBAKO_SESSION_TAKEOVER unset ⇒ NO --session-takeover (dormant)."""
-        monkeypatch.delenv("KANIBAKO_SESSION_TAKEOVER", raising=False)
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            argv = self._supervisor_argv(self._script(m))
-            assert "--session-takeover" not in argv
+  def test_session_takeover_flag_dormant_by_default(self, start_mocks, monkeypatch):
+    """4b: KANIBAKO_SESSION_TAKEOVER unset ⇒ NO --session-takeover (dormant)."""
+    monkeypatch.delenv("KANIBAKO_SESSION_TAKEOVER", raising=False)
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      argv = self._supervisor_argv(self._script(m))
+      assert "--session-takeover" not in argv
 
-    def test_session_takeover_env_threads_flag(self, start_mocks, monkeypatch):
-        """4b: KANIBAKO_SESSION_TAKEOVER=1 ⇒ supervisor argv carries --session-takeover."""
-        monkeypatch.setenv("KANIBAKO_SESSION_TAKEOVER", "1")
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            argv = self._supervisor_argv(self._script(m))
-            assert "--session-takeover" in argv
+  def test_session_takeover_env_threads_flag(self, start_mocks, monkeypatch):
+    """4b: KANIBAKO_SESSION_TAKEOVER=1 ⇒ supervisor argv carries --session-takeover."""
+    monkeypatch.setenv("KANIBAKO_SESSION_TAKEOVER", "1")
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      argv = self._supervisor_argv(self._script(m))
+      assert "--session-takeover" in argv
 
-    def test_env_flag_enabled_recognizes_truthy_strings(self):
-        """The gate accepts 1/true/yes/on (any case), rejects everything else."""
-        from kanibako.commands.start import _env_flag_enabled
+  def test_env_flag_enabled_recognizes_truthy_strings(self):
+    """The gate accepts 1/true/yes/on (any case), rejects everything else."""
+    from kanibako.commands.start import _env_flag_enabled
 
-        for on in ("1", "true", "TRUE", "Yes", " on ", "On"):
-            assert _env_flag_enabled(on) is True
-        for off in (None, "", "0", "false", "no", "off", "maybe"):
-            assert _env_flag_enabled(off) is False
+    for on in ("1", "true", "TRUE", "Yes", " on ", "On"):
+      assert _env_flag_enabled(on) is True
+    for off in (None, "", "0", "false", "no", "off", "maybe"):
+      assert _env_flag_enabled(off) is False
 
-    def test_foreground_shell_keeps_bare_shell_wrap(self, start_mocks):
-        """Foreground NO-AGENT (box_shell_mode) → unchanged tmux wrap, NO supervisor."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, box_shell_mode=True,
-            )
-            assert rc == 0
-            kw = m.runtime.run.call_args.kwargs
-            assert kw["entrypoint"] == "tmux"
-            cli_args = kw.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            assert not any("box_supervisor" in str(a) for a in cli_args)
+  def test_foreground_shell_keeps_bare_shell_wrap(self, start_mocks):
+    """Foreground NO-AGENT (box_shell_mode) → unchanged tmux wrap, NO supervisor."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        box_shell_mode=True,
+      )
+      assert rc == 0
+      kw = m.runtime.run.call_args.kwargs
+      assert kw["entrypoint"] == "tmux"
+      cli_args = kw.get("cli_args") or []
+      assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+      assert not any("box_supervisor" in str(a) for a in cli_args)
 
-    def test_foreground_custom_entrypoint_keeps_bare_wrap(self, start_mocks):
-        """A foreground custom --entrypoint box is not a real agent → tmux wrap."""
-        with start_mocks() as m:
-            rc = _run_container(
-                project_dir=None, entrypoint="/bin/bash", image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            kw = m.runtime.run.call_args.kwargs
-            assert kw["entrypoint"] == "tmux"
-            cli_args = kw.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            assert not any("box_supervisor" in str(a) for a in cli_args)
+  def test_foreground_custom_entrypoint_keeps_bare_wrap(self, start_mocks):
+    """A foreground custom --entrypoint box is not a real agent → tmux wrap."""
+    with start_mocks() as m:
+      rc = _run_container(
+        project_dir=None,
+        entrypoint="/bin/bash",
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      kw = m.runtime.run.call_args.kwargs
+      assert kw["entrypoint"] == "tmux"
+      cli_args = kw.get("cli_args") or []
+      assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+      assert not any("box_supervisor" in str(a) for a in cli_args)
 
-    def test_foreground_goose_agent_payload_carries_directive_flatten(self, start_mocks):
-        """goose foreground agent → the supervised payload runs the directive flatten."""
-        from kanibako.plugins.goose.target import GooseTarget
+  def test_foreground_goose_agent_payload_carries_directive_flatten(self, start_mocks):
+    """goose foreground agent → the supervised payload runs the directive flatten."""
+    from kanibako.plugins.goose.target import GooseTarget
 
-        with start_mocks() as m:
-            m.target.name = "goose"
-            m.target.default_entrypoint = "goose"
-            m.target.descriptor = GooseTarget().descriptor
-            # The real plugin's env, FINAL slot included: the shim gate reads it.
-            m.target.default_envs.return_value = GooseTarget().default_envs()
-            m.target.has_resumable_session.return_value = True
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            script = self._script(m)
-            assert "import-directives.py" in script
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "--on-agent-exit teardown" in script
+    with start_mocks() as m:
+      m.target.name = "goose"
+      m.target.default_entrypoint = "goose"
+      m.target.descriptor = GooseTarget().descriptor
+      # The real plugin's env, FINAL slot included: the shim gate reads it.
+      m.target.default_envs.return_value = GooseTarget().default_envs()
+      m.target.has_resumable_session.return_value = True
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      script = self._script(m)
+      assert "import-directives.py" in script
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "--on-agent-exit teardown" in script
 
-    def test_foreground_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
-        """A secret-bearing foreground agent → the supervised payload exports the
-        secret from its ro mount (never the VALUE on the argv)."""
-        tok = tmp_path / "token"
-        tok.write_text("sk-bearer-value\n")
-        with start_mocks() as m:
-            m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
-            m.load_agent_config.return_value = m.agent_cfg
-            rc = _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            assert rc == 0
-            script = self._script(m)
-            assert "export MY_SECRET=" in script
-            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
-            assert "sk-bearer-value" not in script
+  def test_foreground_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
+    """A secret-bearing foreground agent → the supervised payload exports the
+    secret from its ro mount (never the VALUE on the argv)."""
+    tok = tmp_path / "token"
+    tok.write_text("sk-bearer-value\n")
+    with start_mocks() as m:
+      m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
+      m.load_agent_config.return_value = m.agent_cfg
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+      )
+      assert rc == 0
+      script = self._script(m)
+      assert "export MY_SECRET=" in script
+      assert (
+        'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor'
+        in script
+      )
+      assert "sk-bearer-value" not in script
 
 
 class TestExitedBeforeAttachTeardown:
-    """F3: a box that dies BEFORE the attach loop sees it must still be torn down.
+  """F3: a box that dies BEFORE the attach loop sees it must still be torn down.
 
-    ⚑ THE GAP. The two-state lifecycle tears an EXITED box down so the next start is
-    fresh; that teardown was wired only into the path that got as far as attaching.
-    The "container exited before session could attach" branch returned 1 and left the
-    container behind — its own comment says *"Container never started or exited
-    immediately"*, which IS the exited state, so the omission was never intentional.
+  ⚑ THE GAP. The two-state lifecycle tears an EXITED box down so the next start is
+  fresh; that teardown was wired only into the path that got as far as attaching.
+  The "container exited before session could attach" branch returned 1 and left the
+  container behind — its own comment says *"Container never started or exited
+  immediately"*, which IS the exited state, so the omission was never intentional.
 
-    ⚑ WHY IT SURFACED NOW. Reaching that branch is a RACE: the box must die inside
-    the ~3 s poll window. A crashing agent does exactly that, and the window has been
-    widening as the launch path gained pre-attach work (the post-start canon
-    re-protect runs three ``podman unshare`` calls inline on the detached path before
-    the first probe; the seeds half added five more binds for podman to set up). The
-    e2e that caught it went green -> flaky -> deterministic across three gates
-    without its own subject changing once.
+  ⚑ WHY IT SURFACED NOW. Reaching that branch is a RACE: the box must die inside
+  the ~3 s poll window. A crashing agent does exactly that, and the window has been
+  widening as the launch path gained pre-attach work (the post-start canon
+  re-protect runs three ``podman unshare`` calls inline on the detached path before
+  the first probe; the seeds half added five more binds for podman to set up). The
+  e2e that caught it went green -> flaky -> deterministic across three gates
+  without its own subject changing once.
+  """
+
+  def test_the_exited_before_attach_branch_calls_the_teardown(self):
+    """⚑ STRUCTURAL, and labeled as such — this pins the WIRING, not behavior.
+
+    The `start_mocks` harness cannot be steered into this branch (it is reached
+    only when the poll loop exhausts, and the harness's mocked runtime resolves
+    an earlier branch first), so a drive-through test is not available at this
+    seam. What IS worth pinning is the exact thing that was missing: the branch
+    that handles "container exited before session could attach" must tear the
+    exited box down before it returns, like the attached path does. Deleting the
+    call — the regression — fails here.
+
+    The teardown's own behavior (keep a running box, remove an exited one) is
+    covered by the two direct tests below, so this deliberately asserts only
+    placement.
     """
+    import inspect
 
-    def test_the_exited_before_attach_branch_calls_the_teardown(self):
-        """⚑ STRUCTURAL, and labeled as such — this pins the WIRING, not behavior.
+    from kanibako.commands import start as start_mod
 
-        The `start_mocks` harness cannot be steered into this branch (it is reached
-        only when the poll loop exhausts, and the harness's mocked runtime resolves
-        an earlier branch first), so a drive-through test is not available at this
-        seam. What IS worth pinning is the exact thing that was missing: the branch
-        that handles "container exited before session could attach" must tear the
-        exited box down before it returns, like the attached path does. Deleting the
-        call — the regression — fails here.
+    src = inspect.getsource(start_mod._run_container)
+    marker = "Error: Container exited before session could attach."
+    assert marker in src
+    branch = src[src.index("elif persistent:") : src.index(marker)]
+    assert "_teardown_persistent_box(runtime, container_name)" in branch, (
+      "the exited-before-attach branch returns without tearing the box down "
+      "— the two-state lifecycle's exited state, arriving early"
+    )
 
-        The teardown's own behavior (keep a running box, remove an exited one) is
-        covered by the two direct tests below, so this deliberately asserts only
-        placement.
-        """
-        import inspect
+  def test_teardown_keeps_a_still_running_box(self):
+    """The guard that makes the new call safe: a container that DID come up (a
+    detach, or a slow start) must be kept reattachable."""
+    from unittest.mock import MagicMock
 
-        from kanibako.commands import start as start_mod
+    from kanibako.commands.start import _teardown_persistent_box
 
-        src = inspect.getsource(start_mod._run_container)
-        marker = "Error: Container exited before session could attach."
-        assert marker in src
-        branch = src[src.index("elif persistent:"):src.index(marker)]
-        assert "_teardown_persistent_box(runtime, container_name)" in branch, (
-            "the exited-before-attach branch returns without tearing the box down "
-            "— the two-state lifecycle's exited state, arriving early"
-        )
+    rt = MagicMock()
+    rt.is_running.return_value = True
+    _teardown_persistent_box(rt, "kanibako-x")
+    rt.rm.assert_not_called()
 
-    def test_teardown_keeps_a_still_running_box(self):
-        """The guard that makes the new call safe: a container that DID come up (a
-        detach, or a slow start) must be kept reattachable."""
-        from unittest.mock import MagicMock
+  def test_teardown_removes_an_exited_box(self):
+    from unittest.mock import MagicMock
 
-        from kanibako.commands.start import _teardown_persistent_box
+    from kanibako.commands.start import _teardown_persistent_box
 
-        rt = MagicMock()
-        rt.is_running.return_value = True
-        _teardown_persistent_box(rt, "kanibako-x")
-        rt.rm.assert_not_called()
-
-    def test_teardown_removes_an_exited_box(self):
-        from unittest.mock import MagicMock
-
-        from kanibako.commands.start import _teardown_persistent_box
-
-        rt = MagicMock()
-        rt.is_running.return_value = False
-        rt.container_exists.return_value = True
-        _teardown_persistent_box(rt, "kanibako-x")
-        rt.rm.assert_called_once_with("kanibako-x")
+    rt = MagicMock()
+    rt.is_running.return_value = False
+    rt.container_exists.return_value = True
+    _teardown_persistent_box(rt, "kanibako-x")
+    rt.rm.assert_called_once_with("kanibako-x")

@@ -15,2313 +15,2501 @@ from tests.support.filenames import CONFIG_FILENAME
 
 
 def _run_main_capturing(cmd: str, extra: list[str], *, target: str = "start") -> dict:
-    """Run cli.main and capture the args namespace seen by the dispatcher.
+  """Run cli.main and capture the args namespace seen by the dispatcher.
 
-    Patches the dispatcher (run_start or run_shell) so we can inspect what
-    main() produced — including the '--' split and post-parse args.agent_args
-    or args.shell_args injection.
-    """
-    from unittest.mock import patch
-    from kanibako.cli import main as cli_main
+  Patches the dispatcher (run_start or run_shell) so we can inspect what
+  main() produced — including the '--' split and post-parse args.agent_args
+  or args.shell_args injection.
+  """
+  from unittest.mock import patch
+  from kanibako.cli import main as cli_main
 
-    captured: dict = {}
+  captured: dict = {}
 
-    def fake_func(args):
-        for name in (
-            "project", "agent_args", "shell_args", "env", "ephemeral",
-            "persistent", "entrypoint",
-        ):
-            captured[name] = getattr(args, name, None)
-        return 0
+  def fake_func(args):
+    for name in (
+      "project",
+      "agent_args",
+      "shell_args",
+      "env",
+      "ephemeral",
+      "persistent",
+      "entrypoint",
+    ):
+      captured[name] = getattr(args, name, None)
+    return 0
 
-    target_path = f"kanibako.commands.start.run_{target}"
-    with patch(target_path, fake_func), \
-         patch("kanibako.cli._ensure_initialized"), \
-         patch("sys.exit"):
-        cli_main([cmd] + extra)
-    return captured
+  target_path = f"kanibako.commands.start.run_{target}"
+  with patch(target_path, fake_func), patch("kanibako.cli._ensure_initialized"), patch("sys.exit"):
+    cli_main([cmd] + extra)
+  return captured
 
 
 class TestParser:
-    def test_version(self, capsys):
-        from kanibako import __version__
-        from kanibako.cli import main
-
-        with pytest.raises(SystemExit) as exc_info:
-            main(["--version"])
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert __version__ in captured.out
-
-    def test_start_default(self):
-        parser = build_parser()
-        args = parser.parse_args(["start"])
-        assert args.command == "start"
-
-    def test_start_with_flags(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "-N", "-S", "--image", "my-image:v1"])
-        assert args.new_session is True
-        assert args.secure is True
-        assert args.image == "my-image:v1"
-
-    def test_start_rig_synonym(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "x", "--rig", "jvm"])
-        assert args.image == "jvm"
-
-    def test_start_image_still_works(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "x", "--image", "jvm"])
-        assert args.image == "jvm"
-
-    def test_start_resume_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "-R"])
-        assert args.resume_session is True
-
-    def test_start_model_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "-M", "opus"])
-        assert args.model == "opus"
-
-    def test_start_autonomous_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "-A"])
-        assert args.autonomous is True
-
-    def test_start_env_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "-e", "FOO=bar", "-e", "BAZ=qux"])
-        assert args.env == ["FOO=bar", "BAZ=qux"]
-
-    def test_start_persistent_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "--persistent"])
-        assert args.persistent is True
-
-    def test_start_ephemeral_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "--ephemeral"])
-        assert args.ephemeral is True
-
-    def test_start_detach_tristate(self):
-        """E2h regression lock: --detach/--attach is a store_const tri-state.
-        Byte-safe with the pre-change store_true/store_false: unset -> None (the
-        attach default), --detach/--background -> True, --attach -> False (still
-        'do not detach').  run_start normalizes None/False -> no detach and uses
-        the explicit False only to reject a contradictory --warm-only --attach."""
-        parser = build_parser()
-        assert parser.parse_args(["start"]).detach is None
-        assert parser.parse_args(["start", "--detach"]).detach is True
-        assert parser.parse_args(["start", "--background"]).detach is True
-        assert parser.parse_args(["start", "--attach"]).detach is False
-
-    def test_start_warm_only_flag(self):
-        """E2h: --warm-only is a plain store_true (default False), independent of
-        the detach tri-state (the semantic conflict is enforced in run_start)."""
-        parser = build_parser()
-        assert parser.parse_args(["start"]).warm_only is False
-        args = parser.parse_args(["start", "--warm-only"])
-        assert args.warm_only is True
-        assert args.detach is None  # --warm-only does not touch the detach flag
-
-    def test_start_detach_attach_mutually_exclusive(self):
-        """--detach and --attach remain mutually exclusive at the parser."""
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["start", "--detach", "--attach"])
-
-    def test_start_entrypoint_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "--entrypoint", "/bin/zsh"])
-        assert args.entrypoint == "/bin/zsh"
-
-    def test_start_project_positional(self):
-        """Project positional is bound to args.project directly."""
-        parser = build_parser()
-        args = parser.parse_args(["start", "/tmp/myproject"])
-        assert args.project == "/tmp/myproject"
-
-    def test_shell_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["shell"])
-        assert args.command == "shell"
-
-    def test_shell_rig_synonym(self):
-        parser = build_parser()
-        args = parser.parse_args(["shell", "x", "--rig", "jvm"])
-        assert args.image == "jvm"
-
-    def test_shell_image_still_works(self):
-        parser = build_parser()
-        args = parser.parse_args(["shell", "x", "--image", "jvm"])
-        assert args.image == "jvm"
-
-    def test_box_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box"])
-        assert args.command == "box"
-
-    def test_box_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "list"])
-        assert args.command == "box"
-        assert args.box_command == "list"
-
-    def test_box_list_active(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "list", "--active"])
-        assert args.command == "box"
-        assert args.box_command == "list"
-        assert args.active is True
-
-    def test_box_archive_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "archive", "/tmp/project", "out.txz"])
-        assert args.command == "box"
-        assert args.box_command == "archive"
-        assert args.path == "/tmp/project"
-        assert args.file == "out.txz"
-
-    def test_box_archive_flags(self):
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "archive", "/tmp/proj", "--allow-uncommitted", "--allow-unpushed"]
-        )
-        assert args.allow_uncommitted is True
-        assert args.allow_unpushed is True
-
-    def test_box_archive_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "archive", "--all"])
-        assert args.all_projects is True
-        assert args.path is None
-
-    @pytest.mark.parametrize("argv", [
-        ["box", "register", "name", "--force"],
-        ["register", "name", "--force"],
-    ])
-    def test_cross_kind_force_is_gone(self, argv):
-        """`--force` on these existed only to bypass the cross-kind name refusal."""
-        with pytest.raises(SystemExit):
-            build_parser().parse_args(argv)
-
-    @pytest.mark.parametrize("argv", [
-        ["box", "create", "/tmp/project", "--force"],
-        ["create", "/tmp/project", "--force"],
-    ])
-    def test_create_force_shares_a_nested_workspace(self, argv):
-        """`create --force` has one meaning: accept a nested workspace (keyspace § 0)."""
-        assert build_parser().parse_args(argv).force is True
-
-    def test_box_purge_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "purge", "/tmp/project", "--force"])
-        assert args.command == "box"
-        assert args.box_command == "purge"
-        assert args.force is True
-
-    def test_box_purge_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "purge", "--all"])
-        assert args.all_projects is True
-        assert args.path is None
-
-    def test_box_extract_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "extract", "archive.txz", "/tmp/project"])
-        assert args.command == "box"
-        assert args.box_command == "extract"
-        assert args.file == "archive.txz"
-        assert args.path == "/tmp/project"
-
-    def test_box_extract_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "extract", "--all"])
-        assert args.all_archives is True
-        assert args.file is None
-
-    def test_box_move_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "move", "/src", "/dest"])
-        assert args.command == "box"
-        assert args.box_command == "move"
-        assert args.old == "/src"
-        assert args.new == "/dest"
-
-    def test_box_move_alias_mv(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "mv", "/src", "/dest"])
-        assert args.box_command == "mv"
-        assert args.old == "/src"
-        assert args.new == "/dest"
-
-    def test_box_move_requires_both_paths(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["box", "move", "/dest"])
-
-    def test_box_move_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "move", "/src", "/dest", "--force"])
-        assert args.force is True
-
-    def test_box_move_workset_target(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "move", "/src", "/dest", "--workset", "ws"])
-        assert args.to_workset == "ws"
-
-    def test_box_vault_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list"])
-        assert args.command == "box"
-        assert args.vault_command == "list"
-
-    def test_box_vault_snapshot(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "snapshot", "/myproj"])
-        assert args.vault_command == "snapshot"
-        assert args.project == "/myproj"
-
-    def test_box_vault_restore(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz"])
-        assert args.vault_command == "restore"
-        assert args.name == "snap.tar.xz"
-
-    def test_box_vault_prune(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
-        assert args.vault_command == "prune"
-        assert args.keep == 3
-
-    def test_box_vault_list_quiet(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "vault", "list", "-q"])
-        assert args.quiet is True
-
-    def test_box_remap_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "remap", "/old", "/new"])
-        assert args.command == "box"
-        assert args.box_command == "remap"
-        assert args.old == "/old"
-        assert args.new == "/new"
-
-    def test_box_remap_defaults_new(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "remap", "/old"])
-        assert args.old == "/old"
-        assert args.new is None
-
-    def test_box_remap_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "remap", "/old", "--force"])
-        assert args.force is True
-
-    def test_box_migrate_is_gone(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["box", "migrate", "/old", "/new"])
-
-    def test_box_duplicate_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst"])
-        assert args.command == "box"
-        assert args.box_command == "duplicate"
-        assert args.source_path == "/src"
-        assert args.new_path == "/dst"
-        assert args.bare is False
-        assert args.force is False
-
-    def test_box_duplicate_bare(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--bare"])
-        assert args.bare is True
-
-    def test_box_duplicate_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--force"])
-        assert args.force is True
-
-    def test_box_duplicate_bare_and_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--bare", "--force"])
-        assert args.bare is True
-        assert args.force is True
-
-    def test_rig_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["rig"])
-        assert args.command == "rig"
-
-    def test_rig_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["rig", "list"])
-        assert args.command == "rig"
-        assert args.rig_command == "list"
-
-    def test_rig_prep(self):
-        parser = build_parser()
-        args = parser.parse_args(["rig", "prep"])
-        assert args.command == "rig"
-        assert args.rig_command == "prep"
-
-    def test_rig_prep_force_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["rig", "prep", "--all", "--force"])
-        assert args.all_images is True
-        assert args.force is True
-
-    def test_rig_rebuild_removed(self):
-        """W2a: the deprecated 'rig rebuild' shim was removed."""
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["rig", "rebuild"])
-
-    def test_system_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["system"])
-        assert args.command == "system"
-
-    def test_system_info(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "info"])
-        assert args.command == "system"
-        assert args.system_command == "info"
-
-    def test_system_info_alias_inspect(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "inspect"])
-        assert args.command == "system"
-        assert hasattr(args, "func")
-
-    def test_system_show(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "show"])
-        assert args.command == "system"
-        assert args.system_command == "show"
-        assert args.func.__name__ == "run_show"
-
-    def test_system_set(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "set", "image=custom:v1"])
-        assert args.key_value == "image=custom:v1"
-        assert args.func.__name__ == "run_set"
-
-    def test_system_get(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "get", "image"])
-        assert args.key == "image"
-        assert args.func.__name__ == "run_get"
-
-    def test_system_reset(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "reset", "image"])
-        assert args.key == "image"
-        assert args.all_keys is False
-        assert args.func.__name__ == "run_reset"
-
-    def test_system_reset_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "reset", "--all"])
-        assert args.all_keys is True
-
-    def test_system_show_effective(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "show", "--effective"])
-        assert args.effective is True
-
-    def test_system_config_subcommand_retired(self):
-        import pytest
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["system", "config"])
-
-    def test_system_upgrade(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "upgrade"])
-        assert args.command == "system"
-        assert args.system_command == "upgrade"
-        assert args.check is False
-
-    def test_system_upgrade_check(self):
-        parser = build_parser()
-        args = parser.parse_args(["system", "upgrade", "--check"])
-        assert args.command == "system"
-        assert args.check is True
-
-    def test_agent_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent"])
-        assert args.command == "agent"
-
-    def test_agent_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "list"])
-        assert args.command == "agent"
-        assert args.agent_command == "list"
-
-    def test_agent_list_quiet(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "list", "-q"])
-        assert args.quiet is True
-
-    def test_agent_list_alias_ls(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "ls"])
-        assert args.command == "agent"
-        assert hasattr(args, "func")
-
-    def test_agent_info(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "info", "myagent"])
-        assert args.command == "agent"
-        assert args.agent_command == "info"
-        assert args.agent_id == "myagent"
-
-    def test_agent_info_alias_inspect(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "inspect", "myagent"])
-        assert args.command == "agent"
-        assert args.agent_id == "myagent"
-
-    def test_agent_show(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "show", "myagent"])
-        assert args.command == "agent"
-        assert args.agent_command == "show"
-        assert args.agent_id == "myagent"
-        assert args.func.__name__ == "run_show"
-
-    def test_agent_set(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "set", "myagent", "model=sonnet"])
-        assert args.agent_id == "myagent"
-        assert args.key_value == "model=sonnet"
-        assert args.func.__name__ == "run_set"
-
-    def test_agent_get(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "get", "myagent", "model"])
-        assert args.key == "model"
-        assert args.func.__name__ == "run_get"
-
-    def test_agent_reset(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "reset", "myagent", "model"])
-        assert args.key == "model"
-        assert args.func.__name__ == "run_reset"
-
-    def test_agent_reset_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "reset", "myagent", "--all"])
-        assert args.all_keys is True
-
-    def test_agent_config_subcommand_retired(self):
-        import pytest
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["agent", "config", "myagent"])
-
-    def test_agent_reauth(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "reauth"])
-        assert args.command == "agent"
-        assert args.agent_command == "reauth"
-        assert args.project is None
-
-    def test_agent_reauth_with_project(self):
-        parser = build_parser()
-        args = parser.parse_args(["agent", "reauth", "/tmp/myproj"])
-        assert args.agent_command == "reauth"
-        assert args.project == "/tmp/myproj"
-
-    def test_box_helper_spawn(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "helper", "spawn", "--depth", "3"])
-        assert args.command == "box"
-        assert args.box_command == "helper"
-        assert args.helper_command == "spawn"
-        assert args.depth == 3
-
-    def test_box_helper_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "helper", "list"])
-        assert args.command == "box"
-        assert args.helper_command == "list"
-
-    def test_box_fork(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "fork", "feature1"])
-        assert args.command == "box"
-        assert args.box_command == "fork"
-        assert args.name == "feature1"
-
-    def test_stop_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["stop"])
-        assert args.command == "stop"
-        assert args.project is None
-        assert args.all_containers is False
-        assert args.force is False
-
-    def test_stop_with_path(self):
-        parser = build_parser()
-        args = parser.parse_args(["stop", "/tmp/myproject"])
-        assert args.command == "stop"
-        assert args.project == "/tmp/myproject"
-
-    def test_stop_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["stop", "--all"])
-        assert args.command == "stop"
-        assert args.all_containers is True
-
-    def test_start_with_agent_args(self):
-        """Args after '--' are routed to args.agent_args by main().
-
-        The parser itself doesn't see them — main() splits at '--' and
-        sets args.agent_args directly. We test the end-to-end behavior
-        via main() since the parser alone won't bind agent_args.
-        """
-        captured = _run_main_capturing("start", ["--", "--some-flag", "arg"])
-        assert captured["agent_args"] == ["--some-flag", "arg"]
-        assert captured["project"] is None
-
-    def test_start_flags_after_positional(self):
-        """Flags following the project positional are still consumed by kanibako."""
-        captured = _run_main_capturing(
-            "start",
-            ["myproj", "--ephemeral", "-e", "FOO=1", "-e", "BAR=2"],
-        )
-        assert captured["project"] == "myproj"
-        assert captured["ephemeral"] is True
-        assert captured["env"] == ["FOO=1", "BAR=2"]
-        assert captured["agent_args"] == []
-
-    def test_start_flags_before_positional(self):
-        """Flags before the project positional also work (regression check)."""
-        captured = _run_main_capturing(
-            "start",
-            ["--ephemeral", "-e", "FOO=1", "myproj"],
-        )
-        assert captured["project"] == "myproj"
-        assert captured["ephemeral"] is True
-        assert captured["env"] == ["FOO=1"]
-
-    def test_start_positional_then_dash_dash(self):
-        """Positional + '--' + agent args."""
-        captured = _run_main_capturing(
-            "start",
-            ["myproj", "--ephemeral", "--", "--continue", "extra"],
-        )
-        assert captured["project"] == "myproj"
-        assert captured["ephemeral"] is True
-        assert captured["agent_args"] == ["--continue", "extra"]
-
-    def test_shell_flags_after_positional(self):
-        """Shell command: flags after positional work."""
-        captured = _run_main_capturing(
-            "shell",
-            ["myproj", "--ephemeral", "--entrypoint", "/bin/sh", "--", "-c", "echo hi"],
-            target="shell",
-        )
-        assert captured["project"] == "myproj"
-        assert captured["ephemeral"] is True
-        assert captured["entrypoint"] == "/bin/sh"
-        assert captured["shell_args"] == ["-c", "echo hi"]
-
-    def test_box_start(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "start"])
-        assert args.command == "box"
-        assert args.box_command == "start"
-
-    def test_box_start_with_flags(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "start", "-N", "-A", "-M", "opus"])
-        assert args.new_session is True
-        assert args.autonomous is True
-        assert args.model == "opus"
-
-    def test_box_info(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "info"])
-        assert args.command == "box"
-        assert args.box_command == "info"
-        assert args.path is None
-
-    def test_box_info_with_path(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "info", "/tmp/myproject"])
-        assert args.box_command == "info"
-        assert args.path == "/tmp/myproject"
-
-    def test_workset_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset"])
-        assert args.command == "workset"
-
-    def test_workset_create(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "create", "/tmp/ws", "--name", "myws"])
-        assert args.command == "workset"
-        assert args.workset_command == "create"
-        assert args.name == "myws"
-        assert args.path == "/tmp/ws"
-
-    def test_workset_create_path_only(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "create", "/tmp/ws"])
-        assert args.command == "workset"
-        assert args.workset_command == "create"
-        assert args.path == "/tmp/ws"
-        assert args.name is None
-
-    def test_workset_list(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "list"])
-        assert args.command == "workset"
-        assert args.workset_command == "list"
-
-    def test_workset_list_quiet(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "list", "-q"])
-        assert args.quiet is True
-
-    def test_workset_list_alias_ls(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "ls"])
-        assert args.command == "workset"
-        assert hasattr(args, "func")
-
-    def test_workset_rm(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "rm", "myws", "--purge", "--force"])
-        assert args.command == "workset"
-        assert args.workset_command in ("rm", "delete")
-        assert args.name == "myws"
-        assert args.purge is True
-        assert args.force is True
-
-    def test_workset_rm_alias_delete(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "delete", "myws", "--force"])
-        assert args.command == "workset"
-        assert args.name == "myws"
-        assert args.force is True
-
-    def test_workset_connect(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "connect", "myws", "/tmp/src", "--name", "proj"])
-        assert args.command == "workset"
-        assert args.workset_command == "connect"
-        assert args.workset == "myws"
-        assert args.source == "/tmp/src"
-        assert args.project_name == "proj"
-
-    def test_workset_disconnect(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "disconnect", "myws", "proj", "--remove-files", "--force"])
-        assert args.command == "workset"
-        assert args.workset_command == "disconnect"
-        assert args.workset == "myws"
-        assert args.project == "proj"
-        assert args.remove_files is True
-        assert args.force is True
-
-    def test_workset_info(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "info", "myws"])
-        assert args.command == "workset"
-        assert args.workset_command in ("info", "inspect")
-        assert args.name == "myws"
-
-    def test_workset_info_alias_inspect(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "inspect", "myws"])
-        assert args.command == "workset"
-        assert args.name == "myws"
-
-    def test_workset_set(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "set", "myws", "model=sonnet"])
-        assert args.command == "workset"
-        assert args.workset_command == "set"
-        assert args.workset == "myws"
-        assert args.key_value == "model=sonnet"
-        assert args.func.__name__ == "run_set"
-
-    def test_workset_show(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "show", "myws", "--effective"])
-        assert args.workset == "myws"
-        assert args.effective is True
-        assert args.func.__name__ == "run_show"
-
-    def test_workset_get(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "get", "myws", "model"])
-        assert args.workset == "myws"
-        assert args.key == "model"
-        assert args.func.__name__ == "run_get"
-
-    def test_workset_reset_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["workset", "reset", "myws", "--all"])
-        assert args.workset == "myws"
-        assert args.reset_all is True
-        assert args.func.__name__ == "run_reset"
-
-    def test_workset_config_subcommand_retired(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["workset", "config", "myws", "model=sonnet"])
-
-    def test_box_convert_workset_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "convert", "--workset", "myws", "--name", "proj"])
-        assert args.box_command == "convert"
-        assert args.to_workset == "myws"
-        assert args.name == "proj"
-
-    def test_box_convert_requires_target(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["box", "convert"])
-
-    def test_box_convert_targets_mutually_exclusive(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["box", "convert", "--default", "--standalone"])
-
-    def test_box_convert_bare_move(self):
-        parser = build_parser()
-        from kanibako.commands.box._lifecycle import _BARE_MOVE
-        args = parser.parse_args(["box", "convert", "--workset", "ws", "--move"])
-        assert args.move is _BARE_MOVE
-
-    def test_box_convert_move_path(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "convert", "--standalone", "--move", "/dest"])
-        assert args.move == "/dest"
-        assert args.to_standalone is True
-
-    def test_box_duplicate_workset_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--to", "named", "--workset", "myws", "--name", "proj"])
-        assert args.to_mode == "named"
-        assert args.workset == "myws"
-        assert args.project_name == "proj"
-
-    @pytest.mark.parametrize("mode", list(BoxMode))
-    def test_box_duplicate_to_takes_mode_tokens(self, mode):
-        """``box duplicate --to`` accepts every ``BoxMode`` token as that mode."""
-        args = build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", mode.value])
-        assert BoxMode(args.to_mode) is mode
-
-    @pytest.mark.parametrize("retired", ["default", "workset"])
-    def test_box_duplicate_to_refuses_retired_spellings(self, retired, capsys):
-        """Retired ``--to`` spellings are refused; the choices offered are exactly the modes."""
-        with pytest.raises(SystemExit) as exc:
-            build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", retired])
-        assert exc.value.code == 2
-        err = capsys.readouterr().err
-        assert f"invalid choice: '{retired}'" in err
-        # argparse quotes each choice on 3.11 (CI) and not on 3.13; strip the quotes either way.
-        offered = re.search(r"choose from (.+)\)", err).group(1)
-        assert [c.strip("' ") for c in offered.split(",")] == [m.value for m in BoxMode]
-
-    # -- Top-level alias tests --
-
-    @pytest.mark.parametrize("verb", ["create", "list", "ps", "rm", "register"])
-    def test_top_level_alias_matches_its_box_verb(self, verb):
-        """An alias's --help (past its usage line), arguments, and handler are its box verb's."""
-        def leaf(parser, *path):
-            for name in path:
-                sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-                parser = sub.choices[name]
-            return parser
-
-        def body(parser):
-            # The usage paragraph names the prog and wraps by its length; the rest must match.
-            return parser.format_help().split("\n\n", 1)[1]
-
-        parser = build_parser()
-        alias, verb_p = leaf(parser, verb), leaf(parser, "box", verb)
-        assert body(alias) == body(verb_p)
-        assert ([(a.option_strings, a.dest) for a in alias._actions]
-                == [(a.option_strings, a.dest) for a in verb_p._actions])
-        assert alias.get_default("func") is verb_p.get_default("func")
-        assert alias.get_default("precheck") is verb_p.get_default("precheck")
-
-    def test_list_top_level_orphan(self):
-        args = build_parser().parse_args(["list", "--orphan"])
-        assert args.orphan is True
-
-    def test_list_top_level(self):
-        parser = build_parser()
-        args = parser.parse_args(["list"])
-        assert args.command == "list"
-        assert hasattr(args, "func")
-
-    def test_list_top_level_active(self):
-        parser = build_parser()
-        args = parser.parse_args(["list", "--active"])
-        assert args.command == "list"
-        assert args.active is True
-
-    def test_list_top_level_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["list", "--all"])
-        assert args.command == "list"
-        assert args.show_all is True
-
-    def test_list_top_level_quiet(self):
-        parser = build_parser()
-        args = parser.parse_args(["list", "-q"])
-        assert args.command == "list"
-        assert args.quiet is True
-
-    def test_list_in_subcommands(self):
-        from kanibako.cli import _SUBCOMMANDS
-        assert "list" in _SUBCOMMANDS
-
-    def test_ps_top_level(self):
-        parser = build_parser()
-        args = parser.parse_args(["ps"])
-        assert args.command == "ps"
-        assert hasattr(args, "func")
-
-    def test_ps_top_level_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["ps", "--all"])
-        assert args.command == "ps"
-        assert args.show_all is True
-
-    def test_ps_top_level_quiet(self):
-        parser = build_parser()
-        args = parser.parse_args(["ps", "-q"])
-        assert args.command == "ps"
-        assert args.quiet is True
-
-    def test_create_top_level(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "/tmp/proj"])
-        assert args.command == "create"
-        assert args.path == "/tmp/proj"
-        assert hasattr(args, "func")
-
-    def test_create_top_level_standalone(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
-        assert args.command == "create"
-        assert args.standalone is True
-
-    def test_create_top_level_with_image(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "-i", "myimage:v1"])
-        assert args.command == "create"
-        assert args.image == "myimage:v1"
-
-    def test_box_create_rig_synonym(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "x", "--rig", "X"])
-        assert args.image == "X"
-
-    def test_box_create_image_still_works(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "x", "--image", "X"])
-        assert args.image == "X"
-
-    def test_create_top_level_no_path(self):
-        parser = build_parser()
-        args = parser.parse_args(["create"])
-        assert args.command == "create"
-        assert args.path is None
-
-    def test_rm_top_level(self):
-        parser = build_parser()
-        args = parser.parse_args(["rm", "myproj"])
-        assert args.command == "rm"
-        assert args.target == "myproj"
-        assert hasattr(args, "func")
-
-    def test_rm_top_level_purge(self):
-        parser = build_parser()
-        args = parser.parse_args(["rm", "myproj", "--purge"])
-        assert args.command == "rm"
-        assert args.purge is True
-
-    def test_rm_top_level_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["rm", "myproj", "--purge", "--force"])
-        assert args.command == "rm"
-        assert args.purge is True
-        assert args.force is True
-
-    def test_subcommands_set(self):
-        from kanibako.cli import _SUBCOMMANDS
-        expected = {
-            # Top-level aliases
-            "start", "stop", "shell", "ps", "list", "create", "rm", "register",
-            # Management commands
-            "box", "rig", "workset", "agent", "system", "baseline",
-            # Setup wizard
-            "setup",
-            # VS Code launcher
-            "code",
-        }
-        assert _SUBCOMMANDS == expected
-
-    def test_agent_in_subcommands(self):
-        from kanibako.cli import _SUBCOMMANDS
-        assert "agent" in _SUBCOMMANDS
-
-    def test_rig_in_subcommands(self):
-        from kanibako.cli import _SUBCOMMANDS
-        assert "rig" in _SUBCOMMANDS
-
-    def test_image_container_aliases_removed(self):
-        """W2a: the deprecated image→rig / container→box command aliases are gone."""
-        from kanibako.cli import _SUBCOMMANDS
-        assert "image" not in _SUBCOMMANDS
-        assert "container" not in _SUBCOMMANDS
-        # The translation table itself was removed entirely.
-        import kanibako.cli as cli_mod
-        assert not hasattr(cli_mod, "_COMMAND_ALIASES")
+  def test_version(self, capsys):
+    from kanibako import __version__
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as exc_info:
+      main(["--version"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert __version__ in captured.out
+
+  def test_start_default(self):
+    parser = build_parser()
+    args = parser.parse_args(["start"])
+    assert args.command == "start"
+
+  def test_start_with_flags(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "-N", "-S", "--image", "my-image:v1"])
+    assert args.new_session is True
+    assert args.secure is True
+    assert args.image == "my-image:v1"
+
+  def test_start_rig_synonym(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "x", "--rig", "jvm"])
+    assert args.image == "jvm"
+
+  def test_start_image_still_works(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "x", "--image", "jvm"])
+    assert args.image == "jvm"
+
+  def test_start_resume_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "-R"])
+    assert args.resume_session is True
+
+  def test_start_model_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "-M", "opus"])
+    assert args.model == "opus"
+
+  def test_start_autonomous_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "-A"])
+    assert args.autonomous is True
+
+  def test_start_env_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "-e", "FOO=bar", "-e", "BAZ=qux"])
+    assert args.env == ["FOO=bar", "BAZ=qux"]
+
+  def test_start_persistent_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "--persistent"])
+    assert args.persistent is True
+
+  def test_start_ephemeral_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "--ephemeral"])
+    assert args.ephemeral is True
+
+  def test_start_detach_tristate(self):
+    """E2h regression lock: --detach/--attach is a store_const tri-state.
+    Byte-safe with the pre-change store_true/store_false: unset -> None (the
+    attach default), --detach/--background -> True, --attach -> False (still
+    'do not detach').  run_start normalizes None/False -> no detach and uses
+    the explicit False only to reject a contradictory --warm-only --attach."""
+    parser = build_parser()
+    assert parser.parse_args(["start"]).detach is None
+    assert parser.parse_args(["start", "--detach"]).detach is True
+    assert parser.parse_args(["start", "--background"]).detach is True
+    assert parser.parse_args(["start", "--attach"]).detach is False
+
+  def test_start_warm_only_flag(self):
+    """E2h: --warm-only is a plain store_true (default False), independent of
+    the detach tri-state (the semantic conflict is enforced in run_start)."""
+    parser = build_parser()
+    assert parser.parse_args(["start"]).warm_only is False
+    args = parser.parse_args(["start", "--warm-only"])
+    assert args.warm_only is True
+    assert args.detach is None  # --warm-only does not touch the detach flag
+
+  def test_start_detach_attach_mutually_exclusive(self):
+    """--detach and --attach remain mutually exclusive at the parser."""
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["start", "--detach", "--attach"])
+
+  def test_start_entrypoint_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["start", "--entrypoint", "/bin/zsh"])
+    assert args.entrypoint == "/bin/zsh"
+
+  def test_start_project_positional(self):
+    """Project positional is bound to args.project directly."""
+    parser = build_parser()
+    args = parser.parse_args(["start", "/tmp/myproject"])
+    assert args.project == "/tmp/myproject"
+
+  def test_shell_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["shell"])
+    assert args.command == "shell"
+
+  def test_shell_rig_synonym(self):
+    parser = build_parser()
+    args = parser.parse_args(["shell", "x", "--rig", "jvm"])
+    assert args.image == "jvm"
+
+  def test_shell_image_still_works(self):
+    parser = build_parser()
+    args = parser.parse_args(["shell", "x", "--image", "jvm"])
+    assert args.image == "jvm"
+
+  def test_box_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box"])
+    assert args.command == "box"
+
+  def test_box_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "list"])
+    assert args.command == "box"
+    assert args.box_command == "list"
+
+  def test_box_list_active(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "list", "--active"])
+    assert args.command == "box"
+    assert args.box_command == "list"
+    assert args.active is True
+
+  def test_box_archive_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "archive", "/tmp/project", "out.txz"])
+    assert args.command == "box"
+    assert args.box_command == "archive"
+    assert args.path == "/tmp/project"
+    assert args.file == "out.txz"
+
+  def test_box_archive_flags(self):
+    parser = build_parser()
+    args = parser.parse_args(
+      ["box", "archive", "/tmp/proj", "--allow-uncommitted", "--allow-unpushed"]
+    )
+    assert args.allow_uncommitted is True
+    assert args.allow_unpushed is True
+
+  def test_box_archive_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "archive", "--all"])
+    assert args.all_projects is True
+    assert args.path is None
+
+  @pytest.mark.parametrize(
+    "argv",
+    [
+      ["box", "register", "name", "--force"],
+      ["register", "name", "--force"],
+    ],
+  )
+  def test_cross_kind_force_is_gone(self, argv):
+    """`--force` on these existed only to bypass the cross-kind name refusal."""
+    with pytest.raises(SystemExit):
+      build_parser().parse_args(argv)
+
+  @pytest.mark.parametrize(
+    "argv",
+    [
+      ["box", "create", "/tmp/project", "--force"],
+      ["create", "/tmp/project", "--force"],
+    ],
+  )
+  def test_create_force_shares_a_nested_workspace(self, argv):
+    """`create --force` has one meaning: accept a nested workspace (keyspace § 0)."""
+    assert build_parser().parse_args(argv).force is True
+
+  def test_box_purge_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "purge", "/tmp/project", "--force"])
+    assert args.command == "box"
+    assert args.box_command == "purge"
+    assert args.force is True
+
+  def test_box_purge_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "purge", "--all"])
+    assert args.all_projects is True
+    assert args.path is None
+
+  def test_box_extract_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "extract", "archive.txz", "/tmp/project"])
+    assert args.command == "box"
+    assert args.box_command == "extract"
+    assert args.file == "archive.txz"
+    assert args.path == "/tmp/project"
+
+  def test_box_extract_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "extract", "--all"])
+    assert args.all_archives is True
+    assert args.file is None
+
+  def test_box_move_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "move", "/src", "/dest"])
+    assert args.command == "box"
+    assert args.box_command == "move"
+    assert args.old == "/src"
+    assert args.new == "/dest"
+
+  def test_box_move_alias_mv(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "mv", "/src", "/dest"])
+    assert args.box_command == "mv"
+    assert args.old == "/src"
+    assert args.new == "/dest"
+
+  def test_box_move_requires_both_paths(self):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["box", "move", "/dest"])
+
+  def test_box_move_force(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "move", "/src", "/dest", "--force"])
+    assert args.force is True
+
+  def test_box_move_workset_target(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "move", "/src", "/dest", "--workset", "ws"])
+    assert args.to_workset == "ws"
+
+  def test_box_vault_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list"])
+    assert args.command == "box"
+    assert args.vault_command == "list"
+
+  def test_box_vault_snapshot(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "snapshot", "/myproj"])
+    assert args.vault_command == "snapshot"
+    assert args.project == "/myproj"
+
+  def test_box_vault_restore(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz"])
+    assert args.vault_command == "restore"
+    assert args.name == "snap.tar.xz"
+
+  def test_box_vault_prune(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
+    assert args.vault_command == "prune"
+    assert args.keep == 3
+
+  def test_box_vault_list_quiet(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "vault", "list", "-q"])
+    assert args.quiet is True
+
+  def test_box_remap_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "remap", "/old", "/new"])
+    assert args.command == "box"
+    assert args.box_command == "remap"
+    assert args.old == "/old"
+    assert args.new == "/new"
+
+  def test_box_remap_defaults_new(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "remap", "/old"])
+    assert args.old == "/old"
+    assert args.new is None
+
+  def test_box_remap_force(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "remap", "/old", "--force"])
+    assert args.force is True
+
+  def test_box_migrate_is_gone(self):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["box", "migrate", "/old", "/new"])
+
+  def test_box_duplicate_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "duplicate", "/src", "/dst"])
+    assert args.command == "box"
+    assert args.box_command == "duplicate"
+    assert args.source_path == "/src"
+    assert args.new_path == "/dst"
+    assert args.bare is False
+    assert args.force is False
+
+  def test_box_duplicate_bare(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--bare"])
+    assert args.bare is True
+
+  def test_box_duplicate_force(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--force"])
+    assert args.force is True
+
+  def test_box_duplicate_bare_and_force(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--bare", "--force"])
+    assert args.bare is True
+    assert args.force is True
+
+  def test_rig_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["rig"])
+    assert args.command == "rig"
+
+  def test_rig_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["rig", "list"])
+    assert args.command == "rig"
+    assert args.rig_command == "list"
+
+  def test_rig_prep(self):
+    parser = build_parser()
+    args = parser.parse_args(["rig", "prep"])
+    assert args.command == "rig"
+    assert args.rig_command == "prep"
+
+  def test_rig_prep_force_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["rig", "prep", "--all", "--force"])
+    assert args.all_images is True
+    assert args.force is True
+
+  def test_rig_rebuild_removed(self):
+    """W2a: the deprecated 'rig rebuild' shim was removed."""
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["rig", "rebuild"])
+
+  def test_system_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["system"])
+    assert args.command == "system"
+
+  def test_system_info(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "info"])
+    assert args.command == "system"
+    assert args.system_command == "info"
+
+  def test_system_info_alias_inspect(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "inspect"])
+    assert args.command == "system"
+    assert hasattr(args, "func")
+
+  def test_system_show(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "show"])
+    assert args.command == "system"
+    assert args.system_command == "show"
+    assert args.func.__name__ == "run_show"
+
+  def test_system_set(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "set", "image=custom:v1"])
+    assert args.key_value == "image=custom:v1"
+    assert args.func.__name__ == "run_set"
+
+  def test_system_get(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "get", "image"])
+    assert args.key == "image"
+    assert args.func.__name__ == "run_get"
+
+  def test_system_reset(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "reset", "image"])
+    assert args.key == "image"
+    assert args.all_keys is False
+    assert args.func.__name__ == "run_reset"
+
+  def test_system_reset_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "reset", "--all"])
+    assert args.all_keys is True
+
+  def test_system_show_effective(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "show", "--effective"])
+    assert args.effective is True
+
+  def test_system_config_subcommand_retired(self):
+    import pytest
+
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["system", "config"])
+
+  def test_system_upgrade(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "upgrade"])
+    assert args.command == "system"
+    assert args.system_command == "upgrade"
+    assert args.check is False
+
+  def test_system_upgrade_check(self):
+    parser = build_parser()
+    args = parser.parse_args(["system", "upgrade", "--check"])
+    assert args.command == "system"
+    assert args.check is True
+
+  def test_agent_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent"])
+    assert args.command == "agent"
+
+  def test_agent_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "list"])
+    assert args.command == "agent"
+    assert args.agent_command == "list"
+
+  def test_agent_list_quiet(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "list", "-q"])
+    assert args.quiet is True
+
+  def test_agent_list_alias_ls(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "ls"])
+    assert args.command == "agent"
+    assert hasattr(args, "func")
+
+  def test_agent_info(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "info", "myagent"])
+    assert args.command == "agent"
+    assert args.agent_command == "info"
+    assert args.agent_id == "myagent"
+
+  def test_agent_info_alias_inspect(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "inspect", "myagent"])
+    assert args.command == "agent"
+    assert args.agent_id == "myagent"
+
+  def test_agent_show(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "show", "myagent"])
+    assert args.command == "agent"
+    assert args.agent_command == "show"
+    assert args.agent_id == "myagent"
+    assert args.func.__name__ == "run_show"
+
+  def test_agent_set(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "set", "myagent", "model=sonnet"])
+    assert args.agent_id == "myagent"
+    assert args.key_value == "model=sonnet"
+    assert args.func.__name__ == "run_set"
+
+  def test_agent_get(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "get", "myagent", "model"])
+    assert args.key == "model"
+    assert args.func.__name__ == "run_get"
+
+  def test_agent_reset(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "reset", "myagent", "model"])
+    assert args.key == "model"
+    assert args.func.__name__ == "run_reset"
+
+  def test_agent_reset_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "reset", "myagent", "--all"])
+    assert args.all_keys is True
+
+  def test_agent_config_subcommand_retired(self):
+    import pytest
+
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["agent", "config", "myagent"])
+
+  def test_agent_reauth(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "reauth"])
+    assert args.command == "agent"
+    assert args.agent_command == "reauth"
+    assert args.project is None
+
+  def test_agent_reauth_with_project(self):
+    parser = build_parser()
+    args = parser.parse_args(["agent", "reauth", "/tmp/myproj"])
+    assert args.agent_command == "reauth"
+    assert args.project == "/tmp/myproj"
+
+  def test_box_helper_spawn(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "helper", "spawn", "--depth", "3"])
+    assert args.command == "box"
+    assert args.box_command == "helper"
+    assert args.helper_command == "spawn"
+    assert args.depth == 3
+
+  def test_box_helper_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "helper", "list"])
+    assert args.command == "box"
+    assert args.helper_command == "list"
+
+  def test_box_fork(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "fork", "feature1"])
+    assert args.command == "box"
+    assert args.box_command == "fork"
+    assert args.name == "feature1"
+
+  def test_stop_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["stop"])
+    assert args.command == "stop"
+    assert args.project is None
+    assert args.all_containers is False
+    assert args.force is False
+
+  def test_stop_with_path(self):
+    parser = build_parser()
+    args = parser.parse_args(["stop", "/tmp/myproject"])
+    assert args.command == "stop"
+    assert args.project == "/tmp/myproject"
+
+  def test_stop_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["stop", "--all"])
+    assert args.command == "stop"
+    assert args.all_containers is True
+
+  def test_start_with_agent_args(self):
+    """Args after '--' are routed to args.agent_args by main().
+
+    The parser itself doesn't see them — main() splits at '--' and
+    sets args.agent_args directly. We test the end-to-end behavior
+    via main() since the parser alone won't bind agent_args.
+    """
+    captured = _run_main_capturing("start", ["--", "--some-flag", "arg"])
+    assert captured["agent_args"] == ["--some-flag", "arg"]
+    assert captured["project"] is None
+
+  def test_start_flags_after_positional(self):
+    """Flags following the project positional are still consumed by kanibako."""
+    captured = _run_main_capturing(
+      "start",
+      ["myproj", "--ephemeral", "-e", "FOO=1", "-e", "BAR=2"],
+    )
+    assert captured["project"] == "myproj"
+    assert captured["ephemeral"] is True
+    assert captured["env"] == ["FOO=1", "BAR=2"]
+    assert captured["agent_args"] == []
+
+  def test_start_flags_before_positional(self):
+    """Flags before the project positional also work (regression check)."""
+    captured = _run_main_capturing(
+      "start",
+      ["--ephemeral", "-e", "FOO=1", "myproj"],
+    )
+    assert captured["project"] == "myproj"
+    assert captured["ephemeral"] is True
+    assert captured["env"] == ["FOO=1"]
+
+  def test_start_positional_then_dash_dash(self):
+    """Positional + '--' + agent args."""
+    captured = _run_main_capturing(
+      "start",
+      ["myproj", "--ephemeral", "--", "--continue", "extra"],
+    )
+    assert captured["project"] == "myproj"
+    assert captured["ephemeral"] is True
+    assert captured["agent_args"] == ["--continue", "extra"]
+
+  def test_shell_flags_after_positional(self):
+    """Shell command: flags after positional work."""
+    captured = _run_main_capturing(
+      "shell",
+      ["myproj", "--ephemeral", "--entrypoint", "/bin/sh", "--", "-c", "echo hi"],
+      target="shell",
+    )
+    assert captured["project"] == "myproj"
+    assert captured["ephemeral"] is True
+    assert captured["entrypoint"] == "/bin/sh"
+    assert captured["shell_args"] == ["-c", "echo hi"]
+
+  def test_box_start(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "start"])
+    assert args.command == "box"
+    assert args.box_command == "start"
+
+  def test_box_start_with_flags(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "start", "-N", "-A", "-M", "opus"])
+    assert args.new_session is True
+    assert args.autonomous is True
+    assert args.model == "opus"
+
+  def test_box_info(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "info"])
+    assert args.command == "box"
+    assert args.box_command == "info"
+    assert args.path is None
+
+  def test_box_info_with_path(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "info", "/tmp/myproject"])
+    assert args.box_command == "info"
+    assert args.path == "/tmp/myproject"
+
+  def test_workset_command(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset"])
+    assert args.command == "workset"
+
+  def test_workset_create(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "create", "/tmp/ws", "--name", "myws"])
+    assert args.command == "workset"
+    assert args.workset_command == "create"
+    assert args.name == "myws"
+    assert args.path == "/tmp/ws"
+
+  def test_workset_create_path_only(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "create", "/tmp/ws"])
+    assert args.command == "workset"
+    assert args.workset_command == "create"
+    assert args.path == "/tmp/ws"
+    assert args.name is None
+
+  def test_workset_list(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "list"])
+    assert args.command == "workset"
+    assert args.workset_command == "list"
+
+  def test_workset_list_quiet(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "list", "-q"])
+    assert args.quiet is True
+
+  def test_workset_list_alias_ls(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "ls"])
+    assert args.command == "workset"
+    assert hasattr(args, "func")
+
+  def test_workset_rm(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "rm", "myws", "--purge", "--force"])
+    assert args.command == "workset"
+    assert args.workset_command in ("rm", "delete")
+    assert args.name == "myws"
+    assert args.purge is True
+    assert args.force is True
+
+  def test_workset_rm_alias_delete(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "delete", "myws", "--force"])
+    assert args.command == "workset"
+    assert args.name == "myws"
+    assert args.force is True
+
+  def test_workset_connect(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "connect", "myws", "/tmp/src", "--name", "proj"])
+    assert args.command == "workset"
+    assert args.workset_command == "connect"
+    assert args.workset == "myws"
+    assert args.source == "/tmp/src"
+    assert args.project_name == "proj"
+
+  def test_workset_disconnect(self):
+    parser = build_parser()
+    args = parser.parse_args(
+      ["workset", "disconnect", "myws", "proj", "--remove-files", "--force"]
+    )
+    assert args.command == "workset"
+    assert args.workset_command == "disconnect"
+    assert args.workset == "myws"
+    assert args.project == "proj"
+    assert args.remove_files is True
+    assert args.force is True
+
+  def test_workset_info(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "info", "myws"])
+    assert args.command == "workset"
+    assert args.workset_command in ("info", "inspect")
+    assert args.name == "myws"
+
+  def test_workset_info_alias_inspect(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "inspect", "myws"])
+    assert args.command == "workset"
+    assert args.name == "myws"
+
+  def test_workset_set(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "set", "myws", "model=sonnet"])
+    assert args.command == "workset"
+    assert args.workset_command == "set"
+    assert args.workset == "myws"
+    assert args.key_value == "model=sonnet"
+    assert args.func.__name__ == "run_set"
+
+  def test_workset_show(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "show", "myws", "--effective"])
+    assert args.workset == "myws"
+    assert args.effective is True
+    assert args.func.__name__ == "run_show"
+
+  def test_workset_get(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "get", "myws", "model"])
+    assert args.workset == "myws"
+    assert args.key == "model"
+    assert args.func.__name__ == "run_get"
+
+  def test_workset_reset_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["workset", "reset", "myws", "--all"])
+    assert args.workset == "myws"
+    assert args.reset_all is True
+    assert args.func.__name__ == "run_reset"
+
+  def test_workset_config_subcommand_retired(self):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["workset", "config", "myws", "model=sonnet"])
+
+  def test_box_convert_workset_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "convert", "--workset", "myws", "--name", "proj"])
+    assert args.box_command == "convert"
+    assert args.to_workset == "myws"
+    assert args.name == "proj"
+
+  def test_box_convert_requires_target(self):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["box", "convert"])
+
+  def test_box_convert_targets_mutually_exclusive(self):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+      parser.parse_args(["box", "convert", "--default", "--standalone"])
+
+  def test_box_convert_bare_move(self):
+    parser = build_parser()
+    from kanibako.commands.box._lifecycle import _BARE_MOVE
+
+    args = parser.parse_args(["box", "convert", "--workset", "ws", "--move"])
+    assert args.move is _BARE_MOVE
+
+  def test_box_convert_move_path(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "convert", "--standalone", "--move", "/dest"])
+    assert args.move == "/dest"
+    assert args.to_standalone is True
+
+  def test_box_duplicate_workset_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(
+      ["box", "duplicate", "/src", "/dst", "--to", "named", "--workset", "myws", "--name", "proj"]
+    )
+    assert args.to_mode == "named"
+    assert args.workset == "myws"
+    assert args.project_name == "proj"
+
+  @pytest.mark.parametrize("mode", list(BoxMode))
+  def test_box_duplicate_to_takes_mode_tokens(self, mode):
+    """``box duplicate --to`` accepts every ``BoxMode`` token as that mode."""
+    args = build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", mode.value])
+    assert BoxMode(args.to_mode) is mode
+
+  @pytest.mark.parametrize("retired", ["default", "workset"])
+  def test_box_duplicate_to_refuses_retired_spellings(self, retired, capsys):
+    """Retired ``--to`` spellings are refused; the choices offered are exactly the modes."""
+    with pytest.raises(SystemExit) as exc:
+      build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", retired])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert f"invalid choice: '{retired}'" in err
+    # argparse quotes each choice on 3.11 (CI) and not on 3.13; strip the quotes either way.
+    offered = re.search(r"choose from (.+)\)", err).group(1)
+    assert [c.strip("' ") for c in offered.split(",")] == [m.value for m in BoxMode]
+
+  # -- Top-level alias tests --
+
+  @pytest.mark.parametrize("verb", ["create", "list", "ps", "rm", "register"])
+  def test_top_level_alias_matches_its_box_verb(self, verb):
+    """An alias's --help (past its usage line), arguments, and handler are its box verb's."""
+
+    def leaf(parser, *path):
+      for name in path:
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        parser = sub.choices[name]
+      return parser
+
+    def body(parser):
+      # The usage paragraph names the prog and wraps by its length; the rest must match.
+      return parser.format_help().split("\n\n", 1)[1]
+
+    parser = build_parser()
+    alias, verb_p = leaf(parser, verb), leaf(parser, "box", verb)
+    assert body(alias) == body(verb_p)
+    assert [(a.option_strings, a.dest) for a in alias._actions] == [
+      (a.option_strings, a.dest) for a in verb_p._actions
+    ]
+    assert alias.get_default("func") is verb_p.get_default("func")
+    assert alias.get_default("precheck") is verb_p.get_default("precheck")
+
+  def test_list_top_level_orphan(self):
+    args = build_parser().parse_args(["list", "--orphan"])
+    assert args.orphan is True
+
+  def test_list_top_level(self):
+    parser = build_parser()
+    args = parser.parse_args(["list"])
+    assert args.command == "list"
+    assert hasattr(args, "func")
+
+  def test_list_top_level_active(self):
+    parser = build_parser()
+    args = parser.parse_args(["list", "--active"])
+    assert args.command == "list"
+    assert args.active is True
+
+  def test_list_top_level_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["list", "--all"])
+    assert args.command == "list"
+    assert args.show_all is True
+
+  def test_list_top_level_quiet(self):
+    parser = build_parser()
+    args = parser.parse_args(["list", "-q"])
+    assert args.command == "list"
+    assert args.quiet is True
+
+  def test_list_in_subcommands(self):
+    from kanibako.cli import _SUBCOMMANDS
+
+    assert "list" in _SUBCOMMANDS
+
+  def test_ps_top_level(self):
+    parser = build_parser()
+    args = parser.parse_args(["ps"])
+    assert args.command == "ps"
+    assert hasattr(args, "func")
+
+  def test_ps_top_level_all(self):
+    parser = build_parser()
+    args = parser.parse_args(["ps", "--all"])
+    assert args.command == "ps"
+    assert args.show_all is True
+
+  def test_ps_top_level_quiet(self):
+    parser = build_parser()
+    args = parser.parse_args(["ps", "-q"])
+    assert args.command == "ps"
+    assert args.quiet is True
+
+  def test_create_top_level(self):
+    parser = build_parser()
+    args = parser.parse_args(["create", "/tmp/proj"])
+    assert args.command == "create"
+    assert args.path == "/tmp/proj"
+    assert hasattr(args, "func")
+
+  def test_create_top_level_standalone(self):
+    parser = build_parser()
+    args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
+    assert args.command == "create"
+    assert args.standalone is True
+
+  def test_create_top_level_with_image(self):
+    parser = build_parser()
+    args = parser.parse_args(["create", "-i", "myimage:v1"])
+    assert args.command == "create"
+    assert args.image == "myimage:v1"
+
+  def test_box_create_rig_synonym(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "x", "--rig", "X"])
+    assert args.image == "X"
+
+  def test_box_create_image_still_works(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "x", "--image", "X"])
+    assert args.image == "X"
+
+  def test_create_top_level_no_path(self):
+    parser = build_parser()
+    args = parser.parse_args(["create"])
+    assert args.command == "create"
+    assert args.path is None
+
+  def test_rm_top_level(self):
+    parser = build_parser()
+    args = parser.parse_args(["rm", "myproj"])
+    assert args.command == "rm"
+    assert args.target == "myproj"
+    assert hasattr(args, "func")
+
+  def test_rm_top_level_purge(self):
+    parser = build_parser()
+    args = parser.parse_args(["rm", "myproj", "--purge"])
+    assert args.command == "rm"
+    assert args.purge is True
+
+  def test_rm_top_level_force(self):
+    parser = build_parser()
+    args = parser.parse_args(["rm", "myproj", "--purge", "--force"])
+    assert args.command == "rm"
+    assert args.purge is True
+    assert args.force is True
+
+  def test_subcommands_set(self):
+    from kanibako.cli import _SUBCOMMANDS
+
+    expected = {
+      # Top-level aliases
+      "start",
+      "stop",
+      "shell",
+      "ps",
+      "list",
+      "create",
+      "rm",
+      "register",
+      # Management commands
+      "box",
+      "rig",
+      "workset",
+      "agent",
+      "system",
+      "baseline",
+      # Setup wizard
+      "setup",
+      # VS Code launcher
+      "code",
+    }
+    assert _SUBCOMMANDS == expected
+
+  def test_agent_in_subcommands(self):
+    from kanibako.cli import _SUBCOMMANDS
+
+    assert "agent" in _SUBCOMMANDS
+
+  def test_rig_in_subcommands(self):
+    from kanibako.cli import _SUBCOMMANDS
+
+    assert "rig" in _SUBCOMMANDS
+
+  def test_image_container_aliases_removed(self):
+    """W2a: the deprecated image→rig / container→box command aliases are gone."""
+    from kanibako.cli import _SUBCOMMANDS
+
+    assert "image" not in _SUBCOMMANDS
+    assert "container" not in _SUBCOMMANDS
+    # The translation table itself was removed entirely.
+    import kanibako.cli as cli_mod
+
+    assert not hasattr(cli_mod, "_COMMAND_ALIASES")
 
 
 def _arity_conflicts(parser: argparse.ArgumentParser) -> dict[str, dict[int, list[str]]]:
-    """Option strings whose ``_take_for`` arity is not the same everywhere in the tree.
+  """Option strings whose ``_take_for`` arity is not the same everywhere in the tree.
 
-    Walks the tree the way :func:`kanibako.cli._option_nargs` does -- ``id()``
-    dedupe, because top-level aliases share one parser object, and subparser
-    discovery through ``kanibako.commands.flags._find_subparsers_action`` rather
-    than a second implementation of it.  The one deliberate difference: instead
-    of letting the last parser walked overwrite the earlier ones, this KEEPS
-    every arity per option string, with one command path per arity.
+  Walks the tree the way :func:`kanibako.cli._option_nargs` does -- ``id()``
+  dedupe, because top-level aliases share one parser object, and subparser
+  discovery through ``kanibako.commands.flags._find_subparsers_action`` rather
+  than a second implementation of it.  The one deliberate difference: instead
+  of letting the last parser walked overwrite the earlier ones, this KEEPS
+  every arity per option string, with one command path per arity.
 
-    The arity class is the consumer's own, ``_take_for`` from
-    ``kanibako.commands.flags``, so ``None`` and ``1`` count as one arity and any
-    other arity counts as ``_BAIL``.
+  The arity class is the consumer's own, ``_take_for`` from
+  ``kanibako.commands.flags``, so ``None`` and ``1`` count as one arity and any
+  other arity counts as ``_BAIL``.
 
-    Returns ``{option_string: {_take_for value: [command path, ...]}}`` for the
-    option strings that have more than one class, and nothing for the rest.
-    """
-    from kanibako.commands.flags import _find_subparsers_action, _take_for
+  Returns ``{option_string: {_take_for value: [command path, ...]}}`` for the
+  option strings that have more than one class, and nothing for the rest.
+  """
+  from kanibako.commands.flags import _find_subparsers_action, _take_for
 
-    seen: set[int] = set()
-    classes: dict[str, dict[int, list[str]]] = {}
-    stack = [(parser, parser.prog)]
-    while stack:
-        p, path = stack.pop()
-        if id(p) in seen:
-            continue
-        seen.add(id(p))
-        for action in p._actions:
-            for opt in action.option_strings:
-                per_opt = classes.setdefault(opt, {})
-                per_opt.setdefault(_take_for(action.nargs), []).append(path)
-        sub = _find_subparsers_action(p)
-        if sub is not None:
-            stack.extend((child, f"{path} {name}") for name, child in sub.choices.items())
-    return {opt: per_opt for opt, per_opt in sorted(classes.items()) if len(per_opt) > 1}
+  seen: set[int] = set()
+  classes: dict[str, dict[int, list[str]]] = {}
+  stack = [(parser, parser.prog)]
+  while stack:
+    p, path = stack.pop()
+    if id(p) in seen:
+      continue
+    seen.add(id(p))
+    for action in p._actions:
+      for opt in action.option_strings:
+        per_opt = classes.setdefault(opt, {})
+        per_opt.setdefault(_take_for(action.nargs), []).append(path)
+    sub = _find_subparsers_action(p)
+    if sub is not None:
+      stack.extend((child, f"{path} {name}") for name, child in sub.choices.items())
+  return {opt: per_opt for opt, per_opt in sorted(classes.items()) if len(per_opt) > 1}
 
 
 class TestNormalizeCommand:
-    """Dispatcher reorder: a leading flag must not swallow a later subcommand."""
+  """Dispatcher reorder: a leading flag must not swallow a later subcommand."""
 
-    def test_leading_agent_flag_before_shell_reorders(self):
-        from kanibako.cli import _normalize_command
-        # `kanibako --agent goose shell` -> shell leads, flags preserved.
-        assert _normalize_command(["--agent", "goose", "shell"]) == [
-            "shell", "--agent", "goose",
-        ]
+  def test_leading_agent_flag_before_shell_reorders(self):
+    from kanibako.cli import _normalize_command
 
-    def test_leading_box_flag_before_stop_reorders(self):
-        from kanibako.cli import _normalize_command
-        assert _normalize_command(["--box", "foo", "stop"]) == [
-            "stop", "--box", "foo",
-        ]
+    # `kanibako --agent goose shell` -> shell leads, flags preserved.
+    assert _normalize_command(["--agent", "goose", "shell"]) == [
+      "shell",
+      "--agent",
+      "goose",
+    ]
 
-    def test_bare_positional_unchanged(self):
-        from kanibako.cli import _normalize_command
-        # `kanibako myproject` -> no subcommand anywhere; caller prepends start.
-        assert _normalize_command(["myproject"]) == ["myproject"]
+  def test_leading_box_flag_before_stop_reorders(self):
+    from kanibako.cli import _normalize_command
 
-    def test_leading_short_flag_no_subcommand_unchanged(self):
-        from kanibako.cli import _normalize_command
-        # `kanibako -A` -> leading flag, no subcommand; caller prepends start.
-        assert _normalize_command(["-A"]) == ["-A"]
-        assert _normalize_command(["-N"]) == ["-N"]
+    assert _normalize_command(["--box", "foo", "stop"]) == [
+      "stop",
+      "--box",
+      "foo",
+    ]
 
-    def test_subcommand_already_leading_unchanged(self):
-        from kanibako.cli import _normalize_command
-        assert _normalize_command(["shell"]) == ["shell"]
-        assert _normalize_command(["start", "x"]) == ["start", "x"]
-        assert _normalize_command(["shell", "--agent", "goose"]) == [
-            "shell", "--agent", "goose",
-        ]
+  def test_bare_positional_unchanged(self):
+    from kanibako.cli import _normalize_command
 
-    def test_empty_unchanged(self):
-        from kanibako.cli import _normalize_command
-        assert _normalize_command([]) == []
+    # `kanibako myproject` -> no subcommand anywhere; caller prepends start.
+    assert _normalize_command(["myproject"]) == ["myproject"]
 
-    def test_reordered_agent_goose_shell_parses_as_shell(self):
-        # End-to-end: after the reorder, build_parser yields command="shell".
-        from kanibako.cli import _normalize_command
-        parser = build_parser()
-        args = parser.parse_args(_normalize_command(["--agent", "goose", "shell"]))
-        assert args.command == "shell"
-        assert args.agent == "goose"
+  def test_leading_short_flag_no_subcommand_unchanged(self):
+    from kanibako.cli import _normalize_command
 
-    def test_agent_value_shell_is_not_a_subcommand(self):
-        from kanibako.cli import _normalize_command
-        # `--agent shell`: "shell" is the VALUE of --agent, not the subcommand.
-        assert _normalize_command(["--agent", "shell", "--", "curl x"]) == [
-            "--agent", "shell", "--", "curl x",
-        ]
+    # `kanibako -A` -> leading flag, no subcommand; caller prepends start.
+    assert _normalize_command(["-A"]) == ["-A"]
+    assert _normalize_command(["-N"]) == ["-N"]
 
-    def test_agent_equals_form_value_is_not_a_subcommand(self):
-        from kanibako.cli import _normalize_command
-        assert _normalize_command(["--agent=shell", "--", "x"]) == [
-            "--agent=shell", "--", "x",
-        ]
+  def test_subcommand_already_leading_unchanged(self):
+    from kanibako.cli import _normalize_command
 
-    def test_box_value_named_shell_before_start(self):
-        from kanibako.cli import _normalize_command
-        # A box literally named "shell": the later `start` is the subcommand.
-        argv = _normalize_command(["--box", "shell", "start"])
-        assert argv == ["start", "--box", "shell"]
-        args = build_parser().parse_args(argv)
-        assert args.command == "start"
-        assert args.box == "shell"
+    assert _normalize_command(["shell"]) == ["shell"]
+    assert _normalize_command(["start", "x"]) == ["start", "x"]
+    assert _normalize_command(["shell", "--agent", "goose"]) == [
+      "shell",
+      "--agent",
+      "goose",
+    ]
 
-    def test_scan_stops_at_double_dash(self):
-        from kanibako.cli import _normalize_command
-        # `ps` after `--` belongs to the agent; nothing is reordered.
-        assert _normalize_command(["--agent", "claude", "--", "ps", "aux"]) == [
-            "--agent", "claude", "--", "ps", "aux",
-        ]
+  def test_empty_unchanged(self):
+    from kanibako.cli import _normalize_command
 
-    def test_option_nargs_derived_from_parser(self):
-        from kanibako.cli import _option_nargs
-        nargs = _option_nargs(build_parser())
-        for opt in ("--agent", "--box", "-e", "--image", "--rig", "--entrypoint"):
-            assert nargs[opt] in (None, 1)
-        # Bare switches take no value.
-        for opt in ("-A", "-N", "--restart"):
-            assert nargs[opt] == 0
+    assert _normalize_command([]) == []
 
-    def test_no_option_string_changes_arity_across_the_tree(self):
-        # _option_nargs flattens the whole tree into ONE {option_string: nargs}
-        # table in which the last parser walked wins.  That is only correct while
-        # no option string is a value option in one command and a bare switch in
-        # another -- the assumption its own docstring states and that nothing
-        # pinned: test_option_nargs_derived_from_parser above is a hand-picked
-        # inventory, not the rule.  _BAIL is a third class, not a free pass:
-        # _normalize_command leaves argv alone for it, so agreeing on it is as
-        # load-bearing as agreeing on 0 vs 1.
-        from kanibako.commands.flags import _BAIL
+  def test_reordered_agent_goose_shell_parses_as_shell(self):
+    # End-to-end: after the reorder, build_parser yields command="shell".
+    from kanibako.cli import _normalize_command
 
-        labels = {
-            0: "a bare switch, 0 extra argv tokens",
-            1: "a value option, 1 extra argv token",
-            _BAIL: "an arity the leading-flag scan bails on",
-        }
-        conflicts = _arity_conflicts(build_parser())
-        where = "; ".join(
-            "{}: {}".format(
-                opt,
-                " | ".join(
-                    "{} e.g. at `{}`".format(labels[take], paths[0])
-                    for take, paths in sorted(per_opt.items())
-                ),
-            )
-            for opt, per_opt in conflicts.items()
-        )
-        assert not conflicts, (
-            "option string(s) with more than one _take_for arity in the parser "
-            "tree. _option_nargs keeps only the last one walked, so a leading "
-            "flag would swallow or skip the subcommand instead of erroring: "
-            + where
-        )
+    parser = build_parser()
+    args = parser.parse_args(_normalize_command(["--agent", "goose", "shell"]))
+    assert args.command == "shell"
+    assert args.agent == "goose"
 
-    def test_arity_conflicts_helper_reports_a_planted_conflict(self):
-        # The rule test above can only pass, so it proves nothing on its own
-        # (P15): prove the helper that decides it can SEE a conflict.  `setup` is
-        # a real subparser on base, is a different parser object from `start`
-        # (which carries --restart as a bare switch), and does not define
-        # --restart itself, so this adds an option rather than colliding with
-        # argparse's own conflict check.
-        from kanibako.commands.flags import _find_subparsers_action
+  def test_agent_value_shell_is_not_a_subcommand(self):
+    from kanibako.cli import _normalize_command
 
-        parser = build_parser()
-        sub = _find_subparsers_action(parser)
-        assert sub is not None
-        target = sub.choices["setup"]
-        assert target is not sub.choices["start"]
-        assert not any("--restart" in a.option_strings for a in target._actions)
-        # No `action=` -> a plain store, nargs None -> _take_for says 1, against
-        # the 0 that `kanibako start --restart` means.
-        target.add_argument("--restart", dest="planted_restart")
+    # `--agent shell`: "shell" is the VALUE of --agent, not the subcommand.
+    assert _normalize_command(["--agent", "shell", "--", "curl x"]) == [
+      "--agent",
+      "shell",
+      "--",
+      "curl x",
+    ]
 
-        conflicts = _arity_conflicts(parser)
-        assert list(conflicts) == ["--restart"]
-        assert sorted(conflicts["--restart"]) == [0, 1]
+  def test_agent_equals_form_value_is_not_a_subcommand(self):
+    from kanibako.cli import _normalize_command
+
+    assert _normalize_command(["--agent=shell", "--", "x"]) == [
+      "--agent=shell",
+      "--",
+      "x",
+    ]
+
+  def test_box_value_named_shell_before_start(self):
+    from kanibako.cli import _normalize_command
+
+    # A box literally named "shell": the later `start` is the subcommand.
+    argv = _normalize_command(["--box", "shell", "start"])
+    assert argv == ["start", "--box", "shell"]
+    args = build_parser().parse_args(argv)
+    assert args.command == "start"
+    assert args.box == "shell"
+
+  def test_scan_stops_at_double_dash(self):
+    from kanibako.cli import _normalize_command
+
+    # `ps` after `--` belongs to the agent; nothing is reordered.
+    assert _normalize_command(["--agent", "claude", "--", "ps", "aux"]) == [
+      "--agent",
+      "claude",
+      "--",
+      "ps",
+      "aux",
+    ]
+
+  def test_option_nargs_derived_from_parser(self):
+    from kanibako.cli import _option_nargs
+
+    nargs = _option_nargs(build_parser())
+    for opt in ("--agent", "--box", "-e", "--image", "--rig", "--entrypoint"):
+      assert nargs[opt] in (None, 1)
+    # Bare switches take no value.
+    for opt in ("-A", "-N", "--restart"):
+      assert nargs[opt] == 0
+
+  def test_no_option_string_changes_arity_across_the_tree(self):
+    # _option_nargs flattens the whole tree into ONE {option_string: nargs}
+    # table in which the last parser walked wins.  That is only correct while
+    # no option string is a value option in one command and a bare switch in
+    # another -- the assumption its own docstring states and that nothing
+    # pinned: test_option_nargs_derived_from_parser above is a hand-picked
+    # inventory, not the rule.  _BAIL is a third class, not a free pass:
+    # _normalize_command leaves argv alone for it, so agreeing on it is as
+    # load-bearing as agreeing on 0 vs 1.
+    from kanibako.commands.flags import _BAIL
+
+    labels = {
+      0: "a bare switch, 0 extra argv tokens",
+      1: "a value option, 1 extra argv token",
+      _BAIL: "an arity the leading-flag scan bails on",
+    }
+    conflicts = _arity_conflicts(build_parser())
+    where = "; ".join(
+      "{}: {}".format(
+        opt,
+        " | ".join(
+          "{} e.g. at `{}`".format(labels[take], paths[0])
+          for take, paths in sorted(per_opt.items())
+        ),
+      )
+      for opt, per_opt in conflicts.items()
+    )
+    assert not conflicts, (
+      "option string(s) with more than one _take_for arity in the parser "
+      "tree. _option_nargs keeps only the last one walked, so a leading "
+      "flag would swallow or skip the subcommand instead of erroring: " + where
+    )
+
+  def test_arity_conflicts_helper_reports_a_planted_conflict(self):
+    # The rule test above can only pass, so it proves nothing on its own
+    # (P15): prove the helper that decides it can SEE a conflict.  `setup` is
+    # a real subparser on base, is a different parser object from `start`
+    # (which carries --restart as a bare switch), and does not define
+    # --restart itself, so this adds an option rather than colliding with
+    # argparse's own conflict check.
+    from kanibako.commands.flags import _find_subparsers_action
+
+    parser = build_parser()
+    sub = _find_subparsers_action(parser)
+    assert sub is not None
+    target = sub.choices["setup"]
+    assert target is not sub.choices["start"]
+    assert not any("--restart" in a.option_strings for a in target._actions)
+    # No `action=` -> a plain store, nargs None -> _take_for says 1, against
+    # the 0 that `kanibako start --restart` means.
+    target.add_argument("--restart", dest="planted_restart")
+
+    conflicts = _arity_conflicts(parser)
+    assert list(conflicts) == ["--restart"]
+    assert sorted(conflicts["--restart"]) == [0, 1]
 
 
 class TestLeadingFlagDispatch:
-    """`main()` routes a leading-flag argv to the right command and agent args."""
+  """`main()` routes a leading-flag argv to the right command and agent args."""
 
-    def _dispatch(self, monkeypatch, argv):
-        captured = {}
+  def _dispatch(self, monkeypatch, argv):
+    captured = {}
 
-        def fake(args):
-            captured["args"] = args
-            return 0
+    def fake(args):
+      captured["args"] = args
+      return 0
 
-        monkeypatch.setattr("kanibako.commands.start.run_start", fake)
-        monkeypatch.setattr("kanibako.commands.start.run_shell", fake)
-        monkeypatch.setattr("kanibako.cli._setup_nudge", lambda args: None)
-        monkeypatch.setattr("kanibako.cli._ensure_initialized", lambda: None)
-        from kanibako.cli import main
-        with pytest.raises(SystemExit) as exc_info:
-            main(argv)
-        assert exc_info.value.code == 0
-        return captured["args"]
+    monkeypatch.setattr("kanibako.commands.start.run_start", fake)
+    monkeypatch.setattr("kanibako.commands.start.run_shell", fake)
+    monkeypatch.setattr("kanibako.cli._setup_nudge", lambda args: None)
+    monkeypatch.setattr("kanibako.cli._ensure_initialized", lambda: None)
+    from kanibako.cli import main
 
-    def test_agent_shell_with_command_dispatches_as_start(self, monkeypatch):
-        # `kanibako --agent shell -- "curl x"` == `kanibako start --agent shell -- "curl x"`.
-        args = self._dispatch(monkeypatch, ["--agent", "shell", "--", "curl x"])
-        assert args.command == "start"
-        assert args.agent == "shell"
-        assert args.agent_args == ["curl x"]
-        ref = self._dispatch(
-            monkeypatch, ["start", "--agent", "shell", "--", "curl x"],
-        )
-        assert (ref.command, ref.agent, ref.agent_args) == (
-            args.command, args.agent, args.agent_args,
-        )
+    with pytest.raises(SystemExit) as exc_info:
+      main(argv)
+    assert exc_info.value.code == 0
+    return captured["args"]
 
-    def test_agent_equals_shell_dispatches_as_start(self, monkeypatch):
-        args = self._dispatch(monkeypatch, ["--agent=shell", "--", "x"])
-        assert args.command == "start"
-        assert args.agent == "shell"
-        assert args.agent_args == ["x"]
+  def test_agent_shell_with_command_dispatches_as_start(self, monkeypatch):
+    # `kanibako --agent shell -- "curl x"` == `kanibako start --agent shell -- "curl x"`.
+    args = self._dispatch(monkeypatch, ["--agent", "shell", "--", "curl x"])
+    assert args.command == "start"
+    assert args.agent == "shell"
+    assert args.agent_args == ["curl x"]
+    ref = self._dispatch(
+      monkeypatch,
+      ["start", "--agent", "shell", "--", "curl x"],
+    )
+    assert (ref.command, ref.agent, ref.agent_args) == (
+      args.command,
+      args.agent,
+      args.agent_args,
+    )
 
-    def test_post_dash_subcommand_name_is_agent_args(self, monkeypatch):
-        args = self._dispatch(monkeypatch, ["--agent", "claude", "--", "ps", "aux"])
-        assert args.command == "start"
-        assert args.agent == "claude"
-        assert args.agent_args == ["ps", "aux"]
+  def test_agent_equals_shell_dispatches_as_start(self, monkeypatch):
+    args = self._dispatch(monkeypatch, ["--agent=shell", "--", "x"])
+    assert args.command == "start"
+    assert args.agent == "shell"
+    assert args.agent_args == ["x"]
 
-    def test_agent_goose_shell_still_dispatches_as_shell(self, monkeypatch):
-        args = self._dispatch(monkeypatch, ["--agent", "goose", "shell"])
-        assert args.command == "shell"
-        assert args.agent == "goose"
+  def test_post_dash_subcommand_name_is_agent_args(self, monkeypatch):
+    args = self._dispatch(monkeypatch, ["--agent", "claude", "--", "ps", "aux"])
+    assert args.command == "start"
+    assert args.agent == "claude"
+    assert args.agent_args == ["ps", "aux"]
+
+  def test_agent_goose_shell_still_dispatches_as_shell(self, monkeypatch):
+    args = self._dispatch(monkeypatch, ["--agent", "goose", "shell"])
+    assert args.command == "shell"
+    assert args.agent == "goose"
 
 
 class TestLazyInitExemptions:
-    """Commands that skip lazy initialization."""
+  """Commands that skip lazy initialization."""
 
-    def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
-        """'box helper' command should not trigger lazy init."""
-        monkeypatch.setattr(
-            "kanibako.commands.helper_cmd._helpers_dir",
-            lambda: tmp_path / "helpers",
-        )
+  def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
+    """'box helper' command should not trigger lazy init."""
+    monkeypatch.setattr(
+      "kanibako.commands.helper_cmd._helpers_dir",
+      lambda: tmp_path / "helpers",
+    )
 
-        from kanibako.cli import main
-        # 'box helper list' should not crash with "not set up yet"
-        with pytest.raises(SystemExit) as exc_info:
-            main(["box", "helper", "list"])
-        assert exc_info.value.code == 0
+    from kanibako.cli import main
 
-    def test_agent_skips_lazy_init(self):
-        """'agent' command (config-facing) should not trigger lazy init."""
-        from kanibako.cli import main
-        # 'agent list' should not crash with "not set up yet"
-        with pytest.raises(SystemExit) as exc_info:
-            main(["agent", "list"])
-        assert exc_info.value.code == 0
+    # 'box helper list' should not crash with "not set up yet"
+    with pytest.raises(SystemExit) as exc_info:
+      main(["box", "helper", "list"])
+    assert exc_info.value.code == 0
 
-    def test_box_fork_skips_lazy_init(self):
-        """'box fork' command should not trigger lazy init."""
-        # fork will fail with "no socket" but should NOT fail with lazy init
-        from kanibako.cli import main
-        with pytest.raises(SystemExit) as exc_info:
-            main(["box", "fork", "test"])
-        # Should exit with 1 (no socket), not a lazy init error
-        assert exc_info.value.code == 1
+  def test_agent_skips_lazy_init(self):
+    """'agent' command (config-facing) should not trigger lazy init."""
+    from kanibako.cli import main
 
-    def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):
-        """'system' command triggers lazy init (creates config)."""
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+    # 'agent list' should not crash with "not set up yet"
+    with pytest.raises(SystemExit) as exc_info:
+      main(["agent", "list"])
+    assert exc_info.value.code == 0
 
-        from kanibako.cli import main
-        with pytest.raises(SystemExit) as exc_info:
-            main(["system", "info"])
-        assert exc_info.value.code == 0
-        # Config should have been created by lazy init
-        assert (tmp_path / "config" / CONFIG_FILENAME).exists()
+  def test_box_fork_skips_lazy_init(self):
+    """'box fork' command should not trigger lazy init."""
+    # fork will fail with "no socket" but should NOT fail with lazy init
+    from kanibako.cli import main
 
+    with pytest.raises(SystemExit) as exc_info:
+      main(["box", "fork", "test"])
+    # Should exit with 1 (no socket), not a lazy init error
+    assert exc_info.value.code == 1
+
+  def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):
+    """'system' command triggers lazy init (creates config)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as exc_info:
+      main(["system", "info"])
+    assert exc_info.value.code == 0
+    # Config should have been created by lazy init
+    assert (tmp_path / "config" / CONFIG_FILENAME).exists()
 
 
 class TestCreateRefusesBeforeFirstRunSetup:
-    """A ``create`` refusal that needs no settings writes nothing in a fresh HOME."""
+  """A ``create`` refusal that needs no settings writes nothing in a fresh HOME."""
 
-    @pytest.mark.parametrize("argv, cwd_is_home", [
-        (["create", "--name=-bad", "target"], False),
-        (["box", "create", "--name=-bad"], False),
-        (["create"], True),
-        (["box", "create", "--standalone"], True),
-    ])
-    def test_refusal_writes_nothing(self, tmp_home, monkeypatch, argv, cwd_is_home):
-        from kanibako.cli import main
+  @pytest.mark.parametrize(
+    "argv, cwd_is_home",
+    [
+      (["create", "--name=-bad", "target"], False),
+      (["box", "create", "--name=-bad"], False),
+      (["create"], True),
+      (["box", "create", "--standalone"], True),
+    ],
+  )
+  def test_refusal_writes_nothing(self, tmp_home, monkeypatch, argv, cwd_is_home):
+    from kanibako.cli import main
 
-        if cwd_is_home:
-            monkeypatch.chdir(tmp_home / "home")
-        before = sorted(tmp_home.rglob("*"))
-        with pytest.raises(SystemExit) as exc_info:
-            main(argv)
-        assert exc_info.value.code == 1
-        assert sorted(tmp_home.rglob("*")) == before
+    if cwd_is_home:
+      monkeypatch.chdir(tmp_home / "home")
+    before = sorted(tmp_home.rglob("*"))
+    with pytest.raises(SystemExit) as exc_info:
+      main(argv)
+    assert exc_info.value.code == 1
+    assert sorted(tmp_home.rglob("*")) == before
+
 
 class TestVerboseFlag:
-    def test_verbose_short_sets_debug(self):
-        from kanibako.cli import main
+  def test_verbose_short_sets_debug(self):
+    from kanibako.cli import main
 
-        with pytest.raises(SystemExit):
-            main(["-v", "--version"])
-        logger = logging.getLogger("kanibako")
-        assert logger.level == logging.DEBUG
+    with pytest.raises(SystemExit):
+      main(["-v", "--version"])
+    logger = logging.getLogger("kanibako")
+    assert logger.level == logging.DEBUG
 
-    def test_verbose_long_sets_debug(self):
-        from kanibako.cli import main
+  def test_verbose_long_sets_debug(self):
+    from kanibako.cli import main
 
-        with pytest.raises(SystemExit):
-            main(["--verbose", "--version"])
-        logger = logging.getLogger("kanibako")
-        assert logger.level == logging.DEBUG
+    with pytest.raises(SystemExit):
+      main(["--verbose", "--version"])
+    logger = logging.getLogger("kanibako")
+    assert logger.level == logging.DEBUG
 
-    def test_no_verbose_sets_warning(self):
-        from kanibako.cli import main
+  def test_no_verbose_sets_warning(self):
+    from kanibako.cli import main
 
-        with pytest.raises(SystemExit):
-            main(["--version"])
-        logger = logging.getLogger("kanibako")
-        assert logger.level == logging.WARNING
+    with pytest.raises(SystemExit):
+      main(["--version"])
+    logger = logging.getLogger("kanibako")
+    assert logger.level == logging.WARNING
 
-    def test_verbose_stripped_from_args(self):
-        """Verbose flag should not reach subcommand parsing."""
-        from kanibako.cli import main
+  def test_verbose_stripped_from_args(self):
+    """Verbose flag should not reach subcommand parsing."""
+    from kanibako.cli import main
 
-        # -v before --help should not error out
-        with pytest.raises(SystemExit) as exc_info:
-            main(["-v", "--help"])
-        assert exc_info.value.code == 0
+    # -v before --help should not error out
+    with pytest.raises(SystemExit) as exc_info:
+      main(["-v", "--help"])
+    assert exc_info.value.code == 0
 
-    def test_epilog_mentions_verbose(self):
-        parser = build_parser()
-        assert "-v, --verbose" in parser.epilog
+  def test_epilog_mentions_verbose(self):
+    parser = build_parser()
+    assert "-v, --verbose" in parser.epilog
 
-    def test_help_contains_commands_section(self):
-        parser = build_parser()
-        assert "COMMANDS" in parser.epilog
-        assert "SHORTCUTS" in parser.epilog
-        # W2a: the image→rig / container→box ALIASES block was removed.
-        assert "ALIASES" not in parser.epilog
+  def test_help_contains_commands_section(self):
+    parser = build_parser()
+    assert "COMMANDS" in parser.epilog
+    assert "SHORTCUTS" in parser.epilog
+    # W2a: the image→rig / container→box ALIASES block was removed.
+    assert "ALIASES" not in parser.epilog
 
-    def test_help_description(self):
-        parser = build_parser()
-        assert parser.description == "Safe, persistent workspaces for AI coding agents."
+  def test_help_description(self):
+    parser = build_parser()
+    assert parser.description == "Safe, persistent workspaces for AI coding agents."
 
 
 def _marker_file(tmp_path):
-    """The SYSTEM SETTINGS file ``_setup_nudge`` resolves under these tests' patches.
+  """The SYSTEM SETTINGS file ``_setup_nudge`` resolves under these tests' patches.
 
-    ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (spec §2g has
-    always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
-    must plant it where the shipped code looks.  Computed by the SHIPPED resolver
-    rather than spelled out here: a literal would pin a path instead of the behavior,
-    and would go stale the moment ``config.settings``' default moved.
-    """
-    from pathlib import Path
+  ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (spec §2g has
+  always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
+  must plant it where the shipped code looks.  Computed by the SHIPPED resolver
+  rather than spelled out here: a literal would pin a path instead of the behavior,
+  and would go stale the moment ``config.settings``' default moved.
+  """
+  from pathlib import Path
 
-    from kanibako.settings.paths import load_system_config
+  from kanibako.settings.paths import load_system_config
 
-    return load_system_config(
-        tmp_path / CONFIG_FILENAME, data_home=tmp_path, home=Path.home(),
-    )["config.settings"]
+  return load_system_config(
+    tmp_path / CONFIG_FILENAME,
+    data_home=tmp_path,
+    home=Path.home(),
+  )["config.settings"]
 
 
 class TestSetupNudge:
-    """Gate-1 NON-BLOCKING setup-completion nudge (_setup_nudge)."""
+  """Gate-1 NON-BLOCKING setup-completion nudge (_setup_nudge)."""
 
-    def _ns(self, command, **kw):
-        import argparse
+  def _ns(self, command, **kw):
+    import argparse
 
-        return argparse.Namespace(command=command, **kw)
+    return argparse.Namespace(command=command, **kw)
 
-    def test_absent_marker_nudges_agent_command(self, tmp_path, capsys):
-        """Agent-requiring command + absent marker → nudge on stderr; returns None."""
-        from unittest.mock import patch
+  def test_absent_marker_nudges_agent_command(self, tmp_path, capsys):
+    """Agent-requiring command + absent marker → nudge on stderr; returns None."""
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME  # does not exist → absent marker
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            result = _setup_nudge(self._ns("start"))
-        assert result is None  # non-blocking: no raise, no exit
-        err = capsys.readouterr().err
-        assert "kanibako isn't set up yet" in err
+    cf = tmp_path / CONFIG_FILENAME  # does not exist → absent marker
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      result = _setup_nudge(self._ns("start"))
+    assert result is None  # non-blocking: no raise, no exit
+    err = capsys.readouterr().err
+    assert "kanibako isn't set up yet" in err
 
-    def test_absent_marker_nudge_stays_off_stdout(self, tmp_path, capsys):
-        """The 'isn't set up yet' nag must be on STDERR, never STDOUT.
+  def test_absent_marker_nudge_stays_off_stdout(self, tmp_path, capsys):
+    """The 'isn't set up yet' nag must be on STDERR, never STDOUT.
 
-        On the remote machine path, ``kanibako start --print-container`` must
-        keep stdout = the cname only; the setup nag is a warning and belongs on
-        stderr so it cannot precede/pollute the parsed cname (rc7 item 7).
-        """
-        from unittest.mock import patch
+    On the remote machine path, ``kanibako start --print-container`` must
+    keep stdout = the cname only; the setup nag is a warning and belongs on
+    stderr so it cannot precede/pollute the parsed cname (rc7 item 7).
+    """
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME  # absent marker
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("start"))
-        captured = capsys.readouterr()
-        assert "kanibako isn't set up yet" in captured.err
-        assert captured.out == ""
+    cf = tmp_path / CONFIG_FILENAME  # absent marker
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("start"))
+    captured = capsys.readouterr()
+    assert "kanibako isn't set up yet" in captured.err
+    assert captured.out == ""
 
-    def test_nudge_band_prints_advisory_non_blocking(self, tmp_path, capsys):
-        """NUDGE band ([BCV, FCV)) prints 'out of date' on stderr, no raise.
+  def test_nudge_band_prints_advisory_non_blocking(self, tmp_path, capsys):
+    """NUDGE band ([BCV, FCV)) prints 'out of date' on stderr, no raise.
 
-        The shipped constants collapse this band (BCV == FCV), so patch the build
-        version + constants to put the 1.6.0 marker into [BCV, FCV).
-        """
-        from unittest.mock import patch
+    The shipped constants collapse this band (BCV == FCV), so patch the build
+    version + constants to put the 1.6.0 marker into [BCV, FCV).
+    """
+    from unittest.mock import patch
 
-        import kanibako
-        from kanibako.cli import _setup_nudge
-        from kanibako.settings.config_interface import write_system_value
+    import kanibako
+    from kanibako.cli import _setup_nudge
+    from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / CONFIG_FILENAME
-        write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
-             patch.object(kanibako, "__version__", "1.8.0"), \
-             patch.object(kanibako, "SETUP_BCV", "1.5.0"), \
-             patch.object(kanibako, "SETUP_FCV", "1.7.0"):
-            # Non-blocking: prints, does not raise.
-            assert _setup_nudge(self._ns("start")) is None
-        assert "out of date" in capsys.readouterr().err
+    cf = tmp_path / CONFIG_FILENAME
+    write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch.object(kanibako, "__version__", "1.8.0"),
+      patch.object(kanibako, "SETUP_BCV", "1.5.0"),
+      patch.object(kanibako, "SETUP_FCV", "1.7.0"),
+    ):
+      # Non-blocking: prints, does not raise.
+      assert _setup_nudge(self._ns("start")) is None
+    assert "out of date" in capsys.readouterr().err
 
-    def test_current_marker_no_nudge(self, tmp_path, capsys):
-        from unittest.mock import patch
+  def test_current_marker_no_nudge(self, tmp_path, capsys):
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
-        from kanibako.settings.config_interface import write_system_value
+    from kanibako.cli import _setup_nudge
+    from kanibako.settings.config_interface import write_system_value
 
-        from packaging.version import Version
+    from packaging.version import Version
 
-        import kanibako
+    import kanibako
 
-        cf = tmp_path / CONFIG_FILENAME
-        # Marker == the current build's base version → == band → no nudge.
-        write_system_value(
-            _marker_file(tmp_path),
-            "setup_completed",
-            Version(kanibako.__version__).base_version,
-        )
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("start"))
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME
+    # Marker == the current build's base version → == band → no nudge.
+    write_system_value(
+      _marker_file(tmp_path),
+      "setup_completed",
+      Version(kanibako.__version__).base_version,
+    )
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("start"))
+    assert capsys.readouterr().err == ""
 
-    def test_agent_reauth_nudges(self, tmp_path, capsys):
-        from unittest.mock import patch
+  def test_agent_reauth_nudges(self, tmp_path, capsys):
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("agent", agent_command="reauth"))
-        assert "kanibako isn't set up yet" in capsys.readouterr().err
+    cf = tmp_path / CONFIG_FILENAME
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("agent", agent_command="reauth"))
+    assert "kanibako isn't set up yet" in capsys.readouterr().err
 
-    def test_shell_never_nudges(self, tmp_path, capsys):
-        """shell bypasses the nudge entirely (no agent resolution)."""
-        from unittest.mock import patch
+  def test_shell_never_nudges(self, tmp_path, capsys):
+    """shell bypasses the nudge entirely (no agent resolution)."""
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME  # absent marker
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("shell"))
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME  # absent marker
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("shell"))
+    assert capsys.readouterr().err == ""
 
-    def test_setup_never_nudges(self, tmp_path, capsys):
-        from unittest.mock import patch
+  def test_setup_never_nudges(self, tmp_path, capsys):
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("setup"))
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("setup"))
+    assert capsys.readouterr().err == ""
 
-    def test_config_command_never_nudges(self, tmp_path, capsys):
-        """Pure config/list commands are not agent-requiring → no nudge."""
-        from unittest.mock import patch
+  def test_config_command_never_nudges(self, tmp_path, capsys):
+    """Pure config/list commands are not agent-requiring → no nudge."""
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("list"))
-            _setup_nudge(self._ns("agent", agent_command="list"))
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      _setup_nudge(self._ns("list"))
+      _setup_nudge(self._ns("agent", agent_command="list"))
+    assert capsys.readouterr().err == ""
 
-    @staticmethod
-    def _below_bcv():
-        """A version string strictly below the live SETUP_BCV base version."""
-        from packaging.version import Version
+  @staticmethod
+  def _below_bcv():
+    """A version string strictly below the live SETUP_BCV base version."""
+    from packaging.version import Version
 
-        import kanibako
+    import kanibako
 
-        bcv = Version(kanibako.SETUP_BCV)
-        below = f"{bcv.major - 1}.0.0" if bcv.major >= 1 else f"0.0.{bcv.micro}"
-        if not Version(below) < Version(bcv.base_version):
-            below = "0.0.1"
-        assert Version(below) < Version(bcv.base_version)
-        return below
+    bcv = Version(kanibako.SETUP_BCV)
+    below = f"{bcv.major - 1}.0.0" if bcv.major >= 1 else f"0.0.{bcv.micro}"
+    if not Version(below) < Version(bcv.base_version):
+      below = "0.0.1"
+    assert Version(below) < Version(bcv.base_version)
+    return below
 
-    def test_too_old_marker_propagates_error(self, tmp_path):
-        """ERROR band (ConfigVer < BCV) → KanibakoError propagates (rc1)."""
-        from unittest.mock import patch
+  def test_too_old_marker_propagates_error(self, tmp_path):
+    """ERROR band (ConfigVer < BCV) → KanibakoError propagates (rc1)."""
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.errors import KanibakoError
+    from kanibako.cli import _setup_nudge
+    from kanibako.settings.config_interface import write_system_value
+    from kanibako.errors import KanibakoError
 
-        cf = tmp_path / CONFIG_FILENAME
-        write_system_value(
-            _marker_file(tmp_path), "setup_completed", self._below_bcv(),
-        )  # < BCV
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            with pytest.raises(KanibakoError) as exc:
-                _setup_nudge(self._ns("start"))
-        assert "too old to auto-update" in str(exc.value)
+    cf = tmp_path / CONFIG_FILENAME
+    write_system_value(
+      _marker_file(tmp_path),
+      "setup_completed",
+      self._below_bcv(),
+    )  # < BCV
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      with pytest.raises(KanibakoError) as exc:
+        _setup_nudge(self._ns("start"))
+    assert "too old to auto-update" in str(exc.value)
 
-    def test_newer_than_build_propagates_error(self, tmp_path):
-        """ERROR band (ConfigVer > CurrentVer) → KanibakoError propagates (rc1)."""
-        from unittest.mock import patch
+  def test_newer_than_build_propagates_error(self, tmp_path):
+    """ERROR band (ConfigVer > CurrentVer) → KanibakoError propagates (rc1)."""
+    from unittest.mock import patch
 
-        from packaging.version import Version
+    from packaging.version import Version
 
-        import kanibako
-        from kanibako.cli import _setup_nudge
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.errors import KanibakoError
+    import kanibako
+    from kanibako.cli import _setup_nudge
+    from kanibako.settings.config_interface import write_system_value
+    from kanibako.errors import KanibakoError
 
-        cf = tmp_path / CONFIG_FILENAME
-        # A version strictly greater than the build base → "from the future".
-        newer = f"{Version(kanibako.__version__).major + 1}.0.0"
-        assert Version(newer) > Version(Version(kanibako.__version__).base_version)
-        write_system_value(
-            _marker_file(tmp_path), "setup_completed", newer,
-        )  # > build
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            with pytest.raises(KanibakoError) as exc:
-                _setup_nudge(self._ns("start"))
-        assert "newer kanibako" in str(exc.value)
+    cf = tmp_path / CONFIG_FILENAME
+    # A version strictly greater than the build base → "from the future".
+    newer = f"{Version(kanibako.__version__).major + 1}.0.0"
+    assert Version(newer) > Version(Version(kanibako.__version__).base_version)
+    write_system_value(
+      _marker_file(tmp_path),
+      "setup_completed",
+      newer,
+    )  # > build
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+    ):
+      with pytest.raises(KanibakoError) as exc:
+        _setup_nudge(self._ns("start"))
+    assert "newer kanibako" in str(exc.value)
 
-    def test_unexpected_failure_swallowed(self, tmp_path, capsys):
-        """A non-KanibakoError failure is swallowed (gate never breaks a command)."""
-        from unittest.mock import patch
+  def test_unexpected_failure_swallowed(self, tmp_path, capsys):
+    """A non-KanibakoError failure is swallowed (gate never breaks a command)."""
+    from unittest.mock import patch
 
-        from kanibako.cli import _setup_nudge
+    from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / CONFIG_FILENAME
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
-             patch(
-                 "kanibako.settings.config.setup_compat_gate",
-                 side_effect=RuntimeError("boom"),
-             ):
-            # Must NOT raise — unexpected errors are swallowed.
-            assert _setup_nudge(self._ns("start")) is None
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch(
+        "kanibako.settings.config.setup_compat_gate",
+        side_effect=RuntimeError("boom"),
+      ),
+    ):
+      # Must NOT raise — unexpected errors are swallowed.
+      assert _setup_nudge(self._ns("start")) is None
+    assert capsys.readouterr().err == ""
 
-    def test_main_error_band_exits_rc1_with_clean_message(self, tmp_path, capsys):
-        """E2E through main(): an ERROR band exits rc1 with a clean 'Error: …'.
+  def test_main_error_band_exits_rc1_with_clean_message(self, tmp_path, capsys):
+    """E2E through main(): an ERROR band exits rc1 with a clean 'Error: …'.
 
-        Drives the full main([...]) path (NOT _setup_nudge directly) to prove the
-        gate's ConfigError is converted to the standard clean rc1 — not an
-        uncaught traceback — since the _setup_nudge call sits OUTSIDE the func()
-        KanibakoError handler.
-        """
-        from unittest.mock import patch
+    Drives the full main([...]) path (NOT _setup_nudge directly) to prove the
+    gate's ConfigError is converted to the standard clean rc1 — not an
+    uncaught traceback — since the _setup_nudge call sits OUTSIDE the func()
+    KanibakoError handler.
+    """
+    from unittest.mock import patch
 
-        from kanibako.cli import main
-        from kanibako.settings.config_interface import write_system_value
+    from kanibako.cli import main
+    from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / CONFIG_FILENAME
-        # < BCV → ERROR band.
-        write_system_value(
-            _marker_file(tmp_path), "setup_completed", self._below_bcv(),
-        )
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
-             patch("kanibako.cli._ensure_initialized"):
-            with pytest.raises(SystemExit) as exc:
-                main(["start"])
-        assert exc.value.code == 1  # clean rc1, not the interpreter default
-        err = capsys.readouterr().err
-        assert err.startswith("Error: ")  # the standard clean handling
-        assert "too old to auto-update" in err
+    cf = tmp_path / CONFIG_FILENAME
+    # < BCV → ERROR band.
+    write_system_value(
+      _marker_file(tmp_path),
+      "setup_completed",
+      self._below_bcv(),
+    )
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.cli._ensure_initialized"),
+    ):
+      with pytest.raises(SystemExit) as exc:
+        main(["start"])
+    assert exc.value.code == 1  # clean rc1, not the interpreter default
+    err = capsys.readouterr().err
+    assert err.startswith("Error: ")  # the standard clean handling
+    assert "too old to auto-update" in err
 
-    def test_silent_bump_propagates_no_error_and_no_message(self, tmp_path, capsys):
-        """SILENT-BUMP band via _setup_nudge: no message, no raise, marker bumped."""
-        from unittest.mock import patch
+  def test_silent_bump_propagates_no_error_and_no_message(self, tmp_path, capsys):
+    """SILENT-BUMP band via _setup_nudge: no message, no raise, marker bumped."""
+    from unittest.mock import patch
 
-        import kanibako
-        from kanibako.cli import _setup_nudge
-        from kanibako.settings.config import read_setup_completed
-        from kanibako.settings.config_interface import write_system_value
+    import kanibako
+    from kanibako.cli import _setup_nudge
+    from kanibako.settings.config import read_setup_completed
+    from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / CONFIG_FILENAME
-        write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
-             patch.object(kanibako, "__version__", "1.8.0"), \
-             patch.object(kanibako, "SETUP_BCV", "1.6.0"), \
-             patch.object(kanibako, "SETUP_FCV", "1.6.0"):
-            assert _setup_nudge(self._ns("start")) is None
-            assert read_setup_completed(_marker_file(tmp_path)) == "1.8.0"
-        assert capsys.readouterr().err == ""
+    cf = tmp_path / CONFIG_FILENAME
+    write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch.object(kanibako, "__version__", "1.8.0"),
+      patch.object(kanibako, "SETUP_BCV", "1.6.0"),
+      patch.object(kanibako, "SETUP_FCV", "1.6.0"),
+    ):
+      assert _setup_nudge(self._ns("start")) is None
+      assert read_setup_completed(_marker_file(tmp_path)) == "1.8.0"
+    assert capsys.readouterr().err == ""
 
 
 class TestLegacySetupMarkerGuard:
-    """One-release migration guard: a v1.7-era host reads below ``SETUP_BCV`` until setup runs.
+  """One-release migration guard: a v1.7-era host reads below ``SETUP_BCV`` until setup runs.
 
-    v1.7.2 initialized ``$XDG_CONFIG_HOME/kanibako_config.yaml`` and wrote its marker
-    there as ``system: setup_completed:`` (``git show v1.7.2:src/kanibako/config.py``).
-    """
+  v1.7.2 initialized ``$XDG_CONFIG_HOME/kanibako_config.yaml`` and wrote its marker
+  there as ``system: setup_completed:`` (``git show v1.7.2:src/kanibako/config.py``).
+  """
 
-    def _legacy(self, tmp_home, body):
-        path = tmp_home / "config" / "kanibako_config.yaml"
-        path.write_text(body)
-        return path
+  def _legacy(self, tmp_home, body):
+    path = tmp_home / "config" / "kanibako_config.yaml"
+    path.write_text(body)
+    return path
 
-    def _launches(self, monkeypatch):
-        calls = []
-        monkeypatch.setattr(
-            "kanibako.commands.start.run_start", lambda args: calls.append(args) or 0,
-        )
-        return calls
+  def _launches(self, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+      "kanibako.commands.start.run_start",
+      lambda args: calls.append(args) or 0,
+    )
+    return calls
 
-    def _main(self, argv):
-        from kanibako.cli import main
+  def _main(self, argv):
+    from kanibako.cli import main
 
-        with pytest.raises(SystemExit) as exc:
-            main(argv)
-        return exc.value.code
+    with pytest.raises(SystemExit) as exc:
+      main(argv)
+    return exc.value.code
 
-    @pytest.mark.parametrize("body", [
-        "system:\n  setup_completed: 1.7.2\n",
-        "system: {}\nbox:\n  agent_name: ''\n",
-    ], ids=["v1.7.2-marker", "v1.7-init-no-marker"])
-    def test_v17_host_is_hard_blocked_naming_the_cure(self, tmp_home, monkeypatch, capsys, body):
-        from kanibako.settings.config import user_config_file
+  @pytest.mark.parametrize(
+    "body",
+    [
+      "system:\n  setup_completed: 1.7.2\n",
+      "system: {}\nbox:\n  agent_name: ''\n",
+    ],
+    ids=["v1.7.2-marker", "v1.7-init-no-marker"],
+  )
+  def test_v17_host_is_hard_blocked_naming_the_cure(self, tmp_home, monkeypatch, capsys, body):
+    from kanibako.settings.config import user_config_file
 
-        legacy = self._legacy(tmp_home, body)
-        calls = self._launches(monkeypatch)
-        assert self._main(["start"]) == 1
-        err = capsys.readouterr().err
-        assert f"Error: {legacy} " in err
-        assert f"Rename it to {user_config_file()}" in err
-        assert err.index("kanibako.cfg") < err.index("kanibako setup")
-        assert "too old" not in err
-        assert calls == []
-        assert not user_config_file().exists()
+    legacy = self._legacy(tmp_home, body)
+    calls = self._launches(monkeypatch)
+    assert self._main(["start"]) == 1
+    err = capsys.readouterr().err
+    assert f"Error: {legacy} " in err
+    assert f"Rename it to {user_config_file()}" in err
+    assert err.index("kanibako.cfg") < err.index("kanibako setup")
+    assert "too old" not in err
+    assert calls == []
+    assert not user_config_file().exists()
 
-    def test_the_cure_in_order_clears_the_block_and_keeps_config_data(
-        self, tmp_home, monkeypatch, capsys,
-    ):
-        from pathlib import Path
+  def test_the_cure_in_order_clears_the_block_and_keeps_config_data(
+    self,
+    tmp_home,
+    monkeypatch,
+    capsys,
+  ):
+    from pathlib import Path
 
-        from kanibako.settings.config import user_config_file
-        from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.config import user_config_file
+    from kanibako.settings.paths import load_system_config, xdg
 
-        monkeypatch.setattr(
-            "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"),
-        )
-        monkeypatch.setattr(
-            "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"),
-        )
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        custom = tmp_home / "customdata"
-        legacy = self._legacy(
-            tmp_home,
-            f"config:\n  data: {custom}\nsystem:\n  setup_completed: 1.7.2\n"
-            "box:\n  agent_name: ''\n",
-        )
-        calls = self._launches(monkeypatch)
-        assert self._main(["start"]) == 1
-        assert calls == []
-        capsys.readouterr()
-        legacy.unlink()
-        user_config_file().write_text(f"config:\n  data: {custom}\n")
-        assert self._main(["setup", "--agent", "shell", "--refresh-templates"]) == 0
-        capsys.readouterr()
-        assert self._main(["start"]) == 0
-        assert len(calls) == 1
-        err = capsys.readouterr().err
-        assert "Error" not in err and "set up" not in err
-        resolved = load_system_config(
-            user_config_file(), data_home=xdg("XDG_DATA_HOME", ".local/share"),
-            home=Path.home(),
-        )
-        assert resolved["config.data"] == custom
-        assert resolved["config.settings"].is_file()
-        assert not (tmp_home / "data" / "kanibako").exists()
+    monkeypatch.setattr(
+      "kanibako.commands.diagnose._check_runtime",
+      lambda: ("ok", "podman"),
+    )
+    monkeypatch.setattr(
+      "kanibako.commands.diagnose._check_image",
+      lambda cfg: ("ok", "rig"),
+    )
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    custom = tmp_home / "customdata"
+    legacy = self._legacy(
+      tmp_home,
+      f"config:\n  data: {custom}\nsystem:\n  setup_completed: 1.7.2\nbox:\n  agent_name: ''\n",
+    )
+    calls = self._launches(monkeypatch)
+    assert self._main(["start"]) == 1
+    assert calls == []
+    capsys.readouterr()
+    legacy.unlink()
+    user_config_file().write_text(f"config:\n  data: {custom}\n")
+    assert self._main(["setup", "--agent", "shell", "--refresh-templates"]) == 0
+    capsys.readouterr()
+    assert self._main(["start"]) == 0
+    assert len(calls) == 1
+    err = capsys.readouterr().err
+    assert "Error" not in err and "set up" not in err
+    resolved = load_system_config(
+      user_config_file(),
+      data_home=xdg("XDG_DATA_HOME", ".local/share"),
+      home=Path.home(),
+    )
+    assert resolved["config.data"] == custom
+    assert resolved["config.settings"].is_file()
+    assert not (tmp_home / "data" / "kanibako").exists()
 
-    def test_fresh_host_keeps_the_advisory(self, tmp_home, monkeypatch, capsys):
-        calls = self._launches(monkeypatch)
-        assert self._main(["start"]) == 0
-        assert len(calls) == 1
-        assert "kanibako isn't set up yet" in capsys.readouterr().err
+  def test_fresh_host_keeps_the_advisory(self, tmp_home, monkeypatch, capsys):
+    calls = self._launches(monkeypatch)
+    assert self._main(["start"]) == 0
+    assert len(calls) == 1
+    assert "kanibako isn't set up yet" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("legacy", [False, True], ids=["no-legacy-file", "legacy-file-left"])
-    def test_current_marker_host_is_unchanged(self, tmp_home, monkeypatch, capsys, legacy):
-        from pathlib import Path
+  @pytest.mark.parametrize("legacy", [False, True], ids=["no-legacy-file", "legacy-file-left"])
+  def test_current_marker_host_is_unchanged(self, tmp_home, monkeypatch, capsys, legacy):
+    from pathlib import Path
 
-        from packaging.version import Version
+    from packaging.version import Version
 
-        import kanibako
-        from kanibako.settings.config import user_config_file
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.settings.paths import load_system_config, xdg
+    import kanibako
+    from kanibako.settings.config import user_config_file
+    from kanibako.settings.config_interface import write_system_value
+    from kanibako.settings.paths import load_system_config, xdg
 
-        if legacy:
-            self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
-        settings = load_system_config(
-            user_config_file(), data_home=xdg("XDG_DATA_HOME", ".local/share"),
-            home=Path.home(),
-        )["config.settings"]
-        write_system_value(
-            settings, "setup_completed", Version(kanibako.__version__).base_version,
-        )
-        calls = self._launches(monkeypatch)
-        assert self._main(["start"]) == 0
-        assert len(calls) == 1
-        assert capsys.readouterr().err == ""
+    if legacy:
+      self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
+    settings = load_system_config(
+      user_config_file(),
+      data_home=xdg("XDG_DATA_HOME", ".local/share"),
+      home=Path.home(),
+    )["config.settings"]
+    write_system_value(
+      settings,
+      "setup_completed",
+      Version(kanibako.__version__).base_version,
+    )
+    calls = self._launches(monkeypatch)
+    assert self._main(["start"]) == 0
+    assert len(calls) == 1
+    assert capsys.readouterr().err == ""
 
 
 class TestTemplateStalenessRetired:
-    """R-38: the HARD template-staleness gate is GONE from ``_setup_nudge``.
+  """R-38: the HARD template-staleness gate is GONE from ``_setup_nudge``.
 
-    These are the FALSE-BLOCK cases the deleted gate produced — an initialized
-    host whose config simply never carried a stamp (every host set up before the
-    stamp existed) was hard-blocked out of every agent command.  Template drift is
-    now announced by the setup bands instead (``SETUP_FCV`` nudge / ``SETUP_BCV``
-    hard block), which is what ``TestSetupNudge`` covers.
+  These are the FALSE-BLOCK cases the deleted gate produced — an initialized
+  host whose config simply never carried a stamp (every host set up before the
+  stamp existed) was hard-blocked out of every agent command.  Template drift is
+  now announced by the setup bands instead (``SETUP_FCV`` nudge / ``SETUP_BCV``
+  hard block), which is what ``TestSetupNudge`` covers.
+  """
+
+  def _ns(self, command, **kw):
+    import argparse
+
+    return argparse.Namespace(command=command, **kw)
+
+  def _init_cf(self, tmp_path, stamp=None):
+    """An initialized config (current setup marker) + an optional ORPHAN stamp.
+
+    ⚑ THE ORPHAN GOES IN THE SETTINGS FILE, beside the marker (2026-08-31). It used
+    to be written into ``kanibako.cfg``, which is where the retired writer
+    put it — and that file refuses a ``system:`` table now, so planting it there
+    would exercise the Layer-1 refusal instead of the retired staleness gate this
+    class is about. The Layer-1 case has its own pin in
+    ``test_settings/test_config.py``.
     """
+    from packaging.version import Version
 
-    def _ns(self, command, **kw):
-        import argparse
+    import kanibako
+    from kanibako.settings.config_interface import write_system_value
 
-        return argparse.Namespace(command=command, **kw)
+    cf = tmp_path / CONFIG_FILENAME
+    write_system_value(
+      _marker_file(tmp_path),
+      "setup_completed",
+      Version(kanibako.__version__).base_version,
+    )
+    if stamp is not None:
+      write_system_value(_marker_file(tmp_path), "templates_stamp", stamp)
+    return cf
 
-    def _init_cf(self, tmp_path, stamp=None):
-        """An initialized config (current setup marker) + an optional ORPHAN stamp.
+  @pytest.mark.parametrize("stamp", [None, "stale-digest"])
+  def test_initialized_host_never_hard_blocks_on_templates(self, tmp_path, capsys, stamp):
+    """No stamp at all, or a stale one: neither raises and neither prints."""
+    from unittest.mock import patch
 
-        ⚑ THE ORPHAN GOES IN THE SETTINGS FILE, beside the marker (2026-08-31). It used
-        to be written into ``kanibako.cfg``, which is where the retired writer
-        put it — and that file refuses a ``system:`` table now, so planting it there
-        would exercise the Layer-1 refusal instead of the retired staleness gate this
-        class is about. The Layer-1 case has its own pin in
-        ``test_settings/test_config.py``.
-        """
-        from packaging.version import Version
+    from kanibako.cli import _setup_nudge
 
-        import kanibako
-        from kanibako.settings.config_interface import write_system_value
-
-        cf = tmp_path / CONFIG_FILENAME
-        write_system_value(
-            _marker_file(tmp_path),
-            "setup_completed",
-            Version(kanibako.__version__).base_version,
-        )
-        if stamp is not None:
-            write_system_value(_marker_file(tmp_path), "templates_stamp", stamp)
-        return cf
-
-    @pytest.mark.parametrize("stamp", [None, "stale-digest"])
-    def test_initialized_host_never_hard_blocks_on_templates(
-        self, tmp_path, capsys, stamp
+    cf = self._init_cf(tmp_path, stamp=stamp)
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
     ):
-        """No stamp at all, or a stale one: neither raises and neither prints."""
-        from unittest.mock import patch
+      assert _setup_nudge(self._ns("start")) is None
+    assert capsys.readouterr().err == ""
 
-        from kanibako.cli import _setup_nudge
+  def test_reauth_not_blocked_either(self, tmp_path):
+    """The other agent-requiring command the old gate also blocked."""
+    from unittest.mock import patch
 
-        cf = self._init_cf(tmp_path, stamp=stamp)
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            assert _setup_nudge(self._ns("start")) is None
-        assert capsys.readouterr().err == ""
+    from kanibako.cli import _setup_nudge
 
-    def test_reauth_not_blocked_either(self, tmp_path):
-        """The other agent-requiring command the old gate also blocked."""
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-
-        cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            assert _setup_nudge(self._ns("agent", agent_command="reauth")) is None
-
-    def test_first_run_init_writes_no_stamp(self, tmp_home):
-        """_ensure_initialized installs the templates and records NO stamp (R-38).
-
-        Pins the deleted writer on the REAL first-run path, and that the gated
-        command immediately after it still runs (soft first-run nudge only).
-        """
-        from kanibako.cli import _ensure_initialized, _setup_nudge
-        from kanibako.settings.config import config_file_path
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import xdg
-
-        _ensure_initialized()
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        assert "templates_stamp" not in (load_doc(cf).get("system") or {})
-        # No patching: _setup_nudge resolves the same XDG-derived config file.
-        # (setup marker is still absent → a soft nudge prints, but no hard error.)
-        assert _setup_nudge(self._ns("start")) is None
-
-    def test_first_run_writes_no_colorterm_setting_anywhere(self, tmp_home):
-        """⚑ MBR-2/D1-4: THE WRITE IS GONE, at BOTH spellings it ever had.
-
-        The value was seeded into the global docker ``.env`` FILE, then re-homed
-        by B9/RQ-1 to ``system.env.COLORTERM``, then moved by ``6e3d016`` to
-        ``box.env.COLORTERM`` — three storage locations for one default. It is
-        declared in ``core-defaults.yaml`` now and stored NOWHERE: this asserts
-        all three are absent, so restoring any one of them reds here as well as
-        at the write-seam guard (``test_defaults_enforcement``).
-        Delivery is pinned by
-        ``test_declared_colorterm_reaches_the_resolved_container_env``.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import load_std_paths, xdg
-
-        _ensure_initialized()
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        std = load_std_paths(load_config(cf))
-        doc = load_doc(std.settings)
-        assert "COLORTERM" not in ((doc.get("box") or {}).get("env") or {})
-        assert "COLORTERM" not in ((doc.get("system") or {}).get("env") or {})
-        # And NOT into the retired docker .env file.
-        assert not (std.data_path / "env").exists()
-
-    def test_first_run_leaves_a_stored_colorterm_value_untouched(self, tmp_home):
-        """A user's own value survives init — now because nothing writes at all.
-
-        It used to be create-if-absent ``setdefault`` semantics at the seam. The
-        seam is gone, so the guarantee is structural rather than conditional; the
-        pin stays because "a user value survives an upgrade" is the promise, and
-        the way it is kept is an implementation detail that has already changed
-        three times.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.settings.config import (
-            KanibakoConfig, config_file_path, load_config,
-        )
-        from kanibako.settings.config_io import load_doc, write_nested_key
-        from kanibako.settings.paths import load_std_paths, xdg
-
-        # Materialize the config file the way a first run would, WITHOUT the
-        # rest of init, then plant a user value and let init run for real.
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        std = load_std_paths(KanibakoConfig())
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(std.settings, ("box", "env"), "COLORTERM", "mine")
-
-        _ensure_initialized()
-        std = load_std_paths(load_config(cf)) if cf.exists() else std
-        assert load_doc(std.settings)["box"]["env"]["COLORTERM"] == "mine"
-
-    def test_declared_colorterm_reaches_the_resolved_container_env(
-        self, tmp_home, monkeypatch,
+    cf = self._init_cf(tmp_path, stamp="stale-digest")
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
     ):
-        """⚑ THE DELIVERY PROOF for the DECLARED default (MBR-2/D1-4).
+      assert _setup_nudge(self._ns("agent", agent_command="reauth")) is None
 
-        ⚑ What changed here is the SOURCE, not the route: the value used to be a
-        downward ``box:`` table written into the SYSTEM settings file and is a
-        core-declared floor entry now, so the resolve is fed
-        ``core_defaults.env_default_categories()`` where it used to be fed ``{}``
-        and a written file. "Declared" is not "delivered" — so drive it all the
-        way through the REAL launch route the container env is built from::
+  def test_first_run_init_writes_no_stamp(self, tmp_home):
+    """_ensure_initialized installs the templates and records NO stamp (R-38).
 
-            build_launch_snapshot -> snapshot_category_entries
-            -> collapse_env -> start._build_config_env
+    Pins the deleted writer on the REAL first-run path, and that the gated
+    command immediately after it still runs (soft first-run nudge only).
+    """
+    from kanibako.cli import _ensure_initialized, _setup_nudge
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import xdg
 
-        and assert the HOST's ``COLORTERM`` arrives, carrying the ``box`` scope. A
-        ``config show --effective`` check would NOT substitute: it shares code
-        with the display path B9 changed the same day.
+    _ensure_initialized()
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    assert "templates_stamp" not in (load_doc(cf).get("system") or {})
+    # No patching: _setup_nudge resolves the same XDG-derived config file.
+    # (setup marker is still absent → a soft nudge prints, but no hard error.)
+    assert _setup_nudge(self._ns("start")) is None
 
-        ⚑ THE SHIPPED VALUE IS ``{$COLORTERM}`` NOW, not the literal ``truecolor``
-        this used to assert (2026-09-20): kanibako was asserting a 24-bit-color
-        capability on the host's behalf. The route is unchanged — what moved is
-        what comes out of it — so the host value is PLANTED here rather than
-        inherited, and the twin below covers the other answer.
+  def test_first_run_writes_no_colorterm_setting_anywhere(self, tmp_home):
+    """⚑ MBR-2/D1-4: THE WRITE IS GONE, at BOTH spellings it ever had.
 
-        ⚑ THE PROVENANCE ASSERT MOVED WITH THE ROUTE, not away from it. It read the
-        winning ``CategoryEntry`` off ``LaunchDeliveries.envs``; that carrier is
-        retired, and the winner's ``(scope, key)`` rides the COLLAPSED SLOT now —
-        the same pair, at the seam a display or a diagnostic actually reads.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings import core_defaults
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            snapshot_category_entries,
-        )
-        from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.store_collapse import collapse_env
+    The value was seeded into the global docker ``.env`` FILE, then re-homed
+    by B9/RQ-1 to ``system.env.COLORTERM``, then moved by ``6e3d016`` to
+    ``box.env.COLORTERM`` — three storage locations for one default. It is
+    declared in ``core-defaults.yaml`` now and stored NOWHERE: this asserts
+    all three are absent, so restoring any one of them reds here as well as
+    at the write-seam guard (``test_defaults_enforcement``).
+    Delivery is pinned by
+    ``test_declared_colorterm_reaches_the_resolved_container_env``.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import load_std_paths, xdg
 
-        _ensure_initialized()
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        std = load_std_paths(load_config(cf))
+    _ensure_initialized()
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    std = load_std_paths(load_config(cf))
+    doc = load_doc(std.settings)
+    assert "COLORTERM" not in ((doc.get("box") or {}).get("env") or {})
+    assert "COLORTERM" not in ((doc.get("system") or {}).get("env") or {})
+    # And NOT into the retired docker .env file.
+    assert not (std.data_path / "env").exists()
 
-        monkeypatch.setenv("COLORTERM", "24bit")
-        ctx = ResolveCtx(
-            agent_name="claude", workset_name=None, host_home=str(tmp_home),
-            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
-        )
-        # NO settings file supplies it — the floor is the only source, which is
-        # the whole claim: the value reaches a box that has stored nothing.
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=std.settings,
-            agent_path=None, workset_path=None, box_path=None,
-            default_categories=core_defaults.env_default_categories(),
-        )
-        entries = snapshot_category_entries(
-            snap, active_agent="claude", box_ctx=ctx,
-        )
-        slots = collapse_env(entries)
-        assert _build_config_env(slots)["COLORTERM"] == "24bit"
-        winner = slots["COLORTERM"]
-        assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
+  def test_first_run_leaves_a_stored_colorterm_value_untouched(self, tmp_home):
+    """A user's own value survives init — now because nothing writes at all.
 
-    def test_declared_colorterm_is_absent_when_the_host_sets_none(
-        self, tmp_home, monkeypatch,
-    ):
-        """⚑ THE OTHER ANSWER, out of the SAME route: NO variable at all.
+    It used to be create-if-absent ``setdefault`` semantics at the seam. The
+    seam is gone, so the guarantee is structural rather than conditional; the
+    pin stays because "a user value survives an upgrade" is the promise, and
+    the way it is kept is an implementation detail that has already changed
+    three times.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.settings.config import (
+      KanibakoConfig,
+      config_file_path,
+      load_config,
+    )
+    from kanibako.settings.config_io import load_doc, write_nested_key
+    from kanibako.settings.paths import load_std_paths, xdg
 
-        The twin of the delivery proof above, and it asserts MISSING rather than
-        empty on purpose — ``COLORTERM=""`` is a third state, and a reader that
-        tests only for the variable's presence would take one for the truecolor
-        claim the host never made. This is the box matching the host: a program
-        run outside a box on such a terminal gets no ``COLORTERM`` either.
+    # Materialize the config file the way a first run would, WITHOUT the
+    # rest of init, then plant a user value and let init run for real.
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    std = load_std_paths(KanibakoConfig())
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(std.settings, ("box", "env"), "COLORTERM", "mine")
 
-        ⚑ AT THE DELIVERED ENV, not at the snapshot. The drop happens in
-        ``settings_expand`` (whole-value absence, spec §0), and the claim a user can
-        check is that nothing reaches the container — so it is measured where the
-        container env is built.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings import core_defaults
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            snapshot_category_entries,
-        )
-        from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.store_collapse import collapse_env
+    _ensure_initialized()
+    std = load_std_paths(load_config(cf)) if cf.exists() else std
+    assert load_doc(std.settings)["box"]["env"]["COLORTERM"] == "mine"
 
-        _ensure_initialized()
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        std = load_std_paths(load_config(cf))
+  def test_declared_colorterm_reaches_the_resolved_container_env(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """⚑ THE DELIVERY PROOF for the DECLARED default (MBR-2/D1-4).
 
-        monkeypatch.delenv("COLORTERM", raising=False)
-        ctx = ResolveCtx(
-            agent_name="claude", workset_name=None, host_home=str(tmp_home),
-            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
-        )
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=std.settings,
-            agent_path=None, workset_path=None, box_path=None,
-            default_categories=core_defaults.env_default_categories(),
-        )
-        slots = collapse_env(
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
-        )
-        assert "COLORTERM" not in slots
-        assert "COLORTERM" not in _build_config_env(slots)
+    ⚑ What changed here is the SOURCE, not the route: the value used to be a
+    downward ``box:`` table written into the SYSTEM settings file and is a
+    core-declared floor entry now, so the resolve is fed
+    ``core_defaults.env_default_categories()`` where it used to be fed ``{}``
+    and a written file. "Declared" is not "delivered" — so drive it all the
+    way through the REAL launch route the container env is built from::
 
-    def test_colorterm_box_file_override_beats_the_declared_default(
-        self, tmp_home, monkeypatch,
-    ):
-        """A box's OWN ``box.env.COLORTERM`` still wins over the DECLARED default.
+        build_launch_snapshot -> snapshot_category_entries
+        -> collapse_env -> start._build_config_env
 
-        The declaration only makes sense if it stays overridable at the scope it
-        is declared for — a default nothing can beat is a hardwired value. ⚑ The
-        override must be spelled at the SAME scope: a ``system.env.COLORTERM``
-        would not win, it would REFUSE the launch as a contested slot.
+    and assert the HOST's ``COLORTERM`` arrives, carrying the ``box`` scope. A
+    ``config show --effective`` check would NOT substitute: it shares code
+    with the display path B9 changed the same day.
 
-        ⚑ MEASURED ON A HOST THAT SETS NONE (2026-09-20), which is the harder
-        case and the one users will hit: the declared default now resolves to
-        ABSENCE there, so this pins that a stored key is a VALUE beating a
-        default, not a fallback filling a hole. It is the persistent escape hatch
-        the migration entry names.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings import core_defaults
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            snapshot_category_entries,
-        )
-        from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.store_collapse import collapse_env
+    ⚑ THE SHIPPED VALUE IS ``{$COLORTERM}`` NOW, not the literal ``truecolor``
+    this used to assert (2026-09-20): kanibako was asserting a 24-bit-color
+    capability on the host's behalf. The route is unchanged — what moved is
+    what comes out of it — so the host value is PLANTED here rather than
+    inherited, and the twin below covers the other answer.
 
-        _ensure_initialized()
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        std = load_std_paths(load_config(cf))
+    ⚑ THE PROVENANCE ASSERT MOVED WITH THE ROUTE, not away from it. It read the
+    winning ``CategoryEntry`` off ``LaunchDeliveries.envs``; that carrier is
+    retired, and the winner's ``(scope, key)`` rides the COLLAPSED SLOT now —
+    the same pair, at the seam a display or a diagnostic actually reads.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      snapshot_category_entries,
+    )
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.store_collapse import collapse_env
 
-        box_settings = tmp_home / "abox" / "box.yaml"
-        box_settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(box_settings, ("box", "env"), "COLORTERM", "256color")
+    _ensure_initialized()
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    std = load_std_paths(load_config(cf))
 
-        monkeypatch.delenv("COLORTERM", raising=False)
-        ctx = ResolveCtx(
-            agent_name="claude", workset_name=None, host_home=str(tmp_home),
-            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
-        )
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx, system_path=std.settings,
-            agent_path=None, workset_path=None, box_path=box_settings,
-            default_categories=core_defaults.env_default_categories(),
-        )
-        slots = collapse_env(
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
-        )
-        assert _build_config_env(slots)["COLORTERM"] == "256color"
+    monkeypatch.setenv("COLORTERM", "24bit")
+    ctx = ResolveCtx(
+      agent_name="claude",
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg={"XDG_DATA_HOME": str(tmp_home / "data")},
+      config={},
+    )
+    # NO settings file supplies it — the floor is the only source, which is
+    # the whole claim: the value reaches a box that has stored nothing.
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=std.settings,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=core_defaults.env_default_categories(),
+    )
+    entries = snapshot_category_entries(
+      snap,
+      active_agent="claude",
+      box_ctx=ctx,
+    )
+    slots = collapse_env(entries)
+    assert _build_config_env(slots)["COLORTERM"] == "24bit"
+    winner = slots["COLORTERM"]
+    assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
-    def _term_launch(self, tmp_home, *, agent, system_path=None, box_path=None):
-        """``(container env, collapsed slots)`` for *agent*, fed the shipped core env floor.
+  def test_declared_colorterm_is_absent_when_the_host_sets_none(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """⚑ THE OTHER ANSWER, out of the SAME route: NO variable at all.
 
-        Same route as the ``COLORTERM`` proof above and for the same reason — "declared"
-        is not "delivered", so the assertion has to come out the end of the real chain
-        ``build_launch_snapshot -> snapshot_category_entries -> collapse_env ->
-        start._build_config_env``.
+    The twin of the delivery proof above, and it asserts MISSING rather than
+    empty on purpose — ``COLORTERM=""`` is a third state, and a reader that
+    tests only for the variable's presence would take one for the truecolor
+    claim the host never made. This is the box matching the host: a program
+    run outside a box on such a terminal gets no ``COLORTERM`` either.
 
-        ⚑ AN OVERRIDE IS WRITTEN INTO THE **SYSTEM** FILE, never the agent file, and the
-        difference is not cosmetic: the agent file's root table IS ``agent.<node>``
-        (spec §2d "self"), so an ``agent: claude:`` table there would read
-        ``agent.<node>.agent.claude`` and land nowhere. The system file is the route the
-        agent TIER's levels actually arrive by.
-        """
-        from kanibako.cli import _ensure_initialized
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings import core_defaults
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_launch import (
-            build_launch_snapshot,
-            snapshot_category_entries,
-        )
-        from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.store_collapse import collapse_env
+    ⚑ AT THE DELIVERED ENV, not at the snapshot. The drop happens in
+    ``settings_expand`` (whole-value absence, spec §0), and the claim a user can
+    check is that nothing reaches the container — so it is measured where the
+    container env is built.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      snapshot_category_entries,
+    )
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.store_collapse import collapse_env
 
-        _ensure_initialized()
-        std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
-        ctx = ResolveCtx(
-            agent_name=agent, workset_name=None, host_home=str(tmp_home),
-            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
-        )
-        snap = build_launch_snapshot(
-            agent_name=agent, ctx=ctx,
-            system_path=system_path if system_path is not None else std.settings,
-            agent_path=None, workset_path=None, box_path=box_path,
-            default_categories=core_defaults.env_default_categories(),
-        )
-        slots = collapse_env(
-            snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx),
-        )
-        return _build_config_env(slots), slots
+    _ensure_initialized()
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    std = load_std_paths(load_config(cf))
 
-    def test_term_arrives_in_the_container_env_for_every_agent(
-        self, tmp_home, monkeypatch,
-    ):
-        """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` [Jei:2026-09-19].
+    monkeypatch.delenv("COLORTERM", raising=False)
+    ctx = ResolveCtx(
+      agent_name="claude",
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg={"XDG_DATA_HOME": str(tmp_home / "data")},
+      config={},
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=std.settings,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      default_categories=core_defaults.env_default_categories(),
+    )
+    slots = collapse_env(
+      snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+    )
+    assert "COLORTERM" not in slots
+    assert "COLORTERM" not in _build_config_env(slots)
 
-        The value shipped is the EXPRESSION ``{$TERM}``, so this pins two things one
-        assertion apart: that the floor reaches the container env at all, and that the
-        expression was RESOLVED on the way — a box handed the unresolved literal
-        ``{$TERM}`` would be a working delivery of a broken value.
+  def test_colorterm_box_file_override_beats_the_declared_default(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """A box's OWN ``box.env.COLORTERM`` still wins over the DECLARED default.
 
-        ⚑ TWO AGENTS, and the second is the point of declaring at the DEFAULT tier: the
-        keyspec's row says every agent inherits without restating, and a floor that
-        answered only for the agent it was probed with would satisfy a one-agent test.
-        """
-        monkeypatch.setenv("TERM", "tmux-256color")
-        for agent in ("claude", "goose"):
-            env, slots = self._term_launch(tmp_home, agent=agent)
-            assert env["TERM"] == "tmux-256color", agent
-            winner = slots["TERM"]
-            assert (winner.scope, winner.key) == ("agent", "agent.default.env.TERM")
+    The declaration only makes sense if it stays overridable at the scope it
+    is declared for — a default nothing can beat is a hardwired value. ⚑ The
+    override must be spelled at the SAME scope: a ``system.env.COLORTERM``
+    would not win, it would REFUSE the launch as a contested slot.
 
-    def test_term_falls_back_to_xterm_when_the_host_has_none(
-        self, tmp_home, monkeypatch,
-    ):
-        """An empty host ``TERM`` still delivers one — [Jei:2026-09-08].
+    ⚑ MEASURED ON A HOST THAT SETS NONE (2026-09-20), which is the harder
+    case and the one users will hit: the declared default now resolves to
+    ABSENCE there, so this pins that a stored key is a VALUE beating a
+    default, not a fallback filling a hole. It is the persistent escape hatch
+    the migration entry names.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      snapshot_category_entries,
+    )
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.store_collapse import collapse_env
 
-        ⚑ EMPTY, not merely unset: the shell exports an empty ``TERM`` readily, and a
-        box handed ``TERM=`` is the degraded terminal the fallback exists to prevent.
-        """
-        monkeypatch.setenv("TERM", "")
-        env, _ = self._term_launch(tmp_home, agent="claude")
-        assert env["TERM"] == "xterm"
+    _ensure_initialized()
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    std = load_std_paths(load_config(cf))
 
-    def test_one_agent_s_own_term_wins_without_touching_the_others(
-        self, tmp_home, monkeypatch,
-    ):
-        """``agent.<agent>.env.TERM`` replaces the default FOR THAT AGENT ONLY.
+    box_settings = tmp_home / "abox" / "box.yaml"
+    box_settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(box_settings, ("box", "env"), "COLORTERM", "256color")
 
-        This is the claim the keyspec row makes about WHY the key sits at the default
-        tier — the agent tier's two cascade levels are overlaid per VARIABLE — so it is
-        asserted from both sides: the overridden agent gets the new value, and a second
-        agent resolved against the SAME file still inherits.
-        """
-        from kanibako.settings.config_io import write_nested_key
+    monkeypatch.delenv("COLORTERM", raising=False)
+    ctx = ResolveCtx(
+      agent_name="claude",
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg={"XDG_DATA_HOME": str(tmp_home / "data")},
+      config={},
+    )
+    snap = build_launch_snapshot(
+      agent_name="claude",
+      ctx=ctx,
+      system_path=std.settings,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_settings,
+      default_categories=core_defaults.env_default_categories(),
+    )
+    slots = collapse_env(
+      snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+    )
+    assert _build_config_env(slots)["COLORTERM"] == "256color"
 
-        monkeypatch.setenv("TERM", "tmux-256color")
-        system_file = tmp_home / "sys-with-agent-term.yaml"
-        write_nested_key(system_file, ("agent", "claude", "env"), "TERM", "screen")
+  def _term_launch(self, tmp_home, *, agent, system_path=None, box_path=None):
+    """``(container env, collapsed slots)`` for *agent*, fed the shipped core env floor.
 
-        env, slots = self._term_launch(
-            tmp_home, agent="claude", system_path=system_file,
-        )
-        assert env["TERM"] == "screen"
-        assert slots["TERM"].key == "agent.claude.env.TERM"
+    Same route as the ``COLORTERM`` proof above and for the same reason — "declared"
+    is not "delivered", so the assertion has to come out the end of the real chain
+    ``build_launch_snapshot -> snapshot_category_entries -> collapse_env ->
+    start._build_config_env``.
 
-        env, slots = self._term_launch(
-            tmp_home, agent="goose", system_path=system_file,
-        )
-        assert env["TERM"] == "tmux-256color"
-        assert slots["TERM"].key == "agent.default.env.TERM"
+    ⚑ AN OVERRIDE IS WRITTEN INTO THE **SYSTEM** FILE, never the agent file, and the
+    difference is not cosmetic: the agent file's root table IS ``agent.<node>``
+    (spec §2d "self"), so an ``agent: claude:`` table there would read
+    ``agent.<node>.agent.claude`` and land nowhere. The system file is the route the
+    agent TIER's levels actually arrive by.
+    """
+    from kanibako.cli import _ensure_initialized
+    from kanibako.commands.start import _build_config_env
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.settings_launch import (
+      build_launch_snapshot,
+      snapshot_category_entries,
+    )
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.store_collapse import collapse_env
 
-    def test_a_box_scope_term_refuses_the_launch_naming_both_keys(
-        self, tmp_home, monkeypatch,
-    ):
-        """``box.env.TERM`` is now a SECOND scope naming one variable (spec §2d).
+    _ensure_initialized()
+    std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
+    ctx = ResolveCtx(
+      agent_name=agent,
+      workset_name=None,
+      host_home=str(tmp_home),
+      xdg={"XDG_DATA_HOME": str(tmp_home / "data")},
+      config={},
+    )
+    snap = build_launch_snapshot(
+      agent_name=agent,
+      ctx=ctx,
+      system_path=system_path if system_path is not None else std.settings,
+      agent_path=None,
+      workset_path=None,
+      box_path=box_path,
+      default_categories=core_defaults.env_default_categories(),
+    )
+    slots = collapse_env(
+      snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx),
+    )
+    return _build_config_env(slots), slots
 
-        ⚑ THE USER-FACING COST OF THE DECLARATION, pinned so it cannot regress into a
-        silent win for either key: a spelling that worked before the default shipped
-        stops the launch, and ``MIGRATION.md`` § "Every agent now gets the host's
-        `TERM`, so a `TERM` key at another scope refuses" carries the cure.
-        """
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.settings_resolve import SettingsError
+  def test_term_arrives_in_the_container_env_for_every_agent(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` [Jei:2026-09-19].
 
-        monkeypatch.setenv("TERM", "tmux-256color")
-        box_settings = tmp_home / "termbox" / "box.yaml"
-        box_settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(box_settings, ("box", "env"), "TERM", "screen")
+    The value shipped is the EXPRESSION ``{$TERM}``, so this pins two things one
+    assertion apart: that the floor reaches the container env at all, and that the
+    expression was RESOLVED on the way — a box handed the unresolved literal
+    ``{$TERM}`` would be a working delivery of a broken value.
 
-        with pytest.raises(SettingsError) as excinfo:
-            self._term_launch(tmp_home, agent="claude", box_path=box_settings)
-        message = str(excinfo.value)
-        assert "agent.default.env.TERM" in message
-        assert "box.env.TERM" in message
+    ⚑ TWO AGENTS, and the second is the point of declaring at the DEFAULT tier: the
+    keyspec's row says every agent inherits without restating, and a floor that
+    answered only for the agent it was probed with would satisfy a one-agent test.
+    """
+    monkeypatch.setenv("TERM", "tmux-256color")
+    for agent in ("claude", "goose"):
+      env, slots = self._term_launch(tmp_home, agent=agent)
+      assert env["TERM"] == "tmux-256color", agent
+      winner = slots["TERM"]
+      assert (winner.scope, winner.key) == ("agent", "agent.default.env.TERM")
+
+  def test_term_falls_back_to_xterm_when_the_host_has_none(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """An empty host ``TERM`` still delivers one — [Jei:2026-09-08].
+
+    ⚑ EMPTY, not merely unset: the shell exports an empty ``TERM`` readily, and a
+    box handed ``TERM=`` is the degraded terminal the fallback exists to prevent.
+    """
+    monkeypatch.setenv("TERM", "")
+    env, _ = self._term_launch(tmp_home, agent="claude")
+    assert env["TERM"] == "xterm"
+
+  def test_one_agent_s_own_term_wins_without_touching_the_others(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """``agent.<agent>.env.TERM`` replaces the default FOR THAT AGENT ONLY.
+
+    This is the claim the keyspec row makes about WHY the key sits at the default
+    tier — the agent tier's two cascade levels are overlaid per VARIABLE — so it is
+    asserted from both sides: the overridden agent gets the new value, and a second
+    agent resolved against the SAME file still inherits.
+    """
+    from kanibako.settings.config_io import write_nested_key
+
+    monkeypatch.setenv("TERM", "tmux-256color")
+    system_file = tmp_home / "sys-with-agent-term.yaml"
+    write_nested_key(system_file, ("agent", "claude", "env"), "TERM", "screen")
+
+    env, slots = self._term_launch(
+      tmp_home,
+      agent="claude",
+      system_path=system_file,
+    )
+    assert env["TERM"] == "screen"
+    assert slots["TERM"].key == "agent.claude.env.TERM"
+
+    env, slots = self._term_launch(
+      tmp_home,
+      agent="goose",
+      system_path=system_file,
+    )
+    assert env["TERM"] == "tmux-256color"
+    assert slots["TERM"].key == "agent.default.env.TERM"
+
+  def test_a_box_scope_term_refuses_the_launch_naming_both_keys(
+    self,
+    tmp_home,
+    monkeypatch,
+  ):
+    """``box.env.TERM`` is now a SECOND scope naming one variable (spec §2d).
+
+    ⚑ THE USER-FACING COST OF THE DECLARATION, pinned so it cannot regress into a
+    silent win for either key: a spelling that worked before the default shipped
+    stops the launch, and ``MIGRATION.md`` § "Every agent now gets the host's
+    `TERM`, so a `TERM` key at another scope refuses" carries the cure.
+    """
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.settings_resolve import SettingsError
+
+    monkeypatch.setenv("TERM", "tmux-256color")
+    box_settings = tmp_home / "termbox" / "box.yaml"
+    box_settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(box_settings, ("box", "env"), "TERM", "screen")
+
+    with pytest.raises(SettingsError) as excinfo:
+      self._term_launch(tmp_home, agent="claude", box_path=box_settings)
+    message = str(excinfo.value)
+    assert "agent.default.env.TERM" in message
+    assert "box.env.TERM" in message
 
 
 class TestShellAgentFlagIgnored:
-    """shell + --agent is IGNORED with a note (not a hard FlagRelevanceError)."""
+  """shell + --agent is IGNORED with a note (not a hard FlagRelevanceError)."""
 
-    def test_shell_with_agent_does_not_raise_and_notes(self, capsys):
-        import argparse
+  def test_shell_with_agent_does_not_raise_and_notes(self, capsys):
+    import argparse
 
-        from kanibako.commands.flags import check_flag_relevance
+    from kanibako.commands.flags import check_flag_relevance
 
-        ns = argparse.Namespace(command="shell", agent="goose", box=None)
-        # Must NOT raise.
-        check_flag_relevance(ns)
-        err = capsys.readouterr().err
-        assert "--agent is ignored for 'shell'" in err
+    ns = argparse.Namespace(command="shell", agent="goose", box=None)
+    # Must NOT raise.
+    check_flag_relevance(ns)
+    err = capsys.readouterr().err
+    assert "--agent is ignored for 'shell'" in err
 
-    def test_box_shell_with_agent_does_not_raise_and_notes(self, capsys):
-        import argparse
+  def test_box_shell_with_agent_does_not_raise_and_notes(self, capsys):
+    import argparse
 
-        from kanibako.commands.flags import check_flag_relevance
+    from kanibako.commands.flags import check_flag_relevance
 
-        ns = argparse.Namespace(
-            command="box", box_command="shell", agent="goose", box=None,
-        )
-        check_flag_relevance(ns)
-        err = capsys.readouterr().err
-        assert "--agent is ignored for 'shell'" in err
+    ns = argparse.Namespace(
+      command="box",
+      box_command="shell",
+      agent="goose",
+      box=None,
+    )
+    check_flag_relevance(ns)
+    err = capsys.readouterr().err
+    assert "--agent is ignored for 'shell'" in err
 
-    def test_shell_with_agent_and_box_both_ok(self, capsys):
-        """--box is relevant for shell; combined with --agent must still pass."""
-        import argparse
+  def test_shell_with_agent_and_box_both_ok(self, capsys):
+    """--box is relevant for shell; combined with --agent must still pass."""
+    import argparse
 
-        from kanibako.commands.flags import check_flag_relevance
+    from kanibako.commands.flags import check_flag_relevance
 
-        ns = argparse.Namespace(command="shell", agent="goose", box="myproj")
-        check_flag_relevance(ns)  # no raise
-        assert "--agent is ignored for 'shell'" in capsys.readouterr().err
+    ns = argparse.Namespace(command="shell", agent="goose", box="myproj")
+    check_flag_relevance(ns)  # no raise
+    assert "--agent is ignored for 'shell'" in capsys.readouterr().err
 
-    def test_unrelated_command_with_agent_still_raises(self):
-        """--agent for a non-agent, non-shell command STILL hard-errors."""
-        import argparse
+  def test_unrelated_command_with_agent_still_raises(self):
+    """--agent for a non-agent, non-shell command STILL hard-errors."""
+    import argparse
 
-        from kanibako.commands.flags import (
-            FlagRelevanceError,
-            check_flag_relevance,
-        )
+    from kanibako.commands.flags import (
+      FlagRelevanceError,
+      check_flag_relevance,
+    )
 
-        ns = argparse.Namespace(command="list", agent="goose", box=None)
-        with pytest.raises(FlagRelevanceError):
-            check_flag_relevance(ns)
+    ns = argparse.Namespace(command="list", agent="goose", box=None)
+    with pytest.raises(FlagRelevanceError):
+      check_flag_relevance(ns)
 
 
 class TestBoxConfigVerbsAcceptBoxFlag:
-    """Regression (B1): every box config verb accepts ``--box`` as the subject
-    selector — the shared dispatch reads ``args.box`` via resolve_subject_value,
-    so set/reset/get/show must all be in BOX_FLAG_COMMANDS or check_flag_relevance
-    hard-errors before the handler runs."""
+  """Regression (B1): every box config verb accepts ``--box`` as the subject
+  selector — the shared dispatch reads ``args.box`` via resolve_subject_value,
+  so set/reset/get/show must all be in BOX_FLAG_COMMANDS or check_flag_relevance
+  hard-errors before the handler runs."""
 
-    @pytest.mark.parametrize("verb", ["set", "reset", "get", "show"])
-    def test_box_verb_with_box_flag_does_not_raise(self, verb):
-        import argparse
+  @pytest.mark.parametrize("verb", ["set", "reset", "get", "show"])
+  def test_box_verb_with_box_flag_does_not_raise(self, verb):
+    import argparse
 
-        from kanibako.commands.flags import check_flag_relevance
+    from kanibako.commands.flags import check_flag_relevance
 
-        ns = argparse.Namespace(
-            command="box", box_command=verb, agent=None, box="myproj",
-        )
-        # Must NOT raise FlagRelevanceError (would, if the verb weren't whitelisted).
-        check_flag_relevance(ns)
+    ns = argparse.Namespace(
+      command="box",
+      box_command=verb,
+      agent=None,
+      box="myproj",
+    )
+    # Must NOT raise FlagRelevanceError (would, if the verb weren't whitelisted).
+    check_flag_relevance(ns)
 
-    def test_box_set_with_box_routes_to_named_subject(
-        self, config_file, tmp_home, credentials_dir, capsys,
+  def test_box_set_with_box_routes_to_named_subject(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    """End-to-end: ``box set --box <proj> <key>=<value>`` routes the set to the
+    named subject box (not cwd) and writes its override."""
+    import argparse
+
+    from kanibako.commands.box._parser import run_set
+    from kanibako.settings.config import load_config, load_project_overrides
+    from kanibako.settings.paths import load_std_paths, resolve_project
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = tmp_home / "subjectproj"
+    src.mkdir()
+    project_dir = str(src)
+    proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+    # ``--box`` names the subject; positional args carry only the key=value.
+    args = argparse.Namespace(
+      args=["box.image=subject-img:v1"],
+      force=False,
+      box=project_dir,
+    )
+    rc = run_set(args)
+    assert rc == 0
+    assert "subject-img:v1" in capsys.readouterr().out
+
+    # The override landed in the NAMED subject's settings file.
+    overrides = load_project_overrides(proj.metadata_path / "box.yaml")
+    assert overrides.get("box_image") == "subject-img:v1"
+
+  def test_shell_never_nudges_after_reorder(self, tmp_path, capsys):
+    """Regression: shell stays nudge-silent (Gate-1 excludes it)."""
+    import argparse
+    from unittest.mock import patch
+
+    from kanibako.cli import _setup_nudge
+
+    cf = tmp_path / CONFIG_FILENAME  # absent marker
+    with (
+      patch("kanibako.settings.config.config_file_path", return_value=cf),
+      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
     ):
-        """End-to-end: ``box set --box <proj> <key>=<value>`` routes the set to the
-        named subject box (not cwd) and writes its override."""
-        import argparse
-
-        from kanibako.commands.box._parser import run_set
-        from kanibako.settings.config import load_config, load_project_overrides
-        from kanibako.settings.paths import load_std_paths, resolve_project
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = tmp_home / "subjectproj"
-        src.mkdir()
-        project_dir = str(src)
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # ``--box`` names the subject; positional args carry only the key=value.
-        args = argparse.Namespace(
-            args=["box.image=subject-img:v1"], force=False,
-            box=project_dir,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        assert "subject-img:v1" in capsys.readouterr().out
-
-        # The override landed in the NAMED subject's settings file.
-        overrides = load_project_overrides(proj.metadata_path / "box.yaml")
-        assert overrides.get("box_image") == "subject-img:v1"
-
-    def test_shell_never_nudges_after_reorder(self, tmp_path, capsys):
-        """Regression: shell stays nudge-silent (Gate-1 excludes it)."""
-        import argparse
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-
-        cf = tmp_path / CONFIG_FILENAME  # absent marker
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            _setup_nudge(argparse.Namespace(command="shell"))
-        assert capsys.readouterr().err == ""
+      _setup_nudge(argparse.Namespace(command="shell"))
+    assert capsys.readouterr().err == ""
 
 
 class TestNullFlagEndToEnd:
-    """B-5, whole path: argv -> parser -> run_set -> settings file.
+  """B-5, whole path: argv -> parser -> run_set -> settings file.
 
-    The per-verb parse matrix lives in ``test_commands/test_flags.py``.  This
-    pins the END of the path too, because a parse fix that stranded the flag
-    before the writer would look green there and still be broken in the box.
-    """
+  The per-verb parse matrix lives in ``test_commands/test_flags.py``.  This
+  pins the END of the path too, because a parse fix that stranded the flag
+  before the writer would look green there and still be broken in the box.
+  """
 
-    def _settings_for(self, tmp_home, config_file, name, argv_tail):
-        from kanibako.cli import build_parser
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import load_std_paths, resolve_project
+  def _settings_for(self, tmp_home, config_file, name, argv_tail):
+    from kanibako.cli import build_parser
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        src = tmp_home / name
-        src.mkdir()
-        proj = resolve_project(std, config, project_dir=str(src), initialize=True)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    src = tmp_home / name
+    src.mkdir()
+    proj = resolve_project(std, config, project_dir=str(src), initialize=True)
 
-        args = build_parser().parse_args(
-            ["box", "set"] + [str(src) if a is None else a for a in argv_tail]
-        )
-        assert args.func(args) == 0
-        return load_doc(proj.metadata_path / "box.yaml")
+    args = build_parser().parse_args(
+      ["box", "set"] + [str(src) if a is None else a for a in argv_tail]
+    )
+    assert args.func(args) == 0
+    return load_doc(proj.metadata_path / "box.yaml")
 
-    def test_every_ordering_writes_the_same_null(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        # ``None`` stands in for the box path (filled per-case).  The middle
-        # ordering is the one the P7 bifrost run recorded as broken.
-        orderings = {
-            "leading": ["--null", None, "pref.system.agent"],
-            "middle": [None, "--null", "pref.system.agent"],
-            "trailing": [None, "pref.system.agent", "--null"],
-        }
-        written = {
-            label: self._settings_for(tmp_home, config_file, f"nullproj-{label}", tail)
-            for label, tail in orderings.items()
-        }
-        for label, doc in written.items():
-            assert "agent" in doc["pref"]["system"], label
-            assert doc["pref"]["system"]["agent"] is None, label
-        # Equivalence, not just success: the position of a flag may not change
-        # what lands on disk.
-        assert written["middle"] == written["leading"] == written["trailing"]
+  def test_every_ordering_writes_the_same_null(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    # ``None`` stands in for the box path (filled per-case).  The middle
+    # ordering is the one the P7 bifrost run recorded as broken.
+    orderings = {
+      "leading": ["--null", None, "pref.system.agent"],
+      "middle": [None, "--null", "pref.system.agent"],
+      "trailing": [None, "pref.system.agent", "--null"],
+    }
+    written = {
+      label: self._settings_for(tmp_home, config_file, f"nullproj-{label}", tail)
+      for label, tail in orderings.items()
+    }
+    for label, doc in written.items():
+      assert "agent" in doc["pref"]["system"], label
+      assert doc["pref"]["system"]["agent"] is None, label
+    # Equivalence, not just success: the position of a flag may not change
+    # what lands on disk.
+    assert written["middle"] == written["leading"] == written["trailing"]

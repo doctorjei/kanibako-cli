@@ -13,1659 +13,1808 @@ from kanibako.errors import ConfigError
 from kanibako.settings.settings_launch import AuthSource
 
 _SHARED_AUTH = AuthSource(
-    tier="global",
-    global_enabled=True,
-    workset_enabled=False,
-    global_sync=False,
-    workset_source=None,
+  tier="global",
+  global_enabled=True,
+  workset_enabled=False,
+  global_sync=False,
+  workset_source=None,
 )
 
 
 @pytest.fixture
 def mock_runtime():
-    rt = MagicMock()
-    rt.stop.return_value = True
-    rt.list_running.return_value = []
-    rt.container_exists.return_value = False
-    rt.rm.return_value = True
-    # Default: no running container -> the on-stop writeback (FIX 1) is skipped.
-    rt.is_running.return_value = False
-    return rt
+  rt = MagicMock()
+  rt.stop.return_value = True
+  rt.list_running.return_value = []
+  rt.container_exists.return_value = False
+  rt.rm.return_value = True
+  # Default: no running container -> the on-stop writeback (FIX 1) is skipped.
+  rt.is_running.return_value = False
+  return rt
 
 
 class TestStopOne:
-    def test_running_container_stopped(self, mock_runtime, capsys):
-        # A LIVE box: the only state for which "Stopped" is true.  The fixture
-        # default is NOT running (it exists for the writeback guard), so a test
-        # about stopping a running container must say so.
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
-
-            rc = _stop_one(mock_runtime, project_dir=None)
-            assert rc == 0
-            mock_runtime.stop.assert_called_once()
-            out = capsys.readouterr().out
-            assert "Stopped" in out
-
-    def test_the_box_is_found_by_its_labels(self, mock_runtime, capsys):
-        """system-design § Box and helper identity: stop reaches the container its
-        labels find (``utils.box_container``), not one it renders a name for."""
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.commands.stop.box_container", return_value="kb-labeled") as m_find,
-        ):
-            m_resolve.return_value = MagicMock()
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-        assert m_find.call_args.args == (mock_runtime, m_resolve.return_value)
-        mock_runtime.stop.assert_called_once_with("kb-labeled")
-        assert "Stopped kb-labeled" in capsys.readouterr().out
-
-    def test_no_running_container(self, mock_runtime, capsys):
-        mock_runtime.stop.return_value = False
-        mock_runtime.container_exists.return_value = False
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.project_hash = "abcdef1234567890" * 4
-            proj.metadata_path = MagicMock()
-            lock_path = MagicMock()
-            lock_path.__str__ = lambda self: "/fake/path/.kanibako.lock"
-            proj.metadata_path.__truediv__ = MagicMock(return_value=lock_path)
-            m_resolve.return_value = proj
-
-            rc = _stop_one(mock_runtime, project_dir=None)
-            assert rc == 0
-            out = capsys.readouterr().out
-            assert "No running container" in out
-            assert "rm " in out
-            assert ".kanibako.lock" in out
-
-    def test_stop_removes_persistent_container(self, mock_runtime, capsys):
-        """After stopping a running container, rm is called to clean up."""
-        mock_runtime.is_running.return_value = True  # a live box, per the name
-        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
-        mock_runtime.container_exists.return_value = True  # exists after stop
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
-
-            rc = _stop_one(mock_runtime, project_dir=None)
-            assert rc == 0
-            mock_runtime.rm.assert_called_once()
-
-    def test_stop_cleans_stale_persistent_container(self, mock_runtime, capsys):
-        """A stopped persistent container (not running) is removed."""
-        mock_runtime.stop.return_value = False  # not running
-        mock_runtime.container_exists.return_value = True  # but exists (stopped)
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
-
-            rc = _stop_one(mock_runtime, project_dir=None)
-            assert rc == 0
-            mock_runtime.rm.assert_called_once()
-            out = capsys.readouterr().out
-            assert "Removed stopped container" in out
-
-    def test_orphan_container_is_not_reported_as_stopped(
-        self, mock_runtime, capsys,
+  def test_running_container_stopped(self, mock_runtime, capsys):
+    # A LIVE box: the only state for which "Stopped" is true.  The fixture
+    # default is NOT running (it exists for the writeback guard), so a test
+    # about stopping a running container must say so.
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
     ):
-        """🛑 THE RC-0 LIE: ``podman stop`` succeeds on an ALREADY-EXITED container.
+      proj = MagicMock()
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
 
-        A box whose PID 1 died without the CLI surviving to clean up — crash,
-        killed terminal, reboot — leaves an ``Exited`` container squatting on
-        the name, and the launch guard now names ``kanibako stop`` as the cure.
-        ``runtime.stop`` returns the runtime's exit status, which is 0 here
-        because there was nothing to stop, so this path printed ``Stopped
-        <box>`` to a user who had been told one command earlier that the box
-        was not running.
+      rc = _stop_one(mock_runtime, project_dir=None)
+      assert rc == 0
+      mock_runtime.stop.assert_called_once()
+      out = capsys.readouterr().out
+      assert "Stopped" in out
 
-        The pin is the SENTENCE, not the routing: the ``rm`` is what clears the
-        orphan and it must still happen, exactly as on the live arm.
-        """
-        mock_runtime.is_running.return_value = False   # the box is NOT live
-        mock_runtime.stop.return_value = True          # ...and podman says 0
-        mock_runtime.container_exists.return_value = True  # the orphan is there
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.name = "droste"
-            proj.mode.value = "primary"
-            proj.group = None
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
-
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-
-            # The action is unchanged: the orphan is removed.
-            mock_runtime.rm.assert_called_once_with("kb-primary-droste")
-            # The sentence is the fix, and it is true.
-            out = capsys.readouterr().out
-            assert out == "Removed stopped container: kb-primary-droste\n"
-
-    def test_live_box_is_reported_as_stopped(self, mock_runtime, capsys):
-        """The live arm's sentence is unchanged — the same box, actually running."""
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
-        mock_runtime.stop.return_value = True
-        mock_runtime.container_exists.return_value = True
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.name = "droste"
-            proj.mode.value = "primary"
-            proj.group = None
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
-
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-
-            mock_runtime.rm.assert_called_once_with("kb-primary-droste")
-            out = capsys.readouterr().out
-            assert out == "Stopped kb-primary-droste\n"
-
-    @staticmethod
-    def _droste(m_resolve):
-        proj = MagicMock()
-        proj.name = "droste"
-        proj.mode.value = "primary"
-        proj.group = None
-        proj.project_hash = "abcdef1234567890" * 4
-        m_resolve.return_value = proj
-
-    @pytest.mark.parametrize("stopped", [True, False], ids=["stop-ok", "stop-failed"])
-    def test_a_failed_removal_is_reported_and_fails_the_run(
-        self, mock_runtime, capsys, stopped,
+  def test_the_box_is_found_by_its_labels(self, mock_runtime, capsys):
+    """system-design § Box and helper identity: stop reaches the container its
+    labels find (``utils.box_container``), not one it renders a name for."""
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.commands.stop.box_container", return_value="kb-labeled") as m_find,
     ):
-        """A container ``rm`` refuses still holds the name: never "Removed", rc 1."""
-        mock_runtime.is_running.return_value = False
-        mock_runtime.stop.return_value = stopped
-        mock_runtime.container_exists.return_value = True
-        mock_runtime.rm.return_value = False
-        mock_runtime.cmd = "/usr/bin/podman"
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            self._droste(m_resolve)
-            assert _stop_one(mock_runtime, project_dir=None) == 1
+      m_resolve.return_value = MagicMock()
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+    assert m_find.call_args.args == (mock_runtime, m_resolve.return_value)
+    mock_runtime.stop.assert_called_once_with("kb-labeled")
+    assert "Stopped kb-labeled" in capsys.readouterr().out
 
-        mock_runtime.rm.assert_called_once_with("kb-primary-droste")
-        captured = capsys.readouterr()
-        assert "Removed" not in captured.out
-        assert captured.err == (
-            "Error: could not remove kb-primary-droste; it still holds the box's name.\n"
-            "  Clear it:  podman rm -f kb-primary-droste\n"
-        )
+  def test_no_running_container(self, mock_runtime, capsys):
+    mock_runtime.stop.return_value = False
+    mock_runtime.container_exists.return_value = False
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.project_hash = "abcdef1234567890" * 4
+      proj.metadata_path = MagicMock()
+      lock_path = MagicMock()
+      lock_path.__str__ = lambda self: "/fake/path/.kanibako.lock"
+      proj.metadata_path.__truediv__ = MagicMock(return_value=lock_path)
+      m_resolve.return_value = proj
 
-    def test_a_live_box_stopped_but_not_removed_fails_the_run(self, mock_runtime, capsys):
-        """The stop is true and said; the failed removal is said too, and fails the run."""
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None
-        mock_runtime.container_exists.return_value = True
-        mock_runtime.rm.return_value = False
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            self._droste(m_resolve)
-            assert _stop_one(mock_runtime, project_dir=None) == 1
+      rc = _stop_one(mock_runtime, project_dir=None)
+      assert rc == 0
+      out = capsys.readouterr().out
+      assert "No running container" in out
+      assert "rm " in out
+      assert ".kanibako.lock" in out
 
-        captured = capsys.readouterr()
-        assert captured.out == "Stopped kb-primary-droste\n"
-        assert "could not remove kb-primary-droste" in captured.err
+  def test_stop_removes_persistent_container(self, mock_runtime, capsys):
+    """After stopping a running container, rm is called to clean up."""
+    mock_runtime.is_running.return_value = True  # a live box, per the name
+    mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
+    mock_runtime.container_exists.return_value = True  # exists after stop
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
 
-    def test_a_paused_box_is_live_stopped_and_written_back_from(self, mock_runtime, capsys):
-        """podman reads a PAUSED box as not running; it is live: stopped, written back, removed."""
-        mock_runtime.is_running.return_value = False
-        mock_runtime.container_state.return_value = "paused"
-        mock_runtime.container_exists.return_value = True
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.commands.stop._writeback_on_stop") as m_wb,
-        ):
-            self._droste(m_resolve)
-            assert _stop_one(mock_runtime, project_dir=None) == 0
+      rc = _stop_one(mock_runtime, project_dir=None)
+      assert rc == 0
+      mock_runtime.rm.assert_called_once()
 
-        assert m_wb.call_args.kwargs["box_is_live"] is True
-        mock_runtime.stop.assert_called_once_with("kb-primary-droste")
-        mock_runtime.rm.assert_called_once_with("kb-primary-droste")
-        assert capsys.readouterr().out == "Stopped kb-primary-droste\n"
+  def test_stop_cleans_stale_persistent_container(self, mock_runtime, capsys):
+    """A stopped persistent container (not running) is removed."""
+    mock_runtime.stop.return_value = False  # not running
+    mock_runtime.container_exists.return_value = True  # but exists (stopped)
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
 
-    def test_liveness_is_read_exactly_once(self, mock_runtime):
-        """ONE ``is_running`` reading serves the writeback AND the sentence.
+      rc = _stop_one(mock_runtime, project_dir=None)
+      assert rc == 0
+      mock_runtime.rm.assert_called_once()
+      out = capsys.readouterr().out
+      assert "Removed stopped container" in out
 
-        Two readings taken across the stop could disagree — the box written
-        back from and the box named in the message would be different facts.
-        The hoist is the invariant, so the call count is the pin.
-        """
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.name = "droste"
-            proj.mode.value = "primary"
-            proj.group = None
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
+  def test_orphan_container_is_not_reported_as_stopped(
+    self,
+    mock_runtime,
+    capsys,
+  ):
+    """🛑 THE RC-0 LIE: ``podman stop`` succeeds on an ALREADY-EXITED container.
 
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-            mock_runtime.is_running.assert_called_once_with("kb-primary-droste")
+    A box whose PID 1 died without the CLI surviving to clean up — crash,
+    killed terminal, reboot — leaves an ``Exited`` container squatting on
+    the name, and the launch guard now names ``kanibako stop`` as the cure.
+    ``runtime.stop`` returns the runtime's exit status, which is 0 here
+    because there was nothing to stop, so this path printed ``Stopped
+    <box>`` to a user who had been told one command earlier that the box
+    was not running.
 
-    def test_stop_with_project_dir(self, mock_runtime):
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-        ):
-            proj = MagicMock()
-            proj.project_hash = "abcdef1234567890" * 4
-            m_resolve.return_value = proj
+    The pin is the SENTENCE, not the routing: the ``rm`` is what clears the
+    orphan and it must still happen, exactly as on the live arm.
+    """
+    mock_runtime.is_running.return_value = False  # the box is NOT live
+    mock_runtime.stop.return_value = True  # ...and podman says 0
+    mock_runtime.container_exists.return_value = True  # the orphan is there
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.name = "droste"
+      proj.mode.value = "primary"
+      proj.group = None
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
 
-            _stop_one(mock_runtime, project_dir="/some/path")
-            # resolve_any_project called with the given path (positional)
-            call_args = m_resolve.call_args
-            assert call_args[0][2] == "/some/path"
-            assert call_args[1]["initialize"] is False
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+
+      # The action is unchanged: the orphan is removed.
+      mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+      # The sentence is the fix, and it is true.
+      out = capsys.readouterr().out
+      assert out == "Removed stopped container: kb-primary-droste\n"
+
+  def test_live_box_is_reported_as_stopped(self, mock_runtime, capsys):
+    """The live arm's sentence is unchanged — the same box, actually running."""
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
+    mock_runtime.stop.return_value = True
+    mock_runtime.container_exists.return_value = True
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.name = "droste"
+      proj.mode.value = "primary"
+      proj.group = None
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
+
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+
+      mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+      out = capsys.readouterr().out
+      assert out == "Stopped kb-primary-droste\n"
+
+  @staticmethod
+  def _droste(m_resolve):
+    proj = MagicMock()
+    proj.name = "droste"
+    proj.mode.value = "primary"
+    proj.group = None
+    proj.project_hash = "abcdef1234567890" * 4
+    m_resolve.return_value = proj
+
+  @pytest.mark.parametrize("stopped", [True, False], ids=["stop-ok", "stop-failed"])
+  def test_a_failed_removal_is_reported_and_fails_the_run(
+    self,
+    mock_runtime,
+    capsys,
+    stopped,
+  ):
+    """A container ``rm`` refuses still holds the name: never "Removed", rc 1."""
+    mock_runtime.is_running.return_value = False
+    mock_runtime.stop.return_value = stopped
+    mock_runtime.container_exists.return_value = True
+    mock_runtime.rm.return_value = False
+    mock_runtime.cmd = "/usr/bin/podman"
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      self._droste(m_resolve)
+      assert _stop_one(mock_runtime, project_dir=None) == 1
+
+    mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+    captured = capsys.readouterr()
+    assert "Removed" not in captured.out
+    assert captured.err == (
+      "Error: could not remove kb-primary-droste; it still holds the box's name.\n"
+      "  Clear it:  podman rm -f kb-primary-droste\n"
+    )
+
+  def test_a_live_box_stopped_but_not_removed_fails_the_run(self, mock_runtime, capsys):
+    """The stop is true and said; the failed removal is said too, and fails the run."""
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None
+    mock_runtime.container_exists.return_value = True
+    mock_runtime.rm.return_value = False
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      self._droste(m_resolve)
+      assert _stop_one(mock_runtime, project_dir=None) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == "Stopped kb-primary-droste\n"
+    assert "could not remove kb-primary-droste" in captured.err
+
+  def test_a_paused_box_is_live_stopped_and_written_back_from(self, mock_runtime, capsys):
+    """podman reads a PAUSED box as not running; it is live: stopped, written back, removed."""
+    mock_runtime.is_running.return_value = False
+    mock_runtime.container_state.return_value = "paused"
+    mock_runtime.container_exists.return_value = True
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.commands.stop._writeback_on_stop") as m_wb,
+    ):
+      self._droste(m_resolve)
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+
+    assert m_wb.call_args.kwargs["box_is_live"] is True
+    mock_runtime.stop.assert_called_once_with("kb-primary-droste")
+    mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+    assert capsys.readouterr().out == "Stopped kb-primary-droste\n"
+
+  def test_liveness_is_read_exactly_once(self, mock_runtime):
+    """ONE ``is_running`` reading serves the writeback AND the sentence.
+
+    Two readings taken across the stop could disagree — the box written
+    back from and the box named in the message would be different facts.
+    The hoist is the invariant, so the call count is the pin.
+    """
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.name = "droste"
+      proj.mode.value = "primary"
+      proj.group = None
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
+
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+      mock_runtime.is_running.assert_called_once_with("kb-primary-droste")
+
+  def test_stop_with_project_dir(self, mock_runtime):
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+    ):
+      proj = MagicMock()
+      proj.project_hash = "abcdef1234567890" * 4
+      m_resolve.return_value = proj
+
+      _stop_one(mock_runtime, project_dir="/some/path")
+      # resolve_any_project called with the given path (positional)
+      call_args = m_resolve.call_args
+      assert call_args[0][2] == "/some/path"
+      assert call_args[1]["initialize"] is False
 
 
 class TestStopAll:
-    def test_stops_multiple_containers_with_force(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = [
-            ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
-            ("kanibako-11223344", "img:latest", "Up 10 minutes"),
-        ]
-        mock_runtime.is_running.side_effect = lambda name: True
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
-        assert mock_runtime.stop.call_count == 2
-        out = capsys.readouterr().out
-        assert out.endswith("\nStopped 2 container(s); removed 0 stopped container(s).\n")
+  def test_stops_multiple_containers_with_force(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = [
+      ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
+      ("kanibako-11223344", "img:latest", "Up 10 minutes"),
+    ]
+    mock_runtime.is_running.side_effect = lambda name: True
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 0
+    assert mock_runtime.stop.call_count == 2
+    out = capsys.readouterr().out
+    assert out.endswith("\nStopped 2 container(s); removed 0 stopped container(s).\n")
 
-    def test_nothing_running(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = []
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "No kanibako containers found.\n" in out
-        mock_runtime.stop.assert_not_called()
+  def test_nothing_running(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = []
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "No kanibako containers found.\n" in out
+    mock_runtime.stop.assert_not_called()
 
-    def test_partial_failure(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = [
-            ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
-            ("kanibako-11223344", "img:latest", "Up 10 minutes"),
-        ]
-        mock_runtime.is_running.side_effect = lambda name: True
-        mock_runtime.stop.side_effect = [True, False]
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 1
-        assert mock_runtime.stop.call_count == 2
-        out = capsys.readouterr().out
-        assert out.endswith("\nStopped 1 container(s); removed 0 stopped container(s).\n")
-        capsys.readouterr()  # drain stderr
+  def test_partial_failure(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = [
+      ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
+      ("kanibako-11223344", "img:latest", "Up 10 minutes"),
+    ]
+    mock_runtime.is_running.side_effect = lambda name: True
+    mock_runtime.stop.side_effect = [True, False]
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 1
+    assert mock_runtime.stop.call_count == 2
+    out = capsys.readouterr().out
+    assert out.endswith("\nStopped 1 container(s); removed 0 stopped container(s).\n")
+    capsys.readouterr()  # drain stderr
 
-    def test_confirmation_prompt_accepted(self, mock_runtime, capsys, monkeypatch):
-        """--all without --force shows confirmation and proceeds on 'y'."""
-        mock_runtime.list_running.return_value = [
-            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
-        ]
-        mock_runtime.is_running.side_effect = lambda name: True
-        monkeypatch.setattr("builtins.input", lambda _: "y")
-        rc = _stop_all(mock_runtime, force=False)
-        assert rc == 0
-        mock_runtime.stop.assert_called_once()
-        out = capsys.readouterr().out
-        assert "This will stop 1 running container(s)" in out
+  def test_confirmation_prompt_accepted(self, mock_runtime, capsys, monkeypatch):
+    """--all without --force shows confirmation and proceeds on 'y'."""
+    mock_runtime.list_running.return_value = [
+      ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+    ]
+    mock_runtime.is_running.side_effect = lambda name: True
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    rc = _stop_all(mock_runtime, force=False)
+    assert rc == 0
+    mock_runtime.stop.assert_called_once()
+    out = capsys.readouterr().out
+    assert "This will stop 1 running container(s)" in out
 
-    def test_confirmation_prompt_rejected(self, mock_runtime, capsys, monkeypatch):
-        """--all without --force aborts on 'n'."""
-        mock_runtime.list_running.return_value = [
-            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
-        ]
-        mock_runtime.is_running.side_effect = lambda name: True
-        monkeypatch.setattr("builtins.input", lambda _: "n")
-        rc = _stop_all(mock_runtime, force=False)
-        assert rc == 2
-        mock_runtime.stop.assert_not_called()
-        out = capsys.readouterr().out
-        assert "Aborted" in out
+  def test_confirmation_prompt_rejected(self, mock_runtime, capsys, monkeypatch):
+    """--all without --force aborts on 'n'."""
+    mock_runtime.list_running.return_value = [
+      ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+    ]
+    mock_runtime.is_running.side_effect = lambda name: True
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    rc = _stop_all(mock_runtime, force=False)
+    assert rc == 2
+    mock_runtime.stop.assert_not_called()
+    out = capsys.readouterr().out
+    assert "Aborted" in out
 
-    def test_confirmation_prompt_eof(self, mock_runtime, capsys, monkeypatch):
-        """EOFError during confirmation aborts."""
-        mock_runtime.list_running.return_value = [
-            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
-        ]
-        mock_runtime.is_running.side_effect = lambda name: True
-        def raise_eof(_):
-            raise EOFError
-        monkeypatch.setattr("builtins.input", raise_eof)
-        rc = _stop_all(mock_runtime, force=False)
-        assert rc == 2
+  def test_confirmation_prompt_eof(self, mock_runtime, capsys, monkeypatch):
+    """EOFError during confirmation aborts."""
+    mock_runtime.list_running.return_value = [
+      ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+    ]
+    mock_runtime.is_running.side_effect = lambda name: True
 
-    def test_an_exited_container_is_removed_and_reported(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = [
-            ("kanibako-aabbccdd", "img:latest", "Exited (0) 1 hour ago"),
-        ]
-        mock_runtime.is_running.return_value = False
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
-        mock_runtime.stop.assert_not_called()
-        mock_runtime.rm.assert_called_once_with("kanibako-aabbccdd")
-        out = capsys.readouterr().out
-        assert "Removed stopped container: kanibako-aabbccdd" in out
-        assert out.endswith(
-            "\nStopped 0 container(s); removed 1 stopped container(s).\n"
-        )
+    def raise_eof(_):
+      raise EOFError
 
-    def test_a_failed_removal_after_a_stop_is_reported(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = [
-            ("kb-running", "img:latest", "Up 5 minutes"),
-        ]
-        mock_runtime.is_running.return_value = True
-        mock_runtime.stop.return_value = True
-        mock_runtime.container_exists.return_value = True
-        mock_runtime.rm.return_value = False
-        mock_runtime.cmd = "/usr/bin/podman"
-        mock_runtime.container_state.return_value = "paused"
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert captured.err == ("Failed to remove kb-running\n"
-                                "  Clear it:  podman rm -f kb-running\n")
-        assert captured.out.endswith(
-            "Stopped kb-running\n"
-            "\nStopped 1 container(s); removed 0 stopped container(s).\n"
-        )
+    monkeypatch.setattr("builtins.input", raise_eof)
+    rc = _stop_all(mock_runtime, force=False)
+    assert rc == 2
 
-    def test_a_paused_container_is_stopped_not_only_removed(self, mock_runtime, capsys):
-        """A PAUSED container is live: it takes the stop arm (``runtime.stop`` unpauses)."""
-        mock_runtime.list_running.return_value = [
-            ("kb-paused", "img:latest", "Paused"),
-        ]
-        mock_runtime.is_running.return_value = False
-        mock_runtime.container_state.return_value = "paused"
-        mock_runtime.container_exists.return_value = True
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
-        mock_runtime.stop.assert_called_once_with("kb-paused")
-        mock_runtime.rm.assert_called_once_with("kb-paused")
-        assert capsys.readouterr().out.endswith(
-            "Stopped kb-paused\n"
-            "\nStopped 1 container(s); removed 0 stopped container(s).\n"
-        )
+  def test_an_exited_container_is_removed_and_reported(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = [
+      ("kanibako-aabbccdd", "img:latest", "Exited (0) 1 hour ago"),
+    ]
+    mock_runtime.is_running.return_value = False
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 0
+    mock_runtime.stop.assert_not_called()
+    mock_runtime.rm.assert_called_once_with("kanibako-aabbccdd")
+    out = capsys.readouterr().out
+    assert "Removed stopped container: kanibako-aabbccdd" in out
+    assert out.endswith("\nStopped 0 container(s); removed 1 stopped container(s).\n")
 
-    def test_a_failed_removal_is_reported_and_not_counted(self, mock_runtime, capsys):
-        mock_runtime.list_running.return_value = [
-            ("kanibako-aabbccdd", "img:latest", "Exited (1) 2 hours ago"),
-        ]
-        mock_runtime.is_running.return_value = False
-        mock_runtime.rm.return_value = False
-        mock_runtime.cmd = "/usr/bin/podman"
-        mock_runtime.container_state.return_value = "exited"
-        rc = _stop_all(mock_runtime, force=True)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "Removed stopped container" not in captured.out
-        assert captured.err == ("Failed to remove kanibako-aabbccdd\n"
-                                "  Clear it:  podman rm -f kanibako-aabbccdd\n")
-        assert captured.out.endswith(
-            "\nStopped 0 container(s); removed 0 stopped container(s).\n"
-        )
+  def test_a_failed_removal_after_a_stop_is_reported(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = [
+      ("kb-running", "img:latest", "Up 5 minutes"),
+    ]
+    mock_runtime.is_running.return_value = True
+    mock_runtime.stop.return_value = True
+    mock_runtime.container_exists.return_value = True
+    mock_runtime.rm.return_value = False
+    mock_runtime.cmd = "/usr/bin/podman"
+    mock_runtime.container_state.return_value = "paused"
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.err == ("Failed to remove kb-running\n  Clear it:  podman rm -f kb-running\n")
+    assert captured.out.endswith(
+      "Stopped kb-running\n\nStopped 1 container(s); removed 0 stopped container(s).\n"
+    )
 
-    def test_a_failure_line_follows_the_output_before_it(self, mock_runtime, monkeypatch):
-        events: list[str] = []
+  def test_a_paused_container_is_stopped_not_only_removed(self, mock_runtime, capsys):
+    """A PAUSED container is live: it takes the stop arm (``runtime.stop`` unpauses)."""
+    mock_runtime.list_running.return_value = [
+      ("kb-paused", "img:latest", "Paused"),
+    ]
+    mock_runtime.is_running.return_value = False
+    mock_runtime.container_state.return_value = "paused"
+    mock_runtime.container_exists.return_value = True
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 0
+    mock_runtime.stop.assert_called_once_with("kb-paused")
+    mock_runtime.rm.assert_called_once_with("kb-paused")
+    assert capsys.readouterr().out.endswith(
+      "Stopped kb-paused\n\nStopped 1 container(s); removed 0 stopped container(s).\n"
+    )
 
-        class _Buffered(io.StringIO):
-            def flush(self):
-                events.append(self.getvalue())
-                self.seek(0)
-                self.truncate()
+  def test_a_failed_removal_is_reported_and_not_counted(self, mock_runtime, capsys):
+    mock_runtime.list_running.return_value = [
+      ("kanibako-aabbccdd", "img:latest", "Exited (1) 2 hours ago"),
+    ]
+    mock_runtime.is_running.return_value = False
+    mock_runtime.rm.return_value = False
+    mock_runtime.cmd = "/usr/bin/podman"
+    mock_runtime.container_state.return_value = "exited"
+    rc = _stop_all(mock_runtime, force=True)
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Removed stopped container" not in captured.out
+    assert captured.err == (
+      "Failed to remove kanibako-aabbccdd\n  Clear it:  podman rm -f kanibako-aabbccdd\n"
+    )
+    assert captured.out.endswith("\nStopped 0 container(s); removed 0 stopped container(s).\n")
 
-        class _Direct(io.StringIO):
-            def write(self, text):
-                events.append(text)
-                return len(text)
+  def test_a_failure_line_follows_the_output_before_it(self, mock_runtime, monkeypatch):
+    events: list[str] = []
 
-        monkeypatch.setattr(sys, "stdout", _Buffered())
-        monkeypatch.setattr(sys, "stderr", _Direct())
-        mock_runtime.list_running.return_value = [
-            ("kb-a", "img:latest", "Up 5 minutes"),
-            ("kb-b", "img:latest", "Up 5 minutes"),
-        ]
-        mock_runtime.is_running.return_value = True
-        mock_runtime.stop.side_effect = [True, False]
-        mock_runtime.container_exists.return_value = False
-        assert _stop_all(mock_runtime, force=True) == 1
-        assert "".join(events).startswith("Stopped kb-a\nFailed to stop kb-b\n")
+    class _Buffered(io.StringIO):
+      def flush(self):
+        events.append(self.getvalue())
+        self.seek(0)
+        self.truncate()
 
-    def test_mixed_running_and_exited_prompts_truthfully(self, mock_runtime, capsys, monkeypatch):
-        mock_runtime.list_running.return_value = [
-            ("kb-running", "img:latest", "Up 5 minutes"),
-            ("kb-exited", "img:latest", "Exited (0) 1 hour ago"),
-        ]
-        def is_running(name):
-            return name == "kb-running"
-        mock_runtime.is_running.side_effect = is_running
-        mock_runtime.stop.return_value = True
-        mock_runtime.container_exists.return_value = True
-        monkeypatch.setattr("builtins.input", lambda _: "y")
-        rc = _stop_all(mock_runtime, force=False)
-        assert rc == 0
-        lines = capsys.readouterr().out.splitlines()
-        assert lines[:4] == [
-            "This will stop 1 running container(s) and remove 1 stopped container(s):",
-            "  kb-running  (running)",
-            "  kb-exited  (stopped)",
-            "",
-        ]
-        mock_runtime.stop.assert_called_once_with("kb-running")
-        assert mock_runtime.rm.call_count == 2
-        assert lines[-1] == "Stopped 1 container(s); removed 1 stopped container(s)."
+    class _Direct(io.StringIO):
+      def write(self, text):
+        events.append(text)
+        return len(text)
 
-    def test_all_help_says_stopped_containers_are_removed(self):
-        import argparse
-        from kanibako.commands.stop import add_parser
-        subparsers = argparse.ArgumentParser().add_subparsers()
-        add_parser(subparsers)
-        stop_parser = subparsers.choices["stop"]
-        all_action = next(
-            a for a in stop_parser._actions if a.dest == "all_containers"
-        )
-        assert all_action.help == (
-            "Stop all running kanibako containers and remove stopped ones"
-        )
+    monkeypatch.setattr(sys, "stdout", _Buffered())
+    monkeypatch.setattr(sys, "stderr", _Direct())
+    mock_runtime.list_running.return_value = [
+      ("kb-a", "img:latest", "Up 5 minutes"),
+      ("kb-b", "img:latest", "Up 5 minutes"),
+    ]
+    mock_runtime.is_running.return_value = True
+    mock_runtime.stop.side_effect = [True, False]
+    mock_runtime.container_exists.return_value = False
+    assert _stop_all(mock_runtime, force=True) == 1
+    assert "".join(events).startswith("Stopped kb-a\nFailed to stop kb-b\n")
+
+  def test_mixed_running_and_exited_prompts_truthfully(self, mock_runtime, capsys, monkeypatch):
+    mock_runtime.list_running.return_value = [
+      ("kb-running", "img:latest", "Up 5 minutes"),
+      ("kb-exited", "img:latest", "Exited (0) 1 hour ago"),
+    ]
+
+    def is_running(name):
+      return name == "kb-running"
+
+    mock_runtime.is_running.side_effect = is_running
+    mock_runtime.stop.return_value = True
+    mock_runtime.container_exists.return_value = True
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    rc = _stop_all(mock_runtime, force=False)
+    assert rc == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:4] == [
+      "This will stop 1 running container(s) and remove 1 stopped container(s):",
+      "  kb-running  (running)",
+      "  kb-exited  (stopped)",
+      "",
+    ]
+    mock_runtime.stop.assert_called_once_with("kb-running")
+    assert mock_runtime.rm.call_count == 2
+    assert lines[-1] == "Stopped 1 container(s); removed 1 stopped container(s)."
+
+  def test_all_help_says_stopped_containers_are_removed(self):
+    import argparse
+    from kanibako.commands.stop import add_parser
+
+    subparsers = argparse.ArgumentParser().add_subparsers()
+    add_parser(subparsers)
+    stop_parser = subparsers.choices["stop"]
+    all_action = next(a for a in stop_parser._actions if a.dest == "all_containers")
+    assert all_action.help == ("Stop all running kanibako containers and remove stopped ones")
 
 
 class TestRunDispatch:
-    def test_dispatches_to_stop_all_with_force(self, capsys):
-        with patch("kanibako.commands.stop.ContainerRuntime") as m_cls:
-            rt = MagicMock()
-            rt.list_running.return_value = []
-            m_cls.return_value = rt
-            import argparse
-            args = argparse.Namespace(all_containers=True, project=None, force=True)
-            rc = run(args)
-            assert rc == 0
-            rt.list_running.assert_called_once()
+  def test_dispatches_to_stop_all_with_force(self, capsys):
+    with patch("kanibako.commands.stop.ContainerRuntime") as m_cls:
+      rt = MagicMock()
+      rt.list_running.return_value = []
+      m_cls.return_value = rt
+      import argparse
 
-    def test_dispatches_to_stop_one(self):
-        with (
-            patch("kanibako.commands.stop.ContainerRuntime") as m_cls,
-            patch("kanibako.commands.stop._stop_one", return_value=0) as m_stop_one,
-        ):
-            rt = MagicMock()
-            m_cls.return_value = rt
-            import argparse
-            args = argparse.Namespace(all_containers=False, project=None, force=False)
-            rc = run(args)
-            assert rc == 0
-            m_stop_one.assert_called_once_with(rt, project_dir=None)
+      args = argparse.Namespace(all_containers=True, project=None, force=True)
+      rc = run(args)
+      assert rc == 0
+      rt.list_running.assert_called_once()
 
-    def test_dispatches_to_stop_one_with_project(self):
-        with (
-            patch("kanibako.commands.stop.ContainerRuntime") as m_cls,
-            patch("kanibako.commands.stop._stop_one", return_value=0) as m_stop_one,
-        ):
-            rt = MagicMock()
-            m_cls.return_value = rt
-            import argparse
-            args = argparse.Namespace(all_containers=False, project="myproj", force=False)
-            rc = run(args)
-            assert rc == 0
-            m_stop_one.assert_called_once_with(rt, project_dir="myproj")
+  def test_dispatches_to_stop_one(self):
+    with (
+      patch("kanibako.commands.stop.ContainerRuntime") as m_cls,
+      patch("kanibako.commands.stop._stop_one", return_value=0) as m_stop_one,
+    ):
+      rt = MagicMock()
+      m_cls.return_value = rt
+      import argparse
 
-    def test_runtime_not_found(self, capsys, monkeypatch):
-        monkeypatch.delenv("KANIBAKO_DOCKER_CMD", raising=False)
-        with patch("shutil.which", return_value=None):
-            import argparse
-            args = argparse.Namespace(all_containers=False, project=None, force=False)
-            rc = run(args)
-            assert rc == 1
-            err = capsys.readouterr().err
-            assert "No container runtime found" in err
+      args = argparse.Namespace(all_containers=False, project=None, force=False)
+      rc = run(args)
+      assert rc == 0
+      m_stop_one.assert_called_once_with(rt, project_dir=None)
 
-    def test_missing_docker_cmd_is_an_error_naming_it(self, capsys, monkeypatch, tmp_path):
-        """A KANIBAKO_DOCKER_CMD naming a missing binary is an ``Error:`` line, not a traceback."""
-        import argparse
-        missing = str(tmp_path / "no-such-runtime")
-        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", missing)
-        rc = run(argparse.Namespace(all_containers=False, project="myproj", box=None, force=False))
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert err.startswith("Error: KANIBAKO_DOCKER_CMD names ")
-        assert missing in err
+  def test_dispatches_to_stop_one_with_project(self):
+    with (
+      patch("kanibako.commands.stop.ContainerRuntime") as m_cls,
+      patch("kanibako.commands.stop._stop_one", return_value=0) as m_stop_one,
+    ):
+      rt = MagicMock()
+      m_cls.return_value = rt
+      import argparse
+
+      args = argparse.Namespace(all_containers=False, project="myproj", force=False)
+      rc = run(args)
+      assert rc == 0
+      m_stop_one.assert_called_once_with(rt, project_dir="myproj")
+
+  def test_runtime_not_found(self, capsys, monkeypatch):
+    monkeypatch.delenv("KANIBAKO_DOCKER_CMD", raising=False)
+    with patch("shutil.which", return_value=None):
+      import argparse
+
+      args = argparse.Namespace(all_containers=False, project=None, force=False)
+      rc = run(args)
+      assert rc == 1
+      err = capsys.readouterr().err
+      assert "No container runtime found" in err
+
+  def test_missing_docker_cmd_is_an_error_naming_it(self, capsys, monkeypatch, tmp_path):
+    """A KANIBAKO_DOCKER_CMD naming a missing binary is an ``Error:`` line, not a traceback."""
+    import argparse
+
+    missing = str(tmp_path / "no-such-runtime")
+    monkeypatch.setenv("KANIBAKO_DOCKER_CMD", missing)
+    rc = run(argparse.Namespace(all_containers=False, project="myproj", box=None, force=False))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("Error: KANIBAKO_DOCKER_CMD names ")
+    assert missing in err
 
 
 class TestStopWriteback:
-    """FIX 1: `kanibako stop` writes the box's creds back to the host first."""
+  """FIX 1: `kanibako stop` writes the box's creds back to the host first."""
 
-    def test_writeback_runs_for_running_agent_box(self, mock_runtime, capsys):
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = "claude"
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.targets.resolve_target") as m_resolve_target,
-            patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
-            ),
-            patch(
-                "kanibako.commands.start.writeback_session_credentials"
-            ) as m_wb,
-        ):
-            proj = MagicMock()
-            m_resolve.return_value = proj
-            target = MagicMock()
-            m_resolve_target.return_value = target
-
-            rc = _stop_one(mock_runtime, project_dir=None)
-            assert rc == 0
-            mock_runtime.inspect_env.assert_called_once()
-            # Block #2: writeback gets the resolved AuthSource (the 3-tier
-            # SHARING source), passed as the ``auth_src`` keyword.
-            m_wb.assert_called_once_with(
-                target, proj, auth_src=_SHARED_AUTH
-            )
-
-    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
-    def test_persona_writeback_canonicalizes_the_stamp_before_deriving(
-        self, mock_runtime, stamp,
+  def test_writeback_runs_for_running_agent_box(self, mock_runtime, capsys):
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = "claude"
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.targets.resolve_target") as m_resolve_target,
+      patch(
+        "kanibako.commands.start._resolve_box_auth_source",
+        return_value=_SHARED_AUTH,
+      ),
+      patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
     ):
-        """🛑 THE SILENT-FAILURE GUARD, and the reason canonicalize-on-read exists.
+      proj = MagicMock()
+      m_resolve.return_value = proj
+      target = MagicMock()
+      m_resolve_target.return_value = target
 
-        ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
-        agent reads it inside the box.  ``harness_of`` splits on ``℘`` ALONE, so
-        deriving the harness from the RAW ``+`` stamp yields the whole string
-        ``navigator+claude``; ``resolve_target`` then raises ``KeyError`` — INSIDE
-        the blanket ``except Exception: pass`` of ``_writeback_on_stop``.  Nothing
-        is printed, nothing is logged, ``stop`` still exits 0, and the box's
-        credentials simply never reach the host.  A bare agent cannot show any of
-        this (node == harness ⇒ one string), so only a persona pins it.
+      rc = _stop_one(mock_runtime, project_dir=None)
+      assert rc == 0
+      mock_runtime.inspect_env.assert_called_once()
+      # Block #2: writeback gets the resolved AuthSource (the 3-tier
+      # SHARING source), passed as the ``auth_src`` keyword.
+      m_wb.assert_called_once_with(target, proj, auth_src=_SHARED_AUTH)
 
-        ⚑ BOTH SPELLINGS ARE PARAMETRIZED ON PURPOSE — that is the BACK-COMPAT
-        proof: ``+`` is what this version stamps, ``℘`` is what a box already
-        running under an older version carries, and both must behave identically.
+  @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+  def test_persona_writeback_canonicalizes_the_stamp_before_deriving(
+    self,
+    mock_runtime,
+    stamp,
+  ):
+    """🛑 THE SILENT-FAILURE GUARD, and the reason canonicalize-on-read exists.
 
-        Three things are asserted, because the bug can hide in any of them: the
-        plugin is looked up by the HARNESS, the two settings-side values get the
-        CANONICAL node, and the writeback actually RAN.
-        """
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = stamp
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.targets.resolve_target") as m_resolve_target,
-            patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
-            ) as m_auth,
-            patch(
-                "kanibako.commands.start.writeback_session_credentials"
-            ) as m_wb,
-        ):
-            proj = MagicMock()
-            m_resolve.return_value = proj
-            target = MagicMock()
-            m_resolve_target.return_value = target
+    ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
+    agent reads it inside the box.  ``harness_of`` splits on ``℘`` ALONE, so
+    deriving the harness from the RAW ``+`` stamp yields the whole string
+    ``navigator+claude``; ``resolve_target`` then raises ``KeyError`` — INSIDE
+    the blanket ``except Exception: pass`` of ``_writeback_on_stop``.  Nothing
+    is printed, nothing is logged, ``stop`` still exits 0, and the box's
+    credentials simply never reach the host.  A bare agent cannot show any of
+    this (node == harness ⇒ one string), so only a persona pins it.
 
-            assert _stop_one(mock_runtime, project_dir=None) == 0
+    ⚑ BOTH SPELLINGS ARE PARAMETRIZED ON PURPOSE — that is the BACK-COMPAT
+    proof: ``+`` is what this version stamps, ``℘`` is what a box already
+    running under an older version carries, and both must behave identically.
 
-            # (1) The plugin is keyed by the HARNESS — literal, not derived.
-            assert m_resolve_target.call_args.args[0] == "claude"
-            # (2) The settings-side values discriminate the agent TIER, so they
-            #     take the CANONICAL node — both the cascade discriminator and the
-            #     §1A selection level.
-            kwargs = m_auth.call_args.kwargs
-            assert kwargs["agent_name"] == "navigator℘claude"
-            assert kwargs["selection_level"] == {
-                "system.agent": "navigator℘claude"
-            }
-            # (3) …and the writeback actually ran, which is the whole point: the
-            #     failure this guards against is SILENT, so absence is the symptom.
-            m_wb.assert_called_once_with(target, proj, auth_src=_SHARED_AUTH)
-
-    def _stop_with_failing_auth_resolve(self, mock_runtime, exc, *, stamp="claude"):
-        """Stop a LIVE box stamped *stamp* whose auth resolve raises *exc*.
-
-        Returns ``(rc, writeback mock)``.
-        """
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = stamp
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.targets.resolve_target"),
-            patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                side_effect=exc,
-            ),
-            patch(
-                "kanibako.commands.start.writeback_session_credentials"
-            ) as m_wb,
-        ):
-            m_resolve.return_value = MagicMock()
-            return _stop_one(mock_runtime, project_dir=None), m_wb
-
-    @pytest.mark.parametrize("error", ["SettingsError", "ConfigError"])
-    def test_settings_refusal_is_said_and_the_stop_still_happens(
-        self, mock_runtime, capsys, error,
+    Three things are asserted, because the bug can hide in any of them: the
+    plugin is looked up by the HARNESS, the two settings-side values get the
+    CANONICAL node, and the writeback actually RAN.
+    """
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = stamp
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.targets.resolve_target") as m_resolve_target,
+      patch(
+        "kanibako.commands.start._resolve_box_auth_source",
+        return_value=_SHARED_AUTH,
+      ) as m_auth,
+      patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
     ):
-        """🛑 A settings file that turned invalid after the box started refuses the auth
-        resolve; the stop must SAY the credential writeback was skipped, carrying the
-        refusal's own text (which names the file), and still stop the box.
-        Swallowing it left the credentials un-written-back with no word said.
+      proj = MagicMock()
+      m_resolve.return_value = proj
+      target = MagicMock()
+      m_resolve_target.return_value = target
 
-        Both refusal types: ``SettingsError`` (an undeclared key, a stray in
-        ``agent.yaml``) and ``ConfigError`` (a file that is not valid YAML)."""
-        from kanibako.errors import ConfigError
-        from kanibako.settings.settings_resolve import SettingsError
+      assert _stop_one(mock_runtime, project_dir=None) == 0
 
-        refusal = {
-            "SettingsError": (
-                SettingsError,
-                "`model` at the top level of /cfg/agents/claude/agent.yaml is not a "
-                "settings key, so kanibako will not read the file.",
-            ),
-            "ConfigError": (
-                ConfigError,
-                "the config file /cfg/agents/claude/agent.yaml is not valid YAML: "
-                "line 2. Fix or remove the file, then retry.",
-            ),
-        }
-        exc_type, text = refusal[error]
-        rc, m_wb = self._stop_with_failing_auth_resolve(mock_runtime, exc_type(text))
-        assert rc == 0
-        mock_runtime.stop.assert_called_once()
-        m_wb.assert_not_called()
-        err = capsys.readouterr().err
-        assert "credential writeback skipped" in err
-        assert text in err
+      # (1) The plugin is keyed by the HARNESS — literal, not derived.
+      assert m_resolve_target.call_args.args[0] == "claude"
+      # (2) The settings-side values discriminate the agent TIER, so they
+      #     take the CANONICAL node — both the cascade discriminator and the
+      #     §1A selection level.
+      kwargs = m_auth.call_args.kwargs
+      assert kwargs["agent_name"] == "navigator℘claude"
+      assert kwargs["selection_level"] == {"system.agent": "navigator℘claude"}
+      # (3) …and the writeback actually ran, which is the whole point: the
+      #     failure this guards against is SILENT, so absence is the symptom.
+      m_wb.assert_called_once_with(target, proj, auth_src=_SHARED_AUTH)
 
-    def test_other_writeback_failure_stays_silent(self, mock_runtime, capsys):
-        """Every failure that is NOT a settings refusal keeps the old best-effort
-        silence — the stop is unaffected and nothing is printed."""
-        rc, m_wb = self._stop_with_failing_auth_resolve(
-            mock_runtime, RuntimeError("not a settings refusal"),
-        )
-        assert rc == 0
-        mock_runtime.stop.assert_called_once()
-        m_wb.assert_not_called()
-        assert capsys.readouterr().err == ""
+  def _stop_with_failing_auth_resolve(self, mock_runtime, exc, *, stamp="claude"):
+    """Stop a LIVE box stamped *stamp* whose auth resolve raises *exc*.
 
-    def test_malformed_stamp_is_not_reported_as_a_settings_refusal(
-        self, mock_runtime, capsys,
+    Returns ``(rc, writeback mock)``.
+    """
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = stamp
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.targets.resolve_target"),
+      patch(
+        "kanibako.commands.start._resolve_box_auth_source",
+        side_effect=exc,
+      ),
+      patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
     ):
-        """A malformed ``KANIBAKO_AGENT`` stamp makes ``agent_address_node`` raise
-        ``ConfigError`` BEFORE the auth resolve. That is not the box's settings, so the
-        report stays scoped to the resolve call: the stop is silent, as before."""
-        rc, m_wb = self._stop_with_failing_auth_resolve(
-            mock_runtime, AssertionError("the auth resolve must not be reached"),
-            stamp="bad+",
-        )
-        assert rc == 0
-        mock_runtime.stop.assert_called_once()
-        m_wb.assert_not_called()
-        assert capsys.readouterr().err == ""
+      m_resolve.return_value = MagicMock()
+      return _stop_one(mock_runtime, project_dir=None), m_wb
 
-    @pytest.mark.parametrize("stamp", [None, ""])
-    def test_no_writeback_without_agent_stamp(self, mock_runtime, stamp):
-        """A box with NO agent — a ``pref.system.agent: null`` box (D-M6) or a
-        pre-stamp box — writes nothing back.
+  @pytest.mark.parametrize("error", ["SettingsError", "ConfigError"])
+  def test_settings_refusal_is_said_and_the_stop_still_happens(
+    self,
+    mock_runtime,
+    capsys,
+    error,
+  ):
+    """🛑 A settings file that turned invalid after the box started refuses the auth
+    resolve; the stop must SAY the credential writeback was skipped, carrying the
+    refusal's own text (which names the file), and still stop the box.
+    Swallowing it left the credentials un-written-back with no word said.
 
-        ⚑ This is also what keeps the P7 credential-path fix safe on the writeback
-        side: the auth resolve is fed ``{"system.agent": <stamp>}``, so an EMPTY
-        stamp would rebuild the collapsed ``<auth>/`` source. It never gets there —
-        the guard returns BEFORE the auth resolve. Both falsy shapes are pinned
-        because ``inspect_env`` can yield either.
-        """
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = stamp  # unstamped / no-agent box
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch(
-                "kanibako.commands.start._resolve_box_auth_source"
-            ) as m_auth,
-            patch(
-                "kanibako.commands.start.writeback_session_credentials"
-            ) as m_wb,
-        ):
-            m_resolve.return_value = MagicMock()
-            _stop_one(mock_runtime, project_dir=None)
-            m_wb.assert_not_called()
-            m_auth.assert_not_called()
+    Both refusal types: ``SettingsError`` (an undeclared key, a stray in
+    ``agent.yaml``) and ``ConfigError`` (a file that is not valid YAML)."""
+    from kanibako.errors import ConfigError
+    from kanibako.settings.settings_resolve import SettingsError
 
-    def test_no_writeback_when_not_running(self, mock_runtime):
-        mock_runtime.is_running.return_value = False
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch(
-                "kanibako.commands.start.writeback_session_credentials"
-            ) as m_wb,
-        ):
-            m_resolve.return_value = MagicMock()
-            _stop_one(mock_runtime, project_dir=None)
-            m_wb.assert_not_called()
+    refusal = {
+      "SettingsError": (
+        SettingsError,
+        "`model` at the top level of /cfg/agents/claude/agent.yaml is not a "
+        "settings key, so kanibako will not read the file.",
+      ),
+      "ConfigError": (
+        ConfigError,
+        "the config file /cfg/agents/claude/agent.yaml is not valid YAML: "
+        "line 2. Fix or remove the file, then retry.",
+      ),
+    }
+    exc_type, text = refusal[error]
+    rc, m_wb = self._stop_with_failing_auth_resolve(mock_runtime, exc_type(text))
+    assert rc == 0
+    mock_runtime.stop.assert_called_once()
+    m_wb.assert_not_called()
+    err = capsys.readouterr().err
+    assert "credential writeback skipped" in err
+    assert text in err
+
+  def test_other_writeback_failure_stays_silent(self, mock_runtime, capsys):
+    """Every failure that is NOT a settings refusal keeps the old best-effort
+    silence — the stop is unaffected and nothing is printed."""
+    rc, m_wb = self._stop_with_failing_auth_resolve(
+      mock_runtime,
+      RuntimeError("not a settings refusal"),
+    )
+    assert rc == 0
+    mock_runtime.stop.assert_called_once()
+    m_wb.assert_not_called()
+    assert capsys.readouterr().err == ""
+
+  def test_malformed_stamp_is_not_reported_as_a_settings_refusal(
+    self,
+    mock_runtime,
+    capsys,
+  ):
+    """A malformed ``KANIBAKO_AGENT`` stamp makes ``agent_address_node`` raise
+    ``ConfigError`` BEFORE the auth resolve. That is not the box's settings, so the
+    report stays scoped to the resolve call: the stop is silent, as before."""
+    rc, m_wb = self._stop_with_failing_auth_resolve(
+      mock_runtime,
+      AssertionError("the auth resolve must not be reached"),
+      stamp="bad+",
+    )
+    assert rc == 0
+    mock_runtime.stop.assert_called_once()
+    m_wb.assert_not_called()
+    assert capsys.readouterr().err == ""
+
+  @pytest.mark.parametrize("stamp", [None, ""])
+  def test_no_writeback_without_agent_stamp(self, mock_runtime, stamp):
+    """A box with NO agent — a ``pref.system.agent: null`` box (D-M6) or a
+    pre-stamp box — writes nothing back.
+
+    ⚑ This is also what keeps the P7 credential-path fix safe on the writeback
+    side: the auth resolve is fed ``{"system.agent": <stamp>}``, so an EMPTY
+    stamp would rebuild the collapsed ``<auth>/`` source. It never gets there —
+    the guard returns BEFORE the auth resolve. Both falsy shapes are pinned
+    because ``inspect_env`` can yield either.
+    """
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = stamp  # unstamped / no-agent box
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
+      patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
+    ):
+      m_resolve.return_value = MagicMock()
+      _stop_one(mock_runtime, project_dir=None)
+      m_wb.assert_not_called()
+      m_auth.assert_not_called()
+
+  def test_no_writeback_when_not_running(self, mock_runtime):
+    mock_runtime.is_running.return_value = False
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
+    ):
+      m_resolve.return_value = MagicMock()
+      _stop_one(mock_runtime, project_dir=None)
+      m_wb.assert_not_called()
 
 
 class TestStopWithMalformedBoxSettings:
-    """Q137a: a malformed ``box.yaml`` must not lock the user out of their own box.
+  """Q137a: a malformed ``box.yaml`` must not lock the user out of their own box.
 
-    🛑 THE LOCKOUT.  ``resolve_box_target``'s advisory pass reads the box's
-    ``box.enable_vault`` through the whole settings cascade, so a ``box.yaml``
-    that is not a mapping raised ``ConfigError`` out of ``stop`` — a box the user
-    is inside could then only be stopped with ``podman stop``.
+  🛑 THE LOCKOUT.  ``resolve_box_target``'s advisory pass reads the box's
+  ``box.enable_vault`` through the whole settings cascade, so a ``box.yaml``
+  that is not a mapping raised ``ConfigError`` out of ``stop`` — a box the user
+  is inside could then only be stopped with ``podman stop``.
 
-    Nothing that NAMES the container is on that read: the name is the box's
-    IDENTITY (``kanibako.utils.container_name_for`` — mode, metadata root,
-    registry name, project hash).  So these pin the three behaviors together: the
-    stop HAPPENS, under the name identity gives it, and the refusal is SAID with
-    the refusal's own text.
+  Nothing that NAMES the container is on that read: the name is the box's
+  IDENTITY (``kanibako.utils.container_name_for`` — mode, metadata root,
+  registry name, project hash).  So these pin the three behaviors together: the
+  stop HAPPENS, under the name identity gives it, and the refusal is SAID with
+  the refusal's own text.
 
-    ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
-    runtime stubbed, so nothing here needs podman.  Everything else is REAL: a
-    real box on disk in an isolated ``HOME``, a real ``box.yaml`` (corrupted in
-    place by the parametrization), and the real resolve chain beneath.
+  ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
+  runtime stubbed, so nothing here needs podman.  Everything else is REAL: a
+  real box on disk in an isolated ``HOME``, a real ``box.yaml`` (corrupted in
+  place by the parametrization), and the real resolve chain beneath.
+  """
+
+  #: ``(label, file body)`` — the three shapes ``config_io.load_doc`` refuses.
+  _MALFORMED = [
+    ("invalid-yaml", "box: [unclosed\n  bad: :\n"),
+    ("a-list", "- one\n- two\n"),
+    ("a-scalar", "just a string\n"),
+  ]
+
+  @pytest.fixture
+  def live_runtime(self):
+    """A LIVE box whose stop succeeds, with no agent stamp (no writeback)."""
+    rt = MagicMock()
+    rt.stop.return_value = True
+    rt.is_running.return_value = True
+    rt.inspect_env.return_value = None
+    rt.container_exists.return_value = False
+    rt.rm.return_value = True
+    return rt
+
+  @staticmethod
+  def _drive(live_runtime, target):
+    """``kanibako stop <target>`` through the command's own entry point."""
+    import argparse
+
+    args = argparse.Namespace(
+      all_containers=False,
+      project=str(target),
+      force=False,
+    )
+    with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+      return run(args)
+
+  @staticmethod
+  def _primary_box(std, config, tmp_home):
+    """A real PRIMARY box + its ``box.yaml``; return ``(workspace, name, file)``."""
+    from kanibako.settings.paths import resolve_project
+
+    workspace = tmp_home / "work" / "myapp"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+    box_yaml = proj.metadata_path / "box.yaml"
+    box_yaml.parent.mkdir(parents=True, exist_ok=True)
+    box_yaml.write_text("box:\n  enable_vault: false\n")
+    return workspace, proj.name, box_yaml
+
+  @staticmethod
+  def _standalone_box(std, tmp_home):
+    """A real STANDALONE box + its ``box.yaml``; return ``(root, name, file)``."""
+    from kanibako.settings.paths import establish_standalone
+
+    root = tmp_home / "sa"
+    (root / "box_data").mkdir(parents=True)
+    # No ``name=``: a standalone box is named from its root, never by the caller
+    # (the kwarg used to exist here and be silently dropped).
+    name, *_ = establish_standalone(std, root, enable_vault=True)
+    box_yaml = root / "box_data" / "box.yaml"
+    box_yaml.write_text("box:\n  enable_vault: false\n")
+    return root, name, box_yaml
+
+  @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+  def test_primary_box_stops_with_a_malformed_box_yaml(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+    shape,
+  ):
+    """A PRIMARY box: stopped, under its identity name, with the refusal said."""
+    _label, text = shape
+    target, name, box_yaml = self._primary_box(std, config, tmp_home)
+    box_yaml.write_text(text)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+    assert self._drive(live_runtime, target) == 0
+
+    # The stop HAPPENED, on the name identity gives it — the box name, and
+    # nothing the unreadable file could have said about it.
+    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
+    err = capsys.readouterr().err
+    assert err.startswith("Warning: ")
+    # …carrying the REFUSAL'S OWN TEXT, which names the file and the problem
+    # (P10: one wording, not a second one written for the warning).
+    assert str(box_yaml) in err
+    assert "Fix or remove the file, then retry." in err
+
+  @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+  def test_standalone_box_stops_with_a_malformed_box_yaml(
+    self,
+    std,
+    tmp_home,
+    live_runtime,
+    capsys,
+    shape,
+  ):
+    """A STANDALONE box: its container carries the standalone segment and its NAME."""
+    from kanibako.utils import WORKSET_SEGMENT_STANDALONE, container_name_for_box_name
+
+    _label, text = shape
+    root, name, box_yaml = self._standalone_box(std, tmp_home)
+    box_yaml.write_text(text)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+    assert self._drive(live_runtime, root) == 0
+
+    live_runtime.stop.assert_called_once_with(
+      container_name_for_box_name(name, WORKSET_SEGMENT_STANDALONE)
+    )
+    err = capsys.readouterr().err
+    assert err.startswith("Warning: ")
+    assert str(box_yaml) in err
+    assert "Fix or remove the file, then retry." in err
+
+  def test_the_refusal_is_said_once_when_the_writeback_hits_it_too(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """🛑 ONE REFUSAL, ONE SENTENCE — even when the writeback hits the same file.
+
+    A live, agent-stamped box runs the on-stop credential writeback, and that
+    auth resolve reads the SAME malformed ``box.yaml``.  Both renders are
+    legitimate (the stop degraded; the writeback was skipped), but printing
+    the refusal's sentence twice is the duplicate-renderer defect this
+    project has already been dinged for — so the second one keeps its
+    "credential writeback skipped" fact and drops the repeated text.
     """
+    live_runtime.inspect_env.return_value = "claude"  # stamped -> writeback runs
+    _label, text = self._MALFORMED[1]
+    target, _name, box_yaml = self._primary_box(std, config, tmp_home)
+    box_yaml.write_text(text)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
 
-    #: ``(label, file body)`` — the three shapes ``config_io.load_doc`` refuses.
-    _MALFORMED = [
-        ("invalid-yaml", "box: [unclosed\n  bad: :\n"),
-        ("a-list", "- one\n- two\n"),
-        ("a-scalar", "just a string\n"),
-    ]
+    assert self._drive(live_runtime, target) == 0
 
-    @pytest.fixture
-    def live_runtime(self):
-        """A LIVE box whose stop succeeds, with no agent stamp (no writeback)."""
-        rt = MagicMock()
-        rt.stop.return_value = True
-        rt.is_running.return_value = True
-        rt.inspect_env.return_value = None
-        rt.container_exists.return_value = False
-        rt.rm.return_value = True
-        return rt
+    err = capsys.readouterr().err
+    sentence = "Fix or remove the file, then retry."
+    assert err.count(sentence) == 1, err
+    # Both facts survive: the refusal, and the skipped writeback.
+    assert "Warning: the config file" in err
+    assert "credential writeback skipped" in err
 
-    @staticmethod
-    def _drive(live_runtime, target):
-        """``kanibako stop <target>`` through the command's own entry point."""
-        import argparse
+  def test_a_writeback_refusal_about_another_file_is_still_said_whole(
+    self,
+    mock_runtime,
+    capsys,
+  ):
+    """The dedup is by TEXT, so a DIFFERENT file's refusal is never swallowed.
 
-        args = argparse.Namespace(
-            all_containers=False, project=str(target), force=False,
-        )
-        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
-            return run(args)
+    The box's ``box.yaml`` is fine here and only ``agent.yaml`` is malformed —
+    the writeback's warning must still carry that file's own refusal sentence,
+    or the user would never learn which file to fix.
+    """
+    from kanibako.errors import ConfigError
 
-    @staticmethod
-    def _primary_box(std, config, tmp_home):
-        """A real PRIMARY box + its ``box.yaml``; return ``(workspace, name, file)``."""
-        from kanibako.settings.paths import resolve_project
-
-        workspace = tmp_home / "work" / "myapp"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
-        box_yaml = proj.metadata_path / "box.yaml"
-        box_yaml.parent.mkdir(parents=True, exist_ok=True)
-        box_yaml.write_text("box:\n  enable_vault: false\n")
-        return workspace, proj.name, box_yaml
-
-    @staticmethod
-    def _standalone_box(std, tmp_home):
-        """A real STANDALONE box + its ``box.yaml``; return ``(root, name, file)``."""
-        from kanibako.settings.paths import establish_standalone
-
-        root = tmp_home / "sa"
-        (root / "box_data").mkdir(parents=True)
-        # No ``name=``: a standalone box is named from its root, never by the caller
-        # (the kwarg used to exist here and be silently dropped).
-        name, *_ = establish_standalone(std, root, enable_vault=True)
-        box_yaml = root / "box_data" / "box.yaml"
-        box_yaml.write_text("box:\n  enable_vault: false\n")
-        return root, name, box_yaml
-
-    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
-    def test_primary_box_stops_with_a_malformed_box_yaml(
-        self, std, config, tmp_home, live_runtime, capsys, shape,
+    refusal = (
+      "the config file /cfg/agents/claude/agent.yaml is not valid "
+      "YAML: line 2. Fix or remove the file, then retry."
+    )
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = "claude"
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.targets.resolve_target"),
+      patch(
+        "kanibako.commands.start._resolve_box_auth_source",
+        side_effect=ConfigError(refusal),
+      ),
     ):
-        """A PRIMARY box: stopped, under its identity name, with the refusal said."""
-        _label, text = shape
-        target, name, box_yaml = self._primary_box(std, config, tmp_home)
-        box_yaml.write_text(text)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
+      m_resolve.return_value = MagicMock()
+      assert _stop_one(mock_runtime, project_dir=None) == 0
 
-        assert self._drive(live_runtime, target) == 0
+    err = capsys.readouterr().err
+    assert "credential writeback skipped" in err
+    assert refusal in err
 
-        # The stop HAPPENED, on the name identity gives it — the box name, and
-        # nothing the unreadable file could have said about it.
-        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
-        err = capsys.readouterr().err
-        assert err.startswith("Warning: ")
-        # …carrying the REFUSAL'S OWN TEXT, which names the file and the problem
-        # (P10: one wording, not a second one written for the warning).
-        assert str(box_yaml) in err
-        assert "Fix or remove the file, then retry." in err
+  def test_the_stop_is_still_reported(self, std, config, tmp_home, live_runtime, capsys):
+    """The action is complete: rc 0 AND the box is named as stopped.
 
-    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
-    def test_standalone_box_stops_with_a_malformed_box_yaml(
-        self, std, tmp_home, live_runtime, capsys, shape,
-    ):
-        """A STANDALONE box: its container carries the standalone segment and its NAME."""
-        from kanibako.utils import WORKSET_SEGMENT_STANDALONE, container_name_for_box_name
+    The contract is "proceeds and WARNS", so a warning that arrives with a
+    refusal — or a stop that happens without being reported — is the defect
+    this pins shut.
+    """
+    _label, text = self._MALFORMED[0]
+    target, name, box_yaml = self._primary_box(std, config, tmp_home)
+    box_yaml.write_text(text)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
 
-        _label, text = shape
-        root, name, box_yaml = self._standalone_box(std, tmp_home)
-        box_yaml.write_text(text)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
+    assert self._drive(live_runtime, target) == 0
 
-        assert self._drive(live_runtime, root) == 0
+    assert f"Stopped kb-primary-{name}" in capsys.readouterr().out
 
-        live_runtime.stop.assert_called_once_with(
-            container_name_for_box_name(name, WORKSET_SEGMENT_STANDALONE)
-        )
-        err = capsys.readouterr().err
-        assert err.startswith("Warning: ")
-        assert str(box_yaml) in err
-        assert "Fix or remove the file, then retry." in err
+  def test_a_valid_box_yaml_still_stops_without_a_warning(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """The control: the healthy path is silent, and resolves EXACTLY once.
 
-    def test_the_refusal_is_said_once_when_the_writeback_hits_it_too(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """🛑 ONE REFUSAL, ONE SENTENCE — even when the writeback hits the same file.
+    The degraded arm is a SECOND resolve, so the guard against "always retry
+    and always warn" is the call count: one resolve, no warning.
+    """
+    import kanibako.settings.paths as paths
 
-        A live, agent-stamped box runs the on-stop credential writeback, and that
-        auth resolve reads the SAME malformed ``box.yaml``.  Both renders are
-        legitimate (the stop degraded; the writeback was skipped), but printing
-        the refusal's sentence twice is the duplicate-renderer defect this
-        project has already been dinged for — so the second one keeps its
-        "credential writeback skipped" fact and drops the repeated text.
-        """
-        live_runtime.inspect_env.return_value = "claude"  # stamped -> writeback runs
-        _label, text = self._MALFORMED[1]
-        target, _name, box_yaml = self._primary_box(std, config, tmp_home)
-        box_yaml.write_text(text)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
+    target, name, _box_yaml = self._primary_box(std, config, tmp_home)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
 
-        assert self._drive(live_runtime, target) == 0
+    with patch(
+      "kanibako.commands.stop.resolve_box_target",
+      wraps=paths.resolve_box_target,
+    ) as m_resolve:
+      assert self._drive(live_runtime, target) == 0
 
-        err = capsys.readouterr().err
-        sentence = "Fix or remove the file, then retry."
-        assert err.count(sentence) == 1, err
-        # Both facts survive: the refusal, and the skipped writeback.
-        assert "Warning: the config file" in err
-        assert "credential writeback skipped" in err
-
-    def test_a_writeback_refusal_about_another_file_is_still_said_whole(
-        self, mock_runtime, capsys,
-    ):
-        """The dedup is by TEXT, so a DIFFERENT file's refusal is never swallowed.
-
-        The box's ``box.yaml`` is fine here and only ``agent.yaml`` is malformed —
-        the writeback's warning must still carry that file's own refusal sentence,
-        or the user would never learn which file to fix.
-        """
-        from kanibako.errors import ConfigError
-
-        refusal = ("the config file /cfg/agents/claude/agent.yaml is not valid "
-                   "YAML: line 2. Fix or remove the file, then retry.")
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = "claude"
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.targets.resolve_target"),
-            patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                side_effect=ConfigError(refusal),
-            ),
-        ):
-            m_resolve.return_value = MagicMock()
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-
-        err = capsys.readouterr().err
-        assert "credential writeback skipped" in err
-        assert refusal in err
-
-    def test_the_stop_is_still_reported(self, std, config, tmp_home, live_runtime, capsys):
-        """The action is complete: rc 0 AND the box is named as stopped.
-
-        The contract is "proceeds and WARNS", so a warning that arrives with a
-        refusal — or a stop that happens without being reported — is the defect
-        this pins shut.
-        """
-        _label, text = self._MALFORMED[0]
-        target, name, box_yaml = self._primary_box(std, config, tmp_home)
-        box_yaml.write_text(text)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
-
-        assert self._drive(live_runtime, target) == 0
-
-        assert f"Stopped kb-primary-{name}" in capsys.readouterr().out
-
-    def test_a_valid_box_yaml_still_stops_without_a_warning(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """The control: the healthy path is silent, and resolves EXACTLY once.
-
-        The degraded arm is a SECOND resolve, so the guard against "always retry
-        and always warn" is the call count: one resolve, no warning.
-        """
-        import kanibako.settings.paths as paths
-
-        target, name, _box_yaml = self._primary_box(std, config, tmp_home)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
-
-        with patch(
-            "kanibako.commands.stop.resolve_box_target",
-            wraps=paths.resolve_box_target,
-        ) as m_resolve:
-            assert self._drive(live_runtime, target) == 0
-
-        assert m_resolve.call_count == 1
-        assert capsys.readouterr().err == ""
-        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
-
+    assert m_resolve.call_count == 1
+    assert capsys.readouterr().err == ""
+    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
 
 
 class TestStopWithMalformedGlobalSettings:
-    """The GLOBAL settings tier degrades the same way the box tier does.
+  """The GLOBAL settings tier degrades the same way the box tier does.
 
-    ⚑ TWO TIERS, ONE CONTRACT.  ``box.yaml`` and ``<data>/global/settings.yaml``
-    both reach ``stop`` through :func:`load_std_paths` and
-    :func:`resolve_box_target`, and a file that is not a mapping of keys raises
-    ``ConfigError`` out of the settings read.  Neither file names the container:
-    the name is the box's identity (mode, metadata root, registry name, project
-    hash), and identity resolves without a settings file.
+  ⚑ TWO TIERS, ONE CONTRACT.  ``box.yaml`` and ``<data>/global/settings.yaml``
+  both reach ``stop`` through :func:`load_std_paths` and
+  :func:`resolve_box_target`, and a file that is not a mapping of keys raises
+  ``ConfigError`` out of the settings read.  Neither file names the container:
+  the name is the box's identity (mode, metadata root, registry name, project
+  hash), and identity resolves without a settings file.
 
-    ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
-    runtime stubbed, so nothing here needs podman.  The box, the settings file
-    and the whole resolve chain are real.
-    """
+  ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
+  runtime stubbed, so nothing here needs podman.  The box, the settings file
+  and the whole resolve chain are real.
+  """
 
-    _MALFORMED = [
-        ("invalid-yaml", "system: [unclosed\n  bad: :\n"),
-        ("a-list", "- one\n- two\n"),
-    ]
+  _MALFORMED = [
+    ("invalid-yaml", "system: [unclosed\n  bad: :\n"),
+    ("a-list", "- one\n- two\n"),
+  ]
 
-    @pytest.fixture
-    def live_runtime(self):
-        rt = MagicMock()
-        rt.stop.return_value = True
-        rt.is_running.return_value = True
-        rt.inspect_env.return_value = None
-        rt.container_exists.return_value = False
-        rt.rm.return_value = True
-        return rt
+  @pytest.fixture
+  def live_runtime(self):
+    rt = MagicMock()
+    rt.stop.return_value = True
+    rt.is_running.return_value = True
+    rt.inspect_env.return_value = None
+    rt.container_exists.return_value = False
+    rt.rm.return_value = True
+    return rt
 
-    @staticmethod
-    def _primary_box(std, config, tmp_home):
-        """A real PRIMARY box; return ``(workspace, name)``."""
-        from kanibako.settings.paths import resolve_project
+  @staticmethod
+  def _primary_box(std, config, tmp_home):
+    """A real PRIMARY box; return ``(workspace, name)``."""
+    from kanibako.settings.paths import resolve_project
 
-        workspace = tmp_home / "work" / "myapp"
-        workspace.mkdir(parents=True)
-        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
-        return workspace, proj.name
+    workspace = tmp_home / "work" / "myapp"
+    workspace.mkdir(parents=True)
+    proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+    return workspace, proj.name
 
-    @staticmethod
-    def _drive(live_runtime, target):
-        import argparse
+  @staticmethod
+  def _drive(live_runtime, target):
+    import argparse
 
-        args = argparse.Namespace(
-            all_containers=False, project=str(target), force=False,
-        )
-        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
-            return run(args)
+    args = argparse.Namespace(
+      all_containers=False,
+      project=str(target),
+      force=False,
+    )
+    with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+      return run(args)
 
-    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
-    def test_stops_with_a_malformed_global_settings_file(
-        self, std, config, tmp_home, live_runtime, capsys, shape,
-    ):
-        """Stopped under the identity name, with the refusal said as a ``Warning:``."""
-        _label, text = shape
-        workspace, name = self._primary_box(std, config, tmp_home)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        std.settings.write_text(text)
-        capsys.readouterr()  # drain the box creation's one-time-setup notice
+  @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+  def test_stops_with_a_malformed_global_settings_file(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+    shape,
+  ):
+    """Stopped under the identity name, with the refusal said as a ``Warning:``."""
+    _label, text = shape
+    workspace, name = self._primary_box(std, config, tmp_home)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(text)
+    capsys.readouterr()  # drain the box creation's one-time-setup notice
 
-        assert self._drive(live_runtime, workspace) == 0
+    assert self._drive(live_runtime, workspace) == 0
 
-        # The stop HAPPENED, on the name identity gives it.
-        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
-        err = capsys.readouterr().err
-        assert err.startswith("Warning: "), err
-        # …carrying the REFUSAL'S OWN TEXT (P10: one wording, not a second one).
-        assert str(std.settings) in err
-        assert "Fix or remove the file, then retry." in err
+    # The stop HAPPENED, on the name identity gives it.
+    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
+    err = capsys.readouterr().err
+    assert err.startswith("Warning: "), err
+    # …carrying the REFUSAL'S OWN TEXT (P10: one wording, not a second one).
+    assert str(std.settings) in err
+    assert "Fix or remove the file, then retry." in err
 
-    def test_the_refusal_is_said_exactly_once(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """One refusal, one sentence, one place."""
-        _label, text = self._MALFORMED[1]
-        workspace, _name = self._primary_box(std, config, tmp_home)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        std.settings.write_text(text)
-        capsys.readouterr()
+  def test_the_refusal_is_said_exactly_once(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """One refusal, one sentence, one place."""
+    _label, text = self._MALFORMED[1]
+    workspace, _name = self._primary_box(std, config, tmp_home)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(text)
+    capsys.readouterr()
 
-        assert self._drive(live_runtime, workspace) == 0
-        err = capsys.readouterr().err
-        assert err.count("Fix or remove the file, then retry.") == 1, err
-        assert "Error: " not in err, err
+    assert self._drive(live_runtime, workspace) == 0
+    err = capsys.readouterr().err
+    assert err.count("Fix or remove the file, then retry.") == 1, err
+    assert "Error: " not in err, err
 
 
 class TestStopRefusalIsNotPrecededByADeceptiveWarning:
-    """A refusal the degraded resolve cannot route around is reported once.
+  """A refusal the degraded resolve cannot route around is reported once.
 
-    The degraded resolve drops the ADVISORY settings reads only.  A file the
-    identity resolve itself needs — the registry carrying the registered name —
-    still refuses, and then the command must say exactly what ``main`` says: the
-    ``Error:`` line, rc 1, and no ``Warning:`` announcing a stop that never
-    happened.
-    """
+  The degraded resolve drops the ADVISORY settings reads only.  A file the
+  identity resolve itself needs — the registry carrying the registered name —
+  still refuses, and then the command must say exactly what ``main`` says: the
+  ``Error:`` line, rc 1, and no ``Warning:`` announcing a stop that never
+  happened.
+  """
 
-    @pytest.fixture
-    def live_runtime(self):
-        rt = MagicMock()
-        rt.stop.return_value = True
-        rt.is_running.return_value = True
-        rt.inspect_env.return_value = None
-        rt.container_exists.return_value = False
-        rt.rm.return_value = True
-        return rt
+  @pytest.fixture
+  def live_runtime(self):
+    rt = MagicMock()
+    rt.stop.return_value = True
+    rt.is_running.return_value = True
+    rt.inspect_env.return_value = None
+    rt.container_exists.return_value = False
+    rt.rm.return_value = True
+    return rt
 
-    def test_a_malformed_registry_is_one_error_line_and_rc_1(
-        self, std, config, tmp_home, live_runtime, capsys,
+  def test_a_malformed_registry_is_one_error_line_and_rc_1(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    from kanibako.cli import main
+    from kanibako.settings.paths import resolve_project
+
+    workspace = tmp_home / "work" / "myapp"
+    workspace.mkdir(parents=True)
+    resolve_project(std, config, project_dir=str(workspace), initialize=True)
+    std.registry.parent.mkdir(parents=True, exist_ok=True)
+    std.registry.write_text("- one\n- two\n")
+    capsys.readouterr()
+
+    with (
+      patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
+      pytest.raises(SystemExit) as excinfo,
     ):
-        from kanibako.cli import main
-        from kanibako.settings.paths import resolve_project
+      main(["stop", workspace.name])
 
-        workspace = tmp_home / "work" / "myapp"
-        workspace.mkdir(parents=True)
-        resolve_project(std, config, project_dir=str(workspace), initialize=True)
-        std.registry.parent.mkdir(parents=True, exist_ok=True)
-        std.registry.write_text("- one\n- two\n")
-        capsys.readouterr()
-
-        with (
-            patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
-            pytest.raises(SystemExit) as excinfo,
-        ):
-            main(["stop", workspace.name])
-
-        assert excinfo.value.code == 1
-        err = capsys.readouterr().err
-        # The warning the stop did NOT earn must be absent.
-        assert "Warning: " not in err, err
-        # …and the refusal is said exactly once, on the Error: line.
-        assert err.startswith("Error: "), err
-        assert err.count("Fix or remove the file, then retry.") == 1, err
-        live_runtime.stop.assert_not_called()
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    # The warning the stop did NOT earn must be absent.
+    assert "Warning: " not in err, err
+    # …and the refusal is said exactly once, on the Error: line.
+    assert err.startswith("Error: "), err
+    assert err.count("Fix or remove the file, then retry.") == 1, err
+    live_runtime.stop.assert_not_called()
 
 
 class TestStopUnderAPerOwnerCollision:
-    """Keyspec §0 "Per-owner resources": ``stop <box>`` refuses a system file whose inherited
-    per-owner value reaches no owner identity, and ``stop --all`` still stops running boxes.
+  """Keyspec §0 "Per-owner resources": ``stop <box>`` refuses a system file whose inherited
+  per-owner value reaches no owner identity, and ``stop --all`` still stops running boxes.
 
-    ⚑ The refusal propagates out of both of ``stop``'s retries, so nothing is stopped,
-    removed, or written back; ``stop --all`` still stops every running box.
+  ⚑ The refusal propagates out of both of ``stop``'s retries, so nothing is stopped,
+  removed, or written back; ``stop --all`` still stops every running box.
+  """
+
+  @pytest.fixture
+  def live_runtime(self):
+    rt = MagicMock()
+    rt.stop.return_value = True
+    rt.is_running.return_value = True
+    rt.inspect_env.return_value = None
+    rt.container_exists.return_value = True
+    rt.rm.return_value = True
+    return rt
+
+  @staticmethod
+  def _write_system(std, doc):
+    import yaml
+
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(yaml.safe_dump(doc))
+
+  @staticmethod
+  def _main(live_runtime, argv):
+    from kanibako.cli import main
+
+    with (
+      patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
+      patch("kanibako.commands.stop._writeback_on_stop") as writeback,
+      pytest.raises(SystemExit) as excinfo,
+    ):
+      main(argv)
+    return excinfo.value.code, writeback
+
+  @pytest.mark.parametrize("system", [None, {"cache": None}], ids=["collided", "null-cache"])
+  def test_stop_a_box_refuses_once_and_touches_nothing(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+    system,
+  ):
+    workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+    doc: dict = {"workset": {"boxes": "/srv/kb"}}
+    if system is not None:
+      doc["system"] = system
+    self._write_system(std, doc)
+    if system is not None:
+      # The control: the strict read fails on the refused system: table first, so the
+      # per-owner refusal below comes from stop's TOLERANT retry, which keeps the tier.
+      from kanibako.settings.paths import load_std_paths
+
+      with pytest.raises(ConfigError, match="system.cache"):
+        load_std_paths(config)
+    capsys.readouterr()
+
+    rc, writeback = self._main(live_runtime, ["stop", name])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"Error: workset.boxes is set to '/srv/kb' in {std.settings},"), err
+    assert err.count("workset.boxes is set to") == 1, err
+    assert (
+      err.count("kanibako stop --all stops every running box even when a settings file is refused")
+      == 1
+    ), err
+    assert "Warning: " not in err, err
+    assert live_runtime.method_calls == []
+    writeback.assert_not_called()
+
+  @pytest.mark.parametrize(
+    "system",
+    [
+      "workset:\n  boxes: /srv/kb\n",
+      "workset: [unclosed\n",
+    ],
+    ids=["collided", "unreadable"],
+  )
+  def test_stop_all_stops_every_running_box_under_a_refused_file(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+    system,
+  ):
+    """The sweep reads the RUNTIME, so a refused settings file cannot stop it; the
+    skip-line walk is best-effort and says the refusal once."""
+    _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(system)
+    live_runtime.list_running.return_value = [
+      (f"kb-primary-{name}", "img", "Up"),
+      ("kb-team-api", "img", "Up"),
+    ]
+    capsys.readouterr()
+
+    rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
+
+    assert rc == 0
+    assert [c.args for c in live_runtime.stop.call_args_list] == [
+      (f"kb-primary-{name}",),
+      ("kb-team-api",),
+    ]
+    err = capsys.readouterr().err
+    assert err.count("Warning: ") == 1, err
+    assert str(std.settings) in err, err
+    writeback.assert_not_called()
+
+  def test_stop_all_stops_every_running_box_when_the_listing_refuses(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """A null primary ``workset.registry`` refuses the skip-line walk's read; the sweep
+    still stops every running box, and the refusal is said once."""
+    from kanibako.settings.config_io import dump_doc
+
+    _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+    dump_doc(std.primary_workset / "workset.yaml", {"workset": {"registry": None}})
+    live_runtime.list_running.return_value = [(f"kb-primary-{name}", "img", "Up")]
+    capsys.readouterr()
+
+    rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
+
+    assert rc == 0
+    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
+    err = capsys.readouterr().err
+    assert err.count("Warning: ") == 1, err
+    assert "workset.registry" in err, err
+    writeback.assert_not_called()
+
+  def test_a_valid_system_registry_survives_a_refused_system_table(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """A null ``system.cache`` refuses the ``system:`` table, which tolerance drops; the
+    early tier, with its ``workset.registry``, is kept, so the box resolves through
+    ``members.yaml``.
     """
+    from kanibako.settings.paths import load_std_paths
 
-    @pytest.fixture
-    def live_runtime(self):
-        rt = MagicMock()
-        rt.stop.return_value = True
-        rt.is_running.return_value = True
-        rt.inspect_env.return_value = None
-        rt.container_exists.return_value = True
-        rt.rm.return_value = True
-        return rt
+    self._write_system(
+      std,
+      {"workset": {"registry": "{meta.workset.path}/members.yaml"}},
+    )
+    std = load_std_paths(config)
+    workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+    members = std.primary_workset / "members.yaml"
+    assert name in members.read_text()
+    decoy = members.read_text().replace(name, "decoy")
+    (std.primary_workset / "registry.yaml").write_text(decoy)
+    self._write_system(
+      std,
+      {
+        "workset": {"registry": "{meta.workset.path}/members.yaml"},
+        "system": {"cache": None},
+      },
+    )
+    tolerant = load_std_paths(config, tolerate_bad_settings=True)
+    assert tolerant.early_system.system_refusal is not None
+    capsys.readouterr()
 
-    @staticmethod
-    def _write_system(std, doc):
-        import yaml
+    rc, _writeback = self._main(live_runtime, ["stop", str(workspace)])
 
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        std.settings.write_text(yaml.safe_dump(doc))
-
-    @staticmethod
-    def _main(live_runtime, argv):
-        from kanibako.cli import main
-
-        with (
-            patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
-            patch("kanibako.commands.stop._writeback_on_stop") as writeback,
-            pytest.raises(SystemExit) as excinfo,
-        ):
-            main(argv)
-        return excinfo.value.code, writeback
-
-    @pytest.mark.parametrize("system", [None, {"cache": None}], ids=["collided", "null-cache"])
-    def test_stop_a_box_refuses_once_and_touches_nothing(
-        self, std, config, tmp_home, live_runtime, capsys, system,
-    ):
-        workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-        doc: dict = {"workset": {"boxes": "/srv/kb"}}
-        if system is not None:
-            doc["system"] = system
-        self._write_system(std, doc)
-        if system is not None:
-            # The control: the strict read fails on the refused system: table first, so the
-            # per-owner refusal below comes from stop's TOLERANT retry, which keeps the tier.
-            from kanibako.settings.paths import load_std_paths
-
-            with pytest.raises(ConfigError, match="system.cache"):
-                load_std_paths(config)
-        capsys.readouterr()
-
-        rc, writeback = self._main(live_runtime, ["stop", name])
-
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert err.startswith(f"Error: workset.boxes is set to '/srv/kb' in {std.settings},"), err
-        assert err.count("workset.boxes is set to") == 1, err
-        assert err.count("kanibako stop --all stops every running box even when a settings file is refused") == 1, err
-        assert "Warning: " not in err, err
-        assert live_runtime.method_calls == []
-        writeback.assert_not_called()
-
-    @pytest.mark.parametrize("system", [
-        "workset:\n  boxes: /srv/kb\n", "workset: [unclosed\n",
-    ], ids=["collided", "unreadable"])
-    def test_stop_all_stops_every_running_box_under_a_refused_file(
-        self, std, config, tmp_home, live_runtime, capsys, system,
-    ):
-        """The sweep reads the RUNTIME, so a refused settings file cannot stop it; the
-        skip-line walk is best-effort and says the refusal once."""
-        _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        std.settings.write_text(system)
-        live_runtime.list_running.return_value = [
-            (f"kb-primary-{name}", "img", "Up"), ("kb-team-api", "img", "Up"),
-        ]
-        capsys.readouterr()
-
-        rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
-
-        assert rc == 0
-        assert [c.args for c in live_runtime.stop.call_args_list] == [
-            (f"kb-primary-{name}",), ("kb-team-api",),
-        ]
-        err = capsys.readouterr().err
-        assert err.count("Warning: ") == 1, err
-        assert str(std.settings) in err, err
-        writeback.assert_not_called()
-
-    def test_stop_all_stops_every_running_box_when_the_listing_refuses(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """A null primary ``workset.registry`` refuses the skip-line walk's read; the sweep
-        still stops every running box, and the refusal is said once."""
-        from kanibako.settings.config_io import dump_doc
-
-        _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-        dump_doc(std.primary_workset / "workset.yaml", {"workset": {"registry": None}})
-        live_runtime.list_running.return_value = [(f"kb-primary-{name}", "img", "Up")]
-        capsys.readouterr()
-
-        rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
-
-        assert rc == 0
-        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
-        err = capsys.readouterr().err
-        assert err.count("Warning: ") == 1, err
-        assert "workset.registry" in err, err
-        writeback.assert_not_called()
-
-    def test_a_valid_system_registry_survives_a_refused_system_table(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """A null ``system.cache`` refuses the ``system:`` table, which tolerance drops; the
-        early tier, with its ``workset.registry``, is kept, so the box resolves through
-        ``members.yaml``.
-        """
-        from kanibako.settings.paths import load_std_paths
-
-        self._write_system(
-            std, {"workset": {"registry": "{meta.workset.path}/members.yaml"}},
-        )
-        std = load_std_paths(config)
-        workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-        members = std.primary_workset / "members.yaml"
-        assert name in members.read_text()
-        decoy = members.read_text().replace(name, "decoy")
-        (std.primary_workset / "registry.yaml").write_text(decoy)
-        self._write_system(std, {
-            "workset": {"registry": "{meta.workset.path}/members.yaml"},
-            "system": {"cache": None},
-        })
-        tolerant = load_std_paths(config, tolerate_bad_settings=True)
-        assert tolerant.early_system.system_refusal is not None
-        capsys.readouterr()
-
-        rc, _writeback = self._main(live_runtime, ["stop", str(workspace)])
-
-        assert rc == 0
-        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
+    assert rc == 0
+    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
 
 
 class TestStopABoxThatRendersNoName:
-    """A box whose name renders NO name has no container under 1.8.0 to address.
+  """A box whose name renders NO name has no container under 1.8.0 to address.
 
-    ⛔ NO legacy-name fallback — 1.8.0 is a clean break, no aliases.
+  ⛔ NO legacy-name fallback — 1.8.0 is a clean break, no aliases.
+  """
+
+  @pytest.fixture
+  def live_runtime(self):
+    """A LIVE box whose stop succeeds, with no agent stamp (no writeback)."""
+    rt = MagicMock()
+    rt.stop.return_value = True
+    rt.is_running.return_value = True
+    rt.inspect_env.return_value = None
+    rt.container_exists.return_value = False
+    rt.rm.return_value = True
+    return rt
+
+  @staticmethod
+  def _drive(live_runtime, target):
+    """``kanibako stop <target>`` through the command's own entry point."""
+    import argparse
+
+    args = argparse.Namespace(
+      all_containers=False,
+      project=str(target),
+      force=False,
+    )
+    with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+      return run(args)
+
+  @staticmethod
+  def _drive_stop_all(live_runtime):
+    """``kanibako stop --all`` through the command's own entry point."""
+    import argparse
+
+    args = argparse.Namespace(
+      all_containers=True,
+      project=None,
+      force=True,
+    )
+    with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+      return run(args)
+
+  @staticmethod
+  def _legacy_box(std, config, tmp_home):
+    """A real PRIMARY box whose NAME the box-name rule no longer allows.
+
+    An older ``create`` named it for its workspace directory verbatim, unchecked.
     """
+    from kanibako.settings.paths import resolve_project
 
-    @pytest.fixture
-    def live_runtime(self):
-        """A LIVE box whose stop succeeds, with no agent stamp (no writeback)."""
-        rt = MagicMock()
-        rt.stop.return_value = True
-        rt.is_running.return_value = True
-        rt.inspect_env.return_value = None
-        rt.container_exists.return_value = False
-        rt.rm.return_value = True
-        return rt
-
-    @staticmethod
-    def _drive(live_runtime, target):
-        """``kanibako stop <target>`` through the command's own entry point."""
-        import argparse
-
-        args = argparse.Namespace(
-            all_containers=False, project=str(target), force=False,
-        )
-        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
-            return run(args)
-
-    @staticmethod
-    def _drive_stop_all(live_runtime):
-        """``kanibako stop --all`` through the command's own entry point."""
-        import argparse
-
-        args = argparse.Namespace(
-            all_containers=True, project=None, force=True,
-        )
-        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
-            return run(args)
-
-    @staticmethod
-    def _legacy_box(std, config, tmp_home):
-        """A real PRIMARY box whose NAME the box-name rule no longer allows.
-
-        An older ``create`` named it for its workspace directory verbatim, unchecked.
-        """
-        from kanibako.settings.paths import resolve_project
-
-        workspace = tmp_home / "work" / "-legacy"
-        workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
-                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
-            proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
-        return workspace, proj.name
-
-    def test_stop_refuses_with_the_rule_and_the_cure(
-        self, std, config, tmp_home, live_runtime, capsys,
+    workspace = tmp_home / "work" / "-legacy"
+    workspace.mkdir(parents=True)
+    with (
+      patch("kanibako.settings.paths.box_name_reason", return_value=None),
+      patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s),
     ):
-        """``stop <that box>`` says there is no container name, names the cure, rc 1."""
-        workspace, name = self._legacy_box(std, config, tmp_home)
-        capsys.readouterr()
+      proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+    return workspace, proj.name
 
-        assert TestStopABoxThatRendersNoName._drive(live_runtime, workspace) == 1
+  def test_stop_refuses_with_the_rule_and_the_cure(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """``stop <that box>`` says there is no container name, names the cure, rc 1."""
+    workspace, name = self._legacy_box(std, config, tmp_home)
+    capsys.readouterr()
 
-        err = capsys.readouterr().err
-        assert "has no container name" in err
-        assert "must not contain '-'" in err
-        assert "box move" in err and "--name" in err
-        assert name == "-legacy"
+    assert TestStopABoxThatRendersNoName._drive(live_runtime, workspace) == 1
 
-    def test_stop_never_falls_back_to_the_old_container_name(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """No alias: the runtime is never asked about a pre-1.8 name."""
-        workspace, _name = self._legacy_box(std, config, tmp_home)
-        capsys.readouterr()
-        live_runtime.reset_mock()
+    err = capsys.readouterr().err
+    assert "has no container name" in err
+    assert "must not contain '-'" in err
+    assert "box move" in err and "--name" in err
+    assert name == "-legacy"
 
-        assert TestStopABoxThatRendersNoName._drive(live_runtime, workspace) == 1
+  def test_stop_never_falls_back_to_the_old_container_name(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """No alias: the runtime is never asked about a pre-1.8 name."""
+    workspace, _name = self._legacy_box(std, config, tmp_home)
+    capsys.readouterr()
+    live_runtime.reset_mock()
 
-        assert live_runtime.method_calls == [], live_runtime.method_calls
+    assert TestStopABoxThatRendersNoName._drive(live_runtime, workspace) == 1
 
-    def test_a_connected_member_is_offered_box_convert(
-        self, std, tmp_home, live_runtime, capsys,
-    ):
-        """A member connected from outside its workset is renamed in place: ``box move``
-        refuses to relocate it."""
-        from kanibako.project.workset import add_project, create_workset
+    assert live_runtime.method_calls == [], live_runtime.method_calls
 
-        ws = create_workset("team", tmp_home / "worksets" / "team", std)
-        member = (tmp_home / "-member").resolve()
-        member.mkdir()
-        add_project(ws, "-member", member, std)
-        capsys.readouterr()
+  def test_a_connected_member_is_offered_box_convert(
+    self,
+    std,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """A member connected from outside its workset is renamed in place: ``box move``
+    refuses to relocate it."""
+    from kanibako.project.workset import add_project, create_workset
 
-        assert TestStopABoxThatRendersNoName._drive(live_runtime, member) == 1
+    ws = create_workset("team", tmp_home / "worksets" / "team", std)
+    member = (tmp_home / "-member").resolve()
+    member.mkdir()
+    add_project(ws, "-member", member, std)
+    capsys.readouterr()
 
-        err = capsys.readouterr().err
-        assert "has no container name" in err
-        assert err.rstrip().endswith(
-            f"kanibako box convert {member} --workset team --name _member"), err
+    assert TestStopABoxThatRendersNoName._drive(live_runtime, member) == 1
+
+    err = capsys.readouterr().err
+    assert "has no container name" in err
+    assert err.rstrip().endswith(f"kanibako box convert {member} --workset team --name _member"), (
+      err
+    )
 
 
 class TestStopAllSkipsABoxThatRendersNoName:
-    """``stop --all`` sweeps container NAMES, so the offender is named once and skipped."""
+  """``stop --all`` sweeps container NAMES, so the offender is named once and skipped."""
 
-    live_runtime = TestStopABoxThatRendersNoName.live_runtime
+  live_runtime = TestStopABoxThatRendersNoName.live_runtime
 
-    def test_all_continues_past_a_box_that_renders_no_name(
-        self, std, config, tmp_home, live_runtime, capsys,
+  def test_all_continues_past_a_box_that_renders_no_name(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """One such box on disk must not stop the sweep, nor change its rc."""
+    from kanibako.settings.paths import resolve_project
+
+    workspace = tmp_home / "work" / "-legacy"
+    workspace.mkdir(parents=True)
+    with (
+      patch("kanibako.settings.paths.box_name_reason", return_value=None),
+      patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s),
     ):
-        """One such box on disk must not stop the sweep, nor change its rc."""
-        from kanibako.settings.paths import resolve_project
+      resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
-        workspace = tmp_home / "work" / "-legacy"
-        workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
-                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
-            resolve_project(std, config, project_dir=str(workspace), initialize=True)
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+    out = capsys.readouterr().out
+    assert "Skipped box '-legacy'" in out
+    assert "Stopped kb-primary-other" in out
+    live_runtime.stop.assert_called_once_with("kb-primary-other")
 
-        out = capsys.readouterr().out
-        assert "Skipped box '-legacy'" in out
-        assert "Stopped kb-primary-other" in out
-        live_runtime.stop.assert_called_once_with("kb-primary-other")
+  def test_all_names_a_named_workset_member_that_renders_no_name(
+    self,
+    std,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """The skip line covers every mode, not only primary boxes: a NAMED member."""
+    from kanibako.project.workset import add_project, create_workset
 
-    def test_all_names_a_named_workset_member_that_renders_no_name(
-        self, std, tmp_home, live_runtime, capsys,
+    ws = create_workset("team", tmp_home / "worksets" / "team", std)
+    (tmp_home / "-member").mkdir()
+    add_project(ws, "-member", tmp_home / "-member")
+    live_runtime.list_running.return_value = [
+      ("kb-team-api", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
+
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+    out = capsys.readouterr().out
+    assert "Skipped box '-member'" in out
+    live_runtime.stop.assert_called_once_with("kb-team-api")
+
+  def test_all_names_a_member_of_a_legacy_workset(
+    self,
+    std,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """A workset name the rule no longer allows renders no name for its members (§0)."""
+    from kanibako.project.workset import add_project, create_workset
+
+    ws = create_workset("team", tmp_home / "worksets" / "team", std)
+    (tmp_home / "fine").mkdir()
+    add_project(ws, "fine", tmp_home / "fine")
+    with patch(
+      "kanibako.settings.paths.iter_workset_projects",
+      return_value=[("my-set", ws, [("fine", "ok")])],
     ):
-        """The skip line covers every mode, not only primary boxes: a NAMED member."""
-        from kanibako.project.workset import add_project, create_workset
+      live_runtime.list_running.return_value = []
+      capsys.readouterr()
+      assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-        ws = create_workset("team", tmp_home / "worksets" / "team", std)
-        (tmp_home / "-member").mkdir()
-        add_project(ws, "-member", tmp_home / "-member")
-        live_runtime.list_running.return_value = [
-            ("kb-team-api", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+    assert "Skipped box 'fine'" in capsys.readouterr().out
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+  def test_all_names_a_standalone_box_that_renders_no_name(
+    self,
+    std,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """... and a STANDALONE box, read from the registry ``box list`` reads."""
+    from kanibako.project.registry_store import register_standalone
 
-        out = capsys.readouterr().out
-        assert "Skipped box '-member'" in out
-        live_runtime.stop.assert_called_once_with("kb-team-api")
+    register_standalone(std.registry, "-solo", tmp_home / "solo")
+    live_runtime.list_running.return_value = [
+      ("kb-standalone-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-    def test_all_names_a_member_of_a_legacy_workset(
-        self, std, tmp_home, live_runtime, capsys,
-    ):
-        """A workset name the rule no longer allows renders no name for its members (§0)."""
-        from kanibako.project.workset import add_project, create_workset
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-        ws = create_workset("team", tmp_home / "worksets" / "team", std)
-        (tmp_home / "fine").mkdir()
-        add_project(ws, "fine", tmp_home / "fine")
-        with patch("kanibako.settings.paths.iter_workset_projects",
-                   return_value=[("my-set", ws, [("fine", "ok")])]):
-            live_runtime.list_running.return_value = []
-            capsys.readouterr()
-            assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+    out = capsys.readouterr().out
+    assert "Skipped box '-solo'" in out
+    live_runtime.stop.assert_called_once_with("kb-standalone-other")
 
-        assert "Skipped box 'fine'" in capsys.readouterr().out
+  def test_an_unreadable_registry_is_said_and_the_sweep_continues(
+    self,
+    std,
+    live_runtime,
+    capsys,
+  ):
+    """The walk only names skipped boxes, so a refused file is WARNED, never hidden."""
+    std.registry.parent.mkdir(parents=True, exist_ok=True)
+    std.registry.write_text("- one\n- two\n")
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-    def test_all_names_a_standalone_box_that_renders_no_name(
-        self, std, tmp_home, live_runtime, capsys,
-    ):
-        """... and a STANDALONE box, read from the registry ``box list`` reads."""
-        from kanibako.project.registry_store import register_standalone
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-        register_standalone(std.registry, "-solo", tmp_home / "solo")
-        live_runtime.list_running.return_value = [
-            ("kb-standalone-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+    captured = capsys.readouterr()
+    assert "Warning: " in captured.err, captured.err
+    assert str(std.registry) in captured.err, captured.err
+    live_runtime.stop.assert_called_once_with("kb-primary-other")
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+  def test_all_still_stops_the_rest_when_no_box_is_skipped(
+    self,
+    live_runtime,
+    capsys,
+  ):
+    """The sweep's own behavior is unchanged when nothing renders no name."""
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-        out = capsys.readouterr().out
-        assert "Skipped box '-solo'" in out
-        live_runtime.stop.assert_called_once_with("kb-standalone-other")
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-    def test_an_unreadable_registry_is_said_and_the_sweep_continues(
-        self, std, live_runtime, capsys,
-    ):
-        """The walk only names skipped boxes, so a refused file is WARNED, never hidden."""
-        std.registry.parent.mkdir(parents=True, exist_ok=True)
-        std.registry.write_text("- one\n- two\n")
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
-
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
-
-        captured = capsys.readouterr()
-        assert "Warning: " in captured.err, captured.err
-        assert str(std.registry) in captured.err, captured.err
-        live_runtime.stop.assert_called_once_with("kb-primary-other")
-
-    def test_all_still_stops_the_rest_when_no_box_is_skipped(
-        self, live_runtime, capsys,
-    ):
-        """The sweep's own behavior is unchanged when nothing renders no name."""
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
-
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
-
-        out = capsys.readouterr().out
-        assert "Skipped box" not in out
-        assert "Stopped kb-primary-other" in out
+    out = capsys.readouterr().out
+    assert "Skipped box" not in out
+    assert "Stopped kb-primary-other" in out
 
 
 class TestStopAllIsolatesARegistryRefusal:
-    """A registry that will not parse costs its OWN mode's skip lines, and no other."""
+  """A registry that will not parse costs its OWN mode's skip lines, and no other."""
 
-    live_runtime = TestStopABoxThatRendersNoName.live_runtime
+  live_runtime = TestStopABoxThatRendersNoName.live_runtime
 
-    @staticmethod
-    def _one_box_in_every_mode(std, config, tmp_home):
-        """A PRIMARY, a STANDALONE and a NAMED box, all rendering no container name."""
-        from kanibako.project.registry_store import register_standalone
-        from kanibako.project.workset import add_project, create_workset
-        from kanibako.settings.paths import resolve_project
+  @staticmethod
+  def _one_box_in_every_mode(std, config, tmp_home):
+    """A PRIMARY, a STANDALONE and a NAMED box, all rendering no container name."""
+    from kanibako.project.registry_store import register_standalone
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import resolve_project
 
-        workspace = tmp_home / "work" / "-legacy"
-        workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
-                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
-            resolve_project(std, config, project_dir=str(workspace), initialize=True)
-
-        (tmp_home / "solo").mkdir()
-        register_standalone(std.registry, "-solo", tmp_home / "solo")
-
-        ws = create_workset("team", tmp_home / "worksets" / "team", std)
-        (tmp_home / "-member").mkdir()
-        add_project(ws, "-member", tmp_home / "-member")
-
-    @staticmethod
-    def _primary_registry(std):
-        """The PRIMARY workset's membership file — the one ``load_primary_boxes`` reads."""
-        return std.primary_workset / "registry.yaml"
-
-    def test_a_broken_primary_registry_costs_only_the_primary_lines(
-        self, std, config, tmp_home, live_runtime, capsys,
+    workspace = tmp_home / "work" / "-legacy"
+    workspace.mkdir(parents=True)
+    with (
+      patch("kanibako.settings.paths.box_name_reason", return_value=None),
+      patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s),
     ):
-        """The NAMED and STANDALONE skip lines survive the PRIMARY registry's refusal."""
-        self._one_box_in_every_mode(std, config, tmp_home)
-        registry = self._primary_registry(std)
-        assert registry.is_file(), registry
-        registry.write_text("- not a mapping\n")
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+      resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+    (tmp_home / "solo").mkdir()
+    register_standalone(std.registry, "-solo", tmp_home / "solo")
 
-        out = capsys.readouterr().out
-        assert "Skipped box '-solo'" in out, out
-        assert "Skipped box '-member'" in out, out
-        live_runtime.stop.assert_called_once_with("kb-primary-other")
+    ws = create_workset("team", tmp_home / "worksets" / "team", std)
+    (tmp_home / "-member").mkdir()
+    add_project(ws, "-member", tmp_home / "-member")
 
-    def test_the_refused_source_is_still_warned_about_and_the_sweep_goes_on(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """ISOLATION, NOT SILENCE: the broken registry is named, and the sweep runs."""
-        self._one_box_in_every_mode(std, config, tmp_home)
-        registry = self._primary_registry(std)
-        registry.write_text("- not a mapping\n")
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+  @staticmethod
+  def _primary_registry(std):
+    """The PRIMARY workset's membership file — the one ``load_primary_boxes`` reads."""
+    return std.primary_workset / "registry.yaml"
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+  def test_a_broken_primary_registry_costs_only_the_primary_lines(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """The NAMED and STANDALONE skip lines survive the PRIMARY registry's refusal."""
+    self._one_box_in_every_mode(std, config, tmp_home)
+    registry = self._primary_registry(std)
+    assert registry.is_file(), registry
+    registry.write_text("- not a mapping\n")
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-        captured = capsys.readouterr()
-        assert "Warning: " in captured.err, captured.err
-        assert str(registry) in captured.err, captured.err
-        assert "Stopped kb-primary-other" in captured.out, captured.out
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-    def test_a_broken_global_registry_costs_only_the_lines_it_feeds(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """The PRIMARY line survives a broken global registry; that file feeds the other two.
+    out = capsys.readouterr().out
+    assert "Skipped box '-solo'" in out, out
+    assert "Skipped box '-member'" in out, out
+    live_runtime.stop.assert_called_once_with("kb-primary-other")
 
-        The global ``registry.yaml`` holds BOTH the ``standalone:`` and the ``worksets:``
-        sections, so one refusal legitimately costs the STANDALONE and NAMED reads
-        together.  It must not reach the PRIMARY workset's own registry.
-        """
-        self._one_box_in_every_mode(std, config, tmp_home)
-        std.registry.parent.mkdir(parents=True, exist_ok=True)
-        std.registry.write_text("- not a mapping\n")
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+  def test_the_refused_source_is_still_warned_about_and_the_sweep_goes_on(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """ISOLATION, NOT SILENCE: the broken registry is named, and the sweep runs."""
+    self._one_box_in_every_mode(std, config, tmp_home)
+    registry = self._primary_registry(std)
+    registry.write_text("- not a mapping\n")
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
 
-        out = capsys.readouterr().out
-        assert "Skipped box '-legacy'" in out, out
-        assert "Skipped box '-solo'" not in out, out
-        assert "Skipped box '-member'" not in out, out
-        live_runtime.stop.assert_called_once_with("kb-primary-other")
+    captured = capsys.readouterr()
+    assert "Warning: " in captured.err, captured.err
+    assert str(registry) in captured.err, captured.err
+    assert "Stopped kb-primary-other" in captured.out, captured.out
 
-    def test_every_mode_is_still_named_when_no_registry_refuses(
-        self, std, config, tmp_home, live_runtime, capsys,
-    ):
-        """A guard on the walk itself: with every registry readable, all three appear."""
-        self._one_box_in_every_mode(std, config, tmp_home)
-        live_runtime.list_running.return_value = [
-            ("kb-primary-other", "img:latest", "Up 1 minute"),
-        ]
-        capsys.readouterr()
+  def test_a_broken_global_registry_costs_only_the_lines_it_feeds(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """The PRIMARY line survives a broken global registry; that file feeds the other two.
 
-        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+    The global ``registry.yaml`` holds BOTH the ``standalone:`` and the ``worksets:``
+    sections, so one refusal legitimately costs the STANDALONE and NAMED reads
+    together.  It must not reach the PRIMARY workset's own registry.
+    """
+    self._one_box_in_every_mode(std, config, tmp_home)
+    std.registry.parent.mkdir(parents=True, exist_ok=True)
+    std.registry.write_text("- not a mapping\n")
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
 
-        out = capsys.readouterr().out
-        for name in ("-legacy", "-solo", "-member"):
-            assert f"Skipped box '{name}'" in out, out
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+    out = capsys.readouterr().out
+    assert "Skipped box '-legacy'" in out, out
+    assert "Skipped box '-solo'" not in out, out
+    assert "Skipped box '-member'" not in out, out
+    live_runtime.stop.assert_called_once_with("kb-primary-other")
+
+  def test_every_mode_is_still_named_when_no_registry_refuses(
+    self,
+    std,
+    config,
+    tmp_home,
+    live_runtime,
+    capsys,
+  ):
+    """A guard on the walk itself: with every registry readable, all three appear."""
+    self._one_box_in_every_mode(std, config, tmp_home)
+    live_runtime.list_running.return_value = [
+      ("kb-primary-other", "img:latest", "Up 1 minute"),
+    ]
+    capsys.readouterr()
+
+    assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+    out = capsys.readouterr().out
+    for name in ("-legacy", "-solo", "-member"):
+      assert f"Skipped box '{name}'" in out, out
 
 
 class TestStopEndsTheHelperHub:
-    """184-S2 (a) [Jei:2026-10-13]: the hub outlives ``start``, so ``stop`` ends it, and its
-    helpers."""
+  """184-S2 (a) [Jei:2026-10-13]: the hub outlives ``start``, so ``stop`` ends it, and its
+  helpers."""
 
-    def test_stop_stops_the_boxs_hub(self, mock_runtime, tmp_path):
-        """(Mutation: drop the ``stop_box_helper_hub`` call -> RED.)"""
-        from pathlib import Path
+  def test_stop_stops_the_boxs_hub(self, mock_runtime, tmp_path):
+    """(Mutation: drop the ``stop_box_helper_hub`` call -> RED.)"""
+    from pathlib import Path
 
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None
-        sock = Path("/run/kb/app-primary/helper.sock")
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths") as m_std,
-            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
-            patch("kanibako.commands.start.helper_socket_path",
-                  return_value=sock) as m_path,
-            patch("kanibako.channels.hub_daemon.stop_hub", return_value=True) as m_stop,
-        ):
-            m_resolve.return_value = MagicMock()
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-        assert m_path.call_args.args == (m_resolve.return_value, m_std.return_value.runtime)
-        m_stop.assert_called_once_with(sock)
-
-    def test_a_hub_that_will_not_stop_is_said_and_the_stop_succeeds(
-        self, mock_runtime, capsys,
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None
+    sock = Path("/run/kb/app-primary/helper.sock")
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths") as m_std,
+      patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+      patch("kanibako.commands.start.helper_socket_path", return_value=sock) as m_path,
+      patch("kanibako.channels.hub_daemon.stop_hub", return_value=True) as m_stop,
     ):
-        from pathlib import Path
+      m_resolve.return_value = MagicMock()
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+    assert m_path.call_args.args == (m_resolve.return_value, m_std.return_value.runtime)
+    m_stop.assert_called_once_with(sock)
 
-        mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None
-        with (
-            patch("kanibako.commands.stop.load_config"),
-            patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_box_target"),
-            patch("kanibako.commands.start.helper_socket_path",
-                  return_value=Path("/run/kb/x/helper.sock")),
-            patch("kanibako.channels.hub_daemon.stop_hub", return_value=False),
-        ):
-            assert _stop_one(mock_runtime, project_dir=None) == 0
-        assert "helper hub" in capsys.readouterr().err
+  def test_a_hub_that_will_not_stop_is_said_and_the_stop_succeeds(
+    self,
+    mock_runtime,
+    capsys,
+  ):
+    from pathlib import Path
+
+    mock_runtime.is_running.return_value = True
+    mock_runtime.inspect_env.return_value = None
+    with (
+      patch("kanibako.commands.stop.load_config"),
+      patch("kanibako.commands.stop.load_std_paths"),
+      patch("kanibako.commands.stop.resolve_box_target"),
+      patch(
+        "kanibako.commands.start.helper_socket_path", return_value=Path("/run/kb/x/helper.sock")
+      ),
+      patch("kanibako.channels.hub_daemon.stop_hub", return_value=False),
+    ):
+      assert _stop_one(mock_runtime, project_dir=None) == 0
+    assert "helper hub" in capsys.readouterr().err

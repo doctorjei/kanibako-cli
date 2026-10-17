@@ -79,7 +79,9 @@ def clean_probe(monkeypatch):
 def claude_only(clean_probe, monkeypatch):
   """As :func:`clean_probe`, with discovery answering "claude, and no leaves"."""
   monkeypatch.setattr(
-    probe, "_PLUGINS", {name: frozenset() for name in _CLAUDE_ONLY},
+    probe,
+    "_PLUGINS",
+    {name: frozenset() for name in _CLAUDE_ONLY},
   )
   return clean_probe
 
@@ -201,12 +203,8 @@ def test_a_PERSONA_is_known_by_its_HARNESS(claude_only):
   harness name and ``settings_keyspace.agent_declared_leaves`` normalizes. Asserted
   through the VERDICT, which is the only thing that was ever load-bearing.
   """
-  assert probe.keyspace_verdict(
-    "agent.navigator℘claude.zippity"
-  ).cls is KeyClass.UNDECLARED
-  assert probe.keyspace_verdict(
-    "agent.navigator℘goose.zippity"
-  ).cls is KeyClass.KEY
+  assert probe.keyspace_verdict("agent.navigator℘claude.zippity").cls is KeyClass.UNDECLARED
+  assert probe.keyspace_verdict("agent.navigator℘goose.zippity").cls is KeyClass.KEY
 
 
 def test_the_concession_does_NOT_reach_the_relic_shapes(claude_only):
@@ -283,13 +281,13 @@ def test_the_memo_survives_a_change_of_DISCOVERY(clean_probe, monkeypatch):
   """
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
   monkeypatch.setattr(
-    probe, "_PLUGINS", {"goose": frozenset()},
+    probe,
+    "_PLUGINS",
+    {"goose": frozenset()},
   )
   # Uncached, it would now refuse; cached, the earlier answer stands.
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
-  assert probe.declared_keyspace_oracle(
-    "agent.goose.provider"
-  ).cls is KeyClass.UNDECLARED
+  assert probe.declared_keyspace_oracle("agent.goose.provider").cls is KeyClass.UNDECLARED
 
 
 def test_an_oracle_FAULT_answers_UNDECLARED_and_names_itself(clean_probe, monkeypatch):
@@ -300,6 +298,7 @@ def test_an_oracle_FAULT_answers_UNDECLARED_and_names_itself(clean_probe, monkey
   The fault is also COUNTED, so a run can say the instrument misbehaved rather than
   report a clean sheet it never measured.
   """
+
   def boom(path):
     raise RuntimeError("oracle is broken")
 
@@ -331,6 +330,7 @@ class _Descriptor:
 
 def _target(*keys, broken=False):
   """A minimal ``Target``-shaped class: one ``setting_descriptors`` and nothing else."""
+
   class _T:
     def setting_descriptors(self):
       if broken:
@@ -349,6 +349,7 @@ def _target_breaking_part_way(reached, unreached):
   what it took. That is the only way to tell "the contribution was merged as it
   arrived" from "it was merged once whole".
   """
+
   class _T:
     def setting_descriptors(self):
       yield _Descriptor(reached)
@@ -378,7 +379,8 @@ def test_discovery_is_ONE_pass_supplying_BOTH_halves(clean_probe, monkeypatch):
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
   assert probe.plugin_agent_leaf_map() == {
-    "claude": frozenset({"model"}), "goose": frozenset({"provider"}),
+    "claude": frozenset({"model"}),
+    "goose": frozenset({"provider"}),
   }
   assert "zzznotinstalled" not in probe.AGENT_LEAF_MAP
   assert len(calls) == 1, "the whole map must come from the SAME discovery pass"
@@ -394,6 +396,7 @@ def test_discovery_that_will_not_import_concedes_BOTH_halves(clean_probe, monkey
   MUTATION: let the exception escape ``_discover`` and every resolve in the process
   raises out of the refusal seam instead.
   """
+
   def explode():
     raise ImportError("no plugin machinery here")
 
@@ -413,6 +416,7 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
   ⚑ The faulting agent's OWN standing is the case below; this one is only that the
   blast radius stops at it.
   """
+
   def fake_discover():
     return {"claude": _target("model"), "goose": _target(broken=True)}
 
@@ -422,7 +426,8 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
 
 
 def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
-  clean_probe, monkeypatch,
+  clean_probe,
+  monkeypatch,
 ):
   """⚑⚑ THE DEPENDENT PAIR IS PER AGENT, NOT MERELY PER PASS.
 
@@ -441,6 +446,7 @@ def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
   ``_discover`` and the first two assertions redden, the goose one naming "not a
   declared agent key" as its cause.
   """
+
   def fake_discover():
     return {"claude": _target("model"), "goose": _target("provider", broken=True)}
 
@@ -463,6 +469,7 @@ def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatc
   MUTATION: accumulate the descriptors into ``declared_by[name]`` as they arrive and
   the salvaged leaf reappears under a ``goose`` key that must not exist.
   """
+
   def fake_discover():
     return {
       "claude": _target("model"),
@@ -517,11 +524,24 @@ def counting_discovery(clean_probe, monkeypatch):
   return calls
 
 
-@pytest.mark.parametrize("path", [
-  "box", "box.image", "box.zippity", "system.template", "workset.boxes",
-  "meta.box.path", "meta.agent.claude.zippity", "pref.box.image", "config.data",
-  "agent", "agent.claude", "agent.claude.model", "agent.default.access",
-])
+@pytest.mark.parametrize(
+  "path",
+  [
+    "box",
+    "box.image",
+    "box.zippity",
+    "system.template",
+    "workset.boxes",
+    "meta.box.path",
+    "meta.agent.claude.zippity",
+    "pref.box.image",
+    "config.data",
+    "agent",
+    "agent.claude",
+    "agent.claude.model",
+    "agent.default.access",
+  ],
+)
 def test_a_path_the_CORE_keyspace_answers_imports_NO_plugin(path, counting_discovery):
   """⚑ THE DEFERRAL, through the entry point the live consumers actually call.
 
@@ -597,7 +617,9 @@ def test_anything_else_ARMS_it(clean_probe, monkeypatch, token):
 
 
 def test_a_disarmed_probe_never_touches_the_store_or_the_file(
-  clean_probe, monkeypatch, tmp_path,
+  clean_probe,
+  monkeypatch,
+  tmp_path,
 ):
   """⚑ PROPERTY 1. Disarmed, ``observe`` returns before it reads anything — so a
   store that cannot be walked at all costs a production launch nothing.

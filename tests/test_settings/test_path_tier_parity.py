@@ -65,6 +65,7 @@ from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAUL
 # that uses it.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def named_proj(std, config, tmp_home):
   ws_root = tmp_home / "worksets" / "my_set"
@@ -73,7 +74,11 @@ def named_proj(std, config, tmp_home):
   source.mkdir()
   add_project(workset, "cool_app", source)
   return resolve_workset_project(
-    WorksetSpec.from_workset(workset), "cool_app", std, config, initialize=True,
+    WorksetSpec.from_workset(workset),
+    "cool_app",
+    std,
+    config,
+    initialize=True,
   )
 
 
@@ -136,7 +141,9 @@ class TestAntiVacuity:
   def test_the_launch_side_of_each_pair_is_non_empty(self, std, primary_proj):
     assert paths.system_path_floor(std), "system_path_floor returned nothing"
     assert agent_select.launch_resolve_ctx(
-      std, primary_proj, "claude",
+      std,
+      primary_proj,
+      "claude",
     ).config, "launch_resolve_ctx carried no config.* entries"
 
 
@@ -166,10 +173,14 @@ class TestConfigTierParity:
   """
 
   @pytest.mark.parametrize(
-    "proj_fixture", ["primary_proj", "named_proj", "standalone_proj"],
+    "proj_fixture",
+    ["primary_proj", "named_proj", "standalone_proj"],
   )
   def test_every_settable_config_key_reaches_the_launch_ctx(
-    self, request, std, proj_fixture,
+    self,
+    request,
+    std,
+    proj_fixture,
   ):
     proj = request.getfixturevalue(proj_fixture)
     set_time, _ = config_interface._path_tier_split()
@@ -177,7 +188,9 @@ class TestConfigTierParity:
     assert set(set_time), "set-time config.* foundation is empty"
     assert set(launch), "launch config.* ctx is empty"
     assert set(set_time) == set(launch), _report(
-      f"config.* ({proj_fixture})", set(set_time), set(launch),
+      f"config.* ({proj_fixture})",
+      set(set_time),
+      set(launch),
     )
 
   def test_the_selection_pass_carries_the_same_config_keys(self, std, primary_proj):
@@ -189,5 +202,7 @@ class TestConfigTierParity:
     set_time, _ = config_interface._path_tier_split()
     launch = agent_select.launch_resolve_ctx(std, primary_proj, None).config
     assert set(set_time) == set(launch), _report(
-      "config.* (selection pass)", set(set_time), set(launch),
+      "config.* (selection pass)",
+      set(set_time),
+      set(launch),
     )

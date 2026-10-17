@@ -11,19 +11,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.commands.diagnose import (
-    _SettingsErrorLog,
-    _check_agents,
-    _check_image,
-    _check_journal,
-    _check_runtime,
-    _check_storage,
-    _check_vscode,
-    _diagnose_baseline,
-    _format_check,
-    probe_missing_executables,
-    run_box_diagnose,
-    run_rig_diagnose,
-    run_system_diagnose,
+  _SettingsErrorLog,
+  _check_agents,
+  _check_image,
+  _check_journal,
+  _check_runtime,
+  _check_storage,
+  _check_vscode,
+  _diagnose_baseline,
+  _format_check,
+  probe_missing_executables,
+  run_box_diagnose,
+  run_rig_diagnose,
+  run_system_diagnose,
 )
 
 # The detail `_report_settings_error` prints on the broken check's OWN line,
@@ -34,2077 +34,2079 @@ _SETTINGS_ERROR_DETAIL = "settings error -- see 'Settings errors' below"
 
 
 class TestFormatCheck:
-    def test_format_ok(self) -> None:
-        result = _format_check("ok", "Runtime", "podman 5.0")
-        assert result == "[ok] Runtime: podman 5.0"
+  def test_format_ok(self) -> None:
+    result = _format_check("ok", "Runtime", "podman 5.0")
+    assert result == "[ok] Runtime: podman 5.0"
 
-    def test_format_error(self) -> None:
-        result = _format_check("!!", "Runtime", "not found")
-        assert result == "[!!] Runtime: not found"
+  def test_format_error(self) -> None:
+    result = _format_check("!!", "Runtime", "not found")
+    assert result == "[!!] Runtime: not found"
 
-    def test_format_skip(self) -> None:
-        result = _format_check("--", "Storage", "cannot check")
-        assert result == "[--] Storage: cannot check"
+  def test_format_skip(self) -> None:
+    result = _format_check("--", "Storage", "cannot check")
+    assert result == "[--] Storage: cannot check"
 
 
 class TestCheckRuntime:
-    def test_check_runtime_no_runtime(self) -> None:
-        """When ContainerRuntime raises, returns error status."""
-        from kanibako.errors import ContainerError
+  def test_check_runtime_no_runtime(self) -> None:
+    """When ContainerRuntime raises, returns error status."""
+    from kanibako.errors import ContainerError
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
-        ):
-            status, detail = _check_runtime()
-        assert status == "!!"
-        # The error's own message, so the cause it names reaches the report.
-        assert detail == "KANIBAKO_DOCKER_CMD names 'x' (test)"
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
+    ):
+      status, detail = _check_runtime()
+    assert status == "!!"
+    # The error's own message, so the cause it names reaches the report.
+    assert detail == "KANIBAKO_DOCKER_CMD names 'x' (test)"
 
-    def test_check_runtime_found(self) -> None:
-        """When ContainerRuntime succeeds, returns ok status."""
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        with (
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                return_value=mock_runtime,
-            ),
-            patch("subprocess.run") as mock_run,
-        ):
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="podman version 5.0.0"
-            )
-            status, detail = _check_runtime()
-        assert status == "ok"
-        assert "podman" in detail
-        assert "5.0.0" in detail
+  def test_check_runtime_found(self) -> None:
+    """When ContainerRuntime succeeds, returns ok status."""
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        return_value=mock_runtime,
+      ),
+      patch("subprocess.run") as mock_run,
+    ):
+      mock_run.return_value = MagicMock(returncode=0, stdout="podman version 5.0.0")
+      status, detail = _check_runtime()
+    assert status == "ok"
+    assert "podman" in detail
+    assert "5.0.0" in detail
 
 
 class TestCheckAgents:
-    def test_check_agents_none(self) -> None:
-        """No agent plugins returns error status."""
-        with patch(
-            "kanibako.targets.discover_targets", return_value={}
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "!!"
-        assert results[0][1] == "Agents"
-        assert "no agent plugins" in results[0][2]
+  def test_check_agents_none(self) -> None:
+    """No agent plugins returns error status."""
+    with patch("kanibako.targets.discover_targets", return_value={}):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "!!"
+    assert results[0][1] == "Agents"
+    assert "no agent plugins" in results[0][2]
 
-    def test_check_agents_found(self, tmp_path: Path) -> None:
-        """Discovered agent with detect() returning install (existing binary) -> ok."""
-        binary = tmp_path / "claude"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+  def test_check_agents_found(self, tmp_path: Path) -> None:
+    """Discovered agent with detect() returning install (existing binary) -> ok."""
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
 
-        mock_install = MagicMock()
-        mock_install.binary = binary
+    mock_install = MagicMock()
+    mock_install.binary = binary
 
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = mock_install
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = mock_install
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "ok"
-        assert "Claude Code" in results[0][1]
-        assert str(binary) in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "ok"
+    assert "Claude Code" in results[0][1]
+    assert str(binary) in results[0][2]
 
-    def test_check_agents_not_installed_is_optional(self) -> None:
-        """A real agent (has_binary True) that isn't installed -> [--] optional.
+  def test_check_agents_not_installed_is_optional(self) -> None:
+    """A real agent (has_binary True) that isn't installed -> [--] optional.
 
-        A not-installed optional agent is informational, NOT an error.
-        """
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = None
+    A not-installed optional agent is informational, NOT an error.
+    """
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = None
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "--"
-        assert "not installed (optional)" in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "--"
+    assert "not installed (optional)" in results[0][2]
 
-    def test_detected_agent_existing_binary_ok(self, tmp_path: Path) -> None:
-        """A detected agent whose binary exists on disk -> [ok] with the path."""
-        binary = tmp_path / "claude"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+  def test_detected_agent_existing_binary_ok(self, tmp_path: Path) -> None:
+    """A detected agent whose binary exists on disk -> [ok] with the path."""
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
 
-        mock_install = MagicMock()
-        mock_install.binary = binary
+    mock_install = MagicMock()
+    mock_install.binary = binary
 
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = mock_install
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = mock_install
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "ok"
-        assert str(binary) in results[0][2]
-        assert "not found" not in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "ok"
+    assert str(binary) in results[0][2]
+    assert "not found" not in results[0][2]
 
-    def test_detected_agent_missing_binary_errors(self) -> None:
-        """A detected agent whose recorded binary is dangling -> [!!]."""
-        mock_install = MagicMock()
-        mock_install.binary = Path("/nonexistent/x")
+  def test_detected_agent_missing_binary_errors(self) -> None:
+    """A detected agent whose recorded binary is dangling -> [!!]."""
+    mock_install = MagicMock()
+    mock_install.binary = Path("/nonexistent/x")
 
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = mock_install
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = mock_install
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "!!"
-        assert "binary not found at" in results[0][2]
-        assert "/nonexistent/x" in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "!!"
+    assert "binary not found at" in results[0][2]
+    assert "/nonexistent/x" in results[0][2]
 
-    def test_detected_agent_empty_binary_errors(self, tmp_path: Path) -> None:
-        """A detected agent whose binary exists but is 0 bytes -> [!!].
+  def test_detected_agent_empty_binary_errors(self, tmp_path: Path) -> None:
+    """A detected agent whose binary exists but is 0 bytes -> [!!].
 
-        A 0-byte file passes a bare exists() check yet bricks the box at
-        launch; diagnose must flag it.
-        """
-        binary = tmp_path / "claude"
-        binary.touch()  # 0 bytes
-        binary.chmod(0o755)
+    A 0-byte file passes a bare exists() check yet bricks the box at
+    launch; diagnose must flag it.
+    """
+    binary = tmp_path / "claude"
+    binary.touch()  # 0 bytes
+    binary.chmod(0o755)
 
-        mock_install = MagicMock()
-        mock_install.binary = binary
+    mock_install = MagicMock()
+    mock_install.binary = binary
 
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = mock_install
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = mock_install
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "!!"
-        assert "0 bytes" in results[0][2]
-        assert str(binary) in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "!!"
+    assert "0 bytes" in results[0][2]
+    assert str(binary) in results[0][2]
 
-    def test_detected_agent_nonexecutable_binary_errors(
-        self, tmp_path: Path
-    ) -> None:
-        """A detected agent whose binary exists but lacks the exec bit -> [!!]."""
-        binary = tmp_path / "claude"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o644)  # not executable
+  def test_detected_agent_nonexecutable_binary_errors(self, tmp_path: Path) -> None:
+    """A detected agent whose binary exists but lacks the exec bit -> [!!]."""
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o644)  # not executable
 
-        mock_install = MagicMock()
-        mock_install.binary = binary
+    mock_install = MagicMock()
+    mock_install.binary = binary
 
-        mock_target = MagicMock()
-        mock_target.display_name = "Claude Code"
-        mock_target.has_binary = True
-        mock_target.detect.return_value = mock_install
+    mock_target = MagicMock()
+    mock_target.display_name = "Claude Code"
+    mock_target.has_binary = True
+    mock_target.detect.return_value = mock_install
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"claude": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "!!"
-        assert "not executable" in results[0][2]
-        assert str(binary) in results[0][2]
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"claude": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "!!"
+    assert "not executable" in results[0][2]
+    assert str(binary) in results[0][2]
 
-    def test_shell_fallback_shows_resolved_shell(self) -> None:
-        """The no-binary Shell fallback is OK and shows the resolved box.shell.
+  def test_shell_fallback_shows_resolved_shell(self) -> None:
+    """The no-binary Shell fallback is OK and shows the resolved box.shell.
 
-        It needs no host binary and is always available, so diagnose must NOT
-        report it as a missing agent; instead it shows the resolved launch shell
-        and its source.
-        """
-        mock_target = MagicMock()
-        mock_target.display_name = "Shell"
-        mock_target.has_binary = False
+    It needs no host binary and is always available, so diagnose must NOT
+    report it as a missing agent; instead it shows the resolved launch shell
+    and its source.
+    """
+    mock_target = MagicMock()
+    mock_target.display_name = "Shell"
+    mock_target.has_binary = False
 
-        mock_cls = MagicMock(return_value=mock_target)
-        with (
-            patch(
-                "kanibako.targets.discover_targets",
-                return_value={"shell": mock_cls},
-            ),
-            patch(
-                "kanibako.launch.shells.resolve_box_shell",
-                return_value=("/bin/bash", "image"),
-            ),
-        ):
-            results = _check_agents(config=MagicMock(), std=MagicMock())
-        assert len(results) == 1
-        status, label, detail = results[0]
-        assert status == "ok"
-        assert "Shell" in label
-        assert "/bin/bash" in detail
-        assert "image default" in detail
-        assert "not found" not in detail
+    mock_cls = MagicMock(return_value=mock_target)
+    with (
+      patch(
+        "kanibako.targets.discover_targets",
+        return_value={"shell": mock_cls},
+      ),
+      patch(
+        "kanibako.launch.shells.resolve_box_shell",
+        return_value=("/bin/bash", "image"),
+      ),
+    ):
+      results = _check_agents(config=MagicMock(), std=MagicMock())
+    assert len(results) == 1
+    status, label, detail = results[0]
+    assert status == "ok"
+    assert "Shell" in label
+    assert "/bin/bash" in detail
+    assert "image default" in detail
+    assert "not found" not in detail
 
-    def test_shell_fallback_source_labels(self) -> None:
-        """Each resolver source token maps to the right friendly label."""
-        cases = {
-            "box.shell": ("/bin/zsh", "box.shell"),
-            "image": ("/bin/bash", "image default"),
-            "sh": ("sh", "fallback"),
-        }
-        for source, (shell, label) in cases.items():
-            mock_target = MagicMock()
-            mock_target.display_name = "Shell"
-            mock_target.has_binary = False
-            mock_cls = MagicMock(return_value=mock_target)
-            with (
-                patch(
-                    "kanibako.targets.discover_targets",
-                    return_value={"shell": mock_cls},
-                ),
-                patch(
-                    "kanibako.launch.shells.resolve_box_shell",
-                    return_value=(shell, source),
-                ),
-            ):
-                results = _check_agents(config=MagicMock(), std=MagicMock())
-            detail = results[0][2]
-            assert detail == f"{shell} ({label})", (source, detail)
+  def test_shell_fallback_source_labels(self) -> None:
+    """Each resolver source token maps to the right friendly label."""
+    cases = {
+      "box.shell": ("/bin/zsh", "box.shell"),
+      "image": ("/bin/bash", "image default"),
+      "sh": ("sh", "fallback"),
+    }
+    for source, (shell, label) in cases.items():
+      mock_target = MagicMock()
+      mock_target.display_name = "Shell"
+      mock_target.has_binary = False
+      mock_cls = MagicMock(return_value=mock_target)
+      with (
+        patch(
+          "kanibako.targets.discover_targets",
+          return_value={"shell": mock_cls},
+        ),
+        patch(
+          "kanibako.launch.shells.resolve_box_shell",
+          return_value=(shell, source),
+        ),
+      ):
+        results = _check_agents(config=MagicMock(), std=MagicMock())
+      detail = results[0][2]
+      assert detail == f"{shell} ({label})", (source, detail)
 
-    def test_shell_fallback_without_config_is_safe(self) -> None:
-        """Without config/std the Shell line falls back to sh, never crashing."""
-        mock_target = MagicMock()
-        mock_target.display_name = "Shell"
-        mock_target.has_binary = False
-        mock_cls = MagicMock(return_value=mock_target)
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"shell": mock_cls},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        assert results[0][0] == "ok"
-        assert results[0][2] == "sh (fallback)"
+  def test_shell_fallback_without_config_is_safe(self) -> None:
+    """Without config/std the Shell line falls back to sh, never crashing."""
+    mock_target = MagicMock()
+    mock_target.display_name = "Shell"
+    mock_target.has_binary = False
+    mock_cls = MagicMock(return_value=mock_target)
+    with patch(
+      "kanibako.targets.discover_targets",
+      return_value={"shell": mock_cls},
+    ):
+      results = _check_agents()
+    assert len(results) == 1
+    assert results[0][0] == "ok"
+    assert results[0][2] == "sh (fallback)"
 
 
 class TestCheckStorage:
-    def test_check_storage(self, tmp_path: Path) -> None:
-        """Test with a real temporary path."""
-        status, detail = _check_storage(tmp_path)
-        assert status in ("ok", "!!")
-        assert "GB" in detail
-        assert str(tmp_path) in detail
+  def test_check_storage(self, tmp_path: Path) -> None:
+    """Test with a real temporary path."""
+    status, detail = _check_storage(tmp_path)
+    assert status in ("ok", "!!")
+    assert "GB" in detail
+    assert str(tmp_path) in detail
 
-    def test_check_storage_nonexistent(self) -> None:
-        """Non-existent path returns skip status."""
-        status, detail = _check_storage(Path("/nonexistent/path/xyz"))
-        assert status == "--"
-        assert "cannot check" in detail
+  def test_check_storage_nonexistent(self) -> None:
+    """Non-existent path returns skip status."""
+    status, detail = _check_storage(Path("/nonexistent/path/xyz"))
+    assert status == "--"
+    assert "cannot check" in detail
 
 
 class TestCheckJournal:
-    """J2: diagnose surfaces lingering lifecycle-journal entries."""
+  """J2: diagnose surfaces lingering lifecycle-journal entries."""
 
-    def _std(self, tmp_path: Path):
-        from types import SimpleNamespace
-        return SimpleNamespace(journal=tmp_path / "journal.yaml")
+  def _std(self, tmp_path: Path):
+    from types import SimpleNamespace
 
-    def test_empty_journal_is_clean_ok(self, tmp_path: Path) -> None:
-        """A normally-empty journal reports a single clean ok line."""
-        lines = _check_journal(self._std(tmp_path))
-        assert lines == [("ok", "no in-flight operations")]
+    return SimpleNamespace(journal=tmp_path / "journal.yaml")
 
-    def test_pending_entry_reported_as_warning(self, tmp_path: Path) -> None:
-        """A pending entry → a `!!` finding carrying op + box + started_at."""
-        from kanibako.launch import journal
+  def test_empty_journal_is_clean_ok(self, tmp_path: Path) -> None:
+    """A normally-empty journal reports a single clean ok line."""
+    lines = _check_journal(self._std(tmp_path))
+    assert lines == [("ok", "no in-flight operations")]
 
-        std = self._std(tmp_path)
-        box = tmp_path / "boxes" / "myapp"
-        journal.write_entry(std.journal, box, op="import", name="myapp", mode="primary")
+  def test_pending_entry_reported_as_warning(self, tmp_path: Path) -> None:
+    """A pending entry → a `!!` finding carrying op + box + started_at."""
+    from kanibako.launch import journal
 
-        lines = _check_journal(std)
-        assert len(lines) == 1
-        status, detail = lines[0]
-        assert status == "!!"
-        assert "import" in detail
-        assert "myapp" in detail
-        assert str(box) in detail
+    std = self._std(tmp_path)
+    box = tmp_path / "boxes" / "myapp"
+    journal.write_entry(std.journal, box, op="import", name="myapp", mode="primary")
 
-    def test_box_key_filters_to_that_box(self, tmp_path: Path) -> None:
-        """With box_key, only THAT box's entry is surfaced (a clean ok for an
-        unrelated box even when other entries exist)."""
-        from kanibako.launch import journal
+    lines = _check_journal(std)
+    assert len(lines) == 1
+    status, detail = lines[0]
+    assert status == "!!"
+    assert "import" in detail
+    assert "myapp" in detail
+    assert str(box) in detail
 
-        std = self._std(tmp_path)
-        mine = tmp_path / "boxes" / "mine"
-        other = tmp_path / "boxes" / "other"
-        journal.write_entry(std.journal, other, op="import", name="other", mode="primary")
+  def test_box_key_filters_to_that_box(self, tmp_path: Path) -> None:
+    """With box_key, only THAT box's entry is surfaced (a clean ok for an
+    unrelated box even when other entries exist)."""
+    from kanibako.launch import journal
 
-        # My box has no entry → clean even though the journal is non-empty.
-        assert _check_journal(std, box_key=str(mine)) == [
-            ("ok", "no in-flight operations")
-        ]
-        # My box's own entry IS surfaced when present.
-        journal.write_entry(std.journal, mine, op="connect", name="mine", mode="named")
-        lines = _check_journal(std, box_key=str(mine))
-        assert len(lines) == 1
-        assert lines[0][0] == "!!"
-        assert "mine" in lines[0][1]
+    std = self._std(tmp_path)
+    mine = tmp_path / "boxes" / "mine"
+    other = tmp_path / "boxes" / "other"
+    journal.write_entry(std.journal, other, op="import", name="other", mode="primary")
 
-    def test_multiple_entries_each_reported(self, tmp_path: Path) -> None:
-        from kanibako.launch import journal
+    # My box has no entry → clean even though the journal is non-empty.
+    assert _check_journal(std, box_key=str(mine)) == [("ok", "no in-flight operations")]
+    # My box's own entry IS surfaced when present.
+    journal.write_entry(std.journal, mine, op="connect", name="mine", mode="named")
+    lines = _check_journal(std, box_key=str(mine))
+    assert len(lines) == 1
+    assert lines[0][0] == "!!"
+    assert "mine" in lines[0][1]
 
-        std = self._std(tmp_path)
-        journal.write_entry(std.journal, tmp_path / "a", op="import", name="a", mode="primary")
-        journal.write_entry(std.journal, tmp_path / "b", op="connect", name="b", mode="named")
-        lines = _check_journal(std)
-        assert len(lines) == 2
-        assert all(s == "!!" for s, _ in lines)
+  def test_multiple_entries_each_reported(self, tmp_path: Path) -> None:
+    from kanibako.launch import journal
 
-    def test_unreadable_journal_degrades_to_skip(self) -> None:
-        # A std whose .journal access blows up → defensive `--` line.
-        class Boom:
-            @property
-            def journal(self):
-                raise RuntimeError("boom")
+    std = self._std(tmp_path)
+    journal.write_entry(std.journal, tmp_path / "a", op="import", name="a", mode="primary")
+    journal.write_entry(std.journal, tmp_path / "b", op="connect", name="b", mode="named")
+    lines = _check_journal(std)
+    assert len(lines) == 2
+    assert all(s == "!!" for s, _ in lines)
 
-        lines = _check_journal(Boom())
-        assert lines == [("--", "cannot read journal")]
+  def test_unreadable_journal_degrades_to_skip(self) -> None:
+    # A std whose .journal access blows up → defensive `--` line.
+    class Boom:
+      @property
+      def journal(self):
+        raise RuntimeError("boom")
+
+    lines = _check_journal(Boom())
+    assert lines == [("--", "cannot read journal")]
 
 
 class TestSystemDiagnoseJournal:
-    def test_system_diagnose_reports_pending_entry(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ) -> None:
-        """A pending journal entry shows up in `run_system_diagnose` output."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.launch import journal
-        from kanibako.errors import ContainerError
+  def test_system_diagnose_reports_pending_entry(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ) -> None:
+    """A pending journal entry shows up in `run_system_diagnose` output."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.launch import journal
+    from kanibako.errors import ContainerError
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        journal.write_entry(
-            std.journal, tmp_home / "boxes" / "stuck",
-            op="import", name="stuck", mode="primary",
-        )
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Journal" in out
-        assert "stuck" in out
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    journal.write_entry(
+      std.journal,
+      tmp_home / "boxes" / "stuck",
+      op="import",
+      name="stuck",
+      mode="primary",
+    )
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Journal" in out
+    assert "stuck" in out
 
-    def test_system_diagnose_clean_when_empty(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ) -> None:
-        from kanibako.errors import ContainerError
+  def test_system_diagnose_clean_when_empty(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ) -> None:
+    from kanibako.errors import ContainerError
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "[ok] Journal: no in-flight operations" in out
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[ok] Journal: no in-flight operations" in out
 
 
 class TestCheckImage:
-    def test_check_image_found(self) -> None:
-        """Image available locally returns ok."""
-        mock_config = MagicMock()
-        mock_config.box_image = "kanibako-oci:latest"
+  def test_check_image_found(self) -> None:
+    """Image available locally returns ok."""
+    mock_config = MagicMock()
+    mock_config.box_image = "kanibako-oci:latest"
 
-        mock_runtime = MagicMock()
-        mock_runtime.image_inspect.return_value = {"Id": "abc123"}
+    mock_runtime = MagicMock()
+    mock_runtime.image_inspect.return_value = {"Id": "abc123"}
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            return_value=mock_runtime,
-        ):
-            status, detail = _check_image(mock_config)
-        assert status == "ok"
-        assert "available locally" in detail
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      return_value=mock_runtime,
+    ):
+      status, detail = _check_image(mock_config)
+    assert status == "ok"
+    assert "available locally" in detail
 
-    def test_check_image_not_found(self) -> None:
-        """Image not locally available returns error."""
-        mock_config = MagicMock()
-        mock_config.box_image = "kanibako-oci:latest"
+  def test_check_image_not_found(self) -> None:
+    """Image not locally available returns error."""
+    mock_config = MagicMock()
+    mock_config.box_image = "kanibako-oci:latest"
 
-        mock_runtime = MagicMock()
-        mock_runtime.image_inspect.return_value = None
+    mock_runtime = MagicMock()
+    mock_runtime.image_inspect.return_value = None
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            return_value=mock_runtime,
-        ):
-            status, detail = _check_image(mock_config)
-        assert status == "!!"
-        assert "not found locally" in detail
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      return_value=mock_runtime,
+    ):
+      status, detail = _check_image(mock_config)
+    assert status == "!!"
+    assert "not found locally" in detail
 
 
 class TestRunSystemDiagnose:
-    def test_run_system_diagnose(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """System diagnose runs and returns 0."""
-        from kanibako.errors import ContainerError
+  def test_run_system_diagnose(self, config_file, tmp_home, credentials_dir, capsys) -> None:
+    """System diagnose runs and returns 0."""
+    from kanibako.errors import ContainerError
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace()
-            rc = run_system_diagnose(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Kanibako System Diagnostics" in captured.out
-        assert "[" in captured.out
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace()
+      rc = run_system_diagnose(args)
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Kanibako System Diagnostics" in captured.out
+    assert "[" in captured.out
 
 
 class TestRunRigDiagnose:
-    def test_run_rig_diagnose(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """Rig diagnose runs and returns 0."""
-        from kanibako.errors import ContainerError
+  def test_run_rig_diagnose(self, config_file, tmp_home, credentials_dir, capsys) -> None:
+    """Rig diagnose runs and returns 0."""
+    from kanibako.errors import ContainerError
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace()
-            rc = run_rig_diagnose(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Rig (Image) Diagnostics" in captured.out
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace()
+      rc = run_rig_diagnose(args)
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Rig (Image) Diagnostics" in captured.out
 
 
 class TestRunBoxDiagnose:
-    """run_box_diagnose: only report internals for a real, registered project.
+  """run_box_diagnose: only report internals for a real, registered project.
 
-    `resolve_any_project` fabricates a default-mode resolution for ANY
-    existing directory, so diagnose must verify a project is actually
-    registered (persisted box.yaml) before reporting on its shell/etc.
+  `resolve_any_project` fabricates a default-mode resolution for ANY
+  existing directory, so diagnose must verify a project is actually
+  registered (persisted box.yaml) before reporting on its shell/etc.
+  """
+
+  def _register_default_project(self, config_file, tmp_home, credentials_dir):
+    """Initialize a registered default project at the cwd; return its paths."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project_dir = str(tmp_home / "project")
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=Exception("no runtime"),
+    ):
+      proj = resolve_project(
+        std,
+        config,
+        project_dir=project_dir,
+        initialize=True,
+      )
+    return proj
+
+  def test_registered_project_all_ok(self, config_file, tmp_home, credentials_dir, capsys) -> None:
+    """A registered project with its shell present reports all [ok]."""
+    from kanibako.errors import ContainerError
+
+    proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+    assert proj.shell_path.is_dir()
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=None, path=None)
+      rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[ok] Project directory" in out
+    assert "[ok] Shell directory" in out
+    # The shell/project checks must not be errors (the runtime line may be
+    # [!!] here because no runtime is mocked-present -- unrelated to the fix).
+    assert "[!!] Project directory" not in out
+    assert "[!!] Shell directory" not in out
+    assert "missing or not initialized" not in out
+
+  def test_unregistered_dir_reports_no_project(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A plain (non-project) directory reports no project, not a false shell error."""
+    # cwd is tmp_home/project; nothing was ever registered there.
+    args = argparse.Namespace(project=None, path=None)
+    rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    # Must NOT emit the misleading [ok] dir + [!!] shell pair.
+    assert "[ok] Project directory" not in out
+    assert "Shell directory" not in out
+    assert "missing or not initialized" not in out
+
+  def test_moved_workspace_reports_no_project(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A copied/moved workspace not registered at its new path reports no project."""
+    import shutil
+
+    self._register_default_project(config_file, tmp_home, credentials_dir)
+    moved = tmp_home / "moved"
+    shutil.copytree(tmp_home / "project", moved)
+
+    args = argparse.Namespace(project=str(moved), path=None)
+    rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    assert "missing or not initialized" not in out
+
+  def test_bare_project_name_from_other_cwd(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """`box diagnose <projname>` resolves a REGISTERED project from any cwd."""
+    from kanibako.errors import ContainerError
+
+    proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+    name = proj.name
+    # Move cwd OUT of the project so the token can only resolve by name.
+    elsewhere = tmp_home / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=name, path=None)
+      rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[ok] Project directory" in out
+    # Must NOT have path-ified the bare name relative to cwd.
+    assert "no kanibako project registered" not in out
+
+  def test_bare_workset_name_errors_clearly(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """`box diagnose <worksetname>` errors clearly (a workset isn't a box)."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.project.workset import add_project, create_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("diagws", tmp_home / "ws_diag", std)
+    src = tmp_home / "diag_src"
+    src.mkdir()
+    add_project(ws, "diagproj", src)
+
+    elsewhere = tmp_home / "elsewhere2"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    args = argparse.Namespace(project="diagws", path=None)
+    rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    # Clear, actionable message -- not the misleading "path does not exist".
+    assert "is a workset" in out
+    assert "does not exist" not in out
+
+  def test_qualified_workset_project_resolves(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """`box diagnose ws/proj` resolves to that project box from any cwd."""
+    from kanibako.settings.config import load_config
+    from kanibako.errors import ContainerError
+    from kanibako.settings.paths import (
+      WorksetSpec,
+      load_std_paths,
+      resolve_workset_project,
+    )
+    from kanibako.project.workset import add_project, create_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("qdiag", tmp_home / "qdiag_root", std)
+    internal = ws.workspaces_dir / "api"
+    internal.mkdir(parents=True)
+    add_project(ws, "api", internal, std)
+    # Initialize the box so box.yaml is persisted (the registration the
+    # diagnose guard requires).
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      resolve_workset_project(
+        WorksetSpec.from_workset(ws),
+        "api",
+        std,
+        config,
+        initialize=True,
+      )
+
+    elsewhere = tmp_home / "qdiag_elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project="qdiag/api", path=None)
+      rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[ok] Project directory" in out
+    # Resolved to the real workset project, not path-ified relative to cwd.
+    assert "no kanibako project registered" not in out
+    assert "is a workset" not in out
+
+  def test_qualified_unknown_project_errors_clearly(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """`box diagnose ws/missing` errors -- never a silent wrong path."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.project.workset import create_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    create_workset("qdiag2", tmp_home / "qdiag2_root", std)
+
+    elsewhere = tmp_home / "qdiag2_elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    args = argparse.Namespace(project="qdiag2/nope", path=None)
+    rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    # Must not have silently reported a registered project for a wrong path.
+    assert "[ok] Project directory" not in out
+
+  def test_slash_token_not_qualified_unchanged(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """A non-qualified slash token still behaves as before (no regression)."""
+    elsewhere = tmp_home / "slash_elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    args = argparse.Namespace(project="no/such/path", path=None)
+    rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "[ok] Project directory" not in out
+
+  def test_registered_project_missing_shell_is_informational(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A registered project whose shell dir is absent -> informational, not error."""
+    import shutil
+
+    from kanibako.errors import ContainerError
+
+    proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+    # Simulate a valid-but-not-yet-launched project: remove the shell dir.
+    shutil.rmtree(proj.shell_path)
+    assert not proj.shell_path.is_dir()
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=None, path=None)
+      rc = run_box_diagnose(args)
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    # Shell reported informationally ([--]), NOT as an error ([!!]).
+    assert "[--] Shell directory" in out
+    assert "not yet initialized" in out
+    assert "[!!] Shell directory" not in out
+    # Project directory still meaningfully [ok].
+    assert "[ok] Project directory" in out
+
+  def test_registration_verdict_from_box_resolve_not_meta_file(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """P8a: the registration verdict is the box_resolve IDENTITY (registry
+    membership), NOT the on-disk box.yaml FILE.  Removing the box's
+    registry entry (identity gone) makes diagnose report 'no project' even
+    though the box metadata still exists on disk.
+
+    Mutation proof: revert diagnose to
+    ``read_project_meta(...) is not None`` (the old file-present signal) →
+    the still-on-disk box wrongly reports REGISTERED and this goes RED.
     """
+    from kanibako.project import workset_registry
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
 
-    def _register_default_project(self, config_file, tmp_home, credentials_dir):
-        """Initialize a registered default project at the cwd; return its paths."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+    proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+    # The on-disk box metadata remains; only its registry membership (the
+    # box_resolve identity source) is removed.
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    reg = workset_registry.resolve_workset_registry_path(
+      std.primary_workset,
+      load_doc(std.primary_workset / "workset.yaml"),
+      early=_early_scope(std, BoxMode.primary),
+    )
+    workset_registry.unregister_workset_box(reg, proj.name)
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=Exception("no runtime"),
-        ):
-            proj = resolve_project(
-                std, config, project_dir=project_dir, initialize=True,
-            )
-        return proj
+    args = argparse.Namespace(project=None, path=None)
+    rc = run_box_diagnose(args)
 
-    def test_registered_project_all_ok(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A registered project with its shell present reports all [ok]."""
-        from kanibako.errors import ContainerError
-
-        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
-        assert proj.shell_path.is_dir()
-
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=None, path=None)
-            rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "[ok] Project directory" in out
-        assert "[ok] Shell directory" in out
-        # The shell/project checks must not be errors (the runtime line may be
-        # [!!] here because no runtime is mocked-present -- unrelated to the fix).
-        assert "[!!] Project directory" not in out
-        assert "[!!] Shell directory" not in out
-        assert "missing or not initialized" not in out
-
-    def test_unregistered_dir_reports_no_project(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A plain (non-project) directory reports no project, not a false shell error."""
-        # cwd is tmp_home/project; nothing was ever registered there.
-        args = argparse.Namespace(project=None, path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        # Must NOT emit the misleading [ok] dir + [!!] shell pair.
-        assert "[ok] Project directory" not in out
-        assert "Shell directory" not in out
-        assert "missing or not initialized" not in out
-
-    def test_moved_workspace_reports_no_project(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A copied/moved workspace not registered at its new path reports no project."""
-        import shutil
-
-        self._register_default_project(config_file, tmp_home, credentials_dir)
-        moved = tmp_home / "moved"
-        shutil.copytree(tmp_home / "project", moved)
-
-        args = argparse.Namespace(project=str(moved), path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        assert "missing or not initialized" not in out
-
-    def test_bare_project_name_from_other_cwd(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """`box diagnose <projname>` resolves a REGISTERED project from any cwd."""
-        from kanibako.errors import ContainerError
-
-        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
-        name = proj.name
-        # Move cwd OUT of the project so the token can only resolve by name.
-        elsewhere = tmp_home / "elsewhere"
-        elsewhere.mkdir()
-        monkeypatch.chdir(elsewhere)
-
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=name, path=None)
-            rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "[ok] Project directory" in out
-        # Must NOT have path-ified the bare name relative to cwd.
-        assert "no kanibako project registered" not in out
-
-    def test_bare_workset_name_errors_clearly(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """`box diagnose <worksetname>` errors clearly (a workset isn't a box)."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.project.workset import add_project, create_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("diagws", tmp_home / "ws_diag", std)
-        src = tmp_home / "diag_src"
-        src.mkdir()
-        add_project(ws, "diagproj", src)
-
-        elsewhere = tmp_home / "elsewhere2"
-        elsewhere.mkdir()
-        monkeypatch.chdir(elsewhere)
-
-        args = argparse.Namespace(project="diagws", path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        # Clear, actionable message -- not the misleading "path does not exist".
-        assert "is a workset" in out
-        assert "does not exist" not in out
-
-    def test_qualified_workset_project_resolves(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """`box diagnose ws/proj` resolves to that project box from any cwd."""
-        from kanibako.settings.config import load_config
-        from kanibako.errors import ContainerError
-        from kanibako.settings.paths import (
-            WorksetSpec,
-            load_std_paths,
-            resolve_workset_project,
-        )
-        from kanibako.project.workset import add_project, create_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        ws = create_workset("qdiag", tmp_home / "qdiag_root", std)
-        internal = ws.workspaces_dir / "api"
-        internal.mkdir(parents=True)
-        add_project(ws, "api", internal, std)
-        # Initialize the box so box.yaml is persisted (the registration the
-        # diagnose guard requires).
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            resolve_workset_project(
-                WorksetSpec.from_workset(ws), "api", std, config, initialize=True,
-            )
-
-        elsewhere = tmp_home / "qdiag_elsewhere"
-        elsewhere.mkdir()
-        monkeypatch.chdir(elsewhere)
-
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project="qdiag/api", path=None)
-            rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "[ok] Project directory" in out
-        # Resolved to the real workset project, not path-ified relative to cwd.
-        assert "no kanibako project registered" not in out
-        assert "is a workset" not in out
-
-    def test_qualified_unknown_project_errors_clearly(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """`box diagnose ws/missing` errors -- never a silent wrong path."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        from kanibako.project.workset import create_workset
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("qdiag2", tmp_home / "qdiag2_root", std)
-
-        elsewhere = tmp_home / "qdiag2_elsewhere"
-        elsewhere.mkdir()
-        monkeypatch.chdir(elsewhere)
-
-        args = argparse.Namespace(project="qdiag2/nope", path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        # Must not have silently reported a registered project for a wrong path.
-        assert "[ok] Project directory" not in out
-
-    def test_slash_token_not_qualified_unchanged(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """A non-qualified slash token still behaves as before (no regression)."""
-        elsewhere = tmp_home / "slash_elsewhere"
-        elsewhere.mkdir()
-        monkeypatch.chdir(elsewhere)
-
-        args = argparse.Namespace(project="no/such/path", path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "[ok] Project directory" not in out
-
-    def test_registered_project_missing_shell_is_informational(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A registered project whose shell dir is absent -> informational, not error."""
-        import shutil
-
-        from kanibako.errors import ContainerError
-
-        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
-        # Simulate a valid-but-not-yet-launched project: remove the shell dir.
-        shutil.rmtree(proj.shell_path)
-        assert not proj.shell_path.is_dir()
-
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=None, path=None)
-            rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc == 0
-        # Shell reported informationally ([--]), NOT as an error ([!!]).
-        assert "[--] Shell directory" in out
-        assert "not yet initialized" in out
-        assert "[!!] Shell directory" not in out
-        # Project directory still meaningfully [ok].
-        assert "[ok] Project directory" in out
-
-    def test_registration_verdict_from_box_resolve_not_meta_file(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """P8a: the registration verdict is the box_resolve IDENTITY (registry
-        membership), NOT the on-disk box.yaml FILE.  Removing the box's
-        registry entry (identity gone) makes diagnose report 'no project' even
-        though the box metadata still exists on disk.
-
-        Mutation proof: revert diagnose to
-        ``read_project_meta(...) is not None`` (the old file-present signal) →
-        the still-on-disk box wrongly reports REGISTERED and this goes RED.
-        """
-        from kanibako.project import workset_registry
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
-
-        proj = self._register_default_project(
-            config_file, tmp_home, credentials_dir
-        )
-        # The on-disk box metadata remains; only its registry membership (the
-        # box_resolve identity source) is removed.
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        reg = workset_registry.resolve_workset_registry_path(
-            std.primary_workset,
-            load_doc(std.primary_workset / "workset.yaml"),
-            early=_early_scope(std, BoxMode.primary),
-        )
-        workset_registry.unregister_workset_box(reg, proj.name)
-
-        args = argparse.Namespace(project=None, path=None)
-        rc = run_box_diagnose(args)
-
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        assert "[ok] Project directory" not in out
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    assert "[ok] Project directory" not in out
 
 
 class TestRunBoxDiagnoseStoreGone:
-    """A box whose store is gone gets a failing verdict, never an all-clear."""
+  """A box whose store is gone gets a failing verdict, never an all-clear."""
 
-    @staticmethod
-    def _diagnose(target: Path, capsys) -> str:
-        from kanibako.errors import ContainerError
+  @staticmethod
+  def _diagnose(target: Path, capsys) -> str:
+    from kanibako.errors import ContainerError
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            run_box_diagnose(argparse.Namespace(project=str(target), path=None))
-        return capsys.readouterr().out
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      run_box_diagnose(argparse.Namespace(project=str(target), path=None))
+    return capsys.readouterr().out
 
-    @staticmethod
-    def _assert_store_gone(out: str, store: Path) -> None:
-        assert f"[!!] Box store: missing ({store})" in out, out
-        # Its shell is not "created on first run": a launch refuses this box.
-        assert "Shell directory" not in out, out
+  @staticmethod
+  def _assert_store_gone(out: str, store: Path) -> None:
+    assert f"[!!] Box store: missing ({store})" in out, out
+    # Its shell is not "created on first run": a launch refuses this box.
+    assert "Shell directory" not in out, out
 
-    @pytest.mark.parametrize("registered", [False, True], ids=["unregistered", "registered"])
-    @pytest.mark.parametrize("via_link", [False, True], ids=["by-path", "symlinked-parent"])
-    def test_a_standalone_whose_box_data_is_gone(
-        self, config_file, tmp_home, credentials_dir, capsys, registered, via_link,
-    ) -> None:
-        import shutil
+  @pytest.mark.parametrize("registered", [False, True], ids=["unregistered", "registered"])
+  @pytest.mark.parametrize("via_link", [False, True], ids=["by-path", "symlinked-parent"])
+  def test_a_standalone_whose_box_data_is_gone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+    registered,
+    via_link,
+  ) -> None:
+    import shutil
 
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_standalone_project
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_standalone_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        real = tmp_home / "real"
-        (real / "sa").mkdir(parents=True)
-        (tmp_home / "link").symlink_to(real)
-        parent = tmp_home / "link" if via_link else real
-        resolve_standalone_project(std, config, str(parent / "sa"), initialize=True,
-                                   register=registered)
-        shutil.rmtree(real / "sa" / "box_data")
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    real = tmp_home / "real"
+    (real / "sa").mkdir(parents=True)
+    (tmp_home / "link").symlink_to(real)
+    parent = tmp_home / "link" if via_link else real
+    resolve_standalone_project(
+      std, config, str(parent / "sa"), initialize=True, register=registered
+    )
+    shutil.rmtree(real / "sa" / "box_data")
 
-        out = self._diagnose(parent / "sa", capsys)
-        self._assert_store_gone(out, parent / "sa" / "box_data")
+    out = self._diagnose(parent / "sa", capsys)
+    self._assert_store_gone(out, parent / "sa" / "box_data")
 
-    def test_a_primary_whose_store_is_gone(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ) -> None:
-        import shutil
+  def test_a_primary_whose_store_is_gone(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ) -> None:
+    import shutil
 
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project = tmp_home / "project"
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=Exception("no runtime"),
-        ):
-            proj = resolve_project(std, config, project_dir=str(project), initialize=True)
-        shutil.rmtree(proj.metadata_path)
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    project = tmp_home / "project"
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=Exception("no runtime"),
+    ):
+      proj = resolve_project(std, config, project_dir=str(project), initialize=True)
+    shutil.rmtree(proj.metadata_path)
 
-        out = self._diagnose(project, capsys)
-        self._assert_store_gone(out, proj.metadata_path)
+    out = self._diagnose(project, capsys)
+    self._assert_store_gone(out, proj.metadata_path)
 
 
 class TestProbeMissingExecutables:
-    """probe_missing_executables: one ephemeral run, partition the result."""
+  """probe_missing_executables: one ephemeral run, partition the result."""
 
-    def test_single_run_partitions_present_and_missing(self) -> None:
-        from kanibako.commands.diagnose import _PROBE_HIT_PREFIX
+  def test_single_run_partitions_present_and_missing(self) -> None:
+    from kanibako.commands.diagnose import _PROBE_HIT_PREFIX
 
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        # The probe reports tmux + rg present, fdfind missing.
-        out = f"{_PROBE_HIT_PREFIX}tmux\n{_PROBE_HIT_PREFIX}rg\n"
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=out, stderr="")
-            missing = probe_missing_executables(
-                mock_runtime, "img:latest", ["tmux", "rg", "fdfind"]
-            )
-        assert missing == ["fdfind"]
-        # Exactly ONE container spin-up for all three executables.
-        assert mock_run.call_count == 1
-        # Must override the image ENTRYPOINT, else kanibako-entrypoint swallows
-        # the probe script and every executable looks missing.
-        argv = mock_run.call_args[0][0]
-        assert argv[:5] == ["podman", "run", "--rm", "--entrypoint", "sh"]
-        assert argv[5] == "img:latest"
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    # The probe reports tmux + rg present, fdfind missing.
+    out = f"{_PROBE_HIT_PREFIX}tmux\n{_PROBE_HIT_PREFIX}rg\n"
+    with patch("subprocess.run") as mock_run:
+      mock_run.return_value = MagicMock(returncode=0, stdout=out, stderr="")
+      missing = probe_missing_executables(mock_runtime, "img:latest", ["tmux", "rg", "fdfind"])
+    assert missing == ["fdfind"]
+    # Exactly ONE container spin-up for all three executables.
+    assert mock_run.call_count == 1
+    # Must override the image ENTRYPOINT, else kanibako-entrypoint swallows
+    # the probe script and every executable looks missing.
+    argv = mock_run.call_args[0][0]
+    assert argv[:5] == ["podman", "run", "--rm", "--entrypoint", "sh"]
+    assert argv[5] == "img:latest"
 
-    def test_empty_list_no_run(self) -> None:
-        mock_runtime = MagicMock()
-        with patch("subprocess.run") as mock_run:
-            assert probe_missing_executables(mock_runtime, "img", []) == []
-        mock_run.assert_not_called()
+  def test_empty_list_no_run(self) -> None:
+    mock_runtime = MagicMock()
+    with patch("subprocess.run") as mock_run:
+      assert probe_missing_executables(mock_runtime, "img", []) == []
+    mock_run.assert_not_called()
 
-    def test_runtime_failure_all_missing(self) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        with patch("subprocess.run", side_effect=OSError("boom")):
-            missing = probe_missing_executables(mock_runtime, "img", ["a", "b"])
-        assert missing == ["a", "b"]
+  def test_runtime_failure_all_missing(self) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    with patch("subprocess.run", side_effect=OSError("boom")):
+      missing = probe_missing_executables(mock_runtime, "img", ["a", "b"])
+    assert missing == ["a", "b"]
 
-    def test_quote_in_name_runs_nothing(self, tmp_path) -> None:
-        """A name carrying a double quote must not close the quoting and run the rest."""
-        from tests.support.probe_shim import local_sh_runtime
+  def test_quote_in_name_runs_nothing(self, tmp_path) -> None:
+    """A name carrying a double quote must not close the quoting and run the rest."""
+    from tests.support.probe_shim import local_sh_runtime
 
-        canary = tmp_path / "PWNED"
-        payload = f'x" ; touch {canary} ; echo "'
+    canary = tmp_path / "PWNED"
+    payload = f'x" ; touch {canary} ; echo "'
 
-        missing = probe_missing_executables(
-            local_sh_runtime(tmp_path), "img", [payload]
-        )
-        assert missing == [payload]
-        assert not canary.exists()
+    missing = probe_missing_executables(local_sh_runtime(tmp_path), "img", [payload])
+    assert missing == [payload]
+    assert not canary.exists()
 
-    def test_semicolon_in_name_runs_nothing(self, tmp_path) -> None:
-        """The quoting also holds a bare ``;``, which double quotes already covered."""
-        from tests.support.probe_shim import local_sh_runtime
+  def test_semicolon_in_name_runs_nothing(self, tmp_path) -> None:
+    """The quoting also holds a bare ``;``, which double quotes already covered."""
+    from tests.support.probe_shim import local_sh_runtime
 
-        canary = tmp_path / "PWNED"
-        payload = f"x; touch {canary}"
+    canary = tmp_path / "PWNED"
+    payload = f"x; touch {canary}"
 
-        missing = probe_missing_executables(
-            local_sh_runtime(tmp_path), "img", [payload]
-        )
-        assert missing == [payload]
-        assert not canary.exists()
+    missing = probe_missing_executables(local_sh_runtime(tmp_path), "img", [payload])
+    assert missing == [payload]
+    assert not canary.exists()
 
-    def test_name_is_quoted_in_the_probe_script(self, tmp_path) -> None:
-        """Both the lookup and the hit marker carry the name as one shell word."""
-        from tests.support.probe_shim import local_sh_runtime
+  def test_name_is_quoted_in_the_probe_script(self, tmp_path) -> None:
+    """Both the lookup and the hit marker carry the name as one shell word."""
+    from tests.support.probe_shim import local_sh_runtime
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            probe_missing_executables(
-                local_sh_runtime(tmp_path), "img", ['we"ird; name']
-            )
+    with patch("subprocess.run") as mock_run:
+      mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+      probe_missing_executables(local_sh_runtime(tmp_path), "img", ['we"ird; name'])
 
-        script = mock_run.call_args[0][0][-1]
-        assert script == (
-            "command -v 'we\"ird; name' >/dev/null 2>&1 "
-            "&& echo 'KANIBAKO_HAS:we\"ird; name'"
-        )
+    script = mock_run.call_args[0][0][-1]
+    assert script == (
+      "command -v 'we\"ird; name' >/dev/null 2>&1 && echo 'KANIBAKO_HAS:we\"ird; name'"
+    )
 
 
 class TestDiagnoseBaseline:
-    """_diagnose_baseline filtering (--only/--skip), image selection, and a bad overlay.
+  """_diagnose_baseline filtering (--only/--skip), image selection, and a bad overlay.
 
-    A malformed overlay is refused by ``load_doc`` / ``_read_doc``, so the check
-    line reports it and the caller emits the body -- it must not stop the run.
+  A malformed overlay is refused by ``load_doc`` / ``_read_doc``, so the check
+  line reports it and the caller emits the body -- it must not stop the run.
+  """
+
+  def _patch_baseline(self):
+    # Three packages with one executable each.
+    return patch(
+      "kanibako.runtime.baseline.load_baseline",
+      return_value={"tmux": ["tmux"], "ripgrep": ["rg"], "fd-find": ["fdfind"]},
+    )
+
+  def test_only_filters_packages(self, capsys) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    args = argparse.Namespace(only=["ripgrep"], skip=None, all_images=False)
+    with (
+      self._patch_baseline(),
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        return_value=MagicMock(box_image="img:latest"),
+      ),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=[],
+      ) as mock_probe,
+    ):
+      _diagnose_baseline(args, _SettingsErrorLog())
+    # Only ripgrep's exe (rg) should be probed.
+    assert mock_probe.call_args[0][2] == ["rg"]
+
+  def test_skip_filters_packages(self, capsys) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    args = argparse.Namespace(only=None, skip=["fd-find"], all_images=False)
+    with (
+      self._patch_baseline(),
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        return_value=MagicMock(box_image="img:latest"),
+      ),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=[],
+      ) as mock_probe,
+    ):
+      _diagnose_baseline(args, _SettingsErrorLog())
+    probed = mock_probe.call_args[0][2]
+    assert "fdfind" not in probed
+    assert set(probed) == {"tmux", "rg"}
+
+  def test_default_single_configured_image(self, capsys) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    args = argparse.Namespace(only=None, skip=None, all_images=False)
+    with (
+      self._patch_baseline(),
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        return_value=MagicMock(box_image="configured:latest"),
+      ),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=[],
+      ) as mock_probe,
+    ):
+      _diagnose_baseline(args, _SettingsErrorLog())
+    # Single configured image probed.
+    assert mock_probe.call_count == 1
+    assert mock_probe.call_args[0][1] == "configured:latest"
+    mock_runtime.list_local_images.assert_not_called()
+
+  def test_all_images_probes_each(self, capsys) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    mock_runtime.list_local_images.return_value = [
+      ("kanibako-oci:latest", "1GB"),
+      ("kanibako-min:latest", "0.5GB"),
+    ]
+    args = argparse.Namespace(only=None, skip=None, all_images=True)
+    with (
+      self._patch_baseline(),
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=[],
+      ) as mock_probe,
+    ):
+      _diagnose_baseline(args, _SettingsErrorLog())
+    assert mock_probe.call_count == 2
+
+  def test_missing_executable_reported(self, capsys) -> None:
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    args = argparse.Namespace(only=None, skip=None, all_images=False)
+    with (
+      self._patch_baseline(),
+      patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        return_value=MagicMock(box_image="img:latest"),
+      ),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=["rg"],
+      ),
+    ):
+      _diagnose_baseline(args, _SettingsErrorLog())
+    out = capsys.readouterr().out
+    assert "[!!]" in out
+    assert "ripgrep:rg" in out
+
+  def _break_baseline_overlay(self, tmp_home: Path, text: str) -> Path:
+    """Write *text* as the USER image-baseline overlay and return its path.
+
+    The real ``{config.data}/global/`` path, not a patched one, so these fail if
+    the load stops reaching ``load_baseline`` at all.
     """
+    overlay = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_text(text)
+    return overlay
 
-    def _patch_baseline(self):
-        # Three packages with one executable each.
-        return patch(
-            "kanibako.runtime.baseline.load_baseline",
-            return_value={"tmux": ["tmux"], "ripgrep": ["rg"], "fd-find": ["fdfind"]},
-        )
+  def _assert_overlay_is_reported(self, out: str, overlay: Path, refusal: str) -> None:
+    """The Baseline line carries the label; the section carries the body."""
+    assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
+    assert "Settings errors:" in out
+    assert "affects: Baseline" in out
+    assert str(overlay) in out
+    assert refusal in out
+    # The refusal ends the probe -- there is nothing to probe against.
+    assert "all baseline executables present" not in out
 
-    def test_only_filters_packages(self, capsys) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        args = argparse.Namespace(only=["ripgrep"], skip=None, all_images=False)
-        with (
-            self._patch_baseline(),
-            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                return_value=MagicMock(box_image="img:latest"),
-            ),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=[],
-            ) as mock_probe,
-        ):
-            _diagnose_baseline(args, _SettingsErrorLog())
-        # Only ripgrep's exe (rg) should be probed.
-        assert mock_probe.call_args[0][2] == ["rg"]
+  def test_list_overlay_is_reported_not_fatal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A top-level YAML list overlay names itself and leaves the rest of the run."""
+    from kanibako.errors import ContainerError
 
-    def test_skip_filters_packages(self, capsys) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        args = argparse.Namespace(only=None, skip=["fd-find"], all_images=False)
-        with (
-            self._patch_baseline(),
-            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                return_value=MagicMock(box_image="img:latest"),
-            ),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=[],
-            ) as mock_probe,
-        ):
-            _diagnose_baseline(args, _SettingsErrorLog())
-        probed = mock_probe.call_args[0][2]
-        assert "fdfind" not in probed
-        assert set(probed) == {"tmux", "rg"}
+    overlay = self._break_baseline_overlay(tmp_home, "- a\n- b\n")
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_rig_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_overlay_is_reported(
+      out, overlay, f"the config file {overlay} is a list, not a mapping of keys."
+    )
+    assert "Error:" not in out
+    # The other checks still print, and the header the probe section owns.
+    assert "Rig (Image) Diagnostics" in out
+    assert "Container runtime" in out
+    assert "Baseline:" in out
 
-    def test_default_single_configured_image(self, capsys) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        args = argparse.Namespace(only=None, skip=None, all_images=False)
-        with (
-            self._patch_baseline(),
-            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                return_value=MagicMock(box_image="configured:latest"),
-            ),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=[],
-            ) as mock_probe,
-        ):
-            _diagnose_baseline(args, _SettingsErrorLog())
-        # Single configured image probed.
-        assert mock_probe.call_count == 1
-        assert mock_probe.call_args[0][1] == "configured:latest"
-        mock_runtime.list_local_images.assert_not_called()
+  def test_repeated_key_overlay_is_reported_not_fatal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A repeated key in the overlay names itself and leaves the rest of the run."""
+    from kanibako.errors import ContainerError
 
-    def test_all_images_probes_each(self, capsys) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        mock_runtime.list_local_images.return_value = [
-            ("kanibako-oci:latest", "1GB"),
-            ("kanibako-min:latest", "0.5GB"),
-        ]
-        args = argparse.Namespace(only=None, skip=None, all_images=True)
-        with (
-            self._patch_baseline(),
-            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=[],
-            ) as mock_probe,
-        ):
-            _diagnose_baseline(args, _SettingsErrorLog())
-        assert mock_probe.call_count == 2
+    overlay = self._break_baseline_overlay(tmp_home, "git: [rg]\ngit: [rg2]\n")
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_rig_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_overlay_is_reported(out, overlay, f"the config file {overlay} sets 'git' twice")
+    assert "Error:" not in out
+    assert "Rig (Image) Diagnostics" in out
+    assert "Container runtime" in out
+    assert "Baseline:" in out
 
-    def test_missing_executable_reported(self, capsys) -> None:
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        args = argparse.Namespace(only=None, skip=None, all_images=False)
-        with (
-            self._patch_baseline(),
-            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                return_value=MagicMock(box_image="img:latest"),
-            ),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=["rg"],
-            ),
-        ):
-            _diagnose_baseline(args, _SettingsErrorLog())
-        out = capsys.readouterr().out
-        assert "[!!]" in out
-        assert "ripgrep:rg" in out
+  def test_control_character_in_a_name_is_reported_not_fatal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """A NUL in an overlay executable name names itself and leaves the rest of the run.
 
-    def _break_baseline_overlay(self, tmp_home: Path, text: str) -> Path:
-        """Write *text* as the USER image-baseline overlay and return its path.
+    Real user overlay, real ``load_baseline``, real ``run_rig_diagnose`` -- so this
+    is the refusal the ``rig diagnose`` baseline section actually reports.
+    """
+    from kanibako.errors import ContainerError
 
-        The real ``{config.data}/global/`` path, not a patched one, so these fail if
-        the load stops reaching ``load_baseline`` at all.
-        """
-        overlay = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
-        overlay.parent.mkdir(parents=True, exist_ok=True)
-        overlay.write_text(text)
-        return overlay
+    overlay = self._break_baseline_overlay(tmp_home, 'git: ["rg\\0sh"]\n')
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_rig_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_overlay_is_reported(
+      out,
+      overlay,
+      f"the config file {overlay} sets 'git' to a value that is not an "
+      "executable name or a list of them.",
+    )
+    assert "Error:" not in out
+    assert "Rig (Image) Diagnostics" in out
+    assert "Container runtime" in out
+    assert "Baseline:" in out
 
-    def _assert_overlay_is_reported(
-        self, out: str, overlay: Path, refusal: str
-    ) -> None:
-        """The Baseline line carries the label; the section carries the body."""
-        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
-        assert "Settings errors:" in out
-        assert "affects: Baseline" in out
-        assert str(overlay) in out
-        assert refusal in out
-        # The refusal ends the probe -- there is nothing to probe against.
-        assert "all baseline executables present" not in out
+  def _rig_diagnose_out(self, capsys) -> str:
+    from kanibako.errors import ContainerError
 
-    def test_list_overlay_is_reported_not_fatal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A top-level YAML list overlay names itself and leaves the rest of the run."""
-        from kanibako.errors import ContainerError
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      assert run_rig_diagnose(argparse.Namespace()) == 0
+    return capsys.readouterr().out
 
-        overlay = self._break_baseline_overlay(tmp_home, "- a\n- b\n")
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_rig_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_overlay_is_reported(
-            out, overlay, f"the config file {overlay} is a list, not a mapping of keys."
-        )
-        assert "Error:" not in out
-        # The other checks still print, and the header the probe section owns.
-        assert "Rig (Image) Diagnostics" in out
-        assert "Container runtime" in out
-        assert "Baseline:" in out
+  def test_overlay_at_the_retired_path_is_named_with_its_new_home(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """An overlay left at the old XDG config path is not read; diagnose names the move."""
+    old = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_text("git: [git]\n")
+    new = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
+    out = self._rig_diagnose_out(capsys)
+    assert (f"[!!]   Baseline overlay: {old} is no longer read; move it to {new}") in out
+    assert "Error:" not in out
 
-    def test_repeated_key_overlay_is_reported_not_fatal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A repeated key in the overlay names itself and leaves the rest of the run."""
-        from kanibako.errors import ContainerError
-
-        overlay = self._break_baseline_overlay(tmp_home, "git: [rg]\ngit: [rg2]\n")
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_rig_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_overlay_is_reported(
-            out, overlay, f"the config file {overlay} sets 'git' twice"
-        )
-        assert "Error:" not in out
-        assert "Rig (Image) Diagnostics" in out
-        assert "Container runtime" in out
-        assert "Baseline:" in out
-
-    def test_control_character_in_a_name_is_reported_not_fatal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """A NUL in an overlay executable name names itself and leaves the rest of the run.
-
-        Real user overlay, real ``load_baseline``, real ``run_rig_diagnose`` -- so this
-        is the refusal the ``rig diagnose`` baseline section actually reports.
-        """
-        from kanibako.errors import ContainerError
-
-        overlay = self._break_baseline_overlay(tmp_home, 'git: ["rg\\0sh"]\n')
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_rig_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_overlay_is_reported(
-            out,
-            overlay,
-            f"the config file {overlay} sets 'git' to a value that is not an "
-            "executable name or a list of them.",
-        )
-        assert "Error:" not in out
-        assert "Rig (Image) Diagnostics" in out
-        assert "Container runtime" in out
-        assert "Baseline:" in out
-
-    def _rig_diagnose_out(self, capsys) -> str:
-        from kanibako.errors import ContainerError
-
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            assert run_rig_diagnose(argparse.Namespace()) == 0
-        return capsys.readouterr().out
-
-    def test_overlay_at_the_retired_path_is_named_with_its_new_home(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """An overlay left at the old XDG config path is not read; diagnose names the move."""
-        old = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
-        old.parent.mkdir(parents=True, exist_ok=True)
-        old.write_text("git: [git]\n")
-        new = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
-        out = self._rig_diagnose_out(capsys)
-        assert (
-            f"[!!]   Baseline overlay: {old} is no longer read; move it to {new}"
-        ) in out
-        assert "Error:" not in out
-
-    def test_no_overlay_at_the_retired_path_prints_no_notice(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        out = self._rig_diagnose_out(capsys)
-        assert "Baseline:" in out
-        assert "Baseline overlay" not in out
+  def test_no_overlay_at_the_retired_path_prints_no_notice(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    out = self._rig_diagnose_out(capsys)
+    assert "Baseline:" in out
+    assert "Baseline overlay" not in out
 
 
 class TestCheckVscode:
-    """_check_vscode: host prerequisites for VS Code "Attach to Running Container".
+  """_check_vscode: host prerequisites for VS Code "Attach to Running Container".
 
-    Returns three (status, label, detail) lines in a fixed order:
-    [0] `code` CLI, [1] Dev Containers extension, [2] dockerPath.
-    """
+  Returns three (status, label, detail) lines in a fixed order:
+  [0] `code` CLI, [1] Dev Containers extension, [2] dockerPath.
+  """
 
-    def _settings(self, config_home: Path, text: str) -> Path:
-        """Write a VS Code user settings.json under *config_home* and return it."""
-        path = config_home / "Code" / "User" / "settings.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        return path
+  def _settings(self, config_home: Path, text: str) -> Path:
+    """Write a VS Code user settings.json under *config_home* and return it."""
+    path = config_home / "Code" / "User" / "settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
-    # --- code CLI + extension branches -------------------------------------
+  # --- code CLI + extension branches -------------------------------------
 
-    def test_code_absent(self, tmp_path: Path) -> None:
-        """No `code` on PATH -> [!!] CLI + [--] extension (uncheckable)."""
-        with patch("shutil.which", return_value=None):
-            lines = _check_vscode(config_home=tmp_path)
-        code_status, code_label, code_detail = lines[0]
-        assert code_status == "!!"
-        assert code_label == "VS Code CLI"
-        assert "not on PATH" in code_detail
-        assert "Install code command in PATH" in code_detail
-        # Extension cannot be checked without the CLI.
-        ext_status, _ext_label, ext_detail = lines[1]
-        assert ext_status == "--"
-        assert "code not on PATH" in ext_detail
+  def test_code_absent(self, tmp_path: Path) -> None:
+    """No `code` on PATH -> [!!] CLI + [--] extension (uncheckable)."""
+    with patch("shutil.which", return_value=None):
+      lines = _check_vscode(config_home=tmp_path)
+    code_status, code_label, code_detail = lines[0]
+    assert code_status == "!!"
+    assert code_label == "VS Code CLI"
+    assert "not on PATH" in code_detail
+    assert "Install code command in PATH" in code_detail
+    # Extension cannot be checked without the CLI.
+    ext_status, _ext_label, ext_detail = lines[1]
+    assert ext_status == "--"
+    assert "code not on PATH" in ext_detail
 
-    def test_code_present_ext_present(self, tmp_path: Path) -> None:
-        """`code` present + Dev Containers listed -> both [ok]."""
-        proc = MagicMock(
-            returncode=0, stdout="ms-python.python\nms-vscode-remote.remote-containers\n"
-        )
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch("subprocess.run", return_value=proc) as mock_run,
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        assert lines[0][0] == "ok"
-        assert lines[0][2] == "/usr/bin/code"
-        assert lines[1][0] == "ok"
-        assert "ms-vscode-remote.remote-containers" in lines[1][2]
-        # The list-extensions probe MUST be bounded so a wedged `code` cannot
-        # hang diagnose forever.
-        assert mock_run.call_args.kwargs.get("timeout") == 10
+  def test_code_present_ext_present(self, tmp_path: Path) -> None:
+    """`code` present + Dev Containers listed -> both [ok]."""
+    proc = MagicMock(returncode=0, stdout="ms-python.python\nms-vscode-remote.remote-containers\n")
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch("subprocess.run", return_value=proc) as mock_run,
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    assert lines[0][0] == "ok"
+    assert lines[0][2] == "/usr/bin/code"
+    assert lines[1][0] == "ok"
+    assert "ms-vscode-remote.remote-containers" in lines[1][2]
+    # The list-extensions probe MUST be bounded so a wedged `code` cannot
+    # hang diagnose forever.
+    assert mock_run.call_args.kwargs.get("timeout") == 10
 
-    def test_code_present_ext_present_case_insensitive(self, tmp_path: Path) -> None:
-        """Extension match is case-insensitive."""
-        proc = MagicMock(returncode=0, stdout="MS-VSCode-Remote.Remote-Containers\n")
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch("subprocess.run", return_value=proc),
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        assert lines[1][0] == "ok"
+  def test_code_present_ext_present_case_insensitive(self, tmp_path: Path) -> None:
+    """Extension match is case-insensitive."""
+    proc = MagicMock(returncode=0, stdout="MS-VSCode-Remote.Remote-Containers\n")
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch("subprocess.run", return_value=proc),
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    assert lines[1][0] == "ok"
 
-    def test_code_present_ext_missing(self, tmp_path: Path) -> None:
-        """`code` present but Dev Containers NOT listed -> [!!] with remediation."""
-        proc = MagicMock(returncode=0, stdout="ms-python.python\n")
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch("subprocess.run", return_value=proc),
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        ext_status, _label, ext_detail = lines[1]
-        assert ext_status == "!!"
-        assert "not installed" in ext_detail
-        assert "code --install-extension ms-vscode-remote.remote-containers" in ext_detail
+  def test_code_present_ext_missing(self, tmp_path: Path) -> None:
+    """`code` present but Dev Containers NOT listed -> [!!] with remediation."""
+    proc = MagicMock(returncode=0, stdout="ms-python.python\n")
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch("subprocess.run", return_value=proc),
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    ext_status, _label, ext_detail = lines[1]
+    assert ext_status == "!!"
+    assert "not installed" in ext_detail
+    assert "code --install-extension ms-vscode-remote.remote-containers" in ext_detail
 
-    def test_code_present_list_extensions_nonzero(self, tmp_path: Path) -> None:
-        """A non-zero `code --list-extensions` degrades to [--], never crashes."""
-        proc = MagicMock(returncode=1, stdout="")
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch("subprocess.run", return_value=proc),
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        assert lines[1][0] == "--"
-        assert "failed" in lines[1][2]
+  def test_code_present_list_extensions_nonzero(self, tmp_path: Path) -> None:
+    """A non-zero `code --list-extensions` degrades to [--], never crashes."""
+    proc = MagicMock(returncode=1, stdout="")
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch("subprocess.run", return_value=proc),
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    assert lines[1][0] == "--"
+    assert "failed" in lines[1][2]
 
-    def test_code_present_list_extensions_raises(self, tmp_path: Path) -> None:
-        """A raising `code --list-extensions` degrades to [--], never crashes."""
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch("subprocess.run", side_effect=OSError("boom")),
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        assert lines[1][0] == "--"
-        assert "failed" in lines[1][2]
+  def test_code_present_list_extensions_raises(self, tmp_path: Path) -> None:
+    """A raising `code --list-extensions` degrades to [--], never crashes."""
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch("subprocess.run", side_effect=OSError("boom")),
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    assert lines[1][0] == "--"
+    assert "failed" in lines[1][2]
 
-    def test_code_present_list_extensions_hangs_times_out(
-        self, tmp_path: Path
-    ) -> None:
-        """A wedged `code` (TimeoutExpired) degrades to [--] -- diagnose must
-        never hang.  subprocess.run is called with timeout=; TimeoutExpired
-        subclasses Exception so it routes to the honest cannot-check line."""
-        import subprocess
+  def test_code_present_list_extensions_hangs_times_out(self, tmp_path: Path) -> None:
+    """A wedged `code` (TimeoutExpired) degrades to [--] -- diagnose must
+    never hang.  subprocess.run is called with timeout=; TimeoutExpired
+    subclasses Exception so it routes to the honest cannot-check line."""
+    import subprocess
 
-        with (
-            patch("shutil.which", return_value="/usr/bin/code"),
-            patch(
-                "subprocess.run",
-                side_effect=subprocess.TimeoutExpired(
-                    cmd="code --list-extensions", timeout=10
-                ),
-            ),
-        ):
-            lines = _check_vscode(config_home=tmp_path)
-        assert lines[1][0] == "--"
-        assert "failed" in lines[1][2]
+    with (
+      patch("shutil.which", return_value="/usr/bin/code"),
+      patch(
+        "subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="code --list-extensions", timeout=10),
+      ),
+    ):
+      lines = _check_vscode(config_home=tmp_path)
+    assert lines[1][0] == "--"
+    assert "failed" in lines[1][2]
 
-    # --- dockerPath / settings.json branches -------------------------------
+  # --- dockerPath / settings.json branches -------------------------------
 
-    def _vscode_with_settings(self, config_home: Path):
-        """Patch code-absent (irrelevant here) and return the dockerPath line."""
-        with patch("shutil.which", return_value=None):
-            return _check_vscode(config_home=config_home)[2]
+  def _vscode_with_settings(self, config_home: Path):
+    """Patch code-absent (irrelevant here) and return the dockerPath line."""
+    with patch("shutil.which", return_value=None):
+      return _check_vscode(config_home=config_home)[2]
 
-    def test_settings_absent(self, tmp_path: Path) -> None:
-        """No settings.json -> [!!] with remediation and the probed path."""
-        status, label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "!!"
-        assert label == "VS Code dockerPath"
-        assert "not found" in detail
-        assert 'dev.containers.dockerPath": "podman"' in detail
-        assert str(tmp_path / "Code" / "User" / "settings.json") in detail
+  def test_settings_absent(self, tmp_path: Path) -> None:
+    """No settings.json -> [!!] with remediation and the probed path."""
+    status, label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "!!"
+    assert label == "VS Code dockerPath"
+    assert "not found" in detail
+    assert 'dev.containers.dockerPath": "podman"' in detail
+    assert str(tmp_path / "Code" / "User" / "settings.json") in detail
 
-    def test_dockerpath_podman_ok(self, tmp_path: Path) -> None:
-        """dockerPath == podman -> [ok] with a local-only note (FF-1 widening)."""
-        self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "ok"
-        assert "podman" in detail
-        assert "local only" in detail
-        assert "--remote" in detail
+  def test_dockerpath_podman_ok(self, tmp_path: Path) -> None:
+    """dockerPath == podman -> [ok] with a local-only note (FF-1 widening)."""
+    self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "ok"
+    assert "podman" in detail
+    assert "local only" in detail
+    assert "--remote" in detail
 
-    def test_dockerpath_kanibako_wrapper_ok(self, tmp_path: Path) -> None:
-        """dockerPath == the kanibako dispatch wrapper path -> [ok] (FF-1)."""
-        from kanibako.vscode import vscode_remote as vr
+  def test_dockerpath_kanibako_wrapper_ok(self, tmp_path: Path) -> None:
+    """dockerPath == the kanibako dispatch wrapper path -> [ok] (FF-1)."""
+    from kanibako.vscode import vscode_remote as vr
 
-        wrapper = str(vr.ensure_dispatch_wrapper())
-        self._settings(
-            tmp_path,
-            json.dumps({"dev.containers.dockerPath": wrapper}),
-        )
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "ok"
-        assert "kanibako dispatch wrapper" in detail
-        assert "Remote-SSH window to a host without this path fails" in detail
+    wrapper = str(vr.ensure_dispatch_wrapper())
+    self._settings(
+      tmp_path,
+      json.dumps({"dev.containers.dockerPath": wrapper}),
+    )
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "ok"
+    assert "kanibako dispatch wrapper" in detail
+    assert "Remote-SSH window to a host without this path fails" in detail
 
-    def test_dockerpath_absolute_path_missing_here(self, tmp_path: Path) -> None:
-        """An absolute dockerPath that does not exist on this machine -> [!!]
-        naming that fact and the "podman" cure (the far-host case)."""
-        missing = "/home/nobody/.local/share/kanibako/vscode-remote/bin/podman-dispatch"
-        self._settings(
-            tmp_path,
-            json.dumps({"dev.containers.dockerPath": missing}),
-        )
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "!!"
-        assert missing in detail
-        assert "does not exist on this machine" in detail
-        assert 'dev.containers.dockerPath": "podman"' in detail
+  def test_dockerpath_absolute_path_missing_here(self, tmp_path: Path) -> None:
+    """An absolute dockerPath that does not exist on this machine -> [!!]
+    naming that fact and the "podman" cure (the far-host case)."""
+    missing = "/home/nobody/.local/share/kanibako/vscode-remote/bin/podman-dispatch"
+    self._settings(
+      tmp_path,
+      json.dumps({"dev.containers.dockerPath": missing}),
+    )
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "!!"
+    assert missing in detail
+    assert "does not exist on this machine" in detail
+    assert 'dev.containers.dockerPath": "podman"' in detail
 
-    def test_dockerpath_other_value(self, tmp_path: Path) -> None:
-        """dockerPath set to something else -> [!!] naming the wrong value."""
-        self._settings(tmp_path, '{"dev.containers.dockerPath": "docker"}')
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "!!"
-        assert "docker" in detail
-        assert "expected" in detail
+  def test_dockerpath_other_value(self, tmp_path: Path) -> None:
+    """dockerPath set to something else -> [!!] naming the wrong value."""
+    self._settings(tmp_path, '{"dev.containers.dockerPath": "docker"}')
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "!!"
+    assert "docker" in detail
+    assert "expected" in detail
 
-    def test_dockerpath_key_missing(self, tmp_path: Path) -> None:
-        """Valid settings.json but no dockerPath key -> [!!] 'not set'."""
-        self._settings(tmp_path, '{"editor.fontSize": 14}')
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "!!"
-        assert "not set" in detail
+  def test_dockerpath_key_missing(self, tmp_path: Path) -> None:
+    """Valid settings.json but no dockerPath key -> [!!] 'not set'."""
+    self._settings(tmp_path, '{"editor.fontSize": 14}')
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "!!"
+    assert "not set" in detail
 
-    def test_settings_jsonc_comments_and_trailing_comma(self, tmp_path: Path) -> None:
-        """JSONC (comments + trailing comma) is parsed via the strip fallback."""
-        self._settings(
-            tmp_path,
-            """{
+  def test_settings_jsonc_comments_and_trailing_comma(self, tmp_path: Path) -> None:
+    """JSONC (comments + trailing comma) is parsed via the strip fallback."""
+    self._settings(
+      tmp_path,
+      """{
                 // line comment
                 "editor.fontSize": 14, /* block */
                 "dev.containers.dockerPath": "podman",
             }""",
-        )
-        status, _label, _detail = self._vscode_with_settings(tmp_path)
-        assert status == "ok"
+    )
+    status, _label, _detail = self._vscode_with_settings(tmp_path)
+    assert status == "ok"
 
-    def test_settings_url_value_not_clobbered_by_strip(self, tmp_path: Path) -> None:
-        """A `//` inside a string value must NOT be treated as a comment."""
-        self._settings(
-            tmp_path,
-            """{
+  def test_settings_url_value_not_clobbered_by_strip(self, tmp_path: Path) -> None:
+    """A `//` inside a string value must NOT be treated as a comment."""
+    self._settings(
+      tmp_path,
+      """{
                 "some.url": "http://example.com",
                 "dev.containers.dockerPath": "podman",
             }""",
-        )
-        status, _label, _detail = self._vscode_with_settings(tmp_path)
-        assert status == "ok"
+    )
+    status, _label, _detail = self._vscode_with_settings(tmp_path)
+    assert status == "ok"
 
-    def test_settings_unparseable(self, tmp_path: Path) -> None:
-        """Genuinely broken JSON -> [--] 'could not be parsed', never crashes."""
-        self._settings(tmp_path, "{ this is not json at all ][ ")
-        status, _label, detail = self._vscode_with_settings(tmp_path)
-        assert status == "--"
-        assert "could not be parsed" in detail
+  def test_settings_unparseable(self, tmp_path: Path) -> None:
+    """Genuinely broken JSON -> [--] 'could not be parsed', never crashes."""
+    self._settings(tmp_path, "{ this is not json at all ][ ")
+    status, _label, detail = self._vscode_with_settings(tmp_path)
+    assert status == "--"
+    assert "could not be parsed" in detail
 
-    def test_default_config_home_resolution(self, tmp_path: Path, monkeypatch) -> None:
-        """Without config_home, the XDG_CONFIG_HOME resolution is used."""
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
-        with patch("shutil.which", return_value=None):
-            lines = _check_vscode()
-        assert lines[2][0] == "ok"
+  def test_default_config_home_resolution(self, tmp_path: Path, monkeypatch) -> None:
+    """Without config_home, the XDG_CONFIG_HOME resolution is used."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
+    with patch("shutil.which", return_value=None):
+      lines = _check_vscode()
+    assert lines[2][0] == "ok"
 
-    # --- wiring into run_system_diagnose -----------------------------------
+  # --- wiring into run_system_diagnose -----------------------------------
 
-    def test_system_diagnose_includes_vscode_section(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """run_system_diagnose prints the VS Code lines."""
-        from kanibako.errors import ContainerError
+  def test_system_diagnose_includes_vscode_section(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """run_system_diagnose prints the VS Code lines."""
+    from kanibako.errors import ContainerError
 
-        with (
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=ContainerError("none"),
-            ),
-            patch("shutil.which", return_value=None),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "VS Code CLI" in out
-        assert "VS Code dockerPath" in out
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=ContainerError("none"),
+      ),
+      patch("shutil.which", return_value=None),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "VS Code CLI" in out
+    assert "VS Code dockerPath" in out
 
 
 class TestParsers:
-    """Verify that diagnose subcommands are parseable."""
+  """Verify that diagnose subcommands are parseable."""
 
-    def test_rig_diagnose_baseline_flags(self) -> None:
-        from kanibako.cli import build_parser
+  def test_rig_diagnose_baseline_flags(self) -> None:
+    from kanibako.cli import build_parser
 
-        parser = build_parser()
-        args = parser.parse_args(
-            ["rig", "diagnose", "--all", "--only", "ripgrep", "--skip", "fd-find"]
-        )
-        assert args.func == run_rig_diagnose
-        assert args.all_images is True
-        assert args.only == ["ripgrep"]
-        assert args.skip == ["fd-find"]
+    parser = build_parser()
+    args = parser.parse_args(
+      ["rig", "diagnose", "--all", "--only", "ripgrep", "--skip", "fd-find"]
+    )
+    assert args.func == run_rig_diagnose
+    assert args.all_images is True
+    assert args.only == ["ripgrep"]
+    assert args.skip == ["fd-find"]
 
-    def test_system_diagnose_parser(self) -> None:
-        from kanibako.cli import build_parser
+  def test_system_diagnose_parser(self) -> None:
+    from kanibako.cli import build_parser
 
-        parser = build_parser()
-        args = parser.parse_args(["system", "diagnose"])
-        assert args.func == run_system_diagnose
+    parser = build_parser()
+    args = parser.parse_args(["system", "diagnose"])
+    assert args.func == run_system_diagnose
 
-    def test_rig_diagnose_parser(self) -> None:
-        from kanibako.cli import build_parser
+  def test_rig_diagnose_parser(self) -> None:
+    from kanibako.cli import build_parser
 
-        parser = build_parser()
-        args = parser.parse_args(["rig", "diagnose"])
-        assert args.func == run_rig_diagnose
+    parser = build_parser()
+    args = parser.parse_args(["rig", "diagnose"])
+    assert args.func == run_rig_diagnose
 
-    def test_box_diagnose_parser(self) -> None:
-        from kanibako.cli import build_parser
+  def test_box_diagnose_parser(self) -> None:
+    from kanibako.cli import build_parser
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "diagnose"])
-        assert args.func == run_box_diagnose
+    parser = build_parser()
+    args = parser.parse_args(["box", "diagnose"])
+    assert args.func == run_box_diagnose
 
-    def test_box_diagnose_with_project(self) -> None:
-        from kanibako.cli import build_parser
+  def test_box_diagnose_with_project(self) -> None:
+    from kanibako.cli import build_parser
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "diagnose", "myproject"])
-        assert args.func == run_box_diagnose
-        assert args.project == "myproject"
+    parser = build_parser()
+    args = parser.parse_args(["box", "diagnose", "myproject"])
+    assert args.func == run_box_diagnose
+    assert args.project == "myproject"
 
 
 _UNDECLARED_KEY = "frobnicate"
 
 
 def _write_undeclared_key(config_file: Path) -> Path:
-    """Put an undeclared `box.<_UNDECLARED_KEY>` in the system-tier settings file."""
-    from kanibako.settings.paths import load_system_config, xdg
+  """Put an undeclared `box.<_UNDECLARED_KEY>` in the system-tier settings file."""
+  from kanibako.settings.paths import load_system_config, xdg
 
-    settings_path = load_system_config(
-        config_file,
-        data_home=xdg("XDG_DATA_HOME", ".local/share"),
-        home=Path.home(),
-    )["config.settings"]
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(f"box:\n  {_UNDECLARED_KEY}: yes\n")
-    return settings_path
+  settings_path = load_system_config(
+    config_file,
+    data_home=xdg("XDG_DATA_HOME", ".local/share"),
+    home=Path.home(),
+  )["config.settings"]
+  settings_path.parent.mkdir(parents=True, exist_ok=True)
+  settings_path.write_text(f"box:\n  {_UNDECLARED_KEY}: yes\n")
+  return settings_path
 
 
 def _quoted_body(config_file: Path) -> str:
-    """The settings error as diagnose must quote it: same load, verbatim, indented.
+  """The settings error as diagnose must quote it: same load, verbatim, indented.
 
-    Re-derived by running the load rather than spelled out here, so an assertion
-    on it says "printed once" rather than "printed once in today's wording".
-    """
-    from kanibako.errors import KanibakoError
-    from kanibako.settings.settings_launch import load_merged_config
+  Re-derived by running the load rather than spelled out here, so an assertion
+  on it says "printed once" rather than "printed once in today's wording".
+  """
+  from kanibako.errors import KanibakoError
+  from kanibako.settings.settings_launch import load_merged_config
 
-    try:
-        load_merged_config(None)
-    except KanibakoError as err:
-        return "\n".join(f"        {line}" for line in str(err).splitlines())
-    raise AssertionError("the load this test is about did not fail")
+  try:
+    load_merged_config(None)
+  except KanibakoError as err:
+    return "\n".join(f"        {line}" for line in str(err).splitlines())
+  raise AssertionError("the load this test is about did not fail")
 
 
 @pytest.mark.writes_undeclared(
-    f"box.{_UNDECLARED_KEY}",
-    reason="the refusal these tests drive is the §0 read gate itself, so the "
-           "settings file they write has to carry an undeclared key; the write "
-           "happens inside the resolve that then refuses it.",
+  f"box.{_UNDECLARED_KEY}",
+  reason="the refusal these tests drive is the §0 read gate itself, so the "
+  "settings file they write has to carry an undeclared key; the write "
+  "happens inside the resolve that then refuses it.",
 )
 class TestSettingsRefusalIsSurfaced:
-    """A settings error must be NAMED, never reported as `(not configured)`.
+  """A settings error must be NAMED, never reported as `(not configured)`.
 
-    The spec §0 read gate makes an undeclared key a refusal that names the
-    offending entry and every file the resolve loaded.  `diagnose` is what a
-    user runs when something is wrong, so swallowing that refusal into
-    "cannot check (not configured)" points them at the wrong cause.
+  The spec §0 read gate makes an undeclared key a refusal that names the
+  offending entry and every file the resolve loaded.  `diagnose` is what a
+  user runs when something is wrong, so swallowing that refusal into
+  "cannot check (not configured)" points them at the wrong cause.
 
-    These go through the REAL resolve -- an undeclared entry written into the
-    real system-tier settings file -- not a patched exception, so they fail if
-    the refusal stops reaching `load_merged_config` at all.
-    """
+  These go through the REAL resolve -- an undeclared entry written into the
+  real system-tier settings file -- not a patched exception, so they fail if
+  the refusal stops reaching `load_merged_config` at all.
+  """
 
-    def _assert_names_the_key(self, out: str, settings_path: Path) -> None:
-        """The refusal reached the user intact: key, spec cite, and file list."""
-        assert "[!!]" in out
-        assert _SETTINGS_ERROR_DETAIL in out
-        assert f"box.{_UNDECLARED_KEY}" in out
-        assert "spec §0" in out
-        assert str(settings_path) in out
-        assert "cannot check (not configured)" not in out
+  def _assert_names_the_key(self, out: str, settings_path: Path) -> None:
+    """The refusal reached the user intact: key, spec cite, and file list."""
+    assert "[!!]" in out
+    assert _SETTINGS_ERROR_DETAIL in out
+    assert f"box.{_UNDECLARED_KEY}" in out
+    assert "spec §0" in out
+    assert str(settings_path) in out
+    assert "cannot check (not configured)" not in out
 
-    def test_system_diagnose_surfaces_the_refusal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """`kanibako system diagnose` names the undeclared key on the Image line."""
-        from kanibako.errors import ContainerError
+  def test_system_diagnose_surfaces_the_refusal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """`kanibako system diagnose` names the undeclared key on the Image line."""
+    from kanibako.errors import ContainerError
 
-        settings_path = _write_undeclared_key(config_file)
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_names_the_key(out, settings_path)
-        assert f"[!!] Image: {_SETTINGS_ERROR_DETAIL}" in out
+    settings_path = _write_undeclared_key(config_file)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_names_the_key(out, settings_path)
+    assert f"[!!] Image: {_SETTINGS_ERROR_DETAIL}" in out
 
-    def test_rig_diagnose_surfaces_the_refusal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """`kanibako rig diagnose` names it on the Configured image line."""
-        from kanibako.errors import ContainerError
+  def test_rig_diagnose_surfaces_the_refusal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """`kanibako rig diagnose` names it on the Configured image line."""
+    from kanibako.errors import ContainerError
 
-        settings_path = _write_undeclared_key(config_file)
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_rig_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_names_the_key(out, settings_path)
-        assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
-        assert "Configured image: cannot check" not in out
+    settings_path = _write_undeclared_key(config_file)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_rig_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_names_the_key(out, settings_path)
+    assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
+    assert "Configured image: cannot check" not in out
 
-    def test_baseline_surfaces_the_refusal(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The baseline probe names it instead of claiming nothing is configured."""
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        settings_path = _write_undeclared_key(config_file)
-        args = argparse.Namespace(only=None, skip=None, all_images=False)
-        # `_diagnose_baseline` reports at its check line and defers the body to
-        # the caller's collector, so the caller's `emit` is part of the path.
-        errors = _SettingsErrorLog()
-        with (
-            patch(
-                "kanibako.runtime.baseline.load_baseline",
-                return_value={"tmux": ["tmux"]},
-            ),
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                return_value=mock_runtime,
-            ),
-            patch(
-                "kanibako.commands.diagnose.probe_missing_executables",
-                return_value=[],
-            ) as mock_probe,
-        ):
-            _diagnose_baseline(args, errors)
-        errors.emit()
-        out = capsys.readouterr().out
-        self._assert_names_the_key(out, settings_path)
-        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
-        # The refusal ends the probe -- there is no resolved image to probe.
-        mock_probe.assert_not_called()
+  def test_baseline_surfaces_the_refusal(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The baseline probe names it instead of claiming nothing is configured."""
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    settings_path = _write_undeclared_key(config_file)
+    args = argparse.Namespace(only=None, skip=None, all_images=False)
+    # `_diagnose_baseline` reports at its check line and defers the body to
+    # the caller's collector, so the caller's `emit` is part of the path.
+    errors = _SettingsErrorLog()
+    with (
+      patch(
+        "kanibako.runtime.baseline.load_baseline",
+        return_value={"tmux": ["tmux"]},
+      ),
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        return_value=mock_runtime,
+      ),
+      patch(
+        "kanibako.commands.diagnose.probe_missing_executables",
+        return_value=[],
+      ) as mock_probe,
+    ):
+      _diagnose_baseline(args, errors)
+    errors.emit()
+    out = capsys.readouterr().out
+    self._assert_names_the_key(out, settings_path)
+    assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
+    # The refusal ends the probe -- there is no resolved image to probe.
+    mock_probe.assert_not_called()
 
-    def test_non_kanibako_failure_still_reports_not_configured(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The `(not configured)` line survives for what it was written for."""
-        from kanibako.errors import ContainerError
+  def test_non_kanibako_failure_still_reports_not_configured(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The `(not configured)` line survives for what it was written for."""
+    from kanibako.errors import ContainerError
 
-        with (
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=ContainerError("none"),
-            ),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                side_effect=RuntimeError("boom"),
-            ),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[--] Image: cannot check (not configured)" in out
-        assert _SETTINGS_ERROR_DETAIL not in out
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=ContainerError("none"),
+      ),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        side_effect=RuntimeError("boom"),
+      ),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[--] Image: cannot check (not configured)" in out
+    assert _SETTINGS_ERROR_DETAIL not in out
 
 
 class TestMalformedConfigIsSurfaced:
-    """A malformed config file must be NAMED on the Storage and Journal lines.
+  """A malformed config file must be NAMED on the Storage and Journal lines.
 
-    Distinct from `TestSettingsRefusalIsSurfaced` above, and the distinction is
-    the whole point of this class: NEITHER of these two checks runs the
-    keyspace resolve, so neither can reach the spec §0 read gate those tests
-    drive -- which is exactly why no `writes_undeclared` marker belongs here.
-    What they bury instead is the `ConfigError` that `config_io.load_doc`
-    raises for unparseable YAML, which already names the file, the parse
-    position and the cure.  Same user-visible harm (a bland "cannot check"),
-    different trigger.
+  Distinct from `TestSettingsRefusalIsSurfaced` above, and the distinction is
+  the whole point of this class: NEITHER of these two checks runs the
+  keyspace resolve, so neither can reach the spec §0 read gate those tests
+  drive -- which is exactly why no `writes_undeclared` marker belongs here.
+  What they bury instead is the `ConfigError` that `config_io.load_doc`
+  raises for unparseable YAML, which already names the file, the parse
+  position and the cure.  Same user-visible harm (a bland "cannot check"),
+  different trigger.
 
-    These drive the REAL loader with a REAL broken file rather than patching an
-    exception in, so they fail if the `ConfigError` stops reaching
-    `load_config` / `load_std_paths` at all.
+  These drive the REAL loader with a REAL broken file rather than patching an
+  exception in, so they fail if the `ConfigError` stops reaching
+  `load_config` / `load_std_paths` at all.
+  """
+
+  BROKEN = 'box:\n  image: "unterminated\n   nope: [1, 2\n'
+
+  def _break_config(self, config_file: Path) -> Path:
+    """Replace the config file with unparseable YAML."""
+    config_file.write_text(self.BROKEN)
+    return config_file
+
+  def _assert_names_the_file(self, out: str, config_file: Path) -> None:
+    """The ConfigError reached the user intact: file, reason, and cure."""
+    assert _SETTINGS_ERROR_DETAIL in out
+    assert str(config_file) in out
+    assert "is not valid YAML" in out
+    assert "Fix or remove the file, then retry." in out
+
+  def test_journal_names_the_broken_file(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The Journal line names the file instead of claiming it cannot check."""
+    from kanibako.errors import ContainerError
+
+    self._break_config(config_file)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_names_the_file(out, config_file)
+    assert f"[!!] Journal: {_SETTINGS_ERROR_DETAIL}" in out
+    assert "[--] Journal: cannot check" not in out
+
+  def test_storage_names_the_broken_file(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The Storage line names the file instead of claiming it cannot check."""
+    from kanibako.errors import ContainerError
+
+    self._break_config(config_file)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    self._assert_names_the_file(out, config_file)
+    assert f"[!!] Storage: {_SETTINGS_ERROR_DETAIL}" in out
+    assert "[--] Storage: cannot check" not in out
+
+  def test_journal_error_is_reported_in_line_order(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The std-paths error prints AT the Journal line, not where it was caught.
+
+    The std-paths load happens ~30 lines above the Journal check and prints
+    nothing of its own, so its error is captured and deferred.  This pins
+    that deferral: reporting at the catch site instead would move the
+    Journal error above the Agent lines and ahead of Storage.
     """
+    from kanibako.errors import ContainerError
 
-    BROKEN = 'box:\n  image: "unterminated\n   nope: [1, 2\n'
+    self._break_config(config_file)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    journal_at = out.index("[!!] Journal: settings error")
+    assert out.index("[!!] Image: settings error") < journal_at
+    assert out.index("[!!] Storage: settings error") < journal_at
 
-    def _break_config(self, config_file: Path) -> Path:
-        """Replace the config file with unparseable YAML."""
-        config_file.write_text(self.BROKEN)
-        return config_file
+  def test_journal_non_kanibako_failure_still_cannot_check(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The `cannot check` Journal line survives for what it was written for."""
+    from kanibako.errors import ContainerError
 
-    def _assert_names_the_file(self, out: str, config_file: Path) -> None:
-        """The ConfigError reached the user intact: file, reason, and cure."""
-        assert _SETTINGS_ERROR_DETAIL in out
-        assert str(config_file) in out
-        assert "is not valid YAML" in out
-        assert "Fix or remove the file, then retry." in out
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=ContainerError("none"),
+      ),
+      patch(
+        "kanibako.settings.paths.load_std_paths",
+        side_effect=RuntimeError("boom"),
+      ),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[--] Journal: cannot check" in out
+    assert "Journal: settings error" not in out
 
-    def test_journal_names_the_broken_file(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The Journal line names the file instead of claiming it cannot check."""
-        from kanibako.errors import ContainerError
+  def test_storage_non_kanibako_failure_still_cannot_check(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """The `cannot check` Storage line survives for what it was written for."""
+    from kanibako.errors import ContainerError
 
-        self._break_config(config_file)
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_names_the_file(out, config_file)
-        assert f"[!!] Journal: {_SETTINGS_ERROR_DETAIL}" in out
-        assert "[--] Journal: cannot check" not in out
-
-    def test_storage_names_the_broken_file(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The Storage line names the file instead of claiming it cannot check."""
-        from kanibako.errors import ContainerError
-
-        self._break_config(config_file)
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        self._assert_names_the_file(out, config_file)
-        assert f"[!!] Storage: {_SETTINGS_ERROR_DETAIL}" in out
-        assert "[--] Storage: cannot check" not in out
-
-    def test_journal_error_is_reported_in_line_order(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The std-paths error prints AT the Journal line, not where it was caught.
-
-        The std-paths load happens ~30 lines above the Journal check and prints
-        nothing of its own, so its error is captured and deferred.  This pins
-        that deferral: reporting at the catch site instead would move the
-        Journal error above the Agent lines and ahead of Storage.
-        """
-        from kanibako.errors import ContainerError
-
-        self._break_config(config_file)
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        journal_at = out.index("[!!] Journal: settings error")
-        assert out.index("[!!] Image: settings error") < journal_at
-        assert out.index("[!!] Storage: settings error") < journal_at
-
-    def test_journal_non_kanibako_failure_still_cannot_check(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The `cannot check` Journal line survives for what it was written for."""
-        from kanibako.errors import ContainerError
-
-        with (
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=ContainerError("none"),
-            ),
-            patch(
-                "kanibako.settings.paths.load_std_paths",
-                side_effect=RuntimeError("boom"),
-            ),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[--] Journal: cannot check" in out
-        assert "Journal: settings error" not in out
-
-    def test_storage_non_kanibako_failure_still_cannot_check(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """The `cannot check` Storage line survives for what it was written for."""
-        from kanibako.errors import ContainerError
-
-        with (
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                side_effect=ContainerError("none"),
-            ),
-            patch(
-                "kanibako.commands.diagnose._check_storage",
-                side_effect=RuntimeError("boom"),
-            ),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[--] Storage: cannot check" in out
-        assert "Storage: settings error" not in out
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        side_effect=ContainerError("none"),
+      ),
+      patch(
+        "kanibako.commands.diagnose._check_storage",
+        side_effect=RuntimeError("boom"),
+      ),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[--] Storage: cannot check" in out
+    assert "Storage: settings error" not in out
 
 
 @pytest.mark.writes_undeclared(
-    f"box.{_UNDECLARED_KEY}",
-    reason="the double report pinned here is two REAL resolves refusing the "
-           "same undeclared key in one run, so the settings file has to carry "
-           "one; the write happens inside the resolve that then refuses it.",
+  f"box.{_UNDECLARED_KEY}",
+  reason="the double report pinned here is two REAL resolves refusing the "
+  "same undeclared key in one run, so the settings file has to carry "
+  "one; the write happens inside the resolve that then refuses it.",
 )
 class TestSettingsErrorsAreConsolidated:
-    """One root cause, quoted ONCE, named with every check it broke.
+  """One root cause, quoted ONCE, named with every check it broke.
 
-    The checks load settings independently, so one cause routinely reaches
-    several of them: `rig diagnose` resolves twice (Configured image and
-    Baseline) and a malformed config file breaks Image, Storage and Journal in
-    one `system diagnose`.  Quoting the whole error under each label turned a
-    single refusal into 12 lines of the same text, and a single broken file
-    into three copies.
+  The checks load settings independently, so one cause routinely reaches
+  several of them: `rig diagnose` resolves twice (Configured image and
+  Baseline) and a malformed config file breaks Image, Storage and Journal in
+  one `system diagnose`.  Quoting the whole error under each label turned a
+  single refusal into 12 lines of the same text, and a single broken file
+  into three copies.
 
-    What is NOT consolidated is the check line: every check that failed still
-    prints its own `[!!]`, because the check that lost its body would otherwise
-    be back to a bland line or no line at all.  These tests pin both halves,
-    and the rule that separates them -- bodies are grouped by their RENDERED
-    TEXT, so two errors naming two different files both print.
-    """
+  What is NOT consolidated is the check line: every check that failed still
+  prints its own `[!!]`, because the check that lost its body would otherwise
+  be back to a bland line or no line at all.  These tests pin both halves,
+  and the rule that separates them -- bodies are grouped by their RENDERED
+  TEXT, so two errors naming two different files both print.
+  """
 
-    def _no_runtime(self):
-        """Patch the runtime away; these tests are about the settings load."""
-        from kanibako.errors import ContainerError
+  def _no_runtime(self):
+    """Patch the runtime away; these tests are about the settings load."""
+    from kanibako.errors import ContainerError
 
-        return patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        )
+    return patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    )
 
-    def test_one_error_at_two_checks_is_quoted_once(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """`rig diagnose` resolves twice; both say so, and share one quoted body."""
-        mock_runtime = MagicMock()
-        mock_runtime.cmd = "podman"
-        mock_runtime.list_local_images.return_value = []
-        settings_path = _write_undeclared_key(config_file)
-        args = argparse.Namespace(only=None, skip=None, all_images=False)
-        with (
-            patch(
-                "kanibako.runtime.baseline.load_baseline",
-                return_value={"tmux": ["tmux"]},
-            ),
-            patch(
-                "kanibako.runtime.container.ContainerRuntime",
-                return_value=mock_runtime,
-            ),
-        ):
-            rc = run_rig_diagnose(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        # Neither check is silently dropped ...
-        assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
-        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
-        # ... and the two of them share ONE body that names both.
-        assert "    affects: Configured image, Baseline" in out
-        assert out.count(_quoted_body(config_file)) == 1
-        assert str(settings_path) in out
+  def test_one_error_at_two_checks_is_quoted_once(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """`rig diagnose` resolves twice; both say so, and share one quoted body."""
+    mock_runtime = MagicMock()
+    mock_runtime.cmd = "podman"
+    mock_runtime.list_local_images.return_value = []
+    settings_path = _write_undeclared_key(config_file)
+    args = argparse.Namespace(only=None, skip=None, all_images=False)
+    with (
+      patch(
+        "kanibako.runtime.baseline.load_baseline",
+        return_value={"tmux": ["tmux"]},
+      ),
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        return_value=mock_runtime,
+      ),
+    ):
+      rc = run_rig_diagnose(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Neither check is silently dropped ...
+    assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
+    assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
+    # ... and the two of them share ONE body that names both.
+    assert "    affects: Configured image, Baseline" in out
+    assert out.count(_quoted_body(config_file)) == 1
+    assert str(settings_path) in out
 
-    def test_malformed_file_at_three_checks_is_quoted_once(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """One unparseable file breaks three checks; three names, one body."""
-        config_file.write_text('box:\n  image: "unterminated\n   nope: [1, 2\n')
-        with self._no_runtime():
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        for label in ("Image", "Storage", "Journal"):
-            assert f"[!!] {label}: {_SETTINGS_ERROR_DETAIL}" in out
-        assert "    affects: Image, Storage, Journal" in out
-        assert out.count("is not valid YAML") == 1
+  def test_malformed_file_at_three_checks_is_quoted_once(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """One unparseable file breaks three checks; three names, one body."""
+    config_file.write_text('box:\n  image: "unterminated\n   nope: [1, 2\n')
+    with self._no_runtime():
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    for label in ("Image", "Storage", "Journal"):
+      assert f"[!!] {label}: {_SETTINGS_ERROR_DETAIL}" in out
+    assert "    affects: Image, Storage, Journal" in out
+    assert out.count("is not valid YAML") == 1
 
-    def test_two_different_errors_both_print(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """Different text is a different place, so grouping must not merge them."""
-        from kanibako.errors import ConfigError
+  def test_two_different_errors_both_print(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """Different text is a different place, so grouping must not merge them."""
+    from kanibako.errors import ConfigError
 
-        with (
-            self._no_runtime(),
-            patch(
-                "kanibako.settings.settings_launch.load_merged_config",
-                side_effect=ConfigError("first.yaml is not valid YAML"),
-            ),
-            patch(
-                "kanibako.settings.paths.load_std_paths",
-                side_effect=ConfigError("second.yaml is not valid YAML"),
-            ),
-        ):
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        affects = [ln for ln in out.splitlines() if ln.strip().startswith("affects:")]
-        assert affects == ["    affects: Image", "    affects: Journal"]
-        assert "        first.yaml is not valid YAML" in out
-        assert "        second.yaml is not valid YAML" in out
+    with (
+      self._no_runtime(),
+      patch(
+        "kanibako.settings.settings_launch.load_merged_config",
+        side_effect=ConfigError("first.yaml is not valid YAML"),
+      ),
+      patch(
+        "kanibako.settings.paths.load_std_paths",
+        side_effect=ConfigError("second.yaml is not valid YAML"),
+      ),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    affects = [ln for ln in out.splitlines() if ln.strip().startswith("affects:")]
+    assert affects == ["    affects: Image", "    affects: Journal"]
+    assert "        first.yaml is not valid YAML" in out
+    assert "        second.yaml is not valid YAML" in out
 
-    def test_clean_run_prints_no_section(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ) -> None:
-        """Nothing collected, nothing printed -- not an empty heading."""
-        with self._no_runtime():
-            rc = run_system_diagnose(argparse.Namespace())
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Settings errors:" not in out
-        assert "affects:" not in out
+  def test_clean_run_prints_no_section(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    """Nothing collected, nothing printed -- not an empty heading."""
+    with self._no_runtime():
+      rc = run_system_diagnose(argparse.Namespace())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Settings errors:" not in out
+    assert "affects:" not in out
 
 
 class TestSystemDiagnoseSurvivesBrickedStoreRoots:
-    """The set-door brick repair: ``diagnose`` is the door a bricked user reaches
-    for, so it must answer (rc 0, no traceback) under every stored-but-unusable
-    shape — measured per key, per the board row."""
+  """The set-door brick repair: ``diagnose`` is the door a bricked user reaches
+  for, so it must answer (rc 0, no traceback) under every stored-but-unusable
+  shape — measured per key, per the board row."""
 
-    def _hand_set(self, config_file, key, value):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import load_std_paths
+  def _hand_set(self, config_file, key, value):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import load_std_paths
 
-        std = load_std_paths(load_config(config_file))
-        std.settings.parent.mkdir(parents=True, exist_ok=True)
-        doc = {"system": {key.split(".", 1)[1]: value}}
-        dump_doc(std.settings, doc)
+    std = load_std_paths(load_config(config_file))
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"system": {key.split(".", 1)[1]: value}}
+    dump_doc(std.settings, doc)
 
-    def test_file_where_cache_belongs(self, config_file, tmp_home, capsys) -> None:
-        afile = tmp_home / "afile"
-        afile.write_text("not a directory")
-        self._hand_set(config_file, "system.cache", str(afile))
-        rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Traceback" not in out, out
+  def test_file_where_cache_belongs(self, config_file, tmp_home, capsys) -> None:
+    afile = tmp_home / "afile"
+    afile.write_text("not a directory")
+    self._hand_set(config_file, "system.cache", str(afile))
+    rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Traceback" not in out, out
 
-    def test_bare_relative_state_names_the_error(
-        self, config_file, tmp_home, capsys,
-    ) -> None:
-        self._hand_set(config_file, "system.state", "rel/dir")
-        rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Traceback" not in out, out
-        assert "BARE RELATIVE" in out, out
+  def test_bare_relative_state_names_the_error(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ) -> None:
+    self._hand_set(config_file, "system.state", "rel/dir")
+    rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Traceback" not in out, out
+    assert "BARE RELATIVE" in out, out
 
-    def test_missing_state_dir_is_not_an_error(
-        self, config_file, tmp_home, capsys,
-    ) -> None:
-        self._hand_set(config_file, "system.state", str(tmp_home / "never-made"))
-        rc = run_system_diagnose(argparse.Namespace())
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Traceback" not in out, out
-        assert "[ok] Journal" in out, out
+  def test_missing_state_dir_is_not_an_error(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ) -> None:
+    self._hand_set(config_file, "system.state", str(tmp_home / "never-made"))
+    rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Traceback" not in out, out
+    assert "[ok] Journal" in out, out
 
 
 class TestRunBoxDiagnoseRefusedCure:
-    """``box diagnose`` from a refused-leaf cwd prints a cure that runs with --name."""
+  """``box diagnose`` from a refused-leaf cwd prints a cure that runs with --name."""
 
-    def test_a_refused_leaf_cwd_prints_a_create_cure_with_name(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """The cure line tokenizes to ``kanibako create --name a_b`` (i.e. it runs)."""
-        from kanibako.errors import ContainerError
+  def test_a_refused_leaf_cwd_prints_a_create_cure_with_name(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """The cure line tokenizes to ``kanibako create --name a_b`` (i.e. it runs)."""
+    from kanibako.errors import ContainerError
 
-        bad = (tmp_home / "a b").resolve()
-        bad.mkdir()
-        monkeypatch.chdir(bad)
+    bad = (tmp_home / "a b").resolve()
+    bad.mkdir()
+    monkeypatch.chdir(bad)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=None, path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=None, path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        cure_lines = [
-            ln.strip() for ln in out.splitlines()
-            if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
-            and "--name" in ln
-        ]
-        assert cure_lines, f"no cure line in:\n{out}"
-        assert shlex.split(cure_lines[0]) == ["kanibako", "create", "--name", "a_b"]
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    cure_lines = [
+      ln.strip()
+      for ln in out.splitlines()
+      if ln.startswith("        ")
+      and ln.lstrip().startswith("kanibako create ")
+      and "--name" in ln
+    ]
+    assert cure_lines, f"no cure line in:\n{out}"
+    assert shlex.split(cure_lines[0]) == ["kanibako", "create", "--name", "a_b"]
 
-    def test_a_valid_leaf_cwd_keeps_todays_plain_create_hint(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """A valid leaf keeps today's bare ``kanibako create`` hint — no --name."""
-        from kanibako.errors import ContainerError
+  def test_a_valid_leaf_cwd_keeps_todays_plain_create_hint(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """A valid leaf keeps today's bare ``kanibako create`` hint — no --name."""
+    from kanibako.errors import ContainerError
 
-        ok = (tmp_home / "ok").resolve()
-        ok.mkdir()
-        monkeypatch.chdir(ok)
+    ok = (tmp_home / "ok").resolve()
+    ok.mkdir()
+    monkeypatch.chdir(ok)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=None, path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=None, path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        assert "To initialize a project here, run:  kanibako create\n" in out, out
-        assert "--name" not in out
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    assert "To initialize a project here, run:  kanibako create\n" in out, out
+    assert "--name" not in out
 
 
 class TestRunBoxDiagnoseNamedTargetCure:
-    """``box diagnose <dir>`` carries the target into both cure arms."""
+  """``box diagnose <dir>`` carries the target into both cure arms."""
 
-    def test_a_refused_leaf_named_target_runs_carries_path_and_preserves_alternative(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """Cure carries path AND --name; alternative guidance is preserved."""
-        from kanibako.errors import ContainerError
+  def test_a_refused_leaf_named_target_runs_carries_path_and_preserves_alternative(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """Cure carries path AND --name; alternative guidance is preserved."""
+    from kanibako.errors import ContainerError
 
-        bad = (tmp_home / "a b").resolve()
-        bad.mkdir()
-        monkeypatch.chdir(tmp_home)
+    bad = (tmp_home / "a b").resolve()
+    bad.mkdir()
+    monkeypatch.chdir(tmp_home)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=str(bad), path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=str(bad), path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
 
-        cure_lines = [
-            ln.strip() for ln in out.splitlines()
-            if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
-            and "--name" in ln
-        ]
-        assert cure_lines, f"no cure line in:\n{out}"
-        assert shlex.split(cure_lines[0]) == [
-            "kanibako", "create", str(bad), "--name", "a_b",
-        ], out
+    cure_lines = [
+      ln.strip()
+      for ln in out.splitlines()
+      if ln.startswith("        ")
+      and ln.lstrip().startswith("kanibako create ")
+      and "--name" in ln
+    ]
+    assert cure_lines, f"no cure line in:\n{out}"
+    assert shlex.split(cure_lines[0]) == [
+      "kanibako",
+      "create",
+      str(bad),
+      "--name",
+      "a_b",
+    ], out
 
-        assert "Or pass a project name/path" in out, out
+    assert "Or pass a project name/path" in out, out
 
-    def test_a_refused_leaf_named_target_indents_every_cure_line_to_eight(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """Every continuation line of the cure block is indented to 8 spaces."""
-        from kanibako.errors import ContainerError
+  def test_a_refused_leaf_named_target_indents_every_cure_line_to_eight(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """Every continuation line of the cure block is indented to 8 spaces."""
+    from kanibako.errors import ContainerError
 
-        bad = (tmp_home / "a b").resolve()
-        bad.mkdir()
-        monkeypatch.chdir(tmp_home)
+    bad = (tmp_home / "a b").resolve()
+    bad.mkdir()
+    monkeypatch.chdir(tmp_home)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=str(bad), path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=str(bad), path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        block_lines: list[str] = []
-        in_block = False
-        for line in out.splitlines():
-            if line.startswith("[!!] Project:"):
-                in_block = True
-                continue
-            if in_block:
-                if line == "":
-                    break
-                block_lines.append(line)
-        assert block_lines, f"no cure block found in:\n{out}"
-        for ln in block_lines:
-            assert ln.startswith("        "), (
-                f"ragged indent in cure block: {ln!r}\nfull block:\n"
-                + "\n".join(block_lines)
-            )
-            assert not ln.startswith("         "), (
-                f"over-indented in cure block: {ln!r}"
-            )
+    out = capsys.readouterr().out
+    assert rc != 0
+    block_lines: list[str] = []
+    in_block = False
+    for line in out.splitlines():
+      if line.startswith("[!!] Project:"):
+        in_block = True
+        continue
+      if in_block:
+        if line == "":
+          break
+        block_lines.append(line)
+    assert block_lines, f"no cure block found in:\n{out}"
+    for ln in block_lines:
+      assert ln.startswith("        "), (
+        f"ragged indent in cure block: {ln!r}\nfull block:\n" + "\n".join(block_lines)
+      )
+      assert not ln.startswith("         "), f"over-indented in cure block: {ln!r}"
 
-    def test_a_valid_leaf_named_target_carries_path_into_the_plain_create_hint(
-        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """A valid leaf carries the shlex-quoted target into the plain hint."""
-        from kanibako.errors import ContainerError
+  def test_a_valid_leaf_named_target_carries_path_into_the_plain_create_hint(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """A valid leaf carries the shlex-quoted target into the plain hint."""
+    from kanibako.errors import ContainerError
 
-        ok = (tmp_home / "ok").resolve()
-        ok.mkdir()
-        monkeypatch.chdir(tmp_home)
+    ok = (tmp_home / "ok").resolve()
+    ok.mkdir()
+    monkeypatch.chdir(tmp_home)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=str(ok), path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=str(ok), path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        assert "no kanibako project registered" in out
-        assert (
-            f"run:  kanibako create {shlex.quote(str(ok))}\n" in out
-        ), out
-        assert "--name" not in out
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "no kanibako project registered" in out
+    assert f"run:  kanibako create {shlex.quote(str(ok))}\n" in out, out
+    assert "--name" not in out
 
-    @pytest.mark.parametrize("named", [False, True], ids=["cwd", "named"])
-    def test_a_refused_leaf_prints_no_create_that_would_be_refused(
-        self, named, config_file, tmp_home, credentials_dir, capsys, monkeypatch
-    ) -> None:
-        """Every ``kanibako create`` printed for a refused leaf carries ``--name``."""
-        from kanibako.errors import ContainerError
+  @pytest.mark.parametrize("named", [False, True], ids=["cwd", "named"])
+  def test_a_refused_leaf_prints_no_create_that_would_be_refused(
+    self, named, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ) -> None:
+    """Every ``kanibako create`` printed for a refused leaf carries ``--name``."""
+    from kanibako.errors import ContainerError
 
-        bad = (tmp_home / "a b").resolve()
-        bad.mkdir()
-        monkeypatch.chdir(tmp_home if named else bad)
+    bad = (tmp_home / "a b").resolve()
+    bad.mkdir()
+    monkeypatch.chdir(tmp_home if named else bad)
 
-        with patch(
-            "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("none"),
-        ):
-            args = argparse.Namespace(project=str(bad) if named else None, path=None)
-            rc = run_box_diagnose(args)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      args = argparse.Namespace(project=str(bad) if named else None, path=None)
+      rc = run_box_diagnose(args)
 
-        out = capsys.readouterr().out
-        assert rc != 0
-        creates = [ln for ln in out.splitlines() if "kanibako create" in ln]
-        assert creates, out
-        for ln in creates:
-            assert "--name" in ln, f"create without --name would be refused: {ln!r}"
-        assert "Or pass a project name/path." in out, out
+    out = capsys.readouterr().out
+    assert rc != 0
+    creates = [ln for ln in out.splitlines() if "kanibako create" in ln]
+    assert creates, out
+    for ln in creates:
+      assert "--name" in ln, f"create without --name would be refused: {ln!r}"
+    assert "Or pass a project name/path." in out, out

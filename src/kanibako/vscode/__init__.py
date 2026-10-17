@@ -21,6 +21,6 @@ X``), never relative — §4.4 of that plan.
 """
 
 __all__ = [
-    "vscode_config",
-    "vscode_remote",
+  "vscode_config",
+  "vscode_remote",
 ]

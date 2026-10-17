@@ -37,138 +37,140 @@ _ENTRIES = "entries"
 
 
 def _key(box_path: str | Path) -> str:
-    """Normalize a box host-side path into the journal entry key."""
-    return str(box_path)
+  """Normalize a box host-side path into the journal entry key."""
+  return str(box_path)
 
 
 def read_journal(journal_path: Path) -> dict[str, dict]:
-    """Return the ``entries`` mapping; an absent/empty file or non-mapping ``entries`` is ``{}``.
+  """Return the ``entries`` mapping; an absent/empty file or non-mapping ``entries`` is ``{}``.
 
-    A file that is not a YAML mapping raises ``ConfigError`` naming it (``load_doc``).
-    """
-    doc = load_doc(journal_path)
-    entries = doc.get(_ENTRIES)
-    return entries if isinstance(entries, dict) else {}
+  A file that is not a YAML mapping raises ``ConfigError`` naming it (``load_doc``).
+  """
+  doc = load_doc(journal_path)
+  entries = doc.get(_ENTRIES)
+  return entries if isinstance(entries, dict) else {}
 
 
 def write_entry(
-    journal_path: Path,
-    box_path: str | Path,
-    *,
-    op: str,
-    name: str,
-    mode: str,
-    workset: str | None = None,
-    workspace: str | None = None,
-    state: dict | None = None,
-    claim: bool = False,
+  journal_path: Path,
+  box_path: str | Path,
+  *,
+  op: str,
+  name: str,
+  mode: str,
+  workset: str | None = None,
+  workspace: str | None = None,
+  state: dict | None = None,
+  claim: bool = False,
 ) -> dict | None:
-    """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW).
+  """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW).
 
-    *state* is what the op was told that sets box state (omitted when empty).  With
-    *claim*, an entry already holding the key, or a pending ``create`` of the same
-    *workspace*, is left alone and returned, and nothing is written: two writers
-    never share one key, and one workspace never has two creates.  ``None`` = written.
-    """
-    key = _key(box_path)
-    with rmw_lock(journal_path):
-        doc = load_doc(journal_path)
-        entries = doc.get(_ENTRIES)
-        if not isinstance(entries, dict):
-            entries = {}
-            doc[_ENTRIES] = entries
-        if claim:
-            if key in entries:
-                return entries[key]
-            if workspace is not None:
-                held = _create_for_workspace(entries, workspace)
-                if held is not None:
-                    return held
-        entries[key] = _entry(op, name, mode, workset, workspace, state)
-        dump_doc(journal_path, doc)
-    return None
+  *state* is what the op was told that sets box state (omitted when empty).  With
+  *claim*, an entry already holding the key, or a pending ``create`` of the same
+  *workspace*, is left alone and returned, and nothing is written: two writers
+  never share one key, and one workspace never has two creates.  ``None`` = written.
+  """
+  key = _key(box_path)
+  with rmw_lock(journal_path):
+    doc = load_doc(journal_path)
+    entries = doc.get(_ENTRIES)
+    if not isinstance(entries, dict):
+      entries = {}
+      doc[_ENTRIES] = entries
+    if claim:
+      if key in entries:
+        return entries[key]
+      if workspace is not None:
+        held = _create_for_workspace(entries, workspace)
+        if held is not None:
+          return held
+    entries[key] = _entry(op, name, mode, workset, workspace, state)
+    dump_doc(journal_path, doc)
+  return None
 
 
-def _entry(op: str, name: str, mode: str, workset: str | None,
-           workspace: str | None, state: dict | None) -> dict:
-    """One entry's mapping, in its on-disk key order."""
-    entry: dict = {
-        "op": op,
-        "name": name,
-        "mode": mode,
-    }
-    if workset is not None:
-        entry["workset"] = workset
-    if workspace is not None:
-        entry["workspace"] = workspace
-    if state:
-        entry["state"] = dict(state)
-    # Stamped AFTER the optional fields on purpose: ``dump_doc`` pins
-    # ``sort_keys=False``, so insertion order is the on-disk order.  ``host`` has no
-    # reader yet — it is reserved for liveness detection.
-    entry["started_at"] = utc_stamp("seconds")
-    entry["host"] = socket.gethostname()
-    return entry
+def _entry(
+  op: str, name: str, mode: str, workset: str | None, workspace: str | None, state: dict | None
+) -> dict:
+  """One entry's mapping, in its on-disk key order."""
+  entry: dict = {
+    "op": op,
+    "name": name,
+    "mode": mode,
+  }
+  if workset is not None:
+    entry["workset"] = workset
+  if workspace is not None:
+    entry["workspace"] = workspace
+  if state:
+    entry["state"] = dict(state)
+  # Stamped AFTER the optional fields on purpose: ``dump_doc`` pins
+  # ``sort_keys=False``, so insertion order is the on-disk order.  ``host`` has no
+  # reader yet — it is reserved for liveness detection.
+  entry["started_at"] = utc_stamp("seconds")
+  entry["host"] = socket.gethostname()
+  return entry
 
 
 def clear_entry(journal_path: Path, box_path: str | Path) -> None:
-    """Atomically drop the entry keyed by *box_path* (no-op if absent)."""
-    # JC-J1-3 (lean): drop the key, KEEP the document — an emptied journal stays as
-    # ``entries: {}`` and is never deleted.  The no-op arm is what lets a replay call
-    # this unconditionally.
-    key = _key(box_path)
-    with rmw_lock(journal_path):
-        doc = load_doc(journal_path)
-        entries = doc.get(_ENTRIES)
-        if not isinstance(entries, dict) or key not in entries:
-            return
-        del entries[key]
-        dump_doc(journal_path, doc)
+  """Atomically drop the entry keyed by *box_path* (no-op if absent)."""
+  # JC-J1-3 (lean): drop the key, KEEP the document — an emptied journal stays as
+  # ``entries: {}`` and is never deleted.  The no-op arm is what lets a replay call
+  # this unconditionally.
+  key = _key(box_path)
+  with rmw_lock(journal_path):
+    doc = load_doc(journal_path)
+    entries = doc.get(_ENTRIES)
+    if not isinstance(entries, dict) or key not in entries:
+      return
+    del entries[key]
+    dump_doc(journal_path, doc)
 
 
 def pending_entry(journal_path: Path, box_path: str | Path) -> dict | None:
-    """Return the in-flight entry for *box_path*, or ``None`` if none pending."""
-    return read_journal(journal_path).get(_key(box_path))
+  """Return the in-flight entry for *box_path*, or ``None`` if none pending."""
+  return read_journal(journal_path).get(_key(box_path))
 
 
 def pending_create(journal_path: Path, box_path: str | Path) -> dict | None:
-    """Return the pending entry for *box_path* iff it is a ``create`` op.
+  """Return the pending entry for *box_path* iff it is a ``create`` op.
 
-    The create/seed-path recovery signal: a non-``None`` result means a create was
-    started for this box but never completed (crash before ``clear_entry``).
-    """
-    entry = pending_entry(journal_path, box_path)
-    if entry is not None and entry.get("op") == "create":
-        return entry
-    return None
+  The create/seed-path recovery signal: a non-``None`` result means a create was
+  started for this box but never completed (crash before ``clear_entry``).
+  """
+  entry = pending_entry(journal_path, box_path)
+  if entry is not None and entry.get("op") == "create":
+    return entry
+  return None
 
 
 def pending_create_for_workspace(
-    journal_path: Path, workspace: str | Path,
+  journal_path: Path,
+  workspace: str | Path,
 ) -> dict | None:
-    """Return the pending ``create`` entry whose ``workspace`` == *workspace*, else ``None``.
+  """Return the pending ``create`` entry whose ``workspace`` == *workspace*, else ``None``.
 
-    The PRIMARY deferred-registration create-recovery signal (P8b): the box was
-    mid-create for this workspace but never registered, so its NAME is read from the
-    journal — there is no on-disk meta to read it from.
-    """
-    return _create_for_workspace(read_journal(journal_path), workspace)
+  The PRIMARY deferred-registration create-recovery signal (P8b): the box was
+  mid-create for this workspace but never registered, so its NAME is read from the
+  journal — there is no on-disk meta to read it from.
+  """
+  return _create_for_workspace(read_journal(journal_path), workspace)
 
 
 def _create_for_workspace(entries: dict, workspace: str | Path) -> dict | None:
-    """The first ``create`` entry in *entries* whose ``workspace`` is *workspace*."""
-    # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
-    # sides compare literally: twins are two workspaces.
-    target = literal_path(workspace)
-    for entry in entries.values():
-        if not isinstance(entry, dict) or entry.get("op") != "create":
-            continue
-        ws = entry.get("workspace")
-        if ws is None:
-            continue
-        if literal_path(ws) == target:
-            return entry
-    return None
+  """The first ``create`` entry in *entries* whose ``workspace`` is *workspace*."""
+  # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
+  # sides compare literally: twins are two workspaces.
+  target = literal_path(workspace)
+  for entry in entries.values():
+    if not isinstance(entry, dict) or entry.get("op") != "create":
+      continue
+    ws = entry.get("workspace")
+    if ws is None:
+      continue
+    if literal_path(ws) == target:
+      return entry
+  return None
 
 
 # Register-only ops (J2): import/connect REGISTER an externally-seeded box and NEVER
@@ -180,13 +182,13 @@ _IMPORT_OPS = ("import", "connect")
 
 
 def pending_import(journal_path: Path, box_path: str | Path) -> dict | None:
-    """Return the pending entry for *box_path* iff it is a register-only op.
+  """Return the pending entry for *box_path* iff it is a register-only op.
 
-    The import/connect recovery signal: a non-``None`` result means an ``import`` or
-    ``connect`` was started for this box but never completed (crash before
-    ``clear_entry``).
-    """
-    entry = pending_entry(journal_path, box_path)
-    if entry is not None and entry.get("op") in _IMPORT_OPS:
-        return entry
-    return None
+  The import/connect recovery signal: a non-``None`` result means an ``import`` or
+  ``connect`` was started for this box but never completed (crash before
+  ``clear_entry``).
+  """
+  entry = pending_entry(journal_path, box_path)
+  if entry is not None and entry.get("op") in _IMPORT_OPS:
+    return entry
+  return None

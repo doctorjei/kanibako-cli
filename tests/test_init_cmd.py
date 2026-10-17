@@ -21,755 +21,916 @@ from kanibako.runtime.container import remove_box_tree
 # Parser tests
 # ---------------------------------------------------------------------------
 
+
 class TestBoxCreateParser:
-    def test_create_parser_standalone(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone"])
-        assert args.command == "box"
-        assert args.box_command == "create"
-        assert args.standalone is True
-        assert args.path is None
-        assert args.image is None
+  def test_create_parser_standalone(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone"])
+    assert args.command == "box"
+    assert args.box_command == "create"
+    assert args.standalone is True
+    assert args.path is None
+    assert args.image is None
 
-    def test_create_parser_with_path(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "/tmp/mydir"])
-        assert args.command == "box"
-        assert args.path == "/tmp/mydir"
+  def test_create_parser_with_path(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "/tmp/mydir"])
+    assert args.command == "box"
+    assert args.path == "/tmp/mydir"
 
-    def test_create_parser_with_image(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "--image", "kanibako-template-jvm-oci"])
-        assert args.image == "kanibako-template-jvm-oci"
+  def test_create_parser_with_image(self):
+    parser = build_parser()
+    args = parser.parse_args(
+      ["box", "create", "--standalone", "--image", "kanibako-template-jvm-oci"]
+    )
+    assert args.image == "kanibako-template-jvm-oci"
 
-    def test_create_parser_short_image_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "-i", "kanibako-oci"])
-        assert args.image == "kanibako-oci"
+  def test_create_parser_short_image_flag(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "-i", "kanibako-oci"])
+    assert args.image == "kanibako-oci"
 
-    def test_init_not_in_subcommands(self):
-        assert "init" not in _SUBCOMMANDS
+  def test_init_not_in_subcommands(self):
+    assert "init" not in _SUBCOMMANDS
 
-    def test_box_in_subcommands(self):
-        assert "box" in _SUBCOMMANDS
+  def test_box_in_subcommands(self):
+    assert "box" in _SUBCOMMANDS
 
-    def test_new_removed_from_subcommands(self):
-        assert "new" not in _SUBCOMMANDS
+  def test_new_removed_from_subcommands(self):
+    assert "new" not in _SUBCOMMANDS
 
-    def test_create_parser_private(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "--private"])
-        assert args.private is True
+  def test_create_parser_private(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "--private"])
+    assert args.private is True
 
-    def test_create_parser_private_default_false(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone"])
-        assert args.private is False
+  def test_create_parser_private_default_false(self):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone"])
+    assert args.private is False
 
-    def test_top_level_create_parser_private(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "--standalone", "--private"])
-        assert args.command == "create"
-        assert args.private is True
+  def test_top_level_create_parser_private(self):
+    parser = build_parser()
+    args = parser.parse_args(["create", "--standalone", "--private"])
+    assert args.command == "create"
+    assert args.private is True
 
-    def test_create_parser_register_defaults_off(self):
-        """I3/§D4a: registration at create is OPT-IN, so the default is False."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone"])
-        assert args.register is False
-        assert parser.parse_args(
-            ["box", "create", "--standalone", "--register"]
-        ).register is True
+  def test_create_parser_register_defaults_off(self):
+    """I3/§D4a: registration at create is OPT-IN, so the default is False."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone"])
+    assert args.register is False
+    assert parser.parse_args(["box", "create", "--standalone", "--register"]).register is True
 
-    def test_top_level_create_parser_register(self):
-        """⚑ The top-level ``create`` alias declares its flags SEPARATELY
-        (``cli.py``), so a flag added to ``box create`` alone is missing here.
-        ``TestCreateFlagsAreClassified`` (``tests/test_create_recovery.py``)
-        pins the two surfaces equal, so the drift now reds rather than hiding."""
-        parser = build_parser()
-        args = parser.parse_args(["create", "--standalone", "--register"])
-        assert args.command == "create"
-        assert args.register is True
-        assert parser.parse_args(["create", "--standalone"]).register is False
+  def test_top_level_create_parser_register(self):
+    """⚑ The top-level ``create`` alias declares its flags SEPARATELY
+    (``cli.py``), so a flag added to ``box create`` alone is missing here.
+    ``TestCreateFlagsAreClassified`` (``tests/test_create_recovery.py``)
+    pins the two surfaces equal, so the drift now reds rather than hiding."""
+    parser = build_parser()
+    args = parser.parse_args(["create", "--standalone", "--register"])
+    assert args.command == "create"
+    assert args.register is True
+    assert parser.parse_args(["create", "--standalone"]).register is False
 
-    def test_create_parser_recover_defaults_off(self):
-        """``--recover`` is opt-in on both spellings: replay is never implicit."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "--recover"])
-        assert args.box_command == "create"
-        assert args.recover is True
-        assert parser.parse_args(
-            ["box", "create", "--standalone"]
-        ).recover is False
+  def test_create_parser_recover_defaults_off(self):
+    """``--recover`` is opt-in on both spellings: replay is never implicit."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "--recover"])
+    assert args.box_command == "create"
+    assert args.recover is True
+    assert parser.parse_args(["box", "create", "--standalone"]).recover is False
 
-    def test_top_level_create_parser_recover(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "--standalone", "--recover"])
-        assert args.command == "create"
-        assert args.recover is True
-        assert parser.parse_args(["create", "--standalone"]).recover is False
+  def test_top_level_create_parser_recover(self):
+    parser = build_parser()
+    args = parser.parse_args(["create", "--standalone", "--recover"])
+    assert args.command == "create"
+    assert args.recover is True
+    assert parser.parse_args(["create", "--standalone"]).recover is False
 
-    def test_top_level_create_parser_rig(self):
-        """``--rig`` is the preferred spelling of ``--image`` and must reach the
-        SAME ``image`` dest on both create spellings."""
-        parser = build_parser()
-        assert parser.parse_args(
-            ["create", "--standalone", "--rig", "kanibako-oci"]
-        ).image == "kanibako-oci"
-        assert parser.parse_args(
-            ["box", "create", "--standalone", "--rig", "kanibako-oci"]
-        ).image == "kanibako-oci"
+  def test_top_level_create_parser_rig(self):
+    """``--rig`` is the preferred spelling of ``--image`` and must reach the
+    SAME ``image`` dest on both create spellings."""
+    parser = build_parser()
+    assert (
+      parser.parse_args(["create", "--standalone", "--rig", "kanibako-oci"]).image
+      == "kanibako-oci"
+    )
+    assert (
+      parser.parse_args(["box", "create", "--standalone", "--rig", "kanibako-oci"]).image
+      == "kanibako-oci"
+    )
 
 
 # ---------------------------------------------------------------------------
 # TestRunCreate
 # ---------------------------------------------------------------------------
 
+
 class TestRunCreate:
-    def test_create_standalone_creates_project(
-        self, config_file, credentials_dir, project_dir, capsys,
+  def test_create_standalone_creates_project(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    rc = run_create(args)
+
+    assert rc == 0
+    resolved = project_dir.resolve()
+    assert (resolved / "box_data").is_dir()
+    assert (resolved / "box_data" / "home").is_dir()
+    assert (resolved / "vault" / "ro").is_dir()
+    assert (resolved / "vault" / "rw").is_dir()
+
+  def test_create_seeds_at_create_before_any_launch(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """B7: `box create` seeds the home ATOMICALLY at creation (not launch).
+
+    `run_create` must invoke the one-time seed for the freshly-registered box
+    (``proj.is_new``) — so the home is populated BEFORE the box is ever
+    started.  Asserts the create command routes through ``seed_new_box`` with
+    the just-created box.
+    """
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    with patch("kanibako.commands.start.seed_new_box") as m_seed:
+      rc = run_create(args)
+    assert rc == 0
+    m_seed.assert_called_once()
+    # The seeded subject is the box that was just created (is_new).
+    seeded_proj = m_seed.call_args.args[2]
+    assert seeded_proj.is_new is True
+    assert seeded_proj.mode.value == "standalone"
+
+  def test_create_materializes_the_canon_skeleton(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+  ):
+    """⚑ C-CANON R1b / J-7: ``box create`` materializes the canon SKELETON in the
+    box home — the mountpoints every canon bind lands on at launch.
+
+    Without it, podman would have to create each mountpoint itself, which is
+    exactly the failure the sibling model exists to remove. This is a create-time
+    guarantee, so it belongs in the create suite, not the launch one.
+    """
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    with patch("kanibako.runtime.container.ContainerRuntime"):
+      rc = run_create(args)
+    assert rc == 0
+
+    home = project_dir.resolve() / "box_data" / "home"
+    for rel in (
+      "canon",
+      "canon/charter",
+      "canon/charter/general",
+      "canon/charter/agent",
+      "canon/handbook",
     ):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        rc = run_create(args)
-
-        assert rc == 0
-        resolved = project_dir.resolve()
-        assert (resolved / "box_data").is_dir()
-        assert (resolved / "box_data" / "home").is_dir()
-        assert (resolved / "vault" / "ro").is_dir()
-        assert (resolved / "vault" / "rw").is_dir()
-
-    def test_create_seeds_at_create_before_any_launch(
-        self, config_file, credentials_dir, project_dir, capsys,
+      assert (home / rel).is_dir(), rel
+    for rel in (
+      "canon/COLLECTION.md",
+      "canon/charter/ROM_CONTENTS.md",
+      "canon/handbook/SYS_CONTENTS.md",
     ):
-        """B7: `box create` seeds the home ATOMICALLY at creation (not launch).
+      assert (home / rel).is_file(), rel
 
-        `run_create` must invoke the one-time seed for the freshly-registered box
-        (``proj.is_new``) — so the home is populated BEFORE the box is ever
-        started.  Asserts the create command routes through ``seed_new_box`` with
-        the just-created box.
-        """
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        with patch(
-            "kanibako.commands.start.seed_new_box"
-        ) as m_seed:
-            rc = run_create(args)
-        assert rc == 0
-        m_seed.assert_called_once()
-        # The seeded subject is the box that was just created (is_new).
-        seeded_proj = m_seed.call_args.args[2]
-        assert seeded_proj.is_new is True
-        assert seeded_proj.mode.value == "standalone"
-
-    def test_create_materializes_the_canon_skeleton(
-        self, config_file, credentials_dir, project_dir,
-    ):
-        """⚑ C-CANON R1b / J-7: ``box create`` materializes the canon SKELETON in the
-        box home — the mountpoints every canon bind lands on at launch.
-
-        Without it, podman would have to create each mountpoint itself, which is
-        exactly the failure the sibling model exists to remove. This is a create-time
-        guarantee, so it belongs in the create suite, not the launch one.
-        """
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        with patch("kanibako.runtime.container.ContainerRuntime"):
-            rc = run_create(args)
-        assert rc == 0
-
-        home = project_dir.resolve() / "box_data" / "home"
-        for rel in (
-            "canon",
-            "canon/charter",
-            "canon/charter/general",
-            "canon/charter/agent",
-            "canon/handbook",
-        ):
-            assert (home / rel).is_dir(), rel
-        for rel in (
-            "canon/COLLECTION.md",
-            "canon/charter/ROM_CONTENTS.md",
-            "canon/handbook/SYS_CONTENTS.md",
-        ):
-            assert (home / rel).is_file(), rel
-
-    def test_create_materializes_the_skeleton_for_a_primary_box_too(
-        self, config_file, credentials_dir, project_dir,
-    ):
-        """⚑ COVERAGE GAP the standalone test leaves open: the skeleton must land for
-        DEFAULT/primary boxes as well, whose home lives under the primary workset
-        rather than in-tree. One call site serves both modes — this is what proves it
-        is not accidentally on the standalone branch.
-        """
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_any_project
-
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", str(project_dir), "--name", "prim"])
-        with patch("kanibako.runtime.container.ContainerRuntime"):
-            rc = run_create(args)
-        assert rc == 0
-
-        std = load_std_paths(load_config(config_file))
-        proj = resolve_any_project(std, "prim")
-        assert (proj.shell_path / "canon" / "charter" / "agent").is_dir()
-        assert (proj.shell_path / "canon" / "COLLECTION.md").is_file()
-
-    def test_create_protects_the_skeleton_after_seeding(
-        self, config_file, credentials_dir, project_dir,
-    ):
-        """⚑ ORDER. The ownership pass must run AFTER the seed: the seeds half writes
-        ``canon/{notebook,workbook}`` UNDER the root this step makes 555, so protecting
-        first would kill those copies with EACCES.
-        """
-        calls: list[str] = []
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-
-        from kanibako.commands import start as _start
-
-        real_seed = _start.seed_new_box
-
-        def _seed(*a, **kw):
-            calls.append("seed")
-            return real_seed(*a, **kw)
-
-        rt = patch("kanibako.runtime.container.ContainerRuntime")
-        with rt as m_rt, patch.object(_start, "seed_new_box", _seed):
-            m_rt.return_value.unshare_chown.side_effect = (
-                lambda *a, **kw: calls.append("chown") or True
-            )
-            m_rt.return_value.unshare_chmod.return_value = True
-            rc = run_create(args)
-
-        assert rc == 0
-        assert calls == ["seed", "chown"], calls
-
-    def test_create_survives_a_missing_container_runtime(
-        self, config_file, credentials_dir, project_dir,
-    ):
-        """DEGRADED BUT FUNCTIONAL: creating a box works today with no podman
-        installed, and must keep working. The skeleton is still built (so the binds
-        land); only the ownership lockdown is skipped, with a warning."""
-        from kanibako.runtime.container import ContainerError
-
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        with patch("kanibako.runtime.container.ContainerRuntime",
-                   side_effect=ContainerError("no podman")):
-            rc = run_create(args)
-
-        assert rc == 0
-        home = project_dir.resolve() / "box_data" / "home"
-        assert (home / "canon" / "charter" / "general").is_dir()
-
-    def test_create_standalone_cwd(
-        self, config_file, credentials_dir, project_dir, monkeypatch, capsys,
-    ):
-        """box create --standalone with no path uses cwd."""
-        monkeypatch.chdir(project_dir)
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone"])
-        rc = run_create(args)
-
-        assert rc == 0
-        resolved = project_dir.resolve()
-        assert (resolved / "box_data").is_dir()
-
-    def test_create_creates_nonexistent_path(
-        self, config_file, credentials_dir, tmp_home, capsys,
-    ):
-        target = tmp_home / "brand-new-project"
-        assert not target.exists()
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(target)])
-        rc = run_create(args)
-
-        assert rc == 0
-        assert target.is_dir()
-        assert (target / "box_data").is_dir()
-
-    def test_create_already_exists_fails(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """Re-``create`` at an initialized standalone box refuses AND LEAVES THE
-        DISK ALONE.
-
-        ⚑ The filesystem assertions are the point.  The refusal says "already
-        initialized", i.e. *nothing happened* — so prove nothing happened.  The
-        materializing resolve used to run FIRST and re-bootstrap a missing home
-        (``resolve_standalone_project``'s ``if initialize:`` recovery arm) and
-        re-mkdir a missing ``workspace/``, and only THEN print the refusal.  Both
-        are deleted here precisely so that partial mutation would show up.
-        """
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        assert run_create(args) == 0
-
-        root = project_dir.resolve()
-        home = root / "box_data" / "home"
-        workspace = root / "workspace"
-        assert home.is_dir() and workspace.is_dir()
-        assert remove_box_tree(home)
-        assert remove_box_tree(workspace)
-
-        capsys.readouterr()
-        rc = run_create(args)
-        assert rc == 1
-        captured = capsys.readouterr()
-        # ⚑ The FULL message, not a substring: the refusal now reads its path off
-        # the non-materializing PROBE, and that path must still be the resolved
-        # workspace the materializing resolve would have reported.
-        assert captured.err.strip() == (
-            f"Error: project already initialized in {workspace}"
-        )
-        assert not home.exists()
-        assert not workspace.exists()
-
-    def test_create_local_mode(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """box create without --standalone creates a default-mode project."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", str(project_dir)])
-        rc = run_create(args)
-
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Created" in captured.out
-
-    def test_create_at_home_local_refused(
-        self, config_file, credentials_dir, tmp_home, capsys,
-    ):
-        """Local create at $HOME is refused outright (no escape hatch)."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", str(Path.home())])
-        rc = run_create(args)
-
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "$HOME" in captured.err
-        assert "--standalone" in captured.err
-        # No project metadata should have been created at $HOME.
-        assert not (Path.home() / "box_data").exists()
-
-    def test_create_at_home_standalone_requires_allow_home(
-        self, config_file, credentials_dir, tmp_home, capsys,
-    ):
-        """Standalone create at $HOME without --allow-home is refused."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(Path.home())])
-        rc = run_create(args)
-
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "--allow-home" in captured.err
-        assert not (Path.home() / "box_data").exists()
-
-    def test_create_at_home_standalone_with_allow_home(
-        self, config_file, credentials_dir, tmp_home, capsys,
-    ):
-        """Standalone create at $HOME succeeds with the explicit --allow-home."""
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", "--standalone", "--allow-home", str(Path.home())]
-        )
-        rc = run_create(args)
-
-        assert rc == 0
-        assert (Path.home() / "box_data").is_dir()
-
-    def test_create_writes_gitignore_for_standalone(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        run_create(args)
-
-        gitignore = project_dir.resolve() / ".gitignore"
-        assert gitignore.is_file()
-        assert "box_data/" in gitignore.read_text()
-
-    def test_create_no_gitignore_for_local(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """Default mode should not write .gitignore (state is external)."""
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", str(project_dir)])
-        run_create(args)
-
-        gitignore = project_dir.resolve() / ".gitignore"
-        assert not gitignore.is_file()
-
-    def test_create_with_name_override_registers_that_name(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """`box create --name X` registers the project under name X,
-        not the directory basename."""
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import (
-            BoxMode, _early_scope, load_primary_boxes, load_std_paths, xdg,
-        )
-
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "custom_name"]
-        )
-        rc = run_create(args)
-
-        assert rc == 0
-        std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
-        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert "custom_name" in boxes, (
-            f"Expected 'custom_name' in the PRIMARY membership, got: {boxes}"
-        )
-        assert project_dir.name not in boxes, (
-            f"Directory basename should NOT be registered when --name given, "
-            f"got: {boxes}"
-        )
-
-    def test_resolve_project_accepts_registered_name(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """After `create --name X`, resolve_project('X') must find the
-        registered path (not error as if X were a relative path)."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_project
-
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "named_proj"]
-        )
-        assert run_create(args) == 0
-
-        # Now look up by bare name — must NOT raise.
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj = resolve_project(std, config, project_dir="named_proj")
-        assert proj.project_path == project_dir.resolve(), (
-            f"Expected {project_dir.resolve()}, got {proj.project_path}"
-        )
-
-    def test_resolve_any_project_accepts_registered_name(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """resolve_any_project (the CLI front-door used by `start`) must do
-        bare-name lookup BEFORE path resolution, otherwise the name gets
-        path-ified into cwd/<name> and resolution misses."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths, resolve_any_project
-
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "frontdoor_proj"]
-        )
-        assert run_create(args) == 0
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        proj = resolve_any_project(std, config, project_dir="frontdoor_proj")
-        assert proj.project_path == project_dir.resolve(), (
-            f"Expected {project_dir.resolve()}, got {proj.project_path}"
-        )
-
-
-class TestCreateNoVault:
-    """Tests for --no-vault flag on box create."""
-
-    def test_create_no_vault_skips_vault_dirs(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        project = tmp_home / "novault-project"
-        project.mkdir()
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project), "--no-vault"])
-        rc = run_create(args)
-
-        assert rc == 0
-        assert (project / "box_data").is_dir()
-        assert not (project / "vault").exists()
-
-    def test_create_no_vault_new_dir(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        target = tmp_home / "novault-new"
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(target), "--no-vault"])
-        rc = run_create(args)
-
-        assert rc == 0
-        assert (target / "box_data").is_dir()
-        assert not (target / "vault").exists()
-
-    def test_create_with_vault_creates_vault_dirs(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        project = tmp_home / "vault-project"
-        project.mkdir()
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project)])
-        rc = run_create(args)
-
-        assert rc == 0
-        assert (project / "vault" / "ro").is_dir()
-        assert (project / "vault" / "rw").is_dir()
-
-
-def _standalone_tiers(config_file, project_dir):
-    """The standalone box's ``(box_tier, workset_tier)`` settings files.
-
-    Sourced from ``box_workset_settings_paths`` — the SAME single source production
-    uses (M-8) — rather than hard-coded, so a test can never assert a location the
-    code no longer writes.  (Before P2 these tests spelled ``<root>/workset.yaml``
-    directly; that IS the workset tier now, and the box keys live one level down in
-    ``box_data/``.)
-
-    ⚑ Sourcing BOTH positions from the code under test would make every caller
-    self-consistent and therefore BLIND to a swapped pair — the exact defect found in
-    the cascade-order test.  So this helper ASSERTS the two literal spec positions
-    (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS for the box tier;
-    ``system-design-1.8.0.md`` § "Detection & import" for the ROOT file detection
-    reads) before returning them: the blindness is closed here, once, for
-    every caller.
+  def test_create_materializes_the_skeleton_for_a_primary_box_too(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+  ):
+    """⚑ COVERAGE GAP the standalone test leaves open: the skeleton must land for
+    DEFAULT/primary boxes as well, whose home lives under the primary workset
+    rather than in-tree. One call site serves both modes — this is what proves it
+    is not accidentally on the standalone branch.
     """
     from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_any_project
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir), "--name", "prim"])
+    with patch("kanibako.runtime.container.ContainerRuntime"):
+      rc = run_create(args)
+    assert rc == 0
+
+    std = load_std_paths(load_config(config_file))
+    proj = resolve_any_project(std, "prim")
+    assert (proj.shell_path / "canon" / "charter" / "agent").is_dir()
+    assert (proj.shell_path / "canon" / "COLLECTION.md").is_file()
+
+  def test_create_protects_the_skeleton_after_seeding(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+  ):
+    """⚑ ORDER. The ownership pass must run AFTER the seed: the seeds half writes
+    ``canon/{notebook,workbook}`` UNDER the root this step makes 555, so protecting
+    first would kill those copies with EACCES.
+    """
+    calls: list[str] = []
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+
+    from kanibako.commands import start as _start
+
+    real_seed = _start.seed_new_box
+
+    def _seed(*a, **kw):
+      calls.append("seed")
+      return real_seed(*a, **kw)
+
+    rt = patch("kanibako.runtime.container.ContainerRuntime")
+    with rt as m_rt, patch.object(_start, "seed_new_box", _seed):
+      m_rt.return_value.unshare_chown.side_effect = lambda *a, **kw: calls.append("chown") or True
+      m_rt.return_value.unshare_chmod.return_value = True
+      rc = run_create(args)
+
+    assert rc == 0
+    assert calls == ["seed", "chown"], calls
+
+  def test_create_survives_a_missing_container_runtime(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+  ):
+    """DEGRADED BUT FUNCTIONAL: creating a box works today with no podman
+    installed, and must keep working. The skeleton is still built (so the binds
+    land); only the ownership lockdown is skipped, with a warning."""
+    from kanibako.runtime.container import ContainerError
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime", side_effect=ContainerError("no podman")
+    ):
+      rc = run_create(args)
+
+    assert rc == 0
+    home = project_dir.resolve() / "box_data" / "home"
+    assert (home / "canon" / "charter" / "general").is_dir()
+
+  def test_create_standalone_cwd(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    monkeypatch,
+    capsys,
+  ):
+    """box create --standalone with no path uses cwd."""
+    monkeypatch.chdir(project_dir)
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone"])
+    rc = run_create(args)
+
+    assert rc == 0
+    resolved = project_dir.resolve()
+    assert (resolved / "box_data").is_dir()
+
+  def test_create_creates_nonexistent_path(
+    self,
+    config_file,
+    credentials_dir,
+    tmp_home,
+    capsys,
+  ):
+    target = tmp_home / "brand-new-project"
+    assert not target.exists()
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(target)])
+    rc = run_create(args)
+
+    assert rc == 0
+    assert target.is_dir()
+    assert (target / "box_data").is_dir()
+
+  def test_create_already_exists_fails(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """Re-``create`` at an initialized standalone box refuses AND LEAVES THE
+    DISK ALONE.
+
+    ⚑ The filesystem assertions are the point.  The refusal says "already
+    initialized", i.e. *nothing happened* — so prove nothing happened.  The
+    materializing resolve used to run FIRST and re-bootstrap a missing home
+    (``resolve_standalone_project``'s ``if initialize:`` recovery arm) and
+    re-mkdir a missing ``workspace/``, and only THEN print the refusal.  Both
+    are deleted here precisely so that partial mutation would show up.
+    """
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    assert run_create(args) == 0
+
+    root = project_dir.resolve()
+    home = root / "box_data" / "home"
+    workspace = root / "workspace"
+    assert home.is_dir() and workspace.is_dir()
+    assert remove_box_tree(home)
+    assert remove_box_tree(workspace)
+
+    capsys.readouterr()
+    rc = run_create(args)
+    assert rc == 1
+    captured = capsys.readouterr()
+    # ⚑ The FULL message, not a substring: the refusal now reads its path off
+    # the non-materializing PROBE, and that path must still be the resolved
+    # workspace the materializing resolve would have reported.
+    assert captured.err.strip() == (f"Error: project already initialized in {workspace}")
+    assert not home.exists()
+    assert not workspace.exists()
+
+  def test_create_local_mode(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """box create without --standalone creates a default-mode project."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir)])
+    rc = run_create(args)
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Created" in captured.out
+
+  def test_create_at_home_local_refused(
+    self,
+    config_file,
+    credentials_dir,
+    tmp_home,
+    capsys,
+  ):
+    """Local create at $HOME is refused outright (no escape hatch)."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(Path.home())])
+    rc = run_create(args)
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "$HOME" in captured.err
+    assert "--standalone" in captured.err
+    # No project metadata should have been created at $HOME.
+    assert not (Path.home() / "box_data").exists()
+
+  def test_create_at_home_standalone_requires_allow_home(
+    self,
+    config_file,
+    credentials_dir,
+    tmp_home,
+    capsys,
+  ):
+    """Standalone create at $HOME without --allow-home is refused."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(Path.home())])
+    rc = run_create(args)
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "--allow-home" in captured.err
+    assert not (Path.home() / "box_data").exists()
+
+  def test_create_at_home_standalone_with_allow_home(
+    self,
+    config_file,
+    credentials_dir,
+    tmp_home,
+    capsys,
+  ):
+    """Standalone create at $HOME succeeds with the explicit --allow-home."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "--allow-home", str(Path.home())])
+    rc = run_create(args)
+
+    assert rc == 0
+    assert (Path.home() / "box_data").is_dir()
+
+  def test_create_writes_gitignore_for_standalone(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    run_create(args)
+
+    gitignore = project_dir.resolve() / ".gitignore"
+    assert gitignore.is_file()
+    assert "box_data/" in gitignore.read_text()
+
+  def test_create_no_gitignore_for_local(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """Default mode should not write .gitignore (state is external)."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir)])
+    run_create(args)
+
+    gitignore = project_dir.resolve() / ".gitignore"
+    assert not gitignore.is_file()
+
+  def test_create_with_name_override_registers_that_name(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """`box create --name X` registers the project under name X,
+    not the directory basename."""
+    from kanibako.settings.config import config_file_path, load_config
     from kanibako.settings.paths import (
-        box_workset_settings_paths,
-        load_std_paths,
-        resolve_standalone_project,
+      BoxMode,
+      _early_scope,
+      load_primary_boxes,
+      load_std_paths,
+      xdg,
     )
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir), "--name", "custom_name"])
+    rc = run_create(args)
+
+    assert rc == 0
+    std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
+    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert "custom_name" in boxes, (
+      f"Expected 'custom_name' in the PRIMARY membership, got: {boxes}"
+    )
+    assert project_dir.name not in boxes, (
+      f"Directory basename should NOT be registered when --name given, got: {boxes}"
+    )
+
+  def test_resolve_project_accepts_registered_name(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """After `create --name X`, resolve_project('X') must find the
+    registered path (not error as if X were a relative path)."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir), "--name", "named_proj"])
+    assert run_create(args) == 0
+
+    # Now look up by bare name — must NOT raise.
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj = resolve_project(std, config, project_dir="named_proj")
+    assert proj.project_path == project_dir.resolve(), (
+      f"Expected {project_dir.resolve()}, got {proj.project_path}"
+    )
+
+  def test_resolve_any_project_accepts_registered_name(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """resolve_any_project (the CLI front-door used by `start`) must do
+    bare-name lookup BEFORE path resolution, otherwise the name gets
+    path-ified into cwd/<name> and resolution misses."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_any_project
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", str(project_dir), "--name", "frontdoor_proj"])
+    assert run_create(args) == 0
 
     config = load_config(config_file)
     std = load_std_paths(config)
-    proj = resolve_standalone_project(
-        std, config, str(project_dir.resolve()), initialize=False,
+    proj = resolve_any_project(std, config, project_dir="frontdoor_proj")
+    assert proj.project_path == project_dir.resolve(), (
+      f"Expected {project_dir.resolve()}, got {proj.project_path}"
     )
-    box_tier, ws_tier = box_workset_settings_paths(proj)
-    root = project_dir.resolve()
-    assert box_tier == root / "box_data" / "box.yaml", box_tier
-    assert ws_tier == root / "workset.yaml", ws_tier
-    return box_tier, ws_tier
+
+
+class TestCreateNoVault:
+  """Tests for --no-vault flag on box create."""
+
+  def test_create_no_vault_skips_vault_dirs(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    project = tmp_home / "novault-project"
+    project.mkdir()
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project), "--no-vault"])
+    rc = run_create(args)
+
+    assert rc == 0
+    assert (project / "box_data").is_dir()
+    assert not (project / "vault").exists()
+
+  def test_create_no_vault_new_dir(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    target = tmp_home / "novault-new"
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(target), "--no-vault"])
+    rc = run_create(args)
+
+    assert rc == 0
+    assert (target / "box_data").is_dir()
+    assert not (target / "vault").exists()
+
+  def test_create_with_vault_creates_vault_dirs(
+    self,
+    config_file,
+    tmp_home,
+    credentials_dir,
+    capsys,
+  ):
+    project = tmp_home / "vault-project"
+    project.mkdir()
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project)])
+    rc = run_create(args)
+
+    assert rc == 0
+    assert (project / "vault" / "ro").is_dir()
+    assert (project / "vault" / "rw").is_dir()
+
+
+def _standalone_tiers(config_file, project_dir):
+  """The standalone box's ``(box_tier, workset_tier)`` settings files.
+
+  Sourced from ``box_workset_settings_paths`` — the SAME single source production
+  uses (M-8) — rather than hard-coded, so a test can never assert a location the
+  code no longer writes.  (Before P2 these tests spelled ``<root>/workset.yaml``
+  directly; that IS the workset tier now, and the box keys live one level down in
+  ``box_data/``.)
+
+  ⚑ Sourcing BOTH positions from the code under test would make every caller
+  self-consistent and therefore BLIND to a swapped pair — the exact defect found in
+  the cascade-order test.  So this helper ASSERTS the two literal spec positions
+  (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS for the box tier;
+  ``system-design-1.8.0.md`` § "Detection & import" for the ROOT file detection
+  reads) before returning them: the blindness is closed here, once, for
+  every caller.
+  """
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import (
+    box_workset_settings_paths,
+    load_std_paths,
+    resolve_standalone_project,
+  )
+
+  config = load_config(config_file)
+  std = load_std_paths(config)
+  proj = resolve_standalone_project(
+    std,
+    config,
+    str(project_dir.resolve()),
+    initialize=False,
+  )
+  box_tier, ws_tier = box_workset_settings_paths(proj)
+  root = project_dir.resolve()
+  assert box_tier == root / "box_data" / "box.yaml", box_tier
+  assert ws_tier == root / "workset.yaml", ws_tier
+  return box_tier, ws_tier
 
 
 class TestCreateImage:
-    """Tests for --image flag persistence."""
+  """Tests for --image flag persistence."""
 
-    def test_create_persists_image(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        from kanibako.settings.settings_launch import load_merged_config
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--standalone", str(project_dir),
-            "--image", "kanibako-template-jvm-oci",
-        ])
-        run_create(args)
+  def test_create_persists_image(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    from kanibako.settings.settings_launch import load_merged_config
 
-        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
-        merged = load_merged_config(box_tier, workset_path=ws_tier)
-        assert merged.box_image == "kanibako-template-jvm-oci"
-        # And it is the BOX tier that holds it, not the workset/root file.
-        from kanibako.settings.config_io import load_doc
-        assert load_doc(box_tier)["box"]["image"] == "kanibako-template-jvm-oci"
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--standalone",
+        str(project_dir),
+        "--image",
+        "kanibako-template-jvm-oci",
+      ]
+    )
+    run_create(args)
 
-    def test_create_without_flag_bakes_nothing_and_resolves_live(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """B6 (§1A CREATE EXCEPTION, R-11a): only an EXPLICIT flag persists.
+    box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+    merged = load_merged_config(box_tier, workset_path=ws_tier)
+    assert merged.box_image == "kanibako-template-jvm-oci"
+    # And it is the BOX tier that holds it, not the workset/root file.
+    from kanibako.settings.config_io import load_doc
 
-        A no-flag create writes NO ``box.image`` into the box tier — the box
-        resolves the LIVE cascade instead (single source: a later change to the
-        stored default reaches this box; the pre-B6 bake froze it forever).
-        """
-        from kanibako.settings.settings_launch import load_merged_config
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        run_create(args)
+    assert load_doc(box_tier)["box"]["image"] == "kanibako-template-jvm-oci"
 
-        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
-        # NOT persisted at the box tier...
-        from kanibako.settings.config_io import load_doc
-        assert "image" not in (load_doc(box_tier).get("box") or {})
-        # ...and the merged resolve still yields the live default.
-        merged = load_merged_config(box_tier, workset_path=ws_tier)
-        assert "kanibako" in merged.box_image
+  def test_create_without_flag_bakes_nothing_and_resolves_live(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """B6 (§1A CREATE EXCEPTION, R-11a): only an EXPLICIT flag persists.
 
-    def test_create_follows_a_later_default_change(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """The live-cascade payoff the no-bake decision buys: change the stored
-        system default AFTER create and the existing no-flag box follows it."""
-        from kanibako.settings.config import load_config
-        from kanibako.settings.settings_launch import load_merged_config
-        from kanibako.settings.config_io import write_nested_key
-        from kanibako.settings.paths import load_std_paths
+    A no-flag create writes NO ``box.image`` into the box tier — the box
+    resolves the LIVE cascade instead (single source: a later change to the
+    stored default reaches this box; the pre-B6 bake froze it forever).
+    """
+    from kanibako.settings.settings_launch import load_merged_config
 
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        run_create(args)
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    run_create(args)
 
-        # ⚑ THE STORED SYSTEM DEFAULT IS THE SYSTEM SETTINGS FILE, which is what this
-        # case is named for. It used to write ``kanibako.cfg`` instead; that
-        # file cannot carry settings [Jei:2026-08-26], and this is the file
-        # ``kanibako system set box.image=…`` has always written.
-        ssp = load_std_paths(load_config(config_file)).settings
-        write_nested_key(ssp, ("box",), "image", "changed-later:1")
-        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
-        merged = load_merged_config(box_tier, workset_path=ws_tier)
-        assert merged.box_image == "changed-later:1"
+    box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+    # NOT persisted at the box tier...
+    from kanibako.settings.config_io import load_doc
+
+    assert "image" not in (load_doc(box_tier).get("box") or {})
+    # ...and the merged resolve still yields the live default.
+    merged = load_merged_config(box_tier, workset_path=ws_tier)
+    assert "kanibako" in merged.box_image
+
+  def test_create_follows_a_later_default_change(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """The live-cascade payoff the no-bake decision buys: change the stored
+    system default AFTER create and the existing no-flag box follows it."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.settings_launch import load_merged_config
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.paths import load_std_paths
+
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    run_create(args)
+
+    # ⚑ THE STORED SYSTEM DEFAULT IS THE SYSTEM SETTINGS FILE, which is what this
+    # case is named for. It used to write ``kanibako.cfg`` instead; that
+    # file cannot carry settings [Jei:2026-08-26], and this is the file
+    # ``kanibako system set box.image=…`` has always written.
+    ssp = load_std_paths(load_config(config_file)).settings
+    write_nested_key(ssp, ("box",), "image", "changed-later:1")
+    box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+    merged = load_merged_config(box_tier, workset_path=ws_tier)
+    assert merged.box_image == "changed-later:1"
 
 
 class TestCreatePrivate:
-    """`create --private` closes the OAuth-token-leak-at-create.
+  """`create --private` closes the OAuth-token-leak-at-create.
 
-    A private box persists ``box.auth.global_enabled=false`` +
-    ``box.auth.workset_enabled=false`` to the box.yaml BEFORE the home
-    seed runs, so ``seed_new_box``'s ``resolve_auth_source`` resolves tier
-    ``"box"`` (source_root None) and the host OAuth credential is never copied
-    into the box.
+  A private box persists ``box.auth.global_enabled=false`` +
+  ``box.auth.workset_enabled=false`` to the box.yaml BEFORE the home
+  seed runs, so ``seed_new_box``'s ``resolve_auth_source`` resolves tier
+  ``"box"`` (source_root None) and the host OAuth credential is never copied
+  into the box.
+  """
+
+  @staticmethod
+  def _box_auth(config_file, project_dir):
+    """Read ``box.auth`` from the BOX TIER — the file the launch snapshot reads.
+
+    ⚑ AUTH-CRITICAL that this reads the same file ``resolve_auth_source`` does: if
+    --private wrote somewhere the snapshot does not read as the box tier, a
+    supposedly-private box would resolve a sharing tier and forward the host OAuth
+    token into the seed.  Sourced from ``box_workset_settings_paths`` so the test
+    cannot drift from production (M-8).
     """
+    from kanibako.settings.config import load_doc
 
-    @staticmethod
-    def _box_auth(config_file, project_dir):
-        """Read ``box.auth`` from the BOX TIER — the file the launch snapshot reads.
+    box_tier, _ = _standalone_tiers(config_file, project_dir)
+    return (load_doc(box_tier).get("box") or {}).get("auth") or {}
 
-        ⚑ AUTH-CRITICAL that this reads the same file ``resolve_auth_source`` does: if
-        --private wrote somewhere the snapshot does not read as the box tier, a
-        supposedly-private box would resolve a sharing tier and forward the host OAuth
-        token into the seed.  Sourced from ``box_workset_settings_paths`` so the test
-        cannot drift from production (M-8).
-        """
-        from kanibako.settings.config import load_doc
-        box_tier, _ = _standalone_tiers(config_file, project_dir)
-        return (load_doc(box_tier).get("box") or {}).get("auth") or {}
+  @staticmethod
+  def _shell_home(project_dir):
+    return project_dir.resolve() / "box_data" / "home"
 
-    @staticmethod
-    def _shell_home(project_dir):
-        return project_dir.resolve() / "box_data" / "home"
+  def test_private_writes_both_auth_toggles(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """--private persists BOTH box-scope auth enables OFF (as real bools)."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "--private", str(project_dir)])
+    assert run_create(args) == 0
+    auth = self._box_auth(config_file, project_dir)
+    assert auth.get("global_enabled") is False
+    assert auth.get("workset_enabled") is False
 
-    def test_private_writes_both_auth_toggles(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """--private persists BOTH box-scope auth enables OFF (as real bools)."""
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", "--standalone", "--private", str(project_dir)]
-        )
-        assert run_create(args) == 0
-        auth = self._box_auth(config_file, project_dir)
-        assert auth.get("global_enabled") is False
-        assert auth.get("workset_enabled") is False
+  def test_private_writes_only_the_two_toggles(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """--private writes NOTHING beyond the two auth toggles (additive)."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", "--private", str(project_dir)])
+    assert run_create(args) == 0
+    auth = self._box_auth(config_file, project_dir)
+    assert set(auth) == {"global_enabled", "workset_enabled"}
 
-    def test_private_writes_only_the_two_toggles(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """--private writes NOTHING beyond the two auth toggles (additive)."""
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", "--standalone", "--private", str(project_dir)]
-        )
-        assert run_create(args) == 0
-        auth = self._box_auth(config_file, project_dir)
-        assert set(auth) == {"global_enabled", "workset_enabled"}
+  def test_default_create_writes_no_auth_toggles(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """WITHOUT --private, no box.auth override is written (unchanged)."""
+    parser = build_parser()
+    args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+    assert run_create(args) == 0
+    assert self._box_auth(config_file, project_dir) == {}
 
-    def test_default_create_writes_no_auth_toggles(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """WITHOUT --private, no box.auth override is written (unchanged)."""
-        parser = build_parser()
-        args = parser.parse_args(
-            ["box", "create", "--standalone", str(project_dir)]
-        )
-        assert run_create(args) == 0
-        assert self._box_auth(config_file, project_dir) == {}
+  # ---- mechanism proof: the seed reads the toggles (tier="box") ----------
 
-    # ---- mechanism proof: the seed reads the toggles (tier="box") ----------
+  def test_private_seed_resolves_tier_box_no_forward(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """--private → seed_box_credentials sees auth.tier "box" (no sharing).
 
-    def test_private_seed_resolves_tier_box_no_forward(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """--private → seed_box_credentials sees auth.tier "box" (no sharing).
+    Mutation-proof: the toggles are written BEFORE the seed, so the seed's
+    ``resolve_auth_source`` resolves tier "box".  Drop/reorder the write and
+    a share-capable (claude) box would resolve tier "global" — this reddens.
+    """
+    from unittest.mock import patch
 
-        Mutation-proof: the toggles are written BEFORE the seed, so the seed's
-        ``resolve_auth_source`` resolves tier "box".  Drop/reorder the write and
-        a share-capable (claude) box would resolve tier "global" — this reddens.
-        """
-        from unittest.mock import patch
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--standalone", "--private",
-            "--agent", "claude", str(project_dir),
-        ])
-        with patch("kanibako.commands.start.credsync") as m_credsync:
-            assert run_create(args) == 0
-        m_credsync.seed_box_credentials.assert_called_once()
-        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
-        assert auth.tier == "box"
-        assert auth.creds_shared is False
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--standalone",
+        "--private",
+        "--agent",
+        "claude",
+        str(project_dir),
+      ]
+    )
+    with patch("kanibako.commands.start.credsync") as m_credsync:
+      assert run_create(args) == 0
+    m_credsync.seed_box_credentials.assert_called_once()
+    auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+    assert auth.tier == "box"
+    assert auth.creds_shared is False
 
-    def test_default_seed_resolves_tier_global_forwards(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """WITHOUT --private, a share-capable box resolves tier "global"."""
-        from unittest.mock import patch
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--standalone",
-            "--agent", "claude", str(project_dir),
-        ])
-        with patch("kanibako.commands.start.credsync") as m_credsync:
-            assert run_create(args) == 0
-        m_credsync.seed_box_credentials.assert_called_once()
-        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
-        assert auth.tier == "global"
-        assert auth.creds_shared is True
+  def test_default_seed_resolves_tier_global_forwards(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """WITHOUT --private, a share-capable box resolves tier "global"."""
+    from unittest.mock import patch
 
-    # ---- black-box proof: the real credential file is / isn't seeded -------
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--standalone",
+        "--agent",
+        "claude",
+        str(project_dir),
+      ]
+    )
+    with patch("kanibako.commands.start.credsync") as m_credsync:
+      assert run_create(args) == 0
+    m_credsync.seed_box_credentials.assert_called_once()
+    auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+    assert auth.tier == "global"
+    assert auth.creds_shared is True
 
-    def test_private_does_not_seed_credentials_file(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """End-to-end: --private leaves NO .credentials.json in the box home."""
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--standalone", "--private",
-            "--agent", "claude", str(project_dir),
-        ])
-        assert run_create(args) == 0
-        seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
-        assert seeded == []
+  # ---- black-box proof: the real credential file is / isn't seeded -------
 
-    def test_default_seeds_credentials_file(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """End-to-end control: a default share-capable box DOES seed the cred."""
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--standalone",
-            "--agent", "claude", str(project_dir),
-        ])
-        assert run_create(args) == 0
-        seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
-        assert len(seeded) == 1
+  def test_private_does_not_seed_credentials_file(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """End-to-end: --private leaves NO .credentials.json in the box home."""
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--standalone",
+        "--private",
+        "--agent",
+        "claude",
+        str(project_dir),
+      ]
+    )
+    assert run_create(args) == 0
+    seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
+    assert seeded == []
 
-    # ---- coverage: primary/named (non-standalone) mode is closed too -------
+  def test_default_seeds_credentials_file(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """End-to-end control: a default share-capable box DOES seed the cred."""
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--standalone",
+        "--agent",
+        "claude",
+        str(project_dir),
+      ]
+    )
+    assert run_create(args) == 0
+    seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
+    assert len(seeded) == 1
 
-    def test_private_primary_mode_resolves_tier_box(
-        self, config_file, credentials_dir, project_dir, capsys,
-    ):
-        """--private closes the leak in DEFAULT (primary/named) mode too — not
-        just standalone.  The box's box.yaml lives under the data dir here,
-        so assert via the seed's resolved auth (tier "box", no forward)."""
-        from unittest.mock import patch
-        parser = build_parser()
-        args = parser.parse_args([
-            "box", "create", "--private", "--agent", "claude", str(project_dir),
-        ])
-        with patch("kanibako.commands.start.credsync") as m_credsync:
-            assert run_create(args) == 0
-        m_credsync.seed_box_credentials.assert_called_once()
-        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
-        assert auth.tier == "box"
-        assert auth.creds_shared is False
+  # ---- coverage: primary/named (non-standalone) mode is closed too -------
+
+  def test_private_primary_mode_resolves_tier_box(
+    self,
+    config_file,
+    credentials_dir,
+    project_dir,
+    capsys,
+  ):
+    """--private closes the leak in DEFAULT (primary/named) mode too — not
+    just standalone.  The box's box.yaml lives under the data dir here,
+    so assert via the seed's resolved auth (tier "box", no forward)."""
+    from unittest.mock import patch
+
+    parser = build_parser()
+    args = parser.parse_args(
+      [
+        "box",
+        "create",
+        "--private",
+        "--agent",
+        "claude",
+        str(project_dir),
+      ]
+    )
+    with patch("kanibako.commands.start.credsync") as m_credsync:
+      assert run_create(args) == 0
+    m_credsync.seed_box_credentials.assert_called_once()
+    auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+    assert auth.tier == "box"
+    assert auth.creds_shared is False

@@ -17,397 +17,422 @@ from tests.support.hub import ask
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def fork_ctx(tmp_path):
-    """Create a HelperContext with project_path and data_path for fork tests."""
-    project_path = tmp_path / "workspace" / "myapp"
-    project_path.mkdir(parents=True)
-    (project_path / "main.py").write_text("print('hello')\n")
-    (project_path / "src").mkdir()
-    (project_path / "src" / "lib.py").write_text("# lib\n")
+  """Create a HelperContext with project_path and data_path for fork tests."""
+  project_path = tmp_path / "workspace" / "myapp"
+  project_path.mkdir(parents=True)
+  (project_path / "main.py").write_text("print('hello')\n")
+  (project_path / "src").mkdir()
+  (project_path / "src" / "lib.py").write_text("# lib\n")
 
-    data_path = tmp_path / "data"
-    data_path.mkdir()
-    (data_path / "boxes").mkdir()
+  data_path = tmp_path / "data"
+  data_path.mkdir()
+  (data_path / "boxes").mkdir()
 
-    # Set up the global registry (worksets only) and the PRIMARY membership with
-    # the source box "myapp" registered (name → external workspace) — the sole
-    # store since the global ``projects:`` section retired.
-    registry_toml = data_path / "global" / "registry.yaml"
-    registry_toml.parent.mkdir(parents=True, exist_ok=True)
-    registry_toml.write_text("worksets: {}\n")
-    primary_reg = data_path / "primary_workset" / "registry.yaml"
-    primary_reg.parent.mkdir(parents=True, exist_ok=True)
-    primary_reg.write_text(f'boxes:\n  myapp: "{project_path}"\n')
+  # Set up the global registry (worksets only) and the PRIMARY membership with
+  # the source box "myapp" registered (name → external workspace) — the sole
+  # store since the global ``projects:`` section retired.
+  registry_toml = data_path / "global" / "registry.yaml"
+  registry_toml.parent.mkdir(parents=True, exist_ok=True)
+  registry_toml.write_text("worksets: {}\n")
+  primary_reg = data_path / "primary_workset" / "registry.yaml"
+  primary_reg.parent.mkdir(parents=True, exist_ok=True)
+  primary_reg.write_text(f'boxes:\n  myapp: "{project_path}"\n')
 
-    # Set up metadata dir (boxes/myapp/)
-    meta_dir = data_path / "boxes" / "myapp"
-    meta_dir.mkdir()
-    shell_dir = meta_dir / "home"
-    shell_dir.mkdir()
-    (shell_dir / ".bashrc").write_text("# bashrc\n")
-    vault_dir = meta_dir / "vault"
-    vault_dir.mkdir()
-    (vault_dir / "ro").mkdir()
-    (meta_dir / "box.yaml").write_text('meta:\n  mode: "default"\n')
-    (meta_dir / ".kanibako.lock").write_text("lock\n")
-    helpers_dir_meta = meta_dir / "helpers"
-    helpers_dir_meta.mkdir()
-    (helpers_dir_meta / "state.json").write_text("{}\n")
+  # Set up metadata dir (boxes/myapp/)
+  meta_dir = data_path / "boxes" / "myapp"
+  meta_dir.mkdir()
+  shell_dir = meta_dir / "home"
+  shell_dir.mkdir()
+  (shell_dir / ".bashrc").write_text("# bashrc\n")
+  vault_dir = meta_dir / "vault"
+  vault_dir.mkdir()
+  (vault_dir / "ro").mkdir()
+  (meta_dir / "box.yaml").write_text('meta:\n  mode: "default"\n')
+  (meta_dir / ".kanibako.lock").write_text("lock\n")
+  helpers_dir_meta = meta_dir / "helpers"
+  helpers_dir_meta.mkdir()
+  (helpers_dir_meta / "state.json").write_text("{}\n")
 
-    helpers_dir = tmp_path / "shell" / "helpers"
-    helpers_dir.mkdir(parents=True)
+  helpers_dir = tmp_path / "shell" / "helpers"
+  helpers_dir.mkdir(parents=True)
 
-    runtime = MagicMock()
-    runtime.run.return_value = 0
+  runtime = MagicMock()
+  runtime.run.return_value = 0
 
-    socket_path = tmp_path / "helper.sock"
-    return HelperContext(
-        runtime=runtime,
-        image="test:latest",
-        container_name_segments=("primary", "myapp"),
-        shell_path=tmp_path / "shell",
-        helpers_dir=helpers_dir,
-        socket_path=socket_path,
-        binary_mounts=[],
-        project_path=project_path,
-        data_path=data_path,
-        boxes=data_path / "boxes",
-        primary_workset=data_path / "primary_workset",
-        early=early_record(tmp_path, mode=BoxMode.primary),
-    )
+  socket_path = tmp_path / "helper.sock"
+  return HelperContext(
+    runtime=runtime,
+    image="test:latest",
+    container_name_segments=("primary", "myapp"),
+    shell_path=tmp_path / "shell",
+    helpers_dir=helpers_dir,
+    socket_path=socket_path,
+    binary_mounts=[],
+    project_path=project_path,
+    data_path=data_path,
+    boxes=data_path / "boxes",
+    primary_workset=data_path / "primary_workset",
+    early=early_record(tmp_path, mode=BoxMode.primary),
+  )
 
 
 @pytest.fixture
 def fork_hub(fork_ctx):
-    """A HelperHub with fork-capable context."""
-    return _hub(fork_ctx), fork_ctx
+  """A HelperHub with fork-capable context."""
+  return _hub(fork_ctx), fork_ctx
 
 
 def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
-    """Fork context whose source box is ABSENT from the membership (fallback arm only).
+  """Fork context whose source box is ABSENT from the membership (fallback arm only).
 
-    *boxes_leaf* is the leaf of the resolved ``workset.boxes`` store — ``"boxes"`` is
-    merely the DEFAULT, and any workset may repoint the key elsewhere.
-    """
-    project_path = tmp_path / "workspace" / "myapp"
-    project_path.mkdir(parents=True)
-    (project_path / "main.py").write_text("print('hello')\n")
+  *boxes_leaf* is the leaf of the resolved ``workset.boxes`` store — ``"boxes"`` is
+  merely the DEFAULT, and any workset may repoint the key elsewhere.
+  """
+  project_path = tmp_path / "workspace" / "myapp"
+  project_path.mkdir(parents=True)
+  (project_path / "main.py").write_text("print('hello')\n")
 
-    data_path = tmp_path / "data"
-    boxes = data_path / boxes_leaf
-    boxes.mkdir(parents=True)
+  data_path = tmp_path / "data"
+  boxes = data_path / boxes_leaf
+  boxes.mkdir(parents=True)
 
-    # PRIMARY membership is EMPTY: the reverse lookup misses, so the fork can only
-    # reach its source metadata through the shell_path fallback.
-    primary_reg = data_path / "primary_workset" / "registry.yaml"
-    primary_reg.parent.mkdir(parents=True, exist_ok=True)
-    primary_reg.write_text("boxes: {}\n")
+  # PRIMARY membership is EMPTY: the reverse lookup misses, so the fork can only
+  # reach its source metadata through the shell_path fallback.
+  primary_reg = data_path / "primary_workset" / "registry.yaml"
+  primary_reg.parent.mkdir(parents=True, exist_ok=True)
+  primary_reg.write_text("boxes: {}\n")
 
-    meta_dir = boxes / "myapp"
-    shell_dir = meta_dir / "home"
-    shell_dir.mkdir(parents=True)
-    (shell_dir / ".bashrc").write_text("# bashrc\n")
-    (meta_dir / "box.yaml").write_text("meta: {}\n")
-    helpers_dir = shell_dir / "helpers"
-    helpers_dir.mkdir()
+  meta_dir = boxes / "myapp"
+  shell_dir = meta_dir / "home"
+  shell_dir.mkdir(parents=True)
+  (shell_dir / ".bashrc").write_text("# bashrc\n")
+  (meta_dir / "box.yaml").write_text("meta: {}\n")
+  helpers_dir = shell_dir / "helpers"
+  helpers_dir.mkdir()
 
-    runtime = MagicMock()
-    runtime.run.return_value = 0
-    return HelperContext(
-        runtime=runtime,
-        image="test:latest",
-        container_name_segments=("primary", "myapp"),
-        shell_path=shell_dir,
-        helpers_dir=helpers_dir,
-        socket_path=tmp_path / "helper.sock",
-        binary_mounts=[],
-        project_path=project_path,
-        data_path=data_path,
-        boxes=boxes,
-        primary_workset=data_path / "primary_workset",
-        early=early_record(tmp_path, mode=BoxMode.primary),
-    )
+  runtime = MagicMock()
+  runtime.run.return_value = 0
+  return HelperContext(
+    runtime=runtime,
+    image="test:latest",
+    container_name_segments=("primary", "myapp"),
+    shell_path=shell_dir,
+    helpers_dir=helpers_dir,
+    socket_path=tmp_path / "helper.sock",
+    binary_mounts=[],
+    project_path=project_path,
+    data_path=data_path,
+    boxes=boxes,
+    primary_workset=data_path / "primary_workset",
+    early=early_record(tmp_path, mode=BoxMode.primary),
+  )
 
 
 def _hub(ctx: HelperContext) -> HelperHub:
-    """A hub holding *ctx*, with no socket: these tests are about the fork, not the wire."""
-    hub = HelperHub()
-    hub._ctx = ctx
-    return hub
+  """A hub holding *ctx*, with no socket: these tests are about the fork, not the wire."""
+  hub = HelperHub()
+  hub._ctx = ctx
+  return hub
 
 
 # ---------------------------------------------------------------------------
 # Socket handler tests (via live hub)
 # ---------------------------------------------------------------------------
 
+
 class TestHandleFork:
-    def test_fork_creates_sibling_dir(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "feature1"})
-        assert resp["status"] == "ok"
-        new_path = Path(resp["path"])
-        assert new_path == ctx.project_path.parent / "myapp.feature1"
-        assert new_path.is_dir()
+  def test_fork_creates_sibling_dir(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "feature1"})
+    assert resp["status"] == "ok"
+    new_path = Path(resp["path"])
+    assert new_path == ctx.project_path.parent / "myapp.feature1"
+    assert new_path.is_dir()
 
-    def test_fork_copies_workspace_files(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "copy"})
-        assert resp["status"] == "ok"
-        new_path = Path(resp["path"])
-        assert (new_path / "main.py").read_text() == "print('hello')\n"
-        assert (new_path / "src" / "lib.py").read_text() == "# lib\n"
+  def test_fork_copies_workspace_files(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "copy"})
+    assert resp["status"] == "ok"
+    new_path = Path(resp["path"])
+    assert (new_path / "main.py").read_text() == "print('hello')\n"
+    assert (new_path / "src" / "lib.py").read_text() == "# lib\n"
 
-    def test_fork_assigns_new_name(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "named"})
-        assert resp["status"] == "ok"
-        assert "name" in resp
-        # The assigned name should be registered in the PRIMARY membership.
-        from kanibako.settings.paths import load_primary_boxes
-        assert resp["name"] in load_primary_boxes(ctx.primary_workset, early=ctx.early)
+  def test_fork_assigns_new_name(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "named"})
+    assert resp["status"] == "ok"
+    assert "name" in resp
+    # The assigned name should be registered in the PRIMARY membership.
+    from kanibako.settings.paths import load_primary_boxes
 
-    def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "meta"})
-        assert resp["status"] == "ok"
-        new_name = resp["name"]
-        new_meta = ctx.data_path / "boxes" / new_name
-        assert new_meta.is_dir()
-        # box.yaml should be copied
-        assert (new_meta / "box.yaml").is_file()
-        # shell should be copied
-        assert (new_meta / "home" / ".bashrc").is_file()
-        # vault should be copied
-        assert (new_meta / "vault" / "ro").is_dir()
-        # lock file should NOT be copied
-        assert not (new_meta / ".kanibako.lock").exists()
-        # helpers dir should NOT be copied
-        assert not (new_meta / "helpers").exists()
+    assert resp["name"] in load_primary_boxes(ctx.primary_workset, early=ctx.early)
 
-    def test_fork_rejects_existing_destination(self, fork_hub):
-        hub, ctx = fork_hub
-        # Create the destination beforehand
-        dest = ctx.project_path.parent / "myapp.existing"
-        dest.mkdir()
-        resp = ask(hub, {"action": "fork", "name": "existing"})
-        assert resp["status"] == "error"
-        assert "already exists" in resp["message"]
+  def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "meta"})
+    assert resp["status"] == "ok"
+    new_name = resp["name"]
+    new_meta = ctx.data_path / "boxes" / new_name
+    assert new_meta.is_dir()
+    # box.yaml should be copied
+    assert (new_meta / "box.yaml").is_file()
+    # shell should be copied
+    assert (new_meta / "home" / ".bashrc").is_file()
+    # vault should be copied
+    assert (new_meta / "vault" / "ro").is_dir()
+    # lock file should NOT be copied
+    assert not (new_meta / ".kanibako.lock").exists()
+    # helpers dir should NOT be copied
+    assert not (new_meta / "helpers").exists()
 
-    def test_fork_rejects_empty_name(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": ""})
-        assert resp["status"] == "error"
-        assert "missing" in resp["message"]
+  def test_fork_rejects_existing_destination(self, fork_hub):
+    hub, ctx = fork_hub
+    # Create the destination beforehand
+    dest = ctx.project_path.parent / "myapp.existing"
+    dest.mkdir()
+    resp = ask(hub, {"action": "fork", "name": "existing"})
+    assert resp["status"] == "error"
+    assert "already exists" in resp["message"]
 
-    def test_fork_rejects_name_with_slash(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "a/b"})
-        assert resp["status"] == "error"
-        assert "invalid" in resp["message"]
+  def test_fork_rejects_empty_name(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": ""})
+    assert resp["status"] == "error"
+    assert "missing" in resp["message"]
 
-    def test_fork_rejects_name_with_dot(self, fork_hub):
-        hub, ctx = fork_hub
-        resp = ask(hub, {"action": "fork", "name": "a.b"})
-        assert resp["status"] == "error"
-        assert "invalid" in resp["message"]
+  def test_fork_rejects_name_with_slash(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "a/b"})
+    assert resp["status"] == "error"
+    assert "invalid" in resp["message"]
 
-    def test_fork_returns_error_when_project_path_not_set(self, tmp_path):
-        """Fork fails gracefully when context lacks project_path."""
-        runtime = MagicMock()
-        helpers_dir = tmp_path / "helpers"
-        helpers_dir.mkdir()
-        ctx = HelperContext(
-            runtime=runtime,
-            image="test:latest",
-            container_name_segments=("primary", "test"),
-            shell_path=tmp_path / "shell",
-            helpers_dir=helpers_dir,
-            socket_path=tmp_path / "helper.sock",
-            project_path=None,
-            data_path=None,
-            early=early_record(tmp_path, mode=BoxMode.primary),
-        )
-        resp = ask(_hub(ctx), {"action": "fork", "name": "test"})
-        assert resp["status"] == "error"
-        assert "project_path" in resp["message"]
+  def test_fork_rejects_name_with_dot(self, fork_hub):
+    hub, ctx = fork_hub
+    resp = ask(hub, {"action": "fork", "name": "a.b"})
+    assert resp["status"] == "error"
+    assert "invalid" in resp["message"]
+
+  def test_fork_returns_error_when_project_path_not_set(self, tmp_path):
+    """Fork fails gracefully when context lacks project_path."""
+    runtime = MagicMock()
+    helpers_dir = tmp_path / "helpers"
+    helpers_dir.mkdir()
+    ctx = HelperContext(
+      runtime=runtime,
+      image="test:latest",
+      container_name_segments=("primary", "test"),
+      shell_path=tmp_path / "shell",
+      helpers_dir=helpers_dir,
+      socket_path=tmp_path / "helper.sock",
+      project_path=None,
+      data_path=None,
+      early=early_record(tmp_path, mode=BoxMode.primary),
+    )
+    resp = ask(_hub(ctx), {"action": "fork", "name": "test"})
+    assert resp["status"] == "error"
+    assert "project_path" in resp["message"]
 
 
 # ---------------------------------------------------------------------------
 # Source metadata dir — the shell_path fallback arm
 # ---------------------------------------------------------------------------
 
+
 class TestForkKeepsLinks:
-    """The box can write its workspace and home, and the host runs the copy: a link
-    there must land in the fork as the same link, never as a copy of its target."""
+  """The box can write its workspace and home, and the host runs the copy: a link
+  there must land in the fork as the same link, never as a copy of its target."""
 
-    @staticmethod
-    def _plant(tmp_path, ctx):
-        canary = tmp_path / "hosthome" / ".ssh"
-        canary.mkdir(parents=True)
-        (canary / "id_ed25519").write_text("SECRET-CANARY\n")
-        links = {
-            ctx.project_path / "dotssh": str(canary),
-            ctx.project_path / "src" / "key": str(canary / "id_ed25519"),
-            ctx.boxes / "myapp" / "home" / ".ssh": str(canary),
-            ctx.boxes / "myapp" / "home" / "rel": "../../../hosthome/.ssh/id_ed25519",
-        }
-        for link, target in links.items():
-            link.symlink_to(target)
-        return links
+  @staticmethod
+  def _plant(tmp_path, ctx):
+    canary = tmp_path / "hosthome" / ".ssh"
+    canary.mkdir(parents=True)
+    (canary / "id_ed25519").write_text("SECRET-CANARY\n")
+    links = {
+      ctx.project_path / "dotssh": str(canary),
+      ctx.project_path / "src" / "key": str(canary / "id_ed25519"),
+      ctx.boxes / "myapp" / "home" / ".ssh": str(canary),
+      ctx.boxes / "myapp" / "home" / "rel": "../../../hosthome/.ssh/id_ed25519",
+    }
+    for link, target in links.items():
+      link.symlink_to(target)
+    return links
 
-    @staticmethod
-    def _leaked(tree):
-        return [p for p in tree.rglob("*")
-                if p.is_file() and not p.is_symlink() and "SECRET-CANARY" in p.read_text()]
+  @staticmethod
+  def _leaked(tree):
+    return [
+      p
+      for p in tree.rglob("*")
+      if p.is_file() and not p.is_symlink() and "SECRET-CANARY" in p.read_text()
+    ]
 
-    def test_links_are_copied_as_links(self, tmp_path, fork_ctx):
-        links = self._plant(tmp_path, fork_ctx)
-        hub = HelperHub()
-        hub._ctx = fork_ctx
-        resp = hub._handle_fork({"action": "fork", "name": "linked"})
-        assert resp["status"] == "ok", resp
-        new_path = Path(resp["path"])
-        new_meta = fork_ctx.boxes / resp["name"]
-        for link, target in links.items():
-            src_root = (fork_ctx.project_path if link.is_relative_to(fork_ctx.project_path)
-                        else fork_ctx.boxes / "myapp")
-            dst_root = new_path if src_root == fork_ctx.project_path else new_meta
-            copied = dst_root / link.relative_to(src_root)
-            assert copied.is_symlink(), copied
-            assert copied.readlink() == Path(target)
-        assert self._leaked(new_path) == []
-        assert self._leaked(new_meta) == []
+  def test_links_are_copied_as_links(self, tmp_path, fork_ctx):
+    links = self._plant(tmp_path, fork_ctx)
+    hub = HelperHub()
+    hub._ctx = fork_ctx
+    resp = hub._handle_fork({"action": "fork", "name": "linked"})
+    assert resp["status"] == "ok", resp
+    new_path = Path(resp["path"])
+    new_meta = fork_ctx.boxes / resp["name"]
+    for link, target in links.items():
+      src_root = (
+        fork_ctx.project_path
+        if link.is_relative_to(fork_ctx.project_path)
+        else fork_ctx.boxes / "myapp"
+      )
+      dst_root = new_path if src_root == fork_ctx.project_path else new_meta
+      copied = dst_root / link.relative_to(src_root)
+      assert copied.is_symlink(), copied
+      assert copied.readlink() == Path(target)
+    assert self._leaked(new_path) == []
+    assert self._leaked(new_meta) == []
 
-    def test_a_dangling_link_is_carried_not_fatal(self, tmp_path, fork_ctx):
-        (fork_ctx.project_path / "gone").symlink_to(tmp_path / "nowhere")
-        hub = HelperHub()
-        hub._ctx = fork_ctx
-        resp = hub._handle_fork({"action": "fork", "name": "dangling"})
-        assert resp["status"] == "ok", resp
-        assert (Path(resp["path"]) / "gone").readlink() == tmp_path / "nowhere"
+  def test_a_dangling_link_is_carried_not_fatal(self, tmp_path, fork_ctx):
+    (fork_ctx.project_path / "gone").symlink_to(tmp_path / "nowhere")
+    hub = HelperHub()
+    hub._ctx = fork_ctx
+    resp = hub._handle_fork({"action": "fork", "name": "dangling"})
+    assert resp["status"] == "ok", resp
+    assert (Path(resp["path"]) / "gone").readlink() == tmp_path / "nowhere"
 
 
 class TestForkSourceMetaDirFallback:
-    """When the membership lookup misses, the fallback must still find the metadata dir."""
+  """When the membership lookup misses, the fallback must still find the metadata dir."""
 
-    @pytest.mark.parametrize("boxes_leaf", ["boxes", "elsewhere"],
-                             ids=["default_store", "repointed_store"])
-    def test_fallback_finds_source_meta_dir(self, tmp_path, boxes_leaf):
-        from kanibako.settings.paths import primary_box_name_for_workspace
+  @pytest.mark.parametrize(
+    "boxes_leaf", ["boxes", "elsewhere"], ids=["default_store", "repointed_store"]
+  )
+  def test_fallback_finds_source_meta_dir(self, tmp_path, boxes_leaf):
+    from kanibako.settings.paths import primary_box_name_for_workspace
 
-        ctx = _fallback_ctx(tmp_path, boxes_leaf)
-        # Guard: the PRIMARY route must genuinely miss, or this exercises the wrong arm.
-        assert primary_box_name_for_workspace(
-            ctx.primary_workset, str(ctx.project_path), early=ctx.early) is None
+    ctx = _fallback_ctx(tmp_path, boxes_leaf)
+    # Guard: the PRIMARY route must genuinely miss, or this exercises the wrong arm.
+    assert (
+      primary_box_name_for_workspace(ctx.primary_workset, str(ctx.project_path), early=ctx.early)
+      is None
+    )
 
-        resp = ask(_hub(ctx), {"action": "fork", "name": "fallback"})
+    resp = ask(_hub(ctx), {"action": "fork", "name": "fallback"})
 
-        assert resp["status"] == "ok"
-        new_meta = ctx.boxes / resp["name"]
-        assert (new_meta / "box.yaml").is_file()
-        assert (new_meta / "home" / ".bashrc").is_file()
+    assert resp["status"] == "ok"
+    new_meta = ctx.boxes / resp["name"]
+    assert (new_meta / "box.yaml").is_file()
+    assert (new_meta / "home" / ".bashrc").is_file()
 
 
 # ---------------------------------------------------------------------------
 # CLI tests (fork_cmd)
 # ---------------------------------------------------------------------------
 
+
 class TestRunFork:
-    _HUB_UP = "kanibako.commands.helper_cmd._check_helpers_enabled"
+  _HUB_UP = "kanibako.commands.helper_cmd._check_helpers_enabled"
 
-    def test_prints_path_on_success(self, capsys):
-        from kanibako.commands.fork_cmd import run_fork
-        import argparse
+  def test_prints_path_on_success(self, capsys):
+    from kanibako.commands.fork_cmd import run_fork
+    import argparse
 
-        args = argparse.Namespace(name="test")
-        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch(self._HUB_UP, return_value=True):
-            mock_send.return_value = {
-                "status": "ok",
-                "path": "/home/user/proj.test",
-                "name": "proj-test",
-            }
-            rc = run_fork(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "/home/user/proj.test" in out
-        assert "proj-test" in out
+    args = argparse.Namespace(name="test")
+    with (
+      patch("kanibako.channels.helper_client.send_request") as mock_send,
+      patch(self._HUB_UP, return_value=True),
+    ):
+      mock_send.return_value = {
+        "status": "ok",
+        "path": "/home/user/proj.test",
+        "name": "proj-test",
+      }
+      rc = run_fork(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "/home/user/proj.test" in out
+    assert "proj-test" in out
 
-    def test_prints_error_on_failure(self, capsys):
-        from kanibako.commands.fork_cmd import run_fork
-        import argparse
+  def test_prints_error_on_failure(self, capsys):
+    from kanibako.commands.fork_cmd import run_fork
+    import argparse
 
-        args = argparse.Namespace(name="bad")
-        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch(self._HUB_UP, return_value=True):
-            mock_send.return_value = {
-                "status": "error",
-                "message": "destination already exists",
-            }
-            rc = run_fork(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "already exists" in err
+    args = argparse.Namespace(name="bad")
+    with (
+      patch("kanibako.channels.helper_client.send_request") as mock_send,
+      patch(self._HUB_UP, return_value=True),
+    ):
+      mock_send.return_value = {
+        "status": "error",
+        "message": "destination already exists",
+      }
+      rc = run_fork(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "already exists" in err
 
-    def test_errors_when_no_socket(self, tmp_path, capsys):
-        from kanibako.commands.fork_cmd import run_fork
-        import argparse
+  def test_errors_when_no_socket(self, tmp_path, capsys):
+    from kanibako.commands.fork_cmd import run_fork
+    import argparse
 
-        args = argparse.Namespace(name="nope")
-        with patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path):
-            rc = run_fork(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "helpers enabled" in err
+    args = argparse.Namespace(name="nope")
+    with patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path):
+      rc = run_fork(args)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "helpers enabled" in err
 
-    def test_a_socket_no_hub_answers_is_refused_before_any_request(self, tmp_path, capsys):
-        """A dead hub's socket file is not a hub (the findings' dead-socket row): fork
-        refuses as with no socket, and never sends.  (Mutation: probe by ``exists()``
-        -> it sends and fails with the connect error -> RED.)"""
-        from kanibako.commands.fork_cmd import run_fork
-        import argparse
+  def test_a_socket_no_hub_answers_is_refused_before_any_request(self, tmp_path, capsys):
+    """A dead hub's socket file is not a hub (the findings' dead-socket row): fork
+    refuses as with no socket, and never sends.  (Mutation: probe by ``exists()``
+    -> it sends and fails with the connect error -> RED.)"""
+    from kanibako.commands.fork_cmd import run_fork
+    import argparse
 
-        sock = tmp_path / ".kanibako" / "state" / "hub" / "helper.sock"
-        sock.parent.mkdir(parents=True)
-        sock.touch()
-        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path):
-            rc = run_fork(argparse.Namespace(name="x"))
-        assert rc == 1
-        assert "helpers enabled" in capsys.readouterr().err
-        mock_send.assert_not_called()
+    sock = tmp_path / ".kanibako" / "state" / "hub" / "helper.sock"
+    sock.parent.mkdir(parents=True)
+    sock.touch()
+    with (
+      patch("kanibako.channels.helper_client.send_request") as mock_send,
+      patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path),
+    ):
+      rc = run_fork(argparse.Namespace(name="x"))
+    assert rc == 1
+    assert "helpers enabled" in capsys.readouterr().err
+    mock_send.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # CLI registration tests
 # ---------------------------------------------------------------------------
 
+
 class TestForkCLIRegistration:
-    def test_box_in_subcommands(self):
-        from kanibako.cli import _SUBCOMMANDS
-        assert "box" in _SUBCOMMANDS
+  def test_box_in_subcommands(self):
+    from kanibako.cli import _SUBCOMMANDS
 
-    def test_agent_in_subcommands(self):
-        from kanibako.cli import _SUBCOMMANDS
-        assert "agent" in _SUBCOMMANDS
+    assert "box" in _SUBCOMMANDS
 
-    def test_fork_parser_registered_under_box(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        # fork should be recognized as a box subcommand
-        args = parser.parse_args(["box", "fork", "testname"])
-        assert args.command == "box"
-        assert args.box_command == "fork"
-        assert args.name == "testname"
+  def test_agent_in_subcommands(self):
+    from kanibako.cli import _SUBCOMMANDS
 
-    def test_fork_exempt_from_config_check(self):
-        """box fork should not require kanibako.cfg to exist."""
-        from kanibako.cli import main
-        # Calling box fork with a missing kanibako.cfg should not trigger
-        # the "kanibako is not set up" error — it should reach run_fork
-        # and fail on the socket check instead.
-        with pytest.raises(SystemExit) as exc_info:
-            main(["box", "fork", "test"])
-        # Should exit with 1 (no socket), not the config-check error
-        assert exc_info.value.code == 1
+    assert "agent" in _SUBCOMMANDS
+
+  def test_fork_parser_registered_under_box(self):
+    from kanibako.cli import build_parser
+
+    parser = build_parser()
+    # fork should be recognized as a box subcommand
+    args = parser.parse_args(["box", "fork", "testname"])
+    assert args.command == "box"
+    assert args.box_command == "fork"
+    assert args.name == "testname"
+
+  def test_fork_exempt_from_config_check(self):
+    """box fork should not require kanibako.cfg to exist."""
+    from kanibako.cli import main
+
+    # Calling box fork with a missing kanibako.cfg should not trigger
+    # the "kanibako is not set up" error — it should reach run_fork
+    # and fail on the socket check instead.
+    with pytest.raises(SystemExit) as exc_info:
+      main(["box", "fork", "test"])
+    # Should exit with 1 (no socket), not the config-check error
+    assert exc_info.value.code == 1

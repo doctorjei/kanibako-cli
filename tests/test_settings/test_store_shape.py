@@ -56,8 +56,11 @@ DEST = f"{GUEST}/x"
 
 def make_ctx() -> ResolveCtx:
   return ResolveCtx(
-    agent_name="claude", workset_name="myws", host_home="/home/u",
-    xdg={"XDG_DATA_HOME": "/data"}, config={},
+    agent_name="claude",
+    workset_name="myws",
+    host_home="/home/u",
+    xdg={"XDG_DATA_HOME": "/data"},
+    config={},
   )
 
 
@@ -65,8 +68,12 @@ def live_entries(floor: dict) -> list[CategoryEntry]:
   """*floor* → the entry list a real launch produces (the ONE live route)."""
   ctx = make_ctx()
   snap = build_launch_snapshot(
-    agent_name="claude", ctx=ctx,
-    system_path=None, agent_path=None, workset_path=None, box_path=None,
+    agent_name="claude",
+    ctx=ctx,
+    system_path=None,
+    agent_path=None,
+    workset_path=None,
+    box_path=None,
     default_categories=floor,
   )
   return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -183,8 +190,13 @@ class TestACopyArmIsAFlatList:
     """*srcs* as that many copy entries at ONE dest, in the order given."""
     return [
       CategoryEntry(
-        category=category, scope="box", box_dest=DEST, host_src=src,
-        delivery="COPY", options="", name=DEST,
+        category=category,
+        scope="box",
+        box_dest=DEST,
+        host_src=src,
+        delivery="COPY",
+        options="",
+        name=DEST,
         key_segments=("box", category, DEST),
       )
       for src in srcs
@@ -209,8 +221,13 @@ class TestACopyArmIsAFlatList:
     # Grouping by dest pulls the two ``DEST`` rows together and lands the nested
     # one LAST, inverting which copy overwrites which at apply time.
     inner = CategoryEntry(
-      category="seeded", scope="box", box_dest=f"{DEST}/inner", host_src="/h/inner",
-      delivery="COPY", options="", name=f"{DEST}/inner",
+      category="seeded",
+      scope="box",
+      box_dest=f"{DEST}/inner",
+      host_src="/h/inner",
+      delivery="COPY",
+      options="",
+      name=f"{DEST}/inner",
       key_segments=("box", "seeded", f"{DEST}/inner"),
     )
     first, second = self.rows("seeded", "/h/first", "/h/second")
@@ -269,10 +286,12 @@ class TestPerScope:
     # A CROSS-SCOPE abstraction pair is the COLLAPSE's, never the producer's — it
     # REFUSES them, as it does any two mounts at one dest. The producer must not
     # pre-decide it: both entries survive, in their own scopes.
-    produced = shapes({
-      "system.caches": {"~/x": ("/h/sys",)},
-      "box.common": {"~/x": ("/h/box",)},
-    })
+    produced = shapes(
+      {
+        "system.caches": {"~/x": ("/h/sys",)},
+        "box.common": {"~/x": ("/h/box",)},
+      }
+    )
     assert produced["system"].rw[DEST].src == "/h/sys"
     assert produced["box"].rw[DEST].src == "/h/box"
     assert produced.warnings == ()
@@ -295,7 +314,8 @@ class TestWithinScopeRows:
     assert err.kind == "binding_vs_binding"
     assert err.box_dest == DEST
     assert {key for key, _ in err.entries} == {
-      f"box.bindings.ro[{DEST}]", f"box.bindings.rw[{DEST}]",
+      f"box.bindings.ro[{DEST}]",
+      f"box.bindings.rw[{DEST}]",
     }
 
   def test_row1_uses_the_one_spec_mandated_remedy_text(self):
@@ -311,9 +331,7 @@ class TestWithinScopeRows:
       "box.bindings.ro": {"~/x": ("/h/a",)},
       "box.bindings.rw": {"~/x": ("/h/b",)},
     }
-    entries = [
-      e for e in live_entries(floor) if e.category.startswith("bindings")
-    ]
+    entries = [e for e in live_entries(floor) if e.category.startswith("bindings")]
     with pytest.raises(CategoryCollisionError) as producer_err:
       build_store_shape_set(live_entries(floor))
     with pytest.raises(CategoryCollisionError) as raiser_err:
@@ -337,17 +355,23 @@ class TestWithinScopeRows:
 
   def test_row3_fires_for_a_read_only_base_too(self):
     with pytest.raises(CategoryCollisionError) as excinfo:
-      build_store_shape_set(live_entries({
-        "box.bindings.ro": {"~/x": ("/h/base",)},
-        "box.caches": {"~/x": ("/h/ext",)},
-      }))
+      build_store_shape_set(
+        live_entries(
+          {
+            "box.bindings.ro": {"~/x": ("/h/base",)},
+            "box.caches": {"~/x": ("/h/ext",)},
+          }
+        )
+      )
     assert excinfo.value.kind == "extension_onto_occupied"
 
   def test_row5_two_abstractions_at_one_dest_warn_and_the_last_wins(self):
-    produced = shapes({
-      "box.caches": {"~/x": ("/h/cache",)},
-      "box.common": {"~/x": ("/h/common",)},
-    })
+    produced = shapes(
+      {
+        "box.caches": {"~/x": ("/h/cache",)},
+        "box.common": {"~/x": ("/h/common",)},
+      }
+    )
     # The existing ordering stands: ``common`` sorts after ``caches``, so it wins
     # — the same answer the retired ladder gave.
     assert produced["box"].rw[DEST] == BindEntry("/h/common", "Z,U")
@@ -370,10 +394,12 @@ class TestWithinScopeRows:
     assert "ignored" in first.warnings[0].message()
 
   def test_a_same_scope_abstraction_pair_at_DIFFERENT_dests_is_no_collision(self):
-    produced = shapes({
-      "box.caches": {"~/a": ("/h/cache",)},
-      "box.common": {"~/b": ("/h/common",)},
-    })
+    produced = shapes(
+      {
+        "box.caches": {"~/a": ("/h/cache",)},
+        "box.common": {"~/b": ("/h/common",)},
+      }
+    )
     assert produced.warnings == ()
     assert set(produced["box"].rw) == {f"{GUEST}/a", f"{GUEST}/b"}
 
@@ -404,10 +430,12 @@ class TestTheMaskTrap:
   # is the only half this file is responsible for.
 
   def test_a_mask_in_one_scope_does_not_touch_a_binding_in_another(self):
-    produced = shapes({
-      "system.bindings.rw": {"~/x": ("/h/bound",)},
-      "box.masks": ["~/x"],
-    })
+    produced = shapes(
+      {
+        "system.bindings.rw": {"~/x": ("/h/bound",)},
+        "box.masks": ["~/x"],
+      }
+    )
     assert produced["system"].rw[DEST].src == "/h/bound"
     assert produced["system"].mask == {}
     assert produced["box"].mask == {DEST: True}
@@ -417,11 +445,13 @@ class TestTheMaskTrap:
     # The exempt pair's ambiguity is real whether or not something later hides its
     # consequence — the same reasoning §0 gives for evaluating the refusals before
     # the mask override.
-    produced = shapes({
-      "box.caches": {"~/x": ("/h/cache",)},
-      "box.common": {"~/x": ("/h/common",)},
-      "box.masks": ["~/x"],
-    })
+    produced = shapes(
+      {
+        "box.caches": {"~/x": ("/h/cache",)},
+        "box.common": {"~/x": ("/h/common",)},
+        "box.masks": ["~/x"],
+      }
+    )
     assert len(produced.warnings) == 1
     assert produced["box"].rw[DEST].src == "/h/common"
     assert produced["box"].mask == {DEST: True}
@@ -459,8 +489,13 @@ class TestCategoriesWithNoArm:
     # that is the point — the refusal is what keeps "an undeclared key is not a
     # key" true if some future emitter can.
     bogus = CategoryEntry(
-      category="bogus", scope="box", box_dest=DEST, host_src="/h/x",
-      delivery="MOUNT", options="", name=DEST,
+      category="bogus",
+      scope="box",
+      box_dest=DEST,
+      host_src="/h/x",
+      delivery="MOUNT",
+      options="",
+      name=DEST,
       key_segments=("box", "bogus", DEST),
     )
     with pytest.raises(SettingsError, match="no store_shape arm"):
@@ -468,8 +503,13 @@ class TestCategoriesWithNoArm:
 
   def test_an_undeclared_scope_is_REFUSED_not_dropped(self):
     bogus = CategoryEntry(
-      category="bindings.rw", scope="cli", box_dest=DEST, host_src="/h/x",
-      delivery="MOUNT", options="Z,U", name=DEST,
+      category="bindings.rw",
+      scope="cli",
+      box_dest=DEST,
+      host_src="/h/x",
+      delivery="MOUNT",
+      options="Z,U",
+      name=DEST,
       key_segments=("cli", "bindings", "rw", DEST),
     )
     with pytest.raises(SettingsError, match="not one of the declared scopes"):
@@ -478,8 +518,13 @@ class TestCategoriesWithNoArm:
   def test_a_sourceless_bind_is_REFUSED_naming_its_entry_by_index(self):
     # Spec §2c: the dest is a dict INDEX of the arm, never a key segment.
     bogus = CategoryEntry(
-      category="bindings.rw", scope="box", box_dest=DEST, host_src=None,
-      delivery="MOUNT", options="Z,U", name=DEST,
+      category="bindings.rw",
+      scope="box",
+      box_dest=DEST,
+      host_src=None,
+      delivery="MOUNT",
+      options="Z,U",
+      name=DEST,
       key_segments=("box", "bindings", "rw", DEST),
     )
     with pytest.raises(SettingsError) as caught:
