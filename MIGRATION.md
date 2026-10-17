@@ -121,10 +121,11 @@ inside boxes. In order of likely impact:
    `kanibako agent set <agent> label="My Claude"`.
 5. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins leaves those agents unusable: **no
-   pre-1.8.0 plugin loads** on this base, so kanibako skips that agent with a named warning (`Warning: '<plugin>' failed to
-   load and is being SKIPPED`) and the agent is unavailable (*Core module paths moved
-   (package-ification) — the flat compatibility shims are DELETED* lists the affected plugin
-   versions and why each fails). Upgrade via the `kanibako` meta package, or upgrade the plugins
+   pre-1.8.0 plugin loads** on this base, so kanibako skips that agent with a named warning
+   (`Warning: '<plugin>' failed to load and is being SKIPPED`) and the agent is unavailable
+   (*Core module paths moved (package-ification) — the flat compatibility shims are DELETED*
+   lists the affected plugin versions and why each fails). Upgrade via the `kanibako` meta
+   package, or upgrade the plugins
    first (see *The kickoff — upgrade base and plugins TOGETHER*). Every plugin published
    **before** v1.8.0 pins no upper bound on `kanibako-cli`, so this is what an unpinned
    `pip install --upgrade kanibako-cli` gives you. ⚑ From v1.8.0 the plugins declare
@@ -8518,10 +8519,10 @@ import-time `kanibako.*` imports against the v1.8.0 tree, and by installing goos
 | `kanibako-agent-codex` | **every one**, `0.1.0` through `0.5.0` | none |
 | `kanibako-agent-goose` | **every one**, `0.1.0` through `0.5.0` | none |
 
-Goose `0.4.0` and `0.5.0` clear every import, but their `goose-defaults.yaml` still spells
+Goose `0.4.0` and `0.5.0` clear every import, but their `goose-defaults.yaml` spells
 `$GUEST_HOME` bare, and loading it is refused: `Old reference spelling '$GUEST_HOME' … write
-'{$GUEST_HOME}'`. No plugin wheel published before this release works with it, and the cure for
-all of them is the v1.8.0 train described below.
+'{$GUEST_HOME}'`. No plugin wheel published before this release works with it; the cure for all
+of them is the v1.8.0 train described below.
 
 **Which removed import a given version hits — and *when*.** All four raise
 `ModuleNotFoundError`, but not at the same moment. Only `kanibako.agent_defaults` is imported at
