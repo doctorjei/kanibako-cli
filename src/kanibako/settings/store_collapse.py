@@ -254,6 +254,7 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
 
 def collapse_env(
   entries: list[CategoryEntry], cli_env: Mapping[str, str] | None = None,
+  origins: Mapping[str, str] | None = None,
 ) -> CollapsedEnvs:
   """Arbitrate the env VAR slots: the FIRST scope to name a VAR holds it (PURE).
 
@@ -287,6 +288,10 @@ def collapse_env(
   applied to the env family — system-design § "Delivery at launch"; [Jei:2026-08-14]:
   *"-e should override the key values, not the environment variables themselves"* — and
   it is applied AFTER the walk, by :func:`_apply_cli_env`.
+
+  *origins* maps an entry key the user did not write to WHO set it (``kanibako``
+  for a launch stamp, ``the persona store``); a refusal names that source beside
+  the key. Message text only: it decides nothing.
   """
   slots: CollapsedEnvs = {}
   for scope in SCOPE_CONTAINMENT:
@@ -295,7 +300,7 @@ def collapse_env(
         continue
       held = slots.get(entry.box_dest)
       if held is not None:
-        _refuse_env_twin(entry, held)
+        _refuse_env_twin(entry, held, origins or {})
       slots[entry.box_dest] = CollapsedEnv(entry.options, entry.scope, entry.key)
   _apply_cli_env(slots, cli_env)
   return slots
@@ -783,24 +788,33 @@ def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
   )
 
 
-def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None:
+def _refuse_env_twin(
+  arriving: CategoryEntry, held: CollapsedEnv, origins: Mapping[str, str],
+) -> None:
   """Two scopes' ``env`` keys naming ONE variable: the slot is taken, so refuse - naming BOTH.
 
   ⚑ THE SOLE RAISE SITE FOR THE CROSS-SCOPE ``env`` CONTEST, deliberately: the
   severity of a contested slot is one decision per case and each is spelled in one
-  place. The other two cases are elsewhere because their inputs are: a SAME-SCOPE
-  declared-vs-realized twin is ``commands.start._refuse_realized_twin`` (the collapse
-  cannot tell the two apart by design), and a VAR named by the ``env`` family AND the
+  place. The other two cases are elsewhere because their inputs are: a key naming a
+  REALIZED variable, at any scope, is ``commands.start._refuse_realized_twin`` (only
+  the install knows the driving key; the collapse cannot tell the two apart by
+  design), and a VAR named by the ``env`` family AND the
   ``secret_path`` family is ``settings_categories.refuse_env_secret_twins`` - a
   secret's VALUE never enters the collapse at all, so this function sees only the
   ``env`` half of that slot.
   """
   held_key, arriving_key = shown_key(held.key), shown_key(arriving.key)
+
+  def set_by(key: str) -> str:
+    source = origins.get(key)
+    return f" (set by {source})" if source else ""
+
   raise SettingsError(env_twin_refusal(
     arriving.box_dest,
     f"is claimed by two keys: "
-    f"{held_key!r} at the {held.scope!r} scope already holds it, and "
-    f"{arriving_key!r} at the {arriving.scope!r} scope names it again",
+    f"{held_key!r}{set_by(held.key)} at the {held.scope!r} scope already holds "
+    f"it, and {arriving_key!r}{set_by(arriving.key)} at the {arriving.scope!r} "
+    f"scope names it again",
     f"A variable "
     f"is written ONCE and the containing scope writes it first, so the second "
     f"declaration could never take effect. Give the variable ONE owner: keep the "

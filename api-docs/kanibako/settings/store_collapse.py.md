@@ -39,7 +39,7 @@ def fold_opt(opts: str | None, token: str) -> str
 def opt_tokens(opts: str | None) -> list[str]
 def is_mask(bind: CollapsedBind) -> bool
 def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies
-def collapse_env(entries: list[CategoryEntry], cli_env: Mapping[str, str] | None=None) -> CollapsedEnvs
+def collapse_env(entries: list[CategoryEntry], cli_env: Mapping[str, str] | None=None, origins: Mapping[str, str] | None=None) -> CollapsedEnvs
 def is_within(dest: str, root: str) -> bool
 def covering_bind(bindings: Mapping[str, CollapsedBind], dest: str) -> str | None
 def parent_mask(bindings: CollapsedBindings, dest: str) -> str | None
@@ -66,7 +66,7 @@ def _refuse_bind_under_mask(combined: CollapsedBindings, declared_by: DeclaringK
 def _refuse_mask_on_mask(combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str, key: str | None) -> None
 def _refuse_mask_over_home(dest: str, key: str | None) -> None
 def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None
-def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None
+def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv, origins: Mapping[str, str]) -> None
 def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None
 def _pair_one(decl: Declaration, bindings: Mapping[str, CollapsedBind], copies: Sequence[CollapsedCopy], claims: Mapping[tuple[str, str | None], int]) -> Derivation
 ```

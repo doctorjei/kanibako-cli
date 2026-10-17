@@ -963,10 +963,10 @@ class TestTheRealizedVariablesArriveAsKeys:
 class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
     """system-design § "Delivery at launch": the refusals SHIP — no carve-out, no skip.
 
-    Once a variable is realized there is no env-key spelling for it at any scope: the
-    agent scope is the same-scope refusal below, every other scope is the ordinary
-    row-38 collapse refusal. That is the user-visible break, and it is deliberate — a
-    carve-out would mint a second CLASS of key, which is the disease the fold cures.
+    Once a variable is realized there is no env-key spelling for it at any scope:
+    every scope refuses AT THE INSTALL, naming the declared key AND the driving key.
+    That is the user-visible break, and it is deliberate — a carve-out would mint a
+    second CLASS of key, which is the disease the fold cures.
     """
 
     def test_a_same_scope_declaration_refuses_naming_both_keys(self, tmp_path):
@@ -1016,25 +1016,55 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
         assert "agent.goose.access" in message
         assert "-S" in message and "-A" in message
 
-    def test_a_twin_at_another_scope_meets_the_ORDINARY_refusal(self, tmp_path):
-        """Cross-scope is the EXISTING mechanism — no second one was built for it.
+    @pytest.mark.parametrize("scope", ["system", "workset", "box"])
+    @pytest.mark.parametrize(("harness", "var", "driver", "behavior"), [
+        ("goose", "GOOSE_MODEL", "model", {"model": "m"}),
+        ("goose", "GOOSE_PROVIDER", "provider", {"provider": "openai"}),
+        ("goose", "OPENAI_HOST", "endpoint", {"endpoint": "http://h"}),
+        ("goose", "GOOSE_MODE", "access", None),
+        ("claude", "ANTHROPIC_BASE_URL", "endpoint", {"endpoint": "http://h"}),
+    ])
+    def test_a_twin_at_another_scope_names_the_driving_key(
+        self, tmp_path, scope, harness, var, driver, behavior,
+    ):
+        """191-G1: the key the user wrote and the key that drives the variable.
 
-        ⚑⚑ THAT IS THE ASSERTION, not merely that it raises: the message is
-        ``store_collapse._refuse_env_twin``'s, word for word on the sentence that
-        only it produces. A realization-shaped refusal invented for this case would
-        pass a "raises SettingsError" check and would be the second mechanism
-        system-design § "Delivery at launch" forbids.
+        Not the generic two-keys refusal, which named an ``agent.<node>.env.<VAR>``
+        the user never wrote and whose cure led into the same-scope refusal.
         """
-        target = target_for("goose")
+        target = target_for(harness)
+        doc = {scope: {"env": {var: "mine"}}}
+        path = write_yaml(tmp_path / f"{scope}.yaml", doc)
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(
+                target, agent_behavior_floor=behavior, **{f"{scope}_path": path},
+            )
+        message = str(excinfo.value)
+        assert message.startswith(
+            f"'{scope}.env.{var}' conflicts with 'agent.{harness}.{driver}', which "
+            f"kanibako turns into {var}; remove the env entry"
+        ), message
+        assert f"agent.{harness}.env.{var}" not in message
+        assert "claimed by two keys" not in message
+
+    def test_the_model_cure_names_its_flag(self, tmp_path):
         box_file = write_yaml(
-            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODE": "chat"}}},
+            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
         )
         with pytest.raises(SettingsError) as excinfo:
-            resolve_realized(target, box_path=box_file)
-        message = str(excinfo.value)
-        assert "is claimed by two keys" in message
-        assert "agent.goose.env.GOOSE_MODE" in message
-        assert "box.env.GOOSE_MODE" in message
+            resolve_realized(
+                target_for("goose"), box_path=box_file,
+                agent_behavior_floor={"model": "m"},
+            )
+        assert "set the model with `model` (or `-M/--model`)" in str(excinfo.value)
+
+    def test_a_null_at_another_scope_names_nothing(self, tmp_path):
+        """Control: a ``null`` env entry is skipped by the adapter, so it never refused."""
+        box_file = write_yaml(
+            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODE": None}}},
+        )
+        slots = resolve_realized(target_for("goose"), box_path=box_file)
+        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
 
     def test_an_unrealized_variable_at_another_scope_is_untouched(self):
         """The POSITIVE CONTROL: only the realized names refuse.
@@ -1092,8 +1122,8 @@ class TestAnEmptyModelRealizesTheEmptyModel:
         assert "agent.default.env.GOOSE_MODEL" in message
         assert "agent.goose.model" in message
 
-    def test_an_env_twin_at_another_scope_meets_the_ordinary_refusal(self, tmp_path):
-        """``store_collapse._refuse_env_twin``'s message (row G1 may reword it)."""
+    def test_an_env_twin_at_another_scope_names_the_driving_key(self, tmp_path):
+        """191-G1: the install's refusal, naming ``model``."""
         box_file = write_yaml(
             tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
         )
@@ -1103,9 +1133,10 @@ class TestAnEmptyModelRealizesTheEmptyModel:
                 agent_path=self._empty_model_agent_file(tmp_path),
             )
         message = str(excinfo.value)
-        assert "is claimed by two keys" in message
-        assert "agent.goose.env.GOOSE_MODEL" in message
-        assert "box.env.GOOSE_MODEL" in message
+        assert message.startswith(
+            "'box.env.GOOSE_MODEL' conflicts with 'agent.goose.model'"
+        ), message
+        assert "agent.goose.env.GOOSE_MODEL" not in message
 
     @staticmethod
     def _secret_box_file(tmp_path):
@@ -1116,20 +1147,37 @@ class TestAnEmptyModelRealizesTheEmptyModel:
             {"box": {"secret_path": {"GOOSE_MODEL": str(secret)}}},
         )
 
-    def test_a_secret_path_twin_refuses_naming_both_families(self, tmp_path):
-        """``refuse_env_secret_twins``, through its production caller (row G4 may reword it)."""
+    def test_a_secret_path_twin_names_the_driving_key(self, tmp_path):
+        """191-G4: refused at the install, naming ``model``, not a key nobody wrote."""
+        with pytest.raises(SettingsError) as excinfo:
+            realized_entries(
+                target_for("goose"), box_path=self._secret_box_file(tmp_path),
+                agent_path=self._empty_model_agent_file(tmp_path),
+            )
+        message = str(excinfo.value)
+        assert message.startswith(
+            "'box.secret_path.GOOSE_MODEL' conflicts with 'agent.goose.model', which "
+            "kanibako turns into GOOSE_MODEL; remove the secret_path entry"
+        ), message
+        assert "agent.goose.env.GOOSE_MODEL" not in message
+
+    def test_an_active_null_pointer_shadows_an_all_agents_one(self, tmp_path):
+        """Control: the §2d pick lets ``agent.goose``'s ``null`` win, so no pointer."""
         from kanibako.settings.settings_categories import launch_deliveries
 
-        entries = realized_entries(
-            target_for("goose"), box_path=self._secret_box_file(tmp_path),
-            agent_path=self._empty_model_agent_file(tmp_path),
+        secret = tmp_path / "goose-model.txt"
+        secret.write_text("mine\n")
+        system_file = write_yaml(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"secret_path": {"GOOSE_MODEL": str(secret)}}}},
         )
-        with pytest.raises(SettingsError) as excinfo:
-            launch_deliveries(entries, agent_dests=frozenset())
-        message = str(excinfo.value)
-        assert "named by BOTH scalar families" in message
-        assert "agent.goose.env.GOOSE_MODEL" in message
-        assert "box.secret_path.GOOSE_MODEL" in message
+        agent_file = self._empty_model_agent_file(
+            tmp_path, secret_path={"GOOSE_MODEL": None},
+        )
+        entries = realized_entries(
+            target_for("goose"), system_path=system_file, agent_path=agent_file,
+        )
+        launch_deliveries(entries, agent_dests=frozenset())
 
     def test_an_unset_model_leaves_a_secret_path_alone(self, tmp_path):
         """Control: the refusal above comes from the ``""`` ``model``, nothing else."""

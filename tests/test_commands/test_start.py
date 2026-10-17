@@ -5580,6 +5580,27 @@ class TestBrowserSidecar:
         # Another variable is no contest.
         _refuse_browser_env_twin({"OTHER": CollapsedEnv("x", "box", "box.env.OTHER")})
 
+    def test_a_persona_store_value_is_named_with_its_source(self):
+        """191-G3 / 191-rv-browserenv b: no settings file holds a store value."""
+        from kanibako.commands.start import _env_key_origins, _refuse_browser_env_twin
+        from kanibako.settings.settings_resolve import SettingsError
+        from kanibako.settings.store_collapse import CollapsedEnv
+
+        key = "agent.kimi℘goose.env.BROWSER_WS_ENDPOINT"
+        origins = _env_key_origins(
+            agent_name="kimi℘goose",
+            persona_values={"env.BROWSER_WS_ENDPOINT": "ws://store", "model": "m"},
+        )
+        assert origins == {key: "the persona store"}
+        with pytest.raises(SettingsError) as exc:
+            _refuse_browser_env_twin(
+                {"BROWSER_WS_ENDPOINT": CollapsedEnv("ws://store", "agent", key)},
+                origins,
+            )
+        msg = str(exc.value)
+        assert "'agent.kimi+goose.env.BROWSER_WS_ENDPOINT', set by the persona store" in msg
+        assert "remove the variable from the persona store" in msg, msg
+
     @pytest.mark.parametrize("route", ["key", "-e"])
     def test_without_browser_a_user_value_passes_through(self, start_mocks, route):
         with start_mocks() as m:

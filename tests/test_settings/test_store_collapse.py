@@ -1827,3 +1827,51 @@ class TestCoveringBind:
     from kanibako.settings.store_collapse import covering_bind
 
     assert covering_bind({}, "/h/a") is None
+
+
+class TestATwinRefusalSaysWhoSetAKeyNobodyWrote:
+  """191-G3: a launch stamp or a persona-store value is named WITH its source.
+
+  ``system.env.KANIBAKO_NAME`` is kanibako's stamp and ``agent.<node>.env.<VAR>`` can
+  be the persona store's; the user wrote neither, so the refusal says who did.
+  """
+
+  def ctx(self) -> ResolveCtx:
+    return ResolveCtx(
+      agent_name="claude", workset_name="myws", host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"}, config={},
+    )
+
+  def refusal(self, floor: dict, origins) -> str:
+    ctx = self.ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude", ctx=ctx,
+      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    with pytest.raises(SettingsError) as excinfo:
+      collapse_env(entries, None, origins)
+    return str(excinfo.value)
+
+  def test_a_launch_stamp_is_named_as_kanibakos(self):
+    message = self.refusal(
+      {"system.env.KANIBAKO_NAME": "box", "box.env.KANIBAKO_NAME": "mine"},
+      {"system.env.KANIBAKO_NAME": "kanibako"},
+    )
+    assert "'system.env.KANIBAKO_NAME' (set by kanibako) at the 'system' scope" in message
+    assert "'box.env.KANIBAKO_NAME' at the 'box' scope" in message
+
+  def test_a_persona_store_value_is_named_as_the_stores(self):
+    message = self.refusal(
+      {"agent.claude.env.FOO": "store", "box.env.FOO": "mine"},
+      {"agent.claude.env.FOO": "the persona store"},
+    )
+    assert "'agent.claude.env.FOO' (set by the persona store)" in message
+
+  def test_without_origins_the_message_is_unchanged(self):
+    message = self.refusal(
+      {"system.env.KANIBAKO_NAME": "box", "box.env.KANIBAKO_NAME": "mine"}, None,
+    )
+    assert "set by" not in message
+    assert "'system.env.KANIBAKO_NAME' at the 'system' scope" in message

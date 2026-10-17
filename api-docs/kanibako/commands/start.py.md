@@ -155,7 +155,7 @@ def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> Kaniba
 def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, persona_values: 'Mapping[str, str | None] | None'=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
 def _annotate_pref_origin(exc, prefs)
 def _install_derived_bindings(snapshot, derived: 'Mapping[tuple[str, ...], object]') -> None
-def _install_assembly_collapse(snapshot, entries, *, whole_box: bool, cli_env: 'Mapping[str, str] | None'=None) -> 'dict[str, str]'
+def _install_assembly_collapse(snapshot, entries, *, whole_box: bool, cli_env: 'Mapping[str, str] | None'=None, env_origins: 'Mapping[str, str] | None'=None) -> 'dict[str, str]'
 def _snapshot_home(snapshot) -> str
 def _bind_map_from_mounts(mounts: list) -> 'dict[str, object]'
 def _launch_bind_map(snapshot) -> 'dict[str, object]'
@@ -195,10 +195,12 @@ def _synced_last_wins(copies: 'list[CollapsedCopy]') -> 'list[CollapsedCopy]'
 def _synced_masks_replaced(copies: 'list[CollapsedCopy]', bindings) -> 'list[str]'
 def _apply_synced_copies(*, snapshot: 'KeyStore', bindings, logger, skip_if: 'Callable[[Path, Path], bool] | None', declared_by: 'Mapping[str, str]') -> None
 def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]
+def _env_key_origins(*, agent_name: str, persona_values: 'Mapping[str, str | None] | None', stamps: 'Mapping[str, str] | None'=None) -> dict[str, str]
 def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None
 def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> 'str | None'
+def _realized_twin_key(snapshot, agent_id: str, var: str) -> 'str | None'
 def _refuse_realized_twin(var: str, declared_key: str, *, agent_id: str, driving_key: str, is_access: bool) -> None
-def _refuse_browser_env_twin(env_slots: 'CollapsedEnvs') -> None
+def _refuse_browser_env_twin(env_slots: 'CollapsedEnvs', origins: 'Mapping[str, str] | None'=None) -> None
 def _channel_default_categories(std, proj) -> 'core_defaults.BindArmTable'
 def _seed_channel_files(std, proj) -> None
 def _core_default_categories(std, proj, *, guarantee_create: bool=True) -> 'core_defaults.BindArmTable'

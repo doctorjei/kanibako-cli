@@ -3097,12 +3097,10 @@ whether `model` / `provider` / `endpoint` resolves to a value. If you set both `
 `env.GOOSE_MODEL`, the file that worked yesterday refuses today — that is the point, because
 yesterday one of the two was being thrown away.
 
-⚑ **There is no `env` spelling for a realized variable at any scope.** A twin at a *different*
-scope (`box.env.GOOSE_MODE` against the agent-scope realization) meets the ordinary one-owner
-refusal of *An environment variable may be declared at ONE scope only*; at the *same* scope you get
-the message above. Both say the same thing: drive the variable through its key. Nor a
-`secret_path` one: `secret_path.<VAR>` beside a realized variable refuses, naming the variable with
-both families, whenever the driving key resolves to a value, `""` included.
+⚑ **There is no `env` or `secret_path` spelling for a realized variable at any scope.**
+`box.env.GOOSE_MODE`, `system.env.GOOSE_MODEL`, and `box.secret_path.GOOSE_MODEL` each get the
+message above, naming the key you wrote and the key that drives the variable, whenever the driving
+key resolves to a value, `""` included. Drive the variable through its key.
 
 ⚑ **For one launch and no file change, `-e` still works** — `kanibako start -e GOOSE_MODE=chat`
 overrides the realized value for that run, writing nothing. It is not a way around the refusal

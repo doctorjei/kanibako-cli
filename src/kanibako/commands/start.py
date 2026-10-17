@@ -4651,7 +4651,10 @@ def _run_container(
         # for it (any scope's key or ``-e``) would be replaced silently. Refused
         # here, before ``-e`` is persisted or anything starts.
         if browser:
-            _refuse_browser_env_twin(_launch_env_map(_snapshot))
+            _refuse_browser_env_twin(
+                _launch_env_map(_snapshot),
+                _env_key_origins(agent_name=agent_id, persona_values=persona_values),
+            )
         # §1A CREATE EXCEPTION for ``-e`` (181-CX1 (a) [Jei:2026-10-13]): the collapse above is the
         # first point that knows which key owns each variable — its env slots, and the
         # entry list's ``secret_path`` names — and nothing has run in the box yet.  The
@@ -7798,6 +7801,7 @@ def _resolve_launch_snapshot(
     # same-destination clash can name BOTH contributing families rather than just
     # the destination.
     cat_origins: dict[tuple[str, str], str] = {}
+    stamps: "Mapping[str, str]" = {}
     if include_base_families:
         _merge_default_categories(
             default_categories, _core_default_categories(
@@ -7843,10 +7847,11 @@ def _resolve_launch_snapshot(
         # below.  ⚑ The per-variable gates (a named project; a real agent) live
         # INSIDE the one function that spells the variables, so there is one place
         # to read what a box does and does not get; nothing here selects a subset.
+        stamps = _core_env_default_categories(
+            proj=proj, target=target, agent_id=agent_name,
+        )
         _merge_default_categories(
-            default_categories, _core_env_default_categories(
-                proj=proj, target=target, agent_id=agent_name,
-            ), family="core env", origins=cat_origins,
+            default_categories, stamps, family="core env", origins=cat_origins,
         )
         # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
         # COLLECTION.md index and the charter's ROM_CONTENTS.md as FILE binds, plus one
@@ -8092,7 +8097,7 @@ def _resolve_launch_snapshot(
         # walks them). 🛑 Nothing downstream knows a realized variable from a declared
         # one, and nothing may be taught to — that indistinguishability IS the fold.
         # ⚑ INSIDE THE ENRICHMENT WRAP, for the reason the wrap exists: its
-        # same-scope refusal names ``agent.<node>.env.<VAR>``, and
+        # refusal can name ``agent.<node>.env.<VAR>``, and
         # ``pref.agent.<agent>.env.<VAR>`` is a legal request (``settings_prefs
         # .pref_entry_keys``), so that key can be one the user never wrote and cannot
         # write. The un-rendered TIER refusal it may also raise is a ``ConfigError``
@@ -8166,6 +8171,9 @@ def _resolve_launch_snapshot(
         # the resolve's own return channel is the only way a display can have it.
         declared_by = _install_assembly_collapse(
             snapshot, delivered, whole_box=include_base_families, cli_env=cli_env,
+            env_origins=_env_key_origins(
+                agent_name=agent_name, persona_values=persona_values, stamps=stamps,
+            ),
         )
         # The carrier every consumer reads (cutover 6-R1/6-R2), built off the SAME
         # gated list — another reader of one list, never a second resolve. ⚑ The
@@ -8377,6 +8385,7 @@ _ASSEMBLY_ENV: "tuple[str, ...]" = ("meta", "assembly", "env")
 def _install_assembly_collapse(
     snapshot, entries, *, whole_box: bool,
     cli_env: "Mapping[str, str] | None" = None,
+    env_origins: "Mapping[str, str] | None" = None,
 ) -> "dict[str, str]":
     """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
 
@@ -8396,6 +8405,9 @@ def _install_assembly_collapse(
     DEFAULTS to ``None``, which is what keeps every other caller of this seam — and
     of the resolve above it — unchanged: a resolve that names no per-run values
     collapses exactly the keys, as it always did.
+
+    *env_origins* (:func:`_env_key_origins`) goes to the env fold for its refusal
+    text only.
 
     🛑 THE GATE IS *whole_box*, NEVER "did ``meta.box.home`` resolve". The key is
     materialized by ``settings_launch.workset_anchor_floor``, which the launch builds
@@ -8506,7 +8518,9 @@ def _install_assembly_collapse(
     # level over the key that owns each variable, and the leaf it lands in is what
     # every consumer reads. Applying it after this call would put it above the
     # channel again — the arrangement P4c-1 removed.
-    snapshot.insert_segments(_ASSEMBLY_ENV, collapse_env(entries, cli_env))
+    snapshot.insert_segments(
+        _ASSEMBLY_ENV, collapse_env(entries, cli_env, env_origins),
+    )
     return collapsed.declared_by
 
 
@@ -10223,6 +10237,25 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     return table
 
 
+def _env_key_origins(
+    *, agent_name: str,
+    persona_values: "Mapping[str, str | None] | None",
+    stamps: "Mapping[str, str] | None" = None,
+) -> dict[str, str]:
+    """Each env entry key the user did not write → who set it, for refusal text.
+
+    A launch stamp (:func:`_core_env_default_categories`) is ``kanibako``'s; a
+    persona-store ``env.<VAR>`` lands at ``agent.<agent_name>.env.<VAR>``
+    (``settings_launch._persona_partial``) and is ``the persona store``'s.
+    """
+    origins = {key: "kanibako" for key in stamps or {}}
+    for key in persona_values or {}:
+        category, sep, var = key.partition(".")  # FIRST dot only, as the store splits.
+        if sep and category == "env":
+            origins[f"agent.{agent_name}.env.{var}"] = "the persona store"
+    return origins
+
+
 class LaunchRealization(NamedTuple):
     """What ONE launch DERIVES from its resolved settings: behavior, tier, variables.
 
@@ -10369,17 +10402,15 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
 
     * a per-run ``-e`` beats a realization BY CONSTRUCTION (the CLI level applies to
       the settled slot, above every scope) rather than by an ordering nobody records;
-    * a realized variable a key at ANOTHER scope also names is the ORDINARY
-      cross-scope refusal (``store_collapse._refuse_env_twin``), naming both keys;
     * ``-M``/``-S``/``-A`` stay authoritative: the flag drives the realization
       through the cascade, so nothing stored can outrank it.
 
-    The SAME-SCOPE case is the one the collapse cannot see, and it is refused here
-    (:func:`_refuse_realized_twin`): a declared ``agent.<node>.env.<VAR>`` and a
-    realization of the same variable are both the agent scope's, and one would
-    silently overwrite the other in the node below.  Checked against BOTH agent tiers
-    — ``agent.<node>`` and ``agent.default`` — because the §2d pick merges them into
-    one effective node, so a value in either would be the one that vanished.
+    A user key naming a realized variable is refused HERE, at every scope
+    (:func:`_refuse_realized_twin`, system-design § "Delivery at launch"), because
+    only here is the DRIVING key known: the collapse and the secret check below see
+    ordinary entries, and would name an ``agent.<node>.env.<VAR>`` the user never
+    wrote.  :func:`_realized_twin_key` finds the key; it refuses exactly what those
+    two refused before, and nothing more.
     """
     if not env:
         return
@@ -10392,7 +10423,7 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
         else ""
     )
     for var, value in env.items():
-        declared = _declared_agent_env_key(snapshot, agent_id, var)
+        declared = _realized_twin_key(snapshot, agent_id, var)
         if declared is not None:
             _refuse_realized_twin(
                 var, declared,
@@ -10427,59 +10458,90 @@ def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> "str | None":
     return None
 
 
+def _realized_twin_key(snapshot, agent_id: str, var: str) -> "str | None":
+    """The user key that names *var* beside its realization, or ``None``.
+
+    The same keys the later checks would have met, in their order:
+    ``env.<var>`` at either agent tier (:func:`_declared_agent_env_key`); ``env.<var>``
+    at ``system``/``workset``/``box`` holding a value (the adapter skips a ``null``,
+    so the collapse never saw one); then a ``secret_path.<var>`` pointer at any scope
+    (``refuse_env_secret_twins`` counts no ``null`` pointer, and the agent tiers are
+    read as the §2d pick reads them: the active tier's entry, ``null`` included, wins).
+    """
+    from kanibako.settings.settings_launch import snapshot_leaf as leaf
+
+    declared = _declared_agent_env_key(snapshot, agent_id, var)
+    if declared is not None:
+        return declared
+    for scope in ("system", "workset", "box"):
+        if leaf(snapshot, f"{scope}.env.{var}") not in (None, __MISSING__):
+            return f"{scope}.env.{var}"
+    for tier in (agent_id, "default"):
+        pointer = leaf(snapshot, f"agent.{tier}.secret_path.{var}")
+        if pointer is __MISSING__:
+            continue
+        if pointer is not None:
+            return f"agent.{tier}.secret_path.{var}"
+        break
+    for scope in ("system", "workset", "box"):
+        if leaf(snapshot, f"{scope}.secret_path.{var}") not in (None, __MISSING__):
+            return f"{scope}.secret_path.{var}"
+    return None
+
+
 def _refuse_realized_twin(
     var: str, declared_key: str, *,
     agent_id: str, driving_key: str, is_access: bool,
 ) -> None:
     """A settings key names a variable this launch REALIZES: refuse, naming both.
 
-    ⚑ THE SOLE RAISE SITE for the same-scope half, deliberately, exactly as
-    ``store_collapse._refuse_env_twin`` is for the cross-scope half: the severity of
-    a contested slot is one decision per case and each is spelled in one place.  The
-    two are separate because the CURE is: a cross-scope twin moves or deletes a key,
-    while this one has no key to move to — the variable's owner is the key that
-    DRIVES it, and that is what the message has to hand back.
+    ⚑ THE SOLE RAISE SITE for a realized variable's twin, at every scope and in
+    both families (``env``, ``secret_path``): the message names the key the user
+    wrote AND the key that DRIVES the variable, because the driving key is the
+    variable's owner and the only place its value can be chosen.
     """
-    from kanibako.settings.settings_categories import env_twin_refusal
+    from kanibako.settings.settings_cli_level import CLI_SHADOWED_KEYS
     from kanibako.settings.settings_resolve import SettingsError
 
-    # ⚑ REMOVAL LEADS, AND THE REST ARE WHAT COMES AFTER IT — never a menu of
-    # alternatives. MEASURED (bifrost row 66 A3): with the twin stored, ``-S``,
-    # ``-A``, an ``access`` value AND ``-e`` all meet this same refusal, because it
-    # fires here, one step ahead of the collapse the CLI level applies to. Only
-    # deleting the key clears it. The old wording offered the three as ways to
-    # avoid removing the key, and none of them is.
-    routes = []
+    family = "secret_path" if ".secret_path." in declared_key else "env"
+    shown = shown_key(declared_key)
+    # ⚑ REMOVAL COMES FIRST, never as one of two alternatives. MEASURED (bifrost
+    # row 66 A3): with the key stored, ``-S``, ``-A``, an ``access`` value AND ``-e``
+    # all meet this same refusal, because it fires before any of them applies.
+    clears = f"remove the {family} entry (no flag clears this while it stays)"
+    once = f"or pass `-e {var}=<value>` for one launch"
     if driving_key:
-        routes.append(f"set {f'agent.{agent_id}.{driving_key}'!r}")
-    if is_access:
-        routes.append("use the per-launch -S / -A flags")
-    routes.append(f"or pass -e {var}=<value> for ONE launch")
-    raise SettingsError(env_twin_refusal(
-        var,
-        f"is REALIZED by this launch — kanibako "
-        f"derives it from the agent's resolved settings — and {declared_key!r} names "
-        f"it as well",
-        f"A variable is written ONCE, so the key could never take "
-        f"effect: it would be overwritten by the realization on every launch, "
-        f"silently. Remove {declared_key!r}: that is the only thing that clears "
-        f"this refusal — no flag does, because the launch stops here, before any of "
-        f"them is applied. Once the key is gone, choose the value with: "
-        f"{'; '.join(routes)}.",
-    ))
+        template = f"agent.<agent>.{driving_key}"
+        flag = next(
+            (f for f, key in CLI_SHADOWED_KEYS.items() if key == template), "",
+        )
+        label = "access tier" if is_access else driving_key
+        set_with = f"`{driving_key}`" + (f" (or `{flag}`)" if flag else "")
+        raise SettingsError(
+            f"{shown!r} conflicts with {f'agent.{agent_id}.{driving_key}'!r}, which "
+            f"kanibako turns into {var}; {clears}, then set the {label} with "
+            f"{set_with}, {once}."
+        )
+    raise SettingsError(
+        f"{shown!r} conflicts with the access tier, which kanibako turns into "
+        f"{var}; {clears}, then choose the tier with `-S` or `-A`, {once}."
+    )
 
 
 #: The variable ``--browser`` writes into the box env, after the collapse.
 _BROWSER_ENV_VAR = "BROWSER_WS_ENDPOINT"
 
 
-def _refuse_browser_env_twin(env_slots: "CollapsedEnvs") -> None:
+def _refuse_browser_env_twin(
+    env_slots: "CollapsedEnvs", origins: "Mapping[str, str] | None" = None,
+) -> None:
     """``--browser`` and a user value both claim BROWSER_WS_ENDPOINT: refuse, naming both.
 
     The sidecar's endpoint is written after the collapse, so it cannot take part in
     the collapse's own refusal; without this check it would silently replace the
     user's value. Only this pair refuses: without ``--browser`` the user value
-    passes through unchanged.
+    passes through unchanged. *origins* (:func:`_env_key_origins`) names the
+    source of a value no settings file holds.
     """
     slot = env_slots.get(_BROWSER_ENV_VAR)
     if slot is None:
@@ -10492,6 +10554,10 @@ def _refuse_browser_env_twin(env_slots: "CollapsedEnvs") -> None:
     if slot.scope == CLI_PROVENANCE_SCOPE:
         # No key owns it: the value came from -e alone.
         setter, remove = f"-e {_BROWSER_ENV_VAR}", f"the -e {_BROWSER_ENV_VAR}"
+    elif source := (origins or {}).get(slot.key):
+        owner = shown_key(slot.key)
+        setter = f"{owner!r}, set by {source} (or a -e for it)"
+        remove = f"the variable from {source} and any -e {_BROWSER_ENV_VAR}"
     else:
         owner = shown_key(slot.key)
         setter = f"{owner!r} (or a -e for it)"

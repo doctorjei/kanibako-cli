@@ -756,6 +756,43 @@ class TestOneVariableTwoOrderings:
         # The cure, not just the complaint.
         assert "ONE owner" in message
 
+    def test_a_launch_stamp_twin_names_kanibako_as_its_setter(
+        self, std, config, project_dir,
+    ):
+        """191-G3: ``system.env.KANIBAKO_*`` is a stamp the user never wrote."""
+        from kanibako.settings.config_io import write_nested_key
+
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(box_path, ("box", "env"), "KANIBAKO_AGENT_MARKERS_DIR", "/mine")
+
+        with pytest.raises(SettingsError) as exc:
+            _resolve(std, proj, system_settings_path=std.settings)
+        message = str(exc.value)
+        assert (
+            "'system.env.KANIBAKO_AGENT_MARKERS_DIR' (set by kanibako) at the "
+            "'system' scope"
+        ) in message, message
+        assert "'box.env.KANIBAKO_AGENT_MARKERS_DIR' at the 'box' scope" in message
+
+    def test_a_persona_store_twin_names_the_store_as_its_setter(
+        self, std, config, project_dir,
+    ):
+        """191-G3: a persona-store ``env`` value is no settings file's key."""
+        from kanibako.settings.config_io import write_nested_key
+
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(box_path, ("box", "env"), self._VAR, "box-owned")
+
+        with pytest.raises(SettingsError) as exc:
+            _resolve(
+                std, proj, system_settings_path=std.settings,
+                persona_values={f"env.{self._VAR}": "store-owned"},
+            )
+        message = str(exc.value)
+        assert (
+            f"'agent.claude.env.{self._VAR}' (set by the persona store)"
+        ) in message, message
+
 
 class TestTheAgentFileEnvRidesTheOneChannel:
     """MBR-1 P3 — the per-agent FILE's ``self.env`` is an ordinary ``agent.<node>.env.<VAR>``.
