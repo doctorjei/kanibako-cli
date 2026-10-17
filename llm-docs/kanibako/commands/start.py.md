@@ -128,7 +128,7 @@ The producer folds each scope alone, so it warns where a cross-scope pick might 
 
 | arrangement | what the producer says | what the launch does |
 |---|---|---|
-| a `masks` entry at that dest, in ANY scope | warns for the ambiguous scope | **works** — one extra warning line (CHANGELOG, Unreleased/Changed) |
+| a `masks` entry at that dest, in ANY scope | warns for the ambiguous scope | **works** — one extra warning line (CHANGELOG, 1.8.0/Changed) |
 | another scope's abstraction takes the dest | warns for the LOSING scope | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
 
 The mask row is pinned by

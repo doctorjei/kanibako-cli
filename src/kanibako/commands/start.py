@@ -8477,7 +8477,7 @@ def _install_assembly_collapse(
     # own — MEASURED at 5-0, exactly two: a ``masks`` entry at that dest (in ANY scope)
     # overrode both declarations, or another scope's abstraction took the dest outright.
     # The masked one reaches a WORKING launch, so the user gets a line they did not get
-    # before v1.8.0 (CHANGELOG, Unreleased); the cross-scope one is two mounts at one
+    # before v1.8.0 (CHANGELOG, 1.8.0); the cross-scope one is two mounts at one
     # dest, which ``collapse_store_shapes`` refuses below, so there the line only ever
     # precedes that refusal.
     emit_collision_warnings(shapes.warnings)

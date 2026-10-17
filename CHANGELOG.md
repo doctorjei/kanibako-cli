@@ -265,7 +265,7 @@ migration code.** Four released config surfaces are removed outright
   dropped with a warning. What it is *for* is the display — `kanibako box show
   --effective` prints each abstract declaration with a
   `binding_derivations.<declaration-key>` line beneath it naming what the box actually
-  receives (see *Fixed* under **Unreleased** for that display's own history).
+  receives (see *Fixed* in this release for that display's own history).
 - **`box.images_store` — the host image store behind `box.share_images`, as a key you can
   set.** `box.share_images` gives a box a read-only view of the host's podman image store so
   it does not pull what the host already has. *Which* store that was had no spelling: a
@@ -2422,7 +2422,7 @@ migration code.** Four released config surfaces are removed outright
   Upgrade the plugins with the base — see `MIGRATION.md`, *For plugin authors*.
 - **`resolve_data_leaf` is removed from `kanibako.settings.paths`.** It answered with the *last
   segment* of `config.data`, and by the time it went its only caller was the cache defect listed
-  under `[Unreleased]` above — a leaf rejoined to an XDG base, which a repointed store silently
+  under *Fixed* in this release — a leaf rejoined to an XDG base, which a repointed store silently
   dropped. A caller that wants the configured store wants the whole path: `resolve_data_path()`
   for the data root and `resolve_state_path()` for the state root, both public and both total.
   ⚑ **Listed because it was published, not because it is known to have reached anyone**, and not
