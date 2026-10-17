@@ -8592,7 +8592,7 @@ traceback).
 
 **Version numbers.** This release ships as `kanibako-cli` **1.8.0**, `kanibako` (meta)
 **1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.6.0**, and
-`kanibako-agent-goose` **0.5.0**. The plugins version independently and do not adopt the
+`kanibako-agent-goose` **0.6.0**. The plugins version independently and do not adopt the
 base's number (codex and goose never have). The KICKOFF-deletion follow-up (item 3) is **the
 release after v1.8.0** for each plugin, and must carry the `kanibako-cli >= 1.8.0` floor
 pin.

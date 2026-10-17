@@ -807,7 +807,7 @@ class TestTheCollapseRouteFeedsTheSameChannel:
     def test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not(
         self, caplog,
     ):
-        """The one place 5-0 changed what a user sees, pinned (CHANGELOG, Unreleased).
+        """The one place 5-0 changed what a user sees, pinned (CHANGELOG, 1.8.0).
 
         A ``masks`` entry at the dest made the RECONCILE silent about the pair beneath
         it (§0 row 2 returned the mask and no warnings, from any scope), so before 5-0

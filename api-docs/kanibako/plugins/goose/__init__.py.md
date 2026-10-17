@@ -7,6 +7,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
-__version__ = '0.5.0'
+__version__ = '0.6.0'
 __all__ = ['GooseTarget', '__version__']
 ```

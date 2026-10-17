@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "kanibako-cli>=1.8.0.dev0,<2.0",
     "kanibako-agent-claude>=1.8.0.dev0,<2.0",
-    "kanibako-agent-goose>=0.5.0",
+    "kanibako-agent-goose>=0.6.0",
     "kanibako-agent-codex>=0.6.0",
 ]
 
