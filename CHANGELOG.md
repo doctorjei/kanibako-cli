@@ -2650,7 +2650,7 @@ migration code.** Four released config surfaces are removed outright
   code is preserved in git history, not in the wheel. Importing a legacy path now raises
   `ModuleNotFoundError`. **This reaches users, not only plugin authors:** the agent plugins pin no
   upper bound on `kanibako-cli`, so an old plugin beside a new core is what an unpinned upgrade
-  produces by default. Two independent breaks are in play, and between them they catch every
+  produces by default. Two independent breaks are in play, and together they catch every
   published wheel but goose `0.4.0` and `0.5.0`. A middle band of wheels imports one of the four
   removed paths. The rest fail
   on the *other* break: `kanibako.targets.base` kept its path and lost **symbols**, which catches
@@ -6379,18 +6379,18 @@ migration code.** Four released config surfaces are removed outright
   editing installed files by hand was the only way back in. A plugin that fails to load is now
   reported by name on standard error, with what still works and what to do about it, and then
   skipped. Every other agent keeps working. The fallback module scan's import already tolerated a
-  failing plugin; the main one now matches it. Its package walk did not: a package raising anything
-  but `ImportError` (a published goose refusing its bare `$GUEST_HOME`, say) printed the SKIPPED
-  warning, then killed the command; it now skips those too.
+  failing plugin; the main one now matches it. The scan's package walk did not: a package raising
+  anything but `ImportError` at import (a published goose refusing its bare `$GUEST_HOME`, say)
+  printed the SKIPPED warning, then killed the command; it now skips those too.
 
 - **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.6.0; older ones are
   refused.** Their published `0.3.0` packages predate the `access_realization` and top-level `env:`
   changes, so the current kanibako cannot load them — it refuses them by name, which is correct but
   left no version to upgrade *to*, since `0.3.0` was the newest published. Both were republished at
   `0.4.0`, and again at `0.5.0` when their plugin code and seeded canon changed further. Neither
-  `0.5.0` loads here, so both moved to `0.6.0`: codex's calls a replaced probe helper, so it fails
+  `0.5.0` loads here, so both moved to `0.6.0`: codex's calls a replaced probe helper and fails
   to import, and goose's defaults spell `$GUEST_HOME` bare; goose's plugin code, defaults, and
-  seeded canon also changed since. The meta package requires the current pair. **If you installed
+  seeded canon changed since. The meta package requires the current pair. **If you installed
   the meta package and saw errors about `safe_bypass`, `container_env`, or `BindDefault`, upgrading
   is the fix.**
   Unlike the CLI and the Claude plugin, these two are **not** stamped with the release train — they
