@@ -10261,8 +10261,9 @@ def _env_key_origins(
     """Each env entry key the user did not write → who set it, for refusal text.
 
     A launch stamp (:func:`_core_env_default_categories`) is ``kanibako``'s; a
-    persona-store ``env.<VAR>`` lands at ``agent.<agent_name>.env.<VAR>``
-    (``settings_launch._persona_partial``) and is ``the persona store``'s.
+    persona-store ``env.<VAR>`` or ``secret_path.<VAR>`` lands at
+    ``agent.<agent_name>.<category>.<VAR>`` (``settings_launch._persona_partial``)
+    and is ``the persona store``'s.
     ⚑ Only while no settings file holds the key: *written* (the snapshot's
     ``written_out``) names a file that does, and that file's value is the one
     that wins (the agent file sits above the persona rung; any file above the floor).
@@ -10272,8 +10273,8 @@ def _env_key_origins(
     origins = {key: "kanibako" for key in stamps or {}}
     for key in persona_values or {}:
         category, sep, var = key.partition(".")  # FIRST dot only, as the store splits.
-        if sep and category == "env":
-            origins[f"agent.{agent_name}.env.{var}"] = "the persona store"
+        if sep and category in ("env", "secret_path"):
+            origins[f"agent.{agent_name}.{category}.{var}"] = "the persona store"
     return {
         key: who for key, who in origins.items() if key_setter(written, key) is None
     }

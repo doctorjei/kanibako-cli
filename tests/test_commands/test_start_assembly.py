@@ -832,15 +832,19 @@ class TestOneVariableTwoOrderings:
         assert f"'system.env.{var}' at the 'system' scope" in message, message
         assert "set by" not in message
 
+    @pytest.mark.parametrize("family", ["env", "secret_path"])
     def test_a_persona_store_twin_of_a_realized_variable_names_the_store(
-        self, std, config, project_dir,
+        self, std, config, project_dir, tmp_path, family,
     ):
-        """193-E1: the store's ``env.<VAR>`` beside its realization; the cure is the store."""
+        """193-E1/R1: the store's ``<family>.<VAR>`` beside its realization; the cure is the store."""
         from kanibako.commands.start import _LaunchRealizer
 
         plugin = pytest.importorskip("kanibako.plugins.claude")
         desc = plugin.ClaudeTarget().descriptor
         proj, _box_path = self._files(std, config, project_dir)
+        secret = tmp_path / "base-url.txt"
+        secret.write_text("http://mine\n")
+        value = str(secret) if family == "secret_path" else "http://mine"
         with pytest.raises(SettingsError) as exc:
             _resolve_launch_snapshot(
                 std=std, proj=proj, agent_name="claude",
@@ -848,15 +852,15 @@ class TestOneVariableTwoOrderings:
                 desc=desc, install=None, target=_WiringTarget(),
                 deliver_creds=True, cli_level=None,
                 persona_values={
-                    "endpoint": "http://h", "env.ANTHROPIC_BASE_URL": "http://mine",
+                    "endpoint": "http://h", f"{family}.ANTHROPIC_BASE_URL": value,
                 },
                 realize=_LaunchRealizer(desc=desc, agent_id="claude"),
             )
         message = str(exc.value)
         assert message.startswith(
-            "'agent.claude.env.ANTHROPIC_BASE_URL' (set by the persona store) "
+            f"'agent.claude.{family}.ANTHROPIC_BASE_URL' (set by the persona store) "
             "conflicts with 'agent.claude.endpoint', which kanibako turns into "
-            "ANTHROPIC_BASE_URL; remove the env entry from the persona store"
+            f"ANTHROPIC_BASE_URL; remove the {family} entry from the persona store"
         ), message
 
 
