@@ -1154,14 +1154,35 @@ def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]:
   before the row test.
   """
   rows: list[tuple[str, str]] = []
+  for keys, remainder in _fence_row_parts(section, marker):
+    cell = _VALUE_END.split(remainder.strip())[0].strip()
+    rows.extend((key, cell) for key in keys)
+  return rows
+
+
+def _fence_row_parts(section: str, marker: str) -> list[tuple[list[str], str]]:
+  """``(expanded keys, text after the |)`` for every row of a fence."""
+  parts: list[tuple[list[str], str]] = []
   for raw in _strip_html_comments(spec_fence(section, marker)):
     if "|" not in raw or raw.lstrip().startswith("#"):
       continue
     written_key, _, remainder = raw.partition("|")
-    cell = _VALUE_END.split(remainder.strip())[0].strip()
-    for key in expand_braces(written_key.strip()):
-      rows.append((key, cell))
-  return rows
+    parts.append((expand_braces(written_key.strip()), remainder))
+  return parts
+
+
+_NEXT_VERSION = re.compile(r"⏭\s*(\S+)")
+
+
+def spec_next_version_rows(section: str, marker: str) -> dict[str, str]:
+  """``{key: version}`` for every fence row tagged ``⏭ <version>``: a clause of that
+  release, tracked on ``tasks/next-version.md`` and never a conformance gap."""
+  return {
+    key: tag[1]
+    for keys, remainder in _fence_row_parts(section, marker)
+    if (tag := _NEXT_VERSION.search(remainder))
+    for key in keys
+  }
 
 
 #: Cell classes. `STATED` is the only one a VALUE is compared for; the other two

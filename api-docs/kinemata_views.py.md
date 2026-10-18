@@ -27,6 +27,7 @@ _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 _HEADING_LINE = re.compile('#{1,6} ')
+_NEXT_VERSION = re.compile('⏭\\s*(\\S+)')
 _TREE = Path(__file__).resolve().parents[1]
 _EXAMPLE_NAMES = ('myagent', 'nested', 'ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json', 'agents/navigator+claude')
 _UNSTORED_PATHS = {'canon-template-paths': ('archives', 'temp'), 'release-paths': ('dist',), 'lock-paths': ('.kanibako.lock',)}
@@ -66,6 +67,7 @@ def spec_fence(section: str, marker: str) -> list[str]
 def spec_self_notation(text: str) -> str
 def spec_cell_value(cell: str) -> str
 def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]
+def spec_next_version_rows(section: str, marker: str) -> dict[str, str]
 def classify_spec_cell(key: str, cell: str) -> str
 def node_spec_rows(node: str) -> dict[str, tuple[str, str]]
 def node_spec_defaults(node: str) -> dict[str, str]
@@ -80,6 +82,7 @@ def _root_or_decoy(mode: str, attribute: str) -> Any
 def _mode_arm(row: Any, mode: str) -> Any
 def _keyspec_extract() -> Any
 def _strip_html_comments(lines: list[str]) -> list[str]
+def _fence_row_parts(section: str, marker: str) -> list[tuple[list[str], str]]
 def _node_fence_marker(node: str) -> str
 def _is_absent(value: object) -> bool
 def _agent_tier_floors(node: str) -> dict[str, str | None]

@@ -56,6 +56,7 @@ from kinemata_views import (  # noqa: F401  (this file's own readers use these n
   spec_cell_value as _spec_cell_value,
   spec_fence as _spec_fence,
   spec_fence_rows as _spec_fence_rows,
+  spec_next_version_rows as _spec_next_version_rows,
   spec_notation as _canonical,
   spec_self_notation as _spelled_out,
 )
@@ -75,14 +76,6 @@ TIER = "agent.default."
 #: pin working, loudly.
 SECTION = "2d"
 MARKER = "#### Default settings"
-
-#: §2d Default-tier rows the registry KNOWINGLY lacks, each pinned by a strict xfail
-#: below so the gap REDS the day it closes and is removed from here.
-#: ⚑ ``agent.default.auth.path`` waits on the auth design: board rows "Manifest lags
-#: his keyspec edit" (spec-canon-conformance.md) and tasks/auth-model.md.  The code's
-#: closed keyspace does not declare it, so a manifest row now would crash the defaults
-#: inventory and name a key the CLI refuses.
-EXPECTED_GAPS: frozenset[str] = frozenset({"agent.default.auth.path"})
 
 #: The registry's spelling of the active node.  At the Default tier the value applies
 #: to the ACTIVE agent, so ``meta.agent.<active>.`` (core_defaults.CANON_ACTIVE_AGENT_TOKEN,
@@ -231,6 +224,10 @@ def _manifest_tier_entries() -> dict[str, str | None]:
   }
 
 
+def _declared() -> set[str]:
+  return set(_manifest_rows()) | set(_manifest_tier_categories()) | set(_manifest_tier_entries())
+
+
 # --------------------------------------------------------------------------- #
 # The pins
 # --------------------------------------------------------------------------- #
@@ -239,6 +236,12 @@ def _manifest_tier_entries() -> dict[str, str | None]:
 @pytest.fixture
 def spec_rows() -> dict[str, str]:
   return _spec_rows(_default_tier_fence(_spec_lines()))
+
+
+@pytest.fixture
+def next_version_keys(spec_rows) -> set[str]:
+  """Default-tier keys tagged ``⏭ <version>``: a later release's, never a gap."""
+  return {_spelled_out(key) for key in _spec_next_version_rows(SECTION, MARKER)} & set(spec_rows)
 
 
 class TestTheCorporaAreNotEmpty:
@@ -306,19 +309,12 @@ class TestTheTiersAreOneSet:
       f"or the manifest invented a key (closed keyspace, §0)"
     )
 
-  def test_every_spec_row_is_a_manifest_row(self, spec_rows):
-    declared = (
-      set(_manifest_rows()) | set(_manifest_tier_categories()) | set(_manifest_tier_entries())
-    )
-    stale = sorted(EXPECTED_GAPS - set(spec_rows))
-    assert not stale, (
-      f"EXPECTED_GAPS names keys §{SECTION}'s Default tier no longer declares: "
-      f"{stale} — drop them from EXPECTED_GAPS"
-    )
+  def test_every_spec_row_is_a_manifest_row(self, spec_rows, next_version_keys):
+    declared = _declared()
     missing = sorted(
       key
       for key in spec_rows
-      if key not in declared and _family_of(key) not in declared and key not in EXPECTED_GAPS
+      if key not in declared and _family_of(key) not in declared and key not in next_version_keys
     )
     assert not missing, (
       f"§{SECTION}'s Default tier declares keys the registry has no row for: "
@@ -326,17 +322,12 @@ class TestTheTiersAreOneSet:
       f"row to keyspace-manifest.yaml"
     )
 
-
-@pytest.mark.parametrize("key", sorted(EXPECTED_GAPS))
-@pytest.mark.xfail(
-  strict=True, raises=AssertionError, reason="known registry gap; see EXPECTED_GAPS"
-)
-def test_an_expected_gap_is_still_open(key):
-  """XFAILS while the gap is open; XPASS (a strict failure) once a row lands."""
-  declared = (
-    set(_manifest_rows()) | set(_manifest_tier_categories()) | set(_manifest_tier_entries())
-  )
-  assert key in declared
+  def test_no_next_version_row_is_declared(self, next_version_keys):
+    landed = sorted(next_version_keys & _declared())
+    assert not landed, (
+      f"§{SECTION} tags {landed} ⏭ <version>, but the registry declares them — the "
+      f"row landed; drop its tag"
+    )
 
 
 class TestTheValuesAgree:
