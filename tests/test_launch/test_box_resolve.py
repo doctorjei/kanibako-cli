@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kanibako.project import registry_store, workset_registry
 from kanibako.launch import box_resolve
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.paths import (
   BoxMode,
   STANDALONE_META_DIR,
@@ -174,6 +177,46 @@ class TestDetectBoxMode:
       result = box_resolve.detect_box_mode(subject, std, config)
       assert result is not None, subject
       assert (result.mode, result.project_root) == want, subject
+
+  def test_a_subdir_of_a_standalone_box_under_an_external_member_is_that_box(
+    self, std, config, tmp_home
+  ):
+    """A standalone box is reachable within its tree (§ Box designation), so ``s/sub`` is
+    ``s`` as ``s`` is, registered or marker only.  The walk reads marks, not the registry,
+    so a registered root that lost its marker holds only its own path.  The nearest box
+    wins against a primary box or a member on either side.  Mutation: drop the
+    standalone-ancestor walk → NAMED → RED; ask the registry there → STANDALONE → RED."""
+    reg = _make_named_workset(std, tmp_home / "wn", "wn")
+    member = tmp_home / "YN"
+    for d in ("s/sub", "u/sub", "lost/sub", "p/ps/sub", "u/m/sub", "u/q/sub"):
+      (member / d).mkdir(parents=True)
+    _register_box(reg, "YN", member)
+    _register_box(reg, "m", member / "u" / "m")
+    for root in ("s", "u", "p/ps"):
+      _make_standalone_marker(member / root)
+    registry_store.register_standalone(std.registry, "s", member / "s")
+    registry_store.register_standalone(std.registry, "lost", member / "lost")
+    register_primary_box_name(std.primary_workset, "p", str(member / "p"))
+    register_primary_box_name(std.primary_workset, "q", str(member / "u" / "q"))
+    for subject, want in (
+      (member / "s" / "sub", (BoxMode.standalone, member / "s")),
+      (member / "u" / "sub", (BoxMode.standalone, member / "u")),
+      (member / "lost", (BoxMode.standalone, member / "lost")),
+      (member / "lost" / "sub", (BoxMode.named, member / "lost" / "sub")),
+      (member / "p" / "ps" / "sub", (BoxMode.standalone, member / "p" / "ps")),
+      (member / "u" / "m" / "sub", (BoxMode.named, member / "u" / "m" / "sub")),
+      (member / "u" / "q" / "sub", (BoxMode.primary, member / "u" / "q")),
+    ):
+      result = box_resolve.detect_box_mode(subject, std, config)
+      assert result is not None, subject
+      assert (result.mode, result.project_root) == want, subject
+    # A legacy marker refuses within its tree as at its root, as outside a member.
+    old = member / "old"
+    (old / "sub").mkdir(parents=True)
+    (old / WORKSET_META_FILE).write_text("workset:\n  registry:\n")
+    for subject in (old, old / "sub"):
+      with pytest.raises(SettingsError, match="RETIRED"):
+        box_resolve.detect_box_mode(subject, std, config)
 
   def test_other_space_connection_beats_a_leftover_marker(self, std, config, tmp_home):
     """A box is in one workset only (180-DF2 [Jei:2026-10-13]): a marked root CONNECTED into a
