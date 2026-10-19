@@ -847,3 +847,105 @@ def test_copy_tree_follow_src_links_skips_a_dangling_link(tree, caplog):
   assert skipped == [src / "gone"]
   assert (root / "a" / "dst" / "f").read_text() == "x"
   assert not os.path.lexists(root / "a" / "dst" / "gone")
+
+
+# --- rename across devices -----------------------------------------------------------
+
+
+@pytest.fixture
+def exdev(monkeypatch):
+  """``os.rename`` refusing every rename between two directory descriptors with EXDEV,
+  as a cross-device pair does; one inside a single directory still works."""
+  real = os.rename
+  refused: list[str] = []
+
+  def rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+    if src_dir_fd is not None and src_dir_fd != dst_dir_fd:
+      refused.append(str(src))
+      raise OSError(errno.EXDEV, "Invalid cross-device link", str(src))
+    return real(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+  monkeypatch.setattr(os, "rename", rename)
+  return refused
+
+
+def test_rename_across_devices_copies_a_file_and_removes_it(tree, exdev):
+  root, outside, _ = tree
+  f = root / "a" / "f"
+  f.write_text("x")
+  f.chmod(0o640)
+  os.utime(f, ns=(1_000_000_000, 2_000_000_000))
+  dst = outside / "f"
+  boxfs.rename(f, dst, root, dst_root=outside, across_devices=True)
+  assert exdev == ["f"]
+  assert not os.path.lexists(f)
+  assert dst.read_text() == "x"
+  assert stat.S_IMODE(dst.stat().st_mode) == 0o640
+  assert dst.stat().st_mtime_ns == 2_000_000_000
+
+
+def test_rename_across_devices_recreates_a_leaf_link_as_a_link(tree, exdev):
+  root, outside, sentinel = tree
+  leaf = root / "a" / "ln"
+  leaf.symlink_to(sentinel)
+  dst = outside / "ln"
+  dst.write_text("replaced")
+  boxfs.rename(leaf, dst, root, dst_root=outside, across_devices=True)
+  assert exdev == ["ln"]
+  assert not os.path.lexists(leaf)
+  assert dst.is_symlink() and os.readlink(dst) == str(sentinel)
+  assert sentinel.read_text() == "host data"
+  assert sorted(p.name for p in outside.iterdir()) == ["ln", "secret"]
+
+
+def test_rename_across_devices_copies_a_tree_keeping_inner_links(tree, exdev):
+  root, outside, sentinel = tree
+  (root / "a" / "b" / "f").write_text("x")
+  (root / "a" / "b" / "ln").symlink_to(sentinel)
+  dst = outside / "b"
+  boxfs.rename(root / "a" / "b", dst, root, dst_root=outside, across_devices=True)
+  assert not os.path.lexists(root / "a" / "b")
+  assert (dst / "f").read_text() == "x"
+  assert os.readlink(dst / "ln") == str(sentinel)
+
+
+def test_rename_across_devices_removes_nothing_when_the_copy_leaves_some_out(tree, exdev):
+  root, outside, _ = tree
+  os.mkfifo(root / "a" / "b" / "fifo")
+  with pytest.raises(OSError) as info:
+    boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
+  assert info.value.errno == errno.EIO
+  assert stat.S_ISFIFO(os.lstat(root / "a" / "b" / "fifo").st_mode)
+
+
+def test_rename_across_devices_re_raises_exdev_for_a_fifo(tree, exdev):
+  root, outside, _ = tree
+  os.mkfifo(root / "a" / "fifo")
+  with pytest.raises(OSError) as info:
+    boxfs.rename(
+      root / "a" / "fifo", outside / "fifo", root, dst_root=outside, across_devices=True
+    )
+  assert info.value.errno == errno.EXDEV
+  assert os.path.lexists(root / "a" / "fifo") and not os.path.lexists(outside / "fifo")
+
+
+def test_rename_without_across_devices_still_raises_exdev(tree, exdev):
+  root, outside, _ = tree
+  (root / "a" / "f").write_text("x")
+  with pytest.raises(OSError) as info:
+    boxfs.rename(root / "a" / "f", outside / "f", root, dst_root=outside)
+  assert info.value.errno == errno.EXDEV
+  assert (root / "a" / "f").read_text() == "x"
+
+
+def test_rename_across_devices_refuses_a_parent_link_on_either_side(tree, exdev):
+  root, outside, sentinel = tree
+  (root / "a" / "f").write_text("x")
+  (root / "up").symlink_to(outside)
+  with pytest.raises(SymlinkRefusedError):
+    boxfs.rename(root / "up" / "secret", root / "a" / "g", root, across_devices=True)
+  with pytest.raises(SymlinkRefusedError):
+    boxfs.rename(root / "a" / "f", root / "up" / "f", root, across_devices=True)
+  assert exdev == []
+  assert (root / "a" / "f").read_text() == "x"
+  assert sentinel.read_text() == "host data" and not (outside / "f").exists()

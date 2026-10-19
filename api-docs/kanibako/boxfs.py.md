@@ -32,7 +32,7 @@ def rmtree(path: Path, root: Path, *, missing_ok: bool=False, force: bool=False)
 def rmdir(path: Path, root: Path) -> None
 def chmod(path: Path, root: Path, mode: int) -> None
 def chmod_tree(path: Path, root: Path, *, add: int=0, remove: int=0) -> None
-def rename(src: Path, dst: Path, root: Path, *, dst_root: Path | None=None) -> None
+def rename(src: Path, dst: Path, root: Path, *, dst_root: Path | None=None, across_devices: bool=False) -> None
 def _parts(path: Path, root: Path) -> tuple[str, ...]
 def _is_link_at(name: str, dir_fd: int) -> bool
 def _open_dir_at(name: str, dir_fd: int, path: Path, shown: Path, create: bool) -> int
@@ -54,6 +54,7 @@ def _copy_entries(sfd: int, dfd: int, src: Path, dst: Path, skip_links: bool, av
 def _remove_at(name: str, dir_fd: int, shown: Path, st: os.stat_result | None=None) -> None
 def _forced(remove: Callable[[], None], path: Path, root: Path, force: bool) -> None
 def _chmod_fd(fd: int, mode: int, path: Path) -> None
+def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSError) -> None
 ```
 
 ## Classes

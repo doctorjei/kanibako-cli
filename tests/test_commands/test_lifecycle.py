@@ -2202,10 +2202,13 @@ class TestMoveEntryEscalation:
     calls: dict[str, list] = {"unshare": [], "copy": []}
     refused: set[str] = set()
 
-    def rename(src, dst):
-      if str(src) in refused:
-        raise PermissionError(errno.EACCES, "Permission denied", str(src))
-      return real_rename(src, dst)
+    def rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+      # boxfs renames a leaf name under a directory descriptor; name the full path.
+      full = src if src_dir_fd is None else Path(os.readlink(f"/proc/self/fd/{src_dir_fd}")) / src
+      for path in refused:
+        if Path(full) == Path(path).parent.resolve() / Path(path).name:
+          raise PermissionError(errno.EACCES, "Permission denied", path)
+      return real_rename(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
 
     def unshare_rename(self, src, dst):
       calls["unshare"].append((src, dst))
@@ -2303,19 +2306,22 @@ class TestMoveEntryEscalation:
 
   def test_exdev_still_takes_the_copying_move(self, rig, monkeypatch):
     import errno
-    import shutil
 
     root, refused, calls = rig
     src, dst = root / "rootdir", root / "workspace" / "rootdir"
-    moved: list[tuple] = []
+    seen: list[str] = []
+    rename = os.rename
 
-    def exdev(a, b):
-      raise OSError(errno.EXDEV, "Invalid cross-device link")
+    def exdev(a, b, *, src_dir_fd=None, dst_dir_fd=None):
+      if src_dir_fd != dst_dir_fd:
+        seen.append(a)
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+      return rename(a, b, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
 
     monkeypatch.setattr(os, "rename", exdev)
-    monkeypatch.setattr(shutil, "move", lambda a, b: moved.append((a, b)))
     lc._move_entry(src, dst, root=root)
-    assert moved == [(str(src), str(dst))]
+    assert seen == ["rootdir"]
+    assert (dst / "r.txt").read_text() == "in-box root" and not src.exists()
     assert calls["unshare"] == []
 
   def test_an_owned_555_dir_still_moves_without_escalation(self, rig):

@@ -2926,7 +2926,9 @@ def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
 def _move_log_back(dst: Path, src: Path) -> None:
   """Undo one carried log file, if it was carried."""
   if dst.is_file() and not src.exists():
-    shutil.move(dst, src)
+    from kanibako import boxfs
+
+    boxfs.rename(dst, src, dst.parent, dst_root=src.parent, across_devices=True)
 
 
 def _carry_box_logs(
@@ -2947,6 +2949,8 @@ def _carry_box_logs(
   source.
   """
   import sys
+
+  from kanibako import boxfs
 
   src_logs = box_logs_dir_for(
     std,
@@ -2975,7 +2979,7 @@ def _carry_box_logs(
     dst.parent.mkdir(parents=True, exist_ok=True)
     # Armed before the move: an interrupt between the two must still bring it back.
     unwind.push(partial(_move_log_back, dst, src))
-    shutil.move(src, dst)
+    boxfs.rename(src, dst, src.parent, dst_root=dst.parent, across_devices=True)
 
 
 #: The ``workset.`` keys the two vault arms resolve from, in the ``(ro, rw)`` order
@@ -3521,6 +3525,8 @@ def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceT
   """
   import tempfile
 
+  from kanibako import boxfs
+
   markers = tuple(m for m in teardown.markers if m.is_file())
   if not markers:
     return teardown
@@ -3530,12 +3536,12 @@ def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceT
     for marker in markers:
       held = stash / marker.name
       if held.is_file():
-        shutil.move(str(held), str(marker))
+        boxfs.rename(held, marker, stash, dst_root=marker.parent, across_devices=True)
     _dispose_stash(stash)
 
   unwind.push(_put_back)
   for marker in markers:
-    shutil.move(str(marker), str(stash / marker.name))
+    boxfs.rename(marker, stash / marker.name, marker.parent, dst_root=stash, across_devices=True)
   return replace(teardown, stash=stash)
 
 
@@ -4507,6 +4513,8 @@ def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
   import os
   import stat
 
+  from kanibako import boxfs
+
   mode = None
   if src.is_dir() and not src.is_symlink():
     st = src.lstat()
@@ -4517,15 +4525,12 @@ def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
   try:
     if mode is not None:
       os.chmod(src, mode | stat.S_IWUSR)
-    if landed.exists() or landed.is_symlink():
-      shutil.move(str(src), str(dst))
-      return
+    if landed != dst and (landed.exists() or landed.is_symlink()):
+      raise shutil.Error(f"Destination path '{landed}' already exists")
     try:
-      os.rename(src, landed)
+      boxfs.rename(src, landed, src.parent, dst_root=landed.parent, across_devices=True)
     except OSError as err:
-      if err.errno == errno.EXDEV:
-        shutil.move(str(src), str(dst))
-      elif not (err.errno in (errno.EACCES, errno.EPERM) and _rename_escalated(src, landed, root)):
+      if not (err.errno in (errno.EACCES, errno.EPERM) and _rename_escalated(src, landed, root)):
         raise
   finally:
     if mode is not None:
@@ -5259,6 +5264,8 @@ def _relocate_channel_partition(
   """
   import sys
 
+  from kanibako import boxfs
+
   try:
     old_token = _state_ws_token(old)
     new_token = _state_ws_token(new)
@@ -5307,7 +5314,7 @@ def _relocate_channel_partition(
         )
         continue
       dst_dir.parent.mkdir(parents=True, exist_ok=True)
-      shutil.move(str(src_dir), str(dst_dir))
+      boxfs.rename(src_dir, dst_dir, src_dir.parent, dst_root=dst_dir.parent, across_devices=True)
     except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
       print(
         f"Warning: could not relocate channel {label} ({src_dir} -> {dst_dir}): {e}",

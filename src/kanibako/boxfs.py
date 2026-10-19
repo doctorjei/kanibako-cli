@@ -819,16 +819,81 @@ def chmod_tree(path: Path, root: Path, *, add: int = 0, remove: int = 0) -> None
           os.close(dfd)
 
 
-def rename(src: Path, dst: Path, root: Path, *, dst_root: Path | None = None) -> None:
+def rename(
+  src: Path,
+  dst: Path,
+  root: Path,
+  *,
+  dst_root: Path | None = None,
+  across_devices: bool = False,
+) -> None:
   """Rename *src* to *dst*, both under *root* (*dst* under *dst_root* when given); a
   link in a parent is refused.
 
   ``renameat`` never follows a leaf: a link at *src* is moved itself, and a link
   at *dst* is replaced itself.
+
+  *across_devices*: a rename refused with EXDEV moves as ``shutil.move`` does, but
+  follows no link.  A leaf link is recreated at *dst* as a link, its text verbatim.
+  A regular file is copied with its mode bits and times, replacing *dst* atomically.
+  A directory is copied to an absent *dst* (:func:`copy_tree`).  Then *src* is
+  removed.  A copy that leaves anything out raises ``OSError(EIO)`` and removes
+  nothing; any other kind of entry re-raises the EXDEV.  Not atomic: an interrupt
+  can leave the entry in both places, never in neither.
   """
   src, dst = Path(src), Path(dst)
-  with (
-    _parent(src, root) as (sfd, sleaf),
-    _parent(dst, root if dst_root is None else dst_root) as (dfd, dleaf),
-  ):
-    os.rename(sleaf, dleaf, src_dir_fd=sfd, dst_dir_fd=dfd)
+  dst_root = root if dst_root is None else dst_root
+  try:
+    with _parent(src, root) as (sfd, sleaf), _parent(dst, dst_root) as (dfd, dleaf):
+      os.rename(sleaf, dleaf, src_dir_fd=sfd, dst_dir_fd=dfd)
+  except OSError as exc:
+    if not across_devices or exc.errno != errno.EXDEV:
+      raise
+    _move_across(src, dst, root, dst_root, exc)
+
+
+def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSError) -> None:
+  """:func:`rename`'s EXDEV fallback: copy *src* to *dst* without following a link,
+  then remove *src*."""
+  with _parent(src, root) as (sfd, sleaf):
+    st = os.stat(sleaf, dir_fd=sfd, follow_symlinks=False)
+    text = os.readlink(sleaf, dir_fd=sfd) if _st.S_ISLNK(st.st_mode) else None
+  if text is not None:
+    with _parent(dst, dst_root) as (dfd, dleaf):
+      while True:
+        tmp = f".{dleaf}.{secrets.token_hex(4)}.tmp"
+        try:
+          os.symlink(text, tmp, dir_fd=dfd)
+          break
+        except FileExistsError:
+          continue
+      try:
+        os.rename(tmp, dleaf, src_dir_fd=dfd, dst_dir_fd=dfd)
+      except BaseException:
+        with contextlib.suppress(OSError):
+          os.unlink(tmp, dir_fd=dfd)
+        raise
+  elif _st.S_ISREG(st.st_mode):
+    with os.fdopen(_open_read(src, root), "rb") as fh:
+      fst = os.fstat(fh.fileno())
+      with _parent(dst, dst_root) as (dfd, dleaf):
+        _replace_at(
+          dfd,
+          dleaf,
+          lambda out: shutil.copyfileobj(fh, out),
+          _st.S_IMODE(fst.st_mode),
+          (fst.st_atime_ns, fst.st_mtime_ns),
+        )
+  elif _st.S_ISDIR(st.st_mode):
+    skipped = copy_tree(src, dst, src_root=root, dst_root=dst_root)
+    if skipped:
+      raise OSError(
+        errno.EIO,
+        "could not move without following a symlink: " + ", ".join(map(str, skipped)),
+        str(src),
+      )
+    rmtree(src, root)
+    return
+  else:
+    raise refused
+  unlink(src, root)
