@@ -4525,7 +4525,7 @@ def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
   try:
     if mode is not None:
       os.chmod(src, mode | stat.S_IWUSR)
-    if landed != dst and (landed.exists() or landed.is_symlink()):
+    if landed != dst and landed.exists():
       raise shutil.Error(f"Destination path '{landed}' already exists")
     try:
       boxfs.rename(src, landed, src.parent, dst_root=landed.parent, across_devices=True)

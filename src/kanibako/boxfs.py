@@ -837,9 +837,10 @@ def rename(
   follows no link.  A leaf link is recreated at *dst* as a link, its text verbatim.
   A regular file is copied with its mode bits and times, replacing *dst* atomically.
   A directory is copied to an absent *dst* (:func:`copy_tree`).  Then *src* is
-  removed.  A copy that leaves anything out raises ``OSError(EIO)`` and removes
-  nothing; any other kind of entry re-raises the EXDEV.  Not atomic: an interrupt
-  can leave the entry in both places, never in neither.
+  removed.  A tree copy that fails or leaves anything out removes the partial
+  *dst* and keeps *src*; one that leaves anything out raises ``OSError(EIO)``.
+  Any other kind of entry re-raises the EXDEV.  Not atomic: an interrupt can leave
+  the entry in both places, never in neither.
   """
   src, dst = Path(src), Path(dst)
   dst_root = root if dst_root is None else dst_root
@@ -885,11 +886,19 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
           (fst.st_atime_ns, fst.st_mtime_ns),
         )
   elif _st.S_ISDIR(st.st_mode):
-    skipped = copy_tree(src, dst, src_root=root, dst_root=dst_root)
+    try:
+      skipped = copy_tree(src, dst, src_root=root, dst_root=dst_root)
+    except FileExistsError:
+      raise  # *dst* is not ours to remove
+    except BaseException:
+      _drop_partial(dst, dst_root)
+      raise
     if skipped:
+      _drop_partial(dst, dst_root)
       raise OSError(
         errno.EIO,
-        "could not move without following a symlink: " + ", ".join(map(str, skipped)),
+        "could not move; not copied (a symlink that is not followed, or an entry "
+        "that is not a file, directory, or symlink): " + ", ".join(map(str, skipped)),
         str(src),
       )
     rmtree(src, root)
@@ -897,3 +906,11 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
   else:
     raise refused
   unlink(src, root)
+
+
+def _drop_partial(dst: Path, dst_root: Path) -> None:
+  """Remove the partial copy :func:`_move_across` made at *dst*; a failure is logged."""
+  try:
+    rmtree(dst, dst_root, missing_ok=True, force=True)
+  except OSError as exc:
+    logger.warning("could not remove the partial copy %s: %s", dst, exc)

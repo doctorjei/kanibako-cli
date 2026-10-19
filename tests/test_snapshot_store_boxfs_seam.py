@@ -483,10 +483,14 @@ class TestTheMoveIsOtherwiseUnchanged:
     snap = _snap(_versions_dir(old) / "a")
     (snap / "ln").symlink_to("/etc/passwd")
 
-    def exdev(*a, **kw):
-      raise OSError(errno.EXDEV, "cross-device")
+    real = os.rename
 
-    monkeypatch.setattr(boxfs, "rename", exdev)
+    def exdev(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+      if src_dir_fd != dst_dir_fd:  # between two directories: across devices
+        raise OSError(errno.EXDEV, "cross-device")
+      return real(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    monkeypatch.setattr(boxfs.os, "rename", exdev)
     relocate_snapshot_store(old, new, old_box="a", new_box="b")
     moved = _versions_dir(new) / "b" / TS
     assert (moved / "f").read_text() == "mine"

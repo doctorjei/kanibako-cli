@@ -100,3 +100,14 @@ def test_channel_partition_crosses_devices(tmp_path, monkeypatch, exdev):
   assert exdev == ["b"]
   assert (new_mb / "msg.md").read_text() == "hi\n"
   assert not old_mb.exists()
+
+
+def test_move_entry_replaces_a_dangling_link_at_the_landing(tmp_path):
+  root = tmp_path / "root"
+  (root / "workspace" / "d").mkdir(parents=True)
+  (root / "workspace" / "d" / "f").symlink_to(tmp_path / "nowhere")
+  (root / "f").write_text("x")
+  lc._move_entry(root / "f", root / "workspace" / "d", root=root)
+  landed = root / "workspace" / "d" / "f"
+  assert not landed.is_symlink() and landed.read_text() == "x"
+  assert not os.path.lexists(root / "f")

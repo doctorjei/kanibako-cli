@@ -915,7 +915,35 @@ def test_rename_across_devices_removes_nothing_when_the_copy_leaves_some_out(tre
   with pytest.raises(OSError) as info:
     boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
   assert info.value.errno == errno.EIO
+  assert "not a file, directory, or symlink" in str(info.value)
   assert stat.S_ISFIFO(os.lstat(root / "a" / "b" / "fifo").st_mode)
+  assert not os.path.lexists(outside / "b")  # the partial copy is gone
+
+
+def test_rename_across_devices_removes_a_partial_tree_on_a_failed_copy(tree, exdev, monkeypatch):
+  root, outside, _ = tree
+  (root / "a" / "b" / "f").write_text("x")
+  real_copy = boxfs.copy_tree
+
+  def copy_tree(src, dst, **kw):
+    real_copy(src, dst, **kw)
+    raise OSError(errno.ENOSPC, "No space left on device")
+
+  monkeypatch.setattr(boxfs, "copy_tree", copy_tree)
+  with pytest.raises(OSError, match="No space"):
+    boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
+  assert not os.path.lexists(outside / "b")
+  assert (root / "a" / "b" / "f").read_text() == "x"
+
+
+def test_rename_across_devices_never_removes_a_dst_it_did_not_make(tree, exdev):
+  root, outside, _ = tree
+  (outside / "b").mkdir()
+  (outside / "b" / "theirs").write_text("keep")
+  with pytest.raises(FileExistsError):
+    boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
+  assert (outside / "b" / "theirs").read_text() == "keep"
+  assert (root / "a" / "b").is_dir()
 
 
 def test_rename_across_devices_re_raises_exdev_for_a_fifo(tree, exdev):

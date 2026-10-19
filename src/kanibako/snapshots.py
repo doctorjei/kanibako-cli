@@ -459,24 +459,8 @@ def _remove_in_vault(path: Path, root: Path) -> None:
 
 def _move_tree(src: Path, dst: Path, root: Path, *, dst_root: Path | None = None) -> None:
   """Move *src* (under *root*) to the absent *dst* (under *dst_root*, else *root*)
-  through :mod:`kanibako.boxfs`, so no symlink is followed: a rename, or on EXDEV
-  a no-follow copy and then the removal of *src*.  A copy that leaves anything out
-  removes nothing and raises."""
-  dst_root = root if dst_root is None else dst_root
-  try:
-    boxfs.rename(src, dst, root, dst_root=dst_root)
-    return
-  except OSError as exc:
-    if exc.errno != errno.EXDEV:
-      raise
-  skipped = boxfs.copy_tree(src, dst, src_root=root, dst_root=dst_root)
-  if skipped:
-    raise OSError(
-      errno.EIO,
-      "could not move without following a symlink: " + ", ".join(map(str, skipped)),
-      str(src),
-    )
-  boxfs.rmtree(src, root)
+  through :func:`boxfs.rename` with *across_devices*: no symlink is followed."""
+  boxfs.rename(src, dst, root, dst_root=dst_root, across_devices=True)
 
 
 def _mount_point_refused(path: Path) -> RestoreRefusedError:
