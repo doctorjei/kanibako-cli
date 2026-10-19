@@ -2846,13 +2846,13 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     return ws, leaf
 
   def test_the_primary_registry_decides_not_the_workset_path_space(self, env):
-    """The ordering this pins: the path space DOES claim the dir, and the PRIMARY
-    registry decides anyway — a bare containment is not a membership record."""
+    """A repointed workspaces dir is no path space: only the root or a registered
+    member is (system-design § *Box designation*), so the PRIMARY registry decides."""
     from kanibako.settings.paths import detect_project_mode
 
     config, std, tmp_home = env
     pdir, ws = self._under_repointed(env)
-    assert detect_project_mode(pdir, std, config).mode is BoxMode.named
+    assert detect_project_mode(pdir, std, config).mode is BoxMode.primary
     state = resolve_lifecycle_target("beta", std, config)
     assert state.mode is BoxMode.primary
     assert state.name == "beta"
@@ -2933,10 +2933,10 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     assert state.owner == "workset:wsa2"
     assert state.workspace_path == leaf.resolve()
 
-  def test_a_connected_external_member_yields_to_the_primary_box(self, env):
-    """PIN (D3-mode 1; only the path space's registry): the leaf is outside every
-    workset root, so its path space is the PRIMARY one, and the primary box recorded
-    AT the path wins over the external connect record."""
+  def test_a_connected_external_member_wins_in_its_path_space(self, env):
+    """PIN (D3-mode 1; only the path space's registry): a registered member's workspace
+    is its workset's path space (system-design § *Box designation*), so the member
+    recorded AT the path wins over the primary box there."""
     from kanibako.settings.paths import (
       WorksetSpec,
       resolve_project,
@@ -2958,8 +2958,8 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     )
     resolve_project(std, config, project_dir=str(leaf), initialize=True, name_override="delta")
     state = resolve_lifecycle_target("delta", std, config)
-    assert state.mode is BoxMode.primary
-    assert state.workspace_path == leaf
+    assert state.mode is BoxMode.named
+    assert state.owner == "workset:wsa3"
 
 
 # ---------------------------------------------------------------------------
@@ -3150,23 +3150,17 @@ class TestRefusalCuresReachTheBoxTheyName:
 
   def test_the_cure_is_a_reference_the_resolver_takes_back(self, env, capsys):
     """PIN: the reference printed resolves to the SAME box the refusal fired
-    on, and the box's own workspace path does NOT — it is nested under the
-    root, so a root inside a workset's path space makes the mode read from
-    the path space rather than from the box."""
+    on, and so does the box's own workspace path: a repointed workspaces dir
+    is no path space (system-design § *Box designation*)."""
     config, std, tmp_home = env
     proj, ws = _standalone_under_repointed(env)
     for route in self._in_place_refusal(env, capsys):
       again = resolve_lifecycle_target(route.split()[3], std, config)
       assert again.mode is BoxMode.standalone
       assert again.name == proj.name
-    from kanibako.errors import WorksetError
-
-    with pytest.raises(WorksetError):
-      resolve_lifecycle_target(
-        str(tmp_home / "extws" / "beta" / "workspace"),
-        std,
-        config,
-      )
+    again = resolve_lifecycle_target(str(tmp_home / "extws" / "beta" / "workspace"), std, config)
+    assert again.mode is BoxMode.standalone
+    assert again.name == proj.name
 
   def test_an_unregistered_standalone_is_not_reachable_by_name(
     self,

@@ -16,7 +16,7 @@ registry section it writes.
 * **NAMED** — `import_named_workset` runs lazily in `settings/paths.py`'s `detect_project_mode`
   ancestor walk — nothing sweeps eagerly — whenever `project/workset.is_workset_skeleton` matches a
   level: the four dirs `create_workset` stamps, present together. After the import the walk re-runs
-  `_check_workset`, which now resolves.
+  `box_resolve.named_path_space`, which now resolves.
 * **STANDALONE** — a standalone box is unregistered by default, so a standalone root is only
   CHECKED during resolution (`check_standalone`, from `detect_project_mode`, `box_resolve.
   detect_box_mode`, and `commands/box/_parser.py`), which never registers one. `import_standalone`

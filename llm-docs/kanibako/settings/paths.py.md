@@ -1072,16 +1072,8 @@ which would otherwise import under its leaf name with its retired identity unrea
 
 The walk stops at `$HOME` or the filesystem root.
 
-```python
-def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
-```
-Check whether *resolved_dir* is inside a registered workset.
-
-Returns a `DetectionResult` if found, `None` otherwise. Checks `workspaces/` first (specific
-project), then the workset root itself (inside workset but not necessarily a project workspace). The
-`workspaces` location is the RESOLVED `workset.workspaces` (repoint honored; default
-`{meta.workset.path}/workspaces` — §3.3: real and USED), through
-`project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
+Step 3 (workset check) is `launch.box_resolve.named_path_space`: the root or a registered member's
+workspace, from the literal registries; no `workset.workspaces` is read.
 
 ```python
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None

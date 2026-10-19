@@ -103,6 +103,15 @@ class LegacyRegistryIdentityError(WorksetError):
   """A per-workset ``registry.yaml`` still carries a RETIRED ``workset:``/``projects:`` section."""
 
 
+#: The workset-identity refusals: each carries its cure, so a lookup that treats other
+#: ``WorksetError``s as a miss re-raises these.
+WORKSET_IDENTITY_REFUSALS = (
+  LegacyWorksetIdentityError,
+  ReservedWorksetNameError,
+  LegacyRegistryIdentityError,
+)
+
+
 class UserCanceled(KanibakoError):
   """User canceled an interactive prompt."""
 

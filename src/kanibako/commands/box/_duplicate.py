@@ -19,7 +19,11 @@ from kanibako.settings.config import (
   read_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.launch.box_resolve import detect_box_or_default, registered_standalone_marker_error
+from kanibako.launch.box_resolve import (
+  detect_box_or_default,
+  refuse_path_space_identity,
+  registered_standalone_marker_error,
+)
 from kanibako.settings.config_io import dump_doc, refuse_scalar_sections
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
@@ -894,6 +898,8 @@ def _duplicate_to_workset(args, std, config) -> int:
   if (rc := _validate_dup_source(source_path, None)) is not None:
     return rc
 
+  # Detection loads no workset, so the identity refusal it once raised lands here.
+  refuse_path_space_identity(source_path, std)
   source = detect_box_or_default(source_path, std, config)
   if (rc := _refuse_unmarked_source(source, std)) is not None:
     return rc

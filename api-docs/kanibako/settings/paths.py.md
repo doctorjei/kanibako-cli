@@ -121,7 +121,6 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 def _is_standalone_meta_dir(root: Path, *, strict: bool=False) -> bool
 def _relative_to_either(path: Path, root: Path) -> Path | None
 def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, Path]
-def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
 def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
 def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None
