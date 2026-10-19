@@ -24,7 +24,6 @@ from kanibako.project.names import (
   resolve_qualified_name,
   unregister_name,
 )
-from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +151,7 @@ class TestResolveName:
     ws.mkdir()
     _register_primary_box(primary, "myapp", ws)
 
-    path, kind = resolve_name(
-      registry, "myapp", primary_workset=primary, early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "myapp", primary_workset=primary)
     assert path == str(ws)
     assert kind == "project"
 
@@ -165,11 +162,11 @@ class TestResolveName:
     primary = tmp_path / "primary_workset"
     _register_primary_box(primary, "myapp", tmp_path / "myapp")
     with pytest.raises(ProjectError, match="Unknown project"):
-      resolve_name(registry, "myapp", early_system=early_record(tmp_path))
+      resolve_name(registry, "myapp")
 
   def test_resolve_workset(self, registry: Path, tmp_path: Path) -> None:
     register_name(registry, "ws1", "/home/user/ws", section="worksets")
-    path, kind = resolve_name(registry, "ws1", early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "ws1")
     assert path == "/home/user/ws"
     assert kind == "workset"
 
@@ -181,9 +178,7 @@ class TestResolveName:
     _register_primary_box(primary, "proj", ws)
     register_name(registry, "proj", "/ws", section="worksets")
 
-    path, kind = resolve_name(
-      registry, "proj", primary_workset=primary, early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "proj", primary_workset=primary)
     assert kind == "project"
     assert path == str(ws)
 
@@ -203,24 +198,20 @@ class TestResolveName:
     register_name(registry, "proj", "/ws", section="worksets")
 
     with caplog.at_level("WARNING"):
-      path, kind = resolve_name(
-        registry, "proj", primary_workset=primary, early_system=early_record(tmp_path)
-      )
+      path, kind = resolve_name(registry, "proj", primary_workset=primary)
     assert (path, kind) == (str(ws), "project")
     assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
   def test_unknown_name_raises(self, registry: Path, tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="Unknown project"):
-      resolve_name(registry, "nope", early_system=early_record(tmp_path))
+      resolve_name(registry, "nope")
 
   def test_cwd_context_finds_workset_project(self, registry: Path, tmp_path: Path) -> None:
     """When cwd is inside a workset, check its members first."""
     ws_root = tmp_path / "ws"
     self._register_ws_member(registry, tmp_path, "ws", "api")
 
-    path, kind = resolve_name(
-      registry, "api", cwd=ws_root / "workspaces" / "api", early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "api", cwd=ws_root / "workspaces" / "api")
     assert path == str(ws_root / "workspaces" / "api")
     assert kind == "project"
 
@@ -241,7 +232,7 @@ class TestResolveName:
     reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, "api", ws_root / "pods" / "api")
 
-    path, kind = resolve_name(registry, "api", cwd=ws_root, early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "api", cwd=ws_root)
     assert path == str(ws_root / "pods" / "api")
     assert kind == "project"
 
@@ -262,7 +253,6 @@ class TestResolveName:
       "other",
       cwd=ws_root / "workspaces",
       primary_workset=primary,
-      early_system=early_record(tmp_path),
     )
     assert path == str(other)
     assert kind == "project"
@@ -306,9 +296,7 @@ class TestResolveName:
     monkeypatch.chdir(here)
     monkeypatch.setenv("PWD", str(here))
 
-    path, kind = resolve_name(
-      registry, "api", cwd=here, primary_workset=primary, early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "api", cwd=here, primary_workset=primary)
     assert path == str(ws_root / "workspaces" / "api")
     assert kind == "project"
 
@@ -331,9 +319,7 @@ class TestResolveName:
     for cwd in (here, here / "ws", here / "ws" / "workspaces" / "api"):
       monkeypatch.chdir(cwd)
       monkeypatch.setenv("PWD", str(cwd))
-      path, _kind = resolve_name(
-        registry, "api", cwd=cwd, primary_workset=primary, early_system=early_record(tmp_path)
-      )
+      path, _kind = resolve_name(registry, "api", cwd=cwd, primary_workset=primary)
       assert path == str(decoy), cwd
 
   def test_cwd_outside_every_spelling_of_the_workset_is_not_its_space(
@@ -356,9 +342,7 @@ class TestResolveName:
     monkeypatch.chdir(here)
     monkeypatch.setenv("PWD", str(here))
 
-    path, _kind = resolve_name(
-      registry, "api", cwd=here, primary_workset=primary, early_system=early_record(tmp_path)
-    )
+    path, _kind = resolve_name(registry, "api", cwd=here, primary_workset=primary)
     assert path == str(decoy)
 
   # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
@@ -415,7 +399,7 @@ class TestResolveName:
 
     # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
     with pytest.raises(AmbiguousNameError, match="'myws/cluster2'"):
-      resolve_name(registry, "cluster2", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "cluster2", cwd=tmp_path)
 
   def test_workset_member_ambiguous_across_worksets_raises(
     self, registry: Path, tmp_path: Path
@@ -425,7 +409,7 @@ class TestResolveName:
     self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
     with pytest.raises(ProjectError, match="Ambiguous"):
-      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "dup", cwd=tmp_path)
 
   def test_an_unregistered_workspace_dir_is_no_member_in_its_space(
     self, registry: Path, tmp_path: Path
@@ -437,13 +421,13 @@ class TestResolveName:
     register_name(registry, "myws", str(ws_root), section="worksets")
 
     with pytest.raises(ProjectError, match="Unknown project or workset: 'stray'"):
-      resolve_name(registry, "stray", cwd=ws_root, early_system=early_record(tmp_path))
+      resolve_name(registry, "stray", cwd=ws_root)
 
   def test_workset_member_unknown_still_raises(self, registry: Path, tmp_path: Path) -> None:
     """A bare name that is no member of any workset still raises."""
     self._register_ws_member(registry, tmp_path, "myws", "cluster2")
     with pytest.raises(ProjectError, match="Unknown"):
-      resolve_name(registry, "not-a-member", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "not-a-member", cwd=tmp_path)
 
   # -- The ambiguity message must make its own cure derivable --------------
 
@@ -465,7 +449,7 @@ class TestResolveName:
     ws2 = self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
     with pytest.raises(ProjectError) as excinfo:
-      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "dup", cwd=tmp_path)
     message = str(excinfo.value)
     assert "ws1/dup" in message
     assert "ws2/dup" in message
@@ -502,7 +486,7 @@ class TestResolveName:
       workset_registry.register_workset_box(reg_path, "dup", member)
 
     with pytest.raises(ProjectError) as excinfo:
-      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "dup", cwd=tmp_path)
     message = str(excinfo.value)
     assert "alpha-ws/dup" in message
     assert "beta-ws/dup" in message
@@ -525,7 +509,7 @@ class TestResolveName:
       self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
 
     with pytest.raises(AmbiguousNameError) as excinfo:
-      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "dup", cwd=tmp_path)
     message = str(excinfo.value)
     assert "'ws1/dup'" in message
     assert "Ambiguous" not in message
@@ -543,7 +527,7 @@ class TestResolveName:
     assert not box_ws.exists()
 
     with pytest.raises(AmbiguousNameError, match="'ws1/gone'"):
-      resolve_name(registry, "gone", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "gone", cwd=tmp_path)
 
   def test_ambiguity_labels_a_missing_workspace(self, registry: Path, tmp_path: Path) -> None:
     """A candidate whose workspace is gone is marked, not dropped.
@@ -556,7 +540,7 @@ class TestResolveName:
     shutil.rmtree(gone)
 
     with pytest.raises(ProjectError) as excinfo:
-      resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "dup", cwd=tmp_path)
     message = str(excinfo.value)
     assert "ws1/dup" in message
     assert "ws2/dup [workspace missing]" in message
@@ -575,7 +559,7 @@ class TestResolveName:
     self._register_ws_member(registry, tmp_path, "cluster_b", "foo")
 
     with pytest.raises(ProjectError) as excinfo:
-      resolve_name(registry, "FOO", cwd=tmp_path, early_system=early_record(tmp_path))
+      resolve_name(registry, "FOO", cwd=tmp_path)
     message = str(excinfo.value)
     assert "(Cluster-A/Foo, cluster_b/foo)" in message
     assert "Cluster-A/FOO" not in message
@@ -602,7 +586,7 @@ class TestResolveName:
     doc.setdefault("workset", {})["workspaces"] = str(tmp_path / "pods-a")
     dump_doc(ws_root / "workset.yaml", doc)
 
-    path, kind = resolve_name(registry, "dup", cwd=ws_root, early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "dup", cwd=ws_root)
     assert kind == "project"
     assert Path(path).resolve() == box_ws.resolve()
 
@@ -631,7 +615,7 @@ class TestResolveName:
     workset_registry.register_workset_box(reg_path, "dup", member)
     self._register_ws_member(registry, tmp_path, "ws-b", "dup")
 
-    path, kind = resolve_name(registry, "dup", cwd=member, early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "dup", cwd=member)
     assert kind == "project"
     assert Path(path).resolve() == member.resolve()
 
@@ -656,9 +640,7 @@ class TestResolveName:
       raise AssertionError("workset.workspaces read")
 
     monkeypatch.setattr(workset, "resolve_workspaces_locator", unread)
-    path, kind = resolve_name(
-      registry, "dup", cwd=member / "src", early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "dup", cwd=member / "src")
     assert kind == "project"
     assert path == str(member)
 
@@ -717,7 +699,7 @@ class TestStandaloneNameResolution:
     """The standalone step: a registered standalone answers to its bare name from anywhere."""
     root = self._register_standalone(registry, tmp_path, "solo_box")
 
-    path, kind = resolve_name(registry, "solo_box", early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "solo_box")
     assert kind == "project"
     assert path == str(root)
 
@@ -729,7 +711,7 @@ class TestStandaloneNameResolution:
     """§0 NAMING RULES: ``SOLO_BOX`` and ``solo_box`` are the SAME name."""
     root = self._register_standalone(registry, tmp_path, "solo_box")
 
-    path, kind = resolve_name(registry, "SOLO_BOX", early_system=early_record(tmp_path))
+    path, kind = resolve_name(registry, "SOLO_BOX")
     assert (path, kind) == (str(root), "project")
 
   def test_a_registered_standalone_outranks_a_workset_name(
@@ -745,7 +727,7 @@ class TestStandaloneNameResolution:
     root = self._register_standalone(registry, tmp_path, "solo_box")
 
     with caplog.at_level("WARNING"):
-      path, kind = resolve_name(registry, "solo_box", early_system=early_record(tmp_path))
+      path, kind = resolve_name(registry, "solo_box")
     assert (path, kind) == (str(root), "project")
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert warnings == [], warnings
@@ -760,7 +742,7 @@ class TestStandaloneNameResolution:
     self._register_ws_member(registry, tmp_path, "same", "same")
 
     with pytest.raises(AmbiguousNameError, match="'same/same'"):
-      resolve_name(registry, "same", cwd=tmp_path.parent, early_system=early_record(tmp_path))
+      resolve_name(registry, "same", cwd=tmp_path.parent)
 
   def test_a_workset_name_no_box_holds_still_reports_the_workset(
     self,
@@ -770,7 +752,7 @@ class TestStandaloneNameResolution:
     """Only on a box miss does the workset name answer, so a box verb can name it."""
     register_name(registry, "lone", str(tmp_path / "ws"), section="worksets")
 
-    assert resolve_name(registry, "lone", early_system=early_record(tmp_path)) == (
+    assert resolve_name(registry, "lone") == (
       str(tmp_path / "ws"),
       "workset",
     )
@@ -783,9 +765,7 @@ class TestStandaloneNameResolution:
     """*path* (a same-named path exists) ranks before a registered standalone name."""
     self._register_standalone(registry, tmp_path, "solo_box")
 
-    assert resolve_name(
-      registry, "solo_box", path="solo_box", early_system=early_record(tmp_path)
-    ) == ("solo_box", "path")
+    assert resolve_name(registry, "solo_box", path="solo_box") == ("solo_box", "path")
 
   def test_a_primary_box_outranks_a_same_named_path_and_warns(
     self,
@@ -807,7 +787,6 @@ class TestStandaloneNameResolution:
         cwd=tmp_path,
         primary_workset=primary,
         path=str(tmp_path / "foo"),
-        early_system=early_record(tmp_path),
       )
     assert got == (str(workspace), "project")
     assert any("shadowed" in r.getMessage() for r in caplog.records)
@@ -833,7 +812,6 @@ class TestStandaloneNameResolution:
           cwd=tmp_path,
           primary_workset=primary,
           path=str(tmp_path / "foo"),
-          early_system=early_record(tmp_path),
         )
     assert len([r for r in caplog.records if "shadowed" in r.getMessage()]) == 1
 
@@ -857,9 +835,7 @@ class TestStandaloneNameResolution:
     )
 
     with caplog.at_level("WARNING"):
-      path, kind = resolve_name(
-        registry, "solo_box", primary_workset=primary, early_system=early_record(tmp_path)
-      )
+      path, kind = resolve_name(registry, "solo_box", primary_workset=primary)
     assert (path, kind) == (str(workspace), "project")
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1, warnings
@@ -875,9 +851,7 @@ class TestStandaloneNameResolution:
     self._register_ws_member(registry, tmp_path, "myws", "solo_box")
     root = self._register_standalone(registry, tmp_path, "solo_box")
 
-    path, kind = resolve_name(
-      registry, "solo_box", cwd=tmp_path, early_system=early_record(tmp_path)
-    )
+    path, kind = resolve_name(registry, "solo_box", cwd=tmp_path)
     assert (path, kind) == (str(root), "project")
 
   def test_an_unregistered_standalone_does_not_resolve_by_name(
@@ -891,7 +865,7 @@ class TestStandaloneNameResolution:
     (tmp_path / "unregistered_box").mkdir()
 
     with pytest.raises(ProjectError, match="Unknown project"):
-      resolve_name(registry, "unregistered_box", early_system=early_record(tmp_path))
+      resolve_name(registry, "unregistered_box")
 
   def test_a_standalone_resolves_before_out_of_space_members(
     self,
@@ -904,7 +878,7 @@ class TestStandaloneNameResolution:
     self._register_ws_member(registry, tmp_path, "ws2", "dup")
     root = self._register_standalone(registry, tmp_path, "dup")
 
-    assert resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path)) == (
+    assert resolve_name(registry, "dup", cwd=tmp_path) == (
       str(root),
       "project",
     )
@@ -926,9 +900,7 @@ class TestResolveQualifiedName:
     reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, "api", member)
 
-    path, ws_name = resolve_qualified_name(
-      registry, "myws/api", early_system=early_record(tmp_path)
-    )
+    path, ws_name = resolve_qualified_name(registry, "myws/api")
     assert Path(path).resolve() == member.resolve()
     assert ws_name == "myws"
 
@@ -948,7 +920,7 @@ class TestResolveQualifiedName:
     register_name(registry, "myws", str(ws_root), section="worksets")
 
     with pytest.raises(ProjectError, match="'api' not found in workset 'myws'"):
-      resolve_qualified_name(registry, "myws/api", early_system=early_record(tmp_path))
+      resolve_qualified_name(registry, "myws/api")
 
   def test_qualified_resolves_stranded_member_after_repoint(
     self, registry: Path, tmp_path: Path
@@ -972,15 +944,13 @@ class TestResolveQualifiedName:
       {"workset": {"workspaces": str(tmp_path / "elsewhere")}},
     )
 
-    path, ws_name = resolve_qualified_name(
-      registry, "myws/api", early_system=early_record(tmp_path)
-    )
+    path, ws_name = resolve_qualified_name(registry, "myws/api")
     assert Path(path).resolve() == member.resolve()
     assert ws_name == "myws"
 
   def test_unknown_workset_raises(self, registry: Path, tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="Unknown workset"):
-      resolve_qualified_name(registry, "nope/api", early_system=early_record(tmp_path))
+      resolve_qualified_name(registry, "nope/api")
 
   def test_unknown_project_in_workset_raises(self, registry: Path, tmp_path: Path) -> None:
     ws_root = tmp_path / "ws"
@@ -988,11 +958,11 @@ class TestResolveQualifiedName:
     register_name(registry, "myws", str(ws_root), section="worksets")
 
     with pytest.raises(ProjectError, match="not found in workset"):
-      resolve_qualified_name(registry, "myws/nope", early_system=early_record(tmp_path))
+      resolve_qualified_name(registry, "myws/nope")
 
   def test_not_qualified_raises(self, registry: Path, tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="Not a qualified name"):
-      resolve_qualified_name(registry, "bare-name", early_system=early_record(tmp_path))
+      resolve_qualified_name(registry, "bare-name")
 
 
 # ---------------------------------------------------------------------------

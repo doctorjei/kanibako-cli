@@ -1295,8 +1295,8 @@ class TestWorksetConnect:
     assert run_connect(args) == 0
     capsys.readouterr()
 
-    bare = resolve_name(std.registry, "alpha", cwd=root, early_system=std.early_system)
-    qualified = resolve_qualified_name(std.registry, "cres/alpha", early_system=std.early_system)
+    bare = resolve_name(std.registry, "alpha", cwd=root)
+    qualified = resolve_qualified_name(std.registry, "cres/alpha")
     assert bare == (str(leaf), "project")
     assert qualified == (str(leaf), "cres")
 
