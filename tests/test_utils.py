@@ -26,7 +26,6 @@ from kanibako.utils import (
   render_socket_identity,
   renders_no_name,
   short_hash,
-  unrenderable_box_name_refusal,
   utc_stamp,
   workset_segment,
 )
@@ -413,96 +412,6 @@ class TestRendersNoName:
   def test_a_nameless_primary_box_falls_back_to_its_hash(self):
     """The hash is a conforming name, so a nameless box still renders."""
     assert container_name_for(_mock_proj(name="")).startswith("kb-primary-")
-
-
-class TestStartUnrenderableBoxNameRefusal:
-  """The shared text names the rule and the command that gives a valid name.
-
-  ⚑ ONE carrier in ``utils`` for every door that reports it — ``start`` and ``stop``.
-  """
-
-  RULE = "box name must not contain '-'; names are 1 to 64 ASCII letters"
-  PATH = "/home/user/myproj"
-
-  @staticmethod
-  def _text(mode: str = "primary") -> str:
-    return unrenderable_box_name_refusal(
-      "-droste",
-      mode,
-      TestStartUnrenderableBoxNameRefusal.PATH,
-      None,
-    )
-
-  def test_it_names_the_box_name_rule(self):
-    assert self.RULE in self._text()
-
-  def test_a_primary_box_is_cured_by_moving_it_to_its_spelling(self):
-    assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (self._text("primary"))
-
-  def test_a_named_box_is_cured_by_moving_it_to_its_spelling(self):
-    assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (self._text("named"))
-
-  def test_a_connected_named_box_is_renamed_in_place_by_convert(self):
-    """``box move`` refuses to relocate a member connected from outside its workset."""
-    text = unrenderable_box_name_refusal("my-box", "named", self.PATH, None, connected="ws.1")
-    assert text.endswith(f"kanibako box convert {self.PATH} --workset ws.1 --name my_box")
-
-  def test_a_legacy_my_box_is_offered_my_underscore_box(self):
-    text = unrenderable_box_name_refusal("my-box", "primary", self.PATH, None)
-    assert "box name must not contain '-'" in text
-    assert f"kanibako box move {self.PATH} <new-path> --name my_box" in text
-
-  def test_a_taken_spelling_is_suffixed_as_a_derived_name_is(self):
-    """``a_b`` and ``a_b2`` are held in the box's workset, so the cure offers ``a_b3``."""
-    text = unrenderable_box_name_refusal(
-      "a-b", "primary", self.PATH, None, taken=lambda name: name in {"a_b", "a_b2"}
-    )
-    assert text.endswith(f"kanibako box move {self.PATH} <new-path> --name a_b3")
-
-  def test_a_box_with_no_spelling_keeps_the_placeholder(self):
-    text = unrenderable_box_name_refusal("\u6f22\u5b57", "primary", self.PATH, None)
-    assert "--name <new-name>" in text
-
-  def test_a_legacy_workset_is_refused_for_the_workset(self):
-    text = unrenderable_box_name_refusal("droste", "named", self.PATH, None, workset="my-set")
-    assert "its workset name 'my-set' must not contain '-'" in text
-    assert "kanibako workset create <new-root> --name my_set" in text
-    assert f"kanibako box convert {self.PATH} --workset my_set" in text
-
-  def test_a_standalone_box_is_cured_by_moving_its_directory(self):
-    text = self._text("standalone")
-    assert text.endswith(f"\n  kanibako box move {self.PATH} <new-path>")
-    assert "--name" not in text
-
-  def test_the_cure_never_addresses_the_box_by_the_refused_name(self):
-    """A leading ``-`` is read as a flag, so naming the box would not reach it."""
-    for mode in ("primary", "named", "standalone"):
-      text = self._text(mode)
-      assert "kanibako box move -droste" not in text
-      assert "kanibako box convert -droste" not in text
-
-  @pytest.mark.parametrize("mode", ["named", "standalone"])
-  def test_a_box_with_no_project_path_is_named_by_the_path_that_reached_it(
-    self,
-    mode,
-    tmp_path,
-    monkeypatch,
-  ):
-    """``box move`` needs both <old> and <new>, so the cure always names an <old>."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PWD", raising=False)
-    for designation, old in (
-      (str(tmp_path / "ws"), tmp_path / "ws"),
-      ("ws", tmp_path / "ws"),
-      (None, tmp_path),
-    ):
-      text = unrenderable_box_name_refusal("-droste", mode, None, designation)
-      assert f"kanibako box move {old} <new-path>" in text
-      assert "None" not in text
-
-  def test_it_never_names_a_rename_command(self):
-    assert "rename" not in self._text("primary")
-    assert "rename" not in self._text("standalone")
 
 
 class TestRenderSocketIdentity:

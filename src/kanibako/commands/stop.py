@@ -17,6 +17,7 @@ from kanibako.errors import (
   ProjectError,
   WorksetError,
 )
+from kanibako.launch.box_identity import unrenderable_box_name_refusal
 from kanibako.settings.paths import (
   ProjectPaths,
   StandardPaths,
@@ -30,7 +31,6 @@ from kanibako.utils import (
   LABEL_BOX,
   box_container,
   container_name_segments,
-  unrenderable_box_name_refusal,
 )
 
 
@@ -262,7 +262,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
   # Found by its labels (system-design § Box and helper identity), else its name.
   container_name = box_container(runtime, proj)
   # ⚑ NO legacy-name fallback: 1.8.0 is a clean break, no aliases.  So there is
-  # nothing here to address — say so and name the cure (one carrier, in ``utils``).
+  # nothing here to address — say so and name the cure (one carrier, in ``box_identity``).
   if container_name is None:
     print(
       unrenderable_box_name_refusal(

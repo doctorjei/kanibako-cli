@@ -63,6 +63,7 @@ from kanibako.identifiers import find_identifier, name_flaw
 from kanibako.project.names import read_names, register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.messages import (
+  CANON_SYMLINK_LOOP_WHY,
   ERR_CONFIG_NULL_PATH,
   ERR_LOOP_WORKSPACE_BIND,
   ERR_NULL_WORKSPACE_BIND,
@@ -920,9 +921,6 @@ def remove_default_canon_stamp(leaf: Path, std: StandardPaths) -> bool:
 SYMLINK_LOOP_WHY = (
   "it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at."
 )
-
-#: :data:`SYMLINK_LOOP_WHY` without the tail the canon Note appends itself.
-CANON_SYMLINK_LOOP_WHY = "it is a symlink loop that kanibako cannot resolve"
 
 #: The same, for a tier that resolves but HOLDS a loop.
 CANON_HOLDS_LOOP_WHY = "it holds a symlink loop at %s that kanibako cannot resolve"

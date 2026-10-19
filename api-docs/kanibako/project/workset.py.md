@@ -15,7 +15,6 @@ DEFAULT_CANON_NO_TEMPLATE_WHY = 'it is the default canon folder `create` made, a
 DEFAULT_CANON_UNREADABLE_WHY = 'it is the default canon folder `create` made, and kanibako cannot check it against a template because a file in it cannot be read'
 DEFAULT_CANON_REMOVED_LINE = 'Removed the default canon folder `create` made'
 SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at.'
-CANON_SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve'
 CANON_HOLDS_LOOP_WHY = 'it holds a symlink loop at %s that kanibako cannot resolve'
 REMOVE_LEFTOVER = 'remove it before you run it again'
 DEFAULT_WORKSET_ID = '__default__'
