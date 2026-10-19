@@ -613,7 +613,7 @@ def _duplicate_to_standalone(
     standalone_box_store,
     write_vault_gitignore,
   )
-  from kanibako.utils import write_project_gitignore
+  from kanibako.utils.files import write_gitignore
 
   dst_metadata = standalone_box_store(new_path, early=_early_scope(std, BoxMode.standalone))
   dst_shell = dst_metadata / "home"
@@ -696,7 +696,7 @@ def _duplicate_to_standalone(
     register=register,
   )
 
-  write_project_gitignore(new_path)
+  write_gitignore(new_path)
 
   # Write the vault ``.gitignore`` if the skeleton is there.  ⚑ On a FRESH destination it
   # never is, and that is CONFIRMED INTENDED [Jei:2026-08-27]: a duplicate does NOT carry the

@@ -20,7 +20,7 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.errors import ProjectError
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project, resolve_standalone_project
-from kanibako.utils import write_project_gitignore
+from kanibako.utils.files import write_gitignore
 
 _USER = b"node_modules/\n*.log\n"
 
@@ -96,7 +96,7 @@ class TestConvertIntoStandaloneStampsCanon:
 class TestConvertOutOfStandaloneGitignore:
   def _root(self, env, root_extra=b""):
     root = _standalone(env)
-    write_project_gitignore(root)  # as ``box create --standalone`` does
+    write_gitignore(root)  # as ``box create --standalone`` does
     (root / "workspace" / ".gitignore").write_bytes(_USER)
     if root_extra:
       with open(root / ".gitignore", "ab") as f:

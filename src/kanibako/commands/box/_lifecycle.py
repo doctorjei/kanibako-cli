@@ -119,14 +119,16 @@ from kanibako.tree_copy import (
 )
 from kanibako.utils import (
   container_name_for_box_name,
-  gitignore_holds_only_kanibako,
   is_dir_unless_gone,
   literal_path,
   logical_cwd,
-  project_gitignore_to_strip,
-  strip_project_gitignore,
   unreadable_path_error,
-  write_project_gitignore,
+)
+from kanibako.utils.files import (
+  gitignore_holds_only_kanibako,
+  gitignore_to_strip,
+  strip_gitignore,
+  write_gitignore,
 )
 from kanibako.project.workset_registry import workset_registry_path
 from kanibako.project.workset import (
@@ -3255,7 +3257,7 @@ def _plan_source_teardown(
       vaults=tuple(removable_vault),
       markers=markers,
       canon=canon,
-      gitignore=project_gitignore_to_strip(root),
+      gitignore=gitignore_to_strip(root),
       partition=partition,
       keeps=tuple(keeps),
       drop=drop,
@@ -3621,7 +3623,7 @@ def _finish_relocation(
     if plan.canon is not None:
       report_retained_canon(plan.canon, state.metadata_path, "this box is no longer standalone")
     if plan.gitignore is not None:
-      strip_project_gitignore(plan.gitignore)
+      strip_gitignore(plan.gitignore)
 
   def member_step() -> None:
     if plan.member is not None:
@@ -3702,7 +3704,7 @@ def _note_interrupted_tail(
     *_unmoved_snapshots(state, new_state),
   ]
   # ⚑ Decided by the file's content now, not by the step: the strip may or may not have run.
-  if plan.gitignore is not None and project_gitignore_to_strip(plan.gitignore.parent):
+  if plan.gitignore is not None and gitignore_to_strip(plan.gitignore.parent):
     if gitignore_holds_only_kanibako(plan.gitignore):
       left.append(plan.gitignore)
     else:
@@ -4828,7 +4830,7 @@ def _to_standalone(
   root_wrote(WORKSET_META_FILE)
 
   workspace_subdir.mkdir(parents=True, exist_ok=True)
-  write_project_gitignore(root)
+  write_gitignore(root)
   root_wrote(bootstrap.IGNORE_FILE)
   # ⚑ The RESOLVED ``workset.vault_rw`` gates this, never the skeleton's existence: the
   # skeleton is the ``ro`` arm's DEFAULT parent, so ``<root>/vault`` can sit on disk while

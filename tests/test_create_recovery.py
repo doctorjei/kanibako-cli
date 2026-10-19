@@ -2212,7 +2212,7 @@ class TestPreJournalForkRefused:
 
 # ⭐ THE UNDO WINDOW: every write a FRESH ``create`` makes between its journal entry and
 # the end of its state writes — the materializing resolve, the creation-flag persist,
-# the ``--private`` and ``--agent`` persists and ``write_project_gitignore``.  An ORDERLY
+# the ``--private`` and ``--agent`` persists and ``write_gitignore``.  An ORDERLY
 # exit from it — a refusal's ``return`` and a raise alike — UNDOES what this create made
 # and then clears its entry; only a kill leaves the entry for ``--recover``.
 #
@@ -2794,7 +2794,7 @@ class TestWindowUndoRestoresARootWorksetFile:
   ):
     """⚑ THE SAME DEFECT, THE OTHER ROOT FILE: ``.gitignore``.
 
-    ``write_project_gitignore`` APPENDS, so on a root that already had one the
+    ``write_gitignore`` APPENDS, so on a root that already had one the
     create adds its entries to the user's file — and without the undo the entries
     simply stay.
     """

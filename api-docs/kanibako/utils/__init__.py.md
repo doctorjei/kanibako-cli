@@ -16,7 +16,6 @@ LABEL_WORKSET = 'kanibako.workset'
 LABEL_BOX = 'kanibako.box'
 LABEL_WORKSET_KUID = 'kanibako.workset_kuid'
 LABEL_HELPER = 'kanibako.helper'
-_GITIGNORE_ENTRIES = [f'{STANDALONE_META_DIR}/']
 ```
 
 ## Functions
@@ -52,10 +51,5 @@ def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigE
 def literal_path(value: str | os.PathLike[str]) -> str
 def is_home_dir(path: str | os.PathLike[str]) -> bool
 def logical_cwd() -> str
-def write_project_gitignore(project_path: Path) -> None
-def project_gitignore_to_strip(project_path: Path) -> Path | None
-def gitignore_holds_only_kanibako(gitignore: Path) -> bool
-def strip_project_gitignore(gitignore: Path) -> bool
 def _labeled_or_rendered(runtime: ContainerRuntime, labels: dict[str, str], rendered: str, *, check: bool) -> str
-def _gitignore_kept_text(gitignore: Path) -> str
 ```
