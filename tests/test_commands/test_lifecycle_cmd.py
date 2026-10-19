@@ -37,7 +37,7 @@ from kanibako.settings.paths import (
   resolve_standalone_project,
   resolve_workset_project,
 )
-from kanibako.utils import project_hash
+from kanibako.utils.files import path_hash
 from kanibako.project.workset import add_project, create_workset, load_workset
 
 
@@ -166,7 +166,7 @@ class TestRemap:
     # on-disk ``resolved.workspace`` (no ``project:`` on disk).
     proj = resolve_project(std, config, project_dir=str(new), initialize=False)
     assert proj.project_path == new.resolve()
-    assert proj.project_hash == project_hash(str(new.resolve()))
+    assert proj.project_hash == path_hash(str(new.resolve()))
     assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
   def test_remap_external_repoint(self, env):

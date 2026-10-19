@@ -1,4 +1,4 @@
-"""Tests for kanibako.utils: confirm_prompt, confirm_or_abort, project_hash, short_hash, path encoding, container naming."""
+"""Tests for kanibako.utils: confirm_prompt, confirm_or_abort, path_hash, short_hash, path encoding, container naming."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from kanibako.utils import (
   container_name_for_box_name,
   container_name_segments,
   legacy_container_names,
-  project_hash,
   render_container_name,
   render_socket_identity,
   renders_no_name,
@@ -30,6 +29,7 @@ from kanibako.utils import (
   utc_stamp,
   workset_segment,
 )
+from kanibako.utils.files import path_hash
 
 
 # ---------------------------------------------------------------------------
@@ -113,25 +113,25 @@ class TestConfirmOrAbort:
 
 
 # ---------------------------------------------------------------------------
-# project_hash
+# path_hash
 # ---------------------------------------------------------------------------
 
 
-class TestProjectHash:
+class TestPathHash:
   def test_deterministic(self):
-    h1 = project_hash("/some/path")
-    h2 = project_hash("/some/path")
+    h1 = path_hash("/some/path")
+    h2 = path_hash("/some/path")
     assert h1 == h2
 
   def test_different_paths(self):
-    h1 = project_hash("/path/a")
-    h2 = project_hash("/path/b")
+    h1 = path_hash("/path/a")
+    h2 = path_hash("/path/b")
     assert h1 != h2
 
   def test_matches_sha256(self):
     path = "/my/project"
     expected = hashlib.sha256(path.encode()).hexdigest()
-    assert project_hash(path) == expected
+    assert path_hash(path) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from kanibako.settings.config import load_config
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import load_std_paths, resolve_project
 from kanibako.settings.paths import BoxMode
-from kanibako.utils import project_hash
+from kanibako.utils.files import path_hash
 from tests.conftest import self_loop
 
 
@@ -60,7 +60,7 @@ class TestBoxMove:
     # The primary move re-derives the box name from the new workspace basename.
     assert boxes.get(proj.name) == str(dest)
     assert proj.project_path == dest.resolve()
-    assert proj.project_hash == project_hash(str(dest.resolve()))
+    assert proj.project_hash == path_hash(str(dest.resolve()))
     assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
   def test_bare_move_of_a_primary_keeps_its_name(

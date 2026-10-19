@@ -97,7 +97,7 @@ class TestCheckBoxComponents:
 
   def _proj(self, tmp_path, *, make_workspace=True, make_home=True):
     from kanibako.settings.paths import BoxMode, ProjectPaths
-    from kanibako.utils import project_hash
+    from kanibako.utils.files import path_hash
 
     root = tmp_path / "box"
     root.mkdir()
@@ -109,7 +109,7 @@ class TestCheckBoxComponents:
       home.mkdir(parents=True)
     return ProjectPaths(
       project_path=workspace,
-      project_hash=project_hash(str(root)),
+      project_hash=path_hash(str(root)),
       metadata_path=root,
       shell_path=home,
       vault_ro_path=root / "vault" / "ro",

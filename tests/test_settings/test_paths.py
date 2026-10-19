@@ -26,7 +26,7 @@ from kanibako.settings.paths import (
   resolve_project,
   resolve_workset_project,
 )
-from kanibako.utils import project_hash
+from kanibako.utils.files import path_hash
 from kanibako.settings import bootstrap
 
 
@@ -85,7 +85,7 @@ class TestResolveProject:
     project_dir = str(tmp_home / "project")
     proj = resolve_project(std, config, project_dir=project_dir, initialize=False)
 
-    expected = project_hash(str(Path(project_dir).resolve()))
+    expected = path_hash(str(Path(project_dir).resolve()))
     assert proj.project_hash == expected
 
   def test_initialize_creates_dirs(self, config_file, tmp_home, credentials_dir):

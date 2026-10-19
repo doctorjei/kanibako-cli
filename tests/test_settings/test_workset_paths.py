@@ -11,7 +11,7 @@ from kanibako.settings.paths import (
   WorksetSpec,
   resolve_workset_project,
 )
-from kanibako.utils import project_hash
+from kanibako.utils.files import path_hash
 from kanibako.project.workset import add_project, create_workset, default_workset
 
 
@@ -72,7 +72,7 @@ class TestResolveWorksetProject:
     ws, name = workset_env
     proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
 
-    expected = project_hash(str((ws.workspaces_dir / name).resolve()))
+    expected = path_hash(str((ws.workspaces_dir / name).resolve()))
     assert proj.project_hash == expected
 
   def test_project_not_found_raises(self, workset_env, std, config):

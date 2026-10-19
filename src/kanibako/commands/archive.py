@@ -234,7 +234,8 @@ def _archive_all(std, config, args) -> int:
 def _stub_project(metadata_path, project_path, std, config):
   """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
   from kanibako.launch import box_resolve
-  from kanibako.settings.paths import ProjectPaths, _primary_box_paths, project_hash
+  from kanibako.settings.paths import ProjectPaths, _primary_box_paths
+  from kanibako.utils.files import path_hash
   from kanibako.utils import literal_path
 
   # P8a: name from box_resolve's identity (registry KEY / composed standalone
@@ -249,7 +250,7 @@ def _stub_project(metadata_path, project_path, std, config):
   name = identity["name"] if identity is not None else metadata_path.name
 
   if project_path is not None:
-    phash = project_hash(literal_path(project_path))
+    phash = path_hash(literal_path(project_path))
   else:
     phash = metadata_path.name
 

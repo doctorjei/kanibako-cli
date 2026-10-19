@@ -101,10 +101,10 @@ from kanibako.utils import (
   iterdir_unless_gone,
   literal_path,
   logical_cwd,
-  project_hash,
   short_hash,
   stat_unless_gone,
 )
+from kanibako.utils.files import path_hash
 from kanibako.settings.bootstrap import (
   BASHRC_FILE,
   CONFIG_PATH_DEFAULTS,
@@ -1529,7 +1529,7 @@ def resolve_project(
   if not project_path.is_dir():
     raise ProjectError(ERR_PROJECT_NO_PATH % project_path)
 
-  phash = project_hash(str(project_path))
+  phash = path_hash(str(project_path))
   project_path_str = str(project_path)
 
   # Determine the project directory: name-based (boxes/{name}/).
@@ -2598,7 +2598,7 @@ def resolve_workset_project(
   resolved_vault = enable_vault
 
   # Hash the workspace (identity): a null must not rename the box.
-  phash = project_hash(literal_path(workspace))
+  phash = path_hash(literal_path(workspace))
   # Q106: None for an in-tree member under a null workspaces key; a LOOP keeps it: launch names it.
   project_path: Path | None = workspace
   from kanibako.project.workset import _symlink_loop, refuse_null_box_workspace
@@ -3228,7 +3228,7 @@ def resolve_standalone_project(
     raise ProjectError(ERR_PROJECT_NO_PATH % root)
 
   # The hash and identity key off the ROOT, not the workspace subdir.
-  phash = project_hash(str(root))
+  phash = path_hash(str(root))
 
   from kanibako.project.workset import load_workset_settings_doc, resolve_workset_workspaces
 

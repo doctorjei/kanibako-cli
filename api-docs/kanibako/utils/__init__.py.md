@@ -42,7 +42,6 @@ def box_labels(proj: ProjectPaths, helper_num: int | None=None) -> dict[str, str
 def box_container(runtime: ContainerRuntime, proj: ProjectPaths, *, check: bool=False) -> str | None
 def box_container_named(runtime: ContainerRuntime, box: str, workset: str, *, check: bool=False) -> str | None
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
-def project_hash(project_path: str) -> str
 def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
 def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool
 def is_file_unless_gone(path: str | os.PathLike[str]) -> bool
