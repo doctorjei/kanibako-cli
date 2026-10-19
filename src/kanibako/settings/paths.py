@@ -2282,7 +2282,7 @@ def _workset_box_membership_undo(
       return
     if prior is not None:
       workset_registry.register_workset_box(registry_path, prior[0], Path(prior[1]))
-    elif current is not None and current[1] == str(workspace):
+    elif current is not None and workset_registry._same_workspace(current[1], str(workspace)):
       workset_registry.unregister_workset_box(registry_path, current[0])
 
   return undo

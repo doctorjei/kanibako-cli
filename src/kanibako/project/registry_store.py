@@ -24,7 +24,7 @@ from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 from kanibako.settings.config_io import _dump_text, dump_doc, load_doc
-from kanibako.utils import utc_stamp
+from kanibako.utils import literal_path, utc_stamp
 
 logger = get_logger(__name__)
 
@@ -196,7 +196,7 @@ def register_standalone(registry: Path, box_name: str, root: Path) -> None:
   with rmw_lock(registry):
     entries = load_standalone(registry)
     _drop_case_twin(entries, box_name)
-    entries[box_name] = str(root)
+    entries[box_name] = literal_path(root)
     save_section(registry, "standalone", entries)
     # ⚑ A ``deregistered:`` row for this directory is stale once it is active
     # again, and a purge by that row would delete the live box's metadata.
@@ -342,8 +342,8 @@ def register_deregistered(
     _drop_case_twin(entries, box_name)
     entry: dict = {
       "kind": kind,
-      "workspace": str(workspace) if workspace is not None else None,
-      "metadata": str(metadata),
+      "workspace": literal_path(workspace) if workspace else workspace,
+      "metadata": literal_path(metadata) if metadata else str(metadata),
     }
     if image is not None:
       entry["image"] = str(image)

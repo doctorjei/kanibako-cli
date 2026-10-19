@@ -112,7 +112,7 @@ def register_name(
       )
     # 🛑 STORED AS TYPED — fold to compare, NEVER to store.  The key written here is the
     # caller's spelling, unfolded, and it stays that way.
-    names[section][name] = path
+    names[section][name] = literal_path(path)
     _save(registry, names)
 
 
@@ -142,7 +142,7 @@ def register_name_if_absent(
     # interrupted create stored, and that is still the SAME registered name.
     stored = find_identifier(name, names[section])
     existing = None if stored is None else names[section][stored]
-    if existing is not None and existing == path:
+    if existing is not None and literal_path(existing) == literal_path(path):
       return  # identical mapping already present → no-op.
     register_name(registry, name, path, section=section)
 

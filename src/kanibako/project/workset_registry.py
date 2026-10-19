@@ -181,7 +181,7 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
   refuse_marked_registry(registry_path)
   with rmw_lock(registry_path):
     full_doc, boxes = _load_boxes_raw(registry_path)
-    path_str = str(path)
+    path_str = literal_path(path)
     # ⚑ Workspace-path uniqueness (Bug A durable fix): one workspace, EXACTLY one
     # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
     # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
