@@ -1,13 +1,19 @@
-"""File helpers: the project .gitignore line kanibako writes for a standalone box, and its purge."""
+"""File and path helpers: path_hash, and the standalone box's .gitignore line and its purge."""
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
 from kanibako.settings.bootstrap import IGNORE_FILE, STANDALONE_META_DIR
 
 _GITIGNORE_ENTRIES = [f"{STANDALONE_META_DIR}/"]
+
+
+def path_hash(project_path: str) -> str:
+  """SHA-256 hex digest of the project path string."""
+  return hashlib.sha256(project_path.encode()).hexdigest()
 
 
 def write_gitignore(project_path: Path) -> None:

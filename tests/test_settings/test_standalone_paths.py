@@ -17,7 +17,7 @@ from kanibako.settings.paths import (
   helper_log_path,
   resolve_standalone_project,
 )
-from kanibako.utils import project_hash
+from kanibako.utils.files import path_hash
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ class TestResolveStandaloneProject:
     project_dir,
   ):
     proj = resolve_standalone_project(std, config, str(project_dir))
-    expected = project_hash(str(project_dir.resolve()))
+    expected = path_hash(str(project_dir.resolve()))
     assert proj.project_hash == expected
 
   def test_nonexistent_path_raises(self, std, config, tmp_home):
@@ -803,7 +803,7 @@ class TestMissingVaultAdvisory:
 
   def _proj(self, tmp_path, *, enable_vault, make_vault):
     from kanibako.settings.paths import BoxMode, ProjectPaths
-    from kanibako.utils import project_hash
+    from kanibako.utils.files import path_hash
 
     root = tmp_path / "box"
     root.mkdir()
@@ -814,7 +814,7 @@ class TestMissingVaultAdvisory:
       vault_ro.mkdir(parents=True)
     return ProjectPaths(
       project_path=root,
-      project_hash=project_hash(str(root)),
+      project_hash=path_hash(str(root)),
       metadata_path=root,
       shell_path=root,
       vault_ro_path=vault_ro,

@@ -12,6 +12,7 @@ _GITIGNORE_ENTRIES = [f'{STANDALONE_META_DIR}/']
 
 ## Functions
 ```
+def path_hash(project_path: str) -> str
 def write_gitignore(project_path: Path) -> None
 def gitignore_to_strip(project_path: Path) -> Path | None
 def gitignore_holds_only_kanibako(gitignore: Path) -> bool

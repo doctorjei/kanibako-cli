@@ -4,7 +4,6 @@ container naming, the unless-gone filesystem probes, refuse_unreadable_file."""
 from __future__ import annotations
 
 import errno
-import hashlib
 import os
 import shlex
 import stat
@@ -322,11 +321,6 @@ def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]:
     escaped = str(proj.metadata_path).lstrip("/").replace("-", "-.").replace("/", "-")
     return (f"kanibako-ronin-{escaped}",)
   return (f"kanibako-{box}",)
-
-
-def project_hash(project_path: str) -> str:
-  """SHA-256 hex digest of the project path string."""
-  return hashlib.sha256(project_path.encode()).hexdigest()
 
 
 def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None:

@@ -251,7 +251,7 @@ class TestTwinsHashTheirOwnPaths:
   def test_a_path_with_no_link_keeps_its_hash(self, config_file, tmp_home):
     """A box registered at its resolved path hashes exactly as before."""
     from kanibako.settings.paths import resolve_project
-    from kanibako.utils import project_hash
+    from kanibako.utils.files import path_hash
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -259,7 +259,7 @@ class TestTwinsHashTheirOwnPaths:
     real.mkdir()
 
     proj = resolve_project(std, config, str(real))
-    assert proj.project_hash == project_hash(str(real))
+    assert proj.project_hash == path_hash(str(real))
 
 
 class TestAWorksetRootIsLoadedAndImportedAsGiven:
