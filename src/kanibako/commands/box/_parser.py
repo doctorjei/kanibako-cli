@@ -3183,7 +3183,7 @@ def _resolve_standalone_target(
   from kanibako.errors import ConfigError, LegacyWorksetIdentityError
   from kanibako.project import registry_store
   from kanibako.project.import_reconcile import ImportConflictError
-  from kanibako.launch.box_resolve import detect_box_or_default
+  from kanibako.launch.box_resolve import detect_box_or_default, refuse_path_space_identity
   from kanibako.settings.paths import BoxMode
 
   # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
@@ -3202,6 +3202,8 @@ def _resolve_standalone_target(
   candidate = Path(target)
   if stat_unless_gone(candidate) is not None:
     try:
+      # Detection loads no workset, so the identity refusal it once raised lands here.
+      refuse_path_space_identity(candidate, std)
       detection = detect_box_or_default(candidate, std, config)
     except ImportConflictError:
       # ⚑ Another spelling of a registered box's identity is a NAMED thing to fix,

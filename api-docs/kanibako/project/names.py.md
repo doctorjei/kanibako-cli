@@ -22,11 +22,10 @@ def resolve_name(registry: Path, name: str, cwd: Path | None=None, primary_works
 def resolve_qualified_name(registry: Path, qualified: str, *, early_system: EarlySystem) -> tuple[str, str]
 def _load(registry: Path) -> dict[str, dict[str, str]]
 def _save(registry: Path, names: dict[str, dict[str, str]]) -> None
-def _early(early_system: EarlySystem, workset_name: str) -> EarlyScope
 def _workset_member_paths(worksets: dict[str, str], name: str) -> list[tuple[str, str, str]]
 def _warn_standalone_shadow(registry: Path, name: str, path: str) -> str
 def _records_member_at(boxes: dict[str, str], path: str) -> bool
-def _space_member(names: dict[str, dict[str, str]], name: str, cwd: Path | None, *, early_system: EarlySystem) -> tuple[str | None, dict[str, str] | None]
+def _space_member(names: dict[str, dict[str, str]], name: str, cwd: Path | None) -> tuple[str | None, dict[str, str] | None]
 def _primary_member(name: str, primary_workset: Path | None) -> str | None
 def _refuse_other_space_member(names: dict[str, dict[str, str]], name: str) -> None
 ```

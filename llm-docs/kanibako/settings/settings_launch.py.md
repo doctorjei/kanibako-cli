@@ -715,9 +715,9 @@ not exist (Q106). The detection readers keep finding pre-null members at the def
 `project.workset.resolve_workspaces_locator`, which nothing binds.
 
 ⚑ **A LITERAL, AND MORE STRONGLY SO THAN `channelroot`.** `settings/workset_dirkeys.py` names
-`workset.workspaces` FIRST among the keys read on the DETECTION side, and four readers run before any
-snapshot exists: `paths._check_workset`, `project.workset._workset_skeleton_dirs`,
-`launch.box_resolve.find_connected_external_box` and `project/names.py`. `channelroot` is read
+`workset.workspaces` FIRST among the keys read on the DETECTION side, and two readers run before any
+snapshot exists: `project.workset._workset_skeleton_dirs` and
+`launch.box_resolve.find_connected_external_box` (its guard callers). `channelroot` is read
 pre-snapshot to BUILD paths; `workspaces` is read pre-snapshot to decide **what kind of box this even
 is**. A floor spelling the formula would let detection and the keyspace answer that question two ways.
 

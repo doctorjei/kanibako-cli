@@ -2307,7 +2307,7 @@ class TestRetiredWorksetIdentityLocation:
 
   def test_registered_legacy_workset_refuses_at_the_load_seam(self, std, tmp_home, config):
     """⚑ THE REALISTIC UPGRADE CASE: a v1.7.2 install already has the registry entry, so
-    ``detect_project_mode`` short-circuits on the registry (``_check_workset``) and never
+    ``detect_project_mode`` short-circuits on the registry (``named_path_space``) and never
     reads the identity — the refusal lands on the LOAD path instead, and still lands."""
     from kanibako.project.names import register_name
     from kanibako.settings.paths import detect_project_mode

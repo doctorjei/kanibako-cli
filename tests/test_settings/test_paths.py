@@ -1928,19 +1928,34 @@ class TestA0RepointStrandedMembers:
     assert proj.project_path.resolve() == internal
     assert proj.project_path != ws_reloaded.workspaces_dir / "boxa"
 
-  def test_current_composition_member_still_skipped_by_external_index(self, config_file, tmp_home):
-    """Keep-green guard: a member under the CURRENT resolved workspaces dir
-    stays owned by ordinary location detection — the narrowed skip still
-    excludes it from the reverse index (Test 5/6 semantics, post-repoint)."""
+  def test_member_under_relocated_workspaces_detects_with_no_settings_read(
+    self, config_file, tmp_home, monkeypatch
+  ):
+    """Path space is the root or a registered member path (system-design § *Box
+    designation*): a member under the CURRENT relocated workspaces dir detects with
+    ``workset.workspaces`` unread.  Mutation: read the key back → the stub raises."""
     from kanibako.launch import box_resolve
-    from kanibako.project import workset_registry
+    from kanibako.project import workset, workset_registry
 
-    _config, std, ws, _internal = self._setup(config_file, tmp_home)
+    config, std, ws, _internal = self._setup(config_file, tmp_home)
     pods_member = (tmp_home / "b2pods" / "boxb").resolve()
     pods_member.mkdir()
     registry_path = workset_registry.workset_registry_path(ws.root)
     workset_registry.register_workset_box(registry_path, "boxb", pods_member)
-    assert box_resolve.find_connected_external_box(pods_member, std) is None
+
+    def unread(*_a, **_k):
+      raise AssertionError("workset.workspaces read during detection")
+
+    for attr in ("resolve_workspaces_locator", "load_workset_settings_doc", "load_workset"):
+      monkeypatch.setattr(workset, attr, unread)
+    for where in (pods_member, pods_member / "src"):
+      where.mkdir(exist_ok=True)
+      assert detect_project_mode(where, std, config).mode is BoxMode.named
+    assert box_resolve._path_space_workset(pods_member, std) == "b2ws"
+    detected = box_resolve.detect_box_mode(pods_member, std, config)
+    assert detected is not None and detected.mode is BoxMode.named
+    owned = box_resolve.find_connected_external_box(pods_member, std, every_member=True)
+    assert owned is not None and owned.box_name == "boxb"
 
 
 # ---------------------------------------------------------------------------

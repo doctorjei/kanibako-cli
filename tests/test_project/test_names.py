@@ -635,6 +635,33 @@ class TestResolveName:
     assert kind == "project"
     assert Path(path).resolve() == member.resolve()
 
+  def test_cwd_context_reads_no_workspaces_key(
+    self, registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+  ) -> None:
+    """The step-1 path space is the root or a registered member path: a cwd under a
+    member outside the root resolves with ``workset.workspaces`` unread (the stub
+    raises).  A second workset's same-named member makes a miss Ambiguous."""
+    from kanibako.project import workset, workset_registry
+
+    member = tmp_path / "elsewhere" / "dup"
+    (member / "src").mkdir(parents=True)
+    ws_root = tmp_path / "ws_a"
+    ws_root.mkdir()
+    register_name(registry, "ws_a", str(ws_root), section="worksets")
+    reg_path = workset_registry.workset_registry_path(ws_root)
+    workset_registry.register_workset_box(reg_path, "dup", member)
+    self._register_ws_member(registry, tmp_path, "ws-b", "dup")
+
+    def unread(*_a: object, **_k: object) -> None:
+      raise AssertionError("workset.workspaces read")
+
+    monkeypatch.setattr(workset, "resolve_workspaces_locator", unread)
+    path, kind = resolve_name(
+      registry, "dup", cwd=member / "src", early_system=early_record(tmp_path)
+    )
+    assert kind == "project"
+    assert path == str(member)
+
 
 # ---------------------------------------------------------------------------
 # Standalone names (the LAST resolution step)

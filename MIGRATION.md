@@ -7950,7 +7950,9 @@ the file and the cure; a box settings file drops it with a warning. kanibako con
 
 **What changed.** Membership is the working set's `registry.yaml` alone. A directory under
 `workset.workspaces` that it does not list is no member: its bare name inside the working set and
-`<workset>/<name>` no longer reach it; a bare name falls through to the rest of the lookup.
+`<workset>/<name>` no longer reach it; a bare name falls through to the rest of the lookup. A
+`workset.workspaces` outside the working set's root is in the working set only where a member's
+workspace holds the directory; elsewhere kanibako finds it as if outside the working set.
 
 **What to do.** Connect it: `kanibako workset connect <workset> <workspaces-dir>/<name>`.
 

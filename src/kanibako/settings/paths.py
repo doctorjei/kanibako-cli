@@ -78,7 +78,7 @@ from kanibako.errors import (
   KanibakoError,
   LegacyBoxNameError,
   ProjectError,
-  ReservedWorksetNameError,
+  WORKSET_IDENTITY_REFUSALS,
   WorksetError,
 )
 from kanibako.settings.agent_config import ambiguous_path_value_error, is_unambiguous_path_value
@@ -2091,11 +2091,11 @@ def detect_project_mode(
   """Infer which project mode applies to *project_dir*, walking ancestors for markers."""
   resolved = Path(literal_path(project_dir))
 
-  # 1. Connected-external check.  ⚑ MUST run BEFORE the step-2 marker check: otherwise
-  # the box resolves standalone, the very dual identity that --force removed.
+  # 1. Registered-member check (settings-free).  ⚑ MUST run BEFORE the step-2 marker check:
+  # otherwise the box resolves standalone, the very dual identity that --force removed.
   from kanibako.launch import box_resolve
 
-  if box_resolve.find_connected_external_box(resolved, std) is not None:
+  if box_resolve.find_connected_external_box(resolved, std, every_member=True) is not None:
     return DetectionResult(BoxMode.named, resolved)
 
   # 2. In-place standalone marker AT the resolved dir (D3-mode 3 precedes the treewalk):
@@ -2115,9 +2115,8 @@ def detect_project_mode(
     return DetectionResult(BoxMode.standalone, resolved)
 
   # 3. Workset check (no walk needed — relative_to handles subdirs).
-  ws_result = _check_workset(resolved, std)
-  if ws_result is not None:
-    return ws_result
+  if box_resolve.named_path_space(resolved, std) is not None:
+    return DetectionResult(BoxMode.named, resolved)
 
   # 4. Name-based default-mode check (one-pass scan, deepest match wins).
   ac_ancestor = _find_local_ancestor(resolved, std)
@@ -2159,9 +2158,8 @@ def detect_project_mode(
         current,
         journal=std.journal,
       )
-      ws_after = _check_workset(resolved, std)
-      if ws_after is not None:
-        return ws_after
+      if box_resolve.named_path_space(resolved, std) is not None:
+        return DetectionResult(BoxMode.named, resolved)
 
     # Stop conditions: reached $HOME or filesystem root.
     if is_home_dir(current):
@@ -2208,23 +2206,6 @@ def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, P
     early=_early_scope(std, BoxMode.named, ws_name),
   )
   return Path(literal_path(ws_workspaces)), ws_root
-
-
-def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None:
-  """Check whether *resolved_dir* is inside a registered workset (``workspaces/`` first)."""
-  from kanibako.project.workset import _symlink_loop, list_worksets
-
-  for ws_name, root in list_worksets(std).items():
-    if _symlink_loop(root) or _is_standalone_meta_dir(root.resolve()):
-      continue
-    ws_workspaces, ws_root = _workset_arms(std, ws_name, root)
-    if (
-      _relative_to_either(resolved_dir, ws_workspaces) is not None
-      or _relative_to_either(resolved_dir, ws_root) is not None
-    ):
-      return DetectionResult(BoxMode.named, resolved_dir)
-
-  return None
 
 
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None:
@@ -2840,7 +2821,7 @@ def _resolve_workset_or_connected(
   """Resolve *project_dir* to its owning workset, honoring external connects."""
   try:
     ws, proj_name = _find_workset_for_path(project_dir, std)
-  except ReservedWorksetNameError:
+  except WORKSET_IDENTITY_REFUSALS:
     raise
   except WorksetError:
     ws, proj_name = None, None
