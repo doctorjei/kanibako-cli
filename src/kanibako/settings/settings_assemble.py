@@ -1185,18 +1185,20 @@ def _absent_registry_file(settings: Path | None) -> Path | None:
   return None
 
 
-def refuse_retired_registry_key(raw: Any, *, level: str, path: Path | None) -> None:
+def refuse_retired_registry_key(
+  raw: Any, *, level: str, path: Path | None, standalone_root: bool = False
+) -> None:
   """RAISE when *raw* stores the retired ``workset.registry``; ``meta.workset.registry`` is fixed.
 
-  A null in a workset file was the standalone marker; its cure writes the mark only where
-  no registry file exists.
+  A null in a workset file was the standalone marker; its cure writes the mark only on the
+  *standalone_root* detection read, where no registry file exists.
   """
   found = _nested_present(raw, ("workset", "registry"))
   if found is _NO_LEAF:
     return
   where = path if path is not None else "<settings>"
   cure = "remove that line"
-  mark = _absent_registry_file(path) if found is None and level == "workset" else None
+  mark = _absent_registry_file(path) if found is None and standalone_root else None
   if mark is not None:
     from kanibako.channels.channels import WS_TOKEN_STANDALONE
 

@@ -56,7 +56,9 @@ def is_standalone_root(project_dir: Path, *, strict: bool = False) -> bool:
   # ⚑ EACCES or a loop refuses, naming the file, strict or not.
   if is_file_unless_gone(settings):
     try:
-      refuse_retired_registry_key(load_doc(settings), level="workset", path=settings)
+      refuse_retired_registry_key(
+        load_doc(settings), level="workset", path=settings, standalone_root=True
+      )
     except ConfigError:
       if strict:
         raise

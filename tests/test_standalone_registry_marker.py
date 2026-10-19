@@ -192,6 +192,37 @@ class TestStoredRegistryKeyRefuses:
     assert "__STANDALONE__" not in out
     assert (primary / "registry.yaml").read_text() == members
 
+  def test_a_null_in_a_fresh_primary_workset_never_offers_the_mark(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+
+    primary = load_std_paths(load_config(config_file)).primary_workset
+    primary.mkdir(parents=True, exist_ok=True)
+    assert not (primary / "registry.yaml").exists()
+    (primary / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    root = tmp_home / "home" / "pb"
+    root.mkdir()
+    capsys.readouterr()
+    assert _cli(["create", str(root)]) == 1
+    err = capsys.readouterr().err
+    assert "'workset.registry' is RETIRED" in err
+    assert "Fix, by hand: remove that line." in err
+    assert "__STANDALONE__" not in err
+    assert not (primary / "registry.yaml").exists()
+
+  def test_the_marks_undo_never_writes_over_a_users_file(self, tmp_path):
+    from kanibako.settings.paths import drop_standalone_marker
+
+    (tmp_path / "registry.yaml").write_text(MARK)
+    undo: list = []
+    drop_standalone_marker(tmp_path, undo.append)
+    assert not (tmp_path / "registry.yaml").exists()
+    (tmp_path / "registry.yaml").write_text("boxes: {}\n")
+    undo.pop()()
+    assert (tmp_path / "registry.yaml").read_text() == "boxes: {}\n"
+
   def test_a_path_value_refuses_naming_the_fixed_file(self, tmp_path):
     (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: /srv/reg.yaml\n")
     with pytest.raises(SettingsError) as exc:

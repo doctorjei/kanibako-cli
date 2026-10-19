@@ -3193,6 +3193,16 @@ def establish_standalone(
   return box_name, shell_path, vault_ro_path, vault_rw_path
 
 
+def _restore_mark(path: Path, root: Path, mark: bytes) -> None:
+  """Write *mark* back at *path* only while nothing is there: never over a user's file."""
+  from kanibako import boxfs
+
+  try:
+    boxfs.stat(path, root)
+  except FileNotFoundError:
+    boxfs.write_bytes(path, root, mark)
+
+
 def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]], None]) -> None:
   """Delete the registry file holding the mark :func:`establish_standalone` wrote to *root*.
 
@@ -3210,7 +3220,7 @@ def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]],
     old = boxfs.read_bytes(path, root)
     if not is_standalone_mark(old):
       return
-    push_undo(lambda: boxfs.write_bytes(path, root, old))
+    push_undo(lambda: _restore_mark(path, root, old))
     boxfs.unlink(path, root)
   except OSError as exc:
     get_logger(__name__).warning(

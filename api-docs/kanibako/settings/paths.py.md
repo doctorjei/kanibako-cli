@@ -138,6 +138,7 @@ def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: s
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths
+def _restore_mark(path: Path, root: Path, mark: bytes) -> None
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True, workset_root: Path) -> None
 ```
 
