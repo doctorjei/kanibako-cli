@@ -59,6 +59,7 @@ from kanibako.errors import (
   KanibakoError,
   ProjectError,
   UnmarkedStandaloneError,
+  WORKSET_IDENTITY_REFUSALS,
   WorksetError,
 )
 from kanibako.settings.messages import (
@@ -631,6 +632,8 @@ def _resolve_workset_state(
   proj_name: str | None = None
   try:
     ws, proj_name = _find_workset_for_path(raw_path, std)  # type: ignore[assignment]
+  except WORKSET_IDENTITY_REFUSALS:
+    raise
   except WorksetError:
     ws, proj_name = None, None
   if ws is None or proj_name is None:

@@ -439,8 +439,7 @@ workspace bind is mounted at every launch, so a box without one cannot run (Q106
 
 `resolve_workspaces_locator` is the DETECTION face: the resolved dir, or the named default leaf
 `<root>/workspaces` under a null, because in-tree members connected before the null still sit
-there and a lookup must still find them. Its readers only locate: `settings/paths._check_workset`
-and `_find_workset_for_path`, `project/names.resolve_name`'s cwd arm,
+there and a lookup must still find them. Its readers only locate: `_find_workset_for_path`,
 `launch/box_resolve.find_connected_external_box`'s in-tree skip, and `release_project`'s
 stale-link unlink. 🛑 Nothing creates or binds at its answer.
 
@@ -588,8 +587,8 @@ composes the resolved key.
 
 Raises `LegacyWorksetIdentityError` for a root still carrying a retired identity table, so the LOAD
 path gets the named cure. ⚑ **The load path is where a 1.6/1.7 user hits that refusal**, not
-detection: their workset IS globally registered (`workset create` registered it), so `_check_workset`
-resolves the directory perfectly well and the very next step is the one that refuses.
+detection: their workset IS globally registered (`workset create` registered it), so
+`box_resolve.named_path_space` resolves the directory perfectly well and the very next step is the one that refuses.
 
 ⚑ There is no "not a workset root" failure left. A bare directory loads as a workset with no
 members, because membership is what can be absent — the workset itself is asserted by the registry.
