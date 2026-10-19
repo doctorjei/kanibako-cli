@@ -55,8 +55,8 @@ _SEAM = "find_identifier"
 #: rule rather than from a sweep: each one's whole purpose is to hand back a table whose
 #: KEYS are box or workset names, which is precisely what may not be tested with ``in``.
 #: :func:`test_every_named_loader_still_exists` reds if one is renamed away.
-#: ⚑ A PUBLIC WRAPPER IS A LOADER TOO.  ``list_worksets`` is a one-line re-export of
-#: ``_load_registry``, and naming only the private one made this guard return zero hits
+#: ⚑ A PUBLIC WRAPPER IS A LOADER TOO.  ``list_worksets`` wraps ``read_worksets``,
+#: and naming only the inner one made this guard return zero hits
 #: for every caller of the public one — five unfixed sites, invisible. Listing a loader
 #: without its wrappers is the way this check goes quietly vacuous.
 _LOADERS = frozenset(
@@ -66,14 +66,14 @@ _LOADERS = frozenset(
     "load_standalone",  # project/registry_store.py   — standalone: section
     "load_deregistered",  # project/registry_store.py   — deregistered: section
     "standalone_box_names",  # project/registry_store.py   — the same keys, as a set
-    "_load_registry",  # project/workset.py          — worksets: as {name: root}
+    "read_worksets",  # project/workset.py          — worksets: as {name: root} (``.live``)
     "list_worksets",  # project/workset.py          — its PUBLIC wrapper
   }
 )
 
 #: Functions returning the WHOLE registry document, keyed by SECTION rather than by name.
 #: A registry reaches a caller through one of these too — ``read_names(r)["worksets"]``
-#: is the same table ``_load_registry`` returns.
+#: is the same table ``read_worksets`` reads.
 _DOCUMENT_LOADERS = frozenset({"read_names", "load_registry", "_load"})
 
 #: Sections of those documents whose keys are identifiers.  ``rigs``/``image_shells`` are

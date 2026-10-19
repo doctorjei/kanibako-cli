@@ -75,6 +75,7 @@ def report_retained_vaults(root: Path, retained: Iterable[Path], *, early: Early
 def is_reserved_workset_name(name: str) -> bool
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None
 def refuse_retired_workset_identity(root: Path) -> None
+def read_worksets(std: StandardPaths) -> WorksetRows
 def find_logs_share(std: StandardPaths, *, value: object, scope: str, target_name: str | None=None, target_root: Path | None=None) -> 'tuple[tuple[str, ...], Path] | None'
 def logs_share_refusal(canonical_key: str, value: object, std: StandardPaths, *, force: bool, scope: str, target_name: str | None=None, target_root: Path | None=None) -> str | None
 def purge_box_logs(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None, files: list[Path] | None=None) -> bool
@@ -113,7 +114,7 @@ def _unwind_created_root(path: Path, remove: Callable[[Path], bool] | None=None,
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
-def _load_registry(std: StandardPaths) -> dict[str, Path]
+def _drop_worksets(std: StandardPaths, droppable: dict[str, tuple[Path, str]]) -> None
 def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]
 def _walk_scope(system: EarlySystem, name: str, root: Path) -> EarlyScope
 def _shown(name: str) -> str
@@ -165,6 +166,10 @@ class Workset:
     def settings_path(self) -> Path
     @property
     def registry_path(self) -> Path
+
+class WorksetRows(NamedTuple):
+    live: dict[str, Path]
+    droppable: dict[str, tuple[Path, str]]
 
 class StoreRemovalError(OSError):
     def __init__(self, message: str, leaf: Path) -> None
