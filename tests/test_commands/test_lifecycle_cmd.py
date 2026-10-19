@@ -1899,7 +1899,6 @@ class TestConvertMoveCrossKindName:
         "common",
         cwd=Path(tmp_home),
         primary_workset=std.primary_workset,
-        early_system=std.early_system,
       )
     assert kind == "project"
     assert [

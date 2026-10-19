@@ -27,7 +27,6 @@ at the same precedence the retired ``projects`` section held, and LAST the
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
@@ -35,9 +34,6 @@ from kanibako.project import registry_store
 from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
 from kanibako.utils import is_home_dir, literal_path
-
-if TYPE_CHECKING:
-  from kanibako.settings.workset_dirkeys import EarlySystem
 
 logger = get_logger("names")
 
@@ -233,7 +229,6 @@ def resolve_name(
   cwd: Path | None = None,
   primary_workset: Path | None = None,
   *,
-  early_system: EarlySystem,
   path: str | None = None,
   unreadable_path: ConfigError | None = None,
 ) -> tuple[str, str]:
@@ -404,8 +399,6 @@ def _refuse_other_space_member(
 def resolve_qualified_name(
   registry: Path,
   qualified: str,
-  *,
-  early_system: EarlySystem,
 ) -> tuple[str, str]:
   """Resolve a qualified name (``workset/project``).
 

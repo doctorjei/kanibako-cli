@@ -212,30 +212,23 @@ def recorded_workspaces_under(
   return found
 
 
-def find_connected_external_box(
+def find_connected_member(
   project_dir: Path,
   std: StandardPaths,
   *,
   skip: Callable[[_OwnedBox], bool] | None = None,
-  every_member: bool = False,
+  exclude: Callable[[str, Path], Callable[[Path], bool]] | None = None,
 ) -> _OwnedBox | None:
-  """Resolve *project_dir* (or an ancestor) to a registered box OUTSIDE the
-  current composition (external connect OR a pre-repoint stranded member).
+  """Resolve *project_dir* (or an ancestor) to a box registered in a NAMED workset.
 
-  Scans every NAMED workset; DEEPEST registered ancestor wins, so a launch from
-  a SUBDIR of a connected dir still resolves.  The PRIMARY workset is skipped
-  (its external boxes resolve by their own name index).  ``None`` when no such
-  box owns *project_dir*.  A box *skip* accepts is passed over, so the next one up wins.
-
-  ⚑ The in-scan skip is "under the CURRENT resolved ``workset.workspaces`` dir",
-  NOT "under the workset root".  Widening it strands members registered under an
-  OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
-  *every_member* drops the skip, so no ``workset.workspaces`` is read: detection,
-  whose path space is the root or a registered member (system-design § *Box
-  designation*).  The guards keep it: an in-tree member is not an external one.
+  Itself reads no ``workset.yaml``; the mark peek (``is_standalone_root``) does.
+  The DEEPEST registered ancestor wins, so a launch from a SUBDIR of a member still
+  resolves.  The PRIMARY workset is skipped (its boxes resolve by their own name index).
+  A box *skip* accepts is passed over, so the next one up wins.  *exclude*, called once
+  per workset before its registry is read, returns the test for that workset's members
+  to pass over.  ``None`` when no member owns *project_dir*.
   """
-  from kanibako.project.workset import _symlink_loop, list_worksets, resolve_workspaces_locator
-  from kanibako.settings.workset_dirkeys import EarlyScope
+  from kanibako.project.workset import _symlink_loop, list_worksets
 
   target = Path(literal_path(project_dir))
   best: _OwnedBox | None = None
@@ -245,25 +238,11 @@ def find_connected_external_box(
     if _symlink_loop(root) or is_standalone_root(root):
       continue
     registry_path = workset_registry.workset_registry_path(root)
-    if not every_member:
-      settings: Any = load_doc(root / WORKSET_META_FILE)
-      # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
-      workspaces = resolve_workspaces_locator(
-        root, settings, early=EarlyScope(std.early_system, name)
-      )
-      workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
+    excluded = None if exclude is None else exclude(name, root)
     boxes = workset_registry.load_workset_boxes(registry_path)
     for box_name, box_path_str in boxes.items():
       box_path = Path(literal_path(box_path_str))
-      # Skip members under the CURRENT workspaces dir; location detection owns those.
-      if not every_member and (
-        box_path.is_relative_to(literal_path(workspaces))
-        or (
-          workspaces_resolved is not None
-          and not _symlink_loop(box_path)
-          and box_path.resolve().is_relative_to(workspaces_resolved)
-        )
-      ):
+      if excluded is not None and excluded(box_path):
         continue
       # Ancestor match: the registered path IS *target* or an ancestor.
       try:
@@ -284,6 +263,43 @@ def find_connected_external_box(
         best = found
         best_depth = depth
   return best
+
+
+def find_connected_external_box(
+  project_dir: Path,
+  std: StandardPaths,
+  *,
+  skip: Callable[[_OwnedBox], bool] | None = None,
+) -> _OwnedBox | None:
+  """:func:`find_connected_member` OUTSIDE the current composition (external connect OR
+  a pre-repoint stranded member): members under each workset's resolved
+  ``workset.workspaces`` are passed over, so location detection owns those.
+
+  ⚑ The skip is "under the CURRENT resolved ``workset.workspaces`` dir", NOT "under the
+  workset root".  Widening it strands members registered under an OLD composition —
+  bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
+  """
+  from kanibako.project.workset import _symlink_loop, resolve_workspaces_locator
+  from kanibako.settings.workset_dirkeys import EarlyScope
+
+  def under_workspaces(name: str, root: Path) -> Callable[[Path], bool]:
+    settings: Any = load_doc(root / WORKSET_META_FILE)
+    # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
+    workspaces = resolve_workspaces_locator(
+      root, settings, early=EarlyScope(std.early_system, name)
+    )
+    workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
+
+    def inside(box_path: Path) -> bool:
+      return box_path.is_relative_to(literal_path(workspaces)) or (
+        workspaces_resolved is not None
+        and not _symlink_loop(box_path)
+        and box_path.resolve().is_relative_to(workspaces_resolved)
+      )
+
+    return inside
+
+  return find_connected_member(project_dir, std, skip=skip, exclude=under_workspaces)
 
 
 def path_space_worksets(
@@ -395,7 +411,7 @@ def detect_box_mode(
       if space == _PRIMARY_WORKSET_NAME
       else _find_owning_box(literal, std, config, workset=_PRIMARY_WORKSET_NAME)
     )
-    or find_connected_external_box(literal, std, every_member=True)
+    or find_connected_member(literal, std)
   )
   if owned is not None and Path(literal_path(owned.box_path)) == literal:
     return DetectionResult(owned.mode, owned.box_path)

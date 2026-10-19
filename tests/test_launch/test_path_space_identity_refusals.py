@@ -161,7 +161,6 @@ class TestAnUnreadableRegistryStopsOnlyItsOwnPaths:
       "solo",
       cwd=tmp_home,
       primary_workset=std.primary_workset,
-      early_system=std.early_system,
     )
     assert (path, kind) == (str(pdir), "project")
 
