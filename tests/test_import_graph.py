@@ -377,7 +377,7 @@ def test_the_walk_excludes_a_function_local_import() -> None:
 def test_the_walk_excludes_a_type_checking_import() -> None:
   """A types-only import is skipped, and the pin is a pair that WOULD be a cycle.
 
-  ``utils.py`` names ``ProjectPaths`` under ``if TYPE_CHECKING:`` while
+  ``utils/__init__.py`` names ``ProjectPaths`` under ``if TYPE_CHECKING:`` while
   ``settings/paths.py`` imports ``utils`` for real.  Counting the guarded arm would
   close that two-module loop against code that is correct.
   """
@@ -385,7 +385,9 @@ def test_the_walk_excludes_a_type_checking_import() -> None:
   assert ("kanibako.settings.paths", "kanibako.utils") in pairs
   assert ("kanibako.utils", "kanibako.settings.paths") not in pairs
 
-  tree = ast.parse((REPO_ROOT / "src" / "kanibako" / "utils.py").read_text(encoding="utf-8"))
+  tree = ast.parse(
+    (REPO_ROOT / "src" / "kanibako" / "utils" / "__init__.py").read_text(encoding="utf-8")
+  )
   guarded = [
     imported
     for node in ast.walk(tree)
@@ -393,7 +395,7 @@ def test_the_walk_excludes_a_type_checking_import() -> None:
     for imported in _imports_from(node.body, "kanibako.settings.paths")
   ]
   assert guarded, (
-    "`utils.py` no longer names `kanibako.settings.paths` UNDER `if TYPE_CHECKING:`; "
+    "`utils/__init__.py` no longer names `kanibako.settings.paths` UNDER `if TYPE_CHECKING:`; "
     "the guarded import this test discriminates against is gone or has changed "
     "mechanism — re-anchor the pin"
   )

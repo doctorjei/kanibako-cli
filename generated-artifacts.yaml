@@ -189,7 +189,7 @@ artifacts:
   api-docs/kanibako/tree_copy.py.md:
   api-docs/kanibako/tweakcc.py.md:
   api-docs/kanibako/tweakcc_cache.py.md:
-  api-docs/kanibako/utils.py.md:
+  api-docs/kanibako/utils/__init__.py.md:
   api-docs/kanibako/vscode/__init__.py.md:
   api-docs/kanibako/vscode/vscode_config.py.md:
   api-docs/kanibako/vscode/vscode_remote.py.md:

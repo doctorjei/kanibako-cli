@@ -650,7 +650,7 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
   """AST guard: the physical cwd is read in ``src/kanibako`` only inside
   :func:`kanibako.utils.logical_cwd`, so every cwd read honors ``$PWD``."""
 
-  _ALLOWED = {("utils.py", "logical_cwd")}
+  _ALLOWED = {("utils/__init__.py", "logical_cwd")}
 
   @staticmethod
   def _physical_cwd_reads(source: str):
