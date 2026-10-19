@@ -149,6 +149,32 @@ class TestDetectBoxMode:
     assert result is not None
     assert (result.mode, result.project_root) == (BoxMode.primary, p)
 
+  def test_a_subdir_of_a_primary_box_under_an_external_member_is_that_box(
+    self, std, config, tmp_home
+  ):
+    """The nearest box holds a subdir launch: ``p/sub`` is ``p``, as ``p`` is.  A member
+    deeper than ``p`` is nearer still; a dual-registered root stays the workset's.
+    Mutation: drop the primary-ancestor check → NAMED → RED."""
+    reg = _make_named_workset(std, tmp_home / "wn", "wn")
+    member = tmp_home / "YN"
+    p = member / "p"
+    (p / "sub").mkdir(parents=True)
+    (p / "m" / "sub").mkdir(parents=True)
+    (member / "d" / "sub").mkdir(parents=True)
+    _register_box(reg, "YN", member)
+    _register_box(reg, "m", p / "m")
+    _register_box(reg, "d", member / "d")
+    register_primary_box_name(std.primary_workset, "p", str(p))
+    register_primary_box_name(std.primary_workset, "d", str(member / "d"))
+    for subject, want in (
+      (p / "sub", (BoxMode.primary, p)),
+      (p / "m" / "sub", (BoxMode.named, p / "m" / "sub")),
+      (member / "d" / "sub", (BoxMode.named, member / "d" / "sub")),
+    ):
+      result = box_resolve.detect_box_mode(subject, std, config)
+      assert result is not None, subject
+      assert (result.mode, result.project_root) == want, subject
+
   def test_other_space_connection_beats_a_leftover_marker(self, std, config, tmp_home):
     """A box is in one workset only (180-DF2 [Jei:2026-10-13]): a marked root CONNECTED into a
     named workset from outside its tree is that workset's NAMED box.  Connect drops the marker
