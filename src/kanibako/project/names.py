@@ -37,7 +37,7 @@ from kanibako.log import get_logger
 from kanibako.utils import is_home_dir, literal_path
 
 if TYPE_CHECKING:
-  from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
+  from kanibako.settings.workset_dirkeys import EarlySystem
 
 logger = get_logger("names")
 
@@ -190,13 +190,6 @@ def lookup_by_path(
   return None
 
 
-def _early(early_system: EarlySystem, workset_name: str) -> EarlyScope:
-  """The scope of the workset registered as *workset_name*."""
-  from kanibako.settings.workset_dirkeys import EarlyScope
-
-  return EarlyScope(early_system, workset_name)
-
-
 def _workset_member_paths(
   worksets: dict[str, str],
   name: str,
@@ -264,7 +257,7 @@ def resolve_name(
   neither step 1 nor a primary box answers.
   """
   names = _load(registry)
-  hit, space_boxes = _space_member(names, name, cwd, early_system=early_system)
+  hit, space_boxes = _space_member(names, name, cwd)
   if hit is not None:
     return _warn_standalone_shadow(registry, name, hit), "project"
 
@@ -333,56 +326,22 @@ def _space_member(
   names: dict[str, dict[str, str]],
   name: str,
   cwd: Path | None,
-  *,
-  early_system: EarlySystem,
 ) -> tuple[str | None, dict[str, str] | None]:
   """Step 1: *name* in the named workset whose path space holds *cwd*.
 
   Returns ``(member workspace or None, that workset's boxes)``; ``(None, None)``
-  when *cwd* is in no named workset's space.  "Inside" covers the root AND the
-  resolved ``workset.workspaces`` dir, which a repoint can place outside the root.
-  Membership is the ``boxes:`` record alone: an unregistered workspace subdir is no member.
+  when *cwd* is in no named workset's space.  "Inside" is the root or a registered
+  member's workspace (system-design § *Box designation*); no ``workset.workspaces``
+  is read.  Membership is the ``boxes:`` record alone.
   """
   if cwd is None:
     return None, None
-  from kanibako.launch.box_resolve import is_standalone_root
+  from kanibako.launch.box_resolve import path_space_worksets
   from kanibako.project import workset_registry
-  from kanibako.project.workset import (
-    _symlink_loop,
-    load_workset_settings_doc,
-    resolve_workspaces_locator,
-  )
 
-  # Literal cwd against the literal arms (box identity, [R188]), then resolved
-  # against resolved (containment): a link spelling of either side still lands.
-  cwd_literal = Path(literal_path(cwd))
-  cwd_resolved = cwd.resolve()
   space_boxes: dict[str, str] | None = None
-  for ws_name, ws_root in names["worksets"].items():
-    ws_path = Path(ws_root)
-    if not ws_path.is_absolute():
-      continue  # a relative root names no place; joining the cwd would hold every cwd
-    if _symlink_loop(ws_path):
-      continue  # a looped root holds no cwd, and resolving it raises on 3.11
-    if is_standalone_root(ws_path):
-      continue
-    settings_doc = load_workset_settings_doc(ws_path)
-    ws_early = _early(early_system, ws_name)
-    ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
-    literal_arms = (Path(literal_path(ws_path)), Path(literal_path(ws_workspaces)))
-    inside = (
-      any(cwd_literal.is_relative_to(arm) for arm in literal_arms)
-      # ⚑ A looped arm (a repointed ``workset.workspaces``) holds no cwd; 3.11 raises on it.
-      or any(
-        cwd_resolved.is_relative_to(arm.resolve())
-        for arm in literal_arms
-        if not _symlink_loop(arm)
-      )
-    )
-    if not inside:
-      continue
+  for _ws_name, ws_path, boxes in path_space_worksets(names["worksets"], cwd, resolve_path=True):
     registry_path = workset_registry.workset_registry_path(ws_path)
-    boxes = workset_registry.load_workset_boxes(registry_path)
     if space_boxes is None:
       space_boxes = boxes
     registered = workset_registry.workset_box_path(registry_path, name)

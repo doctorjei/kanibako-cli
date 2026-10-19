@@ -11,7 +11,7 @@ replaced, and the full case enumeration: ``llm-docs/kanibako/launch/box_resolve.
 from __future__ import annotations
 
 import shlex
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -19,9 +19,6 @@ from kanibako.channels.channels import WS_TOKEN_STANDALONE
 from kanibako.errors import (
   ConfigError,
   DerivedBoxNameError,
-  LegacyRegistryIdentityError,
-  LegacyWorksetIdentityError,
-  ReservedWorksetNameError,
   WorksetError,
 )
 from kanibako.project import registry_store, workset_registry
@@ -220,6 +217,7 @@ def find_connected_external_box(
   std: StandardPaths,
   *,
   skip: Callable[[_OwnedBox], bool] | None = None,
+  every_member: bool = False,
 ) -> _OwnedBox | None:
   """Resolve *project_dir* (or an ancestor) to a registered box OUTSIDE the
   current composition (external connect OR a pre-repoint stranded member).
@@ -232,6 +230,9 @@ def find_connected_external_box(
   ⚑ The in-scan skip is "under the CURRENT resolved ``workset.workspaces`` dir",
   NOT "under the workset root".  Widening it strands members registered under an
   OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
+  *every_member* drops the skip, so no ``workset.workspaces`` is read: detection,
+  whose path space is the root or a registered member (system-design § *Box
+  designation*).  The guards keep it: an in-tree member is not an external one.
   """
   from kanibako.project.workset import _symlink_loop, list_worksets, resolve_workspaces_locator
   from kanibako.settings.workset_dirkeys import EarlyScope
@@ -243,20 +244,25 @@ def find_connected_external_box(
     # ⚑ A looped root holds no registry to read: no box is recorded there.
     if _symlink_loop(root) or is_standalone_root(root):
       continue
-    settings: Any = load_doc(root / WORKSET_META_FILE)
-    early = EarlyScope(std.early_system, name)
     registry_path = workset_registry.workset_registry_path(root)
-    # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
-    workspaces = resolve_workspaces_locator(root, settings, early=early)
-    workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
+    if not every_member:
+      settings: Any = load_doc(root / WORKSET_META_FILE)
+      # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
+      workspaces = resolve_workspaces_locator(
+        root, settings, early=EarlyScope(std.early_system, name)
+      )
+      workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
     boxes = workset_registry.load_workset_boxes(registry_path)
     for box_name, box_path_str in boxes.items():
       box_path = Path(literal_path(box_path_str))
       # Skip members under the CURRENT workspaces dir; location detection owns those.
-      if box_path.is_relative_to(literal_path(workspaces)) or (
-        workspaces_resolved is not None
-        and not _symlink_loop(box_path)
-        and box_path.resolve().is_relative_to(workspaces_resolved)
+      if not every_member and (
+        box_path.is_relative_to(literal_path(workspaces))
+        or (
+          workspaces_resolved is not None
+          and not _symlink_loop(box_path)
+          and box_path.resolve().is_relative_to(workspaces_resolved)
+        )
       ):
         continue
       # Ancestor match: the registered path IS *target* or an ancestor.
@@ -280,21 +286,98 @@ def find_connected_external_box(
   return best
 
 
+def path_space_worksets(
+  worksets: Mapping[str, str | Path],
+  path: Path,
+  *,
+  resolve_path: bool = False,
+  members: bool = True,
+) -> Iterator[tuple[str, Path, dict[str, str]]]:
+  """Each workset of *worksets* whose path space holds *path*, in order, with its ``boxes:``.
+
+  The path space is the root or a registered member's workspace (system-design § *Box
+  designation*), from the literal registries: no ``workset.workspaces`` is read.  *path*
+  compares literal, against each arm literal and resolved (box identity, [R188]: a link
+  twin of a member is not inside it); *resolve_path* adds *path* resolved, for a cwd.
+  *members* false asks the roots alone and reads no registry.  A
+  relative entry names no place: joined to the cwd, it would hold every cwd.  A looped
+  or standalone root holds no space.
+  """
+  from kanibako.project.workset import _resolved_unless_loop, _symlink_loop
+
+  literal = Path(literal_path(path))
+  forms = (literal, _resolved_unless_loop(literal)) if resolve_path else (literal,)
+
+  def holds(entries: list[str | Path]) -> bool:
+    arms = [Path(literal_path(a)) for a in entries if Path(a).is_absolute()]
+    # ⚑ A looped arm holds no path; 3.11 raises resolving it.
+    resolved_arms = [a.resolve() for a in arms if not _symlink_loop(a)]
+    return any(literal.is_relative_to(a) for a in arms) or any(
+      p.is_relative_to(a) for a in resolved_arms for p in forms
+    )
+
+  for ws_name, ws_root in worksets.items():
+    root = Path(ws_root)
+    if not root.is_absolute() or _symlink_loop(root) or is_standalone_root(root):
+      continue
+    if not members:
+      if holds([root]):
+        yield ws_name, root, {}
+      continue
+    try:
+      boxes = workset_registry.load_workset_boxes(workset_registry.workset_registry_path(root))
+    except (ConfigError, WorksetError):
+      # An unreadable registry refuses only for a path under its root, so another
+      # workset's file stops no lookup it is not asked about.
+      if holds([root]):
+        raise
+      continue
+    if holds([root, *boxes.values()]):
+      yield ws_name, root, boxes
+
+
+def refuse_path_space_identity(path: Path, std: StandardPaths) -> None:
+  """Raise the identity refusal of the named workset whose path space holds *path*.
+
+  The refusals ``_load_workset`` raises, without the rest of its load: the reserved
+  registry key, then the retired ``workset.yaml`` identity table.  For a lookup that
+  reaches no workset load, so its cure still lands.
+  """
+  from kanibako.project.workset import (
+    list_worksets,
+    refuse_reserved_registered_name,
+    refuse_retired_workset_identity,
+  )
+
+  for name, root, _boxes in path_space_worksets(list_worksets(std), path):
+    refuse_reserved_registered_name(name, root, early_system=std.early_system)
+    refuse_retired_workset_identity(root)
+    return
+
+
+def _under_a_named_root(path: Path, std: StandardPaths) -> bool:
+  """Whether a registered named workset's ROOT holds *path* (members aside)."""
+  from kanibako.project.workset import list_worksets
+
+  return next(path_space_worksets(list_worksets(std), path, members=False), None) is not None
+
+
+def named_path_space(path: Path, std: StandardPaths) -> str | None:
+  """The named workset whose path space holds *path* (:func:`path_space_worksets`), else ``None``."""
+  from kanibako.project.workset import list_worksets
+
+  return next(
+    (name for name, _root, _boxes in path_space_worksets(list_worksets(std), path)), None
+  )
+
+
 def _path_space_workset(project_dir: Path, std: StandardPaths) -> str:
   """The workset whose path space holds *project_dir*: the named one containing it, else primary.
 
-  The same lookup ``create`` uses (``_find_workset_for_path``); a workset the lookup
-  cannot read is an error to show, not a miss.
+  Registries alone name it (system-design § *Box designation*): a ``workset.yaml``
+  refusal fires where Layer 2 loads that workset.
   """
-  from kanibako.settings.paths import _find_workset_for_path
-
-  try:
-    ws, _member = _find_workset_for_path(project_dir, std)
-  except (ReservedWorksetNameError, LegacyWorksetIdentityError, LegacyRegistryIdentityError):
-    raise
-  except WorksetError:
-    return _PRIMARY_WORKSET_NAME
-  return ws.name
+  return named_path_space(project_dir, std) or _PRIMARY_WORKSET_NAME
 
 
 def detect_box_mode(
@@ -317,9 +400,20 @@ def detect_box_mode(
   # 1. The path space's registry has a box AT this path.  A box CONNECTED into a named
   # workset from outside its tree is recorded in that workset's registry, so it is that
   # workset's box: it beats an in-place standalone marker, as in ``detect_project_mode``.
-  owned = _find_owning_box(
-    literal, std, config, workset=_path_space_workset(literal, std)
-  ) or find_connected_external_box(literal, std)
+  # ⚑ An EXTERNAL member's path space holds every path under that member, so a PRIMARY
+  # box created there before the connect is recorded only in the primary registry: it
+  # is still the box AT its own path, never the member above it.  Under a named ROOT
+  # the walk reaches that root, so the workset answers as before.
+  space = _path_space_workset(literal, std)
+  owned = (
+    _find_owning_box(literal, std, config, workset=space)
+    or (
+      _find_owning_box(literal, std, config, workset=_PRIMARY_WORKSET_NAME)
+      if space != _PRIMARY_WORKSET_NAME and not _under_a_named_root(literal, std)
+      else None
+    )
+    or find_connected_external_box(literal, std, every_member=True)
+  )
   if owned is not None and Path(literal_path(owned.box_path)) == literal:
     return DetectionResult(owned.mode, owned.box_path)
 
@@ -433,6 +527,7 @@ def resolve_box_identity(
   table in the llm-doc.  ``enable_vault`` is intentionally NOT sourced here —
   it is the settable ``box.enable_vault`` key.  ``None`` when not a box.
   """
+  refuse_path_space_identity(project_dir, std)
   result = detect_box_mode(project_dir, std, config)
   if result is None:
     return None

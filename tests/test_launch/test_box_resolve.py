@@ -122,6 +122,33 @@ class TestDetectBoxMode:
     assert result.mode is BoxMode.named
     assert result.project_root == box
 
+  def test_a_primary_row_under_a_named_root_stays_the_worksets(self, std, config, tmp_home):
+    """The walk reaches a named ROOT above the path, so the workset answers: a primary
+    row there (one made before the root became a workset) does not win.  Mutation: ask
+    the primary registry under a root too → PRIMARY → RED."""
+    ws_root = tmp_home / "wz"
+    reg = _make_named_workset(std, ws_root, "wz")
+    member = ws_root / "workspaces" / "m"
+    _register_box(reg, "m", member)
+    for name, q in (("q", ws_root / "q"), ("mq", member / "q")):
+      q.mkdir(parents=True)
+      register_primary_box_name(std.primary_workset, name, str(q))
+      result = box_resolve.detect_box_mode(q, std, config)
+      assert result is not None and result.mode is BoxMode.named, q
+
+  def test_a_primary_box_under_an_external_member_stays_itself(self, std, config, tmp_home):
+    """An external member's space holds the paths under it; a primary box made there
+    before the connect is still the box AT its own path, not the member above it."""
+    reg = _make_named_workset(std, tmp_home / "wn", "wn")
+    member = tmp_home / "YN"
+    p = member / "p"
+    p.mkdir(parents=True)
+    _register_box(reg, "YN", member)
+    register_primary_box_name(std.primary_workset, "p", str(p))
+    result = box_resolve.detect_box_mode(p, std, config)
+    assert result is not None
+    assert (result.mode, result.project_root) == (BoxMode.primary, p)
+
   def test_other_space_connection_beats_a_leftover_marker(self, std, config, tmp_home):
     """A box is in one workset only (180-DF2 [Jei:2026-10-13]): a marked root CONNECTED into a
     named workset from outside its tree is that workset's NAMED box.  Connect drops the marker

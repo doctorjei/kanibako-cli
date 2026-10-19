@@ -5,6 +5,12 @@ _Signatures only: no comments, no docstrings, no bodies._
 Prose for these symbols lives in `llm-docs/kanibako/errors.py.md`.
 
 
+## Variables
+
+```
+WORKSET_IDENTITY_REFUSALS = (LegacyWorksetIdentityError, ReservedWorksetNameError, LegacyRegistryIdentityError)
+```
+
 ## Classes
 
 ```

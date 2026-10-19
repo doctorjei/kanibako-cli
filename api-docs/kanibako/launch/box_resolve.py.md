@@ -19,7 +19,10 @@ def standalone_marker_refusal(root: Path, lead: str) -> str
 def standalone_marker_repair(root: Path) -> tuple[str, str]
 def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None
 def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: bool=True, primary: bool=True) -> list[tuple[str, Path]]
-def find_connected_external_box(project_dir: Path, std: StandardPaths, *, skip: Callable[[_OwnedBox], bool] | None=None) -> _OwnedBox | None
+def find_connected_external_box(project_dir: Path, std: StandardPaths, *, skip: Callable[[_OwnedBox], bool] | None=None, every_member: bool=False) -> _OwnedBox | None
+def path_space_worksets(worksets: Mapping[str, str | Path], path: Path, *, resolve_path: bool=False, members: bool=True) -> Iterator[tuple[str, Path, dict[str, str]]]
+def refuse_path_space_identity(path: Path, std: StandardPaths) -> None
+def named_path_space(path: Path, std: StandardPaths) -> str | None
 def detect_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | None
 def detect_box_or_default(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def standalone_box_name(box_root: Path, registered_name: str | None) -> str
@@ -28,6 +31,7 @@ def unregistered_box_refusal(proj: ProjectPaths, belongs: str, name_cure: str) -
 def resolve_box_identity(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> dict[str, Any] | None
 def _enumerate_worksets(std: StandardPaths) -> Iterator[tuple[str, Path, BoxMode]]
 def _find_owning_box(project_dir: Path, std: StandardPaths, config: BootstrapConfig, *, workset: str | None=None) -> _OwnedBox | None
+def _under_a_named_root(path: Path, std: StandardPaths) -> bool
 def _path_space_workset(project_dir: Path, std: StandardPaths) -> str
 ```
 
