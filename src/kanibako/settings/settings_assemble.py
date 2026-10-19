@@ -1190,8 +1190,8 @@ def refuse_retired_registry_key(
 ) -> None:
   """RAISE when *raw* stores the retired ``workset.registry``; ``meta.workset.registry`` is fixed.
 
-  A null in a workset file was the standalone marker; its cure writes the mark only on the
-  *standalone_root* detection read, where no registry file exists.
+  A workset-file null was the standalone marker; on a *standalone_root* read with no registry
+  file, its cure writes the mark.
   """
   found = _nested_present(raw, ("workset", "registry"))
   if found is _NO_LEAF:
