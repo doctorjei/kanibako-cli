@@ -42,6 +42,13 @@ def _create_standalone(tmp_home: Path) -> Path:
   return root
 
 
+def _tree(top: Path) -> dict[str, bytes | None]:
+  return {
+    str(p.relative_to(top)): (p.read_bytes() if p.is_file() and not p.is_symlink() else None)
+    for p in sorted(top.rglob("*"))
+  }
+
+
 def _info(root: Path, capsys) -> tuple[int, str]:
   capsys.readouterr()
   rc = _cli(["box", "info", str(root)])
@@ -57,13 +64,35 @@ class TestCreateWritesTheMark:
     assert doc["workset"]["kuid"]
     assert "registry" not in doc["workset"]
 
-  def test_create_refuses_over_a_workset_registry(self, config_file, tmp_home, credentials_dir):
+  def test_create_refuses_over_a_workset_registry(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
     root = tmp_home / "home" / "sa"
     root.mkdir()
     members = "boxes:\n  a: /x\n"
     (root / "registry.yaml").write_text(members)
+    capsys.readouterr()
     assert _cli(["create", str(root), "--standalone", "--no-vault"]) != 0
+    err = capsys.readouterr().err
+    assert "is a file that is not the standalone mark" in err
+    assert "needs that path for its mark" in err
+    assert "workset registry" not in err
     assert (root / "registry.yaml").read_text() == members
+
+  def test_the_mark_is_never_read_or_written_through_a_link(self, tmp_path):
+    from kanibako.settings.config import write_standalone_mark
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text(MARK)
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "registry.yaml").symlink_to(outside)
+    assert box_resolve.is_standalone_root(root) is False
+    outside.write_text("theirs\n")
+    with pytest.raises(ConfigError, match="is a symlink, and a standalone box"):
+      write_standalone_mark(root)
+    assert outside.read_text() == "theirs\n"
+    assert (root / "registry.yaml").is_symlink()
 
 
 class TestDetection:
@@ -133,6 +162,36 @@ class TestStoredRegistryKeyRefuses:
     assert MIGRATION_HEADING in message
     assert not (tmp_path / "registry.yaml").exists()
 
+  @pytest.mark.parametrize("held", [MARK, "boxes:\n  a: /x\n"])
+  def test_a_null_beside_an_existing_registry_is_only_removed(self, tmp_path, held):
+    (tmp_path / "registry.yaml").write_text(held)
+    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    with pytest.raises(SettingsError) as exc:
+      box_resolve.is_standalone_root(tmp_path)
+    message = str(exc.value)
+    assert "Fix, by hand: remove that line." in message
+    assert "__STANDALONE__" not in message
+    assert (tmp_path / "registry.yaml").read_text() == held
+
+  def test_a_null_in_the_primary_workset_never_cures_over_its_members(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+
+    root = tmp_home / "home" / "pb"
+    root.mkdir()
+    assert _cli(["create", str(root)]) == 0
+    primary = load_std_paths(load_config(config_file)).primary_workset
+    members = (primary / "registry.yaml").read_text()
+    assert str(root) in members
+    (primary / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    rc, out = _info(root, capsys)
+    assert rc == 1, out
+    assert "Fix, by hand: remove that line." in out
+    assert "__STANDALONE__" not in out
+    assert (primary / "registry.yaml").read_text() == members
+
   def test_a_path_value_refuses_naming_the_fixed_file(self, tmp_path):
     (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: /srv/reg.yaml\n")
     with pytest.raises(SettingsError) as exc:
@@ -186,6 +245,23 @@ class TestStoredRegistryKeyRefuses:
     assert "workset.registry" in capsys.readouterr().err
     assert (settings.read_text() if settings.exists() else None) == before
     assert box_resolve.is_standalone_root(root) is False
+
+
+class TestAMarkedWorksetTakesNoMembers:
+  def test_connect_is_refused_before_any_change(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    root = tmp_home / "home" / "ws4"
+    assert _cli(["workset", "create", str(root), "--name", "ws4"]) == 0
+    (root / "registry.yaml").write_text(MARK)
+    (tmp_home / "home" / "m2").mkdir()
+    before = _tree(tmp_home)
+    capsys.readouterr()
+    assert _cli(["workset", "connect", "ws4", str(tmp_home / "home" / "m2")]) == 1
+    err = capsys.readouterr().err
+    assert "holds only the standalone mark" in err
+    assert "takes no members" in err
+    assert _tree(tmp_home) == before
 
 
 class TestMalformedRootFileDetection:

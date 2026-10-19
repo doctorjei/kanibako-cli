@@ -41,6 +41,7 @@ def read_box_enable_vault(path: Path) -> bool
 def carried_box_settings(box_tier: Path) -> dict
 def read_workset_kuid(path: Path) -> str
 def holds_standalone_mark(workset_root: Path) -> bool
+def is_standalone_mark(raw: bytes) -> bool
 def is_standalone_mark_file(path: Path) -> bool
 def write_standalone_mark(workset_root: Path) -> None
 def read_workset_skip_kuid_check(path: Path) -> bool

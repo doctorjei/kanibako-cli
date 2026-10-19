@@ -46,6 +46,7 @@ from kanibako.settings.config import (
   WORKSET_META_FILE,
   WORKSET_REGISTRY_FILE,
   BootstrapConfig,
+  holds_standalone_mark,
   read_box_enable_vault,
   write_box_enable_vault,
 )
@@ -68,6 +69,7 @@ from kanibako.settings.messages import (
 )
 from kanibako.settings.paths import (
   STANDALONE_META_DIR,
+  drop_standalone_marker,
   BoxMode,
   ProjectPaths,
   box_cure_ref,
@@ -2359,6 +2361,8 @@ def _run_steps(
       # ⚑ Reverse of drift H: standalone roots the live workspace UNDER the root,
       # every other mode at the project dir — so an in-place convert OUT must lift.
       merge_gitignore = _hold_root_gitignore(root, workspace, unwind)
+      # The mark retires with the mode; gone first, so a lifted user file takes its name.
+      drop_standalone_marker(root, unwind.push)
       _unconsolidate_workspace_subdir(workspace, root, unwind)
       if merge_gitignore is not None:
         merge_gitignore()
@@ -3233,7 +3237,9 @@ def _plan_source_teardown(
       )
     trees = (removable_store,) if removable_store is not None else ()
     markers = tuple(
-      p for p in (workset_registry_path(root), root / WORKSET_META_FILE) if p.is_file()
+      p
+      for p in (workset_registry_path(root), root / WORKSET_META_FILE)
+      if p.is_file() and (p.name != WORKSET_REGISTRY_FILE or holds_standalone_mark(root))
     )
     return _SourceTeardown(
       name=state.name,
@@ -4298,10 +4304,11 @@ def _refuse_root_name_collisions(
     if not where.is_dir() or root.resolve() not in where.resolve().parents:
       return
     artifacts = _standalone_root_artifacts(root, early=early)
+    retiring = where / WORKSET_REGISTRY_FILE if holds_standalone_mark(root) else None
     hits = [
       child
       for child in where.iterdir()
-      if child != where / bootstrap.IGNORE_FILE
+      if child not in (where / bootstrap.IGNORE_FILE, retiring)
       and (
         (root / child.name).exists()
         or (root / child.name).is_symlink()

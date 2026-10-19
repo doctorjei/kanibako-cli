@@ -4418,16 +4418,15 @@ class TestConnectDropsTheStandaloneMarker:
       == {}
     )
 
-  def test_a_linked_marker_file_is_kept_and_the_connect_goes_ahead(
+  def test_a_linked_marker_file_is_no_mark_and_the_connect_refuses(
     self,
     config_file,
     tmp_home,
-    caplog,
+    capsys,
   ):
-    """The root is box-writable, so the edit goes through boxfs, which never follows the
-    link: the link and its target stay, with a warning, and the box is the member."""
+    """The root is box-writable, so the mark is read through boxfs, which never follows the
+    link: the root is an unmarked standalone box, and the link and its target stay."""
     from kanibako.launch import box_resolve
-    from kanibako.settings.paths import DetectionResult
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -4439,20 +4438,13 @@ class TestConnectDropsTheStandaloneMarker:
     (root / "registry.yaml").symlink_to(target)
     before = target.read_text()
 
-    with caplog.at_level("WARNING"):
-      assert self._connect("dm", root) == 0
-
+    assert box_resolve.is_standalone_root(root) is False
+    capsys.readouterr()
+    assert self._connect("dm", root) == 1
+    assert "it is the root of standalone box" in capsys.readouterr().err
     assert (root / "registry.yaml").is_symlink()
     assert target.read_text() == before
-    [warning] = [
-      r.getMessage()
-      for r in caplog.records
-      if "could not remove the standalone marker" in r.getMessage()
-    ]
-    assert "refusing to follow the symlink" in warning
-    assert warning.count(str(root / "registry.yaml")) == 2  # the subject, the link: once each
-    assert _workset_boxes(ws) == {"sb": str(root)}
-    assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(BoxMode.named, root)
+    assert _workset_boxes(ws) == {}
 
   @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the read-only directory")
   def test_a_marker_that_cannot_be_rewritten_is_kept_and_the_connect_goes_ahead(
@@ -4531,8 +4523,8 @@ class TestConnectDropsTheStandaloneMarker:
     caplog,
     damage,
   ):
-    """The replay never raises: an unreadable or looping ``registry.yaml`` mark is kept,
-    with a warning naming it, and the entry still clears, as it did before."""
+    """The replay never raises: an unreadable ``registry.yaml`` mark is kept, with a warning
+    naming it, a looping link is no mark, and the entry still clears either way."""
     from kanibako.launch import journal
     from kanibako.project.workset import load_workset
     from kanibako.settings import paths
@@ -4569,21 +4561,19 @@ class TestConnectDropsTheStandaloneMarker:
         marker.chmod(0o644)
 
     assert journal.pending_import(std.journal, box_key) is None
-    [warning] = [
+    warnings = [
       r.getMessage()
       for r in caplog.records
       if "could not check the standalone marker" in r.getMessage()
     ]
-    assert warning.count(str(marker)) == 1
-    assert "retry" not in warning  # the entry clears, so a retry would drop nothing
-    assert "delete it by hand" in warning
-    assert (
-      f"({os.strerror(errno.EACCES)})"
-      if damage == "unreadable"
-      else f"({os.strerror(errno.ELOOP)})"
-    ) in warning
     if damage == "unreadable":
+      [warning] = warnings
+      assert warning.count(str(marker)) == 1
+      assert "retry" not in warning  # the entry clears, so a retry would drop nothing
+      assert "delete it by hand" in warning
+      assert f"({os.strerror(errno.EACCES)})" in warning
       assert marker.read_text() == before
     else:
+      assert warnings == []  # a link is never the mark (boxfs), so there is nothing to check
       assert marker.is_symlink() and (root / "kept.yaml").read_text() == before
     assert _workset_boxes(ws) == {"sb": str(root)}

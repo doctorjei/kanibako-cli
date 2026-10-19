@@ -7924,8 +7924,8 @@ read-only `meta.workset.registry`, fixed at `<workset root>/registry.yaml`. A st
 marked by that file holding only `__STANDALONE__` (any case, surrounding whitespace ignored), which
 `create --standalone` writes. A `registry: null` line under `workset:` marks nothing any more.
 
-**What happens if you do nothing.** A stored `workset.registry`, in any settings file, stops the
-command with exit 1, naming the file and the cure. kanibako converts nothing for you:
+**What happens if you do nothing.** A stored `workset.registry` stops the command with exit 1, naming
+the file and the cure; a box settings file drops it with a warning. kanibako converts nothing:
 
 ```
 'workset.registry' is RETIRED and is still set in the workset settings file <root>/workset.yaml (as `workset: registry:`). The workset registry is now meta.workset.registry, fixed at <workset root>/registry.yaml, and no file sets it.

@@ -3203,16 +3203,16 @@ def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]],
   deleted keeps its marker, with a warning; the caller goes on.
   """
   from kanibako import boxfs
-  from kanibako.channels.channels import WS_TOKEN_STANDALONE
+  from kanibako.settings.config import is_standalone_mark
 
   path = root / WORKSET_REGISTRY_FILE
   try:
-    old = boxfs.read_text(path, root)
-    if old.strip().casefold() != WS_TOKEN_STANDALONE.casefold():
+    old = boxfs.read_bytes(path, root)
+    if not is_standalone_mark(old):
       return
-    push_undo(lambda: boxfs.write_text(path, root, old))
+    push_undo(lambda: boxfs.write_bytes(path, root, old))
     boxfs.unlink(path, root)
-  except (OSError, UnicodeDecodeError) as exc:
+  except OSError as exc:
     get_logger(__name__).warning(
       "could not remove the standalone marker %s: %s. "
       "The box is the workset's box all the same; delete that file by hand.",

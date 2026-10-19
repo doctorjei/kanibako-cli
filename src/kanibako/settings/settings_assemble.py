@@ -1168,21 +1168,38 @@ _REGISTRY_MIGRATION = (
 )
 
 
+def _absent_registry_file(settings: Path | None) -> Path | None:
+  """The registry file beside the workset file *settings*, when nothing is at that path."""
+  from kanibako import boxfs
+  from kanibako.settings.config import WORKSET_REGISTRY_FILE
+
+  if settings is None:
+    return None
+  registry = settings.parent / WORKSET_REGISTRY_FILE
+  try:
+    boxfs.stat(registry, settings.parent)
+  except FileNotFoundError:
+    return registry
+  except OSError:
+    pass
+  return None
+
+
 def refuse_retired_registry_key(raw: Any, *, level: str, path: Path | None) -> None:
   """RAISE when *raw* stores the retired ``workset.registry``; ``meta.workset.registry`` is fixed.
 
-  A null in a workset file was the standalone marker, so its cure writes the mark instead.
+  A null in a workset file was the standalone marker; its cure writes the mark only where
+  no registry file exists.
   """
   found = _nested_present(raw, ("workset", "registry"))
   if found is _NO_LEAF:
     return
   where = path if path is not None else "<settings>"
   cure = "remove that line"
-  if found is None and level == "workset" and path is not None:
+  mark = _absent_registry_file(path) if found is None and level == "workset" else None
+  if mark is not None:
     from kanibako.channels.channels import WS_TOKEN_STANDALONE
-    from kanibako.settings.config import WORKSET_REGISTRY_FILE
 
-    mark = path.parent / WORKSET_REGISTRY_FILE
     cure = (
       f"that null marked a standalone box, which {mark} now marks by holding only "
       f"{WS_TOKEN_STANDALONE}: write that file, then remove the line"

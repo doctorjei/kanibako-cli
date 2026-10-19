@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from stat import S_ISDIR
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, TypedDict
 from kanibako._atomic import atomic_write_text
@@ -568,35 +569,54 @@ def holds_standalone_mark(workset_root: Path) -> bool:
   return is_standalone_mark_file(workset_root / WORKSET_REGISTRY_FILE)
 
 
-def is_standalone_mark_file(path: Path) -> bool:
-  """True iff the file at *path* holds only the standalone mark (:func:`holds_standalone_mark`)."""
+def is_standalone_mark(raw: bytes) -> bool:
+  """True iff *raw*, a registry file's bytes, is only the standalone mark."""
   from kanibako.channels.channels import WS_TOKEN_STANDALONE
-  from kanibako.utils import is_file_unless_gone, unreadable_path_error
 
-  if not is_file_unless_gone(path):
-    return False
-  try:
-    raw = path.read_bytes()
-  except OSError as exc:
-    raise unreadable_path_error(path, exc) from exc
   return raw.strip().decode("utf-8", "replace").casefold() == WS_TOKEN_STANDALONE.casefold()
 
 
-def write_standalone_mark(workset_root: Path) -> None:
-  """Write the standalone mark as *workset_root*'s registry file.
+def is_standalone_mark_file(path: Path) -> bool:
+  """:func:`holds_standalone_mark` for the file at *path*, read through :mod:`kanibako.boxfs`."""
+  import errno
 
-  🛑 A registry that holds anything else REFUSES: it is a workset's membership.
+  from kanibako import boxfs
+  from kanibako.utils import unreadable_path_error
+
+  try:
+    raw = boxfs.read_bytes(path, path.parent)
+  except boxfs.SymlinkRefusedError:
+    return False
+  except OSError as exc:
+    if exc.errno in (errno.ENOENT, errno.ENOTDIR, errno.EINVAL):
+      return False
+    raise unreadable_path_error(path, exc) from exc
+  return is_standalone_mark(raw)
+
+
+def write_standalone_mark(workset_root: Path) -> None:
+  """Write the standalone mark as *workset_root*'s registry file, through :mod:`kanibako.boxfs`.
+
+  🛑 Anything else at that path REFUSES, untouched.
   """
+  from kanibako import boxfs
   from kanibako.channels.channels import WS_TOKEN_STANDALONE
 
   path = workset_root / WORKSET_REGISTRY_FILE
   if holds_standalone_mark(workset_root):
     return
-  if stat_unless_gone(path) is not None:
-    raise ConfigError(
-      f"{path} is a workset registry, so {workset_root} cannot become a standalone box."
-    )
-  atomic_write_text(path, WS_TOKEN_STANDALONE + "\n")
+  try:
+    st = boxfs.stat(path, workset_root)
+  except FileNotFoundError:
+    boxfs.write_text(path, workset_root, WS_TOKEN_STANDALONE + "\n")
+    return
+  except boxfs.SymlinkRefusedError:
+    what = "a symlink"
+  else:
+    what = "a directory" if S_ISDIR(st.st_mode) else "a file that is not the standalone mark"
+  raise ConfigError(
+    f"{path} is {what}, and a standalone box at {workset_root} needs that path for its mark."
+  )
 
 
 def read_workset_skip_kuid_check(path: Path) -> bool:

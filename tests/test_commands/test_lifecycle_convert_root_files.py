@@ -252,6 +252,26 @@ class TestRootNameCollisions:
       _execute(env, root, ownership="default")
     assert _tree(root) == before
 
+  def test_a_convert_out_lifts_a_users_registry_over_the_retiring_mark(self, env):
+    root = _standalone(env)
+    assert (root / "registry.yaml").read_text() == "__STANDALONE__\n"
+    (root / "workspace" / "registry.yaml").write_text("boxes: {}\n")
+    assert _convert(root, to_default=True) == 0
+    assert (root / "registry.yaml").read_text() == "boxes: {}\n"
+    assert not (root / "workspace").exists()
+
+  def test_a_rollback_puts_the_mark_and_the_users_registry_back(self, env, monkeypatch):
+    root = _standalone(env)
+    (root / "workspace" / "registry.yaml").write_text("boxes: {}\n")
+
+    def boom(*_a, **_k):
+      raise OSError("injected")
+
+    monkeypatch.setattr(_lifecycle, "_apply_ownership_and_markers", boom)
+    assert _convert(root, to_default=True) != 0
+    assert (root / "registry.yaml").read_text() == "__STANDALONE__\n"
+    assert (root / "workspace" / "registry.yaml").read_text() == "boxes: {}\n"
+
   @pytest.mark.parametrize(
     "held, refusal",
     [

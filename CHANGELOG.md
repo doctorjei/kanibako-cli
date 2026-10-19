@@ -522,8 +522,8 @@ migration code.** Four released config surfaces are removed outright
   `box rm <name>` and then `box register <link>`.
 
 - **`workset.registry` is no longer a setting.** The per-workset box registry is the read-only
-  `meta.workset.registry`, fixed at `<workset root>/registry.yaml`. A stored `workset.registry`, in any settings
-  file, stops the command and names the cure.
+  `meta.workset.registry`, fixed at `<workset root>/registry.yaml`. A stored `workset.registry` stops the command,
+  naming the cure; a box settings file drops it with a warning.
 
 - **A standalone box is marked by its root `registry.yaml` holding only `__STANDALONE__`**, written at `create`.
   Detection reads that root's own file, trimmed and case-blind; `box_data/` is not the marker. Deleting the file
@@ -3394,7 +3394,7 @@ migration code.** Four released config surfaces are removed outright
   honors that value; it no longer stores it. `--no-vault`, move, duplicate, and convert are unchanged.
 
 - **`workset create` now refuses a system per-owner value that reaches no working-set identity.** With a
-  plain `workset.vault_rw: /srv/vault` in the system settings file, `kanibako workset create <path>` printed
+  plain `workset.channels.chat: /srv/chat` in the system settings file, `kanibako workset create <path>` printed
   "Created working set …" and exited 0, though `create` refused the same file. It now refuses before
   anything is made or registered, naming the key and the file, as `create` does for `workset.boxes` and
   `workset.logs`. A value anchored with `{meta.workset.path}` still creates.

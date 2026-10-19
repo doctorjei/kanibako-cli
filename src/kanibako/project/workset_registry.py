@@ -42,7 +42,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.project.registry_store import write_registry_doc
 from kanibako.settings.config import WORKSET_REGISTRY_FILE, is_standalone_mark_file
 from kanibako.settings.config_io import load_doc
-from kanibako.errors import LegacyRegistryIdentityError, ProjectError
+from kanibako.errors import LegacyRegistryIdentityError, ProjectError, WorksetError
 from kanibako.utils import is_file_unless_gone, literal_path
 
 
@@ -167,8 +167,18 @@ def load_workset_boxes(registry_path: Path) -> dict[str, str]:
   return boxes
 
 
+def refuse_marked_registry(registry_path: Path) -> None:
+  """Refuse a member for the registry at *registry_path* when it is the standalone mark."""
+  if is_standalone_mark_file(registry_path):
+    raise WorksetError(
+      f"{registry_path} holds only the standalone mark, so {registry_path.parent} is a "
+      f"standalone box's root and takes no members."
+    )
+
+
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None:
   """Register (add or replace) *box_name* → *path* in the ``boxes:`` section."""
+  refuse_marked_registry(registry_path)
   with rmw_lock(registry_path):
     full_doc, boxes = _load_boxes_raw(registry_path)
     path_str = str(path)

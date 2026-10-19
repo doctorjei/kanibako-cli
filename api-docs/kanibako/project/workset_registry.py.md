@@ -17,6 +17,7 @@ _SORTED_SECTIONS = (_BOXES_SECTION,)
 ## Functions
 ```
 def load_workset_boxes(registry_path: Path) -> dict[str, str]
+def refuse_marked_registry(registry_path: Path) -> None
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
 def unregister_workset_box(registry_path: Path, box_name: str) -> None
 def workset_box_path(registry_path: Path, box_name: str) -> str | None

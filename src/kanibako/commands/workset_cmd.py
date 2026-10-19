@@ -40,6 +40,7 @@ from kanibako.utils import confirm_or_abort, literal_path, logical_cwd
 from kanibako.identifiers import derived_name, find_identifier
 from kanibako.project.workset_registry import (
   load_workset_boxes,
+  refuse_marked_registry,
   workset_registry_path,
 )
 from kanibako.project.workset import (
@@ -687,7 +688,7 @@ def run_connect(args: argparse.Namespace) -> int:
 
   try:
     ws = load_workset(registry[stored], stored, early_system=std.early_system)
-    _ = ws.registry_path
+    refuse_marked_registry(ws.registry_path)
   except (WorksetError, SettingsError) as e:
     print(f"Error: {e}", file=sys.stderr)
     return 1
