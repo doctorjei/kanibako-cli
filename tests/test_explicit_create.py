@@ -754,6 +754,41 @@ class TestUnbuiltBoxErrorMessage:
     ) in msg
 
 
+class TestStaleHomeEntry:
+  """195-G: a stale primary entry at $HOME claims every subdir, and the cure is ``box rm``.
+
+  ``create`` refuses a primary box at $HOME, so the rebuild cure would not work there.
+  """
+
+  def test_launch_from_a_home_subdir_names_box_rm_and_the_cure_works(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    from pathlib import Path
+
+    from kanibako.commands.box._parser import run_rm
+    from kanibako.project import workset_registry
+    from kanibako.settings.paths import detect_project_mode
+
+    config, std = _std(config_file)
+    home = Path.home()
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
+    workset_registry.register_workset_box(prim_reg, "jjb", home)
+    sub = home / "myproject"
+    sub.mkdir(parents=True)
+
+    assert _launch(str(sub)) == 1
+    err = capsys.readouterr().err
+    assert "box 'jjb' is registered, but its box directory is gone" in err
+    assert "Remove the stale entry:  kanibako box rm jjb" in err
+    assert "kanibako create" not in err
+    assert not (std.boxes / "jjb").exists()
+
+    # The cure, run as printed: the entry goes, and the subdir no longer resolves to $HOME.
+    assert run_rm(argparse.Namespace(target="jjb", purge=False, force=False)) == 0
+    assert "jjb" not in _primary_boxes(std)
+    assert detect_project_mode(sub, std, config).project_root == sub
+
+
 class _ResolveStop(Exception):
   """Raised by the stubbed materializing resolve: the launch got PAST the gate."""
 

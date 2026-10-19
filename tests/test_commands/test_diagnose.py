@@ -443,6 +443,46 @@ class TestSystemDiagnoseJournal:
     assert "[ok] Journal: no in-flight operations" in out
 
 
+class TestSystemDiagnoseStaleEntries:
+  """195-G: `diagnose` lists registered primary boxes whose box directory is gone."""
+
+  def test_lists_stale_entries_only(self, config_file, tmp_home, credentials_dir, capsys) -> None:
+    from kanibako.errors import ContainerError
+    from kanibako.project import workset_registry
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+
+    std = load_std_paths(load_config(config_file))
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
+    workset_registry.register_workset_box(prim_reg, "gone", tmp_home / "gone")
+    workset_registry.register_workset_box(prim_reg, "here", tmp_home / "here")
+    (std.boxes / "here").mkdir(parents=True)
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      rc = run_system_diagnose(argparse.Namespace())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert (
+      f"[!!] Registry: 'gone' at {tmp_home / 'gone'} has no box directory "
+      f"({std.boxes / 'gone'}) -- remove it:  kanibako box rm gone"
+    ) in out
+    assert "'here'" not in out
+
+  def test_clean_when_every_primary_entry_has_its_box(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ) -> None:
+    from kanibako.errors import ContainerError
+
+    with patch(
+      "kanibako.runtime.container.ContainerRuntime",
+      side_effect=ContainerError("none"),
+    ):
+      assert run_system_diagnose(argparse.Namespace()) == 0
+    assert "[ok] Registry: no stale primary entries" in capsys.readouterr().out
+
+
 class TestCheckImage:
   def test_check_image_found(self) -> None:
     """Image available locally returns ok."""

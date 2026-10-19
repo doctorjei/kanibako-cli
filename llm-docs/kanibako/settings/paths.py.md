@@ -1026,7 +1026,7 @@ Detection order:
    first, then the root itself).
 4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
    (`_find_local_ancestor` → `load_primary_boxes`); deepest registered path that is an ancestor of
-   *project_dir* wins. Requires `boxes/{name}/` to exist on disk.
+   *project_dir* wins. Membership alone decides: an entry with no `boxes/{name}/` still claims.
 5. **Walk ancestors for on-disk markers** — at each level, a standalone marker (vetted, never
    registered), then a workset skeleton (an unregistered one is IMPORTED — see
    `kanibako.project.import_reconcile`).

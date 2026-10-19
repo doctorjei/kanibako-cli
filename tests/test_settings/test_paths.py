@@ -1054,22 +1054,22 @@ class TestFindLocalAncestor:
     result = _find_local_ancestor(target.resolve(), std)
     assert result == inner.resolve()
 
-  def test_name_scan_ignores_stale_entry_without_boxes_dir(
+  def test_name_scan_claims_stale_entry_without_boxes_dir(
     self,
     config_file,
     tmp_home,
   ):
-    """Name points to a path but no boxes/{name}/ dir exists → ignored."""
+    """Membership alone decides (195th, AS): no boxes/{name}/ dir still claims the path."""
     config = load_config(config_file)
     std = load_std_paths(config)
 
     project = tmp_home / "myproject"
-    project.mkdir()
+    (project / "sub").mkdir(parents=True)
     _reg_primary(std, "myproject", str(project))
     # Intentionally do NOT create boxes/myproject/
 
-    result = _find_local_ancestor(project.resolve(), std)
-    assert result is None
+    assert _find_local_ancestor(project.resolve(), std) == project.resolve()
+    assert _find_local_ancestor((project / "sub").resolve(), std) == project.resolve()
 
   def test_name_scan_exact_match(self, config_file, tmp_home, credentials_dir):
     """CWD equals registered path exactly → matches."""

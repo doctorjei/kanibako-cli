@@ -8,7 +8,7 @@ from pathlib import Path
 
 from kanibako.errors import DerivedBoxNameError, KanibakoError
 from kanibako.launch.box_identity import box_name_cure
-from kanibako.settings.paths import refuse_derived_box_name
+from kanibako.settings.paths import load_primary_boxes, refuse_derived_box_name
 from kanibako.targets.base import _validate_agent_binary
 from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 
@@ -354,6 +354,28 @@ def _check_journal(std, box_key: str | None = None) -> list[tuple[str, str]]:
   return lines
 
 
+def _check_stale_entries(std) -> list[tuple[str, str]]:
+  """List primary entries whose box directory is gone (195-G).
+
+  Detection decides by membership alone, so a stale entry still claims its workspace and every
+  subdir, and the launch refuses it.  One ``!!`` line per entry, or a single clean line.
+  """
+  try:
+    entries = load_primary_boxes(std.primary_workset)
+  except Exception:
+    return [("--", "cannot read the primary registry")]
+  lines = [
+    (
+      "!!",
+      f"'{name}' at {path} has no box directory ({std.boxes / name}) -- "
+      f"remove it:  kanibako box rm {shlex.quote(name)}",
+    )
+    for name, path in sorted(entries.items())
+    if not (std.boxes / name).is_dir()
+  ]
+  return lines or [("ok", "no stale primary entries")]
+
+
 def _check_storage(data_path: Path) -> tuple[str, str]:
   """Check available disk space at the data path."""
   try:
@@ -631,6 +653,13 @@ def run_system_diagnose(args: object) -> int:
     _report_settings_error("Journal", std_err, errors)
   else:
     print(_format_check("--", "Journal", "cannot check"))
+
+  # Registered primary boxes whose box directory is gone (195-G).
+  if std is not None:
+    for status, detail in _check_stale_entries(std):
+      print(_format_check(status, "Registry", detail))
+  else:
+    print(_format_check("--", "Registry", "cannot check"))
 
   # VS Code "Attach to Running Container" host prerequisites (feature #1).
   # This is a HOST-side prerequisite (does the operator's machine have the
