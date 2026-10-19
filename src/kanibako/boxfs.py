@@ -889,10 +889,8 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
     absent = not _lexists(dst, dst_root)
     try:
       skipped = copy_tree(src, dst, src_root=root, dst_root=dst_root)
-    except (FileExistsError, SymlinkRefusedError):
-      raise  # refused before anything was made: *dst* is not ours to remove
     except BaseException:
-      if absent:
+      if absent:  # else *dst* is not ours to remove
         _drop_partial(dst, dst_root)
       raise
     if skipped:

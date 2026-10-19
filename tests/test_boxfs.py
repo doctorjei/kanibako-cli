@@ -990,3 +990,27 @@ def test_rename_across_devices_leaves_a_link_at_dst_it_did_not_make(tree, exdev,
   assert os.readlink(outside / "b") == str(aim)
   assert sentinel.read_text() == "host data"
   assert (root / "a" / "b" / "f").read_text() == "x"
+
+
+def test_rename_across_devices_drops_its_partial_tree_on_a_mid_copy_swap(tree, exdev, monkeypatch):
+  root, outside, sentinel = tree
+  (root / "a" / "b" / "sub").mkdir()
+  (root / "a" / "b" / "f").write_text("x")
+  dst_root = outside / "D"
+  dst_root.mkdir()
+  real_open = boxfs._open_dir_at
+
+  def swap(name, dir_fd, path, shown, create):
+    sub = root / "a" / "b" / "sub"
+    if name == "sub" and path == sub and not sub.is_symlink():
+      sub.rmdir()
+      sub.symlink_to(outside)  # the box swaps an inner dir for a link mid-copy
+    return real_open(name, dir_fd, path, shown, create)
+
+  monkeypatch.setattr(boxfs, "_open_dir_at", swap)
+  with pytest.raises(SymlinkRefusedError):
+    boxfs.rename(root / "a" / "b", dst_root / "b", root, dst_root=dst_root, across_devices=True)
+  assert not os.path.lexists(dst_root / "b")
+  assert (root / "a" / "b" / "f").read_text() == "x"
+  assert sentinel.read_text() == "host data"
+  assert sorted(os.listdir(outside)) == ["D", "secret"]
