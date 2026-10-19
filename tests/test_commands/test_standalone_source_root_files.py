@@ -20,7 +20,7 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.settings.paths import BoxMode, load_std_paths, resolve_standalone_project
-from kanibako.utils import write_project_gitignore
+from kanibako.utils.files import write_gitignore
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def _standalone(env, leaf="sa"):
   root = tmp_home / leaf
   root.mkdir()
   resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
-  write_project_gitignore(root)  # as ``create --standalone`` does
+  write_gitignore(root)  # as ``create --standalone`` does
   return root
 
 
@@ -169,7 +169,7 @@ class TestAnInterruptBeforeTheStripNamesTheGitignore:
     def boom(*_a, **_kw):
       raise KeyboardInterrupt()
 
-    monkeypatch.setattr(lc, "strip_project_gitignore", boom)
+    monkeypatch.setattr(lc, "strip_gitignore", boom)
     capsys.readouterr()
     with pytest.raises(KeyboardInterrupt):
       _run(env, root, TargetSpec(location=env[2] / "moved", ownership="standalone"))

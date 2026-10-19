@@ -642,7 +642,7 @@ def _duplicate_to_standalone(
     standalone_box_store,
     write_vault_gitignore,
   )
-  from kanibako.utils import write_project_gitignore
+  from kanibako.utils.files import write_gitignore
 
   dst_metadata = standalone_box_store(new_path, early=_early_scope(std, BoxMode.standalone))
   dst_shell = dst_metadata / "home"
@@ -724,7 +724,7 @@ def _duplicate_to_standalone(
     register=register,
   )
 
-  write_project_gitignore(new_path)
+  write_gitignore(new_path)
 
   # Vaults do not travel; the copy gets an empty one, as ``create`` lays it (Jei's rulings
   # of 2026-08-27 and 197-DV).  Do NOT "fix" this by copying the source's vault across.
