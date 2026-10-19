@@ -113,17 +113,19 @@ from kanibako.utils import (
   box_container,
   box_container_named,
   container_name_for,
-  gitignore_holds_only_kanibako,
   literal_path,
   is_dir_unless_gone,
   is_home_dir,
   logical_cwd,
-  project_gitignore_to_strip,
   refuse_unreadable_file,
   short_hash,
   stat_unless_gone,
-  strip_project_gitignore,
-  write_project_gitignore,
+)
+from kanibako.utils.files import (
+  gitignore_holds_only_kanibako,
+  gitignore_to_strip,
+  strip_gitignore,
+  write_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -2071,7 +2073,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
       # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
       # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
       if _state.get("gitignore"):
-        write_project_gitignore(proj.metadata_path)
+        write_gitignore(proj.metadata_path)
         if _box_wrote is not None:
           _box_wrote(IGNORE_FILE)
 
@@ -2799,7 +2801,7 @@ def _standalone_purge_plan(
   # later failure makes the retry resolve composed DEFAULTS: a kept-and-named folder
   # becomes "kanibako's own skeleton".
   settings_file = root / WORKSET_META_FILE
-  gitignore = project_gitignore_to_strip(root)
+  gitignore = gitignore_to_strip(root)
   if gitignore is not None and gitignore_holds_only_kanibako(gitignore):
     steps.append(
       _PurgeStep(_GITIGNORE, ".gitignore (it holds only kanibako's line)", gitignore, gated=True)
@@ -2960,7 +2962,7 @@ def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool:
       )
       continue
     if step.kind == _GITIGNORE:
-      if strip_project_gitignore(step.path):
+      if strip_gitignore(step.path):
         print(
           f"Removed kanibako's line in {step.path}"
           if step.path.exists()

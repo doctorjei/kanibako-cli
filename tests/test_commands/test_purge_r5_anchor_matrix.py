@@ -33,7 +33,7 @@ from kanibako.settings.paths import (
   standalone_box_store,
 )
 from kanibako.snapshots import box_snapshot_store
-from kanibako.utils import project_gitignore_to_strip, write_project_gitignore
+from kanibako.utils.files import gitignore_to_strip, write_gitignore
 
 
 # --------------------------------------------------------------------------- #
@@ -250,11 +250,11 @@ class TestStandaloneLaterStepFailure:
     assert anchor.is_dir(), "setup: a created standalone has a box_data/ anchor"
 
     if step == "gitignore":
-      write_project_gitignore(root)
-      assert project_gitignore_to_strip(root) is not None, (
+      write_gitignore(root)
+      assert gitignore_to_strip(root) is not None, (
         "setup: no kanibako gitignore line, so the step is unreachable"
       )
-      st = _fail_callable(monkeypatch, "kanibako.commands.box._parser.strip_project_gitignore")
+      st = _fail_callable(monkeypatch, "kanibako.commands.box._parser.strip_gitignore")
     elif step == "canon":
       st = _fail_one_path(monkeypatch, root / "canon")
     elif step == "leftover_canon":
