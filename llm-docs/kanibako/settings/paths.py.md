@@ -1232,11 +1232,12 @@ The per-workset registry's `boxes:` membership is the SOLE authoritative name �
 (D1b/D3-auth): when *project_name* is registered, its REGISTERED path IS the workspace — the
 EXTERNAL dir for a connected box, `workspaces/<name>` for an in-tree box, and the path of the
 composition it was registered under for a member registered before a `workset.workspaces` repoint
-(re-deriving that member from the CURRENT composition would strand it). An UNREGISTERED member
-(a fresh `initialize` create) falls back to the composed default, with the `box_resolve` identity
-derivation kept for any residual override. Under a null
-`workset.workspaces` there is no default to compose, so an unregistered member raises
-`WorksetError` (`ERR_WORKSET_NULL_WORKSPACES`); a registered one resolves to its registered path.
+(re-deriving that member from the CURRENT composition would strand it). Only a create's
+pre-flight probe passes a member not yet registered (`box/_parser.py` adds it to `project_names`;
+`add_project` registers it before the materializing call); it gets the composed default, with the
+`box_resolve` identity derivation kept for any residual override. Under a null `workset.workspaces`
+it raises `WorksetError` (`ERR_WORKSET_NULL_WORKSPACES`); a registered member resolves to its
+registered path.
 
 ### Home, vault, and `enable_vault` in the NAMED resolver
 
@@ -1332,8 +1333,7 @@ dir).
 The per-workset `boxes:` membership is loaded ONCE per workset — the authoritative name → workspace
 store. Workspace presence is checked at the REGISTERED path when the member is registered: a member
 registered under an earlier composition (before a `workset.workspaces` repoint) would otherwise
-read as "missing" and vanish from `list`. An unregistered member falls back to the composed
-location.
+read as "missing" and vanish from `list`.
 
 ```python
 def _find_workset_for_path(

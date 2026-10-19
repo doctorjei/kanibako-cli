@@ -2589,8 +2589,8 @@ def resolve_workset_project(
   project_dir = ws.projects_dir / project_name
   metadata_path = project_dir
 
-  # Workspace override (P7/D10): the REGISTERED path IS the workspace; unregistered
-  # members fall back to the composed default.  ⚑ Never re-derive a registered member.
+  # Workspace override (P7/D10): the REGISTERED path IS the workspace; a member not yet
+  # registered (create's pre-flight probe) is composed.  ⚑ Never re-derive a registered member.
   project_toml, workset_toml = _box_settings_files(BoxMode.named, metadata_path, ws)
   ws_early = _early_scope(std, BoxMode.primary if ws.is_default else BoxMode.named, ws.name)
   registered_workspace = _workset_box_workspace_for_name(ws.root, project_name)
