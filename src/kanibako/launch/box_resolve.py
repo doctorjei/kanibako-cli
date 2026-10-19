@@ -437,19 +437,33 @@ def detect_box_mode(
   # its marker is that box, broken (D4 state 3), never "not a box" with a create cure.
   # It resolves nameless, so the launch gate refuses it naming the file (D5).
   # 3. Else an in-place settings file.
-  if registry_store.standalone_name_for_root(
-    std.registry, literal
-  ) is not None or is_standalone_root(literal):
-    import_reconcile.check_standalone(
-      std.registry, literal, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
+  # ⚑ An ancestor counts by its mark alone, as in the treewalk: the registry asks AT the path.
+  def standalone_at(root: Path, *, registry: bool) -> bool:
+    registered = (
+      registry and registry_store.standalone_name_for_root(std.registry, root) is not None
     )
+    if not registered and not is_standalone_root(root):
+      return False
+    import_reconcile.check_standalone(
+      std.registry, root, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
+    )
+    return True
+
+  if standalone_at(literal, registry=True):
     return DetectionResult(BoxMode.standalone, literal)
 
-  # 4. Under an external member, a primary box (as in step 1) holds its subdirs unless a
-  # deeper member does.
+  # 4. Under an external member, the nearest box holds a subdir: a marked standalone root
+  # as in step 3, or a primary box as in step 1, unless the member is as deep.
   if space != _PRIMARY_WORKSET_NAME and not _under_a_named_root(literal, std):
     ancestor = _find_local_ancestor(literal, std)
     member = find_connected_member(literal, std)
+    if member is not None:
+      floor = max(len(member.box_path.parts), len(ancestor.parts) if ancestor else 0)
+      current = literal.parent
+      while len(current.parts) > floor:
+        if standalone_at(current, registry=False):
+          return DetectionResult(BoxMode.standalone, current)
+        current = current.parent
     if ancestor is not None and (
       member is None or len(ancestor.parts) > len(member.box_path.parts)
     ):
