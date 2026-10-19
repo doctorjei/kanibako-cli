@@ -4521,10 +4521,14 @@ def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
     mode = stat.S_IMODE(st.st_mode)
     if mode & stat.S_IWUSR or st.st_uid != os.getuid():
       mode = None
-  landed = dst / src.name if dst.is_dir() else dst
+  # A link at *dst* is never followed: one to a directory is an occupied landing.
+  linked = dst.is_symlink()
+  landed = dst / src.name if dst.is_dir() and not linked else dst
   try:
     if mode is not None:
       os.chmod(src, mode | stat.S_IWUSR)
+    if linked and dst.is_dir():
+      raise shutil.Error(f"Destination path '{dst}' already exists")
     if landed != dst and landed.exists():
       raise shutil.Error(f"Destination path '{landed}' already exists")
     try:
@@ -5294,9 +5298,14 @@ def _relocate_channel_partition(
     )
     return
 
-  for src_dir, dst_dir, label in (
-    (src.mailbox, dst.mailbox, "mailbox"),
-    (src.share_global, dst.share_global, "share"),
+  def _seam_root(path: Path, base: Path | None) -> Path:
+    # The system channel dir when *path* is under it, so a link a box planted at
+    # ``<ws>`` is refused, never followed; a repoint elsewhere roots at its parent.
+    return base if base is not None and base in path.parents else path.parent
+
+  for src_dir, dst_dir, label, base in (
+    (src.mailbox, dst.mailbox, "mailbox", std.channels_mailboxes),
+    (src.share_global, dst.share_global, "share", std.channels_share),
   ):
     if src_dir is None or dst_dir is None:
       # ⚑ A NULL PARTITION KEY IS AN ADDRESS THAT DOES NOT EXIST — the same fact as
@@ -5313,8 +5322,11 @@ def _relocate_channel_partition(
           file=sys.stderr,
         )
         continue
-      dst_dir.parent.mkdir(parents=True, exist_ok=True)
-      boxfs.rename(src_dir, dst_dir, src_dir.parent, dst_root=dst_dir.parent, across_devices=True)
+      src_root, dst_root = _seam_root(src_dir, base), _seam_root(dst_dir, base)
+      dst_root.mkdir(parents=True, exist_ok=True)
+      if dst_dir.parent != dst_root:
+        boxfs.mkdir(dst_dir.parent, dst_root, parents=True, exist_ok=True)
+      boxfs.rename(src_dir, dst_dir, src_root, dst_root=dst_root, across_devices=True)
     except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
       print(
         f"Warning: could not relocate channel {label} ({src_dir} -> {dst_dir}): {e}",

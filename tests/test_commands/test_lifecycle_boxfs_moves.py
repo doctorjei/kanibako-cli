@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import os
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -96,7 +97,8 @@ def test_channel_partition_crosses_devices(tmp_path, monkeypatch, exdev):
     lc, "_own_partition", lambda *a: SimpleNamespace(mailbox=new_mb, share_global=None)
   )
   old, new = SimpleNamespace(name="b"), SimpleNamespace(name="b2")
-  lc._relocate_channel_partition(old, new, None, None)  # type: ignore[arg-type]
+  std = SimpleNamespace(channels_mailboxes=None, channels_share=None)
+  lc._relocate_channel_partition(old, new, std, None)  # type: ignore[arg-type]
   assert exdev == ["b"]
   assert (new_mb / "msg.md").read_text() == "hi\n"
   assert not old_mb.exists()
@@ -111,3 +113,42 @@ def test_move_entry_replaces_a_dangling_link_at_the_landing(tmp_path):
   landed = root / "workspace" / "d" / "f"
   assert not landed.is_symlink() and landed.read_text() == "x"
   assert not os.path.lexists(root / "f")
+
+
+def test_channel_partition_refuses_a_box_planted_link_at_the_workset_dir(
+  tmp_path, monkeypatch, capsys
+):
+  mailboxes, host = tmp_path / "mailboxes", tmp_path / "hostdir"
+  (mailboxes / "ws-b").mkdir(parents=True)
+  (host / "b").mkdir(parents=True)
+  (host / "b" / "private").write_text("P")
+  (mailboxes / "ws-a").symlink_to(host)
+  old_mb, new_mb = mailboxes / "ws-a" / "b", mailboxes / "ws-b" / "b"
+  tokens = iter(["ws-a", "ws-b"])
+  monkeypatch.setattr(lc, "_state_ws_token", lambda st: next(tokens))
+  monkeypatch.setattr(
+    lc, "_old_partition", lambda *a: SimpleNamespace(mailbox=old_mb, share_global=None)
+  )
+  monkeypatch.setattr(
+    lc, "_own_partition", lambda *a: SimpleNamespace(mailbox=new_mb, share_global=None)
+  )
+  std = SimpleNamespace(channels_mailboxes=mailboxes, channels_share=None)
+  old, new = SimpleNamespace(name="b"), SimpleNamespace(name="b")
+  lc._relocate_channel_partition(old, new, std, None)  # type: ignore[arg-type]
+  assert "could not relocate channel mailbox" in capsys.readouterr().err
+  assert os.listdir(host) == ["b"] and (host / "b" / "private").read_text() == "P"
+  assert not os.path.lexists(new_mb)
+
+
+def test_move_entry_refuses_a_link_to_a_directory_at_dst(tmp_path):
+  root, host = tmp_path / "root", tmp_path / "host"
+  (root / "ws").mkdir(parents=True)
+  (root / "foo").mkdir()
+  (root / "foo" / "data").write_text("D")
+  host.mkdir()
+  (root / "ws" / "foo").symlink_to(host)
+  with pytest.raises(shutil.Error, match="already exists"):
+    lc._move_entry(root / "foo", root / "ws" / "foo", root=root)
+  assert list(host.iterdir()) == []
+  assert (root / "foo" / "data").read_text() == "D"
+  assert os.readlink(root / "ws" / "foo") == str(host)
