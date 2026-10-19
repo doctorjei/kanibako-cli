@@ -1366,7 +1366,7 @@ kind = "code-patterns"
   [[registry.entry]]
   id = "unreadable_path_error"
   antipatterns = ['could not be read \(\{exc\.strerror\}\)']
-  home = ["src/kanibako/utils.py", "src/kanibako/settings/config_io.py"]
+  home = ["src/kanibako/utils/__init__.py", "src/kanibako/settings/config_io.py"]
   note = "an unreachable path is refused through utils.unreadable_path_error"
 
   # ⚑ A PROXY, WIDER THAN THE DEFECT. The defect was a packaged-YAML loader
