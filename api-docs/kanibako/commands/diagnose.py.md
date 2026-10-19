@@ -25,6 +25,7 @@ def _check_image(config: object) -> tuple[str, str]
 def _resolved_shell_detail(config, std, runtime, image) -> str
 def _check_agents(config=None, std=None, runtime=None, image=None) -> list[tuple[str, str, str]]
 def _check_journal(std, box_key: str | None=None) -> list[tuple[str, str]]
+def _check_stale_entries(std) -> list[tuple[str, str]]
 def _check_storage(data_path: Path) -> tuple[str, str]
 def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]
 def _check_vscode(config_home: Path | None=None) -> list[tuple[str, str, str]]

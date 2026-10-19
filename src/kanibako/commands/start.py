@@ -127,6 +127,7 @@ from kanibako.utils import (
   box_labels,
   container_name_for,
   container_name_segments,
+  is_home_dir,
   legacy_container_names,
   literal_path,
   logical_cwd,
@@ -2114,6 +2115,9 @@ def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
       f"{shlex.quote(proj.name)}"
       f" && kanibako workset connect {ws} {workspace}"
     )
+  elif proj.project_path is not None and is_home_dir(proj.project_path):
+    # 195-G: ``create`` refuses a primary box at $HOME, and the entry claims every subdir.
+    cure = f"  Remove the stale entry:  kanibako box rm {shlex.quote(label)}"
   else:
     cure = f"  Rebuild it:  kanibako create {workspace}"
   return head + cure

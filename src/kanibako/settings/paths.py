@@ -2058,18 +2058,18 @@ def _init_project(
 
 
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
-  """Find the deepest registered default-mode project that is an ancestor of *target*."""
-  boxes_dir = std.boxes
+  """Find the deepest registered default-mode project that is an ancestor of *target*.
+
+  Membership alone decides: a registered box whose box directory is gone still claims its
+  workspace, and the launch refuses it (``start._unbuilt_box_error``).
+  """
   best: Path | None = None
   best_depth = -1
-  for name, path_str in load_primary_boxes(std.primary_workset).items():
+  for path_str in load_primary_boxes(std.primary_workset).values():
     registered = Path(path_str)
     try:
       target.relative_to(registered)
     except ValueError:
-      continue
-    # Only accept if boxes_dir/{name}/ exists on disk.
-    if not (boxes_dir / name).is_dir():
       continue
     depth = len(registered.parts)
     if depth > best_depth:

@@ -345,10 +345,10 @@ class TestDetectionFalsePositives:
 
 
 class TestStalePrimaryWorksetBoxListSafety:
-  """A stale default-workset box-list entry pointing at $HOME must not trigger local detection."""
+  """A stale default-workset box-list entry at $HOME claims its subdirs (195th, AS)."""
 
-  def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
-    """Stale entry at $HOME (no boxes dir) → detection falls through to default."""
+  def test_stale_home_entry_claims_subdirs(self, config_file, tmp_home):
+    """Stale entry at $HOME (no boxes dir) → detection names $HOME; the launch refuses it."""
     config = load_config(config_file)
     std = load_std_paths(config)
     home = tmp_home / "home"  # $HOME set by fixture
@@ -366,8 +366,8 @@ class TestStalePrimaryWorksetBoxListSafety:
     project_dir.mkdir(parents=True, exist_ok=True)
     result = detect_project_mode(project_dir.resolve(), std, config)
 
-    # Should fall through to the default mode at project_dir, NOT match $HOME.
-    assert result.project_root == project_dir.resolve()
+    # Membership alone decides: the stale entry claims the subdir.
+    assert result.project_root == home.resolve()
     assert result.mode is BoxMode.primary
 
 

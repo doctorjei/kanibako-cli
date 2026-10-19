@@ -215,8 +215,9 @@ inside boxes. In order of likely impact:
     the registration intact and the box directory gone, `kanibako start` used to silently re-create
     and re-seed it. It now refuses and prints the command that rebuilds it
     (`kanibako create <workspace>`, or `workset disconnect`
-    + `workset connect` for a workset member). In the same section: `kanibako box set
-    box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
+    + `workset connect` for a workset member). A stale registration now claims its workspace's
+    subdirectories too; at `$HOME` the cure is `kanibako box rm <name>`. In the same section:
+    `kanibako box set box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
     settings file for a box that does not exist.
 
 18. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
@@ -1476,6 +1477,13 @@ rebuilds the box in place and keeps its registration. For a **workset member** t
 `kanibako workset disconnect <workset> <box> && kanibako workset connect <workset> <workspace>`
 (`create` refuses inside a workset member with "project already initialized"); the message prints
 the right one for the box you are launching.
+
+**A stale registration claims its subdirectories.** Detection used to skip a registered primary box
+whose box directory was gone, so a launch from inside its workspace resolved to the subdirectory.
+Membership alone decides now: the stale box claims its workspace and every subdirectory, and the
+launch refuses it with the error above. When that workspace is `$HOME`, where `create` refuses a
+primary box, the cure line is `Remove the stale entry:  kanibako box rm <name>`.
+`kanibako system diagnose` lists stale primary entries on its `Registry` line.
 
 ⚑ **Check scripts and cleanup jobs that delete box directories** and rely on the next `start` to
 put them back — they now need the explicit rebuild command. A dedicated `repair` verb is planned;
