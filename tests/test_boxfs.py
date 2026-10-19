@@ -977,3 +977,16 @@ def test_rename_across_devices_refuses_a_parent_link_on_either_side(tree, exdev)
   assert exdev == []
   assert (root / "a" / "f").read_text() == "x"
   assert sentinel.read_text() == "host data" and not (outside / "f").exists()
+
+
+@pytest.mark.parametrize("target", ["live", "dangling"])
+def test_rename_across_devices_leaves_a_link_at_dst_it_did_not_make(tree, exdev, target):
+  root, outside, sentinel = tree
+  (root / "a" / "b" / "f").write_text("x")
+  aim = outside if target == "live" else outside / "nowhere"
+  (outside / "b").symlink_to(aim)
+  with pytest.raises(SymlinkRefusedError):
+    boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
+  assert os.readlink(outside / "b") == str(aim)
+  assert sentinel.read_text() == "host data"
+  assert (root / "a" / "b" / "f").read_text() == "x"

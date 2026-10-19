@@ -55,6 +55,7 @@ def _remove_at(name: str, dir_fd: int, shown: Path, st: os.stat_result | None=No
 def _forced(remove: Callable[[], None], path: Path, root: Path, force: bool) -> None
 def _chmod_fd(fd: int, mode: int, path: Path) -> None
 def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSError) -> None
+def _lexists(path: Path, root: Path) -> bool
 def _drop_partial(dst: Path, dst_root: Path) -> None
 ```
 

@@ -886,12 +886,14 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
           (fst.st_atime_ns, fst.st_mtime_ns),
         )
   elif _st.S_ISDIR(st.st_mode):
+    absent = not _lexists(dst, dst_root)
     try:
       skipped = copy_tree(src, dst, src_root=root, dst_root=dst_root)
-    except FileExistsError:
-      raise  # *dst* is not ours to remove
+    except (FileExistsError, SymlinkRefusedError):
+      raise  # refused before anything was made: *dst* is not ours to remove
     except BaseException:
-      _drop_partial(dst, dst_root)
+      if absent:
+        _drop_partial(dst, dst_root)
       raise
     if skipped:
       _drop_partial(dst, dst_root)
@@ -906,6 +908,16 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
   else:
     raise refused
   unlink(src, root)
+
+
+def _lexists(path: Path, root: Path) -> bool:
+  """Whether anything, a link included, is at *path*; a missing parent is False."""
+  try:
+    with _parent(path, root) as (pfd, leaf):
+      os.stat(leaf, dir_fd=pfd, follow_symlinks=False)
+  except FileNotFoundError:
+    return False
+  return True
 
 
 def _drop_partial(dst: Path, dst_root: Path) -> None:
