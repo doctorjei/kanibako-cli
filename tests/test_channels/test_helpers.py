@@ -245,7 +245,7 @@ class TestHelperNumberIO:
 
   def test_a_looped_document_gets_the_loop_cure_not_the_permission_one(self, tmp_path):
     from kanibako.errors import ConfigError
-    from kanibako.project.workset import CANON_SYMLINK_LOOP_WHY
+    from kanibako.settings.messages import CANON_SYMLINK_LOOP_WHY
 
     path = tmp_path / "spawn.yaml"
     path.symlink_to(path)

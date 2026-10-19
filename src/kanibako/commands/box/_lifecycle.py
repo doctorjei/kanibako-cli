@@ -63,6 +63,7 @@ from kanibako.errors import (
   WorksetError,
 )
 from kanibako.settings.messages import (
+  CANON_SYMLINK_LOOP_WHY,
   CURE_MOVED_LEAF_NOT_ASCII,
   ERR_LOOP_LANDING,
   ERR_LOOP_SOURCE,
@@ -158,7 +159,6 @@ from kanibako.project.workset import (
   _symlink_loop,
   _resolved_unless_loop,
   SYMLINK_LOOP_WHY,
-  CANON_SYMLINK_LOOP_WHY,
   _Unwind,
   _note_unwind_errors,
   _note_unwind_incomplete as _note_rollback_incomplete,

@@ -19,7 +19,7 @@ import enum
 import re
 import shlex
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from kanibako import kuid
@@ -39,6 +39,14 @@ from kanibako.settings.messages import (
   ERR_DERIVED_BOX_NAME,
   ERR_LEAF_NOT_ASCII,
   NAME_CHARSET,
+)
+from kanibako.utils import (
+  legacy_workset_cure,
+  legacy_workset_reason,
+  literal_path,
+  rename_box_cure,
+  renders_no_name,
+  workset_renders_no_name,
 )
 
 # Maximum length of the sanitized leaf component.
@@ -176,6 +184,36 @@ def box_name_cure(command: str, name: str) -> str:
     cure = CURE_BOX_NAME_ASCII if is_ascii else CURE_BOX_NAME_UNDERSCORE
     return cure % f"{command} --name {shlex.quote(spelled)}"
   return CURE_DERIVED_BOX_NAME % f"{command} --name <new-name>"
+
+
+def unrenderable_box_name_refusal(
+  box: str,
+  mode: str,
+  path: Path | None,
+  designation: str | None,
+  *,
+  workset: str | None = None,
+  taken: Callable[[str], bool] | None = None,
+  connected: str | None = None,
+) -> str:
+  """The refusal ``start`` and ``stop`` print for a box that renders no name.
+
+  The cure names the box by PATH, never by *box* (a leading ``-`` reads as a flag):
+  its project *path*, else the *designation* that reached it.  A box whose own name
+  renders but whose *workset* segment is a legacy name is refused for the workset."""
+  where = path if path is not None else Path(literal_path(designation or "."))
+  if not renders_no_name(box) and workset is not None and workset_renders_no_name(workset):
+    return (
+      f"Error: box '{box}' has no container name: {legacy_workset_reason(workset)}. "
+      f"Move the box to a workset with a valid name, then try again:\n"
+      f"{legacy_workset_cure(workset, where)}"
+    )
+  reason = box_name_reason(box)
+  return (
+    f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
+    f"name, then try again:\n"
+    f"  {rename_box_cure(mode, where, box, taken, connected)}"
+  )
 
 
 def sanitize_cap(leaf: str) -> str:

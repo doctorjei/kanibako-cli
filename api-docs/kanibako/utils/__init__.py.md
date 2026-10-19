@@ -31,7 +31,6 @@ def workset_renders_no_name(workset: str) -> bool
 def rename_box_cure(mode: str, path: Path, name: str | None=None, taken: Callable[[str], bool] | None=None, connected: str | None=None) -> str
 def legacy_workset_reason(workset: str) -> str
 def legacy_workset_cure(workset: str, where: Path) -> str
-def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None, designation: str | None, *, workset: str | None=None, taken: Callable[[str], bool] | None=None, connected: str | None=None) -> str
 def workset_segment(mode: str, group_name: str | None) -> str
 def render_container_name(workset: str, box: str, helper_num: int | None=None) -> str | None
 def render_socket_identity(box: str, workset: str) -> str | None
