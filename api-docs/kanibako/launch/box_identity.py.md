@@ -27,6 +27,7 @@ def box_name_reason(name: str) -> str | None
 def validate_box_name(name: str) -> None
 def name_spelling(name: str) -> tuple[str, bool] | None
 def box_name_cure(command: str, name: str) -> str
+def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None, designation: str | None, *, workset: str | None=None, taken: Callable[[str], bool] | None=None, connected: str | None=None) -> str
 def sanitize_cap(leaf: str) -> str
 def is_canonical_standalone_name(name: str) -> bool
 def standalone_kuid(name: str) -> str

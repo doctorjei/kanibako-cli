@@ -176,38 +176,6 @@ def legacy_workset_cure(workset: str, where: Path) -> str:
   )
 
 
-def unrenderable_box_name_refusal(
-  box: str,
-  mode: str,
-  path: Path | None,
-  designation: str | None,
-  *,
-  workset: str | None = None,
-  taken: Callable[[str], bool] | None = None,
-  connected: str | None = None,
-) -> str:
-  """The refusal ``start`` and ``stop`` print for a box that renders no name.
-
-  The cure names the box by PATH, never by *box* (a leading ``-`` reads as a flag):
-  its project *path*, else the *designation* that reached it.  A box whose own name
-  renders but whose *workset* segment is a legacy name is refused for the workset."""
-  from kanibako.launch.box_identity import box_name_reason
-
-  where = path if path is not None else Path(literal_path(designation or "."))
-  if not renders_no_name(box) and workset is not None and workset_renders_no_name(workset):
-    return (
-      f"Error: box '{box}' has no container name: {legacy_workset_reason(workset)}. "
-      f"Move the box to a workset with a valid name, then try again:\n"
-      f"{legacy_workset_cure(workset, where)}"
-    )
-  reason = box_name_reason(box) or "box name must not be empty"
-  return (
-    f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
-    f"name, then try again:\n"
-    f"  {rename_box_cure(mode, where, box, taken, connected)}"
-  )
-
-
 def workset_segment(mode: str, group_name: str | None) -> str:
   """Return the ``<W>`` segment for a box in *mode* whose workset is *group_name*.
 
@@ -427,7 +395,7 @@ def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigE
   """The refusal for *path*, which *exc* says kanibako cannot reach: a loop, or unreadable."""
   if exc.errno == errno.ELOOP:
     # ⚑ A loop is no permission problem: "make it readable" would be the wrong cure.
-    from kanibako.project.workset import CANON_SYMLINK_LOOP_WHY
+    from kanibako.settings.messages import CANON_SYMLINK_LOOP_WHY
 
     return ConfigError(
       f"{os.fspath(path)}: {CANON_SYMLINK_LOOP_WHY}. Remove or repair the link, then retry."

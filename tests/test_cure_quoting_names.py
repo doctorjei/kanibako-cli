@@ -282,7 +282,7 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
   """
 
   def test_the_standalone_move_cure_pastes_to_one_argv(self, name, tmp_path):
-    from kanibako.utils import unrenderable_box_name_refusal
+    from kanibako.launch.box_identity import unrenderable_box_name_refusal
 
     path = Path("/w") / name
     text = unrenderable_box_name_refusal("-droste", "standalone", path, None)
@@ -292,7 +292,7 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
     _assert_inert(cure, ["box", "move", str(path), "/w/moved"], tmp_path / "paste")
 
   def test_the_move_cure_pastes_to_one_argv(self, name, tmp_path):
-    from kanibako.utils import unrenderable_box_name_refusal
+    from kanibako.launch.box_identity import unrenderable_box_name_refusal
 
     path = Path("/w") / name
     text = unrenderable_box_name_refusal("-droste", "named", path, None)
@@ -306,7 +306,7 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
     )
 
   def test_the_primary_convert_cure_pastes_to_one_argv(self, name, tmp_path):
-    from kanibako.utils import unrenderable_box_name_refusal
+    from kanibako.launch.box_identity import unrenderable_box_name_refusal
 
     path = Path("/w") / name
     text = unrenderable_box_name_refusal("-droste", "primary", path, None)
@@ -374,7 +374,7 @@ class TestTheReservedWorksetStepsAreQuoted:
 
 def test_a_plain_operand_prints_the_same_bytes_it_did():
   """Quoting is a no-op for an operand that needs none."""
-  from kanibako.utils import unrenderable_box_name_refusal
+  from kanibako.launch.box_identity import unrenderable_box_name_refusal
 
   text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"), None)
   assert "kanibako box convert /home/u/plainbox --default --name _droste" in text

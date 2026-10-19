@@ -141,7 +141,7 @@ Several public wrappers exist because callers need different failure modes:
   companion to `validate_box_name`: pre-existing non-conforming boxes still resolve, they just get
   warned about. Also used by `channels/helper_listener.py`.
 * `box_name_reason` — the reason string, for composing a warning message. Callers:
-  `settings/paths.py` and `utils/__init__.py`.
+  `settings/paths.py` and `unrenderable_box_name_refusal`, here.
 * `validate_box_name` — raises `BoxNameError` (a `ProjectError` subclass carrying the name). Enforced
   at creation and at `--name`, i.e. on NEW names only. Callers: `commands/box/_lifecycle.py`,
   `_parser.py`, `_duplicate.py`, and `commands/workset_cmd.py`.

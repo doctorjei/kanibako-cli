@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.project import workset as W
+from kanibako.settings.messages import CANON_SYMLINK_LOOP_WHY
 
 _LOOP_WHY = (
   "it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at."
@@ -110,13 +111,13 @@ class TestAKeptLoopIsNamedNotPlaced:
     shutil.rmtree(canon)
     canon.symlink_to(canon.name)
     assert (
-      W.canon_keep_reason(root, canon, early=self._early(config_file)) == W.CANON_SYMLINK_LOOP_WHY
+      W.canon_keep_reason(root, canon, early=self._early(config_file)) == CANON_SYMLINK_LOOP_WHY
     )
 
   def test_the_canon_note_does_not_say_left_in_place_twice(self, capsys):
     """``report_retained_canon`` appends ", so it is yours to remove", so the loop
     phrase must be the SHORT one or the sentence repeats itself."""
-    W.report_retained_canon(Path("/x/canon"), Path("/x"), W.CANON_SYMLINK_LOOP_WHY)
+    W.report_retained_canon(Path("/x/canon"), Path("/x"), CANON_SYMLINK_LOOP_WHY)
     err = capsys.readouterr().err
     assert err.count("in place") == 1, err
     assert (

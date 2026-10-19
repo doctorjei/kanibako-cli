@@ -436,6 +436,8 @@ ERR_LOOP_SOURCE = (
 )
 # the box name, its workspace or store
 CURE_LOOP_SOURCE_REMAP = "\nOr record where the workspace is with `kanibako box remap`."
+# Why a path is kept or refused: a clause the caller ends (the canon Note, a refusal's cure).
+CANON_SYMLINK_LOOP_WHY = "it is a symlink loop that kanibako cannot resolve"
 
 # The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
 # ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.

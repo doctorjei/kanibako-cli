@@ -70,7 +70,7 @@ from kanibako.errors import (
   LegacyBoxNameError,
   ProjectError,
 )
-from kanibako.launch.box_identity import box_name_cure
+from kanibako.launch.box_identity import box_name_cure, unrenderable_box_name_refusal
 from kanibako.launch.creds_watcher import AGENT_STAMP_ENV
 from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
 from kanibako.runtime.rig_registry import load_registry, registry_path
@@ -143,7 +143,6 @@ from kanibako.utils import (
   render_socket_identity,
   short_hash,
   stat_unless_gone,
-  unrenderable_box_name_refusal,
 )
 
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
