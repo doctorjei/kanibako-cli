@@ -84,7 +84,7 @@ def _primary_boxes(std):
   """The PRIMARY membership, read with *std*'s early record."""
   from kanibako.settings.paths import load_primary_boxes
 
-  return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  return load_primary_boxes(std.primary_workset)
 
 
 # ---------------------------------------------------------------------------
@@ -1181,9 +1181,7 @@ class TestBrokenStandaloneNoBoxError:
     if mode == "standalone":
       registry_store.register_standalone(std.registry, name, root)
     else:
-      register_primary_box_name(
-        std.primary_workset, name, str(root), early=_early_scope(std, BoxMode.primary)
-      )
+      register_primary_box_name(std.primary_workset, name, str(root))
     monkeypatch.chdir(tmp_home)
     return std, root
 
@@ -1273,9 +1271,7 @@ class TestBrokenStandaloneNoBoxError:
     std, root = self._legacy(config_file, tmp_home, monkeypatch, "primary", "a-b")
     for taken in ("A_B", "a_b2"):
       (tmp_home / taken).mkdir()
-      register_primary_box_name(
-        std.primary_workset, taken, str(tmp_home / taken), early=_early_scope(std, BoxMode.primary)
-      )
+      register_primary_box_name(std.primary_workset, taken, str(tmp_home / taken))
     with pytest.raises(LegacyBoxNameError) as exc:
       refuse_legacy_box(std, "a-b")
     assert str(exc.value).endswith(f"kanibako box move {root} <new-path> --name a_b3")
@@ -1298,9 +1294,7 @@ class TestBrokenStandaloneNoBoxError:
 
     _config, std = _std(config_file)
     gone = (tmp_home / "my-box").resolve()
-    register_primary_box_name(
-      std.primary_workset, "my-box", str(gone), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "my-box", str(gone))
     monkeypatch.chdir(tmp_home)
     assert (
       resolve_designation(std, "my-box", unknown_name_is_path=True, name_first=True) == "my-box"
@@ -1328,9 +1322,7 @@ class TestBrokenStandaloneNoBoxError:
     ws = create_workset("ws_1", tmp_home / "wsroot", std)
     member = (tmp_home / "m1" if connected else ws.root / "workspaces" / "mem-1").resolve()
     member.mkdir()
-    _register_workset_box_membership(
-      ws.root, "mem-1", member, early=_early_scope(std, BoxMode.named, "ws_1")
-    )
+    _register_workset_box_membership(ws.root, "mem-1", member)
     monkeypatch.chdir(tmp_home)
     with pytest.raises(LegacyBoxNameError) as exc:
       refuse_legacy_box(std, "WS_1/mem-1")
@@ -1355,9 +1347,7 @@ class TestBrokenStandaloneNoBoxError:
     _config, std = _std(config_file)
     root = (tmp_home / "legacy").resolve()
     root.mkdir()
-    register_primary_box_name(
-      std.primary_workset, "bad name", str(root), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "bad name", str(root))
     (tmp_home / "bad name").mkdir()
     monkeypatch.chdir(tmp_home)
     msg = _no_box_error("bad name", std)
@@ -2110,7 +2100,7 @@ class TestUnregisteredStandaloneRegisterHint:
 class TestCreateRefusesPerOwnerBeforeTheDir:
   """A primary ``create <path>`` refused by an inherited per-owner key leaves no ``<path>``."""
 
-  @pytest.mark.parametrize("key", ["registry", "canon", "channels.chat"])
+  @pytest.mark.parametrize("key", ["vault_rw", "canon", "channels.chat"])
   def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
     from kanibako.cli import main
     from kanibako.settings.config_io import dump_doc
@@ -2129,11 +2119,10 @@ class TestCreateRefusesPerOwnerBeforeTheDir:
     assert not target.exists()
 
 
-# ⚑ ``workset.registry`` and ``workset.template`` are the per-owner keys a standalone
-# ``create`` does NOT resolve — ``registry`` indexes boxes at the SYSTEM registry, and the
-# standalone canon stamp reads ``workset.canon`` alone.  A pre-mkdir guard that refused
-# EVERY per-owner key would refuse both of these valid creates.
-_STANDALONE_ACCEPTED_KEYS = ["registry", "template"]
+# ⚑ ``workset.template`` is the per-owner key a standalone ``create`` does NOT resolve —
+# the standalone canon stamp reads ``workset.canon`` alone.  A pre-mkdir guard that
+# refused EVERY per-owner key would refuse this valid create.
+_STANDALONE_ACCEPTED_KEYS = ["template"]
 
 
 class TestStandaloneCreatePerOwnerBeforeTheDir:

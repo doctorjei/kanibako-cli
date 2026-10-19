@@ -22,7 +22,6 @@ from kanibako.settings.paths import (
   resolve_project,
   resolve_workset_project,
 )
-from kanibako.settings.paths import _early_scope
 from kanibako.project.workset import add_project, create_workset, load_workset
 from tests.test_commands.test_start import _BLAME, _REFUSED_ROWS, _two_axis_outcome
 
@@ -861,9 +860,7 @@ class TestBoxDuplicate:
     # Home NOT overwritten — sentinel intact.
     assert (home / "keep.txt").read_text() == "precious"
     # No active membership stranded for the refused name.
-    assert "target" not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "target" not in load_primary_boxes(std.primary_workset)
     # Guidance is surfaced.
     err = capsys.readouterr().err
     assert "register" in err and "purge" in err
@@ -1048,9 +1045,7 @@ class TestBoxDuplicate:
 
     dst_dir = tmp_home / "orphan_dst"
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     # bare=True so only the metadata copytree runs (no prior workspace copy).
     with patch(
@@ -1063,7 +1058,7 @@ class TestBoxDuplicate:
         pass
 
     # Name NOT left registered.
-    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    names_after = load_primary_boxes(std.primary_workset)
     assert names_after == names_before
     assert "orphan_dst" not in names_after
     # No partial dest metadata dir.
@@ -1144,18 +1139,13 @@ class TestBoxDuplicate:
     (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
     resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
 
     assert rc == 1
     assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
 
   def test_orphan_home_refuses_before_the_workspace_is_written(
     self,
@@ -1327,9 +1317,7 @@ class TestBoxDuplicate:
     resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
     dst_dir = tmp_home / "dupunwind_dst"
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     def _boom(src, dst, *a, **kw):
       from pathlib import Path
@@ -1344,7 +1332,7 @@ class TestBoxDuplicate:
       with pytest.raises(OSError, match="disk full"):
         run_duplicate(self._make_args(src_dir, dst_dir, force=True))
 
-    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    names_after = load_primary_boxes(std.primary_workset)
     assert names_after == names_before
     assert "dupunwind_dst" not in names_after
 
@@ -1773,9 +1761,7 @@ class TestBoxDuplicateCrossMode:
 
     dst_dir = tmp_home / "tlfail_dst"
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     # bare=True isolates the metadata copytree inside _duplicate_to_local.
     with patch(
@@ -1787,7 +1773,7 @@ class TestBoxDuplicateCrossMode:
       except RuntimeError:
         pass
 
-    names_after = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    names_after = load_primary_boxes(std.primary_workset)
     assert names_after == names_before
     assert "tlfail_dst" not in names_after
     assert not (std.boxes / "tlfail_dst").exists()
@@ -1819,18 +1805,13 @@ class TestBoxDuplicateCrossMode:
     dst_dir.mkdir()
     resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary", force=True))
     assert rc == 1
 
     # Dest box's pre-existing registration is intact; no second name minted.
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
     assert not (std.boxes / "xdup_dst2").exists()
 
   def test_duplicate_cross_mode_to_orphan_registered_dest_rolls_back_copy(
@@ -1863,19 +1844,14 @@ class TestBoxDuplicateCrossMode:
     resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
     shutil.rmtree(dst_dir)
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
     assert rc == 1
 
     # The copy this call created was rolled back; registration intact.
     assert not dst_dir.exists()
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
 
   def test_duplicate_cross_mode_oserror_mid_copy_rolls_back_clean(
     self,
@@ -1902,9 +1878,7 @@ class TestBoxDuplicateCrossMode:
     resolve_project(std, config, project_dir=str(src_dir), initialize=True)
 
     dst_dir = tmp_home / "oserr_dst"  # fresh: absent + unregistered
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     def _copytree_oserror(src, dst, *a, **kw):
       # Materialize the destination dir, then fail — mimics a copy that
@@ -1923,10 +1897,7 @@ class TestBoxDuplicateCrossMode:
     assert rc == 1
     # No stray dir created by this call; no orphan name registered.
     assert not dst_dir.exists()
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
     assert not (std.boxes / "oserr_dst").exists()
 
   def test_duplicate_cross_mode_registered_dest_no_force_refuses_clean(
@@ -1959,9 +1930,7 @@ class TestBoxDuplicateCrossMode:
     (dst_dir / "keep.txt").write_text("preexisting")
     resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
 
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     # No --force → pre-fix would prompt then hit copytree's FileExistsError;
     # mock the prompt so the pre-fix path would reach the copy (post-fix the
@@ -1974,10 +1943,7 @@ class TestBoxDuplicateCrossMode:
 
     assert rc == 1
     # Pre-existing registration + dir/content untouched; no stray box dir.
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
     assert (dst_dir / "keep.txt").read_text() == "preexisting"
     assert not (std.boxes / "regdst_dst2").exists()
 
@@ -2014,9 +1980,7 @@ class TestBoxDuplicateCrossMode:
     dst_dir = tmp_home / "friendly_dst"
     dst_dir.mkdir()
     (dst_dir / "keep.txt").write_text("preexisting")
-    names_before = load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    names_before = load_primary_boxes(std.primary_workset)
 
     # Unregistered dest → the guard-before-copy does NOT fire, so the confirm
     # prompt is reached (no --force); accept it so the copy runs and hits the
@@ -2040,10 +2004,7 @@ class TestBoxDuplicateCrossMode:
     assert "Errno 17" not in err
     # No deletion of the pre-existing dir / content; registry untouched.
     assert (dst_dir / "keep.txt").read_text() == "preexisting"
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-      == names_before
-    )
+    assert load_primary_boxes(std.primary_workset) == names_before
 
   def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
     from kanibako.commands.box._duplicate import run_duplicate
@@ -2208,16 +2169,11 @@ def _connected_index(std):
   from pathlib import Path
 
   from kanibako.project import registry_store, workset_registry
-  from kanibako.settings.config_io import load_doc
 
   out: dict[str, dict] = {}
   for name, root_str in registry_store.load_section(std.registry, "worksets").items():
     root = Path(root_str)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      load_doc(root / "workset.yaml"),
-      early=_early_scope(std, BoxMode.named, name),
-    )
+    registry_path = workset_registry.workset_registry_path(root)
     for box_name, box_path in workset_registry.load_workset_boxes(registry_path).items():
       resolved = Path(box_path).resolve()
       try:

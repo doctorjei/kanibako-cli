@@ -150,8 +150,8 @@ class TestSourcePartition:
       f"registry defaults with no source: {sorted(declared - covered)}; "
       f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
     )
-    assert len(declared) == 75, (
-      f"the manifest gives {len(declared)} rows a default, not the 75 measured"
+    assert len(declared) == 74, (
+      f"the manifest gives {len(declared)} rows a default, not the 74 measured"
     )
 
   def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -219,7 +219,8 @@ class TestSourcePartition:
     # now supplies its PRIMARY ``<None>`` as a present ``None`` (Q82) and this probe
     # runs at ``mode="primary"``. Its NAMED/STANDALONE arms are still the resolved dir
     # the launch hands the floor.
-    assert sizes["settings_launch.py (anchor floor)"] == 11
+    # ⚑ 11 → 10: ``workset.registry`` retired for the fixed ``meta.workset.registry``.
+    assert sizes["settings_launch.py (anchor floor)"] == 10
     assert sizes["settings_launch.py (auth floor)"] == 6
     # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
     # leaf, declared in ``agent_default:`` beside the other four behavior scalars.
@@ -277,9 +278,9 @@ class TestKeyRows:
     assert all(by_key[key].scope == "config" for key in scopeless)
 
   def test_the_per_mode_rows_are_the_manifest_per_mode_rows(self):
-    """14 rows default per box MODE; each renders as continuation lines, not a cell."""
+    """13 rows default per box MODE; each renders as continuation lines, not a cell."""
     per_mode = [r for r in key_rows() if r.per_mode]
-    assert len(per_mode) == 14
+    assert len(per_mode) == 13
     assert all(r.value == "(varies by box mode)" for r in per_mode)
     assert all(not r.per_mode for r in key_rows() if r.value != "(varies by box mode)")
 

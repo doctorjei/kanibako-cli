@@ -15,7 +15,6 @@ _MISSING_WORKSPACE = 'missing workspace'
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register', 'force')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
-_STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({'registry', 'template'})
 _GITIGNORE = 'gitignore line'
 _EMPTY_CANON = 'default canon folder'
 _CREDS_LOCK = 'creds watcher lock'

@@ -238,7 +238,6 @@ DECLARED_WORKSET_LEAVES: Final[frozenset[str]] = frozenset(
     "workspaces",
     "boxes",
     "logs",
-    "registry",
     "template",
     "canon",
     "kuid",
@@ -593,6 +592,7 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset(
     "path",
     "name",
     "settings",
+    "registry",
   }
 )
 # ⚑ `home` IS produced — `settings_launch.workset_anchor_floor`, beside the

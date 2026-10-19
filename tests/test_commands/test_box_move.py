@@ -11,7 +11,7 @@ from kanibako.commands.box._lifecycle import run_move
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import load_std_paths, resolve_project
-from kanibako.settings.paths import BoxMode, _early_scope
+from kanibako.settings.paths import BoxMode
 from kanibako.utils import project_hash
 from tests.conftest import self_loop
 
@@ -50,7 +50,7 @@ class TestBoxMove:
     # PRIMARY membership updated to the new path.
     from kanibako.settings.paths import load_primary_boxes
 
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert str(dest) in boxes.values()
     assert str(project_dir) not in boxes.values()
 
@@ -83,7 +83,7 @@ class TestBoxMove:
     assert "beta2" not in out
     from kanibako.settings.paths import load_primary_boxes
 
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes.get("beta") == str(dest)
     assert "beta2" not in boxes
 
@@ -108,19 +108,18 @@ class TestBoxMove:
     project_dir.mkdir(parents=True)
     resolve_project(std, config, project_dir=str(project_dir), initialize=True)
     dest = tmp_home / "elsewhere" / "beta"
-    early = _early_scope(std, BoxMode.primary)
 
     seen = []
 
     def boom(*_a, **_kw):
-      seen.append(load_primary_boxes(std.primary_workset, early=early).get("beta"))
+      seen.append(load_primary_boxes(std.primary_workset).get("beta"))
       raise OSError("injected")
 
     monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
     assert run_move(_move_args(project_dir, dest)) == 1
 
     assert seen == [str(dest)]
-    boxes = load_primary_boxes(std.primary_workset, early=early)
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes.get("beta") == str(project_dir)
     assert str(dest) not in boxes.values()
     assert project_dir.is_dir()
@@ -136,19 +135,15 @@ class TestBoxMove:
     import hashlib
 
     from kanibako.project import workset_registry
-    from kanibako.settings.config import WORKSET_META_FILE
     from kanibako.settings.paths import load_primary_boxes
 
     config = load_config(config_file)
     std = load_std_paths(config)
-    early = _early_scope(std, BoxMode.primary)
     for name in ("alpha", "beta"):
       (tmp_home / "proj" / name).mkdir(parents=True)
       resolve_project(std, config, project_dir=str(tmp_home / "proj" / name), initialize=True)
     (tmp_home / "proj" / "alpha").rmdir()
-    registry = workset_registry.resolve_workset_registry_path(
-      std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE), early=early
-    )
+    registry = workset_registry.workset_registry_path(std.primary_workset)
     before = hashlib.sha256(registry.read_bytes()).hexdigest()
     capsys.readouterr()
 
@@ -159,7 +154,7 @@ class TestBoxMove:
     assert "'beta' would land" in err
     assert "`box rm alpha`" in err
     assert hashlib.sha256(registry.read_bytes()).hexdigest() == before
-    assert load_primary_boxes(std.primary_workset, early=early) == {
+    assert load_primary_boxes(std.primary_workset) == {
       "alpha": str(tmp_home / "proj" / "alpha"),
       "beta": str(tmp_home / "proj" / "beta"),
     }
@@ -593,9 +588,7 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
 
     import kanibako.commands.box._lifecycle as lc
     from kanibako.project.workset import add_project, create_workset
-    from kanibako.project.workset_registry import resolve_workset_registry_path
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.paths import _early_scope
+    from kanibako.project.workset_registry import workset_registry_path
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -609,11 +602,7 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
     leaf.symlink_to(real)
     dest = tmp_home / "ext" / "alpha"
 
-    registry_path = resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / "workset.yaml"),
-      early=_early_scope(std, BoxMode.named, "ws1"),
-    )
+    registry_path = workset_registry_path(ws.root)
     before = registry_path.read_text()
 
     def boom(*a, **kw):
@@ -720,7 +709,7 @@ class TestInterruptedMoveIsNamed:
     assert f"Interrupted: the move was undone; 'beta' is back at {project_dir}" in err, err
     assert (project_dir / "f.txt").read_text() == "data"
     assert not dest.exists()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes.get("beta") == str(project_dir)
 
   def test_a_failed_unwind_step_is_named_not_claimed_undone(

@@ -18,7 +18,6 @@ from kanibako.settings.config import load_config
 from kanibako.settings.paths import (
   BoxMode,
   WorksetSpec,
-  _early_scope,
   load_std_paths,
   primary_box_name_for_workspace,
   resolve_project,
@@ -49,9 +48,7 @@ def _world(config_file, tmp_home):
 
 
 def _primary_name(std, primary):
-  return primary_box_name_for_workspace(
-    std.primary_workset, str(primary.project_path), early=_early_scope(std, BoxMode.primary)
-  )
+  return primary_box_name_for_workspace(std.primary_workset, str(primary.project_path))
 
 
 def _members(std, ws):

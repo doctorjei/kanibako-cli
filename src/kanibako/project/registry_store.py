@@ -145,7 +145,7 @@ def save_section(registry: Path, section: str, entries: dict) -> None:
 # ---------------------------------------------------------------------------
 #
 # ⚑ A DERIVED index, not the truth: standalone boxes are self-describing on disk
-# (the ``workset.registry`` null in the root ``workset.yaml``).
+# (the root ``registry.yaml`` holding the standalone mark).
 
 
 def load_standalone(registry: Path) -> dict[str, str]:

@@ -73,7 +73,6 @@ def report_retained_snapshot_base(base: Path) -> None
 def report_retained_loop(path: Path, what: str) -> None
 def report_retained_vaults(root: Path, retained: Iterable[Path], *, early: EarlyScope | None=None) -> None
 def is_reserved_workset_name(name: str) -> bool
-def members_registry_path(root: Path, settings_doc: Any, *, early: EarlyScope) -> Path
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None
 def refuse_retired_workset_identity(root: Path) -> None
 def find_logs_share(std: StandardPaths, *, value: object, scope: str, target_name: str | None=None, target_root: Path | None=None) -> 'tuple[tuple[str, ...], Path] | None'

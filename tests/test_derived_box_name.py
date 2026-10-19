@@ -36,10 +36,10 @@ def _cli(*argv: str) -> "tuple[int, str]":
 
 def _primary_boxes() -> dict:
   from kanibako.settings.config import load_config, user_config_file
-  from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
+  from kanibako.settings.paths import load_primary_boxes, load_std_paths
 
   std = load_std_paths(load_config(user_config_file()))
-  return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  return load_primary_boxes(std.primary_workset)
 
 
 def _cure(text: str, prose: str = "Give the box a valid name:") -> "list[str]":
@@ -527,7 +527,7 @@ def _fork_hub(tmp_home, workspace):
 
   from kanibako.channels.helper_listener import HelperContext, HelperHub
   from kanibako.settings.config import load_config, user_config_file
-  from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
+  from kanibako.settings.paths import load_std_paths
 
   std = load_std_paths(load_config(user_config_file()))
   shell = std.boxes / "x" / "home"
@@ -544,7 +544,6 @@ def _fork_hub(tmp_home, workspace):
     data_path=std.data_path,
     boxes=std.boxes,
     primary_workset=std.primary_workset,
-    early=_early_scope(std, BoxMode.primary),
   )
   return hub
 

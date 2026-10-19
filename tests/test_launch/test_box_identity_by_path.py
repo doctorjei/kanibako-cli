@@ -23,7 +23,6 @@ from kanibako.settings.paths import (
   load_std_paths,
   register_primary_box_name,
   resolve_designation,
-  _early_scope,
 )
 
 
@@ -42,9 +41,7 @@ def _connected(config_file, tmp_home):
 
 def _primary_twin(std, link: Path, name: str) -> None:
   (std.boxes / name).mkdir(parents=True)
-  register_primary_box_name(
-    std.primary_workset, name, link, early=_early_scope(std, BoxMode.primary)
-  )
+  register_primary_box_name(std.primary_workset, name, link)
 
 
 class TestATwinOfAConnectedDirIsItsOwnBox:

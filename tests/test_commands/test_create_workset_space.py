@@ -21,7 +21,7 @@ import pytest
 
 from kanibako.project.workset import create_workset, list_worksets, load_workset
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
+from kanibako.settings.paths import load_primary_boxes, load_std_paths
 
 #: A line that reads as a shell command the user could paste.
 _COMMAND_LINE = re.compile(r"^\s*kanibako\s+\S")
@@ -58,7 +58,7 @@ def _assert_nothing_written(std, *names):
 
   for name in names:
     assert not (std.boxes / name).exists(), f"box dir {name} was written"
-  assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+  assert load_primary_boxes(std.primary_workset) == {}
   assert journal.read_journal(std.journal) == {}
 
 
@@ -182,7 +182,7 @@ class TestCreateOutsideANamedWorkset:
     capsys.readouterr()
     assert run_create(_args(target, name="collide")) == 1
     assert "already" in capsys.readouterr().err.lower()
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert load_primary_boxes(std.primary_workset)
 
   def test_create_outside_any_workset_still_makes_a_primary_box(
     self,
@@ -197,9 +197,7 @@ class TestCreateOutsideANamedWorkset:
     target = tmp_home / "plain"
     assert run_create(_args(target)) == 0
     assert "Created default project" in capsys.readouterr().out
-    assert list(
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    ) == ["plain"]
+    assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
     assert (std.boxes / "plain").is_dir()
 
   def test_the_primary_workset_is_not_a_named_workset(self, tmp_home, wsa):
@@ -229,7 +227,7 @@ class TestCreateOutsideANamedWorkset:
     assert [p.name for p in load_workset(root, "wsa", early_system=std.early_system).projects] == [
       "x"
     ]
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     assert list_worksets(std)["wsa"] == root
     assert not _printed_commands(capsys.readouterr().err)
 
@@ -254,7 +252,7 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
     assert [p.name for p in ws.projects] == ["newbox"]
     # The member's workspace is the in-tree one, never ``<cwd>/<identifier>``.
     assert (root / "workspaces" / "newbox").is_dir()
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
 
   def test_resolves_as_a_named_box(self, wsa, credentials_dir, monkeypatch):
     """A named resolve: the box dir is the working set's, under its own vault."""
@@ -296,7 +294,7 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
     assert [p.name for p in load_workset(root, "wsa", early_system=std.early_system).projects] == [
       "newbox"
     ]
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     from kanibako.launch import journal
 
     assert journal.read_journal(std.journal) == {}
@@ -378,9 +376,7 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
 
     assert run_create(_args("plain")) == 0
     assert "Created default project" in capsys.readouterr().out
-    assert list(
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    ) == ["plain"]
+    assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
 
 
 def _tree(root):
@@ -442,7 +438,7 @@ class TestAnInterruptedNamedCreateIsRecoverable:
       "crashbox"
     ]
     assert (root / "boxes" / "crashbox" / "home").is_dir()
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
 
   def test_the_launch_cure_runs_from_outside_the_working_set(
     self,

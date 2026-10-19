@@ -27,7 +27,6 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.paths import (
-  _early_scope,
   load_primary_boxes,
   primary_box_name_for_workspace,
 )
@@ -57,16 +56,11 @@ def _connected_index(std):
   from pathlib import Path
 
   from kanibako.project import registry_store, workset_registry
-  from kanibako.settings.config_io import load_doc
 
   out = {}
   for name, root_str in registry_store.load_section(std.registry, "worksets").items():
     root = Path(root_str)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      load_doc(root / "workset.yaml"),
-      early=_early_scope(std, BoxMode.named, name),
-    )
+    registry_path = workset_registry.workset_registry_path(root)
     for box_name, box_path in workset_registry.load_workset_boxes(registry_path).items():
       resolved = Path(box_path).resolve()
       try:
@@ -165,7 +159,7 @@ class TestRemap:
     assert rc == 0
     # File untouched (records-only).
     assert (new / "file.txt").read_text() == "keep"
-    names = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    names = load_primary_boxes(std.primary_workset)
     assert str(new) in names.values()
 
     # P8b/Option A: the remapped workspace resolves from the registry, not an
@@ -377,12 +371,7 @@ class TestRemap:
 
     assert run_remap(_remap_args(str(ext), str(prim), force=False)) == 0
     assert str(prim.resolve()) in _connected_index(std)
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)
-      )
-      is None
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, str(prim)) is None
     assert (prim / "file.txt").read_text() == "mine"
     row = self._listed(capsys, "alpha")
     assert row[-1] == str(prim.resolve()) and "missing" not in row, row
@@ -396,12 +385,7 @@ class TestRemap:
 
     assert run_remap(_remap_args(str(prim), str(prim), force=False)) == 0
     assert "Cannot remap" not in capsys.readouterr().err
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)
-      )
-      == "prim"
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, str(prim)) == "prim"
 
   @pytest.mark.parametrize("force", [False, True])
   @pytest.mark.parametrize("other_ws", ["ws", "ws2"])
@@ -477,7 +461,7 @@ class TestRemap:
 
     monkeypatch.setattr(_lifecycle, "release_project", release)
     assert run_remap(_remap_args(str(prim), str(dest), force=True)) == 0, capsys.readouterr()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes["prim"] == str(dest)
     assert _connected_index(std)[str(ext2.resolve())] == {"workset": other_ws, "project": "beta"}
 
@@ -577,12 +561,7 @@ class TestRemap:
 
     assert run_remap(_remap_args(str(ext), str(inner), force=True)) == 0
     assert str(inner.resolve()) in _connected_index(std)
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)
-      )
-      == "prim"
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, str(prim)) == "prim"
 
   @pytest.mark.parametrize("leaf", ["box_data", "box_data/home"])
   def test_remap_into_another_standalone_store_needs_force(self, env, capsys, monkeypatch, leaf):
@@ -637,7 +616,7 @@ class TestRemap:
     assert self._tree_digest(tmp_home) == before
 
     assert run_remap(_remap_args(str(src), str(dest), force=True)) == 0, capsys.readouterr()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     if own:
       assert boxes["prim"] == str(dest)
     else:
@@ -688,12 +667,7 @@ class TestRemap:
 
     assert run_remap(_remap_args(str(ext), str(link), force=force)) == 0, capsys.readouterr()
     assert self._recorded(env, "alpha") == str(link)
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)
-      )
-      == "prim"
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, str(prim)) == "prim"
     assert resolve_lifecycle_target(str(link), std, config).name == "alpha"
 
   def test_remap_primary_onto_a_link_to_another_primary_workspace_records_a_twin(
@@ -708,7 +682,7 @@ class TestRemap:
     link.symlink_to(prim)
 
     assert run_remap(_remap_args(str(prim2), str(link), force=False)) == 0, capsys.readouterr()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes["prim"] == str(prim)
     assert boxes["prim2"] == str(link)
 
@@ -847,9 +821,7 @@ class TestRemap:
     dest.mkdir()
     if holder == "primary":
       held = _default(env, "T/workspace")
-      name = primary_box_name_for_workspace(
-        std.primary_workset, str(held), early=_early_scope(std, BoxMode.primary)
-      )
+      name = primary_box_name_for_workspace(std.primary_workset, str(held))
       who = f"primary box '{name}'"
     else:
       held = dest / "workspace"
@@ -882,13 +854,11 @@ class TestRemap:
     asked = self._confirms(monkeypatch)
     _config, std, tmp_home = env
     prim = _default(env, "prim")
-    name = primary_box_name_for_workspace(
-      std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)
-    )
+    name = primary_box_name_for_workspace(std.primary_workset, str(prim))
     _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
     registry_store.unregister_standalone(std.registry, solo_name)
     registry_store.register_standalone(std.registry, name, solo)
-    (solo / "workset.yaml").unlink()
+    (solo / "registry.yaml").unlink()
     before = self._tree_digest(tmp_home)
 
     assert run_remap(_remap_args(str(prim), str(solo), force=force)) == 1
@@ -915,9 +885,7 @@ class TestRemap:
     dest.mkdir()
     if held == "primary":
       inner = _default(env, "Y/inner")
-      name = primary_box_name_for_workspace(
-        std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary)
-      )
+      name = primary_box_name_for_workspace(std.primary_workset, str(inner))
       what = f"the workspace of box '{name}' ({inner})"
     else:
       inner = dest / "inner"
@@ -937,7 +905,7 @@ class TestRemap:
     assert self._tree_digest(tmp_home) == before
 
     assert run_remap(_remap_args(str(prim), str(dest), force=True)) == 0, capsys.readouterr()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes["prim"] == str(dest)
     if held == "primary":
       assert boxes[name] == str(inner)
@@ -951,15 +919,13 @@ class TestRemap:
     _config, std, tmp_home = env
     (tmp_home / "Y").mkdir()
     inner = _default(env, "Y/inner")
-    name = primary_box_name_for_workspace(
-      std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary)
-    )
+    name = primary_box_name_for_workspace(std.primary_workset, str(inner))
 
     assert run_remap(_remap_args(str(inner), str(tmp_home / "Y"), force=False)) == 0, (
       capsys.readouterr()
     )
     assert len(asked) == 1
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes[name] == str(tmp_home / "Y")
 
   @pytest.mark.parametrize("force", [False, True])
@@ -979,9 +945,7 @@ class TestRemap:
     dest.mkdir()
     if held == "primary":
       inner = _default(env, "Y/inner")
-      name = primary_box_name_for_workspace(
-        std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary)
-      )
+      name = primary_box_name_for_workspace(std.primary_workset, str(inner))
       what = f"the workspace of box '{name}' ({inner})"
     else:
       inner = dest / "inner"
@@ -1047,9 +1011,7 @@ class TestRemap:
 
     assert run_remap(_remap_args(str(solo), str(dest), force=True)) == 0, capsys.readouterr()
     assert (inner / "file.txt").read_text() == "hi"
-    name = primary_box_name_for_workspace(
-      std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary)
-    )
+    name = primary_box_name_for_workspace(std.primary_workset, str(inner))
     assert name is not None
 
   @pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
@@ -1064,9 +1026,7 @@ class TestRemap:
     _config, _std, tmp_home = env
     if source == "primary":
       old = _default(env, "prim")
-      name = primary_box_name_for_workspace(
-        _std.primary_workset, str(old), early=_early_scope(_std, BoxMode.primary)
-      )
+      name = primary_box_name_for_workspace(_std.primary_workset, str(old))
     else:
       _s, _ext, old, name = self._member_and_registered_standalone(env)
     dest = tmp_home / "L" / "d"
@@ -1599,7 +1559,7 @@ class TestRemap:
     assert self._tree_digest(tmp_home) == before
 
     assert run_remap(_remap_args(str(solo), str(dest), force=True)) == 0, capsys.readouterr()
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes["prim"] == str(tmp_home / "prim")
 
   def test_remap_missing_project(self, env):
@@ -1707,14 +1667,10 @@ class TestConvert:
 
     config, std, tmp_home = env
     pdir = _default(env, "C")
-    own = primary_box_name_for_workspace(
-      std.primary_workset, str(pdir), early=_early_scope(std, BoxMode.primary)
-    )
+    own = primary_box_name_for_workspace(std.primary_workset, str(pdir))
     if held == "primary":
       inner = _default(env, "C/inner")
-      name = primary_box_name_for_workspace(
-        std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary)
-      )
+      name = primary_box_name_for_workspace(std.primary_workset, str(inner))
       what = f"the workspace of box '{name}' ({inner})"
     else:
       inner = _standalone(env, "C/inner")
@@ -1743,10 +1699,7 @@ class TestConvert:
     # P8b/Option A: primary identity is the primary membership, not disk.
     assert proj.mode == BoxMode.primary
     assert "project" not in load_doc(proj.metadata_path / "box.yaml")
-    assert (
-      str(pdir)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
   def test_convert_to_workset_inplace_external(self, env):
     config, std, tmp_home = env
@@ -1759,15 +1712,8 @@ class TestConvert:
     # P8b/Option A: the external workspace is recorded in the workset's
     # per-workset ``boxes:`` registry, not an on-disk ``resolved.workspace``.
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    reg = workset_registry.load_workset_boxes(
-      workset_registry.resolve_workset_registry_path(
-        ws.root,
-        load_doc(ws.root / "workset.yaml"),
-        early=_early_scope(std, BoxMode.named, ws.name),
-      )
-    )
+    reg = workset_registry.load_workset_boxes(workset_registry.workset_registry_path(ws.root))
     assert reg.get("proj") == str(pdir.resolve())
 
   def test_convert_move_path(self, env):
@@ -1939,9 +1885,7 @@ class TestConvertMoveCrossKindName:
     with caplog.at_level("WARNING"):
       rc = run_convert(_convert_args(pdir, to_default=True, name="common", force=False))
     assert rc == 0
-    assert "common" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "common" in load_primary_boxes(std.primary_workset)
     from kanibako.project import registry_store
 
     assert "common" in registry_store.load_section(std.registry, "worksets")
@@ -1984,10 +1928,7 @@ class TestConvertMoveCrossKindName:
     assert rc == 1
     # Pre-existing "taken" box unchanged (still maps to its own workspace);
     # source still standalone.
-    assert load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    ).get("taken") == str(taken_dir)
+    assert load_primary_boxes(std.primary_workset).get("taken") == str(taken_dir)
     assert (pdir / "box_data").is_dir()
 
   def test_move_default_name_shared_with_a_workset_succeeds(self, env, monkeypatch):
@@ -2002,9 +1943,7 @@ class TestConvertMoveCrossKindName:
     rc = run_move(_move_args(pdir, dest, to_default=True, name="common", force=False))
     assert rc == 0
     assert dest.is_dir()
-    assert "common" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "common" in load_primary_boxes(std.primary_workset)
 
   def test_convert_named_workset_name_equals_global_workset_succeeds(self, env):
     """t5: a NAMED-workset target named the same as a global workset
@@ -2030,7 +1969,7 @@ class TestConvertMoveCrossKindName:
     """
     config, std, tmp_home = env
     pdir = _default(env, name="movesame")
-    boxes0 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes0 = load_primary_boxes(std.primary_workset)
     name = next(n for n, p in boxes0.items() if p == str(pdir))
     meta_before = std.boxes / name
     assert meta_before.is_dir()
@@ -2039,7 +1978,7 @@ class TestConvertMoveCrossKindName:
     rc = run_move(_move_args(pdir, dest, to_default=True, name=name, force=True))
     assert rc == 0
 
-    boxes1 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes1 = load_primary_boxes(std.primary_workset)
     # Same name, now at the new path; old path fully unregistered.
     assert boxes1.get(name) == str(dest)
     assert str(pdir) not in boxes1.values()
@@ -2066,7 +2005,7 @@ class TestConvertMoveCrossKindName:
 
     config, std, tmp_home = env
     pdir = _default(env, name="movefail")
-    boxes0 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes0 = load_primary_boxes(std.primary_workset)
     name = next(n for n, p in boxes0.items() if p == str(pdir))
 
     dest = tmp_home / "fail_dest"
@@ -2077,7 +2016,7 @@ class TestConvertMoveCrossKindName:
       rc = run_move(_move_args(pdir, dest, to_default=True, name=name, force=True))
     assert rc == 1
 
-    boxes1 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes1 = load_primary_boxes(std.primary_workset)
     # Source registration restored to its OLD path; dest not left registered.
     assert boxes1.get(name) == str(pdir)
     assert str(dest) not in boxes1.values()
@@ -2096,7 +2035,7 @@ class TestConvertMoveCrossKindName:
 
     config, std, tmp_home = env
     pdir = _default(env, name="renbox")
-    boxes0 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes0 = load_primary_boxes(std.primary_workset)
     name = next(n for n, p in boxes0.items() if p == str(pdir))
 
     buf = io.StringIO()
@@ -2107,7 +2046,7 @@ class TestConvertMoveCrossKindName:
     assert "rename" in err
     assert "not supported" in err
     # Registry unchanged: original name still maps to the path; no new name.
-    boxes1 = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes1 = load_primary_boxes(std.primary_workset)
     assert boxes1.get(name) == str(pdir)
     assert "somethingelse" not in boxes1
 
@@ -2839,10 +2778,7 @@ class TestLandingsThatMustKeepWorking:
     rc = run_remap(_remap_args(str(pdir), moved))
     assert rc == 0
     assert (moved / "file.txt").read_text() == "keep"
-    assert (
-      str(moved)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(moved) in load_primary_boxes(std.primary_workset).values()
 
   def test_bare_move_into_the_workset(self, env):
     """The canonical landing is what F1 exists to leave alone."""
@@ -2906,9 +2842,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
       config,
       initialize=True,
     )
-    register_primary_box_name(
-      std.primary_workset, member, leaf, early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, member, leaf)
     return ws, leaf
 
   def test_the_primary_registry_decides_not_the_workset_path_space(self, env):
@@ -2938,10 +2872,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     assert run_move(_move_args("beta", dest)) == 0
     assert (dest / "file.txt").read_text() == "keep"
     assert not pdir.exists()
-    assert (
-      str(dest.resolve())
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(dest.resolve()) in load_primary_boxes(std.primary_workset).values()
 
   def test_convert_under_another_name_refuses_rather_than_copy_the_workspace(self, env, capsys):
     """PIN: an in-place convert under another name would leave the source tree
@@ -2954,9 +2885,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     # invisible to a membership-only assertion.
     assert not (pdir.parent / "beta2").exists()
     assert (pdir / "file.txt").read_text() == "keep"
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))[
-      "beta"
-    ] == str(pdir)
+    assert load_primary_boxes(std.primary_workset)["beta"] == str(pdir)
     assert not any(
       p.name == "beta2"
       for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects
@@ -2971,7 +2900,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     assert rc == 0
     assert not pdir.exists()
     assert [p.name for p in pdir.parent.iterdir()] == ["beta2"]
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     assert any(
       p.name == "beta2"
       for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects
@@ -2986,7 +2915,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
     assert rc == 0
     assert (pdir / "file.txt").read_text() == "keep"
     assert [q.name for q in pdir.parent.iterdir()] == ["beta"]
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     member = next(
       p
       for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects
@@ -3306,7 +3235,7 @@ class TestRefusalCuresReachTheBoxTheyName:
     assert [p.name for p in members] == ["beta"]
     assert Path(members[0].source_path).resolve() == leaf.resolve()
     assert (leaf / "file.txt").read_text() == "keep"
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
 
 
 class TestCuresAvoidAHeldName:
@@ -3439,7 +3368,7 @@ class TestRelocationOutOfTheLandingLeaf:
     assert pdir.is_symlink()
     assert pdir.resolve() == dest.resolve()
     assert (dest / "file.txt").read_text() == "keep"
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     member = next(
       p
       for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects

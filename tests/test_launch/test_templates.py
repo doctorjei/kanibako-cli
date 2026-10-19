@@ -370,7 +370,7 @@ class TestTemplateSeedDefaults:
   def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
     """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
     table only ``@``-REFERENCES ``{workset.template}``; ``settings_launch
-    .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
+    .workset_anchor_floor`` declares it.  A source key
     spelled only here answered for a box being CREATED and for no box that already
     existed — this table's one consumer is the create-time seed resolve.
 
@@ -593,7 +593,7 @@ class TestLayeredHomeSeed:
   ):
     """The MAIN launch resolve of a standalone box carries every §2c STANDALONE
     ``<None>`` the anchor floor answers as a present ``None``: ``workset.template``,
-    ``workset.registry``, ``workset.channelroot`` and the four workset-LOCAL
+    ``workset.channelroot`` and the four workset-LOCAL
     ``workset.channels.*`` leaves.
 
     A declared ``<None>`` is a SUPPLIED value (keyspec §0 "it must RESOLVE").  The floor
@@ -618,7 +618,7 @@ class TestLayeredHomeSeed:
       cli_level=None,
     )
     workset = dict.get(snapshot, "workset")
-    for leaf in ("template", "registry", "channelroot"):
+    for leaf in ("template", "channelroot"):
       assert dict.get(workset, leaf, __MISSING__) is None, (leaf, workset)
     channels = dict.get(workset, "channels")
     for leaf in ("common", "chat", "broadcast", "share"):
@@ -2304,7 +2304,7 @@ class TestInstallWorksetTemplate:
     assert not (ws / "handbook").exists()
 
   def test_refuses_a_registry_planted_by_the_mold(self, std, tmp_path):
-    """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
+    """⚑ The severity case: ``registry.yaml`` is ``meta.workset.registry``, the
     AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a
     STANDALONE ``<workset_path>`` is a directory the USER already had, which
     nothing here is entitled to clean up after a refusal."""

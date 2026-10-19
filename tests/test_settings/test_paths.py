@@ -17,7 +17,6 @@ from kanibako.settings.paths import (
   _find_local_ancestor,
   _find_workset_for_path,
   _resolve_workset_or_connected,
-  _early_scope,
   _upgrade_shell,
   detect_project_mode,
   load_primary_boxes,
@@ -37,17 +36,12 @@ def _reg_primary(std, name: str, workspace) -> None:
   The membership replacement for the retired ``register_name(..., "projects")``
   setup used across these tests.
   """
-  register_primary_box_name(
-    std.primary_workset,
-    name,
-    str(workspace),
-    early=_early_scope(std, BoxMode.primary),
-  )
+  register_primary_box_name(std.primary_workset, name, str(workspace))
 
 
 def _primary_names(std):
   """Return the PRIMARY box membership as ``{name: workspace_str}``."""
-  return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  return load_primary_boxes(std.primary_workset)
 
 
 class TestLoadStdPaths:
@@ -242,7 +236,6 @@ class TestResolveProject:
     resolved-path reuse path so a re-create never strands a half-box.)
     """
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
     from kanibako.project.names import read_names
 
     config = load_config(config_file)
@@ -251,11 +244,7 @@ class TestResolveProject:
     ws = tmp_home / "drifted"
     ws.mkdir()
     # Seed the primary-workset boxes: membership (the sole store).
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(prim_reg, "ghost", ws)
     assert "ghost" not in read_names(std.registry)["worksets"]
 
@@ -285,7 +274,6 @@ class TestResolveProject:
     raise → this reddens.
     """
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -294,11 +282,7 @@ class TestResolveProject:
     ws.mkdir()
     # Workspace already a member under ``orig`` (primary boxes:), but its box
     # dir is missing (so the create branch runs).
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(prim_reg, "orig", ws)
 
     with pytest.raises(ProjectError, match="already registered"):
@@ -327,7 +311,6 @@ class TestResolveProject:
     (drop the ``_dir_existed`` gate) and the sentinel is deleted → reddens.
     """
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -336,11 +319,7 @@ class TestResolveProject:
     ws.mkdir()
     # /ws already a primary member under a DIFFERENT name → Guard 1 will raise
     # when the create tries to register "orphan" for the same workspace.
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(prim_reg, "orig", ws)
 
     # A PRE-EXISTING orphan box dir "orphan" with precious user data — NOT
@@ -643,15 +622,14 @@ class TestDetectBoxMode:
     assert result.mode is BoxMode.primary
     assert result.project_root == project_dir.resolve()
 
-  def test_standalone_when_the_root_file_stores_the_registry_null(self, config_file, tmp_home):
+  def test_standalone_when_the_root_registry_holds_the_mark(self, config_file, tmp_home):
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = tmp_home / "project"
-    # Marker: a ROOT workset.yaml storing workset.registry as null.
+    # Marker: a ROOT registry.yaml holding the standalone mark.
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (project_dir / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     result = detect_project_mode(project_dir.resolve(), std, config)
     assert result.mode is BoxMode.standalone
@@ -747,9 +725,8 @@ class TestDetectBoxMode:
     std = load_std_paths(config)
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (project_dir / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     subdir = project_dir / "src" / "deep" / "nested"
     subdir.mkdir(parents=True)
@@ -763,20 +740,18 @@ class TestDetectBoxMode:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    # Outer project has the root workset.yaml registry-null marker
+    # Outer project has the root registry.yaml mark
     outer = tmp_home / "project"
     (outer / "box_data").mkdir(parents=True)
-    (outer / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (outer / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (outer / "registry.yaml").write_text("__STANDALONE__\n")
 
-    # Inner project also has the registry-null marker
+    # Inner project also has the mark
     inner = outer / "subproject"
     inner.mkdir()
     (inner / "box_data").mkdir()
-    (inner / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (inner / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (inner / "registry.yaml").write_text("__STANDALONE__\n")
 
     # Detection from inner/ should find inner's marker
     result = detect_project_mode(inner.resolve(), std, config)
@@ -840,9 +815,7 @@ class TestDetectBoxMode:
 
     # Place a marker ABOVE home (at tmp_home level)
     (tmp_home / "box_data").mkdir(exist_ok=True)
-    (tmp_home / "box_data" / BOX_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (tmp_home / "registry.yaml").write_text("__STANDALONE__\n")
 
     # project_dir is under home
     project_dir = home / "myproject"
@@ -909,9 +882,8 @@ class TestDetectBoxMode:
     # marker dir + a ROOT workset.yaml).
     inner = ws_root / "innerstand"
     (inner / "box_data").mkdir(parents=True)
-    (inner / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (inner / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (inner / "registry.yaml").write_text("__STANDALONE__\n")
 
     result = detect_project_mode(inner.resolve(), std, config)
     assert result.mode is BoxMode.standalone
@@ -940,8 +912,8 @@ class TestDetectBoxMode:
   def test_connected_external_marker_is_dropped_no_dual_registration(self, config_file, tmp_home):
     """A box is in one workset only (181-DF3 [Jei:2026-10-13]): ``workset connect --force`` of
     a standalone box MOVES its registration and drops its marker, so it resolves as its NAMED
-    workset box and is never re-imported into ``standalone:``.  Only the ``workset.registry``
-    key goes; the file, its kuid, and ``box_data/`` stay.
+    workset box and is never re-imported into ``standalone:``.  Only the mark file goes;
+    ``workset.yaml``, its kuid, and ``box_data/`` stay.
     """
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
@@ -953,11 +925,12 @@ class TestDetectBoxMode:
     ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
 
     # A standalone box at an EXTERNAL dir (outside the workset tree): the
-    # in-place marker (the root workset.yaml registry null) plus a global
+    # in-place marker (the root registry.yaml mark) plus a global
     # standalone: registration (its pre-connect resolved state).
     external = (tmp_home / "standalone_box").resolve()
     (external / "box_data").mkdir(parents=True)
-    (external / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n  registry: null\n")
+    (external / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
+    (external / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "kx_standalone_box", external)
 
     # The connect: the standalone: entry is DROPPED, a per-workset boxes:
@@ -965,7 +938,8 @@ class TestDetectBoxMode:
     add_project(ws, "sb", external, std, force=True, drop_marker=True)
     assert registry_store.load_standalone(std.registry) == {}
     assert (external / WORKSET_META_FILE).read_text() == "workset:\n  kuid: abcde\n"
-    assert not box_resolve.stores_standalone_registry_null(external)
+    assert not (external / "registry.yaml").exists()
+    assert not box_resolve.is_standalone_root(external)
     assert (external / "box_data").is_dir()
 
     result = detect_project_mode(external, std, config)
@@ -993,15 +967,16 @@ class TestDetectBoxMode:
     ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
     external = (tmp_home / "standalone_box").resolve()
     external.mkdir()
-    (external / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (external / WORKSET_META_FILE).touch()
+    (external / "registry.yaml").write_text("__STANDALONE__\n")
 
     add_project(ws, "sb", external, std, force=True)
 
-    assert box_resolve.stores_standalone_registry_null(external)
+    assert box_resolve.is_standalone_root(external)
 
 
 class TestDropStandaloneMarker:
-  """``drop_standalone_marker`` removes the one key and leaves the rest of the file."""
+  """``drop_standalone_marker`` deletes the mark file and leaves ``workset.yaml`` alone."""
 
   @staticmethod
   def _drop(root):
@@ -1011,43 +986,23 @@ class TestDropStandaloneMarker:
     drop_standalone_marker(root, undo.append)
     return undo
 
-  @pytest.mark.parametrize("spelling", ["null", "~", ""])
-  def test_an_edited_file_keeps_every_other_key(self, tmp_path, spelling):
-    from kanibako.settings.config_io import load_doc
-
-    text = (
-      f"# mine\nworkset:\n  kuid: abcde\n  registry: {spelling}  # note\n"
-      "  logs: here\nbox:\n  enable_vault: false\n"
-    )
+  @pytest.mark.parametrize("mark", ["__STANDALONE__\n", " __standalone__ "])
+  def test_the_mark_goes_and_every_setting_stays(self, tmp_path, mark):
+    text = "# mine\nworkset:\n  kuid: abcde\n  logs: here\nbox:\n  enable_vault: false\n"
     (tmp_path / WORKSET_META_FILE).write_text(text)
+    (tmp_path / "registry.yaml").write_text(mark)
 
     undo = self._drop(tmp_path)
 
-    assert load_doc(tmp_path / WORKSET_META_FILE) == {
-      "workset": {"kuid": "abcde", "logs": "here"},
-      "box": {"enable_vault": False},
-    }
+    assert not (tmp_path / "registry.yaml").exists()
+    assert (tmp_path / WORKSET_META_FILE).read_text() == text
     assert len(undo) == 1
     undo[0]()
-    assert (tmp_path / WORKSET_META_FILE).read_text() == text
+    assert (tmp_path / "registry.yaml").read_text() == mark
 
-  def test_a_file_holding_only_the_marker_stays_empty(self, tmp_path):
-    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
-
-    self._drop(tmp_path)
-
-    assert (tmp_path / WORKSET_META_FILE).read_text() == ""
-
-  @pytest.mark.parametrize(
-    "text",
-    [
-      "workset:\n  kuid: abcde\n",
-      "workset:\n  registry: elsewhere\n",
-      "",
-    ],
-  )
+  @pytest.mark.parametrize("text", ["boxes:\n  a: /x\n", "", "__STANDALONE__\nboxes: {}\n"])
   def test_no_marker_writes_nothing(self, tmp_path, text):
-    path = tmp_path / WORKSET_META_FILE
+    path = tmp_path / "registry.yaml"
     path.write_text(text)
     before = path.stat().st_mtime_ns
 
@@ -1055,11 +1010,23 @@ class TestDropStandaloneMarker:
     assert path.read_text() == text
     assert path.stat().st_mtime_ns == before
 
+  def test_a_linked_mark_is_refused_with_a_warning_and_kept(self, tmp_path, caplog):
+    target = tmp_path / "elsewhere"
+    target.write_text("__STANDALONE__\n")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "registry.yaml").symlink_to(target)
+    with caplog.at_level("WARNING"):
+      assert self._drop(root) == []
+    assert any("could not remove the standalone marker" in r.getMessage() for r in caplog.records)
+    assert (root / "registry.yaml").is_symlink()
+    assert target.read_text() == "__STANDALONE__\n"
+
   def test_a_missing_file_warns_and_writes_nothing(self, tmp_path, caplog):
     with caplog.at_level("WARNING"):
       assert self._drop(tmp_path) == []
     assert any("could not remove the standalone marker" in r.getMessage() for r in caplog.records)
-    assert not (tmp_path / WORKSET_META_FILE).exists()
+    assert not (tmp_path / "registry.yaml").exists()
 
 
 class TestFindLocalAncestor:
@@ -1146,11 +1113,7 @@ class TestResolveProjectHomeGuard:
     # Pre-create the project via a DIRECT PRIMARY-membership write (bypassing
     # the $HOME guard, which register_primary_box_name enforces) — simulates a
     # box registered before the $HOME guard existed.
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      None,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(prim_reg, "home", home.resolve())
     boxes_dir = std.boxes / "home"
     boxes_dir.mkdir(parents=True)
@@ -1190,9 +1153,8 @@ class TestResolveAnyProject:
     std = load_std_paths(config)
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (project_dir / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
 
@@ -1299,9 +1261,8 @@ class TestResolveAnyProject:
     std = load_std_paths(config)
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / WORKSET_META_FILE).write_text(
-      'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
-    )
+    (project_dir / WORKSET_META_FILE).write_text('project:\n  mode: "standalone"\n')
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     subdir = project_dir / "src"
     subdir.mkdir()
@@ -1749,13 +1710,8 @@ class TestP7ConnectRegistry:
 
   def _boxes(self, ws, std):
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.named, ws.name),
-    )
+    registry_path = workset_registry.workset_registry_path(ws.root)
     return workset_registry.load_workset_boxes(registry_path)
 
   def test_connect_registers_external_in_per_workset_boxes(self, config_file, tmp_home):
@@ -1825,7 +1781,6 @@ class TestP7ConnectRegistry:
     this matches the in-tree box → RED."""
     from kanibako.project import workset_registry
     from kanibako.launch import box_resolve
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -1834,11 +1789,7 @@ class TestP7ConnectRegistry:
     ws = create_workset("mix", tmp_home / "worksets" / "mix", std)
     internal = ws.workspaces_dir / "inbox"
     internal.mkdir(parents=True)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.named, ws.name),
-    )
+    registry_path = workset_registry.workset_registry_path(ws.root)
     workset_registry.register_workset_box(registry_path, "inbox", internal)
     assert box_resolve.find_connected_external_box(internal, std) is None
 
@@ -1893,11 +1844,7 @@ class TestA0RepointStrandedMembers:
     add_project(ws, "boxa", internal, std)
     # The first-start membership registration (in-tree members register at
     # first launch; connect registers external ones at connect time).
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.named, ws.name),
-    )
+    registry_path = workset_registry.workset_registry_path(ws.root)
     workset_registry.register_workset_box(registry_path, "boxa", internal)
     # Absolute repoint AFTER the member exists (workset.yaml is created here
     # for the first time — a workset root has none until something is set).
@@ -1987,16 +1934,11 @@ class TestA0RepointStrandedMembers:
     excludes it from the reverse index (Test 5/6 semantics, post-repoint)."""
     from kanibako.launch import box_resolve
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
     _config, std, ws, _internal = self._setup(config_file, tmp_home)
     pods_member = (tmp_home / "b2pods" / "boxb").resolve()
     pods_member.mkdir()
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.named, ws.name),
-    )
+    registry_path = workset_registry.workset_registry_path(ws.root)
     workset_registry.register_workset_box(registry_path, "boxb", pods_member)
     assert box_resolve.find_connected_external_box(pods_member, std) is None
 
@@ -2014,13 +1956,8 @@ class TestP5aCreateThenResolve:
   @staticmethod
   def _primary_registry(std):
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    return workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    return workset_registry.workset_registry_path(std.primary_workset)
 
   def test_primary_create_registers_and_resolves(self, config_file, tmp_home, credentials_dir):
     from kanibako.project import workset_registry
@@ -2060,7 +1997,6 @@ class TestP5aCreateThenResolve:
   def test_named_create_registers_and_resolves(self, config_file, tmp_home, credentials_dir):
     from kanibako.project import workset_registry
     from kanibako.launch import box_resolve
-    from kanibako.settings.config_io import load_doc
     from kanibako.settings.paths import WorksetSpec, resolve_workset_project
     from kanibako.project.workset import add_project, create_workset
 
@@ -2081,11 +2017,7 @@ class TestP5aCreateThenResolve:
     # CREATE dual-register: the box lands in the WORKSET's per-workset
     # registry as name -> workspace.  (Mutation target: drop the
     # register_workset_box call in resolve_workset_project → fails.)
-    reg = workset_registry.resolve_workset_registry_path(
-      ws.root,
-      load_doc(ws.root / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.named, ws.name),
-    )
+    reg = workset_registry.workset_registry_path(ws.root)
     boxes = workset_registry.load_workset_boxes(reg)
     assert "boxa" in boxes
     assert Path(boxes["boxa"]).resolve() == proj.project_path.resolve()
@@ -2239,7 +2171,7 @@ class TestP5aCreateThenResolve:
     workspace instead → RED.  Covers the otherwise-vacuous new branch.)"""
     from kanibako.project import workset_registry
     from kanibako.settings.config import BOX_META_FILE
-    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.paths import iter_projects
 
     config = load_config(config_file)
@@ -2260,11 +2192,7 @@ class TestP5aCreateThenResolve:
     )
     # Register a DIFFERENT path B in the PRIMARY per-workset registry.
     registry_ws = tmp_home / "registry_ws"
-    reg_path = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / WORKSET_META_FILE),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    reg_path = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(reg_path, "mybox", registry_ws)
 
     results = dict(iter_projects(std, config))
@@ -2385,7 +2313,7 @@ class TestMissingVaultAdvisoryIsGuarded:
 
 class TestP5aStandalonePresenceSwitch:
   """Mutation proof for the _is_standalone_meta_dir presence switch (site
-  1306): detection is by the root workset.yaml's own stored ``workset.registry`` null,
+  1306): detection is by the root registry.yaml's own standalone mark,
   no longer by a stored box.mode == "standalone" field."""
 
   def test_presence_detects_without_mode_field(self, tmp_home):
@@ -2396,7 +2324,8 @@ class TestP5aStandalonePresenceSwitch:
     (root / STANDALONE_META_DIR).mkdir(parents=True)
     # A workset.yaml with NO project.mode = "standalone" declaration.  The
     # OLD field-reading impl returned False here; the presence impl → True.
-    dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}, "workset": {"registry": None}})
+    dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}})
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     assert _is_standalone_meta_dir(root) is True
 
   def test_missing_settings_is_not_standalone(self, tmp_home):
@@ -2404,17 +2333,17 @@ class TestP5aStandalonePresenceSwitch:
 
     root = tmp_home / "box"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    # box_data/ present but NO workset.yaml → not a standalone marker.
+    # box_data/ present but NO registry.yaml → not a standalone marker.
     assert _is_standalone_meta_dir(root) is False
 
-  def test_settings_without_the_registry_null_is_not_standalone(self, tmp_home):
+  def test_settings_without_the_mark_is_not_standalone(self, tmp_home):
     from kanibako.settings.config import dump_doc
     from kanibako.settings.paths import _is_standalone_meta_dir
 
     root = tmp_home / "box"
     root.mkdir()
     dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}})
-    # workset.yaml present but NO stored ``workset.registry`` null → not standalone.
+    # workset.yaml present but NO registry.yaml mark → not standalone.
     assert _is_standalone_meta_dir(root) is False
 
 
@@ -2547,8 +2476,7 @@ class TestBoxWorksetSettingsPaths:
 
 class TestStandaloneDetectionIsRootFileOnly:
   """``system-design-1.8.0.md`` § "Detection & import": STANDALONE detection =
-  the stored ``workset.registry`` null in the ROOT
-  ``workset.yaml`` (the WORKSET-tier file).  P2 introduces a BOX-tier file at
+  the mark in the ROOT ``registry.yaml``.  P2 introduces a BOX-tier file at
   ``box_data/box.yaml``; detection must NOT come to depend on it, or the
   ancestor-walk that finds a standalone project at all would break."""
 
@@ -2558,7 +2486,8 @@ class TestStandaloneDetectionIsRootFileOnly:
 
     root = tmp_home / "sa"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde", "registry": None}})
+    dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde"}})
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     # No box_data/box.yaml at all — the ABSENT-BY-DEFAULT shape.
     assert not (root / STANDALONE_META_DIR / BOX_META_FILE).exists()
     assert _is_standalone_meta_dir(root) is True
@@ -2584,7 +2513,8 @@ class TestStandaloneDetectionIsRootFileOnly:
 
     root = tmp_home / "sa"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde", "registry": None}})
+    dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde"}})
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     dump_doc(root / STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
     assert _is_standalone_meta_dir(root) is True
 
@@ -3257,18 +3187,18 @@ class TestEarlySystemTierIsData:
     A null ``system.cache`` refuses the ``system:`` table (``system.canon`` would not: it
     sources a standard bind, so its null is admitted).  The early keys were read from
     the loaded document BEFORE that read, so they survive -- which is what lets the
-    per-owner check (decision 9) still run, and a valid ``workset.registry`` still be read.
+    per-owner check (decision 9) still run, and a valid ``workset.template`` still be read.
     """
     baseline, _ = self._tier(tolerate=True)  # NO settings file yet: the declared defaults
     self._settings(
       "system:\n  cache: null\n"
       "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
-      "  registry: /srv/reg/{meta.workset.path}/r.yaml\n",
+      "  template: /srv/tpl/{meta.workset.path}\n",
     )
 
     resolved, rec = self._tier(tolerate=True)
     assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
-    assert rec.tier["workset.registry"] == "/srv/reg/{meta.workset.path}/r.yaml"
+    assert rec.tier["workset.template"] == "/srv/tpl/{meta.workset.path}"
     assert rec.system_refusal is not None
     assert "cache" in rec.system_refusal
     # The resolved-system carrier is EMPTY when the refusal is set.
@@ -3288,7 +3218,7 @@ class TestEarlySystemTierIsData:
     _resolved, rec = self._tier()
     assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
     assert rec.tier["workset.logs"] is None
-    assert "workset.registry" not in rec.tier
+    assert "workset.template" not in rec.tier
     assert rec.file == sp
     assert rec.system_refusal is None
 

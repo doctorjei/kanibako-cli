@@ -1735,7 +1735,7 @@ def _standalone_store_error(std: StandardPaths, root: Path, name: str | None) ->
   """The refusal for a standalone box at *root* that resolves NAMELESS, or ``None``.
 
   *name* is its registry name, or ``None`` for an UNREGISTERED root, whose own
-  ``registry: null`` is what made the probe standalone.  Such a box reads as "no
+  standalone mark is what made the probe standalone.  Such a box reads as "no
   box at all" to the explicit-create gate — the one state :func:`_unbuilt_box_error`
   structurally cannot see.  Without this refusal the generic "no box" message
   suggests ``kanibako create <spec>``, which makes a PRIMARY box (or a directory
@@ -3003,7 +3003,6 @@ def _start_helper_hub(
     data_path=std.data_path,
     boxes=std.boxes,
     primary_workset=std.primary_workset,
-    early=_early_scope(std, BoxMode.primary),
   )
 
   # The bound directory exists before the box does; the hub binds the socket in it.
@@ -6869,7 +6868,6 @@ def _name_new_box_probe(std, proj) -> None:
       std.primary_workset,
       str(proj.project_path),
       boxes_dir=std.boxes,
-      early=_early_scope(std, BoxMode.primary),
       journal=std.journal,
     )
   else:
@@ -10145,12 +10143,7 @@ def _register_new_box(std, proj) -> None:
   elif proj.mode is BoxMode.primary:
     from kanibako.settings.paths import register_primary_box_name_if_absent
 
-    register_primary_box_name_if_absent(
-      std.primary_workset,
-      proj.name,
-      str(proj.project_path),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name_if_absent(std.primary_workset, proj.name, str(proj.project_path))
   # NAMED: no deferred registration on create (membership written at resolve).
 
 

@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from kanibako.channels.channels import WS_TOKEN_STANDALONE
 from kanibako.errors import (
   ConfigError,
   DerivedBoxNameError,
@@ -24,9 +25,10 @@ from kanibako.errors import (
   WorksetError,
 )
 from kanibako.project import registry_store, workset_registry
-from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig
+from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig, holds_standalone_mark
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
+from kanibako.settings.settings_assemble import refuse_retired_registry_key
 from kanibako.settings.paths import (
   BoxMode,
   DetectionResult,
@@ -42,43 +44,36 @@ from kanibako.utils import is_file_unless_gone, literal_path, refuse_unreadable_
 _PRIMARY_WORKSET_NAME = "default"
 
 
-def stores_standalone_registry_null(project_dir: Path, *, strict: bool = False) -> bool:
-  """True iff *project_dir*'s OWN ``workset.yaml`` stores ``workset.registry`` as null.
+def is_standalone_root(project_dir: Path, *, strict: bool = False) -> bool:
+  """True iff *project_dir*'s OWN registry file holds the standalone mark.
 
-  ⚑ That stored null DEFINES standalone (system-design § Detection & import): this
-  file only, never the cascade, so a null in a containing or system file never counts.
-  A malformed file reads as not standalone unless *strict*, which refuses it.
+  ⚑ The mark DEFINES standalone (system-design § Detection & import):
+  :func:`~kanibako.settings.config.holds_standalone_mark`.  A retired
+  ``workset.registry`` that this root's ``workset.yaml`` still stores refuses first.  A
+  malformed ``workset.yaml`` is left to its own reader unless *strict*, which refuses it.
   """
   settings = project_dir / WORKSET_META_FILE
-  # ⚑ EACCES or a loop refuses, naming the file, strict or not: never "no marker".
-  if not is_file_unless_gone(settings):
-    return False
-  try:
-    table = load_doc(settings).get("workset")
-  except ConfigError:
-    if strict:
-      raise
-    refuse_unreadable_file(settings)
-    return False
-  return isinstance(table, dict) and "registry" in table and table["registry"] is None
+  # ⚑ EACCES or a loop refuses, naming the file, strict or not.
+  if is_file_unless_gone(settings):
+    try:
+      refuse_retired_registry_key(load_doc(settings), level="workset", path=settings)
+    except ConfigError:
+      if strict:
+        raise
+      refuse_unreadable_file(settings)
+  return holds_standalone_mark(project_dir)
 
 
 def standalone_marker_error(root: Path, name: str) -> str | None:
   """Why standalone box *name*, registered at *root*, is no box: its marker is gone.
 
-  ``None`` when *root* stores the marker, is no dir, or holds a ``workset.yaml`` that
-  will not parse (that file's own error reports it).  The one message for D4 state 3:
+  ``None`` when *root* holds the marker or is no dir.  The one message for D4 state 3:
   a launch, ``duplicate``, ``move``, ``convert``, and ``remap`` refuse with it, while
   ``rm`` (with or without ``--purge``) and ``info`` still act on the box.  The second
   cure, ``box rm`` without ``--purge``, unregisters it and keeps its files.  No
   ``Error:`` prefix.
   """
-  marker_file = root / WORKSET_META_FILE
-  if not root.is_dir() or stores_standalone_registry_null(root):
-    return None
-  try:
-    load_doc(marker_file)
-  except ConfigError:
+  if not root.is_dir() or is_standalone_root(root):
     return None
   return (
     standalone_marker_refusal(root, f"box '{name}' is registered as a standalone box")
@@ -96,21 +91,21 @@ def standalone_marker_refusal(root: Path, lead: str) -> str:
   """
   fault, cure = standalone_marker_repair(root)
   return (
-    f"{lead} at {root}, but {root / WORKSET_META_FILE} {fault}, so kanibako does "
+    f"{lead} at {root}, but {workset_registry.workset_registry_path(root)} {fault}, so kanibako does "
     f"not see a box there.\n  Restore it: {cure}."
   )
 
 
 def standalone_marker_repair(root: Path) -> tuple[str, str]:
-  """``(fault, cure)`` for *root*'s ``workset.yaml``, which lacks the standalone marker.
+  """``(fault, cure)`` for *root*'s registry file, which lacks the standalone marker.
 
   *fault* follows the file's path ("is missing"); *cure* is the edit that restores it.
   """
-  if (root / WORKSET_META_FILE).exists():
-    fault, cure = "does not store the standalone marker", "add the line"
+  if workset_registry.workset_registry_path(root).exists():
+    fault, cure = "does not hold the standalone marker", "make its only content"
   else:
-    fault, cure = "is missing", "create that file with the line"
-  return fault, f"{cure} 'registry: null' under 'workset:'"
+    fault, cure = "is missing", "create that file holding only"
+  return fault, f"{cure} '{WS_TOKEN_STANDALONE}'"
 
 
 def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None:
@@ -125,14 +120,14 @@ def _enumerate_worksets(
   """Yield ``(workset_name, workset_root, mode)`` for EVERY reachable workset.
 
   PRIMARY first, then every NAMED workset :func:`list_worksets` returns; a root
-  storing the standalone ``workset.registry`` null is skipped.  ⚑ A LOOPED root has no
+  holding the standalone mark is skipped.  ⚑ A LOOPED root has no
   marker to read and is yielded as named, never refused: it is not the box asked about.
   """
   from kanibako.project.workset import _symlink_loop, list_worksets
 
   yield (_PRIMARY_WORKSET_NAME, std.primary_workset, BoxMode.primary)
   for name, root in list_worksets(std).items():
-    if _symlink_loop(root) or not stores_standalone_registry_null(root):
+    if _symlink_loop(root) or not is_standalone_root(root):
       yield (name, root, BoxMode.named)
 
 
@@ -155,12 +150,9 @@ def _find_owning_box(
 ) -> _OwnedBox | None:
   """Scan every workset's per-workset registry (only *workset*'s, when given) for a box AT *project_dir*.
 
-  Honors a ``workset.registry`` repoint; matches the literal path (links
-  unfollowed), so twins sharing a target stay two boxes.
+  Matches the literal path (links unfollowed), so twins sharing a target stay two boxes.
   ``None`` when no workset owns the dir.
   """
-  from kanibako.channels.channels import workset_token
-  from kanibako.settings.workset_dirkeys import EarlyScope
 
   from kanibako.project.workset import _symlink_loop
 
@@ -169,13 +161,7 @@ def _find_owning_box(
     # ⚑ A looped root holds no registry to read: no box is recorded there.
     if (workset is not None and workset_name != workset) or _symlink_loop(root):
       continue
-    settings: Any = load_doc(root / WORKSET_META_FILE)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      settings,
-      early=EarlyScope(std.early_system, workset_token(mode, workset_name)),
-    )
-    boxes = workset_registry.load_workset_boxes(registry_path)
+    boxes = workset_registry.load_workset_boxes(workset_registry.workset_registry_path(root))
     for box_name, box_path_str in boxes.items():
       if literal_path(box_path_str) == target:
         return _OwnedBox(
@@ -198,9 +184,7 @@ def recorded_workspaces_under(
   ``<workset>/<name>`` for a named member.  Paths compare both literal and resolved: a
   safety test, so a workspace reached through a link still counts.
   """
-  from kanibako.channels.channels import workset_token
   from kanibako.project.workset import _resolved_unless_loop, _symlink_loop
-  from kanibako.settings.workset_dirkeys import EarlyScope
 
   literal = Path(literal_path(tree))
   resolved = _resolved_unless_loop(literal)
@@ -213,19 +197,9 @@ def recorded_workspaces_under(
   for workset_name, root, mode in _enumerate_worksets(std):
     if _symlink_loop(root):
       continue  # ⚑ No registry to read through a loop: it records no box.
-    try:
-      settings: Any = load_doc(root / WORKSET_META_FILE)
-    except ConfigError:
-      # ⚑ An unreadable file still has members: read the DEFAULT registry path,
-      # as ``delete_workset`` does, rather than refusing a purge elsewhere.
-      settings = None
     if mode is BoxMode.primary and not primary:
       continue
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      settings,
-      early=EarlyScope(std.early_system, workset_token(mode, workset_name)),
-    )
+    registry_path = workset_registry.workset_registry_path(root)
     for box_name, recorded in workset_registry.load_workset_boxes(registry_path).items():
       if inside(recorded):
         owner = box_name if mode is BoxMode.primary else f"{workset_name}/{box_name}"
@@ -265,15 +239,11 @@ def find_connected_external_box(
   best_depth = -1
   for name, root in list_worksets(std).items():
     # ⚑ A looped root holds no registry to read: no box is recorded there.
-    if _symlink_loop(root) or stores_standalone_registry_null(root):
+    if _symlink_loop(root) or is_standalone_root(root):
       continue
     settings: Any = load_doc(root / WORKSET_META_FILE)
     early = EarlyScope(std.early_system, name)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      settings,
-      early=early,
-    )
+    registry_path = workset_registry.workset_registry_path(root)
     # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
     workspaces = resolve_workspaces_locator(root, settings, early=early)
     workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
@@ -357,7 +327,7 @@ def detect_box_mode(
   # 3. Else an in-place settings file.
   if registry_store.standalone_name_for_root(
     std.registry, literal
-  ) is not None or stores_standalone_registry_null(literal):
+  ) is not None or is_standalone_root(literal):
     import_reconcile.check_standalone(
       std.registry, literal, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
     )

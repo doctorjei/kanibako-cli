@@ -28,9 +28,7 @@ from kanibako.channels.helpers import (
   write_spawn_budget,
 )
 from kanibako.settings.core_defaults import helper_budget_dest
-from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_resolve import normalize_bind_dest
-from tests.support.early import early_record
 from tests.support.hub import ask
 
 
@@ -57,7 +55,6 @@ def mock_ctx(tmp_path):
     env=None,
     entrypoint=None,
     default_entrypoint="claude",
-    early=early_record(tmp_path, mode=BoxMode.primary),
   )
 
 
@@ -109,7 +106,6 @@ class TestBuildHelperMounts:
       helpers_dir=helpers_dir,
       socket_path=sock,
       binary_mounts=[],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
     mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -131,7 +127,6 @@ class TestBuildHelperMounts:
       helpers_dir=helpers_dir,
       socket_path=sock,
       binary_mounts=[],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
     return ctx, helpers_dir, helper_root
 
@@ -240,7 +235,6 @@ class TestBuildHelperMounts:
       helpers_dir=helpers_dir,
       socket_path=tmp_path / "helper.sock",
       binary_mounts=[binary_mount],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
     mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -263,7 +257,6 @@ class TestBuildHelperMounts:
       helpers_dir=helpers_dir,
       socket_path=tmp_path / "helper.sock",
       binary_mounts=[],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
     return ctx, helpers_dir, helper_root, all_dir
 
@@ -336,7 +329,6 @@ class TestBuildHelperMounts:
       helpers_dir=helpers_dir,
       socket_path=sock,
       binary_mounts=[],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
     mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -356,7 +348,6 @@ class TestBuildHelperMounts:
       # No hub DIRECTORY: the bind source is the socket's directory.
       socket_path=tmp_path / "nohub" / "helper.sock",
       binary_mounts=[],
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
     mounts = _build_helper_mounts(ctx, 1, helpers_dir)

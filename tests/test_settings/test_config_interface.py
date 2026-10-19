@@ -105,8 +105,8 @@ class TestIsKnownKey:
     # ⮕ P7: ``box.agent_name`` is RETIRED (spec §2b) — the agent SELECTION is
     # the §2h request ``pref.system.agent``.
     assert is_known_key("box.agent_name") is False
-    # P3: the per-workset registry key is a known settable key.
-    assert is_known_key("workset.registry") is True
+    # The per-workset registry is the fixed ``meta.workset.registry``, never a settable key.
+    assert is_known_key("workset.registry") is False
     # P6a: the workset LAYOUT anchors are now known settable keys.
     for k in (
       "workset.auth.path",
@@ -2043,42 +2043,6 @@ class TestH1NoCrashOnAdvertisedKeys:
       command_scope=ConfigLevel.box,
     )
     assert "enable_vault" not in load_doc(project_toml).get("box", {})
-
-  def test_set_workset_registry_lands_in_workset_table_as_string(self, tmp_path):
-    """P3: ``workset.registry`` routes to the ``workset:`` table nested slot
-    ``registry`` as a real STRING path (NOT bool-coerced, NOT [project])."""
-    project_toml = tmp_path / BOX_META_FILE
-    msg = set_config_value("workset.registry", "/custom/reg.yaml", config_path=project_toml)
-    assert msg.startswith("Set")
-    data = load_doc(project_toml)
-    assert data["workset"]["registry"] == "/custom/reg.yaml"
-    # A real string path — NOT coerced. ⚑ It IS a KEY_TYPES entry since keyspec §2a
-    # "A path key's stored value" (``type: path``), and a path is deliberately
-    # stored RAW: the type governs the bare-relative refusal, never a coercion.
-    assert isinstance(data["workset"]["registry"], str)
-    # Sparse: nothing lands in [project] or elsewhere.
-    assert "registry" not in data.get("project", {})
-
-  def test_set_workset_registry_preserves_other_workset_keys(self, tmp_path):
-    """The nested write merges — a pre-existing ``workset:`` key survives."""
-    project_toml = tmp_path / BOX_META_FILE
-    dump_doc(project_toml, {"workset": {"auth": {"share_allowed": True}}})
-    set_config_value("workset.registry", "/custom/reg.yaml", config_path=project_toml)
-    data = load_doc(project_toml)
-    assert data["workset"]["auth"]["share_allowed"] is True
-    assert data["workset"]["registry"] == "/custom/reg.yaml"
-
-  def test_reset_workset_registry_removes_it(self, tmp_path):
-    """Reset clears the workset-scope override (sparse store)."""
-    project_toml = tmp_path / BOX_META_FILE
-    set_config_value("workset.registry", "/custom/reg.yaml", config_path=project_toml)
-    assert load_doc(project_toml)["workset"]["registry"] == "/custom/reg.yaml"
-    reset_config_value(
-      "workset.registry",
-      config_path=project_toml,
-      command_scope=ConfigLevel.workset,
-    )
-    assert "registry" not in load_doc(project_toml).get("workset", {})
 
   def test_set_workset_boxes_lands_in_workset_table_as_string(self, tmp_path):
     """P6a: ``workset.boxes`` routes to the ``workset:`` table nested slot

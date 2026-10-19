@@ -1,7 +1,7 @@
 """Tests for kanibako.project.workset_registry (the per-workset box-membership store).
 
-Every membership function takes the resolved per-workset registry FILE path
-(``workset.registry`` == ``<workset_root>/registry.yaml`` at default). These
+Every membership function takes the per-workset registry FILE path
+(``meta.workset.registry`` == ``<workset_root>/registry.yaml``, fixed). These
 tests build that path explicitly from ``tmp_path``.  ADDITIVE infra (P3): no
 existing flow consumes this module yet.
 """
@@ -14,9 +14,6 @@ import pytest
 
 from kanibako.project import workset_registry
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.paths import BoxMode
-from kanibako.settings.settings_resolve import SettingsError
-from tests.support.early import early_record
 
 
 @pytest.fixture
@@ -241,168 +238,35 @@ def test_register_write_is_atomic_no_temp_leftovers(reg: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Path resolver — default vs. honored repoint (mutation-proven)
+# The path is fixed: ``meta.workset.registry`` = ``<workset_root>/registry.yaml``
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_default_is_workset_root_registry(tmp_path: Path) -> None:
-  """No ``workset.registry`` set → default ``<workset_root>/registry.yaml``."""
+def test_the_registry_is_fixed_under_the_workset_root(tmp_path: Path) -> None:
+  """No setting moves it: the keyspec row is ``{meta.workset.path}/registry.yaml``."""
   workset_root = tmp_path / "myws"
-  # None settings and empty settings both fall through to the default.
-  assert (
-    workset_registry.resolve_workset_registry_path(
-      workset_root, None, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    == workset_root / "registry.yaml"
-  )
-  assert (
-    workset_registry.resolve_workset_registry_path(
-      workset_root, {}, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    == workset_root / "registry.yaml"
-  )
-  # A ``workset`` table without ``registry`` also uses the default.
-  assert (
-    workset_registry.resolve_workset_registry_path(
-      workset_root, {"workset": {"image": "x"}}, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    == workset_root / "registry.yaml"
-  )
-
-
-def test_resolve_honors_absolute_repoint(tmp_path: Path) -> None:
-  """A SET absolute ``workset.registry`` is honored, NOT the default.
-
-  Mutation guard: if the repoint branch is broken (always returns the default
-  ``workset_root/registry.yaml``), this assertion fails.
-  """
-  workset_root = tmp_path / "myws"
-  custom = tmp_path / "elsewhere" / "myreg.yaml"
-  resolved = workset_registry.resolve_workset_registry_path(
-    workset_root,
-    {"workset": {"registry": str(custom)}},
-    early=early_record(tmp_path, mode=BoxMode.primary),
-  )
-  assert resolved == custom
-  assert resolved != workset_root / "registry.yaml"
-
-
-def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
-  """A ``~``-based repoint expands the user home (like sibling path keys)."""
-  workset_root = tmp_path / "myws"
-  resolved = workset_registry.resolve_workset_registry_path(
-    workset_root,
-    {"workset": {"registry": "~/custom/reg.yaml"}},
-    early=early_record(tmp_path, mode=BoxMode.primary),
-  )
-  assert resolved == Path("~/custom/reg.yaml").expanduser()
-  assert resolved.is_absolute()
-
-
-def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path, monkeypatch) -> None:
-  """A BARE relative repoint is refused, naming both readings
-  (keyspec §2a "A path key's stored value").
-
-  ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
-  "reg.yaml"`` and called that "deterministic" — deterministic it was, but the
-  determination was a guess between the workset root and the cwd, and the loser is
-  a registry written where nothing will look for it.
-  """
-  # Run from a link, as a shell does: only ``$PWD`` names the link.
-  real, link = tmp_path / "run-real", tmp_path / "run-from"
-  real.mkdir()
-  link.symlink_to(real)
-  monkeypatch.chdir(link)
-  monkeypatch.setenv("PWD", str(link))
-  workset_root = tmp_path / "myws"
-  with pytest.raises(SettingsError) as excinfo:
-    workset_registry.resolve_workset_registry_path(
-      workset_root,
-      {"workset": {"registry": "sub/reg.yaml"}},
-      early=early_record(tmp_path, mode=BoxMode.primary),
-    )
-  message = str(excinfo.value)
-  assert str(workset_root / "sub" / "reg.yaml") in message
-  assert str(link / "sub" / "reg.yaml") in message
-  assert str(real.resolve() / "sub" / "reg.yaml") not in message
-
-
-def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -> None:
-  """Keeping the registry with the workset stays expressible — it has to be SAID."""
-  workset_root = tmp_path / "myws"
-  resolved = workset_registry.resolve_workset_registry_path(
-    workset_root,
-    {"workset": {"registry": "{meta.workset.path}/sub/reg.yaml"}},
-    early=early_record(tmp_path, mode=BoxMode.primary),
-  )
-  assert resolved == workset_root / "sub" / "reg.yaml"
+  assert workset_registry.workset_registry_path(workset_root) == workset_root / "registry.yaml"
 
 
 def test_resolve_is_pure_no_side_effects(tmp_path: Path) -> None:
-  """The resolver touches no filesystem (pure function of its inputs)."""
+  """The path function touches no filesystem."""
   workset_root = tmp_path / "myws"
-  workset_registry.resolve_workset_registry_path(
-    workset_root, None, early=early_record(tmp_path, mode=BoxMode.primary)
-  )
+  workset_registry.workset_registry_path(workset_root)
   assert not workset_root.exists()
 
 
-# ---------------------------------------------------------------------------
-# A PRESENT null at ``workset.registry`` — refused at the read and at the set door
-# ---------------------------------------------------------------------------
+def test_the_standalone_mark_is_a_registry_with_no_members(tmp_path: Path) -> None:
+  """A file holding only ``__STANDALONE__`` reads as no members, never as a malformed doc."""
+  reg = tmp_path / "registry.yaml"
+  reg.write_text("  __standalone__\n")
+  assert workset_registry.load_workset_boxes(reg) == {}
 
 
-def test_a_null_registry_refuses_naming_the_key_and_the_file(tmp_path: Path) -> None:
-  """``workset.registry: null`` RAISES instead of taking the default.
-
-  The registry holds the workset's box MEMBERSHIP and its entry keys are the only
-  source of box names, so a null leaves no workset to read.  Mutation guard: an
-  absent-or-null read that falls through to ``<root>/registry.yaml`` returns that
-  path and this assertion never runs.
-  """
-  workset_root = tmp_path / "myws"
-  with pytest.raises(SettingsError) as excinfo:
-    workset_registry.resolve_workset_registry_path(
-      workset_root,
-      {"workset": {"registry": None}},
-      early=early_record(tmp_path, mode=BoxMode.primary),
-    )
-  message = str(excinfo.value)
-  assert "workset.registry" in message
-  assert str(workset_root / "workset.yaml") in message
-
-
-def test_the_null_refusal_is_the_path_key_carriers_own(tmp_path: Path) -> None:
-  """⚑ ONE CARRIER: this reader raises through ``config``'s carrier, like ``workset.boxes``.
-
-  A second wording spelled for the registry would be a second rule, free to drift
-  from the reason every other path-key door answers to.
-  """
-  from kanibako.settings.config import null_path_keys_error
-
-  workset_root = tmp_path / "myws"
-  with pytest.raises(SettingsError) as excinfo:
-    workset_registry.resolve_workset_registry_path(
-      workset_root,
-      {"workset": {"registry": None}},
-      early=early_record(tmp_path, mode=BoxMode.primary),
-    )
-  assert str(excinfo.value) == null_path_keys_error(
-    workset_root / "workset.yaml", ("workset.registry",)
-  )
-
-
-def test_the_registry_key_is_in_the_doors_membership() -> None:
-  """The ``set`` door answers to :func:`config.refuses_null_path_key` for this key."""
-  from kanibako.settings.config import refuses_null_path_key
-
-  assert refuses_null_path_key("workset.registry") is True
-
-
-def test_a_null_registry_is_refused_at_the_set_door_and_nothing_is_written(
-  tmp_path: Path,
+@pytest.mark.parametrize("value", [None, "/srv/reg.yaml"])
+def test_the_retired_key_is_refused_at_the_set_door_and_nothing_is_written(
+  tmp_path: Path, value: str | None
 ) -> None:
-  """``set --null workset.registry`` is refused BEFORE the write, naming the key.
+  """``workset.registry`` is no key: the ``set`` door refuses it, naming it, and writes nothing.
 
   Driven through :func:`set_config_value`, the door the ``workset set`` verb runs.
   """
@@ -412,7 +276,7 @@ def test_a_null_registry_is_refused_at_the_set_door_and_nothing_is_written(
   workset_settings = tmp_path / "myws" / "workset.yaml"
   message = set_config_value(
     "workset.registry",
-    None,
+    value,
     config_path=workset_settings,
     cascade_workset_path=workset_settings,
     command_scope=ConfigLevel.workset,
@@ -420,35 +284,6 @@ def test_a_null_registry_is_refused_at_the_set_door_and_nothing_is_written(
   assert message.startswith("Error:"), message
   assert "workset.registry" in message, message
   assert not workset_settings.exists(), f"{workset_settings} was written: {message}"
-
-
-@pytest.mark.parametrize(
-  "settings_doc",
-  [
-    None,  # no workset.yaml at all
-    {},  # a file that holds no table
-    {"workset": {}},  # a table with no key in it
-    {"workset": {"logs": None}},  # ...and one whose OTHER key is null
-  ],
-  ids=["no_doc", "empty_doc", "empty_table", "sibling_null"],
-)
-def test_an_absent_registry_key_still_takes_the_default(
-  tmp_path: Path,
-  settings_doc: dict | None,
-) -> None:
-  """⚑ THE ABSENT/PRESENT LINE. Absent takes the default; only a PRESENT null refuses.
-
-  Every shape here has no ``workset.registry`` at all, and every one must still read
-  ``<root>/registry.yaml`` — a refusal that reached past a present null and into the
-  absent case would strand every workset that never set the key.
-  """
-  workset_root = tmp_path / "myws"
-  assert (
-    workset_registry.resolve_workset_registry_path(
-      workset_root, settings_doc, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    == workset_root / "registry.yaml"
-  )
 
 
 def test_concurrent_registrations_keep_every_row(tmp_path: Path, monkeypatch) -> None:

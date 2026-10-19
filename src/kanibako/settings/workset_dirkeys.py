@@ -28,7 +28,7 @@ resolved yet"; a directory called ``{config.registry}`` is not.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -71,7 +71,6 @@ WORKSET_EARLY_KEYS: frozenset[str] = frozenset(
     BOXES_PATH,
     LOGS_PATH,
     "channelroot",
-    "registry",
     "canon",
     "template",
     "vault_ro",
@@ -223,14 +222,12 @@ def refuse_inherited_per_owner(
   early: EarlyScope,
   *,
   doc: Mapping[str, Any] | None | _Unset = UNSET,
-  exclude: Collection[str] = (),
 ) -> None:
   """Refuse, before a verb changes anything, any per-owner early key *workset_root*'s
   workset inherits from the system tier with a value that reaches no owner identity.
 
-  Runs :func:`early_repoint` over every per-owner key in :data:`WORKSET_EARLY_KEYS` less
-  *exclude*; raises its :class:`~kanibako.errors.ConfigError`.  *doc*: the own file's
-  document, if read.  *exclude*: the keys a door reaching only a SUBSET does not walk.
+  Runs :func:`early_repoint` over every per-owner key in :data:`WORKSET_EARLY_KEYS`;
+  raises its :class:`~kanibako.errors.ConfigError`.  *doc*: the own file's document, if read.
   An own file that cannot be checked (``EACCES``) refuses, naming it; it is never absent.
   """
   from kanibako.settings.config_keys import KEY_OWNERS
@@ -238,8 +235,6 @@ def refuse_inherited_per_owner(
   if isinstance(doc, _Unset):
     doc = load_doc(workset_root / WORKSET_META_FILE)
   for key in sorted(WORKSET_EARLY_KEYS):
-    if key in exclude:
-      continue
     if KEY_OWNERS[f"workset.{key}"] != "shared":
       early_repoint(workset_root, doc, key, early=early)
 

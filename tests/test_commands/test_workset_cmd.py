@@ -11,7 +11,7 @@ import pytest
 
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
+from kanibako.settings.paths import BoxMode, load_std_paths
 from kanibako.settings.settings_resolve import normalize_bind_dest
 from kanibako.project.workset import (
   add_project,
@@ -23,13 +23,8 @@ from kanibako.project.workset import (
 def _workset_boxes(ws):
   """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
   from kanibako.project import workset_registry
-  from kanibako.settings.config_io import load_doc
 
-  registry_path = workset_registry.resolve_workset_registry_path(
-    ws.root,
-    load_doc(ws.root / "workset.yaml"),
-    early=ws.early_scope,
-  )
+  registry_path = workset_registry.workset_registry_path(ws.root)
   return workset_registry.load_workset_boxes(registry_path)
 
 
@@ -194,12 +189,7 @@ class TestWorksetCreate:
 
     config = load_config(config_file)
     std = load_std_paths(config)
-    register_primary_box_name(
-      std.primary_workset,
-      "common",
-      str(tmp_home / "box"),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name(std.primary_workset, "common", str(tmp_home / "box"))
 
     ws_root = tmp_home / "shared_ws"
     args = argparse.Namespace(
@@ -1337,9 +1327,7 @@ class TestWorksetConnect:
     outside = (tmp_home / "extws3").resolve()
     leaf = outside / "beta"
     leaf.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "beta", str(leaf), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "beta", str(leaf))
     root = (tmp_home / "ws_pb").resolve()
     create_workset("pb", root, std)
     dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
@@ -1378,9 +1366,7 @@ class TestWorksetConnect:
     outside = (tmp_home / "extws_cure").resolve()
     leaf = outside / "beta"
     leaf.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "beta", str(leaf), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "beta", str(leaf))
     root = (tmp_home / "ws_cure").resolve()
     create_workset("cure", root, std)
     dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
@@ -1418,9 +1404,7 @@ class TestWorksetConnect:
     std = load_std_paths(config)
     leaf = (tmp_home / "elsewhere" / "gamma").resolve()
     leaf.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "gamma", str(leaf), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "gamma", str(leaf))
     root = (tmp_home / "ws_ext_cure").resolve()
     create_workset("extcure", root, std)
 
@@ -1489,9 +1473,7 @@ class TestWorksetConnect:
     std = load_std_paths(config)
     ext = (tmp_home / "ext_pb" / "beta").resolve()
     ext.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "beta", str(ext), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "beta", str(ext))
     create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
 
     args = argparse.Namespace(
@@ -1521,7 +1503,8 @@ class TestWorksetConnect:
     external = (tmp_home / "sa_box").resolve()
     external.mkdir()
     (external / "box_data").mkdir()
-    (external / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (external / "workset.yaml").touch()
+    (external / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(
       workset="saws",
@@ -1547,7 +1530,8 @@ class TestWorksetConnect:
     external = (tmp_home / "sa_box2").resolve()
     external.mkdir()
     (external / "box_data").mkdir()
-    (external / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (external / "workset.yaml").touch()
+    (external / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(
       workset="saws2",
@@ -4227,7 +4211,7 @@ class TestWorksetCreateConnectReadOnlyRegistry:
 
 class TestConnectDropsTheStandaloneMarker:
   """181-DF3 and 181-DF4 [Jei:2026-10-13]: a box is in one workset only.  ``workset connect
-  --force`` of a standalone box removes its marker (the ``workset.registry`` null) and
+  --force`` of a standalone box removes its marker (the ``registry.yaml`` mark) and
   nothing else; ``disconnect`` writes none back, so the box ends as a plain directory."""
 
   @staticmethod
@@ -4274,7 +4258,8 @@ class TestConnectDropsTheStandaloneMarker:
     assert self._connect("dm", root) == 0
 
     assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
-    assert not box_resolve.stores_standalone_registry_null(root)
+    assert not (root / "registry.yaml").exists()
+    assert not box_resolve.is_standalone_root(root)
     assert (root / "box_data" / "home.txt").read_text() == "state"
     assert (root / "file.txt").read_text() == "mine"
     assert name not in registry_store.load_standalone(std.registry)
@@ -4306,7 +4291,6 @@ class TestConnectDropsTheStandaloneMarker:
   ):
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -4322,7 +4306,7 @@ class TestConnectDropsTheStandaloneMarker:
     out = capsys.readouterr().out
     assert f"Re-adopt them: kanibako workset connect dm {root} --name sb" in out
     assert (root / "workset.yaml").read_text() == after_connect
-    assert "registry" not in load_doc(root / "workset.yaml")["workset"]
+    assert not (root / "registry.yaml").exists()
     assert registry_store.load_standalone(std.registry) == {}
     assert _workset_boxes(ws) == {}
     assert box_resolve.detect_box_mode(root, std, config) is None
@@ -4376,10 +4360,10 @@ class TestConnectDropsTheStandaloneMarker:
       == 0
     )
 
-    assert box_resolve.stores_standalone_registry_null(root)
+    assert box_resolve.is_standalone_root(root)
     assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.standalone
 
-  @pytest.mark.parametrize("where", ["in_the_write", "after_the_write"])
+  @pytest.mark.parametrize("where", ["in_the_delete", "after_the_delete"])
   def test_an_interrupted_connect_restores_the_marker_and_the_row(
     self,
     config_file,
@@ -4399,26 +4383,25 @@ class TestConnectDropsTheStandaloneMarker:
     create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
     root = (tmp_home / "sa").resolve()
     name = self._standalone(std, root)
-    before = (root / "workset.yaml").read_text()
+    before = (root / "registry.yaml").read_text()
 
-    if where == "in_the_write":
-      real_write = boxfs.write_text
+    if where == "in_the_delete":
+      real_unlink = boxfs.unlink
       calls = []
 
-      def write_text(path, root_, data, *a, **kw):
-        if Path(path) == root / "workset.yaml":
+      def unlink(path, root_, *a, **kw):
+        real_unlink(path, root_, *a, **kw)
+        if Path(path) == root / "registry.yaml":
           calls.append(path)
-          if len(calls) == 1:
-            raise KeyboardInterrupt
-        return real_write(path, root_, data, *a, **kw)
+          raise KeyboardInterrupt
 
-      monkeypatch.setattr(boxfs, "write_text", write_text)
+      monkeypatch.setattr(boxfs, "unlink", unlink)
     else:
       real_drop = paths.drop_standalone_marker
 
       def drop(root_, push_undo):
         real_drop(root_, push_undo)
-        assert (root_ / "workset.yaml").read_text() != before
+        assert not (root_ / "registry.yaml").exists()
         raise KeyboardInterrupt
 
       monkeypatch.setattr(paths, "drop_standalone_marker", drop)
@@ -4426,9 +4409,9 @@ class TestConnectDropsTheStandaloneMarker:
     with pytest.raises(KeyboardInterrupt):
       self._connect("dm", root)
 
-    if where == "in_the_write":
-      assert len(calls) == 2  # the undo was pushed before the write, and ran
-    assert (root / "workset.yaml").read_text() == before
+    if where == "in_the_delete":
+      assert len(calls) == 1  # the file was gone, so only the undo pushed first restored it
+    assert (root / "registry.yaml").read_text() == before
     assert registry_store.load_standalone(std.registry) == {name: str(root)}
     assert (
       _workset_boxes(load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system))
@@ -4452,14 +4435,14 @@ class TestConnectDropsTheStandaloneMarker:
     root = (tmp_home / "sa").resolve()
     self._standalone(std, root)
     target = (tmp_home / "elsewhere.yaml").resolve()
-    (root / "workset.yaml").rename(target)
-    (root / "workset.yaml").symlink_to(target)
+    (root / "registry.yaml").rename(target)
+    (root / "registry.yaml").symlink_to(target)
     before = target.read_text()
 
     with caplog.at_level("WARNING"):
       assert self._connect("dm", root) == 0
 
-    assert (root / "workset.yaml").is_symlink()
+    assert (root / "registry.yaml").is_symlink()
     assert target.read_text() == before
     [warning] = [
       r.getMessage()
@@ -4467,7 +4450,7 @@ class TestConnectDropsTheStandaloneMarker:
       if "could not remove the standalone marker" in r.getMessage()
     ]
     assert "refusing to follow the symlink" in warning
-    assert warning.count(str(root / "workset.yaml")) == 2  # the subject, the link: once each
+    assert warning.count(str(root / "registry.yaml")) == 2  # the subject, the link: once each
     assert _workset_boxes(ws) == {"sb": str(root)}
     assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(BoxMode.named, root)
 
@@ -4485,7 +4468,7 @@ class TestConnectDropsTheStandaloneMarker:
     ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
     root = (tmp_home / "sa").resolve()
     self._standalone(std, root)
-    before = (root / "workset.yaml").read_text()
+    before = (root / "registry.yaml").read_text()
     root.chmod(0o555)
     try:
       with caplog.at_level("WARNING"):
@@ -4493,7 +4476,7 @@ class TestConnectDropsTheStandaloneMarker:
     finally:
       root.chmod(0o755)
 
-    assert (root / "workset.yaml").read_text() == before
+    assert (root / "registry.yaml").read_text() == before
     assert any("could not remove the standalone marker" in r.getMessage() for r in caplog.records)
     assert _workset_boxes(ws) == {"sb": str(root)}
     assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.named
@@ -4530,7 +4513,7 @@ class TestConnectDropsTheStandaloneMarker:
     ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
     box_key = ws.projects_dir / "sb"
     assert journal.pending_import(std.journal, box_key)["op"] == "connect"
-    assert box_resolve.stores_standalone_registry_null(root) is not dropped
+    assert box_resolve.is_standalone_root(root) is not dropped
 
     paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std, config)
 
@@ -4548,8 +4531,8 @@ class TestConnectDropsTheStandaloneMarker:
     caplog,
     damage,
   ):
-    """The replay never raises: an unreadable or looping ``workset.yaml`` keeps its
-    marker, with a warning naming it, and the entry still clears, as it did before."""
+    """The replay never raises: an unreadable or looping ``registry.yaml`` mark is kept,
+    with a warning naming it, and the entry still clears, as it did before."""
     from kanibako.launch import journal
     from kanibako.project.workset import load_workset
     from kanibako.settings import paths
@@ -4561,7 +4544,7 @@ class TestConnectDropsTheStandaloneMarker:
     create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
     root = (tmp_home / "sa").resolve()
     self._standalone(std, root)
-    marker = root / "workset.yaml"
+    marker = root / "registry.yaml"
     before = marker.read_text()
 
     monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
@@ -4593,7 +4576,7 @@ class TestConnectDropsTheStandaloneMarker:
     ]
     assert warning.count(str(marker)) == 1
     assert "retry" not in warning  # the entry clears, so a retry would drop nothing
-    assert "remove that line by hand" in warning
+    assert "delete it by hand" in warning
     assert (
       f"({os.strerror(errno.EACCES)})"
       if damage == "unreadable"

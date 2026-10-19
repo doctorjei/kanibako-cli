@@ -181,8 +181,6 @@ class TestBoxContainer:
 class TestHelperContainersCarryLabels:
   def test_the_hub_adds_the_helper_label(self, tmp_path):
     from kanibako.channels.helper_listener import HelperContext, HelperHub
-    from kanibako.settings.paths import BoxMode
-    from tests.support.early import early_record
 
     helpers_dir = tmp_path / "shell" / "helpers"
     (helpers_dir / "4" / "workspace").mkdir(parents=True)
@@ -196,7 +194,6 @@ class TestHelperContainersCarryLabels:
       shell_path=tmp_path / "shell",
       helpers_dir=helpers_dir,
       socket_path=tmp_path / "s",
-      early=early_record(tmp_path, mode=BoxMode.primary),
       labels={
         "kanibako.workset": "primary",
         "kanibako.box": "myapp",

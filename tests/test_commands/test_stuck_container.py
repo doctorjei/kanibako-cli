@@ -25,8 +25,6 @@ from kanibako.commands.start import _run_container
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import (
-  BoxMode,
-  _early_scope,
   load_primary_boxes,
   load_std_paths,
   resolve_project,
@@ -89,11 +87,7 @@ def stuck_box(config_file, tmp_home, credentials_dir, tmp_path, monkeypatch, cap
   workspace.mkdir()
   resolve_project(std, config, project_dir=str(workspace), initialize=True)
   name = next(
-    n
-    for n, w in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    ).items()
-    if Path(w).name == "wedge"
+    n for n, w in load_primary_boxes(std.primary_workset).items() if Path(w).name == "wedge"
   )
   container = container_name_for_box_name(name, WORKSET_SEGMENT_PRIMARY)
   assert container is not None

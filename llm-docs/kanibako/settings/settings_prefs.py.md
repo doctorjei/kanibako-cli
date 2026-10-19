@@ -91,8 +91,7 @@ The tiers are independent filters; a key covered by both is fine.
 agent file may not carry prefs. **A naive derivation of this closure would capture `system.agent`
 and break the headline feature** — read this before implementing the TODO below.
 
-⚑ NOT in the closure, so nobody adds them speculatively: `workset.registry` (the box MEMBERSHIP
-index, not a cascade-input settings file), `workset.template` / `<scope>.canon` (seed and bind
+⚑ NOT in the closure, so nobody adds them speculatively: `workset.template` / `<scope>.canon` (seed and bind
 sources), `system.cache` / `system.runtime` (no cascade file under them).
 
 ### The TODO — derive it, do not hand-list it

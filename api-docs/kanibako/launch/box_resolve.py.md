@@ -13,7 +13,7 @@ _PRIMARY_WORKSET_NAME = 'default'
 
 ## Functions
 ```
-def stores_standalone_registry_null(project_dir: Path, *, strict: bool=False) -> bool
+def is_standalone_root(project_dir: Path, *, strict: bool=False) -> bool
 def standalone_marker_error(root: Path, name: str) -> str | None
 def standalone_marker_refusal(root: Path, lead: str) -> str
 def standalone_marker_repair(root: Path) -> tuple[str, str]

@@ -16,8 +16,6 @@ from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.project.workset import create_workset
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.settings.paths import (
-  BoxMode,
-  _early_scope,
   load_primary_boxes,
   load_std_paths,
   resolve_project,
@@ -62,9 +60,7 @@ class TestPurge:
     assert run(argparse.Namespace(path=str(workspace), all_projects=False, force=True)) == 0
     assert set(seen) == {WS_TOKEN_PRIMARY}
     # The unregister swallows any error, the spy's included, so the entry must be gone.
-    assert workspace.name not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert workspace.name not in load_primary_boxes(std.primary_workset)
 
   def test_a_standalone_purge(self, config_file, tmp_home, credentials_dir, request):
     from kanibako.commands.clean import run
@@ -87,7 +83,8 @@ class TestBoxRm:
     workspace = _primary(config, std, tmp_home / "p")
     seen = _spy(request, std)
     assert run_rm(argparse.Namespace(target=str(workspace), purge=False, force=True)) == 0
-    assert set(seen) == {WS_TOKEN_PRIMARY}
+    # The primary membership is the fixed ``meta.workset.registry``: no early read.
+    assert set(seen) == set()
 
   def test_a_standalone_rm_purge(self, config_file, tmp_home, credentials_dir, request):
     from kanibako.commands.box._parser import run_rm
@@ -204,7 +201,7 @@ class TestWorksetVerbs:
     (ws.root / WORKSET_META_FILE).write_text("workset: [unclosed\n")
     seen = _spy(request, std)
     assert run_rm(argparse.Namespace(name="team", force=False, purge=False)) == 1
-    assert set(seen) == {"team"}
+    assert set(seen) == set()
 
   def test_connect_refuses_a_primary_workspace(
     self, config_file, tmp_home, credentials_dir, request
@@ -226,7 +223,7 @@ class TestWorksetVerbs:
       )
       == 1
     )
-    assert set(seen) == {WS_TOKEN_PRIMARY, "team"}
+    assert set(seen) == {"team"}
 
 
 class TestWorksetStamp:

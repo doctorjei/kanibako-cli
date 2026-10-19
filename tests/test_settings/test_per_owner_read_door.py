@@ -163,20 +163,6 @@ class TestRefuseInheritedPerOwner:
       _scope({"workset.template": "/srv/tmpl"}, tmp_path / "settings.yaml"),
     )
 
-  def test_exclude_narrows_the_walk_and_leaves_the_default_alone(self, tmp_path):
-    """``registry`` is judged by the DEFAULT walk and spared only by ``exclude``.
-
-    Pinned both ways, so the default cannot silently narrow: the standalone
-    ``create`` door is the only caller that passes ``exclude``.
-    """
-    settings = tmp_path / "settings.yaml"
-    tier = {"workset.registry": "/srv/reg"}
-    with pytest.raises(ConfigError, match=r"workset\.registry is set to '/srv/reg'"):
-      refuse_inherited_per_owner(tmp_path, _scope(tier, settings))
-    refuse_inherited_per_owner(tmp_path, _scope(tier, settings), exclude={"registry"})
-    with pytest.raises(ConfigError, match=r"workset\.registry"):
-      refuse_inherited_per_owner(tmp_path, _scope(tier, settings), exclude={"boxes"})
-
 
 class TestWorksetCreate:
   def _create(self, std, ws_root: Path, capsys) -> tuple[int, str]:
@@ -186,20 +172,18 @@ class TestWorksetCreate:
       cli.main(["workset", "create", str(ws_root), "--name", "kento"])
     return made.value.code, capsys.readouterr().err
 
-  def test_a_system_registry_literal_is_refused_and_nothing_is_created(
-    self, std, tmp_path, capsys
-  ):
-    _write_system(std, {"registry": "/srv/reg.yaml"})
+  def test_a_system_vault_literal_is_refused_and_nothing_is_created(self, std, tmp_path, capsys):
+    _write_system(std, {"vault_rw": "/srv/vault"})
     code, err = self._create(std, tmp_path / "ws", capsys)
     assert code == 1
-    assert f"workset.registry is set to '/srv/reg.yaml' in {std.settings}," in err
+    assert f"workset.vault_rw is set to '/srv/vault' in {std.settings}," in err
     assert "does not reach working-set identity" in err
     assert not (tmp_path / "ws").exists()
     assert not std.registry.exists() or "kento" not in std.registry.read_text()
 
   @pytest.mark.parametrize("form", _FORMS)
-  def test_an_anchored_registry_still_creates(self, std, tmp_path, capsys, form):
-    _write_system(std, {"registry": "/srv/reg/" + _ref(form, "meta.workset.path") + "/r.yaml"})
+  def test_an_anchored_vault_still_creates(self, std, tmp_path, capsys, form):
+    _write_system(std, {"vault_rw": f"{tmp_path / 'vault'}/" + _ref(form, "meta.workset.path")})
     code, _ = self._create(std, tmp_path / "ws", capsys)
     assert code == 0
     assert (tmp_path / "ws").is_dir()

@@ -95,15 +95,11 @@ class TestPrimaryNameFree:
   @pytest.mark.parametrize("which", HOME_SPELLINGS)
   def test_refuses_home(self, spellings, tmp_home, which):
     with pytest.raises(ProjectError, match=r"\$HOME"):
-      paths.check_primary_box_name_free(
-        tmp_home / "pw", "n", spellings[which], early=paths.total_standalone_early()
-      )
+      paths.check_primary_box_name_free(tmp_home / "pw", "n", spellings[which])
 
   @pytest.mark.parametrize("which", OTHERS)
   def test_accepts_others(self, spellings, tmp_home, which):
-    paths.check_primary_box_name_free(
-      tmp_home / "pw", "n", spellings[which], early=paths.total_standalone_early()
-    )
+    paths.check_primary_box_name_free(tmp_home / "pw", "n", spellings[which])
 
 
 class TestResolveProjectNewHome:
@@ -131,7 +127,8 @@ class TestDetectionWalkStop:
     """A standalone marker above a link to $HOME is never adopted: the walk stops at the link."""
     outer = tmp_home / "outer"
     outer.mkdir()
-    (outer / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (outer / "workset.yaml").touch()
+    (outer / "registry.yaml").write_text("__STANDALONE__\n")
     (outer / "to-home").symlink_to(tmp_home / "home")
     (tmp_home / "home" / "proj").mkdir()
     config = load_config(config_file)

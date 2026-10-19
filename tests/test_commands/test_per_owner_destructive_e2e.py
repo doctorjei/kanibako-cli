@@ -12,8 +12,6 @@ both resolve ``a`` to the same tree, and a purge of ``w1`` takes ``w2``'s box wi
 - **State A:** the primary workset inherits the system value too.
 - **State B:** the primary workset owns an anchored ``workset.boxes``, so ``load_std_paths``
   passes and only the verbs' own check stands between the data and the delete.
-- **State C:** state A plus a valid system-tier ``workset.registry``, with a stale decoy
-  ``registry.yaml`` in each named root.
 """
 
 from __future__ import annotations
@@ -506,27 +504,4 @@ class TestStateA:
     before = world.hashes()
 
     assert _run(["system", "reset", "workset.boxes"]) == 0, capsys.readouterr().err
-    assert world.hashes() == before
-
-
-class TestStateC:
-  def test_stop_reads_the_system_registry(self, world, runtime, capsys):
-    doc = yaml.safe_load(world.std.settings.read_text())
-    doc["workset"]["registry"] = "{meta.workset.path}/members.yaml"
-    world.std.settings.write_text(yaml.safe_dump(doc))
-    for root in (world.w1_root, world.w2_root):
-      text = (root / "registry.yaml").read_text()
-      assert "a:" in text, text
-      (root / "members.yaml").write_text(text)
-      (root / "registry.yaml").write_text(text.replace("a:", "decoy:"))
-    before = world.hashes()
-
-    assert _run(["stop", str(world.leaf)]) == 1
-    assert str(world.std.settings) in capsys.readouterr().err
-    assert runtime.method_calls == []
-
-    assert _run(["system", "set", _ANCHORED]) == 0, capsys.readouterr().err
-    assert _run(["stop", str(world.leaf)]) == 0, capsys.readouterr().err
-    runtime.stop.assert_called_once_with("kb-w1-a")
-    assert not [c for c in runtime.method_calls if "kb-w1-decoy" in c[1]]
     assert world.hashes() == before

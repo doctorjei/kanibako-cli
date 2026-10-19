@@ -33,6 +33,8 @@ from kanibako.settings.bootstrap import CREDS_LOCK_KEPT_WHY
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.config import (
   WORKSET_META_FILE,
+  WORKSET_REGISTRY_FILE,
+  holds_standalone_mark,
   user_config_file,
   load_config,
 )
@@ -1065,12 +1067,7 @@ def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
   orphan = std.boxes / basename
   if not orphan.is_dir():
     return None
-  if (
-    find_identifier(
-      basename, load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    )
-    is not None
-  ):
+  if find_identifier(basename, load_primary_boxes(std.primary_workset)) is not None:
     return None
   # ⚑ A DEREGISTERED entry is a CLAIM, and this picker refuses only what NOTHING
   # claims: ``rm`` without ``--purge`` kept the home, so the box is there to be
@@ -1185,12 +1182,11 @@ def _new_member_undo(ws: Workset, name: str, leftover_cure: str) -> Callable[...
   from kanibako.project.workset import (
     _member_store_bases,
     _unwind_created_root,
-    load_workset_settings_doc,
     release_project,
   )
   from kanibako.project.workset_registry import (
     load_workset_boxes,
-    resolve_workset_registry_path,
+    workset_registry_path,
   )
   from kanibako.runtime.container import remove_box_tree
 
@@ -1200,9 +1196,7 @@ def _new_member_undo(ws: Workset, name: str, leftover_cure: str) -> Callable[...
   # ⚑ LEAVES BEFORE PARENTS: a parent this run made holds only what it made.
   leaves = (box_dir, *(base / name for base in bases[1:]), ws.workspaces_dir / name)
   parents = (*bases, ws.workspaces_dir)
-  registry = resolve_workset_registry_path(
-    ws.root, load_workset_settings_doc(ws.root), early=ws.early_scope
-  )
+  registry = workset_registry_path(ws.root)
 
   def _new(path: Path) -> bool:
     return not path.exists() and not path.is_symlink()
@@ -1272,7 +1266,7 @@ def _new_box_undo(
     ]
     parents = [p.parent for p in (probe.vault_ro_path, probe.vault_rw_path) if p is not None]
     vault_root = root
-    files = [root / IGNORE_FILE, root / WORKSET_META_FILE]
+    files = [root / IGNORE_FILE, root / WORKSET_META_FILE, root / WORKSET_REGISTRY_FILE]
   else:
     # ⚑ THE PROBE'S PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``); their
     # PARENT is the resolved store.
@@ -1365,7 +1359,7 @@ def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> "dict | No
 
   with rmw_lock(std.journal):
     if primary:
-      boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+      boxes = load_primary_boxes(std.primary_workset)
       held = find_identifier(probe.name, boxes)
       if (held is None and (std.boxes / probe.name).exists()) or (
         held is not None and not _same_workspace(boxes[held], str(probe.project_path))
@@ -1391,10 +1385,6 @@ def _recovered_standalone_name(std, proj, supplied: str) -> str:
       box_kuid=None if stored == kuid.SENTINEL else stored,
     )
   )
-
-
-#: The per-owner keys a standalone ``create`` accepts: ``registry`` (§D4a below), ``template``.
-_STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({"registry", "template"})
 
 
 def precheck_create(args: argparse.Namespace) -> int | None:
@@ -1617,11 +1607,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
       _standalone_settings_files(effective_path, early=_early_scope(std, BoxMode.standalone))[1],
       ("workset",),
     )
-    refuse_inherited_per_owner(
-      effective_path,
-      _early_scope(std, BoxMode.standalone),
-      exclude=_STANDALONE_CREATE_EXEMPT_KEYS,
-    )
+    refuse_inherited_per_owner(effective_path, _early_scope(std, BoxMode.standalone))
 
   # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
   # the named workset whose root contains the current directory".  The cwd as the
@@ -1696,12 +1682,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
   # A NAMED box's name is its membership, guarded above.
   if _named_spec is None and getattr(args, "name", None) and not args.standalone:
     try:
-      check_primary_box_name_free(
-        std.primary_workset,
-        args.name,
-        str(effective_path),
-        early=_early_scope(std, BoxMode.primary),
-      )
+      check_primary_box_name_free(std.primary_workset, args.name, str(effective_path))
       # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
       _assert_primary_home_free_for_create(std, args.name)
     except ProjectError as e:
@@ -1724,10 +1705,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     _named_spec is None
     and not args.standalone
     and not getattr(args, "name", None)
-    and primary_box_name_for_workspace(
-      std.primary_workset, str(effective_path), early=_early_scope(std, BoxMode.primary)
-    )
-    is None
+    and primary_box_name_for_workspace(std.primary_workset, str(effective_path)) is None
   ):
     try:
       refuse_derived_box_name(effective_path.name or "project")
@@ -2278,12 +2256,7 @@ def run_list(args: argparse.Namespace) -> int:
     labeled_any = bool(runtime.find_labeled({LABEL_BOX: None}))
 
   # Build reverse lookup from path → name using the PRIMARY membership.
-  path_to_name: dict[str, str] = {
-    v: k
-    for k, v in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    ).items()
-  }
+  path_to_name: dict[str, str] = {v: k for k, v in load_primary_boxes(std.primary_workset).items()}
 
   def _norm(p: object) -> str:
     """Normalize a path (Path or str, possibly None) for row-identity keys."""
@@ -2497,12 +2470,7 @@ def _list_orphans(
       print("No orphaned projects found.")
     return 0
 
-  path_to_name: dict[str, str] = {
-    v: k
-    for k, v in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    ).items()
-  }
+  path_to_name: dict[str, str] = {v: k for k, v in load_primary_boxes(std.primary_workset).items()}
 
   if ac_orphans:
     if not quiet:
@@ -2826,8 +2794,8 @@ def _standalone_purge_plan(
     retained.append(("store", retained_store, None))
   if metadata_dir is None:
     return _without_recorded_workspaces(steps, std), retained
-  # ⚑ ROOT workset.yaml = WORKSET tier + half the detection marker (system-design-1.8.0.md
-  # § "Detection & import"), so it goes LAST, AFTER the anchor.  ⚑⚑ Delete it early and a
+  # ⚑ ROOT workset.yaml = WORKSET tier, and registry.yaml = the detection marker
+  # (system-design-1.8.0.md § "Detection & import"), so both go LAST, AFTER the anchor.  ⚑⚑ Delete it early and a
   # later failure makes the retry resolve composed DEFAULTS: a kept-and-named folder
   # becomes "kanibako's own skeleton".
   settings_file = root / WORKSET_META_FILE
@@ -2862,9 +2830,14 @@ def _standalone_purge_plan(
     if (store.is_dir() or store.is_symlink()) and _strictly_in_tree(store, root):
       steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
   steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
-  # ⚑ LAST OF ALL, after the anchor, gated: see the note above on the retry's need.
+  # ⚑ LAST OF ALL, after the anchor, gated: see the note above on the retry's need.  The
+  # mark goes after the settings file: until then a retry still finds the box.
   if settings_file.is_file():
     steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
+  if holds_standalone_mark(root):
+    steps.append(
+      _PurgeStep("metadata", "standalone mark", root / WORKSET_REGISTRY_FILE, gated=True)
+    )
   return _without_recorded_workspaces(steps, std), retained
 
 
@@ -3104,9 +3077,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     )
   else:
     # ⚑ Case-blind (spec §0), and the STORED spelling is what gets reported.
-    active_owner = find_identifier(
-      name, load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    )
+    active_owner = find_identifier(name, load_primary_boxes(std.primary_workset))
   if active_owner is not None:
     print(
       f"'{name}' now refers to an active box (its metadata at {metadata} is "
@@ -3568,7 +3539,7 @@ def run_rm(args: argparse.Namespace) -> int:
     return 1
   # Boxes only, never the ``worksets`` section: a name that is only a workset
   # is refused as not found below.  ``workset rm`` removes worksets.
-  primary_boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  primary_boxes = load_primary_boxes(std.primary_workset)
 
   # Resolve the target: as a registered name first, then as a path.
   name: str | None = None
@@ -3583,9 +3554,7 @@ def run_rm(args: argparse.Namespace) -> int:
     name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
 
   if name is None:
-    primary_hit = primary_box_name_for_workspace(
-      std.primary_workset, target, early=_early_scope(std, BoxMode.primary)
-    )
+    primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
     if primary_hit is not None:
       name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
 
@@ -3695,7 +3664,7 @@ def run_rm(args: argparse.Namespace) -> int:
       return 2
   # ⚑ After every refusal and the confirmation, so no refusal follows the progress line.
   print(f"Removing project: {name} ({path})")
-  unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
+  unregister_primary_box_name(std.primary_workset, name)
   print(f"Removed '{name}' from the registry")
 
   if args.purge:
@@ -3744,9 +3713,10 @@ def _composed_standalone_key(root: Path) -> str | None:
 def _readopt_deregistered(std, name: str, entry: dict) -> int:
   """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
   from kanibako.project import registry_store
+  from kanibako.project.workset_registry import workset_registry_path
   from kanibako.launch.box_resolve import (
     standalone_marker_refusal,
-    stores_standalone_registry_null,
+    is_standalone_root,
   )
 
   kind = entry.get("kind")
@@ -3756,8 +3726,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
   if kind == "standalone":
     root = Path(str(metadata)) if metadata else None
     if root is not None:
-      # ⚑ EACCES refuses: the probe below reads an unreadable marker as "no marker".
-      refuse_unreadable_file(root / WORKSET_META_FILE)
+      # ⚑ EACCES refuses before the self-heal below drops the entry.
+      refuse_unreadable_file(workset_registry_path(root))
     # Self-heal: the box dir is gone → nothing to restore, drop the entry.  ⚑ EACCES refuses.
     if root is None or not is_dir_unless_gone(root):
       registry_store.unregister_deregistered(std.registry, name)
@@ -3768,7 +3738,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
       return 1
     # The files are there but the marker is not: KEEP the entry, its only handle, and
     # name the marker step.  A malformed file raises its own refusal (strict).
-    if not stores_standalone_registry_null(root, strict=True):
+    if not is_standalone_root(root, strict=True):
       head = standalone_marker_refusal(root, f"deregistered standalone box '{name}' is")
       print(f"Error: {head} Then retry:  {_box_register_cure(name)}", file=sys.stderr)
       return 1
@@ -3819,12 +3789,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     return 1
   # ⚑ The REUSED registration API carries every conflict guard — do not inline a write.
   try:
-    register_primary_box_name(
-      std.primary_workset,
-      name,
-      str(workspace),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name(std.primary_workset, name, str(workspace))
   except ProjectError as e:
     print(f"Error: {e}", file=sys.stderr)
     return 1
@@ -3850,7 +3815,7 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
   """The sentence and commands for parked *entry*: only the routes that work for IT.
 
   A box (either kind) whose directory is gone offers only the purge.  A standalone
-  whose ``workset.yaml`` lacks the marker is restored once the marker
+  whose ``registry.yaml`` lacks the marker is restored once the marker
   is back (``register`` before that drops the entry); one that will not parse is fixed
   first, since ``register`` drops the entry and the purge refuses the file.  Its purge
   is refused (I4) while an active box holds its directory, and ``register`` then only
@@ -3860,9 +3825,10 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
   from kanibako.errors import ConfigError
   from kanibako.launch.box_resolve import (
     standalone_marker_repair,
-    stores_standalone_registry_null,
+    is_standalone_root,
   )
   from kanibako.project import registry_store
+  from kanibako.project.workset_registry import workset_registry_path
   from kanibako.settings.config_io import load_doc
 
   register_cure, purge_cure = _retained_box_cures(target)
@@ -3882,7 +3848,7 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
       return gone
     owner = registry_store.standalone_name_for_same_dir(std.registry, root)
     try:
-      marked = stores_standalone_registry_null(root)
+      marked = is_standalone_root(root)
     except ConfigError:
       # ⚑ Its unreadable-path refusal: advice, never "will not parse" (the arm below).
       return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
@@ -3897,8 +3863,7 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
       broken = f"{root / WORKSET_META_FILE} will not parse"
       if owner is None:
         return (
-          f"{broken}. Fix it, then restore the box (it needs the line "
-          "'registry: null' under 'workset:') or delete it",
+          f"{broken}. Fix it, then restore the box or delete it",
           (register_cure, purge_cure),
         )
       return (
@@ -3909,7 +3874,7 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
     fault, cure = standalone_marker_repair(root)
   except OSError:
     return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
-  marker = f"{root / WORKSET_META_FILE} {fault}"
+  marker = f"{workset_registry_path(root)} {fault}"
   if owner is None:
     return (f"{marker}. Restore the box (first {cure}) or delete it", (register_cure, purge_cure))
   return (
@@ -3936,7 +3901,7 @@ def _retained_box_cure_lines(std, target: str, entry: dict, *, then: str = "") -
 def run_register(args: argparse.Namespace) -> int:
   """⚑ Re-register a box: INDEX-ONLY and SEED-FREE, by NAME (readopt) or PATH (standalone)."""
   from kanibako.project import registry_store
-  from kanibako.launch.box_resolve import stores_standalone_registry_null
+  from kanibako.launch.box_resolve import is_standalone_root
   from kanibako.commands.start import _create_cure
 
   config_file = user_config_file()
@@ -3968,7 +3933,7 @@ def run_register(args: argparse.Namespace) -> int:
   # ⚑ All three guards compare case-blind (spec §0) and report the STORED spelling —
   # a user told "'Foo' is already registered" who cannot find ``Foo`` anywhere learns
   # nothing.
-  primary_boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  primary_boxes = load_primary_boxes(std.primary_workset)
   held = find_identifier(target, primary_boxes) if by_name else None
   if held is not None:
     print(f"'{held}' is already registered (primary box at {primary_boxes[held]}).")
@@ -4004,7 +3969,7 @@ def run_register(args: argparse.Namespace) -> int:
         f"(named box at {root})."
       )
       return 0
-    if stores_standalone_registry_null(root):
+    if is_standalone_root(root):
       already = registry_store.standalone_name_for_root(std.registry, root)
       if already is not None:
         print(f"'{already}' is already registered (standalone box at {root}).")

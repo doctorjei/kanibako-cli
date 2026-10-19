@@ -470,8 +470,6 @@ def _legacy_primary_box(name: str) -> Path:
   """
   from kanibako.settings.config import load_config, user_config_file
   from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
     load_std_paths,
     register_primary_box_name,
     unregister_primary_box_name,
@@ -481,10 +479,9 @@ def _legacy_primary_box(name: str) -> Path:
   assert not is_valid_box_name(name)
   path = _park_primary_box("legacy_ws")
   std = load_std_paths(load_config(user_config_file()))
-  early = _early_scope(std, BoxMode.primary)
-  unregister_primary_box_name(std.primary_workset, "legacy_ws", early=early)
+  unregister_primary_box_name(std.primary_workset, "legacy_ws")
   (std.boxes / "legacy_ws").rename(std.boxes / name)
-  register_primary_box_name(std.primary_workset, name, path, early=early)
+  register_primary_box_name(std.primary_workset, name, path)
   return path
 
 
@@ -507,16 +504,13 @@ class TestALegacyNameCureWorksPasted:
     self, tmp_home, config_file, credentials_dir, capsys
   ):
     from kanibako.settings.config import load_config, user_config_file
-    from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths
 
     register, _purge = self._rm(capsys)
     assert _run(shlex.split(register)[1:]) == 0
 
     std = load_std_paths(load_config(user_config_file()))
-    assert self._NAME in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    assert self._NAME in load_primary_boxes(std.primary_workset)
 
   def test_the_purge_cure_deletes_the_retained_metadata(
     self, tmp_home, config_file, credentials_dir, capsys

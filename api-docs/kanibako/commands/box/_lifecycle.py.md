@@ -136,6 +136,7 @@ def _rename_escalated(src: Path, dst: Path, root: Path) -> bool
 def _prune_empty_dirs(path: Path, above: Path) -> None
 def _hold_root_gitignore(root: Path, workspace: Path, unwind: _Unwind) -> Callable[[], object] | None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
+def _holds_a_root_file(path: Path) -> bool
 def _arm_standalone_root_undo(std: StandardPaths, config: BootstrapConfig, root: Path, workspace_subdir: Path, unwind: _Unwind) -> tuple[Callable[[], None], Callable[[str], None]]
 def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> tuple[ProjectState, _SourceTeardown | None]
 def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> tuple[ProjectState, _SourceTeardown | None]
@@ -206,7 +207,7 @@ class _SourceTeardown:
     removed: tuple[Path, ...] = ()
     trees: tuple[Path, ...] = ()
     vaults: tuple[Path, ...] = ()
-    marker: Path | None = None
+    markers: tuple[Path, ...] = ()
     stash: Path | None = None
     canon: Path | None = None
     gitignore: Path | None = None

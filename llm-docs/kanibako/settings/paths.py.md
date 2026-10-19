@@ -290,7 +290,7 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
   tier at all. The workset tier is the ROOT `<root>/workset.yaml` — the file that plays the
   WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
-  (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.stores_standalone_registry_null`).
+  (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.is_standalone_root`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
   `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`). That is DECLARED DESIGN
   (keyspec §2c).
@@ -992,15 +992,13 @@ or `None`.
 ```python
 def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool
 ```
-True only if *root* carries the standalone box MARKER (presence-based). *strict* refuses a malformed
+True only if *root* carries the standalone box MARKER. *strict* refuses a malformed
 `workset.yaml` instead of reading it as no marker; `detect_project_mode`'s step 2 passes it.
 
-The marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
-(`<root>/workset.yaml`, NOT inside the box store), PRESENT. The FILE (carrying that null)
-is the standalone self-declaration (design D4). The settings file OVERRIDES any workset tree
-determination (D3-mode 3); reading the stored null keeps an unrelated `box_data/` from being
-mistaken for a marker. Delegates to `box_resolve.stores_standalone_registry_null` (the single
-definition of the presence check).
+The marker is `<root>/registry.yaml` holding only `__STANDALONE__` (NOT inside the box store): the
+standalone self-declaration (design D4). It OVERRIDES any workset tree determination
+(D3-mode 3), and keeps an unrelated `box_data/` from being mistaken for a marker. Delegates to
+`box_resolve.is_standalone_root` (the single definition of the check).
 
 ```python
 def detect_project_mode(
@@ -1021,7 +1019,7 @@ Detection order:
    workset by a live `boxes:` connection record. Runs FIRST so a force-connected box (which keeps
    its on-disk marker) resolves as its workset's `named` box; were step 2 first, it would resolve
    standalone.
-2. **In-place standalone marker** — a root `workset.yaml` storing `registry: null` AT *project_dir*
+2. **In-place standalone marker** — a root `registry.yaml` holding the mark AT *project_dir*
    declares it standalone (D3-mode 3); OVERRIDES workset tree membership. Vetted, never
    registered (`import_reconcile.check_standalone`).
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
@@ -1053,9 +1051,9 @@ A box's own in-place settings file is its standalone self-declaration and OVERRI
 TREE determination — a workset (even one whose tree physically CONTAINS this box) must NOT be able to
 "steal" a box that declares itself standalone. (A LIVE connection is the one exception, resolved by
 step 1.) `box_resolve.detect_box_mode` checks the same marker as its D3-mode 3, after its two
-registry checks and before it calls this treewalk. Both key on one signal (`workset.yaml` storing
-`registry: null`, via `_is_standalone_meta_dir` → `box_resolve.stores_standalone_registry_null`);
-workset/primary boxes don't store null. Only the resolved dir itself is inspected here; an ancestor
+registry checks and before it calls this treewalk. Both key on one signal (the `registry.yaml`
+mark, via `_is_standalone_meta_dir` → `box_resolve.is_standalone_root`); a workset's
+`registry.yaml` holds members instead. Only the resolved dir itself is inspected here; an ancestor
 marker is the step-5 walk's. `import_reconcile.check_standalone` then vets the root but never
 registers it. A malformed marker file is refused only after steps 3-4 find no registry claim on the
 dir.
@@ -1065,7 +1063,7 @@ dir.
 At each level, first `project.workset.refuse_retired_workset_identity` refuses a v1.6/v1.7 root,
 which would otherwise import under its leaf name with its retired identity unread. Then:
 
-* **STANDALONE first** — the root `workset.yaml`'s own stored `registry: null`
+* **STANDALONE first** — the root `registry.yaml`'s own mark
   (`_is_standalone_meta_dir`; a bare `box_data/` is not the marker). `import_reconcile.check_standalone`
   vets it; a standalone box is never imported here.
 * **NAMED** — the whole workset skeleton (`project.workset.is_workset_skeleton`). An unregistered root
@@ -1086,55 +1084,47 @@ project), then the workset root itself (inside workset but not necessarily a pro
 `project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 ```python
-def _workset_box_name_for_workspace(
-    ws_root: Path, workspace: str, *, early: EarlyScope,
-) -> str | None
+def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
 ```
 Reverse-look-up *workspace* in *ws_root*'s per-workset `boxes:` membership.
 
-Returns the registered box name (resolved-path aware) or `None`. Mirrors
-`_register_workset_box_membership`'s registry-path resolution so both the write (Guard 1) and this
+Returns the registered box name (resolved-path aware) or `None`. The write (Guard 1) and this
 reverse-lookup (Guard 2) consult the SAME per-workset `boxes:` registry — the one `list` /
 `box_resolve` read — so a global-name miss cannot let Guard 1 fire mid-create.
 
 ```python
-def _workset_box_workspace_for_name(
-    ws_root: Path, box_name: str, *, early: EarlyScope,
-) -> str | None
+def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
 ```
 Forward-look-up *box_name* in *ws_root*'s per-workset `boxes:` membership.
 
 Returns the REGISTERED workspace path (the `boxes:` entry VALUE) or `None`. The forward twin of
-`_workset_box_name_for_workspace`, with the same registry-path resolution. The registered path is
+`_workset_box_name_for_workspace`. The registered path is
 authoritative (D1b/D3-auth) *wherever a composition epoch put it* — a member registered before a
 `workset.workspaces` repoint keeps resolving to its recorded workspace, never re-derived from the
 CURRENT composition.
 
 ```python
-def _register_workset_box_membership(
-    ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope,
-) -> None
+def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None
 ```
 Register *box_name* → *workspace* in *ws_root*'s per-workset registry.
 
-The dual-register helper (D1/D3-auth): resolves the workset's `workset.registry` path (honoring
-a repoint via its `workset.yaml`) and records the box's membership. Idempotent —
+The dual-register helper (D1/D3-auth): records the box's membership in the workset's
+`registry.yaml`. Idempotent —
 `register_workset_box` overwrites a moved box's stored path. Used for both NAMED worksets (`ws_root`
 = the workset root) and the PRIMARY workset (`ws_root` = `std.primary_workset` — NON-EXCEPTIONAL per
 D0/D1).
 
 ```python
-def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope) -> None
+def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
 ```
 Drop *box_name* from *ws_root*'s per-workset registry (compensating action).
 
-The inverse of `_register_workset_box_membership`: resolves the workset's `workset.registry` path
-(honoring a repoint via its `workset.yaml`) and removes the box's `boxes:` membership. Idempotent —
+The inverse of `_register_workset_box_membership`: removes the box's `boxes:` membership. Idempotent —
 `unregister_workset_box` is a no-op when the file/entry is absent. Used to drop a disconnected
 external box's D10 connection record.
 
 ```python
-def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> Callable[[], None]
+def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path) -> Callable[[], None]
 ```
 The undo of a membership register, armed BEFORE the write so an interrupt just after it is still
 undone. It snapshots the box's row at call time. The undo puts a prior row back as it was (the
@@ -1145,28 +1135,27 @@ write. `add_project` uses it.
 ## The PRIMARY-box name registry
 
 The primary per-workset `boxes:` membership is the SOLE store of default-mode (PRIMARY) box names.
-Membership is name → EXTERNAL-workspace path in the primary workset's registry file, the resolved
-`workset.registry` (`project.workset_registry.resolve_workset_registry_path`; spec §2c).
+Membership is name → EXTERNAL-workspace path in the primary workset's registry file,
+`meta.workset.registry` (`project.workset_registry.workset_registry_path`; spec §2c).
 
 The name domain is PRIMARY BOXES ONLY: worksets are not consulted, so a box and a workset may share
 a name. Names compare CASE-BLIND (spec §0, NAMING RULES; `find_identifier`). Every function takes
-the primary workset root explicitly and an `early: EarlyScope`, which the registry path's
-resolution needs.
+the primary workset root explicitly.
 
 ```python
-def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]
+def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 ```
 Return the PRIMARY box membership as `{box_name: workspace_path_str}`. *primary_workset* is
 `std.primary_workset`.
 
 ```python
-def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
+def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
 ```
 Return the PRIMARY box name registered for *workspace*, or `None`. Resolved-path aware (via
 `_workset_box_name_for_workspace`).
 
 ```python
-def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
+def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str) -> None
 ```
 Raise `ProjectError` if *name* is already a PRIMARY box's (case-blind), or if *workspace* is the
 user's `$HOME`. Writes nothing. Used at the `--name` registration edge so a collision fails BEFORE
@@ -1187,7 +1176,7 @@ for each `-` and `.`; the directory keeps its spelling. Raises `DerivedBoxNameEr
 when the derived name fails the box-name rule (`launch.box_identity.box_name_reason`).
 
 ```python
-def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None = None, *, early: EarlyScope, journal: Path | None = None) -> str
+def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None = None, *, journal: Path | None = None) -> str
 ```
 Pick a PRIMARY box name from *workspace*'s basename (no write): the base is
 `refuse_derived_box_name(<basename> or "project")`, and `identifiers.first_free_name` appends a
@@ -1197,27 +1186,27 @@ never folded); or, with *journal* and *boxes_dir*, when the lifecycle journal ho
 for `boxes_dir/<candidate>` — an interrupted create may have claimed it before making its dir.
 
 ```python
-def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
+def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str) -> None
 ```
 Register *name* → *workspace* in the PRIMARY membership: `check_primary_box_name_free`, then the
 write (`_register_workset_box_membership`, which also enforces the one-box-per-workspace-path
 invariant).
 
 ```python
-def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
+def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str) -> None
 ```
 Idempotent `register_primary_box_name` for deferred-create recovery: a no-op when *name*
 (case-blind) already maps to the SAME *workspace*; any other state goes through
 `register_primary_box_name`, which raises on a genuine collision.
 
 ```python
-def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None = None, *, early: EarlyScope) -> str
+def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None = None) -> str
 ```
 Auto-assign and register a PRIMARY box name from *workspace*'s basename: `pick_primary_box_name`,
 then `register_primary_box_name`.
 
 ```python
-def unregister_primary_box_name(primary_workset: Path, name: str, *, early: EarlyScope) -> None
+def unregister_primary_box_name(primary_workset: Path, name: str) -> None
 ```
 Drop *name* from the PRIMARY membership. Thin delegation to `_unregister_workset_box_membership`;
 idempotent.
@@ -1624,7 +1613,7 @@ value decides only whether `initialize` lays the vault dirs; the create persists
 *enable_vault* alone (`establish_standalone`, `None` writes nothing), never the resolved one.
 
 **Box identity name:** sourced from `box_resolve` for a MATERIALIZED standalone — the
-`workset.yaml`-stored `workset.registry: null` (`stores_standalone_registry_null`'s gate). `box_resolve` composes
+`registry.yaml` mark (`is_standalone_root`'s gate). `box_resolve` composes
 the name LIVE as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
 (from the box's OWN `workset.yaml`, design D6) and the leaf is re-derived from the CURRENT root
 basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir; a

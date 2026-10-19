@@ -75,7 +75,7 @@ def _entry_phrase(count: int, adjective: str) -> str
 def _noun_stored_view(path: 'Path | None', command_scope: ConfigLevel) -> dict
 def _quiet_drop_announcements(path: 'Path | None', command_scope: 'ConfigLevel | None') -> None
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
-def _ill_typed_stored_entries(data: dict, *, registry_marker: bool=False) -> dict[tuple[str, ...], str]
+def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]
 def _stored_value_reason(key: str, value: object, *, family: 'str | None') -> 'str | None'
 def _misplaced_config_entries(data: dict) -> dict[str, str]
 def _dropped_tables_get_reads(path: 'Path | None', command_scope: ConfigLevel) -> list[str]

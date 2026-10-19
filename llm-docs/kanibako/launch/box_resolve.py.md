@@ -48,7 +48,7 @@ throughout the source because each one is a decision that would otherwise look a
 * **D3-auth** — membership authority runs registry ⇒ dirs. The registry is authoritative and the
   directory layout follows it, so a workset-contained directory with no registry entry is a real
   detection result with `registered=False`, not an error.
-* **D4** — the standalone signal is the root `workset.yaml` storing `workset.registry: null`. There
+* **D4** — the standalone signal is the root `registry.yaml` holding only `__STANDALONE__`. There
   is no `project.mode` field.
 * **D10 — enumerate-and-scan.** All worksets are reachable up front, so their per-workset registries
   collectively form the reverse index. This is what removes the need for any marker in the user's
@@ -65,18 +65,17 @@ and then iterates the section for every NAMED workset.
 
 ## The standalone marker
 
-`stores_standalone_registry_null` tests ONE thing: whether the dir's OWN `WORKSET_META_FILE` stores
-`workset.registry` as null. That stored null is the DEFINITION of standalone (system-design
-§ Detection & import) — this file only, never the cascade — so a bare `box_data/` is not enough:
-
-```
-(project_dir / WORKSET_META_FILE).is_file() and doc["workset"]["registry"] is None
-```
+`is_standalone_root` tests ONE thing: whether the dir's OWN `registry.yaml` holds the mark
+(`settings.config.holds_standalone_mark`). The mark is the DEFINITION of standalone (system-design
+§ Detection & import) — this root's file only, never the cascade — so a bare `box_data/` is not
+enough. First it refuses a retired `workset.registry` the root's `workset.yaml` still stores
+(`settings_assemble.refuse_retired_registry_key`): a pre-mark standalone's `registry: null` is
+refused, naming the cure, rather than read as "not standalone".
 
 It mirrors `kanibako.settings.paths._is_standalone_meta_dir`, but deliberately does NOT read
 `project.mode`; re-introducing that read here would re-couple the module to a retired field.
 
-A box's own in-place settings file is its self-declaration of standalone identity. It OVERRIDES any
+A box's own in-place mark is its self-declaration of standalone identity. It OVERRIDES any
 workset TREE determination — a workset must not be able to "steal" a box that has declared itself
 standalone — but a registry entry AT the path outranks it (D3-mode, below).
 
@@ -90,7 +89,7 @@ compares literally (links unfollowed).
    (`_path_space_workset`, the lookup `create` uses).
 2. **The standalone registry has a box AT *project_dir*** → `standalone`, marker or not. A root that
    lost its marker is that box, broken (D4 state 3), never "not a box".
-3. **An in-place settings file** (the marker above) → `standalone`.
+3. **An in-place mark** (the marker above) → `standalone`.
 4. **The `kanibako.settings.paths.detect_project_mode` treewalk** — composed, not duplicated. A
    `primary` result AT *project_dir* is its no-marker default, so not a box: `None`, which sends
    the caller down its create path. Any other result passes through, including a `primary` at an
@@ -99,9 +98,7 @@ compares literally (links unfollowed).
 ## Scanning for an owner
 
 `_find_owning_box` walks every workset from `_enumerate_worksets` (only the one
-`workset=` names, which case 1 passes), resolves that workset's per-workset registry path
-(honoring a `workset.registry` repoint via the workset's own settings), loads its `boxes:`
-membership, and returns the entry whose PATH equals *project_dir*. Paths compare literally (links
+`workset=` names, which case 1 passes), loads that workset's `boxes:` membership, and returns the entry whose PATH equals *project_dir*. Paths compare literally (links
 unfollowed), so twins sharing a target stay two boxes. `None` when no workset owns the directory.
 
 Its `config` parameter is unused — it is there for signature parity with the other entry points;
@@ -115,7 +112,7 @@ a member registered before a `workset.workspaces` repoint that now sits outside 
 directory.
 
 It enumerates every NAMED workset from the global `worksets:` section, scans each one's
-per-workset `boxes:` membership (again honoring a `workset.registry` repoint), and returns the
+per-workset `boxes:` membership, and returns the
 entry whose registered path is *project_dir* or a proper ancestor of it. DEEPEST registered path
 wins — the same ancestor semantics the legacy `connected:` index used, so that launching from a
 SUBDIRECTORY of a connected directory still resolves to the box.

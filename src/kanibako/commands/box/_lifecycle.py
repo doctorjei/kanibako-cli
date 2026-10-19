@@ -44,6 +44,7 @@ from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.config import (
   BOX_META_FILE,
   WORKSET_META_FILE,
+  WORKSET_REGISTRY_FILE,
   BootstrapConfig,
   read_box_enable_vault,
   write_box_enable_vault,
@@ -124,6 +125,7 @@ from kanibako.utils import (
   unreadable_path_error,
   write_project_gitignore,
 )
+from kanibako.project.workset_registry import workset_registry_path
 from kanibako.project.workset import (
   Workset,
   add_project,
@@ -308,9 +310,7 @@ def _primary_name_at(
   """
   if state.mode != BoxMode.primary or not state.name:
     return None
-  return primary_box_name_for_workspace(
-    std.primary_workset, str(landing_ws), early=_early_scope(std, BoxMode.primary)
-  )
+  return primary_box_name_for_workspace(std.primary_workset, str(landing_ws))
 
 
 def _primary_source_own_name(
@@ -320,11 +320,7 @@ def _primary_source_own_name(
   """The name the SOURCE primary box is CURRENTLY registered under, else ``None``."""
   if state.mode != BoxMode.primary or not state.name:
     return None
-  return primary_box_name_for_workspace(
-    std.primary_workset,
-    str(state.workspace_path),
-    early=_early_scope(std, BoxMode.primary),
-  )
+  return primary_box_name_for_workspace(std.primary_workset, str(state.workspace_path))
 
 
 def _relocated_own_name(
@@ -413,7 +409,7 @@ def resolve_lifecycle_target(
     # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
     # record makes one (spec § Detection & import).  Unrecorded, the primary decides.
     if primary_box_name_for_workspace(
-      std.primary_workset, str(raw_path), early=_early_scope(std, BoxMode.primary)
+      std.primary_workset, str(raw_path)
     ) is not None and not _workset_records_member_at(raw_path, std):
       return _resolve_primary_state(raw_path, std, config)
     return _resolve_workset_state(raw_path, std, config)
@@ -477,7 +473,7 @@ def _moved_standalone_state(
       if still_there:
         return None  # the usual resolution refuses it, naming the holder
     elif (
-      not box_resolve.stores_standalone_registry_null(dest)
+      not box_resolve.is_standalone_root(dest)
       or not standalone_box_store(dest, early=_early_scope(std, BoxMode.standalone)).is_dir()
       or registry_store.standalone_identity_holder(std.registry, dest) is not None
       or find_identifier(read_workset_kuid(dest / WORKSET_META_FILE), (box_kuid,)) is None
@@ -546,12 +542,7 @@ def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
     ws, _ = _find_workset_for_path(resolved, std)  # type: ignore[assignment]
   except WorksetError:
     return False
-  return (
-    _workset_box_name_for_workspace(
-      ws.root, str(resolved), early=_early_scope(std, BoxMode.named, ws.name)
-    )
-    is not None
-  )
+  return _workset_box_name_for_workspace(ws.root, str(resolved)) is not None
 
 
 def _resolve_primary_state(
@@ -586,9 +577,7 @@ def _default_state_from_meta(
   std: StandardPaths,
 ) -> ProjectState | None:
   """Build a default-mode :class:`ProjectState` from registered metadata (``remap``)."""
-  name = primary_box_name_for_workspace(
-    std.primary_workset, str(workspace), early=_early_scope(std, BoxMode.primary)
-  )
+  name = primary_box_name_for_workspace(std.primary_workset, str(workspace))
   if name is None:
     return None
   # ⚑ P8b: the PRIMARY-membership hit above IS the existence signal — identity no
@@ -1046,7 +1035,7 @@ def _remap_dest_holder(
     if _resolved_unless_loop(root) in (
       own_root,
       vacated,
-    ) or not box_resolve.stores_standalone_registry_null(root):
+    ) or not box_resolve.is_standalone_root(root):
       return None
     return registry_store.standalone_name_for_same_dir(std.registry, root) or ""
 
@@ -1088,32 +1077,12 @@ def _remap_dest_holder(
     )
     and (vacated is None or _resolved_unless_loop(Path(literal_path(root_str))) != vacated)
   }
-  early = _early_scope(std, BoxMode.primary)
-
-  # A standalone records no primary row: when the primary registry is refused (an
-  # inherited ``workset.registry`` reaching no owner), there is no primary box to find.
-  # ``early_repoint``'s one ConfigError is that refusal.  A primary or named state still
-  # refuses.
-  primary_refused = False
-  if standalone:
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.workset_dirkeys import early_repoint
-
-    primary_doc = load_doc(std.primary_workset / WORKSET_META_FILE)
-    try:
-      early_repoint(std.primary_workset, primary_doc, "registry", early=early)
-    except ConfigError:
-      primary_refused = True
 
   def primary_at(path: Path) -> str | None:
-    if primary_refused:
-      return None
-    return primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
+    return primary_box_name_for_workspace(std.primary_workset, str(path))
 
   def recorded_under(tree: Path) -> list[tuple[str, Path]]:
-    return box_resolve.recorded_workspaces_under(
-      std, tree, standalone=False, primary=not primary_refused
-    )
+    return box_resolve.recorded_workspaces_under(std, tree, standalone=False)
 
   def own_member(owned: Any) -> bool:
     return (
@@ -1171,8 +1140,8 @@ def _remap_dest_holder(
     for name, held_root in standalones.items():
       if standalone_workspace(held_root) == path:
         return f"the workspace of {standalone_who(name)}. " + identical
-    # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
-    marked = next((p for p in path.parents if (p / WORKSET_META_FILE).is_file()), None)
+    # Detection's ancestor walk, as given, stops at the first root file.
+    marked = next((p for p in path.parents if _holds_a_root_file(p)), None)
     other = standalone_at(marked) if marked is not None else None
     if marked is not None and other is not None and standalone_workspace(marked) == path:
       return f"the workspace of {standalone_who(other)}. " + identical
@@ -1260,7 +1229,7 @@ def _remap_dest_holder(
   def store_holder(tree: Path) -> tuple[str, bool] | None:
     """Why *tree*, resolved, lies in a box's store, else ``None``."""
     at = _resolved_unless_loop(tree)
-    for name in () if primary_refused else load_primary_boxes(std.primary_workset, early=early):
+    for name in load_primary_boxes(std.primary_workset):
       store = _resolved_unless_loop(std.boxes / name)
       if at == store or store in at.parents:
         return store_note(
@@ -1337,7 +1306,7 @@ def _remap_dest_holder(
         f"({nested_root[1]}). " + share,
         True,
       )
-    root = next((p for p in tree.parents if (p / WORKSET_META_FILE).is_file()), None)
+    root = next((p for p in tree.parents if _holds_a_root_file(p)), None)
     other = standalone_at(root) if root is not None else None
     if other is not None:
       return f"inside the root of {standalone_who(other)} ({root}). " + share, True
@@ -1455,7 +1424,7 @@ def _other_box_within(
   ]
   others += [
     (f"the store of primary box '{name}'", std.boxes / name)
-    for name in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    for name in load_primary_boxes(std.primary_workset)
     if own_ref is None or not _same_box_name(name, own_ref)
   ]
   others += [
@@ -1889,7 +1858,7 @@ def _validate(
     own_root = (
       _resolved_unless_loop(state.metadata_path) if state.mode is BoxMode.standalone else None
     )
-    if marked != own_root and box_resolve.stores_standalone_registry_null(marked):
+    if marked != own_root and box_resolve.is_standalone_root(marked):
       raise ProjectError(
         f"Refusing to convert '{state.name}': its workspace {landing} is the root "
         f"of another standalone box ({marked}), and the convert would absorb that "
@@ -2122,12 +2091,7 @@ def _validate(
       landed is not None or _relocated_own_name(state, std, landing_ws, mint) is not None
     )
     if mint is not None and not _same_box_name(mint, own_name):
-      check_primary_box_name_free(
-        std.primary_workset,
-        mint,
-        str(landing_ws),
-        early=_early_scope(std, BoxMode.primary),
-      )
+      check_primary_box_name_free(std.primary_workset, mint, str(landing_ws))
     # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
     # lands in, so the box-name rule is checked here, before any file moves.
     if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
@@ -3149,8 +3113,8 @@ class _SourceTeardown:
   #: Box trees, through the escalating deleter.
   trees: tuple[Path, ...] = ()
   vaults: tuple[Path, ...] = ()
-  #: A standalone root's ``workset.yaml``, which alone reads as a box.
-  marker: Path | None = None
+  #: A standalone root's ``registry.yaml`` mark, which alone reads as a box, and its ``workset.yaml``.
+  markers: tuple[Path, ...] = ()
   stash: Path | None = None
   #: A standalone root's in-tree ``workset.canon`` tier, until
   #: :func:`_carry_standalone_canon` takes it; the tail names one still here.
@@ -3268,13 +3232,15 @@ def _plan_source_teardown(
         )
       )
     trees = (removable_store,) if removable_store is not None else ()
-    marker = root / WORKSET_META_FILE
+    markers = tuple(
+      p for p in (workset_registry_path(root), root / WORKSET_META_FILE) if p.is_file()
+    )
     return _SourceTeardown(
       name=state.name,
       removed=(*trees, *removable_vault),
       trees=trees,
       vaults=tuple(removable_vault),
-      marker=marker if marker.is_file() else None,
+      markers=markers,
       canon=canon,
       gitignore=project_gitignore_to_strip(root),
       partition=partition,
@@ -3363,7 +3329,6 @@ def _plan_source_teardown(
           unregister_primary_box_name,
           std.primary_workset,
           name,
-          early=_early_scope(std, BoxMode.primary),
         ),
       )
       if name
@@ -3429,7 +3394,7 @@ def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
   row it held.  Returns ``False`` when a row could not be put back."""
   import sys
 
-  now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  now = load_primary_boxes(std.primary_workset)
   undo: list[tuple[str, Callable[[], bool]]] = [
     (name, partial(_safe_unregister, std, name))
     for name in now
@@ -3543,26 +3508,28 @@ def _carry_standalone_canon(
 
 
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown:
-  """Move the standalone source's root marker into a relocation stash; the undo puts it back.
+  """Move the standalone source's root marker files into a relocation stash; the undo puts them back.
 
   ⚑ The marker alone reads as a box, so the old root must not keep it once the box has
   landed; the stash goes in the success tail.
   """
   import tempfile
 
-  marker = teardown.marker
-  if marker is None or not marker.is_file():
+  markers = tuple(m for m in teardown.markers if m.is_file())
+  if not markers:
     return teardown
   stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
-  held = stash / marker.name
 
   def _put_back() -> None:
-    if held.is_file():
-      shutil.move(str(held), str(marker))
+    for marker in markers:
+      held = stash / marker.name
+      if held.is_file():
+        shutil.move(str(held), str(marker))
     _dispose_stash(stash)
 
   unwind.push(_put_back)
-  shutil.move(str(marker), str(held))
+  for marker in markers:
+    shutil.move(str(marker), str(stash / marker.name))
   return replace(teardown, stash=stash)
 
 
@@ -4103,7 +4070,7 @@ def _to_default(
     partial(
       _restore_primary_rows,
       std,
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
+      load_primary_boxes(std.primary_workset),
     )
   )
   if state.mode == BoxMode.primary and state.name:
@@ -4116,25 +4083,14 @@ def _to_default(
       preserved_name = kept
     # ⚑ A free that fails raises its own cause, not the register's "already registered".
     if preserved_name is not None:
-      unregister_primary_box_name(
-        std.primary_workset, preserved_name, early=_early_scope(std, BoxMode.primary)
-      )
+      unregister_primary_box_name(std.primary_workset, preserved_name)
   # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
   claimed = mint if mint is not None else kept
   if claimed is not None:
-    register_primary_box_name(
-      std.primary_workset,
-      claimed,
-      new_workspace,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name(std.primary_workset, claimed, new_workspace)
     project_name = claimed
   else:
-    project_name = assign_primary_box_name(
-      std.primary_workset,
-      str(new_workspace),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    project_name = assign_primary_box_name(std.primary_workset, str(new_workspace))
   dst_metadata = std.boxes / project_name
 
   # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
@@ -4680,6 +4636,11 @@ def _unconsolidate_workspace_subdir(
   _prune_empty_dirs(workspace_subdir, root)
 
 
+def _holds_a_root_file(path: Path) -> bool:
+  """Whether *path* holds ``workset.yaml`` or ``registry.yaml``: where detection's walk stops."""
+  return (path / WORKSET_META_FILE).is_file() or (path / WORKSET_REGISTRY_FILE).is_file()
+
+
 def _arm_standalone_root_undo(
   std: StandardPaths,
   config: BootstrapConfig,
@@ -5144,13 +5105,8 @@ def _to_workset(
     # add_project just wrote — under sparse create (P8b) the box's box.yaml no
     # longer self-describes, so the D10 connection record is the authority.
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    registry_path = workset_registry.resolve_workset_registry_path(
-      target_ws.root,
-      load_doc(target_ws.root / WORKSET_META_FILE),
-      early=target_ws.early_scope,
-    )
+    registry_path = workset_registry.workset_registry_path(target_ws.root)
     # ⚑ THE membership accessor, not a second spelling of it: it already compares
     # case-blind (spec §0) and returns the path under the stored key.
     recorded_str = workset_registry.workset_box_path(registry_path, new_name)
@@ -5485,9 +5441,7 @@ def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
 def _safe_unregister(std: StandardPaths, name: str) -> bool:
   """Best-effort drop of *name* from the PRIMARY membership; ``False`` if it raised."""
   try:
-    unregister_primary_box_name(
-      std.primary_workset, name, early=_early_scope(std, BoxMode.primary)
-    )
+    unregister_primary_box_name(std.primary_workset, name)
   except Exception:  # noqa: BLE001
     return False
   return True
@@ -5501,9 +5455,7 @@ def _safe_register_membership(
   """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1);
   ``False`` if it raised."""
   try:
-    _register_workset_box_membership(
-      std.primary_workset, name, workspace, early=_early_scope(std, BoxMode.primary)
-    )
+    _register_workset_box_membership(std.primary_workset, name, workspace)
   except Exception:  # noqa: BLE001
     return False
   return True

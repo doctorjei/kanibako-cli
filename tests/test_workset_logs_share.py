@@ -248,7 +248,7 @@ class TestTheShareIsRefusedByName:
 
     assert (
       logs_share_refusal(
-        "workset.registry",
+        "workset.vault_rw",
         str(tmp_home / "shared_logs"),
         std,
         force=False,

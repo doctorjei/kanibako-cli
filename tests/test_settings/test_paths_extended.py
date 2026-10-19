@@ -218,7 +218,7 @@ class TestVaultOptional:
 
 class TestPrimaryEnableVaultDownwardDefault:
   """The primary workset's ``workset.yaml`` is a real tier — ``paths.py`` already
-  resolves ``workset.registry`` from it — so ``box.*`` keys in it are defaults.
+  resolves ``workset.boxes`` from it — so ``box.*`` keys in it are defaults.
   """
 
   @staticmethod

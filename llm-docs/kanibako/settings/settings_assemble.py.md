@@ -283,6 +283,12 @@ picks between them with the same shape test that picks the cure.
 ```RETIRED_BEHAVIOR_KEYS: dict[str, str]```
 The RETIRED behavior leaf → its successor key (R-41): `{"auto_approve": "access"}`.
 
+```refuse_retired_registry_key(raw, *, level, path)```
+The retired `workset.registry` (now the fixed `meta.workset.registry`), refused with its cure from
+`retired_cure` and from `box_resolve.is_standalone_root`'s read of a root `workset.yaml`. A null in a
+workset file was the old standalone marker, so that cure writes the `registry.yaml` mark instead of
+only removing the line: removing it alone would turn the box into a plain directory.
+
 ```_RETIRED_BEHAVIOR_VALUE_MAP: dict[str, dict[bool, str]]```
 The RULED value mapping for the retired boolean (R-41).
 

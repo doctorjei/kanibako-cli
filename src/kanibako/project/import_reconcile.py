@@ -241,7 +241,7 @@ def import_standalone(
   # the signal — NOT ``project.mode``.  No marker → nothing to import.
   from kanibako.launch import box_resolve
 
-  if not box_resolve.stores_standalone_registry_null(root):
+  if not box_resolve.is_standalone_root(root):
     return None
   if journal is not None:
     from kanibako.launch import journal as journal_mod

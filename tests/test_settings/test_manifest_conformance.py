@@ -801,9 +801,8 @@ class TestBindDefaults:
 #:   derivation with a known root is a value oracle, and only RE-IMPLEMENTING it would be
 #:   a second resolver.  Compared by the ``workset-channels-*`` / ``workset-partition``
 #:   kinemata views, with the arms they do not reach in :class:`TestWorksetChannelDefaults`.
-#: * ``workset.registry`` (2026-08-29) — its join face
-#:   (``project/workset_registry.py::resolve_workset_registry_path``) still exists and is
-#:   still the pre-snapshot route, but the row was ALSO emitted by no floor at all, so
+#: * ``workset.registry`` (2026-08-29; retired since for the fixed ``meta.workset.registry``)
+#:   — its join face was the pre-snapshot route, but the row was ALSO emitted by no floor at all, so
 #:   ``{workset.registry}`` dangled in every launch snapshot.  The fix
 #:   (``settings_launch.workset_anchor_floor``, the ``channelroot`` precedent) writes the
 #:   formula STRING out.  Compared by the ``workset-anchor-floor`` kinemata view.
@@ -1826,13 +1825,13 @@ class TestDefaultsCoverage:
     assert not stale, (
       f"this file classifies rows the manifest no longer declares a default for: {sorted(stale)}"
     )
-    assert len(declared) == 75, (
-      f"the manifest gives {len(declared)} rows a default, not the 75 measured — "
+    assert len(declared) == 74, (
+      f"the manifest gives {len(declared)} rows a default, not the 74 measured — "
       f"re-classify, do not adjust the count"
     )
 
   def test_the_split_is_the_measured_split(self):
-    """0 pinned, 68 carried, 7 exempted — stated so a silent migration between them reds.
+    """0 pinned, 67 carried, 7 exempted — stated so a silent migration between them reds.
 
     ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
     (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1897,9 +1896,11 @@ class TestDefaultsCoverage:
     ⚑ 0+76/8 → 0+68/7 (189-SH = b): shell inherits ``agent.default``, so the manifest
     drops ``agent.shell.{access,allow_helpers,bootstrap,endpoint,run_args,transform,
     canon,env.TERM}`` (carried) and ``agent.shell.transform_settings`` (E4).
+    ⚑ 0+68/7 → 0+67/7: ``workset.registry`` retired for the fixed ``meta.workset.registry``
+    value row.
     """
     assert len(PINNED_DEFAULT_KEYS) == 0
-    assert len(CARRIED_DEFAULT_KEYS) == 68
+    assert len(CARRIED_DEFAULT_KEYS) == 67
     assert len(EXEMPT_DEFAULT_KEYS) == 7
     assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
     assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
@@ -1930,13 +1931,13 @@ class TestDefaultsCoverage:
     assert not stale, (
       f"section 4b classifies rows the manifest no longer declares a value for: {sorted(stale)}"
     )
-    assert len(declared) == 34, (
-      f"the manifest gives {len(declared)} rows a value, not the 34 measured — "
+    assert len(declared) == 35, (
+      f"the manifest gives {len(declared)} rows a value, not the 35 measured — "
       f"re-classify, do not adjust the count"
     )
 
   def test_the_value_split_is_the_measured_split(self):
-    """6 pinned, 20 carried, 8 exempted — stated so a silent migration between them reds.
+    """6 pinned, 21 carried, 8 exempted — stated so a silent migration between them reds.
 
     ⚑ 24/10 → 11 pinned + 13 carried / 10 (2026-09-25), with the default side: the
     anchor, auth and re-root rows and the agent-identity literals are compared by
@@ -1951,9 +1952,10 @@ class TestDefaultsCoverage:
     ``meta.runtime.admin.{config,settings}`` left E7 for the ``site-base-files`` view.
     22 → 20 carried (189th): ``meta.agent.default.{name,path}`` retired — §2d
     declares no ``meta.agent.default.*``.
+    20 → 21 carried: ``meta.workset.registry`` joined ``meta-runtime-floor``.
     """
     assert len(PINNED_VALUE_KEYS) == 6
-    assert len(CARRIED_VALUE_KEYS) == 20
+    assert len(CARRIED_VALUE_KEYS) == 21
     assert len(EXEMPT_VALUE_KEYS) == 8
     assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
     assert not (CARRIED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
@@ -1986,7 +1988,7 @@ class TestDefaultsCoverage:
     )
 
   def test_the_default_value_neither_cells_partition_the_registry(self):
-    """75 + 34 + 10 == 119, disjoint — no row carries both cells, none carries
+    """74 + 35 + 10 == 119, disjoint — no row carries both cells, none carries
     neither unnoticed.  The 119 is the loader's own count, re-stated here as the
     arithmetic the three coverage cases must sum to."""
     keys = _keys()
@@ -1999,7 +2001,7 @@ class TestDefaultsCoverage:
     }
     assert not (defaulted & valued), f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
     assert defaulted | valued | neither == {str(k) for k in keys}
-    assert (len(defaulted), len(valued), len(neither)) == (75, 34, 10)
+    assert (len(defaulted), len(valued), len(neither)) == (74, 35, 10)
 
 
 # --------------------------------------------------------------------------- #

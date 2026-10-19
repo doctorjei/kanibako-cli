@@ -107,9 +107,7 @@ class TestCreateWorkset:
 
     proj = tmp_home / "proj"
     proj.mkdir()
-    register_primary_box_name(
-      std.primary_workset, "foo", str(proj), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "foo", str(proj))
 
     root = tmp_home / "worksets" / ws_name
     with caplog.at_level("WARNING"):
@@ -204,12 +202,8 @@ class TestDefaultWorkset:
     proj_b.mkdir()
     # default_workset synthesizes members from the PRIMARY membership (the
     # sole store since the global ``projects:`` section retired).
-    register_primary_box_name(
-      std.primary_workset, "alpha", str(proj_a), early=_early_scope(std, BoxMode.primary)
-    )
-    register_primary_box_name(
-      std.primary_workset, "beta", str(proj_b), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "alpha", str(proj_a))
+    register_primary_box_name(std.primary_workset, "beta", str(proj_b))
 
     ws = default_workset(std)
     by_name = {p.name: p.source_path for p in ws.projects}
@@ -257,9 +251,7 @@ class TestResolveWorksetName:
 
     proj = tmp_home / "proj"
     proj.mkdir()
-    register_primary_box_name(
-      std.primary_workset, "proj", str(proj), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "proj", str(proj))
     create_workset("proj", tmp_home / "worksets" / "proj", std)
 
     with caplog.at_level("WARNING"):
@@ -591,15 +583,16 @@ class TestAddProjectConnectGuard:
   @staticmethod
   def _make_standalone(dir_path: Path) -> None:
     """Stamp *dir_path* with the standalone MARKER (workset.yaml with a null
-    registry), matching box_resolve.stores_standalone_registry_null."""
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    registry), matching box_resolve.is_standalone_root."""
+    from kanibako.launch.box_resolve import is_standalone_root
     from kanibako.settings.config import WORKSET_META_FILE
     from kanibako.settings.paths import STANDALONE_META_DIR
 
     dir_path.mkdir(parents=True, exist_ok=True)
     (dir_path / STANDALONE_META_DIR).mkdir()
-    (dir_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
-    assert stores_standalone_registry_null(dir_path)  # marker is real
+    (dir_path / WORKSET_META_FILE).touch()
+    (dir_path / "registry.yaml").write_text("__STANDALONE__\n")
+    assert is_standalone_root(dir_path)  # marker is real
 
   def test_refuses_standalone_marked_external_source(self, std, tmp_home):
     # Connecting a dir that declares itself standalone (in-place marker) must

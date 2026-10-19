@@ -41,7 +41,7 @@ from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import LABEL_HELPER, render_container_name, utc_stamp
 
 if TYPE_CHECKING:
-  from kanibako.settings.workset_dirkeys import EarlyScope
+  pass
 
 logger = get_logger("helper_listener")
 
@@ -70,7 +70,6 @@ class HelperContext:
   data_path: Path | None = None  # kanibako data root (~/.local/share/kanibako/)
   boxes: Path | None = None  # resolved PRIMARY workset.boxes (std.boxes)
   primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
-  early: EarlyScope = field(kw_only=True)  # the PRIMARY early scope (paths._early_scope)
   #: The DIRECTOR box's container labels (``utils.box_labels``); a helper's container
   #: carries them and its own ``kanibako.helper``.
   labels: dict[str, str] = field(default_factory=dict, kw_only=True)
@@ -733,11 +732,7 @@ class HelperHub:
 
     boxes_base = ctx.boxes
     source_meta_dir: Path | None = None
-    source_name = primary_box_name_for_workspace(
-      ctx.primary_workset,
-      str(ctx.project_path),
-      early=ctx.early,
-    )
+    source_name = primary_box_name_for_workspace(ctx.primary_workset, str(ctx.project_path))
     if source_name is not None:
       candidate = boxes_base / source_name
       if candidate.is_dir():
@@ -757,11 +752,7 @@ class HelperHub:
 
     # Assign + register a new name for the fork in the PRIMARY membership.
     try:
-      new_name = assign_primary_box_name(
-        ctx.primary_workset,
-        str(new_path),
-        early=ctx.early,
-      )
+      new_name = assign_primary_box_name(ctx.primary_workset, str(new_path))
     except Exception as e:
       return {"status": "error", "message": f"name assignment failed: {e}"}
 

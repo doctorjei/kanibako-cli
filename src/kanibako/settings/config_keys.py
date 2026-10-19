@@ -151,8 +151,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
     # ⚑ NO ``mode`` key (block B1: the mode is the RO anchor ``meta.box.mode``) and NO bare
     # ``vault.ro``/``vault.rw`` — both RETIRED, not aliased. See llm-docs.
     "box.enable_vault",
-    # Per-workset registry location (settings-conformance P3); a settable STRING path.
-    "workset.registry",
     # Workset-scope LAYOUT anchors (P6a): per-workset REPOINTABLE dirs, STRING paths.
     "workset.auth.path",
     "workset.boxes",
@@ -288,8 +286,6 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
   # ⚑ ``box.enable_vault`` is the vault key (P2 clean break); the bare ``vault.*``
   # keys and ``mode`` are RETIRED, never routed. See llm-docs.
   "box.enable_vault": (("box",), "enable_vault"),
-  # ``workset.registry`` (P3): the ``workset:`` table nested slot; a STRING path.
-  "workset.registry": (("workset",), "registry"),
   # Workset-scope LAYOUT anchors (P6a): the ``workset.<...>`` nested slots, STRING paths.
   "workset.auth.path": (("workset", "auth"), "path"),
   "workset.boxes": (("workset",), "boxes"),
@@ -367,7 +363,6 @@ KEY_TYPES: dict[str, str] = {
   "workset.vault_ro": "path",
   "workset.vault_rw": "path",
   "workset.canon": "path",
-  "workset.registry": "path",
   "workset.template": "path",
   "workset.auth.path": "path",
   "workset.channelroot": "path",
@@ -410,7 +405,6 @@ KEY_OWNERS: dict[str, str] = {
   "workset.workspaces": "workset",
   "workset.boxes": "workset",
   "workset.logs": "workset",
-  "workset.registry": "workset",
   "workset.auth.path": "workset",
   "workset.vault_ro": "workset",
   "workset.vault_rw": "workset",
@@ -421,6 +415,7 @@ KEY_OWNERS: dict[str, str] = {
   "workset.channels.broadcast": "workset",
   "workset.channels.share": "workset",
   "meta.workset.settings": "workset",
+  "meta.workset.registry": "workset",
   "meta.box.auth.workset_path": "workset",
   "workset.channels.mailboxes": "partition",
   "workset.channels.share_global": "partition",

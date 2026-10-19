@@ -54,16 +54,11 @@ def _connected_index(std):
   from pathlib import Path
 
   from kanibako.project import registry_store, workset_registry
-  from kanibako.settings.config_io import load_doc
 
   out = {}
   for name, root_str in registry_store.load_section(std.registry, "worksets").items():
     root = Path(root_str)
-    registry_path = workset_registry.resolve_workset_registry_path(
-      root,
-      load_doc(root / "workset.yaml"),
-      early=_early_scope(std, BoxMode.named, name),
-    )
+    registry_path = workset_registry.workset_registry_path(root)
     for box_name, box_path in workset_registry.load_workset_boxes(registry_path).items():
       resolved = Path(box_path).resolve()
       try:
@@ -346,12 +341,7 @@ class TestConvertInPlace:
     assert new.mode == BoxMode.standalone
     assert load_standalone(std.registry).get(new.name) == str(pdir)
     # default-mode name unregistered.
-    assert (
-      str(pdir)
-      not in load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary)
-      ).values()
-    )
+    assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
 
   def test_convert_to_standalone_is_detectable(self, env):
     config, std, tmp_home = env
@@ -385,10 +375,7 @@ class TestConvertInPlace:
     src_state = resolve_lifecycle_target(str(pdir), std, config)
     src_name = src_state.name
     # The primary source is registered in the primary membership at the project path.
-    assert (
-      str(pdir)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
     new = execute_lifecycle(
       src_state,
@@ -419,15 +406,8 @@ class TestConvertInPlace:
     assert standalone[new_name] == str(pdir)
 
     # (4) The old primary membership entry is gone (no dangling registration).
-    assert (
-      str(pdir)
-      not in load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary)
-      ).values()
-    )
-    assert src_name not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
+    assert src_name not in load_primary_boxes(std.primary_workset)
 
   def test_convert_standalone_no_name_generates_fresh(self, env):
     """No --name on a standalone convert → a freshly generated canonical id
@@ -518,10 +498,7 @@ class TestConvertInPlace:
     # old in-tree metadata gone.
     assert not (pdir / "box_data").exists()
     # name registered.
-    assert (
-      str(pdir)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
   def test_default_to_workset_external(self, env):
     config, std, tmp_home = env
@@ -547,23 +524,11 @@ class TestConvertInPlace:
     assert new.mode == BoxMode.named
     assert new.workspace_path == pdir.resolve()
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    reg = workset_registry.load_workset_boxes(
-      workset_registry.resolve_workset_registry_path(
-        ws.root,
-        load_doc(ws.root / "workset.yaml"),
-        early=_early_scope(std, BoxMode.named, ws.name),
-      )
-    )
+    reg = workset_registry.load_workset_boxes(workset_registry.workset_registry_path(ws.root))
     assert reg.get("proj") == str(pdir.resolve())
     # old default name unregistered.
-    assert (
-      str(pdir)
-      not in load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary)
-      ).values()
-    )
+    assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
 
   def test_standalone_to_workset_external(self, env):
     config, std, tmp_home = env
@@ -602,7 +567,7 @@ class TestConvertInPlace:
         config,
         confirm=_conf_yes(),
       )
-    projects = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    projects = load_primary_boxes(std.primary_workset)
     # Registry unchanged: original name still maps to the path, no new entry.
     assert projects.get("proj") == str(pdir)
     assert "proj2" not in projects
@@ -741,16 +706,8 @@ class TestMoveSameOwner:
     assert "project" not in load_doc(new.metadata_path / "box.yaml")
     assert new.workspace_path == dest.resolve()
     # primary membership updated.
-    assert (
-      str(dest)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
-    assert (
-      str(pdir)
-      not in load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary)
-      ).values()
-    )
+    assert str(dest) in load_primary_boxes(std.primary_workset).values()
+    assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
 
   def test_move_with_a_case_variant_name_is_not_refused_as_its_own_twin(self, env):
     # §0: ``--name PROJ`` on a box stored as ``proj`` names the SAME box, so the
@@ -771,7 +728,7 @@ class TestMoveSameOwner:
     )
     assert new.mode == BoxMode.primary
     assert (dest / "file.txt").read_text() == "casevariant"
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     # ONE row, under the spelling it was created with, now at the new location.
     assert [k for k in boxes if k.casefold() == "proj"] == ["proj"]
     assert boxes["proj"] == str(dest)
@@ -843,9 +800,7 @@ class TestNullWorkspacesTarget:
   def _assert_untouched(self, env, pdir):
     _config, std, _tmp_home = env
     assert (pdir / "file.txt").read_text() == "hello"
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))[
-      "proj"
-    ] == str(pdir)
+    assert load_primary_boxes(std.primary_workset)["proj"] == str(pdir)
 
   def test_bare_into_workset_refuses(self, env):
     config, std, _tmp_home = env
@@ -1542,9 +1497,7 @@ class TestUnwind:
     state = resolve_lifecycle_target(str(pdir), std, config)
     dest = tmp_home / "unwind_dest"
 
-    names_before = dict(
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    )
+    names_before = dict(load_primary_boxes(std.primary_workset))
     meta_before = load_doc(state.metadata_path / "box.yaml")
 
     # Force the standalone ownership step to raise AFTER file move + name
@@ -1567,10 +1520,7 @@ class TestUnwind:
     assert not dest.exists()
     assert pdir.is_dir() and (pdir / "file.txt").read_text() == "unwind"
     # Names + metadata unchanged.
-    assert (
-      dict(load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)))
-      == names_before
-    )
+    assert dict(load_primary_boxes(std.primary_workset)) == names_before
     assert load_doc(state.metadata_path / "box.yaml") == meta_before
 
   def test_workset_failure_unwinds_registration(self, env, monkeypatch):
@@ -1605,10 +1555,7 @@ class TestUnwind:
     ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
     assert not any(p.name == "proj" for p in ws2.projects)
     # original default project intact + still resolves as primary in place.
-    assert (
-      str(pdir)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(pdir) in load_primary_boxes(std.primary_workset).values()
     assert resolve_lifecycle_target(str(pdir), std, config).mode == BoxMode.primary
 
 
@@ -3765,10 +3712,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
     # ``workset.yaml`` that named it is gone — so it does not outlive the convert.
     assert not (root / "nested").exists()
     # The box the user will open is registered AT the root, not below it.
-    assert (
-      str(root)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(root) in load_primary_boxes(std.primary_workset).values()
 
   def test_absolute_repoint_keeps_the_users_workspace_and_reports_it(self, env, capsys):
     """⚑⚑ system-design § "Box lifecycle" — the case a positional parent cannot
@@ -3794,10 +3738,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
     assert (elsewhere / "file.txt").read_text() == "mine"
     # ⚑ The parent is NOT ours: nothing of the user's was moved up into it.
     assert not (elsewhere.parent / "file.txt").exists()
-    assert (
-      str(elsewhere)
-      in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
-    )
+    assert str(elsewhere) in load_primary_boxes(std.primary_workset).values()
     # A keep that cannot name the path as the user's is just a leak.
     err = capsys.readouterr().err
     assert str(elsewhere) in err
@@ -4072,9 +4013,7 @@ class TestAnUndroppedSourceRowIsNamed:
       confirm=_conf_yes(),
     )
     assert new.mode == BoxMode.standalone
-    assert state.name in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert state.name in load_primary_boxes(std.primary_workset)
     err = capsys.readouterr().err
     note = (
       f"Note: could not drop the old registry row '{state.name}': registry "
@@ -4129,8 +4068,6 @@ def test_a_name_free_that_fails_names_its_cause(env, capsys):
       )
   finally:
     os.chmod(registry.parent, 0o755)
-  assert state.name in load_primary_boxes(
-    std.primary_workset, early=_early_scope(std, BoxMode.primary)
-  )
+  assert state.name in load_primary_boxes(std.primary_workset)
   assert (pdir / "file.txt").is_file()
   assert "already registered" not in capsys.readouterr().err

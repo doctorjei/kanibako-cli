@@ -121,14 +121,11 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
       return
 
     # PRIMARY: the membership maps name → workspace path, so reverse-resolve.
-    early = _early_scope(std, BoxMode.primary)
-    name = primary_box_name_for_workspace(
-      std.primary_workset,
-      str(proj.project_path),
-      early=early,
-    ) or (proj.name or proj.metadata_path.name)
+    name = primary_box_name_for_workspace(std.primary_workset, str(proj.project_path)) or (
+      proj.name or proj.metadata_path.name
+    )
     if name:
-      unregister_primary_box_name(std.primary_workset, name, early=early)
+      unregister_primary_box_name(std.primary_workset, name)
       if park:
         _park(name, "primary", str(proj.project_path), str(proj.metadata_path))
       else:
@@ -151,18 +148,13 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
   )
 
   try:
-    early = _early_scope(std, BoxMode.primary)
     name: str | None = None
     if project_path is not None:
-      name = primary_box_name_for_workspace(
-        std.primary_workset,
-        str(project_path),
-        early=early,
-      )
+      name = primary_box_name_for_workspace(std.primary_workset, str(project_path))
     if name is None:
       name = metadata_path.name
     if name:
-      unregister_primary_box_name(std.primary_workset, name, early=early)
+      unregister_primary_box_name(std.primary_workset, name)
   except Exception:  # noqa: BLE001 - cleanup must never break a purge
     pass
 

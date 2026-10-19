@@ -24,7 +24,6 @@ from kanibako.project.names import (
   resolve_qualified_name,
   unregister_name,
 )
-from kanibako.settings.paths import BoxMode, _early_scope
 from tests.support.early import early_record
 
 
@@ -53,9 +52,7 @@ def _register_primary_box(
   """Register a PRIMARY box (name → workspace) in the primary membership."""
   from kanibako.project import workset_registry
 
-  reg = workset_registry.resolve_workset_registry_path(
-    primary_workset, None, early=early_record(primary_workset.parent, mode=BoxMode.primary)
-  )
+  reg = workset_registry.workset_registry_path(primary_workset)
   workset_registry.register_workset_box(reg, name, Path(workspace))
 
 
@@ -379,9 +376,7 @@ class TestResolveName:
     box_ws = ws_root / "workspaces" / box_name
     box_ws.mkdir(parents=True)
     register_name(registry, ws_name, str(ws_root), section="worksets")
-    reg_path = workset_registry.resolve_workset_registry_path(
-      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
-    )
+    reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, box_name, box_ws)
     return box_ws
 
@@ -403,9 +398,7 @@ class TestResolveName:
     ws_root = tmp_path / ws_name
     ws_root.mkdir(exist_ok=True)
     register_name(registry, ws_name, str(ws_root), section="worksets")
-    reg_path = workset_registry.resolve_workset_registry_path(
-      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
-    )
+    reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, box_name, box_ws)
     return box_ws
 
@@ -489,9 +482,7 @@ class TestResolveName:
         {"workset": {"workspaces": str(pods)}},
       )
       register_name(registry, ws_name, str(ws_root), section="worksets")
-      reg_path = workset_registry.resolve_workset_registry_path(
-        ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
-      )
+      reg_path = workset_registry.workset_registry_path(ws_root)
       workset_registry.register_workset_box(reg_path, "dup", member)
 
     with pytest.raises(ProjectError) as excinfo:
@@ -620,9 +611,7 @@ class TestResolveName:
       {"workset": {"workspaces": str(external_pods)}},
     )
     register_name(registry, "ws_a", str(ws_root), section="worksets")
-    reg_path = workset_registry.resolve_workset_registry_path(
-      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name="ws_a")
-    )
+    reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, "dup", member)
     self._register_ws_member(registry, tmp_path, "ws-b", "dup")
 
@@ -673,9 +662,7 @@ class TestStandaloneNameResolution:
     register_name(registry, ws_name, str(ws_root), section="worksets")
     member = ws_root / "workspaces" / box_name
     member.mkdir(parents=True)
-    reg_path = workset_registry.resolve_workset_registry_path(
-      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name)
-    )
+    reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, box_name, member)
     return member
 
@@ -928,9 +915,7 @@ class TestResolveQualifiedName:
     member = ws_root / "workspaces" / "api"
     member.mkdir(parents=True)
     register_name(registry, "myws", str(ws_root), section="worksets")
-    reg_path = workset_registry.resolve_workset_registry_path(
-      ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name="myws")
-    )
+    reg_path = workset_registry.workset_registry_path(ws_root)
     workset_registry.register_workset_box(reg_path, "api", member)
     dump_doc(
       ws_root / "workset.yaml",
@@ -972,30 +957,16 @@ class TestPrimaryBoxNameApi:
 
     primary = tmp_path / "primary_workset"
     ws = tmp_path / "projects" / "myapp"
-    name = assign_primary_box_name(
-      primary, str(ws), early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    name = assign_primary_box_name(primary, str(ws))
     assert name == "myapp"
-    assert load_primary_boxes(primary, early=early_record(tmp_path, mode=BoxMode.primary))[
-      name
-    ] == str(ws)
+    assert load_primary_boxes(primary)[name] == str(ws)
 
   def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
     from kanibako.settings.paths import assign_primary_box_name
 
     primary = tmp_path / "primary_workset"
-    assert (
-      assign_primary_box_name(
-        primary, "/a/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-      )
-      == "myapp"
-    )
-    assert (
-      assign_primary_box_name(
-        primary, "/b/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-      )
-      == "myapp2"
-    )
+    assert assign_primary_box_name(primary, "/a/myapp") == "myapp"
+    assert assign_primary_box_name(primary, "/b/myapp") == "myapp2"
 
   def test_auto_name_does_not_skip_a_workset_name(self, registry: Path, tmp_path: Path) -> None:
     """Per-kind namespaces: a WORKSET name does not push an auto-named PRIMARY box
@@ -1004,12 +975,7 @@ class TestPrimaryBoxNameApi:
 
     register_name(registry, "myapp", "/ws", section="worksets")
     primary = tmp_path / "primary_workset"
-    assert (
-      assign_primary_box_name(
-        primary, "/proj/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-      )
-      == "myapp"
-    )
+    assert assign_primary_box_name(primary, "/proj/myapp") == "myapp"
 
   def test_register_takes_a_workset_name(self, registry: Path, tmp_path: Path) -> None:
     """Per-kind namespaces: an EXPLICIT primary box name a WORKSET already holds
@@ -1018,26 +984,17 @@ class TestPrimaryBoxNameApi:
 
     register_name(registry, "myapp", "/ws", section="worksets")
     primary = tmp_path / "primary_workset"
-    register_primary_box_name(
-      primary, "myapp", "/proj/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    assert (
-      load_primary_boxes(primary, early=early_record(tmp_path, mode=BoxMode.primary))["myapp"]
-      == "/proj/myapp"
-    )
+    register_primary_box_name(primary, "myapp", "/proj/myapp")
+    assert load_primary_boxes(primary)["myapp"] == "/proj/myapp"
 
   def test_same_kind_primary_collision_refuses(self, registry: Path, tmp_path: Path) -> None:
     """SAME-kind (two primary boxes, one name) refuses."""
     from kanibako.settings.paths import register_primary_box_name
 
     primary = tmp_path / "primary_workset"
-    register_primary_box_name(
-      primary, "myapp", "/a/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    register_primary_box_name(primary, "myapp", "/a/myapp")
     with pytest.raises(ProjectError, match="already registered"):
-      register_primary_box_name(
-        primary, "myapp", "/b/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-      )
+      register_primary_box_name(primary, "myapp", "/b/myapp")
 
   def test_pick_skips_existing_box_dir(self, registry: Path, tmp_path: Path) -> None:
     from kanibako.settings.paths import pick_primary_box_name
@@ -1045,9 +1002,7 @@ class TestPrimaryBoxNameApi:
     primary = tmp_path / "primary_workset"
     boxes = tmp_path / "boxes"
     (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
-    name = pick_primary_box_name(
-      primary, "/x/myapp", boxes_dir=boxes, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    name = pick_primary_box_name(primary, "/x/myapp", boxes_dir=boxes)
     assert name == "myapp2"
 
   def test_if_absent_noop_on_identical(self, registry: Path, tmp_path: Path) -> None:
@@ -1057,13 +1012,9 @@ class TestPrimaryBoxNameApi:
     )
 
     primary = tmp_path / "primary_workset"
-    register_primary_box_name(
-      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    register_primary_box_name(primary, "myapp", "/p/myapp")
     # Recovery re-entry: same name → same path is a silent no-op.
-    register_primary_box_name_if_absent(
-      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    register_primary_box_name_if_absent(primary, "myapp", "/p/myapp")
 
   def test_if_absent_raises_on_different_path(self, registry: Path, tmp_path: Path) -> None:
     from kanibako.settings.paths import (
@@ -1072,16 +1023,9 @@ class TestPrimaryBoxNameApi:
     )
 
     primary = tmp_path / "primary_workset"
-    register_primary_box_name(
-      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    register_primary_box_name(primary, "myapp", "/p/myapp")
     with pytest.raises(ProjectError):
-      register_primary_box_name_if_absent(
-        primary,
-        "myapp",
-        "/OTHER/myapp",
-        early=early_record(tmp_path, mode=BoxMode.primary),
-      )
+      register_primary_box_name_if_absent(primary, "myapp", "/OTHER/myapp")
 
   def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
     from kanibako.settings.paths import register_primary_box_name
@@ -1091,9 +1035,7 @@ class TestPrimaryBoxNameApi:
     monkeypatch.setenv("HOME", str(home))
     primary = tmp_path / "primary_workset"
     with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-      register_primary_box_name(
-        primary, "bad", str(home), early=early_record(tmp_path, mode=BoxMode.primary)
-      )
+      register_primary_box_name(primary, "bad", str(home))
 
   def test_unregister(self, registry: Path, tmp_path: Path) -> None:
     from kanibako.settings.paths import (
@@ -1103,15 +1045,9 @@ class TestPrimaryBoxNameApi:
     )
 
     primary = tmp_path / "primary_workset"
-    register_primary_box_name(
-      primary, "myapp", "/p/myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    unregister_primary_box_name(
-      primary, "myapp", early=early_record(tmp_path, mode=BoxMode.primary)
-    )
-    assert "myapp" not in load_primary_boxes(
-      primary, early=early_record(tmp_path, mode=BoxMode.primary)
-    )
+    register_primary_box_name(primary, "myapp", "/p/myapp")
+    unregister_primary_box_name(primary, "myapp")
+    assert "myapp" not in load_primary_boxes(primary)
 
 
 # ---------------------------------------------------------------------------
@@ -1147,12 +1083,7 @@ class TestLocalNameAssignment:
 
     assert proj.name == "project"
     assert "project" not in load_doc(proj.metadata_path / "box.yaml")
-    assert (
-      load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).get(
-        "project"
-      )
-      == project_dir
-    )
+    assert load_primary_boxes(std.primary_workset).get("project") == project_dir
 
   def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
     from kanibako.settings.config import load_config
@@ -1163,7 +1094,7 @@ class TestLocalNameAssignment:
     project_dir = str(tmp_home / "project")
     resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert "project" in boxes
     assert boxes["project"] == project_dir
 
@@ -1240,9 +1171,7 @@ class TestNameRegistration:
     resolve_project(std, config, project_dir=project_dir, initialize=True)
 
     # Project should be auto-registered under its directory name
-    assert "project" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "project" in load_primary_boxes(std.primary_workset)
 
   def test_unregister_name(self, config_file, tmp_home, credentials_dir):
     from kanibako.settings.config import load_config
@@ -1258,15 +1187,9 @@ class TestNameRegistration:
     project_dir = str(tmp_home / "project")
     resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-    assert "project" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
-    unregister_primary_box_name(
-      std.primary_workset, "project", early=_early_scope(std, BoxMode.primary)
-    )
-    assert "project" not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "project" in load_primary_boxes(std.primary_workset)
+    unregister_primary_box_name(std.primary_workset, "project")
+    assert "project" not in load_primary_boxes(std.primary_workset)
 
 
 class TestBoxListName:
@@ -1357,9 +1280,7 @@ class TestBoxRm:
     rc = run_rm(args)
     assert rc == 0
 
-    assert "project" not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "project" not in load_primary_boxes(std.primary_workset)
 
     out = capsys.readouterr().out
     assert "Removed 'project' from the registry" in out
@@ -1400,9 +1321,7 @@ class TestBoxRm:
     rc = run_rm(args)
     assert rc == 0
 
-    assert "project" not in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "project" not in load_primary_boxes(std.primary_workset)
 
   def test_rm_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
     from kanibako.commands.box._parser import run_rm
@@ -1991,7 +1910,7 @@ class TestRmPurgeDeletesTheBoxLogsByName:
 
     # The membership entry, the home it names, and the log names all agree on
     # the STORED spelling; the typed variant is written nowhere.
-    boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    boxes = load_primary_boxes(std.primary_workset)
     assert sorted(boxes) == ["project"]
     assert (std.boxes / "project").is_dir()
     std.primary_logs.mkdir(parents=True, exist_ok=True)
@@ -2039,15 +1958,8 @@ class TestPurgeStaleDeregisteredGuard:
     home = std.boxes / "dup"
     (home / "home").mkdir(parents=True, exist_ok=True)
     (home / "home" / "LIVE.txt").write_text("live-box-data")
-    register_primary_box_name(
-      std.primary_workset,
-      "dup",
-      str(ws),
-      early=_early_scope(std, BoxMode.primary),
-    )
-    assert "dup" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "dup", str(ws))
+    assert "dup" in load_primary_boxes(std.primary_workset)
 
     # A STALE deregistered entry pointing at the SAME home path.
     registry_store.register_deregistered(

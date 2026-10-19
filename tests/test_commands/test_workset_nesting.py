@@ -37,14 +37,9 @@ def _connect(ws: str, source: Path, name: str, *, force: bool) -> int:
 
 def _members(std, ws: str) -> dict:
   from kanibako.project import workset_registry
-  from kanibako.settings.config_io import load_doc
 
   loaded = load_workset(list_worksets(std)[ws], ws, early_system=std.early_system)
-  return workset_registry.load_workset_boxes(
-    workset_registry.resolve_workset_registry_path(
-      loaded.root, load_doc(loaded.root / "workset.yaml"), early=loaded.early_scope
-    )
-  )
+  return workset_registry.load_workset_boxes(workset_registry.workset_registry_path(loaded.root))
 
 
 @pytest.fixture
@@ -548,7 +543,8 @@ class TestWorksetConnectUnforceableFirst:
     """The workspace is box-writable: a marker there does not make it a root."""
     std, area = boxes
     ws_dir = area / "XS" / "workspace"
-    (ws_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (ws_dir / "workset.yaml").touch()
+    (ws_dir / "registry.yaml").write_text("__STANDALONE__\n")
     rows = registry_store.load_standalone(std.registry)
     assert _connect("wn", ws_dir, "m", force=force) == 1
     err = capsys.readouterr().err
@@ -562,7 +558,8 @@ class TestWorksetConnectUnforceableFirst:
     std, area = boxes
     marked = area / "other" / "mk"
     marked.mkdir()
-    (marked / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (marked / "workset.yaml").touch()
+    (marked / "registry.yaml").write_text("__STANDALONE__\n")
     assert _connect("wn", marked, "m", force=force) == 1
     err = capsys.readouterr().err
     assert "it lives inside workset 'other'" in err, err

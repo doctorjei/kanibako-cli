@@ -521,18 +521,13 @@ migration code.** Four released config surfaces are removed outright
   standalone box registered through a link before this release keeps its resolved path; work from that path, or
   `box rm <name>` and then `box register <link>`.
 
-- **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
-  `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.
+- **`workset.registry` is no longer a setting.** The per-workset box registry is the read-only
+  `meta.workset.registry`, fixed at `<workset root>/registry.yaml`. A stored `workset.registry`, in any settings
+  file, stops the command and names the cure.
 
-- **Standalone detection reads that line.** A directory is a standalone box root when its own `workset.yaml`
-  stores `workset.registry` as null; `box_data/` is no longer the marker, and a null reached through the
-  settings cascade (the system settings file) does not count. Removing the line makes the root read as not
-  standalone.
-
-- **`kanibako workset set <name> workset.registry --null` on a named working set is refused**, warning that it
-  would make the working set standalone; `--force` writes it. The working set then reads as standalone from
-  anywhere in its tree, though still listed; its members are not detected, but still count against
-  `workset rm`, until `kanibako workset reset <name> workset.registry` restores it.
+- **A standalone box is marked by its root `registry.yaml` holding only `__STANDALONE__`**, written at `create`.
+  Detection reads that root's own file, trimmed and case-blind; `box_data/` is not the marker. Deleting the file
+  makes the root read as not standalone. A `registry: null` line in `workset.yaml` is refused, naming the cure.
 
 - **`set` now refuses (exit 1, was 0) when a settings file it reads stores a value its key refuses** —
   a list or map at a single-valued key (`workset.auth.path: [a]`), a non-boolean at a boolean key, a list at an
@@ -3184,9 +3179,9 @@ migration code.** Four released config surfaces are removed outright
 - **A failed in-place `box convert` of a standalone box keeps an empty `workspace/` folder.** The rollback put
   back the folder's files but not the folder itself when it held none.
 
-- **Launching a registered standalone box whose root `workset.yaml` lost its `registry: null` line names that
-  line.** The launch said nothing was registered under the name, or blamed where the box's data was stored; it now
-  says the standalone marker is missing and how to put it back.
+- **Launching a registered standalone box that lost its standalone mark names the mark.** The launch said nothing
+  was registered under the name, or blamed where the box's data was stored; it now says the standalone marker is
+  missing and how to put it back.
 
 - **A refused `create <path>` no longer leaves `<path>` behind.** When `create` made the directory and then refused
   (an out-of-root `workset.canon`, an invalid `--agent`, `--recover` with nothing to resume), the empty directory
@@ -3311,8 +3306,8 @@ migration code.** Four released config surfaces are removed outright
   (`.gitignore`, `box_data/`, `canon/`, `vault/`, `workset.yaml`, `workspace/`) for `workset.channelroot` and every
   `workset.channels.*` leaf. For those channel keys, a directory that already existed (`<path>`, or the current
   directory when no `<path>` is given) had that box written beside the user's own files. The create now refuses first
-  and leaves the directory as it found it. `workset.registry` and `workset.template` are still accepted: a standalone
-  box is indexed only on `--register`, and its canon stamp reads `workset.canon` alone.
+  and leaves the directory as it found it. `workset.template` is still accepted: a standalone box's canon stamp
+  reads `workset.canon` alone.
 
 - **`box convert --standalone` in place refuses a `vault/` at the project root that the box
   does not own.** A standalone box's vault IS the root's own `workset.vault_ro`/`vault_rw`
@@ -3399,13 +3394,13 @@ migration code.** Four released config surfaces are removed outright
   honors that value; it no longer stores it. `--no-vault`, move, duplicate, and convert are unchanged.
 
 - **`workset create` now refuses a system per-owner value that reaches no working-set identity.** With a
-  plain `workset.registry: /srv/reg.yaml` in the system settings file, `kanibako workset create <path>` printed
+  plain `workset.vault_rw: /srv/vault` in the system settings file, `kanibako workset create <path>` printed
   "Created working set …" and exited 0, though `create` refused the same file. It now refuses before
   anything is made or registered, naming the key and the file, as `create` does for `workset.boxes` and
   `workset.logs`. A value anchored with `{meta.workset.path}` still creates.
 
 - **A refused `create <path>` no longer leaves an empty `<path>` behind.** When the system settings file set a
-  per-owner workset key, such as `workset.registry`, `workset.canon`, or `workset.channels.chat`, to a value that
+  per-owner workset key, such as `workset.canon` or `workset.channels.chat`, to a value that
   reaches no owner, `create` refused, but only after it had made the directory. It now refuses before making it.
 
 - **`set` now refuses a whole-table reference whose table holds a broken key.** With a stored
@@ -4044,13 +4039,6 @@ migration code.** Four released config surfaces are removed outright
   exit 1 and say which `workset.yaml` sets `workset.boxes` to `null`. See `MIGRATION.md`
   § *A `workset.boxes` of `null` is refused*.
 
-- **A `null` at `workset.registry` is refused instead of read as the default.** v1.8.0-rc2 read a
-  `workset: {registry: null}` line as unset, so every command fell through to `<workset>/registry.yaml`,
-  the file that holds the workset's box membership. The resolver now refuses with exit 1, naming the
-  key and the file, for the primary workset and a named one. `workset set --null <workset>
-  workset.registry` is refused at the door and writes nothing, like `workset.boxes`. An unset key, and
-  a repoint you set, are unchanged. See `MIGRATION.md` § *A `workset.boxes` of `null` is refused*.
-
 - **A `workset.workspaces` of `null` refuses to create a workspace or launch a box in it, naming
   the key and the file.**
   v1.8.0-rc2 read a `null` `workset.workspaces` as unset, so these commands created the workspace
@@ -4444,7 +4432,7 @@ migration code.** Four released config surfaces are removed outright
   template layer whose source is `<None>` is skipped. But the box carried no `workset.template` at
   all, and an unset key inside a path renders as an empty string, so `@workset.template/box/home`
   became `/box/home` on the host. A standalone box now resolves `workset.template` to `None` and
-  skips the entry. `workset.registry`, `workset.channelroot` and the four channel keys
+  skips the entry. `workset.channelroot` and the four channel keys
   `workset.channels.{common,chat,broadcast,share}` were unset the same way and now resolve to
   `None`, as declared.
   ⚑ **Three changes against v1.8.0-rc2.** There, a `null` at `system.channels.common` or

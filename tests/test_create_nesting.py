@@ -220,59 +220,6 @@ class TestCreateUnforceable:
     assert "Identical workspaces are refused, and no flag overrides this." in err
 
 
-class TestStandaloneWithARefusedPrimaryRegistry:
-  """An inherited system ``workset.registry`` refuses the primary registry; a standalone
-  records no primary row, so the check reads no primary box and runs every other arm."""
-
-  @staticmethod
-  def _inherit_registry(config_file):
-    from kanibako.settings.config_io import dump_doc
-
-    std = _std(config_file)
-    std.settings.parent.mkdir(parents=True, exist_ok=True)
-    dump_doc(std.settings, {"workset": {"registry": "/srv/x"}})
-
-  def test_standalone_nesting_still_refused(self, area, config_file, capsys):
-    root = area / "S"
-    assert _create("--standalone", "--register", str(root)) == 0
-    self._inherit_registry(config_file)
-    capsys.readouterr()
-    assert _create("--standalone", str(root / "sub")) == 1
-    err = capsys.readouterr().err
-    assert "it is inside the root of standalone box" in err, err
-    assert _create("--standalone", "--force", str(root / "sub")) == 0
-
-  def test_a_primary_create_still_refuses_the_registry(self, area, config_file, capsys):
-    self._inherit_registry(config_file)
-    from kanibako.errors import ConfigError
-
-    with pytest.raises(ConfigError, match=r"workset\.registry is set to '/srv/x'"):
-      _create("--name", "p", str(area / "P"))
-
-  def test_a_named_member_with_its_own_registry_is_still_found(self, area, config_file, capsys):
-    """The primary registry alone is skipped: a named workset that sets its own
-    ``workset.registry`` is still read, so nesting over its member is refused."""
-    from kanibako.project.workset import add_project, create_workset
-    from kanibako.settings.config import WORKSET_META_FILE
-    from kanibako.settings.config_io import dump_doc, load_doc
-
-    std = _std(config_file)
-    ws = create_workset("W", area / "wroot", std)
-    member = area / "H" / "m"
-    member.mkdir(parents=True)
-    add_project(ws, "m", member, std)
-    meta = ws.root / WORKSET_META_FILE
-    doc = load_doc(meta) or {}
-    doc.setdefault("workset", {})["registry"] = str(ws.root / "registry.yaml")
-    dump_doc(meta, doc)
-    self._inherit_registry(config_file)
-    capsys.readouterr()
-    assert _create("--standalone", str(area / "H")) == 1
-    err = capsys.readouterr().err
-    assert f"a directory holding the workspace of box 'W/m' ({member})" in err, err
-    assert _create("--standalone", "--force", str(area / "H")) == 0
-
-
 class TestCreateRunsTheOneJudge:
   """Create asks ``_dest_nesting_refusal``, the verb-neutral check other verbs share."""
 

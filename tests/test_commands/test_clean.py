@@ -14,7 +14,6 @@ from kanibako.settings.paths import (
   resolve_project,
   resolve_workset_project,
 )
-from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -72,29 +71,14 @@ class TestClean:
     resolve_project(std, config, project_dir=project_dir, initialize=True)
 
     # Initialized → registered.
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)
-      )
-      is not None
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, project_dir) is not None
 
     args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
     assert run(args) == 0
 
     # No dangling name → path entry remains.
-    assert (
-      primary_box_name_for_workspace(
-        std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)
-      )
-      is None
-    )
-    assert (
-      project_dir
-      not in load_primary_boxes(
-        std.primary_workset, early=_early_scope(std, BoxMode.primary)
-      ).values()
-    )
+    assert primary_box_name_for_workspace(std.primary_workset, project_dir) is None
+    assert project_dir not in load_primary_boxes(std.primary_workset).values()
 
   def test_purge_also_unregisters_primary_boxes_membership(
     self,
@@ -110,7 +94,6 @@ class TestClean:
     """
     from kanibako.project import workset_registry
     from kanibako.commands.clean import run
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -123,11 +106,7 @@ class TestClean:
       initialize=True,
     )
 
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / "workset.yaml"),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     assert proj.name in workset_registry.load_workset_boxes(prim_reg)
 
     args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
@@ -153,7 +132,7 @@ class TestClean:
     args = argparse.Namespace(path=None, all_projects=True, force=True)
     assert run(args) == 0
 
-    projects = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    projects = load_primary_boxes(std.primary_workset)
     assert a not in projects.values()
     assert b not in projects.values()
 
@@ -231,8 +210,9 @@ class TestCleanExtended:
     project_dir = tmp_home / "project"
     kanibako_dir = project_dir / "box_data"
     kanibako_dir.mkdir(parents=True)
-    # Standalone marker: the ROOT workset.yaml's stored registry null.
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    # Standalone marker: the ROOT registry.yaml mark.
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     (kanibako_dir / "data.txt").write_text("session-data")
     (project_dir / "canon" / "handbook").mkdir(parents=True)
 
@@ -255,7 +235,8 @@ class TestCleanExtended:
 
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     outside = tmp_home / "extv"
     (outside / "rw").mkdir(parents=True)
     (outside / "rw" / "canary.txt").write_text("keep me\n")
@@ -290,7 +271,8 @@ class TestCleanExtended:
       "at-root": (project_dir, project_dir),
       "linked-parent": (project_dir / "lnk" / "canon", outside / "canon"),
     }[where]
-    (project_dir / "workset.yaml").write_text(f"workset:\n  registry: null\n  canon: '{canon}'\n")
+    (project_dir / "workset.yaml").write_text(f"workset:\n  canon: '{canon}'\n")
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
     assert run(args) == 0
@@ -313,7 +295,8 @@ class TestCleanExtended:
     (project_dir / "box_data").mkdir(parents=True)
     (project_dir / "canon").mkdir()
     (project_dir / "canon" / "mine.txt").write_text("mine\n")
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n  canon: null\n")
+    (project_dir / "workset.yaml").write_text("workset:\n  canon: null\n")
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
     assert run(args) == 0
@@ -332,7 +315,8 @@ class TestCleanExtended:
 
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     (project_dir / ".gitignore").write_text("box_data/\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
@@ -345,8 +329,9 @@ class TestCleanExtended:
 
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    bad = "workset:\n  registry: null\n  canon: @meta.workset.path/canon\n"
+    bad = "workset:\n  canon: @meta.workset.path/canon\n"
     (project_dir / "workset.yaml").write_text(bad)
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
     with pytest.raises(ConfigError, match="is not valid YAML"):
@@ -487,7 +472,8 @@ class TestCleanCredsWatcherLock:
 
     project_dir = tmp_home / "project"
     (project_dir / "box_data").mkdir(parents=True)
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     (project_dir / "box_data" / "data.txt").write_text("session-data")
     return project_dir / CREDS_WATCHER_LOCK_FILE
 

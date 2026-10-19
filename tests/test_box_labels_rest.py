@@ -381,8 +381,6 @@ class TestHub:
 
   def _hub(self, tmp_path, runtime, labels=None):
     from kanibako.channels.helper_listener import HelperContext, HelperHub
-    from kanibako.settings.paths import BoxMode
-    from tests.support.early import early_record
 
     helpers_dir = tmp_path / "shell" / "helpers"
     (helpers_dir / "4" / "workspace").mkdir(parents=True)
@@ -394,7 +392,6 @@ class TestHub:
       shell_path=tmp_path / "shell",
       helpers_dir=helpers_dir,
       socket_path=tmp_path / "s",
-      early=early_record(tmp_path, mode=BoxMode.primary),
       labels=self.LABELS if labels is None else labels,
     )
     return hub

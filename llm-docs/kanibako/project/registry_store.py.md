@@ -55,7 +55,7 @@ per-workset registry as a `boxes:` entry (design D10).
 **There is no `projects` section.** A PRIMARY box's identity lives SOLELY in the primary workset's
 per-workset `boxes:` membership (`{config.primary_workset}/registry.yaml`, via
 `kanibako.project.workset_registry`), which is the AUTHORITATIVE source of box names (spec §2c's
-`workset.registry` row). `_SECTIONS` is the retirement mechanism: a section absent from it is
+`meta.workset.registry` row). `_SECTIONS` is the retirement mechanism: a section absent from it is
 neither surfaced by the loader nor rewritten, so a stale `projects` block is dropped on the next
 write and printed as a warning naming the file (`write_registry_doc`) — no migration, no legacy
 read.
@@ -106,8 +106,8 @@ writes the whole file, so the other sections survive.
 
 ## The `standalone` section
 
-Standalone boxes are self-describing on disk — the root `workset.yaml` stores `workset.registry:
-null` — so `registry.standalone` is a *derived* index, not the truth. It maps the box's
+Standalone boxes are self-describing on disk — the root `registry.yaml` holds the
+`__STANDALONE__` mark — so `registry.standalone` is a *derived* index, not the truth. It maps the box's
 `<kuid>_<leaf>` name to its root path string, and it backs the whole-name collision check and
 `box register`.
 

@@ -142,7 +142,7 @@ class TestCheckBoxComponents:
     """#3 — the settings-file marker is NOT re-checked at launch: a proj
     whose workspace + home exist passes even with no workset.yaml (the
     marker's absence is handled at resolution/detection, not double-fired
-    here — see box_resolve.stores_standalone_registry_null below)."""
+    here — see box_resolve.is_standalone_root below)."""
     proj = self._proj(tmp_path)  # writes no workset.yaml marker
     assert not (proj.metadata_path / "workset.yaml").exists()
     assert _check_box_components(proj) is None
@@ -157,9 +157,10 @@ class TestCheckBoxComponents:
     root = tmp_path / "sbox"
     (root / "box_data").mkdir(parents=True)
     # box_data present but NO workset.yaml → not recognized as a box.
-    assert not box_resolve.stores_standalone_registry_null(root)
-    (root / "workset.yaml").write_text("workset:\n  registry: null\n")
-    assert box_resolve.stores_standalone_registry_null(root)
+    assert not box_resolve.is_standalone_root(root)
+    (root / "workset.yaml").touch()
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
+    assert box_resolve.is_standalone_root(root)
 
   def test_wired_into_run_container(self, start_mocks, tmp_path, capsys):
     """The gate is wired into ``_run_container``: a resolved box whose
@@ -16656,7 +16657,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
 
   @staticmethod
   def _set_boxes(root, value):
-    """Set ``workset.boxes`` in the root file, keeping its ``registry: null`` marker."""
+    """Set ``workset.boxes`` in the root file; the ``registry.yaml`` mark stays."""
     from kanibako.settings.config_io import write_nested_key
 
     write_nested_key(root / "workset.yaml", ("workset",), "boxes", value)
@@ -16721,7 +16722,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     protected_canon,
     moved,
   ):
-    """A root ``workset.yaml`` that lost ``registry: null`` is no standalone, wherever
+    """A root ``registry.yaml`` that lost the mark is no standalone, wherever
     the store is: the message names that, not the registry or the store's place."""
     from kanibako.commands.start import _no_box_error
     from kanibako.settings.config_io import dump_doc
@@ -16734,14 +16735,15 @@ class TestGoneBoxCureIsSafeAfterARepoint:
       (root / "box_data").rename(store)
       doc["workset"]["boxes"] = str(store)
     dump_doc(root / "workset.yaml", doc)
+    (root / "registry.yaml").write_text("")
 
     for spec in (name, str(root)):
       msg = _no_box_error(spec, std)
       assert msg == (
         f"Error: box '{name}' is registered as a standalone box at {root}, but "
-        f"{root / 'workset.yaml'} does not store the standalone marker, so "
+        f"{root / 'registry.yaml'} does not hold the standalone marker, so "
         "kanibako does not see a box there.\n"
-        "  Restore it: add the line 'registry: null' under 'workset:'. "
+        "  Restore it: make its only content '__STANDALONE__'. "
         "Or unregister it, keeping its files:\n"
         f"  kanibako box rm {name}"
       )
@@ -16753,17 +16755,17 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     credentials_dir,
     protected_canon,
   ):
-    """An ABSENT root ``workset.yaml`` has no line to add to: the cure creates the file."""
+    """An ABSENT root ``registry.yaml``: the cure creates the file."""
     from kanibako.commands.start import _no_box_error
 
     std, name, root = self._standalone(config_file, tmp_home)
-    (root / "workset.yaml").unlink()
+    (root / "registry.yaml").unlink()
 
     for spec in (name, str(root)):
       assert _no_box_error(spec, std) == (
         f"Error: box '{name}' is registered as a standalone box at {root}, but "
-        f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
-        "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+        f"{root / 'registry.yaml'} is missing, so kanibako does not see a box there.\n"
+        "  Restore it: create that file holding only '__STANDALONE__'. "
         "Or unregister it, keeping its files:\n"
         f"  kanibako box rm {name}"
       )
@@ -16781,7 +16783,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     from kanibako.commands.start import _no_box_error, _probe_box
 
     std, name, root = self._standalone(config_file, tmp_home)
-    (root / "workset.yaml").unlink()
+    (root / "registry.yaml").unlink()
     monkeypatch.chdir(root)
     monkeypatch.setenv("PWD", str(root))
     config, std = self._std(config_file)
@@ -16789,8 +16791,8 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     probe = _probe_box(std, config, None)
     assert _no_box_error(None, std, probe=probe) == (
       f"Error: box '{name}' is registered as a standalone box at {root}, but "
-      f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
-      "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+      f"{root / 'registry.yaml'} is missing, so kanibako does not see a box there.\n"
+      "  Restore it: create that file holding only '__STANDALONE__'. "
       "Or unregister it, keeping its files:\n"
       f"  kanibako box rm {name}"
     )
@@ -16808,7 +16810,8 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     from kanibako.errors import ConfigError
 
     std, name, root = self._standalone(config_file, tmp_home)
-    (root / "workset.yaml").write_text("workset:\n  registry: null\n  boxes: [unclosed\n")
+    (root / "workset.yaml").write_text("workset:\n  boxes: [unclosed\n")
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
 
     for spec in (name, str(root)):
       with pytest.raises(ConfigError, match="is not valid YAML") as exc:

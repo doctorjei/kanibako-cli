@@ -126,9 +126,7 @@ class TestImportBehavioralEquivalence:
     assert proj.name
     # Drop the PRIMARY-membership entry (the sole store since the global
     # ``projects:`` section retired).
-    unregister_primary_box_name(
-      std.primary_workset, proj.name, early=_early_scope(std, BoxMode.primary)
-    )
+    unregister_primary_box_name(std.primary_workset, proj.name)
     capsys.readouterr()
 
     proj2 = resolve_project(
@@ -138,7 +136,7 @@ class TestImportBehavioralEquivalence:
       initialize=False,
     )
     assert proj2.name == ""  # not recovered from disk
-    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     assert journal.read_journal(std.journal) == {}
 
   def test_named_workset_import_empty_journal_at_rest(

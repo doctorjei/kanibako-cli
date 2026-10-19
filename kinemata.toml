@@ -2309,7 +2309,7 @@ name = "workset-anchor-floor"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^(workset\.(boxes|vault_ro|vault_rw|logs|canon|skip_kuid_check|registry|template)|box\.canon)$' }
+where = { id_matches = '^(workset\.(boxes|vault_ro|vault_rw|logs|canon|skip_kuid_check|template)|box\.canon)$' }
 
 # FACT: the same floor's two `meta.box.*` rows, `path` and `home`, carry the
 # `value:` formulas the manifest declares. (`TestValueAnchorFormulas` keeps the
@@ -2464,7 +2464,7 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.channels\.(mailboxes|share_global)$' }
 
-# FACT: the re-rooted `meta.*` rows -- `meta.workset.{path,name,settings}` and
+# FACT: the re-rooted `meta.*` rows -- `meta.workset.{path,name,settings,registry}` and
 # `meta.box.mode` -- carry the `value:` formulas `settings_launch.meta_runtime_floor`
 # emits. (`TestValueRerootFormulas` keeps the spelling.)
 [[registry]]
@@ -2472,7 +2472,7 @@ name = "meta-runtime-floor"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^meta\.(workset\.(path|name|settings)|box\.mode)$' }
+where = { id_matches = '^meta\.(workset\.(path|name|settings|registry)|box\.mode)$' }
 
 # FACT: the helper SOCKET bind's host source is the name the keyspec spells --
 # `<box name>-<workset name>` (the socket's directory) under `{system.runtime}` -- as the helper bind
@@ -3035,7 +3035,7 @@ extract = '(?m)^(\S+)$'
 # declared. The predicate SELECTS on (1), so a row whose arm became a real value
 # drops out of the view rather than failing -- the selector limit stated at the
 # head of the narrowed views. (2) is what this table and `standalone-nulls` check.
-# (1) is held elsewhere, per row: for `workset.registry` and `workset.template` by
+# (1) is held elsewhere, per row: for `workset.template` by
 # `workset-anchor-floor`, whose parity compares the WHOLE `default:` map with the
 # floor's standalone `None` in it, so a value written into that arm reds there; for
 # `workset.kuid`, which `every_mode_cell` drops from that view, by
@@ -3066,8 +3066,8 @@ extract = '(?m)^(\S+)$'
 # so both sides are `null` by construction and `format = "json"` would compare
 # nothing. Every way to get the value wrong reds as a membership disagreement
 # (controls below).
-# ⚑ FOUR ROWS ARE ALSO COMPARED AS WHOLE CELLS, BY DESIGN: `workset.registry` and
-# `workset.template` (`workset-anchor-floor`), `workset.auth.path` (`auth-chain`)
+# ⚑ THREE ROWS ARE ALSO COMPARED AS WHOLE CELLS, BY DESIGN: `workset.template`
+# (`workset-anchor-floor`), `workset.auth.path` (`auth-chain`)
 # and `meta.box.auth.workset_path` (`auth-chain-meta`). This view holds the
 # CLASS-WIDE set -- every standalone `None` from every floor, strays included --
 # and those hold each row's value in every mode, so the overlap is structural.

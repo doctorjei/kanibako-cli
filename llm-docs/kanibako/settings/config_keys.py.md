@@ -259,15 +259,14 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 
 **Workset keys.**
 
-* `workset.registry` — per-workset registry location. A NORMAL settable
-  STRING-path key (default ``{meta.workset.path}/registry.yaml``), NOT a config-locate key — routes to
-  the ``workset:`` table nested slot ``registry`` (the same nested-settings pattern as `box.image`).
+* ⚑ `workset.registry` is RETIRED, not routed: the registry is the fixed, read-only
+  `meta.workset.registry` (owner `workset` in `KEY_OWNERS`).
 * `workset.auth.path`, `workset.boxes`, `workset.vault_ro`, `workset.vault_rw`, `workset.logs` —
   workset-scope LAYOUT anchors. These path anchors are floor-materialized
   (`settings_launch.workset_anchor_floor` / start.py) as OVERRIDABLE base-level defaults, but were
   NOT reachable through the settable surface — a Type-A "meta ⟺ not-settable" violation. They were
   ruled SETTABLE: they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path keys
-  as `workset.auth.share_allowed`/`workset.registry`). A ``config set workset workset.boxes=…``
+  as `workset.auth.share_allowed`). A ``config set workset workset.boxes=…``
   writes an EXPLICIT workset-level value that WINS over the base floor default by cascade
   precedence (workset ⊐ base). `KEY_TYPES` type `path` (STRING paths, no coercion); routed to the
   ``workset:`` nested slot. Downward-default-able from a containing scope per R2.
@@ -280,8 +279,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `workset.template` — per-workset template SOURCE (template-trio, spec §2c; Q3). A NORMAL
   settable STRING-path key (default ``{meta.workset.path}/template``); the layer-3 seed
   ``workset.seeded = {~/: ({workset.template}/box/home,)}`` reads it, so repointing this key reroutes
-  the workset template seed. Routed to the ``workset:`` nested slot (same pattern as
-  `workset.registry`); a STRING path (`KEY_TYPES` type `path`). STANDALONE has no workset tier (source
+  the workset template seed. Routed to the ``workset:`` nested slot; a STRING path (`KEY_TYPES` type `path`). STANDALONE has no workset tier (source
   `<None>`).
 * `workset.canon` — per-workset CANON CONTRIBUTION root (spec §2c ALL PROJECTS). Same shape and same
   reason as `workset.template`: a NORMAL settable STRING-path key (default
@@ -292,8 +290,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   `workset.kuid` is the workset's stable id (Crockford-base32; sentinel
   ``"00000"`` for primary/named unless set — a STANDALONE box GENERATES a real one at creation,
   stored here); `workset.skip_kuid_check` (bool, default TRUE) gates the advisory ``Warning: invalid
-  KUID``. Both settable `workset.*` keys routed to the ``workset:`` nested slot (same pattern as
-  `workset.registry`).
+  KUID``. Both settable `workset.*` keys routed to the ``workset:`` nested slot.
 
 **Layer-1 `config.*` foundation** (bootstrap paths; ``[config]`` table, spec §1).
 
@@ -352,26 +349,22 @@ Per-entry notes displaced from the table:
   (spec §2c), not a bare key here. ``mode`` was removed from the settable routing table (block B1,
   spec §2b / §0 meta-RO): the project mode is the RO identity anchor `meta.box.mode`, never via
   `config set`; it is not persisted to disk and derives from `box_resolve` at resolve time.
-* `workset.registry` — the per-workset registry file location, routed to
-  the ``workset:`` table nested slot ``registry`` (same nested-settings pattern as `box.image`). A
-  STRING path — `KEY_TYPES` type `path` (no coercion); written sparsely on set.
 * The **workset-scope LAYOUT anchors** — the per-workset REPOINTABLE dirs floor-materialized in
   `workset_anchor_floor`, now settable. Each routes to its nested ``workset.<...>`` slot in the
-  command-scope settings file — the SAME nested-settings pattern as `workset.auth.share_allowed` /
-  `workset.registry` — so a set-value lands where `assemble_levels` mirrors it and OUT-PRECEDES the
+  command-scope settings file — the SAME nested-settings pattern as `workset.auth.share_allowed` —
+  so a set-value lands where `assemble_levels` mirrors it and OUT-PRECEDES the
   base floor default at launch. STRING paths (`KEY_TYPES` type `path`).
 * `workset.workspaces` / `workset.channelroot` (§3.3, bifrost A1) — routed to the ``workset:`` nested
-  slot, EXACTLY where `resolve_workset_workspaces` / `resolve_workset_channelroot` (and
-  `resolve_workset_registry_path`'s sibling pattern) read the repoint back. STRING paths
+  slot, EXACTLY where `resolve_workset_workspaces` / `resolve_workset_channelroot` read the
+  repoint back. STRING paths
   (`KEY_TYPES` type `path`).
 * `workset.template` (template-trio, spec §2c; Q3) — the layer-3 seed source, routed to the
-  ``workset:`` table slot (same nested-settings pattern as `workset.registry`). STRING path
+  ``workset:`` table slot. STRING path
   (`KEY_TYPES` type `path`, never coerced).
 * `workset.canon` / `box.canon` — the per-scope CANON CONTRIBUTION roots (spec §2c/§2b), routed
   exactly like `workset.template` / `box.image` — the ``workset:`` and ``box:`` table slots. STRING
   paths (`KEY_TYPES` type `path`, never coerced).
-* `workset.kuid` / `workset.skip_kuid_check` — the same nested-settings pattern as
-  `workset.registry`, routed to the ``workset:`` table slot. `workset.kuid` is a STRING (no
+* `workset.kuid` / `workset.skip_kuid_check` — routed to the ``workset:`` table slot. `workset.kuid` is a STRING (no
   `KEY_TYPES` entry); `workset.skip_kuid_check` is a bool (see `KEY_TYPES`). A standalone box's kuid
   is written here sparsely at create (`paths.establish_standalone`); primary/named default to the
   sentinel/true.

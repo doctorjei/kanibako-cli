@@ -361,7 +361,7 @@ class TestAPlainRmOfTheSecondSpellingParksNothing:
     registry_store.register_deregistered(
       std.registry, b_name, kind="standalone", workspace=str(b), metadata=str(b)
     )
-    marker = solo / "workset.yaml"
+    marker = solo / "registry.yaml"
     kept = marker.read_text()
     marker.unlink()
     capsys.readouterr()
@@ -371,8 +371,8 @@ class TestAPlainRmOfTheSecondSpellingParksNothing:
 
     owner = registry_store.standalone_name_for_same_dir(std.registry, solo)
     assert (
-      f"Its files are standalone box '{owner}', and {b / 'workset.yaml'} is missing; create "
-      "that file with the line 'registry: null' under 'workset:', then drop "
+      f"Its files are standalone box '{owner}', and {b / 'registry.yaml'} is missing; create "
+      "that file holding only '__STANDALONE__', then drop "
       "this stale entry:"
     ) in out
     assert cures == [["kanibako", "box", "register", b_name]]

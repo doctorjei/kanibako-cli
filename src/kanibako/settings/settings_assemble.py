@@ -1162,6 +1162,39 @@ def undeclared_listing(
   return named, entries, "it" if count == 1 else "them"
 
 
+#: MIGRATION.md's section on the retired ``workset.registry``, cited by its heading.
+_REGISTRY_MIGRATION = (
+  'MIGRATION.md § "The workset registry is a fixed file, and a standalone box is marked in it"'
+)
+
+
+def refuse_retired_registry_key(raw: Any, *, level: str, path: Path | None) -> None:
+  """RAISE when *raw* stores the retired ``workset.registry``; ``meta.workset.registry`` is fixed.
+
+  A null in a workset file was the standalone marker, so its cure writes the mark instead.
+  """
+  found = _nested_present(raw, ("workset", "registry"))
+  if found is _NO_LEAF:
+    return
+  where = path if path is not None else "<settings>"
+  cure = "remove that line"
+  if found is None and level == "workset" and path is not None:
+    from kanibako.channels.channels import WS_TOKEN_STANDALONE
+    from kanibako.settings.config import WORKSET_REGISTRY_FILE
+
+    mark = path.parent / WORKSET_REGISTRY_FILE
+    cure = (
+      f"that null marked a standalone box, which {mark} now marks by holding only "
+      f"{WS_TOKEN_STANDALONE}: write that file, then remove the line"
+    )
+  raise SettingsError(
+    f"'workset.registry' is RETIRED and is still set in the {level} settings file {where} "
+    f"(as `workset: registry:`). The workset registry is now meta.workset.registry, fixed at "
+    f"<workset root>/registry.yaml, and no file sets it.\n"
+    f"  Fix, by hand: {cure}. See {_REGISTRY_MIGRATION}."
+  )
+
+
 def retired_cure(files: Iterable[SettingsFile]) -> None:
   """RAISE the TAILORED refusal when a read file's view still carries a RETIRED spelling.
 
@@ -1172,6 +1205,7 @@ def retired_cure(files: Iterable[SettingsFile]) -> None:
     if f.loaded:
       refuse_retired_keys(f.view, level=f.level, path=f.path)
       refuse_retired_behavior_keys(f.view, level=f.level, path=f.path)
+      refuse_retired_registry_key(f.view, level=f.level, path=f.path)
 
 
 def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None:

@@ -25,7 +25,6 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import (
   BoxMode,
-  _early_scope,
   detect_project_mode,
   load_std_paths,
 )
@@ -314,13 +313,14 @@ class TestDetectionFalsePositives:
     config_file,
     tmp_home,
   ):
-    """A ROOT workset.yaml storing workset.registry as null is a valid marker."""
+    """A ROOT registry.yaml holding the standalone mark is a valid marker."""
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = tmp_home / "myproject"
     project_dir.mkdir()
     (project_dir / "box_data").mkdir()
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     result = detect_project_mode(project_dir.resolve(), std, config)
     assert result.mode is BoxMode.standalone
@@ -357,11 +357,7 @@ class TestStalePrimaryWorksetBoxListSafety:
     # write, bypassing the $HOME guard, to simulate a stale/legacy entry).
     from kanibako.project import workset_registry
 
-    prim_reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      None,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    prim_reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(prim_reg, "jjb", home.resolve())
     # Intentionally do NOT create boxes/jjb/
 

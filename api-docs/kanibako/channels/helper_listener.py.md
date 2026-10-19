@@ -35,7 +35,6 @@ class HelperContext:
     data_path: Path | None = None
     boxes: Path | None = None
     primary_workset: Path | None = None
-    early: EarlyScope = field(kw_only=True)
     labels: dict[str, str] = field(default_factory=dict, kw_only=True)
 
 class HelperHub:

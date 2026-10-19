@@ -746,8 +746,7 @@ relative `host_src`.
 
 ### The NON-LAYOUT `workset.*` rows
 
-The builder also emits `workset.skip_kuid_check`, `workset.registry`, `workset.kuid` and
-`workset.template` — here for the same reason `workset.channelroot` is: each is a manifest row with
+The builder also emits `workset.skip_kuid_check`, `workset.kuid` and `workset.template` — here for the same reason `workset.channelroot` is: each is a manifest row with
 a declared default, and with **no floor value** a whole-value `@`-ref to it would resolve to
 `__MISSING__` in every launch snapshot. A builder named for the anchors carrying them is the honest
 cost of one floor per scope — the alternative is a second `workset.*` floor whose only distinction
@@ -755,8 +754,6 @@ is that its keys are not paths.
 
 ```
 workset.skip_kuid_check   ALL      True                              (uniform bool)
-workset.registry          p/n      {meta.workset.path}/registry.yaml
-                          s'alone  None  (declared <None>; SUPPLIED)
 workset.template          p/n      {meta.workset.path}/template
                           s'alone  None  (declared <None>; SUPPLIED)
 workset.kuid              p/n      kuid.SENTINEL  ("00000")
@@ -764,10 +761,9 @@ workset.kuid              p/n      kuid.SENTINEL  ("00000")
 ```
 
 ⚑ **A STANDALONE `<None>` IS SUPPLIED, AND THE KUID IS NOT — two different arms.**
-`workset.registry`'s standalone arm is `<None>` — a lone box has no registry tier; `workset.template`'s
-is `<None>` too — a lone box has no template tier, and a workset template seeds FUTURE boxes, of which
+`workset.template`'s standalone arm is `<None>` — a lone box has no template tier, and a workset template seeds FUTURE boxes, of which
 a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is INSTALLED like
-any declared default (keyspec §0 "it must RESOLVE"), so the floor emits both as a present `None`,
+any declared default (keyspec §0 "it must RESOLVE"), so the floor emits it as a present `None`,
 as it does `workset.channelroot` and the four workset-LOCAL `workset.channels.*` leaves. ⚑ An
 OMITTED key is not the same thing: an embedded `@`-ref coerces an absent referent to `""` exactly
 as it does a `None`, but the seeded-layer skip (`settings_expand`) fires only on a PRESENT `None` —
@@ -803,12 +799,8 @@ that property belongs with the codec. `workset.skip_kuid_check` is the `True` th
 `reader-defaults` kinemata views hold the floor and that accessor to the same manifest cell, so the
 two carriers cannot drift apart silently.
 
-⚑ `workset.registry` is spelled as the spec's `@`-ref FORMULA, like every anchor above — NOT as the
-resolved literal `project/workset_registry.py` joins at use. That is the difference from
-`channelroot`, and the reason differs too: `channelroot` is read on the DETECTION side before any
-snapshot exists, so its floor must carry the answer that pass reached; nothing reads `workset.registry`
-that early through the keyspace, so the formula is safe and a resolved literal here would make the
-floor a second carrier of one path.
+⚑ The registry is not here: it is the fixed `meta.workset.registry`, emitted by
+`meta_runtime_floor` beside `meta.workset.settings` in every mode.
 
 `_BOX_MODES` is the set of box modes this floor knows how to root, as plain strings. An undeclared
 variant is NOT a mode and is REFUSED rather than silently taking the primary/named arm. It is

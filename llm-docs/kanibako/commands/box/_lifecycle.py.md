@@ -302,7 +302,7 @@ the resolved workspace dir; `metadata_path` is the root, and it is where every o
 the root from.) A standalone box's tree roots at `<root>` with:
 
 * `workset.yaml` **AT THE ROOT** (drift I — and `ProjectState.metadata_path` for a standalone IS
-  that root); it storing `workset.registry: null` is the standalone MARKER,
+  that root), beside `registry.yaml`, whose `__STANDALONE__` mark is the standalone MARKER,
 * the box store (home + helper log), the resolved `workset.boxes` — by default `box_data/`, which
   is NOT the marker,
 * `vault/{ro,rw}/`,
@@ -737,7 +737,7 @@ only while they differ (case-blind), since a carried-kuid move can compose the S
 
 `_carry_vault_contents` then copies the source vault into the destination leaves (a copy failure
 RAISES, before anything is deleted), and `_stash_source_marker` moves a standalone source's root
-marker into a stash the undo restores — the marker alone reads as a box. `_carry_standalone_canon`
+`registry.yaml` mark and `workset.yaml` into a stash the undo restores — the mark alone reads as a box. `_carry_standalone_canon`
 copies a standalone source's `workset.canon` tier to a standalone destination.
 
 ```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "") -> tuple[ProjectState, _SourceTeardown | None]```
@@ -874,8 +874,8 @@ tracks the directory); any other source gets a fresh kuid. A typed `--name` was 
 unregistered box stays unregistered; any other source is registered in `registry.standalone`,
 with `_restore_standalone_rows` armed first.
 
-It writes `workset.kuid` into `<root>/workset.yaml` — that write MATERIALIZES the detection marker
-alongside `workset.registry: null`; NO `mode` is persisted anywhere. ⚑ It is handed
+It writes `workset.kuid` into `<root>/workset.yaml` and the `<root>/registry.yaml` mark that
+MATERIALIZES detection; NO `mode` is persisted anywhere. ⚑ It is handed
 `state.box_authored_vault`: it writes straight into the box tier `_deliver_carried_box_settings`
 just laid down, so the resolved value would undo that carry and pin the source workset's default on
 a box that has LEFT it. The new root `workset.yaml` carries no vault key, so the standalone box's

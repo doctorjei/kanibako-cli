@@ -40,7 +40,7 @@ from kanibako.utils import confirm_or_abort, literal_path, logical_cwd
 from kanibako.identifiers import derived_name, find_identifier
 from kanibako.project.workset_registry import (
   load_workset_boxes,
-  resolve_workset_registry_path,
+  workset_registry_path,
 )
 from kanibako.project.workset import (
   DEFAULT_WORKSET_ALIAS,
@@ -53,9 +53,7 @@ from kanibako.project.workset import (
   is_in_tree_workspace,
   list_worksets,
   load_workset,
-  load_workset_settings_doc,
   logs_share_refusal,
-  members_registry_path,
   purge_box_logs,
   refuse_case_variant_store,
   refuse_existing_box,
@@ -602,9 +600,7 @@ def run_rm(args: argparse.Namespace) -> int:
       ws = load_workset(registry[stored], stored, early_system=std.early_system)
       names = [p.name for p in ws.projects]
       unreadable: ConfigError | None = None
-      members_from: Path | None = members_registry_path(
-        ws.root, load_workset_settings_doc(ws.root), early=ws.early_scope
-      )
+      members_from: Path | None = ws.registry_path
     except WorksetError:
       names, unreadable, members_from = [], None, None
     except ConfigError as exc:
@@ -613,11 +609,8 @@ def run_rm(args: argparse.Namespace) -> int:
       if _symlink_loop(registry[stored]):
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-      # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included: members
-      # are read at the DEFAULT registry path, ``delete_workset``'s fallback.
-      members_from = resolve_workset_registry_path(
-        registry[stored].resolve(), None, early=_early_scope(std, BoxMode.named, stored)
-      )
+      # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included.
+      members_from = workset_registry_path(registry[stored].resolve())
       names = list(load_workset_boxes(members_from))
       unreadable = exc
     # ⚑ Members are read from the registry; one that is present but cannot be seen
@@ -787,9 +780,7 @@ def run_connect(args: argparse.Namespace) -> int:
 
   # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  In-tree,
   # the in-place cure must land on THIS leaf, so it carries the leaf's name.
-  owner = primary_box_name_for_workspace(
-    std.primary_workset, literal_path(source), early=_early_scope(std, BoxMode.primary)
-  )
+  owner = primary_box_name_for_workspace(std.primary_workset, literal_path(source))
   if owner is not None:
     rename = f" --name {shlex.quote(project_name)}" if in_tree and owner != project_name else ""
     box, ws_ref = shlex.quote(owner), shlex.quote(ws.name)
@@ -824,10 +815,10 @@ def run_connect(args: argparse.Namespace) -> int:
   # absorb vacates that root, so it is not another box's tree; its workspace still is.
   if not in_tree:
     from kanibako.commands.box._lifecycle import _dest_nesting_refusal
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    from kanibako.launch.box_resolve import is_standalone_root
 
     literal_source = Path(literal_path(source))
-    vacated = resolved if stores_standalone_registry_null(resolved) else None
+    vacated = resolved if is_standalone_root(resolved) else None
 
     def nesting(force: bool) -> str | None:
       return _dest_nesting_refusal(

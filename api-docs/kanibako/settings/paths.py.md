@@ -11,7 +11,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 logger = get_logger('paths')
 SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({'system.backup', 'system.channelroot', 'system.template', 'system.cache', 'system.state', 'system.runtime'})
-STANDALONE_REGISTRY_COMMENT = 'REMOVING THIS WILL BREAK A STANDALONE BOX!'
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
 _RUNTIME_TMP_PREFIX = 'kanibako-runtime-'
 _FLOOR_FIELD_ALIASES: dict[str, str] = {'system.channelroot': 'channels'}
@@ -71,20 +70,20 @@ def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
-def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]
+def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def box_connected_workset(std: StandardPaths, proj: ProjectPaths) -> str | None
 def box_name_taken(std: StandardPaths, proj: ProjectPaths) -> Callable[[str], bool] | None
 def stored_legacy_box(std: StandardPaths, typed: str, *, path_reaches: bool=False) -> LegacyBox | None
 def refuse_legacy_box(std: StandardPaths, typed: str, *, path_reaches: bool=False) -> None
-def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
-def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
+def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
+def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
 def refuse_derived_box_name(base: str) -> str
-def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None, *, early: EarlyScope, journal: Path | None=None) -> str
-def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
-def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
-def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None=None, *, early: EarlyScope) -> str
-def unregister_primary_box_name(primary_workset: Path, name: str, *, early: EarlyScope) -> None
+def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None, *, journal: Path | None=None) -> str
+def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str) -> None
+def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str) -> None
+def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None=None) -> str
+def unregister_primary_box_name(primary_workset: Path, name: str) -> None
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
 def iter_projects(std: StandardPaths, config: BootstrapConfig, *, looped: list[tuple[Path, Path | None]] | None=None) -> list[tuple[Path, Path | None]]
 def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows
@@ -123,12 +122,12 @@ def _is_standalone_meta_dir(root: Path, *, strict: bool=False) -> bool
 def _relative_to_either(path: Path, root: Path) -> Path | None
 def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, Path]
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
-def _workset_box_name_for_workspace(ws_root: Path, workspace: str, *, early: EarlyScope) -> str | None
-def _workset_box_workspace_for_name(ws_root: Path, box_name: str, *, early: EarlyScope) -> str | None
-def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> None
-def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope) -> None
-def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> Callable[[], None]
-def _workset_name_taken(ws_root: Path, early: EarlyScope) -> Callable[[str], bool]
+def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
+def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
+def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None
+def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
+def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path) -> Callable[[], None]
+def _workset_name_taken(ws_root: Path) -> Callable[[str], bool]
 def _connected_workset(std: StandardPaths, workset: str, ws_root: Path, path: Path) -> str | None
 def _stored_legacy_member(std: StandardPaths, typed: str, own_path: str | None) -> LegacyBox | None
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None

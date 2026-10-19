@@ -1113,8 +1113,6 @@ class TestTheOtherPrintedCommandsAreQuoted:
     from kanibako.project.workset import create_workset
     from kanibako.settings.config import load_config
     from kanibako.settings.paths import (
-      BoxMode,
-      _early_scope,
       load_std_paths,
       register_primary_box_name,
     )
@@ -1122,9 +1120,7 @@ class TestTheOtherPrintedCommandsAreQuoted:
     std = load_std_paths(load_config(config_file))
     ext = (tmp_home / "ext" / "member").resolve()
     ext.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, name, str(ext), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, name, str(ext))
     create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
@@ -1162,8 +1158,6 @@ class TestTheOtherPrintedCommandsAreQuoted:
     from kanibako.project.workset import create_workset, load_workset
     from kanibako.settings.config import load_config
     from kanibako.settings.paths import (
-      BoxMode,
-      _early_scope,
       load_std_paths,
       register_primary_box_name,
     )
@@ -1172,9 +1166,7 @@ class TestTheOtherPrintedCommandsAreQuoted:
     ws = create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
     leaf = (ws.workspaces_dir / name).resolve()
     leaf.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "ownerbox", str(leaf), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "ownerbox", str(leaf))
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
       assert (

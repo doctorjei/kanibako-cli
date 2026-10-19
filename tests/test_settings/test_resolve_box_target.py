@@ -21,7 +21,6 @@ from kanibako.errors import (
 )
 from kanibako.settings.paths import (
   BoxMode,
-  _early_scope,
   establish_standalone,
   load_primary_boxes,
   resolve_any_project,
@@ -123,9 +122,8 @@ class TestResolveByName:
     sa_root = tmp_home / "sa" / "solo_box"
     sa_root.mkdir(parents=True)
     (sa_root / "box_data").mkdir()
-    (sa_root / "workset.yaml").write_text(
-      "box:\n  image: ghcr.io/x:1\nworkset:\n  registry: null\n"
-    )
+    (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+    (sa_root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "solo_box", sa_root)
 
     with caplog.at_level(logging.WARNING):
@@ -495,14 +493,15 @@ class TestNonConformingNameFlagged:
     root.mkdir()
     (root / "box_data").mkdir()
     bad_name = "bad name"  # contains whitespace -> non-conforming
-    # Materialize the sparse standalone marker (the root workset.yaml registry null)
+    # Materialize the sparse standalone marker (the root registry.yaml mark)
     # and register the bad name directly (bypassing the validating create
     # path, as a pre-existing box would be).  P8b/Option A: the name comes
-    # from the registry key, not on-disk meta — the marker file only needs its
-    # registry null, and it carries no ``workset.kuid`` so the registry key wins.
+    # from the registry key, not on-disk meta — the marker file only needs the
+    # mark, and workset.yaml carries no ``workset.kuid`` so the registry key wins.
     from kanibako.settings.config import WORKSET_META_FILE
 
-    (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (root / WORKSET_META_FILE).touch()
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, bad_name, root)
 
     # A name that fails the box-name rule is a PATH designation, so the box is
@@ -656,10 +655,7 @@ class TestAmbiguousNameNotShadowedByFolder:
     # Asserted on the MEMBERSHIP, the store ``register_primary_box_name``
     # writes to -- not on ``cwd / "beta"``, a directory this path never
     # created, so that assertion could not have failed.
-    assert "beta" not in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    assert "beta" not in load_primary_boxes(std.primary_workset)
 
   def test_ambiguous_member_name_raises_through_resolve_project(
     self,
@@ -820,9 +816,8 @@ class TestBoxAndWorksetShareAName:
     sa_root = tmp_home / "sa" / name
     sa_root.mkdir(parents=True)
     (sa_root / "box_data").mkdir()
-    (sa_root / "workset.yaml").write_text(
-      "box:\n  image: ghcr.io/x:1\nworkset:\n  registry: null\n"
-    )
+    (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+    (sa_root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, name, sa_root)
     ws_root = tmp_home / "worksets" / name
     code, _out, err = _cli(["workset", "create", "--name", name, str(ws_root)], capsys)

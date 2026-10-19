@@ -21,7 +21,7 @@ against the code that creates or resolves it:
 ```
 {root}/
     registry.yaml           ← box MEMBERSHIP (`boxes:`), flat `name: path` — and that is
-                              the whole of the file  (`workset.registry`)
+                              the whole of the file  (`meta.workset.registry`)
     workset.yaml            ← the workset's cascade settings — SETTINGS ONLY, and
                               OPTIONAL: a fresh root does not have one
     boxes/{name}/           ← per-box metadata dir (`meta.box.path`)
@@ -83,10 +83,10 @@ into function bodies**, and keeps a decoupled primitive workset view rather than
   `resolve_workset_template` in its body for the workset stamp. Both are `launch` → `project` edges;
   the direction that must never appear is the reverse, `project` → `launch`.
 
-## Resolved workset dir keys — eight faces here, plus the registry
+## Resolved workset dir keys — eight faces here
 
 `workset.{workspaces,boxes,logs,channelroot,canon,template,vault_ro,vault_rw}` each get a thin per-key face in this
-module, and `workset_registry.resolve_workset_registry_path` is another on the same route. A face
+module. A face
 does two things and no more: read the RAW repoint out of the routed nested slot
 `workset: {<leaf>: …}` (the location a settings-file edit — or `config set` at workset scope —
 writes), and name the spec DEFAULT leaf. Everything else belongs to the ONE no-snapshot route,
@@ -373,7 +373,7 @@ def logs_dir(self) -> Path | None   # the RESOLVED workset.logs; None under a <N
 @property
 def settings_path(self) -> Path     # {root}/workset.yaml — may NOT exist
 @property
-def registry_path(self) -> Path     # the RESOLVED workset.registry
+def registry_path(self) -> Path     # meta.workset.registry: {root}/registry.yaml
 ```
 
 ⚑ **`vault_dir` is the last composed one, and correctly so** — no key names it (§3.3: real and
@@ -783,8 +783,8 @@ half-connected box:
   location detection and mis-resolve. Refused with both workset names in the message.
 * **⚑ Already connected** (or nested under something that is) — the connection record is 1:1, so
   this is a mapping conflict. Refused, naming the box and workset that hold it.
-* **⚑ In-place standalone MARKER present (D3-mode 3)** — the root `workset.yaml` storing
-  `workset.registry: null` is the box's AUTHORITATIVE self-declaration of standalone identity. Connecting it would write a per-workset
+* **⚑ In-place standalone MARKER present (D3-mode 3)** — the root `registry.yaml` holding
+  `__STANDALONE__` is the box's AUTHORITATIVE self-declaration of standalone identity. Connecting it would write a per-workset
   `boxes:` entry and let resolution report it as a `named` workset box: a silent **steal**, leaving
   the box dual-registered (global `standalone:` AND the workset `boxes:`). Refused unless *force*.
 

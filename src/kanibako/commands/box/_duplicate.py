@@ -95,9 +95,7 @@ def _refuse_primary_dup_name(args: argparse.Namespace, std, new_path: Path) -> i
       refuse_derived_box_name(new_path.name)
     else:
       validate_box_name(name)
-      check_primary_box_name_free(
-        std.primary_workset, name, str(new_path), early=_early_scope(std, BoxMode.primary)
-      )
+      check_primary_box_name_free(std.primary_workset, name, str(new_path))
   except BoxNameError as e:
     command = (
       f"kanibako box duplicate {shlex.quote(literal_path(args.source_path))} "
@@ -114,10 +112,9 @@ def _refuse_primary_dup_name(args: argparse.Namespace, std, new_path: Path) -> i
 
 def _claim_primary_dup_name(std, new_path: Path, name: str | None) -> str:
   """Register the duplicate's PRIMARY name — *name* (``--name``) when given, else one minted from *new_path*."""
-  early = _early_scope(std, BoxMode.primary)
   if name is None:
-    return assign_primary_box_name(std.primary_workset, str(new_path), early=early)
-  register_primary_box_name(std.primary_workset, name, str(new_path), early=early)
+    return assign_primary_box_name(std.primary_workset, str(new_path))
+  register_primary_box_name(std.primary_workset, name, str(new_path))
   return name
 
 
@@ -383,11 +380,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
   # no-force copy onto an existing dir first raises FileExistsError, stranding it.  A
   # standalone target mints a fresh <kuid> outside the primary membership: no guard.
   if target_mode == BoxMode.primary:
-    existing_box = primary_box_name_for_workspace(
-      std.primary_workset,
-      str(new_path),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    existing_box = primary_box_name_for_workspace(std.primary_workset, str(new_path))
     if existing_box is not None:
       print(
         f"Error: Workspace {str(new_path)!r} is already registered as "
@@ -607,8 +600,8 @@ def _duplicate_to_standalone(
   WORKSET tier and carries the source's ``workset.kuid``.  The destination's
   root file is MINTED, not copied — without that fresh mint the destination
   would answer to the source's identity, and detection
-  (``_is_standalone_meta_dir``: only the root ``workset.yaml`` storing
-  ``workset.registry: null``) would resolve the two boxes to one (BUG#3).
+  (``_is_standalone_meta_dir``: only the root ``registry.yaml`` holding the
+  mark) would resolve the two boxes to one (BUG#3).
   """
   from kanibako.errors import ProjectError
   from kanibako.settings.paths import (
@@ -642,7 +635,7 @@ def _duplicate_to_standalone(
   # the dest's BOX tier (M-8) — the same guard ``_lifecycle.py`` applies when it
   # re-roots a box.  The stray nested root is not inert: ``<dst>/box_data`` would
   # then carry a ``workset.yaml`` storing a null registry, i.e. the standalone
-  # MARKER (``box_resolve.stores_standalone_registry_null``), under the SOURCE's kuid.
+  # MARKER (``box_resolve.is_standalone_root``), under the SOURCE's kuid.
   src_meta_dir = box_metadata_dir(
     src_proj.mode, src_proj.metadata_path, early=src_proj._require_early()
   )
@@ -753,7 +746,6 @@ def _unwind_local_name(std, project_name: str, dst_project: Path, exc: BaseExcep
       unregister_primary_box_name,
       std.primary_workset,
       project_name,
-      early=_early_scope(std, BoxMode.primary),
     )
   )
   unwind.run()
@@ -790,9 +782,7 @@ def _assert_dup_home_free(std, name: str) -> None:
   try:
     _assert_primary_home_free_for_create(std, name)
   except ProjectError:
-    unregister_primary_box_name(
-      std.primary_workset, name, early=_early_scope(std, BoxMode.primary)
-    )
+    unregister_primary_box_name(std.primary_workset, name)
     raise
 
 

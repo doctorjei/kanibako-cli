@@ -1,10 +1,10 @@
 """ENFORCEMENT guardrail: who may write a settings file through ``config_io`` (D1-6).
 
 "Defaults live in defaults files" (T1): a value written at runtime lives in whatever code
-ran, not in a defaults file.  ``settings/config_io.py`` holds SIX file writers —
-``write_nested_key``, ``remove_nested_key``, ``write_root_key``, ``remove_root_key``,
-``dump_doc``, and ``dump_doc_commented`` — and the four mutators compose ``dump_doc``.
-Every ``config_io`` write to disk is therefore a CALL to one of the six, so the guard is
+ran, not in a defaults file.  ``settings/config_io.py`` holds FIVE file writers —
+``write_nested_key``, ``remove_nested_key``, ``write_root_key``, ``remove_root_key``, and
+``dump_doc`` — and the four mutators compose ``dump_doc``.
+Every ``config_io`` write to disk is therefore a CALL to one of the five, so the guard is
 the set of those call sites, keyed per (file, writer) and counted.
 
 Each shipped call site is exactly one of:
@@ -40,7 +40,6 @@ _WRITERS = (
   "write_root_key",
   "remove_root_key",
   "dump_doc",
-  "dump_doc_commented",
 )
 
 #: Where the writers are defined.  Scanned like any other file; its only calls are the
@@ -83,9 +82,8 @@ _SANCTIONED: dict[tuple[str, str], int] = {
   ("src/kanibako/commands/box/_duplicate.py", "dump_doc"): 2,
   ("src/kanibako/commands/box/_lifecycle.py", "dump_doc"): 1,
   # IDENTITY, not a default: standalone create writes ``workset.kuid`` (GENERATED at
-  # creation) and ``workset.registry: null``, whose stored presence DEFINES standalone
-  # (keyspec §2c, both rows; mode is identity, not behavior).  Do not "fix" it.
-  ("src/kanibako/settings/paths.py", "dump_doc_commented"): 1,
+  # creation; keyspec §2c).  Do not "fix" it.
+  ("src/kanibako/settings/paths.py", "dump_doc"): 1,
 }
 
 #: QUARANTINED settings writes — real defaults leaks, named here until src is fixed.  Do

@@ -67,10 +67,10 @@ def _runtime_says(monkeypatch, running: bool, asked: list | None = None):
 
 def _primary_state(std):
   from kanibako.project import registry_store
-  from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+  from kanibako.settings.paths import load_primary_boxes
 
   return (
-    load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
+    load_primary_boxes(std.primary_workset),
     registry_store.load_deregistered(std.registry),
   )
 

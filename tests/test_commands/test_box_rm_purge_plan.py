@@ -90,7 +90,7 @@ class TestPrimaryPurge:
     monkeypatch,
   ):
     """Closed stdin: the box stays registered and every listed path stays on disk."""
-    from kanibako.settings.paths import load_primary_boxes, _early_scope, BoxMode
+    from kanibako.settings.paths import load_primary_boxes
 
     _create(tmp_home / "proj")
     std = _std(config_file)
@@ -101,9 +101,7 @@ class TestPrimaryPurge:
     assert _rm("proj", force=False) == 2
     out = capsys.readouterr().out
     assert "Delete these 3 paths? This cannot be undone." in out
-    assert "proj" in load_primary_boxes(
-      std.primary_workset, early=_early_scope(std, BoxMode.primary)
-    )
+    assert "proj" in load_primary_boxes(std.primary_workset)
     assert meta.is_dir()
     assert (std.primary_vault_rw / "proj").is_dir()
 
@@ -398,11 +396,12 @@ class TestStandalonePurge:
       f"box canon (kanibako's handbook): {root / 'canon'}",
       f"vault parent folder: {root / 'vault'} → {outside} (link only; target kept)",
       f"box metadata: {root / 'box_data'}",
-      # ⚑ LAST, AFTER the anchor: the retry reads this file to re-plan.
+      # ⚑ LAST, AFTER the anchor: the retry reads these files to re-plan.
       f"workset settings: {root / 'workset.yaml'}",
+      f"standalone mark: {root / 'registry.yaml'}",
     ]
     assert f"left the vault at {outside / 'rw'} in place" in out.err
-    for gone in ("box_data", "workset.yaml", "canon", "vault"):
+    for gone in ("box_data", "workset.yaml", "registry.yaml", "canon", "vault"):
       assert not (root / gone).exists() and not (root / gone).is_symlink()
     assert (outside / "ro").is_dir()
     assert hashlib.sha256((outside / "rw" / "canary.txt").read_bytes()).hexdigest() == digest
@@ -431,8 +430,9 @@ class TestStandalonePurge:
       f"vault rw (your files): {inner / 'rw'}",
       f"vault parent folder: {root / 'vault'} → {inner} (link only; target kept)",
       f"box metadata: {root / 'box_data'}",
-      # ⚑ LAST, AFTER the anchor: the retry reads this file to re-plan.
+      # ⚑ LAST, AFTER the anchor: the retry reads these files to re-plan.
       f"workset settings: {root / 'workset.yaml'}",
+      f"standalone mark: {root / 'registry.yaml'}",
     ]
     assert not (inner / "ro").exists() and not (inner / "rw").exists()
     assert not (root / "vault").is_symlink()
@@ -646,7 +646,7 @@ class TestStandalonePurge:
     assert _rm(str(root), force=True) == 0
     out = capsys.readouterr().out
     assert f"kanibako's line in: {root / '.gitignore'}" in _plan_lines(out)
-    assert "--purge deletes these 6 paths (and 1 edit):" in out
+    assert "--purge deletes these 7 paths (and 1 edit):" in out
     assert f"Removed kanibako's line in {root / '.gitignore'}" in out
     assert (root / ".gitignore").read_text() == "node_modules/\n"
 
@@ -664,7 +664,7 @@ class TestStandalonePurge:
 
     assert _rm(str(root), force=True) == 0
     out = capsys.readouterr().out
-    assert "--purge deletes these 6 paths:" in out
+    assert "--purge deletes these 7 paths:" in out
     assert f"Deleted {root / '.gitignore'} (it held only kanibako's line)" in out
     assert not (root / ".gitignore").exists()
 

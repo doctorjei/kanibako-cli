@@ -14,7 +14,6 @@ from kanibako.settings.paths import (
   resolve_project,
   resolve_workset_project,
 )
-from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -250,10 +249,11 @@ class TestArchiveExtended:
     config = load_config(config_file)
     load_std_paths(config)
     project_dir = tmp_home / "project"
-    # Standalone marker: the ROOT workset.yaml's stored registry null.
+    # Standalone marker: the ROOT registry.yaml mark.
     kanibako_dir = project_dir / "box_data"
     kanibako_dir.mkdir(parents=True)
-    (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (project_dir / "workset.yaml").touch()
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     (kanibako_dir / "data.txt").write_text("standalone-data")
 
     archive_path = str(tmp_home / "dec.txz")
@@ -289,7 +289,6 @@ class TestStubProject:
     """
     from kanibako.project import workset_registry
     from kanibako.commands.archive import _stub_project
-    from kanibako.settings.config_io import load_doc
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -298,11 +297,7 @@ class TestStubProject:
     box_dir = std.boxes / "dirleaf"
     box_dir.mkdir(parents=True)
     gone_ws = tmp_home / "gone_workspace"
-    reg = workset_registry.resolve_workset_registry_path(
-      std.primary_workset,
-      load_doc(std.primary_workset / "workset.yaml"),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    reg = workset_registry.workset_registry_path(std.primary_workset)
     workset_registry.register_workset_box(reg, "regkey", gone_ws)
 
     stub = _stub_project(box_dir, gone_ws, std, config)

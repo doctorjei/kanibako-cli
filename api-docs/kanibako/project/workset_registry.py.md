@@ -8,7 +8,6 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset_registry.py.
 ## Variables
 
 ```
-_REGISTRY_FILE = 'registry.yaml'
 _BOXES_SECTION = 'boxes'
 _RETIRED_SECTIONS = ('workset', 'projects')
 _SECTIONS = (_BOXES_SECTION,)
@@ -22,7 +21,7 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
 def unregister_workset_box(registry_path: Path, box_name: str) -> None
 def workset_box_path(registry_path: Path, box_name: str) -> str | None
 def reverse_lookup_workset_box(registry_path: Path, workspace: Path | str) -> str | None
-def resolve_workset_registry_path(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
+def workset_registry_path(workset_root: Path) -> Path
 def _same_workspace(a: str, b: str) -> bool
 def _refuse_retired_registry_sections(registry_path: Path, full_doc: Mapping[str, Any]) -> None
 def _load_raw(registry_path: Path) -> dict

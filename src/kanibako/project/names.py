@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING
 from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
-from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
 from kanibako.utils import is_dir_unless_gone, is_home_dir, literal_path
@@ -201,8 +200,6 @@ def _early(early_system: EarlySystem, workset_name: str) -> EarlyScope:
 def _workset_member_paths(
   worksets: dict[str, str],
   name: str,
-  *,
-  early_system: EarlySystem,
 ) -> list[tuple[str, str, str]]:
   """Return the ``(workset name, box name, workspace path)`` triples for box *name*.
 
@@ -221,20 +218,15 @@ def _workset_member_paths(
   which :func:`resolve_name` matches directly (step 2) via *primary_workset*.
   """
   from kanibako.project import workset_registry
-  from kanibako.settings.config_io import load_doc
 
   members: list[tuple[str, str, str]] = []
   for ws_name, ws_root_str in worksets.items():
     ws_root = Path(ws_root_str)
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    from kanibako.launch.box_resolve import is_standalone_root
 
-    if stores_standalone_registry_null(ws_root):
+    if is_standalone_root(ws_root):
       continue
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws_root,
-      load_doc(ws_root / WORKSET_META_FILE),
-      early=_early(early_system, ws_name),
-    )
+    registry_path = workset_registry.workset_registry_path(ws_root)
     boxes = workset_registry.load_workset_boxes(registry_path)
     stored = find_identifier(name, boxes)  # ⚑ case-blind membership test (§0)
     if stored is not None:
@@ -276,7 +268,7 @@ def resolve_name(
   if hit is not None:
     return _warn_standalone_shadow(registry, name, hit), "project"
 
-  primary_hit = _primary_member(name, primary_workset, early_system=early_system)
+  primary_hit = _primary_member(name, primary_workset)
   if primary_hit is not None and path is not None:
     if space_boxes is not None and _records_member_at(space_boxes, path):
       return path, "path"
@@ -304,7 +296,7 @@ def resolve_name(
   if root is not None:
     return root, "project"
 
-  _refuse_other_space_member(names, name, early_system=early_system)
+  _refuse_other_space_member(names, name)
 
   stored_ws = find_identifier(name, names["worksets"])  # ⚑ case-blind (§0)
   if stored_ws is not None:
@@ -353,7 +345,7 @@ def _space_member(
   """
   if cwd is None:
     return None, None
-  from kanibako.launch.box_resolve import stores_standalone_registry_null
+  from kanibako.launch.box_resolve import is_standalone_root
   from kanibako.project import workset_registry
   from kanibako.project.workset import (
     _symlink_loop,
@@ -372,7 +364,7 @@ def _space_member(
       continue  # a relative root names no place; joining the cwd would hold every cwd
     if _symlink_loop(ws_path):
       continue  # a looped root holds no cwd, and resolving it raises on 3.11
-    if stores_standalone_registry_null(ws_path):
+    if is_standalone_root(ws_path):
       continue
     settings_doc = load_workset_settings_doc(ws_path)
     ws_early = _early(early_system, ws_name)
@@ -389,11 +381,7 @@ def _space_member(
     )
     if not inside:
       continue
-    registry_path = workset_registry.resolve_workset_registry_path(
-      ws_path,
-      settings_doc,
-      early=ws_early,
-    )
+    registry_path = workset_registry.workset_registry_path(ws_path)
     boxes = workset_registry.load_workset_boxes(registry_path)
     if space_boxes is None:
       space_boxes = boxes
@@ -409,36 +397,26 @@ def _space_member(
 def _primary_member(
   name: str,
   primary_workset: Path | None,
-  *,
-  early_system: EarlySystem,
 ) -> str | None:
   """Step 2's box half: *name* in the PRIMARY membership; skipped without *primary_workset*."""
   if primary_workset is None:
     return None
-  from kanibako.channels.channels import WS_TOKEN_PRIMARY
   from kanibako.project import workset_registry
-  from kanibako.settings.config_io import load_doc
 
-  primary_reg = workset_registry.resolve_workset_registry_path(
-    primary_workset,
-    load_doc(primary_workset / WORKSET_META_FILE),
-    early=_early(early_system, WS_TOKEN_PRIMARY),
-  )
+  primary_reg = workset_registry.workset_registry_path(primary_workset)
   return workset_registry.workset_box_path(primary_reg, name)
 
 
 def _refuse_other_space_member(
   names: dict[str, dict[str, str]],
   name: str,
-  *,
-  early_system: EarlySystem,
 ) -> None:
   """Step 4: refuse *name* when it is a member of a named workset outside this space.
 
   Its own space would resolve it (step 1), so outside one the bare name errors and
   names the ``<workset>/<box>`` spelling that reaches it (plan Q4; [Jei:2026-10-03]).
   """
-  members = _workset_member_paths(names["worksets"], name, early_system=early_system)
+  members = _workset_member_paths(names["worksets"], name)
   if not members:
     return
   # Collapse identical paths, keeping the first workset claiming each so a shared
@@ -497,9 +475,9 @@ def resolve_qualified_name(
   )
 
   ws_root = Path(names["worksets"][stored_ws])
-  from kanibako.launch.box_resolve import stores_standalone_registry_null
+  from kanibako.launch.box_resolve import is_standalone_root
 
-  if stores_standalone_registry_null(ws_root):
+  if is_standalone_root(ws_root):
     raise ProjectError(f"Project '{proj_name}' not found in workset '{stored_ws}'")
   settings_doc = load_workset_settings_doc(ws_root)
   ws_early = _early(early_system, stored_ws)
@@ -507,11 +485,7 @@ def resolve_qualified_name(
   # a member keeps its REGISTERED path wherever a composition epoch put it —
   # a ``workset.workspaces`` repoint must not orphan a pre-repoint member
   # (bifrost A0).
-  registry_path = workset_registry.resolve_workset_registry_path(
-    ws_root,
-    settings_doc,
-    early=ws_early,
-  )
+  registry_path = workset_registry.workset_registry_path(ws_root)
   registered = workset_registry.workset_box_path(registry_path, proj_name)
   if registered is not None:
     return registered, stored_ws

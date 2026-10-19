@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config.py.md`.
 ```
 BOX_META_FILE = 'box.yaml'
 WORKSET_META_FILE = 'workset.yaml'
+WORKSET_REGISTRY_FILE = 'registry.yaml'
 AGENT_META_FILE = 'agent.yaml'
 TWEAKCC_CONFIG_FILE = 'config.json'
 SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
@@ -39,6 +40,9 @@ def write_box_enable_vault(path: Path, enable_vault: bool=True) -> None
 def read_box_enable_vault(path: Path) -> bool
 def carried_box_settings(box_tier: Path) -> dict
 def read_workset_kuid(path: Path) -> str
+def holds_standalone_mark(workset_root: Path) -> bool
+def is_standalone_mark_file(path: Path) -> bool
+def write_standalone_mark(workset_root: Path) -> None
 def read_workset_skip_kuid_check(path: Path) -> bool
 def unset_project_config_key(path: Path, flat_key: str) -> bool
 def load_project_overrides(path: Path) -> dict[str, object]

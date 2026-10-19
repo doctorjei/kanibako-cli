@@ -514,7 +514,7 @@ inside boxes. In order of likely impact:
     workspace or root, and `workset connect` onto a standalone box's own workspace exit 1 even with
     `--force`** — see *`move`, `convert`, `duplicate`, `workset create`,
     and `workset connect` on another box's path are refused*.
-55. **`workset connect --force` removes a standalone box's `workset.registry: null` line, so after
+55. **`workset connect --force` removes a standalone box's `registry.yaml` mark, so after
     `workset disconnect` the directory is a plain one, not a standalone box** — see *`workset connect
     --force` removes a standalone box's marker*.
 56. **`-e VAR=value` now beats a `secret_path.VAR` key for that launch; the secret used to win** — see *`-e`
@@ -530,6 +530,9 @@ inside boxes. In order of likely impact:
 60. **A persona store config's `"model": null` or `""` now beats `agent.default.model`: `null` passes no
     model, and `""` passes the empty model unless the harness plugin declares `empty: omit`** — see *A
     persona's `null` model means its own default, and `""` means no model*.
+61. **`workset.registry` is no longer a setting, and a standalone box is marked by a `registry.yaml`
+    holding `__STANDALONE__`; a stored `workset.registry` or `registry: null` stops the command** — see
+    *The workset registry is a fixed file, and a standalone box is marked in it*.
 
 ---
 
@@ -547,6 +550,7 @@ inside boxes. In order of likely impact:
 | `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | plain text: a bare-relative path refusal in a path value, silent elsewhere (below) |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 | `auto_approve` (the boolean permission switch) | `access` — a tier, `restricted` \| `editing` \| `full` | **hard launch error** of its own, mapping your stored boolean to a tier (below) |
+| `workset.registry` | read-only `meta.workset.registry`, fixed at `<workset root>/registry.yaml` | **hard refusal** of its own, naming the cure (see *The workset registry is a fixed file, and a standalone box is marked in it*) |
 
 **What a stale stored key actually does, per surface** (measured on the shipped code):
 
@@ -6069,10 +6073,7 @@ workset's, a named workset's, or a standalone box's root file. A `null` written 
 v1.8.0-rc2 counts; `set --null workset.boxes` now refuses at the door with exit 1 and writes
 nothing.
 
-A `workset.registry` of `null` is refused the same way, on the primary workset's and a named workset's
-root file, not a standalone box's, which has no registry. While any workset carries it, a command that
-looks a box up by name refuses too, because it cannot read that workset's membership. Delete the
-`registry:` line to use `<workset>/registry.yaml`.
+A stored `workset.registry`, `null` or not, is refused on its own terms: see *The workset registry is a fixed file, and a standalone box is marked in it*.
 
 **What changed.** In v1.8.0-rc2 a `null` `workset.boxes` was read as if the key were not set, so
 `workset connect` put the box under the default directory (`<workset>/boxes/`), while starting
@@ -6707,11 +6708,11 @@ a defaults file or built in Python.
 
 ### 2.104 `set --null` at a path key is refused at the door
 
-**Read this if you run `set --null` at a `system.*` path key, or at `workset.boxes` or `workset.registry`.**
+**Read this if you run `set --null` at a `system.*` path key, or at `workset.boxes`.**
 
 **What changed.** In v1.8.0-rc2 `set --null` at one of these keys answered `Set <key>=null`, wrote
 the null, and every later command refused the file it had written. It now exits 1 and writes
-nothing. This covers every `system.*` path key, and `workset.boxes` and `workset.registry` at any scope.
+nothing. This covers every `system.*` path key, and `workset.boxes` at any scope.
 
 **What you see.**
 
@@ -7171,7 +7172,7 @@ checked.
 - `system set workset.boxes=/srv/kb` exits 1 and writes nothing. A working set's own file may still
   hold a plain path (`workset set <workset> workset.boxes=/srv/kb`).
 - A value the system file already holds is refused by every reader that reads it, naming the file.
-  A plain `workset.boxes`, `workset.logs`, `workset.registry`, `workset.vault_ro`, or `workset.vault_rw` is
+  A plain `workset.boxes`, `workset.logs`, `workset.vault_ro`, or `workset.vault_rw` is
   read by almost
   every command, `box list`, `create`, and `stop <box>` included; the other keys refuse where they are
   read.
@@ -7363,7 +7364,7 @@ longer a box, and the file carries the repoint. Remove it by hand only if you ar
 whole box.
 
 **Detection changed in the same release, and it no longer looks for `<root>/box_data`.** A standalone
-root is the root whose own `<root>/workset.yaml` stores the `workset.registry` null. `<root>/box_data`
+root is the root whose own `<root>/registry.yaml` holds the standalone mark. `<root>/box_data`
 is the default leaf of the `workset.boxes` key, not a marker, so a box whose store was relocated is
 discovered whether or not `<root>/box_data` still exists.
 
@@ -7899,11 +7900,10 @@ error names (for a `secret_path` key, change the file it points at, or remove it
 **Read this if you connect standalone boxes into a working set with `--force`.**
 
 **What changed.** A box is in one working set only. `workset connect --force` on a standalone box
-already moved its `standalone:` registration into the working set; it now also removes the
-`workset.registry: null` line from the box's root `workset.yaml`. Only that line goes: the file, its
-`workset.kuid`, your other settings, and every directory stay. The file is rewritten, so comments in
-it are lost. If kanibako cannot rewrite the file (it is a symlink, or read-only), it warns, keeps the
-line, and connects the box anyway; it is the working set's box all the same.
+already moved its `standalone:` registration into the working set; it now also deletes the box's
+root `registry.yaml` mark. Only that file goes: `workset.yaml`, its `workset.kuid`, your settings,
+and every directory stay. If kanibako cannot delete the file (it is a symlink, or read-only), it
+warns, keeps it, and connects the box anyway; it is the working set's box all the same.
 
 `workset disconnect` writes nothing back. The box ends like any disconnected member: unregistered,
 its files where they are, and the printed `kanibako workset connect` cure re-adopts it without
@@ -7913,6 +7913,34 @@ its files where they are, and the printed `kanibako workset connect` cure re-ado
 the old standalone box again. To make a new standalone box there, move `box_data/` out of it first
 (`box create --standalone` refuses while it is there); then `kanibako box create --standalone <path>`
 seeds a new home.
+
+### The workset registry is a fixed file, and a standalone box is marked in it
+
+**Read this if you set `workset.registry`, or a 1.8.0 development build made one of your standalone
+boxes.**
+
+**What changed.** `workset.registry` is no longer a setting. A working set's box registry is the
+read-only `meta.workset.registry`, fixed at `<workset root>/registry.yaml`. A standalone box is
+marked by that file holding only `__STANDALONE__` (any case, surrounding whitespace ignored), which
+`create --standalone` writes. A `registry: null` line under `workset:` marks nothing any more.
+
+**What happens if you do nothing.** A stored `workset.registry`, in any settings file, stops the
+command with exit 1, naming the file and the cure. kanibako converts nothing for you:
+
+```
+'workset.registry' is RETIRED and is still set in the workset settings file <root>/workset.yaml (as `workset: registry:`). The workset registry is now meta.workset.registry, fixed at <workset root>/registry.yaml, and no file sets it.
+  Fix, by hand: that null marked a standalone box, which <root>/registry.yaml now marks by holding only __STANDALONE__: write that file, then remove the line. See MIGRATION.md § "The workset registry is a fixed file, and a standalone box is marked in it".
+```
+
+**What you must do.**
+
+- A standalone box: write the mark, then delete the `registry: null` line from `<root>/workset.yaml`:
+  ```bash
+  printf '__STANDALONE__\n' > <root>/registry.yaml
+  ```
+- A working set that pointed `workset.registry` at another file: move that file to
+  `<workset root>/registry.yaml`, then delete the `registry:` line.
+- Anywhere else, the system settings file included: delete the line.
 
 ### 2.116 `-e` beats a `secret_path` key
 
@@ -9323,16 +9351,12 @@ while both were called `settings.yaml`.
   root holds the kanibako artifacts (`settings.yaml`, `box_data/`, `vault/`); your
   actual project files live under `workspace/` (mounted as `~/workspace`).
 
-⚑ **The standalone walk marker is now `registry: null` under `workset:` in
-`<root>/workset.yaml`** — the root file's OWN stored `workset.registry` null, never a value
-reached through the settings cascade. `create` writes it beside `workset.kuid` as
-`registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`. Neither a `<root>/box_data/`
-directory nor the file's mere presence marks a standalone root, and removing the line
-makes the root read as not standalone. (A NAMED workset root's `<root>/workset.yaml` stores no
-null there; `kanibako workset set <name> workset.registry --null` is refused unless
-`--force`, because it would make the workset standalone.) The old in-tree
+⚑ **The standalone walk marker is now `<root>/registry.yaml` holding only `__STANDALONE__`**
+(see *The workset registry is a fixed file, and a standalone box is marked in it* in the v1.8.0 guide). Neither a `<root>/box_data/` directory nor
+`<root>/workset.yaml` marks a standalone root, and removing the file makes the root read as
+not standalone. The old in-tree
 `.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a standalone tree, keep
-that line in `<root>/workset.yaml`, keep `<root>/box_data/` beside it, and put your files
+that file, keep `<root>/box_data/` beside it, and put your files
 under `<root>/workspace/`. Drop any `layout:` or `mode` field: nothing reads a `mode` token
 (see the section headed *Per-box meta file project.yaml → settings.yaml* for the full
 `project:`-table correction).

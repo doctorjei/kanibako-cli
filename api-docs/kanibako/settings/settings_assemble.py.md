@@ -28,6 +28,7 @@ _DROP_WARNED: 'set[tuple[str, str]]' = set()
 _AGENT_NODE_TABLES: tuple[tuple[str, ...], ...] = (('agent',), (PREF_ROOT, 'agent'))
 _AGENT_FILE_LEVEL: str = 'agent'
 _H_AUDITED_LEVELS: tuple[str, ...] = ('box', 'workset', 'system', 'base')
+_REGISTRY_MIGRATION = 'MIGRATION.md § "The workset registry is a fixed file, and a standalone box is marked in it"'
 ```
 
 ## Functions
@@ -50,6 +51,7 @@ def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: Re
 def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
 def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
+def refuse_retired_registry_key(raw: Any, *, level: str, path: Path | None) -> None
 def retired_cure(files: Iterable[SettingsFile]) -> None
 def parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=(), for_pref_requests: bool=False, active_agent: str | None=None) -> Any
 def parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore

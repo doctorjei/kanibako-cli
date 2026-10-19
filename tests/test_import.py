@@ -114,7 +114,7 @@ class TestStandaloneImport:
     project_dir,
     capsys,
   ):
-    # A hand-built / pre-kuid standalone tree: the registry-null marker in a
+    # A hand-built / pre-kuid standalone tree: the registry.yaml mark beside a
     # workset.yaml carrying NO workset.kuid (P8b: import composes kuid-first
     # and, absent a stored kuid — the SENTINEL — falls back to the dir leaf,
     # mirroring box_resolve.resolve_box_identity; it does NOT persist a name).
@@ -123,8 +123,9 @@ class TestStandaloneImport:
     box_data = project_dir / "box_data"
     box_data.mkdir(parents=True)
     meta_file = project_dir / "workset.yaml"
-    # A sparse workset.yaml with a box: table, the registry null, but no workset.kuid.
-    dump_doc(meta_file, {"box": {"enable_vault": True}, "workset": {"registry": None}})
+    # A sparse workset.yaml with a box: table but no workset.kuid, and the mark.
+    dump_doc(meta_file, {"box": {"enable_vault": True}})
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     capsys.readouterr()
 
     name = import_reconcile.import_standalone(
@@ -155,7 +156,8 @@ class TestStandaloneImport:
     box_data.mkdir(parents=True)
     meta_file = project_dir / "workset.yaml"
     box_kuid = kuid.generate()
-    dump_doc(meta_file, {"workset": {"kuid": box_kuid, "registry": None}})
+    dump_doc(meta_file, {"workset": {"kuid": box_kuid}})
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     capsys.readouterr()
 
     name = import_reconcile.import_standalone(
@@ -407,12 +409,7 @@ class TestNamedWorksetImport:
 
     box_dir = tmp_home / "boxproj"
     box_dir.mkdir()
-    register_primary_box_name(
-      std.primary_workset,
-      "clash",
-      str(box_dir),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name(std.primary_workset, "clash", str(box_dir))
     ws_root = tmp_home / "worksets" / "clash"
     create_workset("scratch", ws_root, std)
     registry_store.save_section(std.registry, "worksets", {})
@@ -528,9 +525,8 @@ class TestPrimaryBoxImport:
     # Drop the PRIMARY-membership entry (the sole store since the global
     # ``projects:`` section retired) — the on-disk box dir survives,
     # unregistered.
-    early = _early_scope(std, BoxMode.primary)
-    unregister_primary_box_name(std.primary_workset, proj.name, early=early)
-    assert load_primary_boxes(std.primary_workset, early=early) == {}
+    unregister_primary_box_name(std.primary_workset, proj.name)
+    assert load_primary_boxes(std.primary_workset) == {}
     capsys.readouterr()
 
     # Re-resolving the same workspace does NOT silently re-register the box.
@@ -541,7 +537,7 @@ class TestPrimaryBoxImport:
       initialize=False,
     )
     assert proj2.name == ""  # not recovered from disk
-    assert load_primary_boxes(std.primary_workset, early=early) == {}
+    assert load_primary_boxes(std.primary_workset) == {}
     assert "Imported primary box" not in capsys.readouterr().err
 
   # NOTE (P8c): the direct unit tests of ``import_primary_box`` /

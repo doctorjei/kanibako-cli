@@ -8,8 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.channels.helper_listener import HelperContext, HelperHub
-from kanibako.settings.paths import BoxMode
-from tests.support.early import early_record
 from tests.support.hub import ask
 
 
@@ -75,7 +73,6 @@ def fork_ctx(tmp_path):
     data_path=data_path,
     boxes=data_path / "boxes",
     primary_workset=data_path / "primary_workset",
-    early=early_record(tmp_path, mode=BoxMode.primary),
   )
 
 
@@ -127,7 +124,6 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
     data_path=data_path,
     boxes=boxes,
     primary_workset=data_path / "primary_workset",
-    early=early_record(tmp_path, mode=BoxMode.primary),
   )
 
 
@@ -168,7 +164,7 @@ class TestHandleFork:
     # The assigned name should be registered in the PRIMARY membership.
     from kanibako.settings.paths import load_primary_boxes
 
-    assert resp["name"] in load_primary_boxes(ctx.primary_workset, early=ctx.early)
+    assert resp["name"] in load_primary_boxes(ctx.primary_workset)
 
   def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
     hub, ctx = fork_hub
@@ -229,7 +225,6 @@ class TestHandleFork:
       socket_path=tmp_path / "helper.sock",
       project_path=None,
       data_path=None,
-      early=early_record(tmp_path, mode=BoxMode.primary),
     )
     resp = ask(_hub(ctx), {"action": "fork", "name": "test"})
     assert resp["status"] == "error"
@@ -309,10 +304,7 @@ class TestForkSourceMetaDirFallback:
 
     ctx = _fallback_ctx(tmp_path, boxes_leaf)
     # Guard: the PRIMARY route must genuinely miss, or this exercises the wrong arm.
-    assert (
-      primary_box_name_for_workspace(ctx.primary_workset, str(ctx.project_path), early=ctx.early)
-      is None
-    )
+    assert primary_box_name_for_workspace(ctx.primary_workset, str(ctx.project_path)) is None
 
     resp = ask(_hub(ctx), {"action": "fork", "name": "fallback"})
 

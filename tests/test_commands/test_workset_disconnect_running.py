@@ -262,35 +262,6 @@ class TestWorksetRmWithAnUnseenRegistry:
     assert _registered(std) and kept.is_file()
     assert (ws.root / "registry.yaml").is_symlink()
 
-  def test_a_stored_registry_null_checks_the_default_file(self, world, monkeypatch, capsys):
-    """The standalone null reads members from the default path; that file is checked."""
-    std, ws, _log = world
-    monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
-    (ws.root / "workset.yaml").write_text("workset:\n  registry: null\n")
-    _hide_registry(ws, "loop")
-    assert _main("workset", "rm", "nws", "--force") == 1
-    err = capsys.readouterr().err
-    assert f"Error: {ws.root / 'registry.yaml'}: " in err, err
-    assert "--force" not in err, err
-    assert _registered(std)
-
-  def test_a_custom_registry_under_a_dangling_parent_is_refused(self, world, monkeypatch, capsys):
-    """A ``workset.registry`` whose parent directory is a link to nothing: no members
-    can be read there, so it refuses rather than reading "no members"."""
-    std, ws, _log = world
-    monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
-    kept = ws.vault_rw_dir / "bar" / "data.txt"
-    (ws.root / "regdir").symlink_to(ws.root / "gone-dir")
-    (ws.root / "workset.yaml").write_text(
-      f"workset:\n  registry: {ws.root / 'regdir' / 'registry.yaml'}\n"
-    )
-    assert _door("workset", "rm", "nws", "--force") == 1
-    err = capsys.readouterr().err
-    assert f"{ws.root / 'regdir' / 'registry.yaml'} cannot be read" in err, err
-    assert f"{ws.root / 'regdir'} is a link to nothing" in err, err
-    assert "--force" not in err, err
-    assert _registered(std) and kept.is_file()
-
   def test_an_unreadable_registry_file_still_fails_closed(self, world, monkeypatch):
     """EACCES on the file itself: the read raises, nothing is deregistered."""
     from kanibako.errors import ConfigError

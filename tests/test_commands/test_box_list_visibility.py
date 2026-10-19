@@ -26,8 +26,6 @@ import pytest
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import (
-  BoxMode,
-  _early_scope,
   load_primary_boxes,
   load_std_paths,
   resolve_project,
@@ -116,11 +114,7 @@ def sandbox(config_file, tmp_home, credentials_dir, capsys):
   shutil.rmtree(tmp_home / _GONE)
   # A box with no membership has no recorded workspace to report.  The name comes
   # back from the registry the listing itself reads, never from the path.
-  unregister_primary_box_name(
-    std.primary_workset,
-    _primary_name(std, _STRAY),
-    early=_early_scope(std, BoxMode.primary),
-  )
+  unregister_primary_box_name(std.primary_workset, _primary_name(std, _STRAY))
 
   # A workset member is never ALSO a primary box, and its workspace lives under
   # the workset's own ``workspaces/`` — not at the path handed to ``add_project``.
@@ -149,10 +143,7 @@ def _primary_name(std, workspace_name: str) -> str:
   """The PRIMARY box name whose recorded workspace is *workspace_name*."""
   return next(
     name
-    for name, workspace in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    ).items()
+    for name, workspace in load_primary_boxes(std.primary_workset).items()
     if Path(workspace).name == workspace_name
   )
 

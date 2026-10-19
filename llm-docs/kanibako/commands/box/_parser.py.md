@@ -309,9 +309,8 @@ in order. The active `rm --purge` paths, the deregistered `rm --purge` path and 
   finally the box dir as the ANCHOR. A looped vault leaf or store is kept and named after the run.
 * `_standalone_purge_plan` lists the logs, an unheld creds-watcher lock, kanibako's `.gitignore`
   line, the removable canon, the removable vault arms, an in-tree snapshot store, the box store as
-  the ANCHOR, and LAST the ROOT `workset.yaml`. That file is the WORKSET tier and holds the
-  `workset.registry: null` standalone marker (system-design § "Detection & import"), so it goes
-  after the anchor: if an earlier step fails, a retry still resolves the box's repoints. It
+  the ANCHOR, and LAST the ROOT `workset.yaml` (the WORKSET tier), then `registry.yaml`'s standalone
+  mark (system-design § "Detection & import"), so they go after the anchor: if an earlier step fails, a retry still resolves the box's repoints. It
   returns the steps plus a *retained* list (paths outside the box's root, a kept canon or vault,
   the channel dirs), each reported after the run. The user's workspace files, and `root` itself,
   are never touched.

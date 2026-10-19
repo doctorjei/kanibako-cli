@@ -1,4 +1,4 @@
-"""Per-workset registry (``workset.registry`` → ``<workset_root>/registry.yaml``).
+"""Per-workset registry (``meta.workset.registry`` = ``<workset_root>/registry.yaml``).
 
 Holds one workset's MEMBERSHIP, and nothing else, in ONE section:
 
@@ -12,14 +12,14 @@ identity, and nothing under the workset root repeats it.  The root
 ``workset.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.
 
 ⚑⚑ THE PATH IS RECORDED EXACTLY ONCE.  The entry is FLAT — ``name: path``,
-exactly as the keyspace's ``workset.registry`` row spells it — never a nested
+exactly as the keyspace's ``meta.workset.registry`` row spells it — never a nested
 record.  An unreleased 1.8.0 build briefly kept a ``workset:`` identity table
 here and the member paths a second time under ``projects:``; both are RETIRED and
 now HARD-REFUSE (:func:`_refuse_retired_registry_sections`), because the two
 copies drifted — a disconnect dropped one row and orphaned the other.
 
-Every public function takes the RESOLVED registry FILE path; nothing
-reconstructs it from a workset root.
+Every membership function takes the registry FILE path,
+:func:`workset_registry_path`'s answer.
 
 Nothing here is a derived cache: the ``boxes:`` entry KEYS yield the
 ``meta.box.name`` anchors (design D1b) and membership IS the registration signal
@@ -40,16 +40,11 @@ from typing import Any
 from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.project.registry_store import write_registry_doc
+from kanibako.settings.config import WORKSET_REGISTRY_FILE, is_standalone_mark_file
 from kanibako.settings.config_io import load_doc
-from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
-from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import EarlyScope, early_repoint, resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
 from kanibako.utils import is_file_unless_gone, literal_path
 
-# The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
-# component: the key is repointable, so nothing may join this directly.
-_REGISTRY_FILE = "registry.yaml"
 
 # The box-membership section of a per-workset registry file: box name → path.
 # ⚑ THE ONLY SECTION THIS MODULE READS OR WRITES.
@@ -128,9 +123,10 @@ def _refuse_retired_registry_sections(
 def _load_raw(registry_path: Path) -> dict:
   """Return the whole registry document for *registry_path* (absent file → ``{}``).
 
-  ⚑ THE ONE READ SEAM, so the retired-section refusal fires on EVERY read.
+  ⚑ THE ONE READ SEAM, so the retired-section refusal fires on EVERY read.  The
+  standalone mark is a registry with no members.
   """
-  if not is_file_unless_gone(registry_path):
+  if not is_file_unless_gone(registry_path) or is_standalone_mark_file(registry_path):
     return {}
   data = load_doc(registry_path)
   _refuse_retired_registry_sections(registry_path, data)
@@ -236,35 +232,6 @@ def reverse_lookup_workset_box(
   return None
 
 
-def resolve_workset_registry_path(
-  workset_root: Path,
-  workset_settings: Mapping[str, Any] | None,
-  *,
-  early: EarlyScope,
-) -> Path:
-  """Return the resolved per-workset registry FILE path (pure; no global state).
-
-  A set ``workset.registry`` repoint wins (relative anchors under *workset_root*);
-  an UNSET one falls through to ``<workset_root>/registry.yaml``.
-
-  ⚑ A NINTH FACE on the ONE no-snapshot route (``project/workset.py``): its spec
-  default is ``{meta.workset.path}/registry.yaml``, like the other faces', so it carries tokens
-  and must not expand them privately.
-
-  🛑 A present ``null`` REFUSES, naming the key and the file: this file holds the
-  workset's MEMBERSHIP and its entry keys are the only source of box names, so the
-  default would read a file the user says is not there.
-  """
-  repoint, where = early_repoint(workset_root, workset_settings, "registry", early=early)
-  if repoint is None:
-    raise SettingsError(ERR_CONFIG_NULL_PATH % (where, "workset.registry"))
-  return resolve_workset_dir_key(
-    workset_root,
-    repoint if isinstance(repoint, str) else None,
-    _REGISTRY_FILE,
-    key="registry",
-    where=where,
-    standalone=False,
-    workset_settings=workset_settings,
-    early=early,
-  )
+def workset_registry_path(workset_root: Path) -> Path:
+  """Return *workset_root*'s registry FILE, ``meta.workset.registry`` (fixed; not settable)."""
+  return workset_root / WORKSET_REGISTRY_FILE

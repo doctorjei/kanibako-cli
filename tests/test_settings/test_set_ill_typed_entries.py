@@ -222,22 +222,23 @@ class TestBoxDoor:
     assert "refuse" not in proc.stderr
 
 
-def test_a_standalone_boxs_null_registry_marker_is_not_a_bad_entry(cli):
+def test_a_standalone_boxs_mark_is_not_a_bad_entry(cli):
   proj = cli.home / "sa"
   proj.mkdir()
   assert cli("box", "create", "--standalone", str(proj)).returncode == 0
-  assert "registry: null" in (proj / "workset.yaml").read_text()
+  assert (proj / "registry.yaml").read_text() == "__STANDALONE__\n"
   proc = cli("box", "set", str(proj), "box.shell=bash")
   assert proc.returncode == 0, proc.stderr
 
 
-def test_a_null_workset_registry_in_the_system_file_is_refused(cli):
+def test_a_retired_workset_registry_in_the_system_file_is_refused(cli):
   path = _system_file(cli)
   path.write_text("system:\n  agent: shell\nworkset:\n  registry: null\n")
   before = path.read_bytes()
-  _assert_refused(
-    cli("system", "set", "system.agent=claude"), path, before, "workset.registry = null"
-  )
+  proc = cli("system", "set", "system.agent=claude")
+  assert proc.returncode == 1, proc.stderr
+  assert str(path) in proc.stderr and "workset.registry" in proc.stderr
+  assert path.read_bytes() == before
 
 
 def test_force_does_not_set_a_value_whose_chain_reaches_an_ill_typed_entry(cli):

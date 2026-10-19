@@ -18,7 +18,6 @@ from kanibako.project import names, registry_store, workset_registry
 from kanibako.settings import paths
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
-from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 @pytest.fixture
@@ -47,9 +46,7 @@ def _named_workset(std, root: Path, name: str) -> Path:
   section = registry_store.load_section(std.registry, "worksets")
   section[name] = str(root)
   registry_store.save_section(std.registry, "worksets", section)
-  return workset_registry.resolve_workset_registry_path(
-    root, None, early=EarlyScope(std.early_system, name)
-  )
+  return workset_registry.workset_registry_path(root)
 
 
 class TestPrimarySites:
@@ -58,23 +55,6 @@ class TestPrimarySites:
       std, load_config(config_file), str(tmp_home / "project"), initialize=True
     )
     assert proj.mode is BoxMode.primary
-    assert set(early_reads) == {WS_TOKEN_PRIMARY}
-
-  def test_iter_projects(self, std, config_file, early_reads):
-    std.boxes.mkdir(parents=True, exist_ok=True)
-    paths.iter_projects(std, load_config(config_file))
-    assert set(early_reads) == {WS_TOKEN_PRIMARY}
-
-  def test_the_primary_name_api(self, std, tmp_home, early_reads):
-    early = paths._early_scope(std, BoxMode.primary)
-    name = paths.assign_primary_box_name(std.primary_workset, tmp_home / "project", early=early)
-    assert (
-      paths.primary_box_name_for_workspace(
-        std.primary_workset, str(tmp_home / "project"), early=early
-      )
-      == name
-    )
-    paths.unregister_primary_box_name(std.primary_workset, name, early=early)
     assert set(early_reads) == {WS_TOKEN_PRIMARY}
 
 
@@ -130,7 +110,8 @@ class TestStandaloneSites:
   ):
     root = tmp_home / "lone"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (root / WORKSET_META_FILE).touch()
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     proj = paths.resolve_standalone_project(std, load_config(config_file), str(root))
     paths.box_logs_location(std, proj)
     assert set(early_reads) == {WS_TOKEN_STANDALONE}

@@ -2759,6 +2759,21 @@ def test_meta_workset_settings_single_sources_all_modes():
   )
 
 
+def test_meta_workset_registry_is_fixed_under_the_root_in_every_mode():
+  """meta.workset.registry = {meta.workset.path}/registry.yaml in EVERY mode, standalone
+  included (its file holds the mark); and the retired ``workset.registry`` is gone."""
+  for snap, root in (
+    (_meta_snapshot("primary", ctx=_ctx_with_config("/data/pw")), "/data/pw"),
+    (_meta_snapshot("named", ws_root_literal="/code/kento"), "/code/kento"),
+    (_meta_snapshot("standalone", ws_root_literal="/scratch/myproj"), "/scratch/myproj"),
+  ):
+    assert dict.get(_meta_node(snap, "meta", "workset"), "registry") == f"{root}/registry.yaml"
+  from kanibako.settings.settings_launch import workset_anchor_floor
+
+  for mode in ("primary", "named", "standalone"):
+    assert "workset.registry" not in workset_anchor_floor(mode=mode)
+
+
 def test_meta_runtime_ws_name_per_mode():
   """meta.runtime.ws_name holds the workset partition TOKEN per mode (spec §1A,
   2026-07-04): primary=__PRIMARY__ · named=<detected name> · standalone=

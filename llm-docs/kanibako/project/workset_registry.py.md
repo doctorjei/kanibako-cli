@@ -1,8 +1,8 @@
 # The Per-Workset Registry — membership, and the name anchors it yields
 
-`workset_registry` is the read/write layer for one file per workset: the resolved `workset.registry`
-key, whose default is `{meta.workset.path}/registry.yaml` == `<workset_root>/registry.yaml`. That file
-holds the workset's **membership**, and nothing else.
+`workset_registry` is the read/write layer for one file per workset: `meta.workset.registry`, fixed at
+`{meta.workset.path}/registry.yaml` == `<workset_root>/registry.yaml`. That file holds the workset's
+**membership**, and nothing else.
 
 It is a document layer, not a policy layer. It loads its one section, writes it back atomically, and
 offers small typed helpers over it — register, unregister, forward lookup, reverse lookup. It decides
@@ -50,7 +50,7 @@ design consequences follow, and both run the direction that surprises people:
 
 * **Names come OUT of it (design D1b).** Reading the entry keys is what YIELDS the `meta.box.name`
   anchors at resolution. There is no literal `meta.box.name` field stored anywhere — the key IS the
-  anchor. The keyspace spec says so at the `workset.registry` row: *"Holds this workset's box
+  anchor. The keyspace spec says so at the `meta.workset.registry` row: *"Holds this workset's box
   MEMBERSHIP as `name: path` entries — the AUTHORITATIVE source of box names (its entry KEYS YIELD
   the RO `meta.box.name` anchors; NO literal `meta.box.name` field is stored)."*
 * **Membership IS the registration signal (design D3-auth).** A box present here belongs to the
@@ -68,10 +68,8 @@ in `launch/templates.py` carries a whitelist precisely so template CONTENT canno
 
 ## The path contract
 
-Every public function takes the resolved per-workset registry FILE path. That is the single source of
-the registry location: the resolver (`resolve_workset_registry_path`) runs once, up front, and
-nothing downstream reconstructs the path from a workset root. A user who repoints `workset.registry`
-is therefore honored end-to-end.
+Every membership function takes the registry FILE path, which `workset_registry_path` joins from the
+workset root; nothing else spells the leaf (`settings.config.WORKSET_REGISTRY_FILE`).
 
 An absent file yields an empty membership rather than an error, so a workset that has never
 registered a box reads clean.
@@ -142,24 +140,9 @@ depth alongside the refusal above: the per-workset `boxes:` membership is what `
 `box_resolve` actually read, so a reverse lookup here catches drift the GLOBAL name registry has
 already lost — for instance a purge that dropped the global name but left this membership behind.
 
-## Resolving the registry path
+## The standalone mark
 
-`resolve_workset_registry_path(workset_root, workset_settings, *, early)` is a pure function of its
-inputs — no global state; the caller passes the workset root, that workset's settings document, and
-the required `early=` scope (the system tier). It is one face of the no-snapshot route
-(`early_repoint` → `resolve_workset_dir_key`):
-
-* **`workset.registry` is SET** — in the root's `workset.yaml` (the nested slot
-  `workset: {registry: <path>}`), else at the system tier. The raw value may carry `@`-refs,
-  `$XDG_*`, or `~`, resolved by `resolve_workset_dir_key`'s token grammar; a bare-relative value
-  is REFUSED (keyspec §2a "A path key's stored value"), and a value that cannot resolve without the
-  launch snapshot raises `SettingsError` naming the key, the file, and the token.
-* **A present `null` REFUSES**: `SettingsError(ERR_CONFIG_NULL_PATH)`, naming the key and the file.
-  This file is the only source of box names, so the default would read a file the user says is not
-  there.
-* **otherwise** the default `<workset_root>/registry.yaml`, == `{meta.workset.path}/registry.yaml`. A standalone box has no per-workset registry at all (spec §2c: `workset.{registry,template}`
-resolve to `<None>` for a lone box), so this resolver is never reached on that path.
-
-`project/workset.py` mirrors this resolver at its own no-snapshot seam for the resolved workset dir
-keys (`workset.workspaces` / `workset.channelroot`), and says so in the banner above
-`load_workset_settings_doc`.
+A standalone root's registry file holds only `__STANDALONE__` (system-design § Detection & import),
+read raw — trimmed, case-blind, never parsed — by `settings.config.holds_standalone_mark`. The mark
+lives in the settings layer because `paths.establish_standalone` writes it and settings may not
+import this module. `_load_raw` reads a mark as a registry with no members.

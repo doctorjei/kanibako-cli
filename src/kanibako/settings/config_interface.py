@@ -49,7 +49,6 @@ from kanibako.settings.messages import (
   ERR_BOX_STORE_EMPTY_REASON,
   ERR_BOX_STORE_SET_HEAD,
   ERR_WORKSET_EARLY_SET_HEAD,
-  ERR_WORKSET_SET_MAKES_STANDALONE,
   ERR_BOX_STORE_TRAILING_REASON,
   ERR_CONFIG_BAD_ENTRIES_TAIL,
   ERR_CONFIG_CHAIN_BAD_ENTRY,
@@ -61,7 +60,6 @@ from kanibako.settings.messages import (
   WARN_CONFIG_BAD_ENTRIES,
   WARN_CONFIG_ILL_TYPED_ENTRIES,
   WARN_CONFIG_UNRESOLVABLE_ENTRIES,
-  WARN_WORKSET_SET_MAKES_STANDALONE,
 )
 from kanibako.settings.config_display import (
   _nested_settings_overrides,
@@ -831,7 +829,6 @@ def _cascade_bad_entries(
   names: list[str] = []
   views: list[dict] = []
   paths: "list[Path | None]" = []
-  workset_files = {path for level, path in files if level == "workset"}
   for read in read_settings_files(files, purpose=ReadPurpose.DISPLAY):
     if not isinstance(read.view, dict):
       continue
@@ -847,12 +844,7 @@ def _cascade_bad_entries(
       names.extend(".".join(segs) for segs, _shown, _v in kept)
     typed = [
       (segs, line)
-      for segs, line in sorted(
-        _ill_typed_stored_entries(
-          read.view,
-          registry_marker=read.path in workset_files,
-        ).items()
-      )
+      for segs, line in sorted(_ill_typed_stored_entries(read.view).items())
       if not _overwritten_by(edited, segs)
     ]
     if typed:
@@ -2117,23 +2109,10 @@ def set_config_value(
   if state_err is not None:
     return state_err
 
-  # ⚑ A stored null ``workset.registry`` DEFINES standalone (system-design § Detection & import).
-  makes_standalone = (
-    canonical == "workset.registry"
-    and value is None
-    and command_scope is ConfigLevel.workset
-    and ws is not None
-    and not ws.is_default
-  )
-  if makes_standalone and not force:
-    return "Error: " + ERR_WORKSET_SET_MAKES_STANDALONE % ws.name
-  if makes_standalone:
-    _log.warning(WARN_WORKSET_SET_MAKES_STANDALONE, ws.name)
   # ⚑ A value the LAUNCH refuses (spec §0, §2a, §2b, §2h); see :func:`_set_value_error`. AFTER
   # every NAME-level refusal above, so a retired or wrong-scope spelling still gets its own,
   # and BEFORE the E3 probe, which would splice an unusable value into a candidate store.
-  # A standalone-making null ``workset.registry`` is a path key no door may refuse.
-  value_err = None if makes_standalone else _set_value_error(canonical, value)
+  value_err = _set_value_error(canonical, value)
   if value_err is not None:
     return value_err
 
@@ -3352,17 +3331,10 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
   return out
 
 
-def _ill_typed_stored_entries(
-  data: dict,
-  *,
-  registry_marker: bool = False,
-) -> dict[tuple[str, ...], str]:
+def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]:
   """DECLARED entries STORED in a settings doc holding a value their key's own validators
   refuse — ``segments → "key = value: reason"`` (keyspec §2a); the twin of
   :func:`_undeclared_stored_entries`, which judges the NAME.
-
-  ⚑ *registry_marker*: *data* is a WORKSET file, whose null ``workset.registry`` is the
-  standalone marker (system-design § Detection & import), not a refused null.
   """
   from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 
@@ -3375,11 +3347,7 @@ def _ill_typed_stored_entries(
         continue
       segments = (*parent, str(k))
       key = ".".join(segments)
-      reason = (
-        None
-        if registry_marker and key == "workset.registry" and v is None
-        else _stored_value_reason(key, v, family=family)
-      )
+      reason = _stored_value_reason(key, v, family=family)
       if reason is not None:
         out[segments] = f"{key} = {render_stored_scalar(v)}: {reason}"
       elif isinstance(v, dict) and family is None and key not in KEY_TYPES:

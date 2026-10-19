@@ -1316,12 +1316,12 @@ class TestStopUnderAPerOwnerCollision:
     live_runtime,
     capsys,
   ):
-    """A null primary ``workset.registry`` refuses the skip-line walk's read; the sweep
+    """A null primary ``workset.boxes`` refuses the skip-line walk's read; the sweep
     still stops every running box, and the refusal is said once."""
     from kanibako.settings.config_io import dump_doc
 
     _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-    dump_doc(std.primary_workset / "workset.yaml", {"workset": {"registry": None}})
+    dump_doc(std.primary_workset / "workset.yaml", {"workset": {"boxes": None}})
     live_runtime.list_running.return_value = [(f"kb-primary-{name}", "img", "Up")]
     capsys.readouterr()
 
@@ -1331,48 +1331,8 @@ class TestStopUnderAPerOwnerCollision:
     live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
     err = capsys.readouterr().err
     assert err.count("Warning: ") == 1, err
-    assert "workset.registry" in err, err
+    assert "workset.boxes" in err, err
     writeback.assert_not_called()
-
-  def test_a_valid_system_registry_survives_a_refused_system_table(
-    self,
-    std,
-    config,
-    tmp_home,
-    live_runtime,
-    capsys,
-  ):
-    """A null ``system.cache`` refuses the ``system:`` table, which tolerance drops; the
-    early tier, with its ``workset.registry``, is kept, so the box resolves through
-    ``members.yaml``.
-    """
-    from kanibako.settings.paths import load_std_paths
-
-    self._write_system(
-      std,
-      {"workset": {"registry": "{meta.workset.path}/members.yaml"}},
-    )
-    std = load_std_paths(config)
-    workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
-    members = std.primary_workset / "members.yaml"
-    assert name in members.read_text()
-    decoy = members.read_text().replace(name, "decoy")
-    (std.primary_workset / "registry.yaml").write_text(decoy)
-    self._write_system(
-      std,
-      {
-        "workset": {"registry": "{meta.workset.path}/members.yaml"},
-        "system": {"cache": None},
-      },
-    )
-    tolerant = load_std_paths(config, tolerate_bad_settings=True)
-    assert tolerant.early_system.system_refusal is not None
-    capsys.readouterr()
-
-    rc, _writeback = self._main(live_runtime, ["stop", str(workspace)])
-
-    assert rc == 0
-    live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
 
 
 class TestStopABoxThatRendersNoName:

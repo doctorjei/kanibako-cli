@@ -277,10 +277,10 @@ def _make_standalone_box(root: Path) -> str:
 
 def _primary_index() -> dict[str, str]:
   """The REAL primary name index, as ``box rm`` reads it."""
-  from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+  from kanibako.settings.paths import load_primary_boxes
 
   std = _std()
-  return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  return load_primary_boxes(std.primary_workset)
 
 
 class TestRealDoors:

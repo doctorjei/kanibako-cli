@@ -23,11 +23,11 @@ def _cli(*argv: str) -> int:
 
 @pytest.fixture
 def unmarked(config_file, tmp_home, credentials_dir, capsys):
-  """A registered standalone box at ``tmp_home/p/solo`` with its ``workset.yaml`` deleted."""
+  """A registered standalone box at ``tmp_home/p/solo`` with its ``registry.yaml`` mark deleted."""
   root = (tmp_home / "p" / "solo").resolve()
   root.mkdir(parents=True)
   assert _cli("create", "--standalone", "--register", str(root)) == 0
-  (root / "workset.yaml").unlink()
+  (root / "registry.yaml").unlink()
   std = load_std_paths(load_config(config_file))
   name = registry_store.standalone_name_for_root(std.registry, root)
   assert name
@@ -38,8 +38,8 @@ def unmarked(config_file, tmp_home, credentials_dir, capsys):
 def _refusal(root, name) -> str:
   return (
     f"Error: box '{name}' is registered as a standalone box at {root}, but "
-    f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
-    "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+    f"{root / 'registry.yaml'} is missing, so kanibako does not see a box there.\n"
+    "  Restore it: create that file holding only '__STANDALONE__'. "
     "Or unregister it, keeping its files:\n"
     f"  kanibako box rm {name}\n"
   )
@@ -147,7 +147,7 @@ def _printed_cures(text: str) -> "list[list[str]]":
   return [shlex.split(line) for line in text.splitlines() if line.startswith("  kanibako ")]
 
 
-_RESTORE = "Restore the box (first create that file with the line 'registry: null' under 'workset:') or delete it"
+_RESTORE = "Restore the box (first create that file holding only '__STANDALONE__') or delete it"
 
 
 @pytest.mark.parametrize("route", ["restore", "delete"])
@@ -164,13 +164,14 @@ def test_a_plain_rm_names_the_marker_restore_and_each_route_works(
     assert _cli("box", "rm", name) == 0
   out = capsys.readouterr().out
 
-  assert f"{root / 'workset.yaml'} is missing. {_RESTORE}:" in out
+  assert f"{root / 'registry.yaml'} is missing. {_RESTORE}:" in out
   assert "cannot be restored" not in out
   register, purge = _printed_cures(out)
   assert register == ["kanibako", "box", "register", name]
   assert purge == ["kanibako", "box", "rm", name, "--purge"]
   if route == "restore":
-    (root / "workset.yaml").write_text("workset:\n  registry: null\n")
+    (root / "workset.yaml").touch()
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     assert _cli(*register[1:]) == 0, capsys.readouterr().err
     assert registry_store.standalone_root(std.registry, name) == str(root)
     assert (root / "box_data").is_dir()
@@ -189,7 +190,7 @@ def test_the_create_refusal_names_the_marker_restore(unmarked, capsys):
   with pytest.raises(ProjectError) as raised:
     _assert_primary_home_free_for_create(std, name)
 
-  assert f"{root / 'workset.yaml'} is missing. {_RESTORE}, then retry:" in str(raised.value)
+  assert f"{root / 'registry.yaml'} is missing. {_RESTORE}, then retry:" in str(raised.value)
   assert _printed_cures(str(raised.value)) == [
     ["kanibako", "box", "register", name],
     ["kanibako", "box", "rm", name, "--purge"],
@@ -197,14 +198,14 @@ def test_the_create_refusal_names_the_marker_restore(unmarked, capsys):
 
 
 def test_a_marker_that_lost_its_line_is_named_as_such(unmarked, capsys):
-  """A ``workset.yaml`` that exists without the marker gets "add the line", not "create"."""
+  """A ``registry.yaml`` that exists without the marker is told to hold it, not to be created."""
   root, name, _std = unmarked
-  (root / "workset.yaml").write_text("workset: {}\n")
+  (root / "registry.yaml").write_text("boxes: {}\n")
   assert _cli("box", "rm", name) == 0
 
   assert (
-    f"{root / 'workset.yaml'} does not store the standalone marker. Restore the "
-    "box (first add the line 'registry: null' under 'workset:') or delete it:"
+    f"{root / 'registry.yaml'} does not hold the standalone marker. Restore the "
+    "box (first make its only content '__STANDALONE__') or delete it:"
   ) in capsys.readouterr().out
 
 
@@ -295,8 +296,10 @@ def test_an_unreadable_directory_is_refused_by_name_and_keeps_the_entry(
   before = registry_store.lookup_deregistered(std.registry, name)
 
   assert _cli(*(a.format(name=name) for a in verb)) == 1
+  # The register reads the marker first; the purge, the root's settings file.
+  first = "registry.yaml" if verb[1] == "register" else "workset.yaml"
   assert capsys.readouterr().err == (
-    f"Error: {root / 'workset.yaml'} could not be read (Permission denied). Make it and "
+    f"Error: {root / first} could not be read (Permission denied). Make it and "
     "its parent directories readable, then retry.\n"
   )
   assert registry_store.lookup_deregistered(std.registry, name) == before
@@ -313,12 +316,12 @@ def test_an_unparsable_marker_file_is_not_told_to_add_a_line(unmarked, capsys):
 
   assert _cli("box", "rm", name) == 0
   out = capsys.readouterr().out
-  assert "add the line" not in out
+  assert "standalone marker" not in out
   assert (
-    f"{root / 'workset.yaml'} will not parse. Fix it, then restore the box (it "
-    "needs the line 'registry: null' under 'workset:') or delete it:"
-  ) in out
+    f"{root / 'workset.yaml'} will not parse. Fix it, then restore the box or delete it:" in out
+  )
   register, _purge = _printed_cures(out)
-  (root / "workset.yaml").write_text("workset:\n  registry: null\n")
+  (root / "workset.yaml").write_text("")
+  (root / "registry.yaml").write_text("__STANDALONE__\n")
   assert _cli(*register[1:]) == 0, capsys.readouterr().err
   assert registry_store.standalone_root(std.registry, name) == str(root)

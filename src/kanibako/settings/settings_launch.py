@@ -73,6 +73,7 @@ from kanibako.settings.config import (
   _BOX_SCALAR_FIELDS,
   AGENT_META_FILE,
   WORKSET_META_FILE,
+  WORKSET_REGISTRY_FILE,
   KanibakoConfig,
   _typed_box_scalar,
   box_scalar_defaults_floor,
@@ -398,6 +399,8 @@ def meta_runtime_floor(
   # from its one carrier, exactly as the agent-tier formula below does — the spec
   # fixes the ref anchor, not a hand-typed leaf.
   floor["meta.workset.settings"] = f"{{meta.workset.path}}/{WORKSET_META_FILE}"
+  # The per-workset registry, fixed and uniform in every mode (a standalone's holds the mark).
+  floor["meta.workset.registry"] = f"{{meta.workset.path}}/{WORKSET_REGISTRY_FILE}"
   # The SINGLE SOURCE for the partition token; block B2 no longer sets it directly.
   floor["meta.workset.name"] = "{meta.runtime.ws_name}"
   # The RO identity anchor surfacing the runtime mode (spec §2b; was the settable
@@ -782,7 +785,7 @@ def workset_anchor_floor(
   ``resolve_workset_dir_key`` does, and only pre-snapshot.
 
   ⚑ Every ``<None>`` arm is SUPPLIED as a present ``None``, never omitted: PRIMARY's
-  ``workset.workspaces``, STANDALONE's ``workset.registry``, ``workset.template``,
+  ``workset.workspaces``, STANDALONE's ``workset.template``,
   ``workset.channelroot`` and the four workset-LOCAL ``workset.channels.*`` leaves.
   A user value reaches the key through the settings cascade, which outranks this floor
   by merge level. A declared ``<None>`` is INSTALLED like any declared default
@@ -840,13 +843,12 @@ def workset_anchor_floor(
     "workset.skip_kuid_check": True,
   }
   if standalone:
-    # STANDALONE declares ``<None>`` for all seven (spec §2c): a lone box has no
-    # registry tier, no template tier (a workset template seeds FUTURE boxes, of
+    # STANDALONE declares ``<None>`` for all six (spec §2c): a lone box has no
+    # template tier (a workset template seeds FUTURE boxes, of
     # which a standalone root has none; ``launch.templates`` omits the layer off the
     # SAME predicate — ``channels.has_workset_channels`` IS ``mode is not
     # standalone``), and no workset-local channels. ⚑ SUPPLIED, not omitted — the
     # docstring says why (keyspec §0 "it must RESOLVE").
-    floor["workset.registry"] = None
     floor["workset.template"] = None
     floor["workset.channelroot"] = None
     for leaf in sorted(_WORKSET_LOCAL_CHANNEL_LEAVES):
@@ -857,10 +859,6 @@ def workset_anchor_floor(
     # not a value — ``paths.establish_standalone`` MINTS the kuid into the box's
     # own ``workset.yaml`` at create, so a floor literal would shadow nothing on a
     # real box and FABRICATE an id on a half-created one.
-    # ⚑ The registry is spelled as the spec's own {key}-ref FORMULA, like every anchor
-    # above — not as the resolved literal ``project/workset_registry.py`` joins at
-    # use, which would make this a second carrier of one path.
-    floor["workset.registry"] = "{meta.workset.path}/registry.yaml"
     # The LAYER-3 SEED SOURCE (spec §2c/§2a) — same defect, same fix. Its value was
     # spelled ONLY by ``launch.templates.template_seed_defaults``, and that table
     # feeds the CREATE-time seed resolve alone, so for a box that ALREADY EXISTS

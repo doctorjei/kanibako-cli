@@ -328,8 +328,7 @@ def resolve_workset_boxes(
   ``resolve_workset_workspaces``: spec §2c gives standalone
   ``{meta.workset.path}/box_data`` where primary/named get ``.../boxes``.
   ⚑ DETECTION does NOT compose ``box_data/``: a standalone root is the one whose own
-  ``workset.yaml`` stores the ``workset.registry`` null.  This key's DEFAULT LEAF marks
-  nothing.
+  ``registry.yaml`` holds the standalone mark.  This key's DEFAULT LEAF marks nothing.
 
   🛑 A present ``<None>`` REFUSES, naming the key and the file
   (keyspec §2h "the ordinary present-`None` rule", Q96): every box's home and settings
@@ -1470,12 +1469,8 @@ class Workset:
 
   @property
   def registry_path(self) -> Path:
-    """The resolved per-workset ``registry.yaml`` — the ``boxes:`` membership, and only that."""
-    return workset_registry.resolve_workset_registry_path(
-      self.root,
-      load_workset_settings_doc(self.root),
-      early=self.early_scope,
-    )
+    """The per-workset ``registry.yaml`` — the ``boxes:`` membership, and only that."""
+    return workset_registry.workset_registry_path(self.root)
 
 
 # ---------------------------------------------------------------------------
@@ -1486,35 +1481,16 @@ class Workset:
 # ---------------------------------------------------------------------------
 
 
-def members_registry_path(root: Path, settings_doc: Any, *, early: EarlyScope) -> Path:
-  """The ``registry.yaml`` a workset's members are read from.
-
-  A root storing the standalone ``workset.registry`` null reads the DEFAULT path, where
-  :attr:`Workset.registry_path` would refuse the null.
-  """
-  from kanibako.launch.box_resolve import stores_standalone_registry_null
-
-  return workset_registry.resolve_workset_registry_path(
-    root,
-    None if stores_standalone_registry_null(root) else settings_doc,
-    early=early,
-  )
-
-
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset:
-  """Build the :class:`Workset` for the globally-registered *name* rooted at *root*.
-
-  A root storing the standalone ``workset.registry`` null still lists its members, from
-  the default registry path: every member guard (``workset rm`` included) counts them here.
-  """
+  """Build the :class:`Workset` for the globally-registered *name* rooted at *root*."""
   # ⚑ A root still carrying a RETIRED identity table refuses here, with the named
   # cure — it is the load path, not detection, that a 1.6/1.7 user reaches first
   # (their workset IS globally registered, so detection resolves it fine).
   refuse_reserved_registered_name(name, root, early_system=early_system)
   refuse_retired_workset_identity(root)
-  settings_doc = load_workset_settings_doc(root)
+  load_workset_settings_doc(root)  # refuses a malformed file, naming it
   ws = Workset(name=name, root=root, early_system=early_system)
-  registry_path = members_registry_path(root, settings_doc, early=ws.early_scope)
+  registry_path = ws.registry_path
   # ⚑ Members come from ``boxes:``, which is the WHOLE of what that file holds, and
   # the path is recorded there exactly once.
   ws.projects = [
@@ -1891,16 +1867,9 @@ def _logs_share_partners(
       continue
     if resolved is None or _symlink_loop(Path(resolved)) or Path(resolved).resolve() != shared:
       continue
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
 
     try:
-      boxes = workset_registry.load_workset_boxes(
-        workset_registry.resolve_workset_registry_path(
-          root,
-          None if stores_standalone_registry_null(root) else doc,
-          early=early,
-        )
-      )
+      boxes = workset_registry.load_workset_boxes(workset_registry.workset_registry_path(root))
     except (ConfigError, SettingsError, OSError):
       partners.append(_shown(name))
       continue
@@ -2169,9 +2138,9 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 def default_workset(std: StandardPaths) -> Workset:
   """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no identity on disk."""
-  from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+  from kanibako.settings.paths import load_primary_boxes
 
-  projects_map = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+  projects_map = load_primary_boxes(std.primary_workset)
   projects = [
     WorksetProject(name=name, source_path=Path(path)) for name, path in projects_map.items()
   ]
@@ -2363,7 +2332,7 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
   # ⚑ An in-place standalone MARKER is the box's self-declaration; connecting it would
   # be a silent "steal" + dual registration.  Refused, nothing is written, so the box
   # stays standalone.
-  if not force and box_resolve.stores_standalone_registry_null(resolved_source):
+  if not force and box_resolve.is_standalone_root(resolved_source):
     via = (
       f" (a link to {resolved_source})" if Path(literal_path(source)) != resolved_source else ""
     )
@@ -2462,10 +2431,7 @@ def add_project(
   from kanibako.launch import box_resolve as _box_resolve
 
   marked = (
-    std is not None
-    and is_external
-    and force
-    and _box_resolve.stores_standalone_registry_null(resolved_source)
+    std is not None and is_external and force and _box_resolve.is_standalone_root(resolved_source)
   )
   if marked:
     from kanibako.project import registry_store
@@ -2572,10 +2538,8 @@ def add_project(
       _workset_box_membership_undo,
     )
 
-    unwind.push(
-      _workset_box_membership_undo(ws.root, name, recorded_workspace, early=ws.early_scope)
-    )
-    _register_workset_box_membership(ws.root, name, recorded_workspace, early=ws.early_scope)
+    unwind.push(_workset_box_membership_undo(ws.root, name, recorded_workspace))
+    _register_workset_box_membership(ws.root, name, recorded_workspace)
 
     proj = WorksetProject(name=name, source_path=recorded_workspace)
     ws.projects.append(proj)
@@ -2716,9 +2680,7 @@ def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> Works
   an EXTERNAL member's discoverability link (recorded path ≠ ``workspaces/<name>``) is
   unlinked, and only the link.  Its store is :func:`remove_member_store`.
   *keep_link* skips that unlink (a rollback).
-  A null ``workset.registry`` refuses (resolving :attr:`Workset.registry_path`) before any change.
   """
-  _ = ws.registry_path
   target = _find_member(ws, name)
 
   # ⚑⚑ ORDER IS THE REVERSE OF add_project: clean the link BEFORE the durable write, so
@@ -2745,7 +2707,7 @@ def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> Works
   # under any name, with no way back short of hand-editing registry.yaml.
   from kanibako.settings.paths import _unregister_workset_box_membership
 
-  _unregister_workset_box_membership(ws.root, name, early=ws.early_scope)
+  _unregister_workset_box_membership(ws.root, name)
   ws.projects.remove(target)
   return target
 

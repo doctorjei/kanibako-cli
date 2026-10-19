@@ -141,8 +141,7 @@ A `null` path key is refused, never read as the text `None`. The two path layers
 the `system.*` path tier) and the `set` door build that refusal through
 `config.null_path_keys_error`, with membership from `config.refuses_null_path_key`. The composite
 `ERR_CONFIG_NULL_PATH` is raised by a null `workset.boxes`
-(`project.workset.resolve_workset_boxes`) and a null `workset.registry`
-(`project.workset_registry`).
+(`project.workset.resolve_workset_boxes`).
 
 ⚑⚑ **THE THREE LAYER-1 REFUSALS ARE ONE RULE FROM THREE SIDES** (spec §1: *"The Layer-1 set is
 exactly the config keys in the table below"*). `…_SETTINGS` catches a table OUTSIDE `config:`;

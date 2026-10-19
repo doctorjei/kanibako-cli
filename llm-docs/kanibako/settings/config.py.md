@@ -128,7 +128,7 @@ The predicates every door asks — the `set` door, the read-time refusals and th
 rule has one carrier:
 
 * **null path keys** — `refuses_null_path_key(canonical)` is the membership (derived from the
-  readers: both path tiers' defaults tables, plus `workset.boxes` and `workset.registry`), and
+  readers: both path tiers' defaults tables, plus `workset.boxes`), and
   `null_path_keys_error(path, keys, ...)` THE message builder, with a read-time lead that names the
   file and a `set` door lead that cannot. The one exclusion is `STANDARD_BIND_SOURCE_KEYS`: the
   `system.*` path keys a `<None>` OMITS rather than refuses, because each sources a standard bind.

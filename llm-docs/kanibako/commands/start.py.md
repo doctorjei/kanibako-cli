@@ -1301,7 +1301,7 @@ one token: `start` resolves a bare token in the NAME grammar, `create` in the PA
 
 `_broken_standalone_error` matches *project_dir* as a registered NAME (case-blind), then as a
 registered ROOT taken literally, and hands the root to `_standalone_store_error`, which also serves an
-UNREGISTERED root (whose own `registry: null` made the probe standalone).
+UNREGISTERED root (whose own mark made the probe standalone).
 
 ### The marker first, then two questions
 

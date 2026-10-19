@@ -541,7 +541,7 @@ policy:
       allow: ["template/", "canon/handbook/"]
       deny:
         "workset.yaml": "correctness — = meta.workset.settings"
-        "registry.yaml": "correctness — = workset.registry, the AUTHORITATIVE
+        "registry.yaml": "correctness — = meta.workset.registry, the AUTHORITATIVE
                           store of box membership + names"
         "auth/": "user_data_and_secrets — CREDENTIALS"
         "vault/": "user_data_and_secrets"
@@ -1157,16 +1157,6 @@ keys:
            seeds FUTURE boxes; a handbook is directives for the box that exists
            now — same shape, different reason)."
     spec: "§2c (ALL PROJECTS; R-9)"
-  workset.registry:
-    scope: workset
-    type: path
-    owner: workset
-    set: cli+file
-    default: {primary: "{meta.workset.path}/registry.yaml",
-              named: "{meta.workset.path}/registry.yaml", standalone: null}
-    note: "PER-WORKSET box registry; a NORMAL key, NOT a config-locate key.
-           Its entry KEYS yield the RO meta.box.name anchors."
-    spec: "§2c (2026-07-04)"
   workset.template:
     scope: workset
     type: path
@@ -1177,7 +1167,7 @@ keys:
     note: "seed layer 3; the layer is SKIPPED when the source dir is absent
            ([Jei:2026-07-09], was <None>). standalone: <None> — a lone box has
            no template tier (the spec's STANDALONE block states it explicitly:
-           'workset.{registry,template} | <None>'; per-mode shape F-1/5a,
+           'workset.template | <None>'; per-mode shape F-1/5a,
            [Jei:2026-08-02])"
     spec: "§2c / §2a (F-1/5a)"
   workset.kuid:
@@ -1916,6 +1906,17 @@ keys:
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            {meta.runtime.ws_settings} anchor is CUT (unified path; R-36)"
     spec: "§2c / §1A"
+  meta.workset.registry:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    type: path
+    owner: workset
+    value: "{meta.workset.path}/registry.yaml"
+    note: "the PER-WORKSET box registry (fixed; not settable); its entry KEYS
+           yield the RO meta.box.name anchors. A standalone's file holds only
+           __STANDALONE__ (system-design § Detection & import)"
+    spec: "§2c"
   meta.workset.auth.global_active:
     namespace: meta
     set: never
@@ -2996,6 +2997,10 @@ not_keys:
                                     RETIRED_FILE_KEY that hard-refuses with a cure
                                     naming system.agent)"
     "workset.meta.*":          "-> meta.workset.* (top-level meta namespace, 2026-06-29f)"
+    "workset.registry":        "-> meta.workset.registry (fixed, not settable); a stored
+                                one REFUSES naming the cure, and a standalone's
+                                `registry: null` becomes a registry.yaml holding
+                                __STANDALONE__"
     "box.meta.*":              "-> meta.box.* (2026-06-29f)"
     "agent.<agent>.meta.*":    "-> meta.agent.<agent>.* (2026-06-29f)"
 

@@ -115,8 +115,7 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
   the seeded category's ordinary missing-source semantics.
   ⚑⚑ THE SOURCE KEY IS NOT DECLARED HERE. This table only `@`-REFERENCES
-  `{workset.template}`; the value lives in `settings_launch.workset_anchor_floor`, beside
-  `workset.registry`. Reason: a source key spelled only in this table answered for a box being
+  `{workset.template}`; the value lives in `settings_launch.workset_anchor_floor`. Reason: a source key spelled only in this table answered for a box being
   CREATED and for no box that already existed, because this table's one consumer is the
   create-time seed resolve — the defect the reachability property names.
   ⚑ THE GATE STAYS HERE and it is the SAME condition the floor branches on:
@@ -342,7 +341,7 @@ their severities differ:
 |---|---|
 | BOX | `box.yaml` = `meta.box.settings`, the LAST cascade level, so template content would become the box's TOP-PRIORITY settings, carrying any key it liked (CORRECTNESS). Create-if-absent is no defense: on a fresh box there is nothing there to lose the race. |
 | AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |
-| WORKSET | `workset.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
+| WORKSET | `workset.yaml`; `registry.yaml` = `meta.workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
 
 ⚑ STANDALONE is where this bites hardest: `<workset_path>` is a directory the user ALREADY HAD, and
 kanibako never deletes it — so a refused copy is not cleanable by removing the destination.

@@ -141,7 +141,7 @@ class TestARefIntoALaterSetIsTheOrderingRulesAtBothDoors:
 def test_a_system_ref_is_refused(ws, std, tmp_path):
   """``{system.agent}`` is refused by the cascade probe before this door runs; pinned so
   the key stays refused whichever door answers."""
-  message = _workset_set("workset.registry", "/z/{system.agent}", ws, std, tmp_path)
+  message = _workset_set("workset.canon", "/z/{system.agent}", ws, std, tmp_path)
   assert message.startswith("Error:"), message
 
 

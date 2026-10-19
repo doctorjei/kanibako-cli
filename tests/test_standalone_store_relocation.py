@@ -37,7 +37,7 @@ def _relocate(root: Path, target: Path) -> Path:
 
   The leftover ``box_data/`` is left in place because that is the shape a
   relocating user actually has.  ⚑ It is NOT what detection finds the box by:
-  since SD the root's own ``workset.registry`` null defines it, so this leftover
+  the root's own ``registry.yaml`` mark defines it, so this leftover
   directory is inert — which is why these cases can assert against it.
   """
   target.mkdir(parents=True)

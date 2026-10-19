@@ -389,8 +389,6 @@ def _boxes_rendering_no_name() -> list[str]:
   """
   from kanibako.project.registry_store import load_standalone
   from kanibako.settings.paths import (
-    BoxMode,
-    _early_scope,
     iter_workset_projects,
     load_primary_boxes,
   )
@@ -407,12 +405,7 @@ def _boxes_rendering_no_name() -> list[str]:
   # A member of a LEGACY workset renders no name either, whatever its own name.
   unrendered: list[str] = []
   try:
-    names.extend(
-      load_primary_boxes(
-        std.primary_workset,
-        early=_early_scope(std, BoxMode.primary),
-      )
-    )
+    names.extend(load_primary_boxes(std.primary_workset))
   except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
     _warn_settings(exc)
 

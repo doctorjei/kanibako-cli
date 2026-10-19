@@ -154,10 +154,10 @@ left alone for the create-recovery path to find. A `None` journal is a no-op.
 
 ## `import_standalone` — kuid-first identity
 
-`root` is the standalone project root: the dir whose `workset.yaml` stores the marker.
+`root` is the standalone project root: the dir whose `registry.yaml` holds the marker.
 
-**The marker gate** (design D4): the root `workset.yaml` storing `workset.registry: null` is the
-standalone signal (`box_resolve.stores_standalone_registry_null(root)`); `box_data/` is not the
+**The marker gate** (design D4): the root `registry.yaml` holding `__STANDALONE__` is the
+standalone signal (`box_resolve.is_standalone_root(root)`); `box_data/` is not the
 marker. No marker → `None`, nothing to import.
 
 **Name composition is kuid-first.** The stored `workset.kuid`, sparse-persisted at create, prefixes the **LIVE dir leaf**:

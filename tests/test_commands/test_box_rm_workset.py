@@ -98,15 +98,10 @@ def _workset_names() -> list[str]:
 
 
 def _primary_names() -> list[str]:
-  from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+  from kanibako.settings.paths import load_primary_boxes
 
   std = _std()
-  return sorted(
-    load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
-  )
+  return sorted(load_primary_boxes(std.primary_workset))
 
 
 def _make_box(name: str, root: Path) -> Path:
@@ -145,14 +140,10 @@ def _drop_membership(name: str) -> None:
   Uses the product's own writer — the same call
   ``run_rm`` makes — so nothing here is a hand-built directory.
   """
-  from kanibako.settings.paths import BoxMode, _early_scope, unregister_primary_box_name
+  from kanibako.settings.paths import unregister_primary_box_name
 
   std = _std()
-  unregister_primary_box_name(
-    std.primary_workset,
-    name,
-    early=_early_scope(std, BoxMode.primary),
-  )
+  unregister_primary_box_name(std.primary_workset, name)
 
 
 def test_rm_of_a_workset_name_refuses_and_keeps_the_box_data_sharing_the_name(

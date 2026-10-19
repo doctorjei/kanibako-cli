@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.channels.channels import WS_TOKEN_PRIMARY
-from kanibako.project import workset, workset_registry
+from kanibako.project import workset
 from kanibako.settings.config import system_settings_path
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import _KEY_ROUTES
@@ -36,7 +36,7 @@ from tests.support.early import early_record
 
 # The modules that carry a no-snapshot resolver face.  ⚑ A LIST OF MODULES, not of
 # functions: the resolvers themselves are discovered by SHAPE below.
-_FACE_MODULES = (workset, workset_registry)
+_FACE_MODULES = (workset,)
 
 # ⚑ Every token shape a stored value may legally carry (spec ``:214``) that this seam
 # cannot resolve.  None of them may survive into a returned path.
@@ -374,19 +374,11 @@ class TestTheSystemFileIsTheTierBeneath:
 
   def test_a_system_value_reaches_the_faces(self, tmp_path):
     scope = _system_scope(
-      _write_system(
-        {
-          "boxes": "/sys/boxes/{meta.workset.path}",
-          "registry": "{meta.workset.path}/r.yaml",
-        }
-      ),
+      _write_system({"boxes": "/sys/boxes/{meta.workset.path}"}),
       tmp_path,
     )
     assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path(
       f"/sys/boxes/{tmp_path}",
-    )
-    assert workset_registry.resolve_workset_registry_path(tmp_path, None, early=scope) == (
-      tmp_path / "r.yaml"
     )
 
   def test_a_workset_value_beats_it_at_the_face(self, tmp_path):
@@ -620,24 +612,10 @@ class TestARecordIsTheSystemTier:
     ) == Path(f"/rec/chan/{tmp_path}/chat")
 
   def test_the_faces_read_the_record(self, tmp_path, no_system_open):
-    _write_system({"boxes": "/file/boxes", "registry": "/file/r.yaml"})
-    scope = _scope(
-      tmp_path,
-      {
-        "workset.boxes": "/rec/boxes/{meta.workset.path}",
-        "workset.registry": "{meta.workset.path}/r.yaml",
-      },
-    )
+    _write_system({"boxes": "/file/boxes"})
+    scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes/{meta.workset.path}"})
     assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path(
       f"/rec/boxes/{tmp_path}",
-    )
-    assert (
-      workset_registry.resolve_workset_registry_path(
-        tmp_path,
-        None,
-        early=scope,
-      )
-      == tmp_path / "r.yaml"
     )
 
   def test_a_refusal_names_the_records_file(self, tmp_path, no_system_open):

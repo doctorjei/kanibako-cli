@@ -22,8 +22,6 @@ from kanibako.channels import hub_daemon
 from kanibako.channels.helper_listener import HelperContext, HelperHub
 from kanibako.channels.hub_daemon import HubAction, HubProcess, decide_hub, serve, stop_hub
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.settings.paths import BoxMode
-from tests.support.early import early_record
 
 CONTAINER = "kb-primary-myapp"
 
@@ -66,7 +64,6 @@ def box(tmp_path, short_dir):
     shell_path=tmp_path / "shell",
     helpers_dir=helpers_dir,
     socket_path=socket_path,
-    early=early_record(tmp_path, mode=BoxMode.primary),
   )
   return socket_path, ctx, state
 

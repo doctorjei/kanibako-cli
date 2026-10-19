@@ -22,7 +22,6 @@ from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.paths import (
   BoxMode,
   STANDALONE_META_DIR,
-  _early_scope,
   register_primary_box_name,
 )
 
@@ -33,11 +32,12 @@ from kanibako.settings.paths import (
 
 
 def _make_standalone_marker(project_dir: Path) -> None:
-  """Give *project_dir* the standalone marker: a root ``workset.yaml`` storing
-  ``workset.registry`` as null (plus the ``box_data/`` dir a real box has).
+  """Give *project_dir* the standalone marker: a root ``registry.yaml`` holding the
+  mark (plus the ``workset.yaml`` and ``box_data/`` dir a real box has).
   """
   (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
-  (project_dir / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+  (project_dir / WORKSET_META_FILE).touch()
+  (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
 
 def _make_named_workset(std, root: Path, name: str) -> Path:
@@ -49,9 +49,7 @@ def _make_named_workset(std, root: Path, name: str) -> Path:
   section = registry_store.load_section(std.registry, "worksets")
   section[name] = str(root)
   registry_store.save_section(std.registry, "worksets", section)
-  return workset_registry.resolve_workset_registry_path(
-    root, None, early=_early_scope(std, BoxMode.named, name)
-  )
+  return workset_registry.workset_registry_path(root)
 
 
 def _register_box(registry_path: Path, box_name: str, box_path: Path) -> None:
@@ -60,33 +58,32 @@ def _register_box(registry_path: Path, box_name: str, box_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# stores_standalone_registry_null — the stored registry null, no project.mode read
+# is_standalone_root — the registry.yaml mark, no project.mode read
 # ---------------------------------------------------------------------------
 
 
-class TestStoresStandaloneRegistryNull:
+class TestIsStandaloneRoot:
   def test_true_when_both_marker_and_settings(self, project_dir):
     _make_standalone_marker(project_dir)
-    assert box_resolve.stores_standalone_registry_null(project_dir) is True
+    assert box_resolve.is_standalone_root(project_dir) is True
 
   def test_false_when_no_settings_file(self, project_dir):
     (project_dir / STANDALONE_META_DIR).mkdir()
-    assert box_resolve.stores_standalone_registry_null(project_dir) is False
+    assert box_resolve.is_standalone_root(project_dir) is False
 
-  def test_false_without_the_registry_null(self, project_dir):
+  def test_false_without_the_mark(self, project_dir):
     (project_dir / STANDALONE_META_DIR).mkdir()
     (project_dir / WORKSET_META_FILE).write_text("box: {}\n")
-    assert box_resolve.stores_standalone_registry_null(project_dir) is False
+    assert box_resolve.is_standalone_root(project_dir) is False
 
   def test_does_not_read_project_mode(self, project_dir):
     # A settings file WITHOUT any ``project.mode`` field still counts — the
-    # stored ``workset.registry`` null is the whole signal (the legacy
+    # registry.yaml mark is the whole signal (the legacy
     # ``_is_standalone_meta_dir`` required ``box.mode == standalone``).
     (project_dir / STANDALONE_META_DIR).mkdir()
-    (project_dir / WORKSET_META_FILE).write_text(
-      "box:\n  enable_vault: false\nworkset:\n  registry: null\n"
-    )
-    assert box_resolve.stores_standalone_registry_null(project_dir) is True
+    (project_dir / WORKSET_META_FILE).write_text("box:\n  enable_vault: false\n")
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
+    assert box_resolve.is_standalone_root(project_dir) is True
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +101,7 @@ class TestDetectBoxMode:
     box = tmp_home / "p"
     box.mkdir()
     _make_standalone_marker(box)
-    register_primary_box_name(
-      std.primary_workset, "p", str(box), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "p", str(box))
 
     result = box_resolve.detect_box_mode(box, std, config)
     assert result is not None
@@ -163,9 +158,7 @@ class TestDetectBoxMode:
     box = tmp_home / "anc"
     sub = box / "deep" / "sub"
     sub.mkdir(parents=True)
-    register_primary_box_name(
-      std.primary_workset, "anc", str(box), early=_early_scope(std, BoxMode.primary)
-    )
+    register_primary_box_name(std.primary_workset, "anc", str(box))
     (std.boxes / "anc").mkdir(parents=True)
 
     result = box_resolve.detect_box_mode(sub, std, config)
@@ -264,7 +257,8 @@ class TestResolveBoxIdentity:
     # (the leaf tracks the dir; the kuid is the stable prefix). Mutation:
     # revert box_resolve to ``registered_name or box_root.name`` → this goes RED.
     (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
-    (project_dir / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n  registry: null\n")
+    (project_dir / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
+    (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "abcde_oldleaf", project_dir.resolve())
     identity = box_resolve.resolve_box_identity(project_dir, std, config)
     assert identity is not None
@@ -291,9 +285,8 @@ class TestResolveBoxIdentity:
     # ``project.mode`` field, so build that ancestor marker here.
     box_root = tmp_home / "sabox"
     (box_root / STANDALONE_META_DIR).mkdir(parents=True)
-    (box_root / WORKSET_META_FILE).write_text(
-      "project:\n  mode: standalone\nworkset:\n  registry: null\n"
-    )
+    (box_root / WORKSET_META_FILE).write_text("project:\n  mode: standalone\n")
+    (box_root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "sakey", box_root.resolve())
     subdir = box_root / "deep" / "sub"
     subdir.mkdir(parents=True)

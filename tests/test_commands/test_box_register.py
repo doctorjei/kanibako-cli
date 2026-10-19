@@ -26,7 +26,6 @@ from kanibako.settings.messages import CURE_LEAF_NOT_ASCII
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
 from kanibako.settings.paths import load_primary_boxes
-from kanibako.settings.paths import BoxMode, _early_scope
 
 
 # ---------------------------------------------------------------------------
@@ -115,15 +114,14 @@ class TestReadoptPrimary:
     assert run_create(_create_args(proj_dir, name="mybox")) == 0
     # Deregister (rm without --purge parks a deregistered entry).
     assert run_rm(_rm_args("mybox")) == 0
-    early = _early_scope(std, BoxMode.primary)
-    assert load_primary_boxes(std.primary_workset, early=early) == {}  # membership gone
+    assert load_primary_boxes(std.primary_workset) == {}  # membership gone
     assert "mybox" in registry_store.load_deregistered(std.registry)
 
     # Readopt.
     assert run_register(_register_args("mybox")) == 0
 
     # Active membership restored → resolve_name finds the box again.
-    boxes = load_primary_boxes(std.primary_workset, early=early)
+    boxes = load_primary_boxes(std.primary_workset)
     assert boxes.get("mybox") == str(proj_dir)
     path, kind = resolve_name(
       std.registry,
@@ -282,7 +280,8 @@ class TestStandaloneRegisterLater:
     ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
     root = (tmp_home / "standalone_box").resolve()
     (root / "box_data").mkdir(parents=True)
-    (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (root / WORKSET_META_FILE).touch()
+    (root / "registry.yaml").write_text("__STANDALONE__\n")
     add_project(ws, "sb", root, std, force=True)
     capsys.readouterr()
 
@@ -338,12 +337,7 @@ class TestConflictSafety:
     # active "dup" membership at dir_b (an index-only write, no home reuse).
     dir_b = tmp_home / "b"
     dir_b.mkdir()
-    register_primary_box_name(
-      std.primary_workset,
-      "dup",
-      str(dir_b),
-      early=_early_scope(std, BoxMode.primary),
-    )
+    register_primary_box_name(std.primary_workset, "dup", str(dir_b))
     capsys.readouterr()
 
     # Readopt of the deregistered "dup" must REFUSE (active box owns the name)
@@ -354,10 +348,7 @@ class TestConflictSafety:
     assert "already registered" in err.lower() or "dup" in err
     # The active box is unchanged; the deregistered entry is preserved (not
     # silently dropped) so the user can still purge it.
-    assert load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    ).get("dup") == str(dir_b)
+    assert load_primary_boxes(std.primary_workset).get("dup") == str(dir_b)
     assert "dup" in registry_store.load_deregistered(std.registry)
 
   def test_standalone_register_refused_on_name_collision(
@@ -444,10 +435,7 @@ class TestPathDesignationIsNeverAName:
       patch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
       patch.setattr("kanibako.settings.paths.derived_name", lambda name: name)
       assert run_create(_create_args(".hidden")) == 0
-    assert ".hidden" in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    assert ".hidden" in load_primary_boxes(std.primary_workset)
     empty = tmp_home / "empty"
     empty.mkdir()
     monkeypatch.chdir(empty)
@@ -473,10 +461,7 @@ class TestPathDesignationIsNeverAName:
       f"give {path} in place of the name, or give it a valid name:\n"
       f"  kanibako box move {path} <new-path> --name _hidden\n"
     )
-    assert ".hidden" in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    assert ".hidden" in load_primary_boxes(std.primary_workset)
 
   def test_rm_of_an_existing_unboxed_dir_is_that_path_not_the_legacy_box(
     self,
@@ -530,10 +515,7 @@ class TestPathDesignationIsNeverAName:
     capsys.readouterr()
     assert run_rm(_rm_args(typed)) == 1
     assert capsys.readouterr().err == f"Error: '{typed}' is not a registered box.\n"
-    assert stored in load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    )
+    assert stored in load_primary_boxes(std.primary_workset)
 
   def test_register_does_not_resolve_it_by_name(
     self,
@@ -896,7 +878,7 @@ def test_register_of_a_markerless_parked_standalone_keeps_the_entry_and_names_th
   name = registry_store.standalone_name_for_root(std.registry, root)
   assert name and run_rm(_rm_args(name)) == 0
   before = registry_store.lookup_deregistered(std.registry, name)
-  marker = root / "workset.yaml"
+  marker = root / "registry.yaml"
   kept = marker.read_text()
   marker.unlink()
   capsys.readouterr()
@@ -905,7 +887,7 @@ def test_register_of_a_markerless_parked_standalone_keeps_the_entry_and_names_th
   assert capsys.readouterr().err == (
     f"Error: deregistered standalone box '{name}' is at {root}, but {marker} is missing, "
     "so kanibako does not see a box there.\n"
-    "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+    "  Restore it: create that file holding only '__STANDALONE__'. "
     f"Then retry:  kanibako box register {name}\n"
   )
   assert registry_store.lookup_deregistered(std.registry, name) == before
@@ -975,9 +957,9 @@ def test_an_unreadable_ancestor_workset_yaml_is_refused_not_skipped(
   if os.geteuid() == 0:
     pytest.skip("root reads a mode-000 file")
   _std(config_file)
-  marker = tmp_home / "outer" / "workset.yaml"
+  marker = tmp_home / "outer" / "registry.yaml"
   (tmp_home / "outer" / "inner").mkdir(parents=True)
-  marker.write_text("workset:\n  registry: null\n")
+  marker.write_text("__STANDALONE__\n")
   capsys.readouterr()
 
   marker.chmod(0)
@@ -1258,7 +1240,4 @@ class TestCreateStandaloneOptIn:
 
     assert run_create(_create_args(proj_dir, name="mybox")) == 0
 
-    assert load_primary_boxes(
-      std.primary_workset,
-      early=_early_scope(std, BoxMode.primary),
-    ).get("mybox") == str(proj_dir)
+    assert load_primary_boxes(std.primary_workset).get("mybox") == str(proj_dir)

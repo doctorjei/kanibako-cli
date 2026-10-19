@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 BOX_META_FILE = "box.yaml"
 # Workset-tier settings cascade file (spec §2c)
 WORKSET_META_FILE = "workset.yaml"
+# The per-workset registry under its root, ``meta.workset.registry`` (fixed; spec §2c)
+WORKSET_REGISTRY_FILE = "registry.yaml"
 # Agent-tier settings cascade file, INSIDE the per-agent store dir (spec §2d
 # meta.agent.<agent>.settings).  ⚑ The SYSTEM tier is NOT here: it stays
 # {config.settings} = global/settings.yaml.
@@ -557,6 +559,46 @@ def read_workset_kuid(path: Path) -> str:
   return str(value)
 
 
+def holds_standalone_mark(workset_root: Path) -> bool:
+  """True iff *workset_root*'s own registry file holds only the standalone mark.
+
+  ⚑ The mark DEFINES standalone (system-design § Detection & import), compared on the
+  RAW text, trimmed and case-blind, never parsed: this root's file only, never the cascade.
+  """
+  return is_standalone_mark_file(workset_root / WORKSET_REGISTRY_FILE)
+
+
+def is_standalone_mark_file(path: Path) -> bool:
+  """True iff the file at *path* holds only the standalone mark (:func:`holds_standalone_mark`)."""
+  from kanibako.channels.channels import WS_TOKEN_STANDALONE
+  from kanibako.utils import is_file_unless_gone, unreadable_path_error
+
+  if not is_file_unless_gone(path):
+    return False
+  try:
+    raw = path.read_bytes()
+  except OSError as exc:
+    raise unreadable_path_error(path, exc) from exc
+  return raw.strip().decode("utf-8", "replace").casefold() == WS_TOKEN_STANDALONE.casefold()
+
+
+def write_standalone_mark(workset_root: Path) -> None:
+  """Write the standalone mark as *workset_root*'s registry file.
+
+  🛑 A registry that holds anything else REFUSES: it is a workset's membership.
+  """
+  from kanibako.channels.channels import WS_TOKEN_STANDALONE
+
+  path = workset_root / WORKSET_REGISTRY_FILE
+  if holds_standalone_mark(workset_root):
+    return
+  if stat_unless_gone(path) is not None:
+    raise ConfigError(
+      f"{path} is a workset registry, so {workset_root} cannot become a standalone box."
+    )
+  atomic_write_text(path, WS_TOKEN_STANDALONE + "\n")
+
+
 def read_workset_skip_kuid_check(path: Path) -> bool:
   """The stored ``workset.skip_kuid_check`` bool at *path*, defaulting to ``True`` (checking OFF).
 
@@ -1050,10 +1092,10 @@ def refuses_null_path_key(canonical: str) -> bool:
   no CLI write route, carried only for the WHOLE rule.
 
   🛑 THE WORKSET DIR KEYS ARE A MIX, so the membership is the readers' answer and not
-  "is this a path key".  Two refuse a null on their own reader, and no table carries
-  either: ``workset.boxes`` (leaf :data:`BOXES_PATH`) and ``workset.registry``.  The
-  rest MEAN something: ``workset.workspaces: null`` is "no workspace dir" (spec §2c),
-  ``workset.logs: null`` "no logs dir".
+  "is this a path key".  One refuses a null on its own reader, and no table carries
+  it: ``workset.boxes`` (leaf :data:`BOXES_PATH`).  The rest MEAN something:
+  ``workset.workspaces: null`` is "no workspace dir" (spec §2c), ``workset.logs: null``
+  "no logs dir".
 
   ⭐ :data:`STANDARD_BIND_SOURCE_KEYS` is the one exclusion, and it exists because the
   SPEC says so: a refusal there would contradict §2a and leave the lone-``<None>``
@@ -1062,11 +1104,7 @@ def refuses_null_path_key(canonical: str) -> bool:
   return (
     (canonical in SYSTEM_PATH_DEFAULTS and canonical not in STANDARD_BIND_SOURCE_KEYS)
     or canonical in CONFIG_PATH_DEFAULTS
-    or canonical
-    in (
-      f"workset.{BOXES_PATH}",
-      "workset.registry",
-    )
+    or canonical == f"workset.{BOXES_PATH}"
   )
 
 
