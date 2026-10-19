@@ -128,7 +128,7 @@ authoritative name → workspace store, and a member registered under an OLD com
 before a `workset.workspaces` repoint) is invisible to the workspaces walk. It has to resolve HERE,
 by its REGISTERED path. Under a null `workset.workspaces` the skip still uses the default leaf
 (`project.workset.resolve_workspaces_locator`), where members connected before the null sit.
-Detection passes `every_member=True`: no skip, so no `workset.workspaces` is read, and
+Detection calls `find_connected_member` (no skip; its mark peek reads `workset.yaml`), and
 `path_space_worksets` (shared with `names._space_member`) gives the path space by root or
 registered member path alone
 (system-design § *Box designation*). The guards keep the skip.

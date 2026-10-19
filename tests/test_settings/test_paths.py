@@ -1954,7 +1954,7 @@ class TestA0RepointStrandedMembers:
     assert box_resolve._path_space_workset(pods_member, std) == "b2ws"
     detected = box_resolve.detect_box_mode(pods_member, std, config)
     assert detected is not None and detected.mode is BoxMode.named
-    owned = box_resolve.find_connected_external_box(pods_member, std, every_member=True)
+    owned = box_resolve.find_connected_member(pods_member, std)
     assert owned is not None and owned.box_name == "boxb"
 
 

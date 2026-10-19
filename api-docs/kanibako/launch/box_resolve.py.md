@@ -19,7 +19,8 @@ def standalone_marker_refusal(root: Path, lead: str) -> str
 def standalone_marker_repair(root: Path) -> tuple[str, str]
 def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None
 def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: bool=True, primary: bool=True) -> list[tuple[str, Path]]
-def find_connected_external_box(project_dir: Path, std: StandardPaths, *, skip: Callable[[_OwnedBox], bool] | None=None, every_member: bool=False) -> _OwnedBox | None
+def find_connected_member(project_dir: Path, std: StandardPaths, *, skip: Callable[[_OwnedBox], bool] | None=None, exclude: Callable[[str, Path], Callable[[Path], bool]] | None=None) -> _OwnedBox | None
+def find_connected_external_box(project_dir: Path, std: StandardPaths, *, skip: Callable[[_OwnedBox], bool] | None=None) -> _OwnedBox | None
 def path_space_worksets(worksets: Mapping[str, str | Path], path: Path, *, resolve_path: bool=False, members: bool=True) -> Iterator[tuple[str, Path, dict[str, str]]]
 def refuse_path_space_identity(path: Path, std: StandardPaths) -> None
 def named_path_space(path: Path, std: StandardPaths) -> str | None

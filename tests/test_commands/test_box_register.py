@@ -127,7 +127,6 @@ class TestReadoptPrimary:
       std.registry,
       "mybox",
       primary_workset=std.primary_workset,
-      early_system=std.early_system,
     )
     assert kind == "project"
     assert Path(path) == proj_dir
@@ -161,7 +160,6 @@ class TestReadoptPrimary:
         std.registry,
         "loop",
         primary_workset=std.primary_workset,
-        early_system=std.early_system,
       )
 
     assert run_register(_register_args("loop")) == 0
@@ -169,7 +167,6 @@ class TestReadoptPrimary:
       std.registry,
       "loop",
       primary_workset=std.primary_workset,
-      early_system=std.early_system,
     )
     assert kind == "project"
     assert Path(path) == proj_dir

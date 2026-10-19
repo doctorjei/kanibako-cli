@@ -2095,7 +2095,7 @@ def detect_project_mode(
   # otherwise the box resolves standalone, the very dual identity that --force removed.
   from kanibako.launch import box_resolve
 
-  if box_resolve.find_connected_external_box(resolved, std, every_member=True) is not None:
+  if box_resolve.find_connected_member(resolved, std) is not None:
     return DetectionResult(BoxMode.named, resolved)
 
   # 2. In-place standalone marker AT the resolved dir (D3-mode 3 precedes the treewalk):
@@ -2365,7 +2365,7 @@ def _stored_legacy_member(
   if not sep or not box or "/" in box:
     return None
   try:
-    path, workset = resolve_qualified_name(std.registry, typed, early_system=std.early_system)
+    path, workset = resolve_qualified_name(std.registry, typed)
   except (KanibakoError, OSError):
     return None
   if literal_path(path) == own_path:
@@ -2920,7 +2920,7 @@ def resolve_designation(
     return value
   if route is DesignationRoute.QUALIFIED:
     try:
-      return resolve_qualified_name(std.registry, value, early_system=std.early_system)[0]
+      return resolve_qualified_name(std.registry, value)[0]
     except ProjectError:
       return value
   # ⚑ THE CASCADE, not ``exists()``, ranks a same-named path (spec § Box designation;
@@ -2941,7 +2941,6 @@ def resolve_designation(
       primary_workset=std.primary_workset,
       path=value if on_disk else None,
       unreadable_path=unreadable,
-      early_system=std.early_system,
     )
   except AmbiguousNameError:
     raise

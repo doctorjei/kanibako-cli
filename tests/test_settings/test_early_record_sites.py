@@ -1,4 +1,4 @@
-"""The production sites in ``paths``, ``names``, ``box_resolve`` and ``settings_launch`` hand
+"""The production sites in ``paths``, ``box_resolve`` and ``settings_launch`` hand
 their early readers ``std``'s record, under the partition name the read is for.
 
 Every read of the system tier goes through :func:`workset_dirkeys.early_repoint`; the
@@ -73,15 +73,12 @@ class TestNamedSites:
     assert paths.detect_project_mode(root, std, load_config(config_file)).mode is BoxMode.named
     assert box_resolve.find_connected_external_box(outside, std) is not None
     assert box_resolve._find_owning_box(outside, std, load_config(config_file)) is not None
-    assert (
-      names.resolve_qualified_name(std.registry, "team/ext", early_system=std.early_system)[1]
-      == "team"
-    )
+    assert names.resolve_qualified_name(std.registry, "team/ext")[1] == "team"
     # Outside its space, the bare name is S8b's error naming the qualified spelling.
     from kanibako.errors import AmbiguousNameError
 
     with pytest.raises(AmbiguousNameError, match="'team/ext'"):
-      names.resolve_name(std.registry, "ext", early_system=std.early_system)
+      names.resolve_name(std.registry, "ext")
     assert "team" in early_reads
     assert set(early_reads) <= {"team", WS_TOKEN_PRIMARY}
 
