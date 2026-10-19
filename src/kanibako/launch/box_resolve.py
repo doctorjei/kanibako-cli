@@ -409,7 +409,7 @@ def detect_box_mode(
   caller's create path).
   """
   from kanibako.project import import_reconcile
-  from kanibako.settings.paths import _early_scope
+  from kanibako.settings.paths import _early_scope, _find_local_ancestor
 
   literal = Path(literal_path(project_dir))
 
@@ -445,7 +445,17 @@ def detect_box_mode(
     )
     return DetectionResult(BoxMode.standalone, literal)
 
-  # 4. The treewalk (compose, do not duplicate).  A PRIMARY result AT the path is its
+  # 4. Under an external member, a primary box (as in step 1) holds its subdirs unless a
+  # deeper member does.
+  if space != _PRIMARY_WORKSET_NAME and not _under_a_named_root(literal, std):
+    ancestor = _find_local_ancestor(literal, std)
+    member = find_connected_member(literal, std)
+    if ancestor is not None and (
+      member is None or len(ancestor.parts) > len(member.box_path.parts)
+    ):
+      return DetectionResult(BoxMode.primary, ancestor)
+
+  # 5. The treewalk (compose, do not duplicate).  A PRIMARY result AT the path is its
   # no-marker default, so not a box; at an ANCESTOR it is that box (a subdir launch).
   result = detect_project_mode(literal, std, config)
   if result.mode is BoxMode.primary and Path(literal_path(result.project_root)) == literal:
