@@ -970,38 +970,6 @@ def test_an_unreadable_ancestor_workset_yaml_is_refused_not_skipped(
   assert capsys.readouterr().err.endswith(_UNREADABLE.format(marker))
 
 
-def test_a_qualified_box_under_an_unreadable_workspaces_dir_is_refused_by_name(
-  config_file,
-  tmp_home,
-  credentials_dir,
-  capsys,
-  monkeypatch,
-):
-  """The QUALIFIED route's workspace fallback: EACCES is never "not found"."""
-  import os
-
-  from kanibako.cli import main
-
-  if os.geteuid() == 0:
-    pytest.skip("root reads a mode-000 directory")
-  parent = tmp_home / "wsp"
-  parent.mkdir()
-  monkeypatch.chdir(parent)
-  with pytest.raises(SystemExit) as made:
-    main(["workset", "create", "nws"])
-  assert made.value.code in (0, None)
-  workspaces = parent / "nws" / "workspaces"
-  (workspaces / "bar").mkdir()
-  capsys.readouterr()
-
-  workspaces.chmod(0)
-  try:
-    _cli_refusal("box", "info", "nws/bar")
-  finally:
-    workspaces.chmod(0o755)
-  assert capsys.readouterr().err.endswith(_UNREADABLE.format(workspaces / "bar"))
-
-
 @pytest.mark.parametrize(
   "verb", [("box", "create"), ("box", "rm"), ("start",)], ids=["create", "rm", "start"]
 )

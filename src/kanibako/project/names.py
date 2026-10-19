@@ -34,7 +34,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
-from kanibako.utils import is_dir_unless_gone, is_home_dir, literal_path
+from kanibako.utils import is_home_dir, literal_path
 
 if TYPE_CHECKING:
   from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
@@ -341,7 +341,7 @@ def _space_member(
   Returns ``(member workspace or None, that workset's boxes)``; ``(None, None)``
   when *cwd* is in no named workset's space.  "Inside" covers the root AND the
   resolved ``workset.workspaces`` dir, which a repoint can place outside the root.
-  The ``boxes:`` record is read first, then a workspace subdir of that name.
+  Membership is the ``boxes:`` record alone: an unregistered workspace subdir is no member.
   """
   if cwd is None:
     return None, None
@@ -388,9 +388,6 @@ def _space_member(
     registered = workset_registry.workset_box_path(registry_path, name)
     if registered is not None:
       return registered, boxes
-    candidate = ws_workspaces / name
-    if is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
-      return str(candidate), boxes
   return None, space_boxes
 
 
@@ -469,30 +466,16 @@ def resolve_qualified_name(
     raise ProjectError(f"Unknown workset: '{ws_name}'")
 
   from kanibako.project import workset_registry
-  from kanibako.project.workset import (
-    load_workset_settings_doc,
-    resolve_workspaces_locator,
-  )
 
   ws_root = Path(names["worksets"][stored_ws])
   from kanibako.launch.box_resolve import is_standalone_root
 
   if is_standalone_root(ws_root):
     raise ProjectError(f"Project '{proj_name}' not found in workset '{stored_ws}'")
-  settings_doc = load_workset_settings_doc(ws_root)
-  ws_early = _early(early_system, stored_ws)
-  # Registered membership FIRST (the authoritative name → workspace store):
-  # a member keeps its REGISTERED path wherever a composition epoch put it —
-  # a ``workset.workspaces`` repoint must not orphan a pre-repoint member
-  # (bifrost A0).
+  # Membership is registry-borne: a member keeps its REGISTERED path wherever a
+  # composition epoch put it, and an unregistered workspace subdir is no member.
   registry_path = workset_registry.workset_registry_path(ws_root)
   registered = workset_registry.workset_box_path(registry_path, proj_name)
-  if registered is not None:
-    return registered, stored_ws
-  # Fallback: a workspace subdir under the resolved ``workset.workspaces``
-  # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
-  # (no ``boxes:`` entry yet).
-  candidate = resolve_workspaces_locator(ws_root, settings_doc, early=ws_early) / proj_name
-  if not is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
+  if registered is None:
     raise ProjectError(f"Project '{proj_name}' not found in workset '{stored_ws}'")
-  return str(candidate), stored_ws
+  return registered, stored_ws

@@ -533,6 +533,8 @@ inside boxes. In order of likely impact:
 61. **`workset.registry` is no longer a setting, and a standalone box is marked by a `registry.yaml`
     holding `__STANDALONE__`; a stored `workset.registry` or `registry: null` stops the command** — see
     *The workset registry is a fixed file, and a standalone box is marked in it*.
+62. **A directory under `workset.workspaces` that `registry.yaml` does not list is not a member** — see
+    *An unregistered directory in a working set is not a member*.
 
 ---
 
@@ -7941,6 +7943,16 @@ the file and the cure; a box settings file drops it with a warning. kanibako con
 - A working set that pointed `workset.registry` at another file: move that file to
   `<workset root>/registry.yaml`, then delete the `registry:` line.
 - Anywhere else, the system settings file included: delete the line.
+
+### An unregistered directory in a working set is not a member
+
+**Read this if a working set holds a project directory you never connected or created.**
+
+**What changed.** Membership is the working set's `registry.yaml` alone. A directory under
+`workset.workspaces` that it does not list is no member: its bare name inside the working set and
+`<workset>/<name>` no longer reach it; a bare name falls through to the rest of the lookup.
+
+**What to do.** Connect it: `kanibako workset connect <workset> <workspaces-dir>/<name>`.
 
 ### 2.116 `-e` beats a `secret_path` key
 

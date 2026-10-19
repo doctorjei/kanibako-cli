@@ -440,9 +440,9 @@ workspace bind is mounted at every launch, so a box without one cannot run (Q106
 `resolve_workspaces_locator` is the DETECTION face: the resolved dir, or the named default leaf
 `<root>/workspaces` under a null, because in-tree members connected before the null still sit
 there and a lookup must still find them. Its readers only locate: `settings/paths._check_workset`
-and `_find_workset_for_path`, `project/names.resolve_name`'s cwd arm and
-`resolve_qualified_name`'s fallback, `launch/box_resolve.find_connected_external_box`'s in-tree
-skip, and `release_project`'s stale-link unlink. 🛑 Nothing creates or binds at its answer.
+and `_find_workset_for_path`, `project/names.resolve_name`'s cwd arm,
+`launch/box_resolve.find_connected_external_box`'s in-tree skip, and `release_project`'s
+stale-link unlink. 🛑 Nothing creates or binds at its answer.
 
 ```python
 def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope) -> bool

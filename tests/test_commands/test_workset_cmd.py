@@ -1273,6 +1273,33 @@ class TestWorksetConnect:
     assert _workset_boxes(reloaded) == {"alpha": str(leaf)}
     assert (leaf / "keep.txt").read_text() == "kept\n"
 
+  def test_connect_in_tree_resolves_by_name_before_any_start(
+    self,
+    config_file,
+    tmp_home,
+    capsys,
+  ):
+    """``connect`` registers at connect time: with membership registry-borne, the new
+    member resolves bare inside its space and as ``<workset>/<name>``, no start run."""
+    from kanibako.commands.workset_cmd import run_connect
+    from kanibako.project.names import resolve_name, resolve_qualified_name
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    root = (tmp_home / "ws_cres").resolve()
+    create_workset("cres", root, std)
+    leaf = root / "workspaces" / "alpha"
+    leaf.mkdir(parents=True)
+
+    args = argparse.Namespace(workset="cres", source=str(leaf), project_name="alpha", force=False)
+    assert run_connect(args) == 0
+    capsys.readouterr()
+
+    bare = resolve_name(std.registry, "alpha", cwd=root, early_system=std.early_system)
+    qualified = resolve_qualified_name(std.registry, "cres/alpha", early_system=std.early_system)
+    assert bare == (str(leaf), "project")
+    assert qualified == (str(leaf), "cres")
+
   def test_connect_in_tree_missing_leaf_refuses(
     self,
     config_file,

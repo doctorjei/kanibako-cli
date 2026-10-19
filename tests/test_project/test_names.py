@@ -214,11 +214,9 @@ class TestResolveName:
       resolve_name(registry, "nope", early_system=early_record(tmp_path))
 
   def test_cwd_context_finds_workset_project(self, registry: Path, tmp_path: Path) -> None:
-    """When cwd is inside a workset, check its workspace dirs first."""
+    """When cwd is inside a workset, check its members first."""
     ws_root = tmp_path / "ws"
-    ws_root.mkdir()
-    (ws_root / "workspaces" / "api").mkdir(parents=True)
-    register_name(registry, "myws", str(ws_root), section="worksets")
+    self._register_ws_member(registry, tmp_path, "ws", "api")
 
     path, kind = resolve_name(
       registry, "api", cwd=ws_root / "workspaces" / "api", early_system=early_record(tmp_path)
@@ -226,18 +224,22 @@ class TestResolveName:
     assert path == str(ws_root / "workspaces" / "api")
     assert kind == "project"
 
-  def test_cwd_context_honors_workspaces_repoint(self, registry: Path, tmp_path: Path) -> None:
-    """B2 (§3.3): the cwd-context step composes through the RESOLVED
-    ``workset.workspaces`` — a repoint in the workset workset.yaml is
-    honored, and the default dir is no longer consulted for the name."""
+  def test_cwd_context_answers_from_the_registry_not_a_workspaces_dir(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """The cwd-context step reads the ``boxes:`` record: a member registered under a
+    repointed ``workset.workspaces`` resolves, and a same-named dir does not."""
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import dump_doc
 
     ws_root = tmp_path / "ws"
     (ws_root / "pods" / "api").mkdir(parents=True)
-    # A decoy under the DEFAULT leaf proves the repoint is what resolves.
+    # A decoy under the DEFAULT leaf proves the record is what resolves.
     (ws_root / "workspaces" / "api").mkdir(parents=True)
     dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
     register_name(registry, "myws", str(ws_root), section="worksets")
+    reg_path = workset_registry.workset_registry_path(ws_root)
+    workset_registry.register_workset_box(reg_path, "api", ws_root / "pods" / "api")
 
     path, kind = resolve_name(registry, "api", cwd=ws_root, early_system=early_record(tmp_path))
     assert path == str(ws_root / "pods" / "api")
@@ -283,7 +285,9 @@ class TestResolveName:
     (tmp_path / "lnk2").symlink_to(real / "ws")
     (tmp_path / "plink").symlink_to(real)
     ws_root = tmp_path / registered / "ws"
-    register_name(registry, "myws", str(ws_root), section="worksets")
+    self._register_member_at(
+      registry, tmp_path / registered, "ws", "api", ws_root / "workspaces" / "api"
+    )
     primary = tmp_path / "primary_workset"
     decoy = tmp_path / "decoy"
     decoy.mkdir()
@@ -422,6 +426,18 @@ class TestResolveName:
 
     with pytest.raises(ProjectError, match="Ambiguous"):
       resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+
+  def test_an_unregistered_workspace_dir_is_no_member_in_its_space(
+    self, registry: Path, tmp_path: Path
+  ) -> None:
+    """Step 1 reads the ``boxes:`` record alone: inside the workset's space, the bare
+    name of an unregistered ``workspaces/<name>`` dir does not resolve."""
+    ws_root = tmp_path / "myws"
+    (ws_root / "workspaces" / "stray").mkdir(parents=True)
+    register_name(registry, "myws", str(ws_root), section="worksets")
+
+    with pytest.raises(ProjectError, match="Unknown project or workset: 'stray'"):
+      resolve_name(registry, "stray", cwd=ws_root, early_system=early_record(tmp_path))
 
   def test_workset_member_unknown_still_raises(self, registry: Path, tmp_path: Path) -> None:
     """A bare name that is no member of any workset still raises."""
@@ -874,31 +890,38 @@ class TestStandaloneNameResolution:
 
 class TestResolveQualifiedName:
   def test_resolve_qualified(self, registry: Path, tmp_path: Path) -> None:
+    from kanibako.project import workset_registry
+
     ws_root = tmp_path / "ws"
-    (ws_root / "workspaces" / "api").mkdir(parents=True)
+    member = ws_root / "workspaces" / "api"
+    member.mkdir(parents=True)
     register_name(registry, "myws", str(ws_root), section="worksets")
+    reg_path = workset_registry.workset_registry_path(ws_root)
+    workset_registry.register_workset_box(reg_path, "api", member)
 
     path, ws_name = resolve_qualified_name(
       registry, "myws/api", early_system=early_record(tmp_path)
     )
-    assert path == str(ws_root / "workspaces" / "api")
+    assert Path(path).resolve() == member.resolve()
     assert ws_name == "myws"
 
-  def test_qualified_honors_workspaces_repoint(self, registry: Path, tmp_path: Path) -> None:
-    """B2 (§3.3): ``workset/project`` composes through the RESOLVED
-    ``workset.workspaces`` (repoint honored)."""
+  @pytest.mark.parametrize("workspaces", [None, "{meta.workset.path}/pods"])
+  def test_an_unregistered_workspace_dir_is_not_found(
+    self, registry: Path, tmp_path: Path, workspaces: str | None
+  ) -> None:
+    """Membership is registry-borne: an unregistered ``{workset.workspaces}/<name>``
+    dir is not in the workset, at the default or a repointed ``workspaces``."""
     from kanibako.settings.config_io import dump_doc
 
     ws_root = tmp_path / "ws"
-    (ws_root / "pods" / "api").mkdir(parents=True)
-    dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "{meta.workset.path}/pods"}})
+    leaf = "pods" if workspaces else "workspaces"
+    (ws_root / leaf / "api").mkdir(parents=True)
+    if workspaces:
+      dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": workspaces}})
     register_name(registry, "myws", str(ws_root), section="worksets")
 
-    path, ws_name = resolve_qualified_name(
-      registry, "myws/api", early_system=early_record(tmp_path)
-    )
-    assert path == str(ws_root / "pods" / "api")
-    assert ws_name == "myws"
+    with pytest.raises(ProjectError, match="'api' not found in workset 'myws'"):
+      resolve_qualified_name(registry, "myws/api", early_system=early_record(tmp_path))
 
   def test_qualified_resolves_stranded_member_after_repoint(
     self, registry: Path, tmp_path: Path
