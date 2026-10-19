@@ -1232,9 +1232,9 @@ The per-workset registry's `boxes:` membership is the SOLE authoritative name â†
 (D1b/D3-auth): when *project_name* is registered, its REGISTERED path IS the workspace â€” the
 EXTERNAL dir for a connected box, `workspaces/<name>` for an in-tree box, and the path of the
 composition it was registered under for a member registered before a `workset.workspaces` repoint
-(re-deriving that member from the CURRENT composition would strand it). An UNREGISTERED member (an
-in-tree connect before its first start, or a fresh `initialize` create) falls back to the composed
-default, with the `box_resolve` identity derivation kept for any residual override. Under a null
+(re-deriving that member from the CURRENT composition would strand it). An UNREGISTERED member
+(a fresh `initialize` create) falls back to the composed default, with the `box_resolve` identity
+derivation kept for any residual override. Under a null
 `workset.workspaces` there is no default to compose, so an unregistered member raises
 `WorksetError` (`ERR_WORKSET_NULL_WORKSPACES`); a registered one resolves to its registered path.
 
