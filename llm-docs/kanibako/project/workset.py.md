@@ -230,7 +230,7 @@ The global registry is the `worksets` SECTION of the single registry document lo
 ⚑ **There is ONE section and ONE file.** This is the SAME `worksets` section the human-name index
 (`project/names.py`) reads and writes; no `names.yaml` / `worksets.yaml` file is read or written
 (asserted by `tests/test_project/test_workset.py`). `register_name` / `unregister_name` are the SOLE WRITERS;
-`_load_registry` is the read helper serving discovery / list / lookup.
+`read_worksets` is the read helper (it writes nothing); `list_worksets` serves discovery / list / lookup.
 
 That is why `create_workset` has a single registration step, and why `delete_workset` has ONE entry
 to remove.
@@ -624,9 +624,11 @@ root is refused by name on the way past rather than walked over in silence. Neit
 the refusal, so it reaches the user as an `Error:` line.
 
 ```python
-def _load_registry(std: StandardPaths) -> dict[str, Path]
+def read_worksets(std: StandardPaths) -> WorksetRows
 ```
-Return `{name: root_path}` from the global worksets registry. See **The global registry**.
+Read the global worksets registry, WRITING NOTHING: `.live` is `{name: root_path}`; `.droppable` holds
+each `default` alias variant whose root is gone or is the primary store, filtered out in memory. See
+**The global registry**.
 
 ```python
 def create_workset(name: str, root: Path, std: StandardPaths, *, force_logs_share: bool = False) -> Workset
@@ -678,7 +680,8 @@ the directory is missing; the resolved root then goes to `_load_workset`, which 
 ```python
 def list_worksets(std: StandardPaths) -> dict[str, Path]
 ```
-Return `{name: root_path}` for all registered worksets.
+Return `{name: root_path}` for all registered worksets: `read_worksets`, then each droppable row is
+unregistered with a note.
 
 ⚑ **ONLY the on-disk registry** — the synthesized default workset is never injected here. A caller
 that wants "every workset including default" must add it deliberately.

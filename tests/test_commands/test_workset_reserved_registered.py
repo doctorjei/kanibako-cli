@@ -384,3 +384,36 @@ def test_a_normal_workset_beside_a_reserved_one_is_untouched(env: dict[str, str]
   assert "kb-team-ext" in info.stdout
   assert "reserved name" not in info.stderr
   assert sorted(_worksets()) == ["primary", "team"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
+def test_read_worksets_on_a_read_only_tree_writes_nothing(
+  env: dict[str, str], capsys: pytest.CaptureFixture[str]
+) -> None:
+  """T-nowrite: the reader filters a droppable alias row in memory and touches no file."""
+  from kanibako.project.workset import read_worksets
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.paths import load_std_paths
+
+  home = Path(env["HOME"])
+  live_root, gone = home / "ws" / "alpha", home / "ws" / "Default"
+  live_root.mkdir(parents=True)
+  std = load_std_paths(load_config(user_config_file()))
+  registry = std.registry
+  registry.parent.mkdir(parents=True, exist_ok=True)
+  _write_worksets([("alpha", live_root), ("Default", gone)])
+  before = (registry.read_bytes(), registry.stat(), sorted(os.listdir(registry.parent)))
+  registry.chmod(0o444)
+  registry.parent.chmod(0o555)
+  try:
+    rows = read_worksets(std)
+  finally:
+    registry.parent.chmod(0o755)
+    registry.chmod(0o644)
+  assert rows.live == {"alpha": live_root}
+  assert rows.droppable == {"Default": (gone, "its directory no longer exists")}
+  after = registry.stat()
+  assert registry.read_bytes() == before[0]
+  assert (after.st_ino, after.st_mtime_ns) == (before[1].st_ino, before[1].st_mtime_ns)
+  assert sorted(os.listdir(registry.parent)) == before[2]
+  assert capsys.readouterr().err == ""

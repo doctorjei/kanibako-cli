@@ -46,7 +46,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from kanibako.project import registry_store, workset_registry
 from kanibako.settings import bootstrap
@@ -1647,45 +1647,54 @@ def refuse_retired_workset_identity(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _load_registry(std: StandardPaths) -> dict[str, Path]:
-  """Return ``{name: root_path}`` from the global worksets registry.
+class WorksetRows(NamedTuple):
+  """What :func:`read_worksets` reads: the live map and the rows the drop removes."""
 
-  ⚑ An entry keyed by a ``default`` alias variant whose root is gone, or is the
-  primary store itself, is DROPPED here with a note: no command could address it
-  and its cure would move the primary store.  Only the registry file is written.
-  """
+  live: dict[str, Path]
+  #: ``{name: (root, why)}`` — a ``default`` alias variant whose root is gone or is the
+  #: primary store: no command could address it, and its cure would move the primary store.
+  droppable: dict[str, tuple[Path, str]]
+
+
+def read_worksets(std: StandardPaths) -> WorksetRows:
+  """Read the global worksets registry; ⚑ NO WRITE — droppable rows are filtered in memory."""
   section = registry_store.load_section(std.registry, "worksets")
   primary = std.primary_workset.resolve()
-  registry: dict[str, Path] = {}
+  live: dict[str, Path] = {}
+  droppable: dict[str, tuple[Path, str]] = {}
   for name, root_str in section.items():
     root = Path(root_str)
     if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
       if registry_store._metadata_definitively_gone(root_str):
-        why = "its directory no longer exists"
-      elif _resolved_unless_loop(root) == primary:  # ⚑ resolve() raises on a loop on 3.11
-        why = "it is the primary working set, which `default` already names"
-      else:
-        why = None
-      if why is not None:
-        if (std.registry, name) not in _UNDROPPABLE:
-          try:
-            unregister_name(std.registry, name, section="worksets", exact=True)
-          except OSError as exc:
-            _UNDROPPABLE.add((std.registry, name))
-            print(
-              f"Warning: working set '{name}' ({root}) could not be removed "
-              f"from the registry ({why}): {exc}",
-              file=sys.stderr,
-            )
-          else:
-            print(
-              f"Note: removed working set '{name}' ({root}) from the "
-              f"registry: {why}. No file under it was touched.",
-              file=sys.stderr,
-            )
+        droppable[name] = (root, "its directory no longer exists")
         continue
-    registry[name] = root
-  return registry
+      if _resolved_unless_loop(root) == primary:  # ⚑ resolve() raises on a loop on 3.11
+        droppable[name] = (root, "it is the primary working set, which `default` already names")
+        continue
+    live[name] = root
+  return WorksetRows(live, droppable)
+
+
+def _drop_worksets(std: StandardPaths, droppable: dict[str, tuple[Path, str]]) -> None:
+  """Unregister each droppable row with a note; only the registry file is written."""
+  for name, (root, why) in droppable.items():
+    if (std.registry, name) in _UNDROPPABLE:
+      continue
+    try:
+      unregister_name(std.registry, name, section="worksets", exact=True)
+    except OSError as exc:
+      _UNDROPPABLE.add((std.registry, name))
+      print(
+        f"Warning: working set '{name}' ({root}) could not be removed "
+        f"from the registry ({why}): {exc}",
+        file=sys.stderr,
+      )
+    else:
+      print(
+        f"Note: removed working set '{name}' ({root}) from the "
+        f"registry: {why}. No file under it was touched.",
+        file=sys.stderr,
+      )
 
 
 #: Droppable ``(registry, key)`` pairs whose write failed: left out in memory, warned once.
@@ -1695,7 +1704,7 @@ _UNDROPPABLE: set[tuple[Path, str]] = set()
 def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]:
   """Every workset a ``workset.logs`` share can reach: the registered ones, PLUS the
   default, which is VIRTUAL (no registry row) and owns the primary log directory."""
-  return {**_load_registry(std), DEFAULT_WORKSET_ID: std.primary_workset}
+  return {**list_worksets(std), DEFAULT_WORKSET_ID: std.primary_workset}
 
 
 def _walk_scope(system: EarlySystem, name: str, root: Path) -> EarlyScope:
@@ -2045,7 +2054,7 @@ def create_workset(
   # ⚑ Same-kind uniqueness (D-B3): refuse, never auto-suffix.  A primary box of the same
   # name is a separate namespace (spec § Detection & import), so it is not consulted.
   # ⚑ Case-blind (§0, ⚑ NAMING RULES): ``Foo`` collides with a registered ``foo``.
-  registry = _load_registry(std)
+  registry = list_worksets(std)
   held = find_identifier(name, registry)
   if held is not None:
     # ⚑ Name the STORED spelling when it differs.  A user refused for a name that
@@ -2131,8 +2140,13 @@ def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 
 
 def list_worksets(std: StandardPaths) -> dict[str, Path]:
-  """Return ``{name: root_path}`` for all registered worksets — ⚑ the default workset is NOT here."""
-  return _load_registry(std)
+  """Return ``{name: root_path}`` for all registered worksets — ⚑ the default workset is NOT here.
+
+  ⚑ :func:`read_worksets` plus the drop: a droppable row is unregistered with a note.
+  """
+  rows = read_worksets(std)
+  _drop_worksets(std, rows.droppable)
+  return rows.live
 
 
 def default_workset(std: StandardPaths) -> Workset:
@@ -2157,7 +2171,7 @@ def resolve_workset_name(name: str, std: StandardPaths) -> Workset:
   """Resolve a workset *name* to a :class:`Workset` (``default``/``__default__`` → synthesized)."""
   if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
     return default_workset(std)
-  registry = _load_registry(std)
+  registry = list_worksets(std)
   # ⚑ Resolve THROUGH the stored spelling: the Workset must carry the name as
   # registered, not as typed, or everything derived from it disagrees with the registry.
   stored = find_identifier(name, registry)
@@ -2178,7 +2192,7 @@ def delete_workset(
   *keeps* is asked of each box tree and of the root before any of them is deleted;
   a path it answers True for is left in place (the caller has named it).
   """
-  registry = _load_registry(std)
+  registry = list_worksets(std)
   stored = find_identifier(name, registry)
   if stored is None:
     raise WorksetError(f"Workset '{name}' is not registered.")
@@ -2297,7 +2311,7 @@ def refuse_inside_other_workset(ws: Workset, source: Path, std: StandardPaths) -
   """
   resolved_source = source.resolve()
   target_root = ws.root.resolve()
-  for other_name, other_root in _load_registry(std).items():
+  for other_name, other_root in list_worksets(std).items():
     if _symlink_loop(Path(other_root)):
       continue
     other_root = Path(other_root).resolve()
