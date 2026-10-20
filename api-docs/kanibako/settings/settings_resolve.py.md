@@ -58,6 +58,7 @@ def refuse_scalar_at_table_key(key: str, value: Any, *, where: str | None=None) 
 def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=None, declared: bool=True, pref_agent: str | None=None) -> None
 def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
 def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
+def unquoted_reference_hint(value: object) -> str
 def is_known_var(name: str) -> bool
 def bare_reference_at(expr: str, i: int, *, is_var: Callable[[str], bool]=is_known_var) -> tuple[str, str] | None
 def refuse_bare_reference(expr: str, i: int, *, is_var: Callable[[str], bool]=is_known_var) -> None
@@ -87,9 +88,10 @@ def _lookup_ref(ref_name: str, lookup: Callable[[str, tuple[str, ...]], str], ch
 class SettingsError(KanibakoError):
 
 class ExprSyntaxError(SettingsError):
-    def __init__(self, message: str, *, entry: str | None=None) -> None
+    def __init__(self, message: str, *, entry: str | None=None, chain: tuple[str, ...]=()) -> None
 
-    def naming(self, entry: str, *, reached_from: str | None=None) -> 'ExprSyntaxError'
+    def naming(self, entry: str, *, chain: tuple[str, ...]=(), reached_from: str | None=None) -> 'ExprSyntaxError'
+    def in_file(self, where: str | None) -> 'ExprSyntaxError'
 
 @dataclass(frozen=True)
 class ResolveCtx:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13287,6 +13288,14 @@ class TestPersonaLiveTierWiring:
       var="NAV_X",
       system_doc={"agent": {self._NODE: {"env": {"NAV_X": raw}}}},
     )
+
+    # Each route's refusal names its own file; the claim is the expansion, not the address.
+    def unfiled(outcome):
+      if outcome[0] != "raised":
+        return outcome
+      return (*outcome[:2], re.sub(r" \(in settings file [^)]*\)$", "", outcome[2]))
+
+    via_file, via_keyspace = unfiled(via_file), unfiled(via_keyspace)
     assert via_file == via_keyspace, (
       f"agent-file and keyspace env disagree for {raw!r}: {via_file!r} vs {via_keyspace!r}"
     )

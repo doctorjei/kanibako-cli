@@ -78,6 +78,7 @@ def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
 def _agent_of(key: str) -> str
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
 def _refuse_non_string_path_keys(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
+def _refuse_bad_references(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
 def _resolution_set(dotted: str) -> 'str | None'
 ```
 
