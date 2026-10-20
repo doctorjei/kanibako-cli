@@ -2712,6 +2712,9 @@ migration code.** Four released config surfaces are removed outright
 
 ### Fixed
 
+- **A box with a live socket or FIFO in it moves.** `box move`, `box convert`, `box duplicate`, and a
+  snapshot no longer fail on a socket (such as gpg-agent's `S.gpg-agent`) or FIFO in the box: each is
+  skipped with a warning, since its program recreates it.
 - **A failed rollback names the cure that works.** When a `box create` of a workset box or a `workset connect`
   fails and leaves a box folder behind, its Note no longer says to remove the folder: the create's says
   `kanibako create --recover` finishes it, and the connect's says the same connect adopts it. The create's

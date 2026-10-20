@@ -22,11 +22,15 @@ once every tree has landed; the copy itself stays verbatim, so a stash leg needs
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import shutil
+import stat
 from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
+
+logger = logging.getLogger(__name__)
 
 
 def copy_tree_keeping_links(
@@ -44,6 +48,9 @@ def copy_tree_keeping_links(
   raises: a ``shutil.Error`` listing every entry it could not copy, after copying the rest
   (an existing entry at a link's name in a merge destination is such an entry — reported,
   never overwritten), or ``FileExistsError`` for an existing *dst* without *dirs_exist_ok*.
+
+  A socket, FIFO, or device has no content to copy (opening one fails or blocks): it is
+  not copied, with a warning, and is not a failure.
 
   A merge never writes THROUGH a link already in *dst*: a real file or directory meeting one
   is reported too, and the link and its target are left untouched.  A file meeting an existing
@@ -63,7 +70,9 @@ def copy_tree_keeping_links(
     _copy_root_link(src, dst, dirs_exist_ok=dirs_exist_ok, replace_existing=replace_existing)
     return
   refused: list[tuple[str, str, str]] = []
-  walk_ignore = _refusing_links_in_the_way(src, dst, ignore, refused) if dirs_exist_ok else ignore
+  walk_ignore = _skipping_special_files(ignore)
+  if dirs_exist_ok:
+    walk_ignore = _refusing_links_in_the_way(src, dst, walk_ignore, refused)
   failures: list[tuple[str, str, str]] = []
   try:
     shutil.copytree(src, dst, symlinks=True, ignore=walk_ignore, dirs_exist_ok=dirs_exist_ok)
@@ -312,6 +321,30 @@ def failed_entries(err: shutil.Error) -> str | None:
     lines.append(f"  … and {len(failures) - shown} more")
   count = f"{len(failures)} entr{'y' if len(failures) == 1 else 'ies'} failed:"
   return "\n".join([count, *lines])
+
+
+def _skipping_special_files(
+  ignore: Callable[[str, list[str]], Iterable[str]] | None,
+) -> Callable[[str, list[str]], set[str]]:
+  """Wrap *ignore* so a socket, FIFO, or device is skipped with a warning; ``lstat``, so a
+  link (to one or not) is never followed and stays a link."""
+
+  def skip(directory: str, names: list[str]) -> set[str]:
+    skipped = set(ignore(directory, names)) if ignore else set()
+    for name in names:
+      if name in skipped:
+        continue
+      path = os.path.join(directory, name)
+      try:
+        mode = os.lstat(path).st_mode
+      except FileNotFoundError:
+        continue
+      if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode) or stat.S_ISLNK(mode)):
+        logger.warning("not copied %s: not a file, directory, or symlink", path)
+        skipped.add(name)
+    return skipped
+
+  return skip
 
 
 def _refusing_links_in_the_way(

@@ -6,6 +6,7 @@ import contextlib
 import errno
 import logging
 import os
+import socket
 import stat
 import sys
 
@@ -909,15 +910,41 @@ def test_rename_across_devices_copies_a_tree_keeping_inner_links(tree, exdev):
   assert os.readlink(dst / "ln") == str(sentinel)
 
 
-def test_rename_across_devices_removes_nothing_when_the_copy_leaves_some_out(tree, exdev):
+def test_rename_across_devices_removes_nothing_when_the_copy_leaves_some_out(
+  tree, exdev, monkeypatch
+):
   root, outside, _ = tree
-  os.mkfifo(root / "a" / "b" / "fifo")
+  (root / "a" / "b" / "f").write_text("x")
+  real_copy = boxfs.copy_tree
+
+  def copy_tree(src, dst, **kw):
+    real_copy(src, dst, **kw)
+    return [src / "f"]
+
+  monkeypatch.setattr(boxfs, "copy_tree", copy_tree)
   with pytest.raises(OSError) as info:
     boxfs.rename(root / "a" / "b", outside / "b", root, dst_root=outside, across_devices=True)
   assert info.value.errno == errno.EIO
-  assert "not a file, directory, or symlink" in str(info.value)
-  assert stat.S_ISFIFO(os.lstat(root / "a" / "b" / "fifo").st_mode)
+  assert (root / "a" / "b" / "f").read_text() == "x"
   assert not os.path.lexists(outside / "b")  # the partial copy is gone
+
+
+def test_rename_across_devices_moves_a_tree_holding_a_socket_and_a_fifo(
+  tree, exdev, monkeypatch, caplog
+):
+  """A socket or FIFO has no content: the tree moves without it, with a warning each."""
+  root, outside, _ = tree
+  src = root / "a" / "b"
+  (src / "f").write_text("x")
+  os.mkfifo(src / "fifo")
+  monkeypatch.chdir(src)  # a relative bind keeps the socket path under AF_UNIX's limit
+  with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+    sock.bind("S.gpg-agent")
+    boxfs.rename(src, outside / "b", root, dst_root=outside, across_devices=True)
+  assert not os.path.lexists(src)
+  assert (outside / "b" / "f").read_text() == "x"
+  assert sorted(os.listdir(outside / "b")) == ["f"]
+  assert caplog.text.count("not a file, directory, or symlink") == 2
 
 
 def test_rename_across_devices_removes_a_partial_tree_on_a_failed_copy(tree, exdev, monkeypatch):

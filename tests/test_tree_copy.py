@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
+import threading
 from pathlib import Path
 
 import pytest
@@ -199,6 +201,44 @@ class TestNeverWritesThroughADestinationLink:
     (dst / "skip.lock").symlink_to(outside / "big.txt")
     copy_tree_keeping_links(src, dst, ignore=shutil.ignore_patterns("*.lock"), dirs_exist_ok=True)
     assert (outside / "big.txt").read_text() == "outside data"
+
+
+class TestSpecialFilesAreNotCopied:
+  """A socket or FIFO has no content: opening one fails (ENXIO) or blocks, so it is skipped."""
+
+  @pytest.mark.parametrize("merge", [False, True])
+  def test_a_socket_and_a_fifo_are_skipped_without_hanging(
+    self, tmp_path, monkeypatch, caplog, merge
+  ):
+    src = tmp_path / "src"
+    (src / ".gnupg").mkdir(parents=True)
+    (src / ".gnupg" / "pubring.kbx").write_text("keys")
+    os.mkfifo(src / "fifo")
+    (src / "to_fifo").symlink_to("fifo")
+    dst = tmp_path / "dst"
+    if merge:
+      dst.mkdir()
+    monkeypatch.chdir(src / ".gnupg")  # a relative bind keeps the path under AF_UNIX's limit
+    errors: list[BaseException] = []
+
+    def copy() -> None:
+      try:
+        copy_tree_keeping_links(src, dst, dirs_exist_ok=merge)
+      except BaseException as err:  # noqa: BLE001 - re-raised by the test thread below
+        errors.append(err)
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+      sock.bind("S.gpg-agent")
+      worker = threading.Thread(target=copy, daemon=True)
+      worker.start()
+      worker.join(timeout=10)
+    assert not worker.is_alive(), "the copy hung on the FIFO"
+    assert errors == []
+    assert (dst / ".gnupg" / "pubring.kbx").read_text() == "keys"
+    assert os.listdir(dst / ".gnupg") == ["pubring.kbx"]
+    assert not os.path.lexists(dst / "fifo")
+    assert os.readlink(dst / "to_fifo") == "fifo"  # a link to one is still a link
+    assert caplog.text.count("not a file, directory, or symlink") == 2
 
 
 def test_failed_entries_names_each_source_and_caps_the_list():

@@ -535,7 +535,8 @@ def _copy_entries(
             (st.st_atime_ns, st.st_mtime_ns),
           )
       else:
-        _not_copied(skipped, s / name, "not a file, directory, or symlink")
+        # No content to copy, so not an entry left out: it is not in the returned list.
+        logger.warning("not copied %s: not a file, directory, or symlink", s / name)
   finally:
     for cs, cd, _, _, _, dir_st in stack:
       if dir_st is not None:
@@ -565,9 +566,10 @@ def copy_tree(
   warning each.  A link already in *dst* is REFUSED: left untouched, never
   followed or replaced, with a warning.  A name whose kind differs between the two
   sides (file vs. directory), or a link meeting an existing entry, is likewise
-  left with a warning.  FIFOs, sockets, and devices are not copied, with a warning.
-  Every entry not copied is in the returned list.  Files and directories keep
-  their mode bits and times.  ``None`` roots as for :func:`copy_file`.
+  left with a warning.  Every such entry is in the returned list.  FIFOs, sockets,
+  and devices have no content to copy: each is not copied, with a warning, and is
+  not in the list.  Files and directories keep their mode bits and times.  ``None``
+  roots as for :func:`copy_file`.
 
   *follow_src_links* reads a HOST source (*src_root* ``None``; else ValueError) as
   ``shutil.copytree`` does: *src* and every link inside it are followed, and what
@@ -836,9 +838,10 @@ def rename(
   *across_devices*: a rename refused with EXDEV moves as ``shutil.move`` does, but
   follows no link.  A leaf link is recreated at *dst* as a link, its text verbatim.
   A regular file is copied with its mode bits and times, replacing *dst* atomically.
-  A directory is copied to an absent *dst* (:func:`copy_tree`).  Then *src* is
-  removed.  A tree copy that fails or leaves anything out removes the partial
-  *dst* and keeps *src*; one that leaves anything out raises ``OSError(EIO)``.
+  A directory is copied to an absent *dst* (:func:`copy_tree`; a socket, FIFO, or
+  device inside is not carried).  Then *src* is removed.  A tree copy that fails or
+  leaves anything out removes the partial *dst* and keeps *src*; one that leaves
+  anything out raises ``OSError(EIO)``.
   Any other kind of entry re-raises the EXDEV.  Not atomic: an interrupt can leave
   the entry in both places, never in neither.
   """
@@ -897,8 +900,7 @@ def _move_across(src: Path, dst: Path, root: Path, dst_root: Path, refused: OSEr
       _drop_partial(dst, dst_root)
       raise OSError(
         errno.EIO,
-        "could not move; not copied (a symlink that is not followed, or an entry "
-        "that is not a file, directory, or symlink): " + ", ".join(map(str, skipped)),
+        "could not move; not copied: " + ", ".join(map(str, skipped)),
         str(src),
       )
     rmtree(src, root)
