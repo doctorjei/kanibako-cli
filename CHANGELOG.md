@@ -10,15 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **An old `@key` / `$NAME` reference spelling stored in a settings or config file is
-  refused naming the file that holds it**, beside the key and the braced cure. Before,
-  the refusal named the key (or, for a path key, neither) and left the file to find.
-- **An unquoted value starting with `{` is refused with the cure: quote it.** YAML reads
-  `key: {$HOME}/x` as a broken flow mapping and `key: {$HOME}` as a map; both refusals
-  now say so and show the quoted form, e.g. `key: '{$HOME}/x'`.
-
 ## [1.8.0] - 2026-10-17
 
 This release completes the **settings-keyspace rework** and lands the **canon books**.
@@ -341,14 +332,14 @@ migration code.** Four released config surfaces are removed outright
 ### Changed
 
 - **References are braced: `{a.b.c}` names a key and `{$NAME}` a variable.** For this release, a bare `@a.b.c`
-  naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command, naming
-  the braced spelling; otherwise `@` and `$` are ordinary characters. A literal brace is doubled (`{{`, `}}`). Only
-  `\\` and `\~` escape: respell an old `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell
-  `{$GUEST_HOME}` and braced `meta_ref` sources; a leftover `$GUEST_HOME` or `${GUEST_HOME}` is refused, naming the
-  file. A plugin skipped for such a refusal is reported as a refused value, not a version mismatch, and
-  `system defaults` prints the error of a plugin whose variables cannot be read. See `MIGRATION.md`, "References are
-  braced: `{a.b.c}` names a key and `{$NAME}` a variable" and "Plugin values spell references in braces:
-  `{$GUEST_HOME}` and `{meta.agent.<agent>.path}`".
+  naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command,
+  naming the file and the braced spelling; otherwise `@` and `$` are text. Quote a `{`-leading value:
+  `key: '{$XDG_CONFIG_HOME}/x'`. Double a literal brace (`{{`, `}}`). Only `\\` and `\~` escape: respell an old
+  `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell `{$GUEST_HOME}` and braced `meta_ref`
+  sources, and refuse a leftover `$GUEST_HOME` or `${GUEST_HOME}` likewise. A plugin skipped for one is reported
+  as a refused value, not a version mismatch; `system defaults` prints why a plugin's variables cannot be read.
+  See `MIGRATION.md`, "References are braced: `{a.b.c}` names a key and `{$NAME}` a variable" and "Plugin values
+  spell references in braces: `{$GUEST_HOME}` and `{meta.agent.<agent>.path}`".
 - **A persistent box has helpers.** A plain `start` or `start --detach` no longer turns helpers off;
   `allow_helpers` and `--no-helpers` decide in every mode. The helper hub runs in its own host process,
   outlives `kanibako start`, and exits when the box stops (`kanibako stop` stops it, and the box's
