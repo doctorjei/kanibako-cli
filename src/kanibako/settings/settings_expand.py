@@ -413,7 +413,7 @@ class _Expander:
           except ExprSyntaxError as exc:
             # A grammar refusal names its entry (keyspec "References");
             # LENIENT keys its record by the same path instead.
-            raise exc.naming(_leaf_label(child_path)) from None
+            raise exc.naming(_leaf_label(child_path), chain=child_path) from None
       finally:
         read = self._reading.pop()
         self._leaf_labels.pop()
@@ -814,7 +814,9 @@ class _Expander:
       # A grammar refusal names the key that HOLDS the bad value, never the leaf
       # that reached it (keyspec "References"); the first name given stands.
       leaf = self._leaf_labels[-1] if self._leaf_labels else dotted
-      raise exc.naming(dotted, reached_from=None if leaf == dotted else leaf) from None
+      raise exc.naming(
+        dotted, chain=tuple(dotted.split(".")), reached_from=None if leaf == dotted else leaf
+      ) from None
     finally:
       deps = self._reading.pop()
       reach = self._pop_reach()

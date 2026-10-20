@@ -239,11 +239,43 @@ def test_set_refuses_the_old_spelling_naming_the_key(cli) -> None:
   assert "system.env.E" in proc.stderr and "write '{system.agent}'" in proc.stderr, proc.stderr
 
 
-def test_a_stored_old_spelling_is_named_at_load(cli) -> None:
-  _system_file(cli).write_text(_STORED)
+@pytest.mark.parametrize(
+  ("stored", "entry"),
+  [
+    (_STORED, "'system.env.E'"),
+    (
+      'system:\n  bindings:\n    ro:\n      /x/.y: ["/a/@system.agent"]\n',
+      "'system.bindings.ro[/x/.y]'",
+    ),
+  ],
+)
+def test_a_stored_old_spelling_is_named_at_load(cli, stored, entry) -> None:
+  path = _system_file(cli)
+  path.write_text(stored)
   proc = cli("system", "show", "--effective")
   assert proc.returncode == 1, proc.stdout + proc.stderr
-  assert "system.env.E" in proc.stderr and "write '{system.agent}'" in proc.stderr, proc.stderr
+  assert entry in proc.stderr and "write '{system.agent}'" in proc.stderr, proc.stderr
+  assert f"(in settings file {path})" in proc.stderr, proc.stderr
+
+
+@pytest.mark.parametrize(
+  ("rel", "text", "key"),
+  [
+    (
+      ".local/share/kanibako/global/settings.yaml",
+      'system:\n  canon: "/x/$XDG_DATA_HOME"\n',
+      "system.canon",
+    ),
+    (".config/kanibako.cfg", 'config:\n  data: "$XDG_DATA_HOME/kb"\n', "config.data"),
+  ],
+)
+def test_a_stored_old_spelling_in_the_path_tier_names_key_and_file(cli, rel, text, key) -> None:
+  path = cli.home / rel
+  path.write_text(text)
+  proc = cli("system", "show", "--effective")
+  assert proc.returncode == 1, proc.stdout + proc.stderr
+  assert f"'{key}': Old reference spelling" in proc.stderr, proc.stderr
+  assert "write '{$XDG_DATA_HOME}'" in proc.stderr and f"(in {path})" in proc.stderr, proc.stderr
 
 
 def test_setting_the_guarded_key_is_the_repair(cli) -> None:

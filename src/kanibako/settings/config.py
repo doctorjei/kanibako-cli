@@ -238,6 +238,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
       % (path, "\n  ".join(undeclared), ", ".join(sorted(CONFIG_PATH_DEFAULTS)))
     )
   _refuse_null_paths(path, table, _LAYER1_TABLE, CONFIG_PATH_DEFAULTS)
+  _refuse_bad_references(path, table, _LAYER1_TABLE, CONFIG_PATH_DEFAULTS)
   return paths
 
 
@@ -264,6 +265,7 @@ def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str | N
     return {}
   _refuse_non_string_path_keys(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
   _refuse_null_paths(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
+  _refuse_bad_references(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
   # ⚑ A NULL AT AN ADMITTED KEY CARRIES AS ``None``, never as ``"None"``: the value is a
   # bind's SOURCE, and §0 resolves an embedded reference to a present ``<None>`` to
   # ``<None>`` — which is what collapses the bind.  The string would instead name a
@@ -1383,6 +1385,27 @@ def _refuse_non_string_path_keys(
     if key not in leaves or is_path_key_value(leaves[key]):
       continue
     raise ConfigError(ambiguous_path_shape_error(key, leaves[key], where=str(path)))
+
+
+def _refuse_bad_references(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
+  """Refuse a value at any of *path_keys* in *table* the value grammar refuses, naming
+  *path* and the key — an old ``@a.b``/``$NAME`` spelling with its braced cure.
+
+  The resolve would refuse it with neither, its inputs being merged across files.  The
+  one tokenizer rules (:func:`~kanibako.settings.settings_resolve.iter_expr_tokens`).
+  """
+  from kanibako.settings.settings_resolve import ExprSyntaxError, iter_expr_tokens
+
+  leaves = _flatten_leaves(table, prefix)
+  for key in path_keys:
+    value = leaves.get(key)
+    if not isinstance(value, str):
+      continue
+    try:
+      for _ in iter_expr_tokens(value):
+        pass
+    except ExprSyntaxError as exc:
+      raise ConfigError(f"{exc.naming(key)} (in {path})") from None
 
 
 def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":

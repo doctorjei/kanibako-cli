@@ -163,6 +163,7 @@ from kanibako.settings.settings_prefs import (
   resolve_valid_agents,
 )
 from kanibako.settings.settings_resolve import (
+  ExprSyntaxError,
   ResolveCtx,
   SettingsError,
   data_expr,
@@ -2732,14 +2733,18 @@ def build_launch_snapshot(
   if written_out is not None:
     written_out.extend(written)
   null_sources: NullSources = {}
-  expanded = expand(
-    snapshot,
-    ctx,
-    null_sources=null_sources,
-    refs_read=refs_read,
-    dest_keys=dest_keys,
-    derive=post_expand_keys(snapshot, agent_name),
-  )
+  try:
+    expanded = expand(
+      snapshot,
+      ctx,
+      null_sources=null_sources,
+      refs_read=refs_read,
+      dest_keys=dest_keys,
+      derive=post_expand_keys(snapshot, agent_name),
+    )
+  except ExprSyntaxError as exc:
+    # The grammar refusal names its key; the file holding the value is the address.
+    raise exc.in_file(_value_holder(written, exc.chain)) from None
   # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
   # are resolved terminals; a reference read them already (:func:`post_expand_keys`).
   _materialize_box_agent_mirror(expanded, active_agent=agent_name)
@@ -2889,6 +2894,16 @@ def key_setter(written: Sequence[_WrittenLevel], key: str) -> str | None:
   persona store, the CLI level).
   """
   return _none_setter(written, key, None)
+
+
+def _value_holder(written: Sequence[_WrittenLevel], chain: tuple[str, ...]) -> str | None:
+  """The settings file whose value wins at key path *chain*, a dest-keyed entry included."""
+  if not chain:
+    return None
+  decl, leaf = ".".join(chain[:-1]), chain[-1]
+  if len(chain) > 1 and entry_label(decl, leaf) != f"{decl}.{leaf}":
+    return _none_setter(written, decl, leaf)
+  return key_setter(written, ".".join(chain))
 
 
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]:

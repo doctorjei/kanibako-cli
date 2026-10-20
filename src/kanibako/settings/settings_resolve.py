@@ -113,22 +113,35 @@ class ExprSyntaxError(SettingsError):
   reference, an illegal escape (keyspec "References").
 
   *entry* names the setting that holds the value once a reader that knows it has
-  said so (:meth:`naming`); ``None`` until then.
+  said so (:meth:`naming`); ``None`` until then.  *chain* is that setting's key path,
+  for a reader that must find the file holding it (:meth:`in_file`).
   """
 
-  def __init__(self, message: str, *, entry: str | None = None) -> None:
+  def __init__(
+    self, message: str, *, entry: str | None = None, chain: tuple[str, ...] = ()
+  ) -> None:
     super().__init__(message)
     self.entry = entry
+    self.chain = chain
 
-  def naming(self, entry: str, *, reached_from: str | None = None) -> "ExprSyntaxError":
-    """This refusal with *entry* named in front; one already named is returned as is.
+  def naming(
+    self, entry: str, *, chain: tuple[str, ...] = (), reached_from: str | None = None
+  ) -> "ExprSyntaxError":
+    """This refusal with *entry* (at key path *chain*) named in front; one already named
+    is returned as is.
 
     *reached_from* names the setting whose reference led to *entry*, as a trail.
     """
     if self.entry is not None:
       return self
     trail = "" if reached_from is None else f" (reached from {reached_from})"
-    return ExprSyntaxError(f"'{entry}': {str(self).rstrip('.')}{trail}.", entry=entry)
+    return ExprSyntaxError(f"'{entry}': {str(self).rstrip('.')}{trail}.", entry=entry, chain=chain)
+
+  def in_file(self, where: str | None) -> "ExprSyntaxError":
+    """This refusal with the file *where* that holds the value appended; ``None`` adds none."""
+    if where is None:
+      return self
+    return ExprSyntaxError(f"{self}{_in_file(where)}", entry=self.entry, chain=self.chain)
 
 
 class _Unset:

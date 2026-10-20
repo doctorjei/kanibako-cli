@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An old `@key` / `$NAME` reference spelling stored in a settings or config file is
+  refused naming the file that holds it**, beside the key and the braced cure. Before,
+  the refusal named the key (or, for a path key, neither) and left the file to find.
+
 ## [1.8.0] - 2026-10-17
 
 This release completes the **settings-keyspace rework** and lands the **canon books**.
