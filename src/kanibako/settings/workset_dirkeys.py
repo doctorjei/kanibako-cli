@@ -281,16 +281,18 @@ class EarlyScope(NamedTuple):
   workset_name: str
 
 
-def early_tier(doc: Mapping[str, Any] | None) -> dict[str, str | None]:
+def early_tier(
+  doc: Mapping[str, Any] | None, *, where: Path | None = None
+) -> dict[str, str | None]:
   """Every ``workset.*`` EARLY value *doc* carries, dotted — the system tier, as data.
 
   Built on :func:`_stored_repoint`, the ONE extractor, so this and the cascade read the same
   slot the same way.  A key the document does not state is OMITTED (``UNSET`` is not a
-  value); a present null is ``None``.
+  value); a present null is ``None``.  *where* is the file *doc* was read from.
   """
   tier: dict[str, str | None] = {}
   for key in WORKSET_EARLY_KEYS:
-    value = _stored_repoint(doc, key)
+    value = _stored_repoint(doc, key, where=where)
     if isinstance(value, _Unset):
       continue
     tier[f"workset.{key}"] = value
@@ -643,7 +645,7 @@ def early_key_set_error(
       early_system
       if early_system is not None
       else EarlySystem(
-        tier=early_tier(doc),
+        tier=early_tier(doc, where=written_file),
         file=written_file,
         system_paths={},
         system_refusal=std_error,

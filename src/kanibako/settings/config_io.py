@@ -12,6 +12,7 @@ file and which nested slot a config KEY maps to is answered by
 from __future__ import annotations
 
 import errno
+import re
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, Callable
@@ -64,8 +65,26 @@ def yaml_problem(exc: yaml.YAMLError) -> str:
   if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
     mark = exc.problem_mark
     where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
-    return f"{exc.problem}{where}"
+    return f"{exc.problem}{where}{_unquoted_brace_hint(mark)}"
   return " ".join(str(exc).split())
+
+
+#: A ``key: value`` or ``- value`` line whose VALUE opens with an unquoted ``{``.
+_BRACE_VALUE_RE = re.compile(r"^(\s*(?:-\s+)?(?:[^\s#'\"{-][^#]*?:\s+)?)(\{[^#]*?)\s*(?:\s#.*)?$")
+
+
+def _unquoted_brace_hint(mark: yaml.Mark | None) -> str:
+  """The cure when the failure is at or after an unquoted ``{``-leading value: YAML read
+  the ``{`` as a flow mapping, so a ``{$NAME}``/``{a.b}`` reference must be quoted."""
+  buffer = getattr(mark, "buffer", None)
+  if mark is None or not isinstance(buffer, str):
+    return ""
+  lines = buffer.rstrip("\0").split("\n")
+  m = _BRACE_VALUE_RE.match(lines[mark.line]) if mark.line < len(lines) else None
+  if m is None or mark.column < m.end(1):
+    return ""
+  quoted = "'" + m.group(2).replace("'", "''") + "'"
+  return f"; a value starting with '{{' must be quoted: {m.group(1).strip()} {quoted}".rstrip()
 
 
 class DuplicateKeyError(yaml.YAMLError):

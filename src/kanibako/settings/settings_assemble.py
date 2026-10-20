@@ -83,6 +83,7 @@ from kanibako.settings.settings_resolve import (
   refuse_unrooted_source,
   unpack_bind,
   unpack_bind_entry,
+  unquoted_reference_hint,
 )
 
 _log = logging.getLogger(__name__)
@@ -866,6 +867,7 @@ def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None)
   """
   found = sorted(
     f"{prefix}.{display_agent_ref(str(node))}.{leaf}"
+    + (f" —{hint}" if (hint := unquoted_reference_hint(value)) else "")
     for node, sub in table.items()
     if isinstance(sub, dict)
     for leaf, value in sub.items()

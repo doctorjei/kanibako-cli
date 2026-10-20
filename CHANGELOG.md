@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An old `@key` / `$NAME` reference spelling stored in a settings or config file is
   refused naming the file that holds it**, beside the key and the braced cure. Before,
   the refusal named the key (or, for a path key, neither) and left the file to find.
+- **An unquoted value starting with `{` is refused with the cure: quote it.** YAML reads
+  `key: {$HOME}/x` as a broken flow mapping and `key: {$HOME}` as a map; both refusals
+  now say so and show the quoted form, e.g. `key: '{$HOME}/x'`.
 
 ## [1.8.0] - 2026-10-17
 

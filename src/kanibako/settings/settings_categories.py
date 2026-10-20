@@ -613,31 +613,32 @@ def refuse_non_scalar_family_value(
   as a Python repr.  Curing the rendering alone would have cured the screen and left
   the box wrong.
   """
-  from kanibako.settings.settings_resolve import SettingsError
+  from kanibako.settings.settings_resolve import SettingsError, unquoted_reference_hint
 
   if is_scalar_family_value(value) if category == "env" else is_path_key_value(value):
     return
   shape = _shape_phrase(value)
+  hint = unquoted_reference_hint(value)
   if category == "path":
     raise SettingsError(
       f"{key} holds {shape}; a PATH key takes ONE path spelled as a string "
       f"(keyspec §2a: a type mismatch for a typed scalar key is a hard error). "
       f"Its value is never coerced into a string, so {shape} names no "
-      f"directory to use: give one quoted path."
+      f"directory to use: give one quoted path.{hint}"
     )
   if category == "env":
     raise SettingsError(
       f"{key} holds {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
       f"an environment variable is a STRING. Its value is never coerced into "
       f"a string nor shell-split, so write ONE quoted value - 'x y' is one "
-      f"variable holding two words, not two values."
+      f"variable holding two words, not two values.{hint}"
     )
   raise SettingsError(
     f"{key} holds {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
     f"and its value is ONE host path - the file the box exports the variable "
     f"from. Its value is never coerced into a string, so {shape} names no "
     f"host file to mount: give a single path, and declare a second "
-    f"secret_path.<VAR> key for a second secret."
+    f"secret_path.<VAR> key for a second secret.{hint}"
   )
 
 

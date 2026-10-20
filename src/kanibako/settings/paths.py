@@ -1261,7 +1261,7 @@ def _path_tier_set_values(
       raise
     return merged, None
 
-  tier = early_tier(doc)
+  tier = early_tier(doc, where=settings_path)
   try:
     stored = system_table_set_values(settings_path, doc)
   except ConfigError as exc:

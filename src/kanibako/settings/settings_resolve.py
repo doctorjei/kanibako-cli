@@ -733,6 +733,21 @@ def match_braced(expr: str, i: int) -> tuple[Literal["ref", "var"], str, int] | 
   return kind, m.group(0), m.end() + 1
 
 
+def unquoted_reference_hint(value: object) -> str:
+  """The sentence for a map YAML read from an UNQUOTED whole-value reference, else ``""``.
+
+  ``key: {$HOME}`` is the flow mapping ``{"$HOME": None}``; the name is judged by
+  :func:`match_braced`, so only a map that IS a reference's spelling gets the hint.
+  """
+  if not isinstance(value, dict) or len(value) != 1:
+    return ""
+  ((name, inner),) = value.items()
+  text = f"{{{name}}}"
+  if inner is not None or not isinstance(name, str) or match_braced(text, 0) is None:
+    return ""
+  return f" It was read as a map because it was unquoted: write '{text}'."
+
+
 #: The characters a backslash may escape (keyspec "References"): ``\\`` and ``\~``.
 _ESCAPABLE: frozenset[str] = frozenset("\\~")
 
