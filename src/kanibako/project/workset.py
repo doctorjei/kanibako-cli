@@ -2214,8 +2214,9 @@ def delete_workset(
 
   kept: set[Path] = set()
   if boxes_dir is not None:
-    # ⚑⚑ BOX TREES FIRST (J-7), BEFORE THE UNREGISTER: a whole-root rmtree hits the
-    # root-owned 555 canon skeleton, and a refusal must leave the workset re-runnable.
+    # ⚑⚑ BOX TREES FIRST (J-7), BEFORE THE UNREGISTER: a whole-root rmtree can hit a
+    # subuid-owned canon skeleton an older kanibako left, and a refusal must leave the
+    # workset re-runnable.
     from kanibako.runtime.container import remove_box_tree
 
     # ⚑ RESOLVED, not composed — ``workset.boxes`` is repointable, and looking under
@@ -2759,7 +2760,7 @@ def remove_member_store(
   # ⚑ Per-box LEAVES only, never the shared parents.  ⚑⚑ RESOLVED to match
   # ``add_project``, or a repointed vault is orphaned and an unused dir removed.
   # ⚑ EVERY removal needs the UNSHARE ESCALATION (J-7): ``rmtree`` cannot enter a 555
-  # dir the caller OWNS, and a container writes as root.  ``remove_path`` spares a
+  # canon skeleton an older kanibako left, and a container writes as root.  ``remove_path`` spares a
   # linked leaf's target.
   from kanibako.runtime.container import remove_path
 

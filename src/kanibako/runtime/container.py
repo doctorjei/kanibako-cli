@@ -4,11 +4,11 @@ Terminology.  *Box* — a running container; *rig* — the image it runs from.  
 host-side mountpoint pre-created so the OCI runtime never has to mkdir a bind dest.
 *Mask* — an empty read-only tmpfs emitted over a box-dest; a VOID, with nothing inside
 it.  *Shadowing* — pre-existing host content at a bind DEST, hidden (not deleted) by the
-bind that lands on it.  *Managed canon* — the root-owned 555 skeleton box-create
-materializes under ``~/canon``, whose mountpoints the launch path does not manage.
+bind that lands on it.  *Managed canon* — the skeleton the canon pass makes under
+``~/canon``, whose mountpoints the launch path does not manage.
 
 ⚑ The ``⚑`` comments below record PLATFORM behavior, not design, and most of it cannot
-be tested from a box without podman.  Eight such claims are UNVERIFIED here and listed
+be tested from a box without podman.  Seven such claims are UNVERIFIED here and listed
 under "UNVERIFIED on this box" in ``llm-docs/kanibako/runtime/container.py.md``; do not
 delete one for lack of a covering test.
 """
@@ -22,9 +22,7 @@ import shutil
 import stat
 import subprocess
 import sys
-import threading
-import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from kanibako.errors import ContainerError, LabelQueryError
@@ -49,19 +47,6 @@ logger = get_logger("container")
 # ⚑ NOT plain ``keep-id``: the ``uid=``/``gid=`` pin is what stops ``:U`` recursively
 # chowning the box home and project tree to a stray subuid.  Needs podman >= 4.3.
 KEEP_ID_USERNS = f"--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}"
-
-
-# Post-start hook plumbing: bounded so a box that never comes up cannot spin a thread forever.
-_POST_START_TIMEOUT_S = 30.0
-_POST_START_POLL_S = 0.25
-
-
-def _run_post_start(hook: "Callable[[], None]") -> None:
-  """Invoke a post-start *hook*, swallowing anything it raises."""
-  try:
-    hook()
-  except Exception as exc:  # noqa: BLE001 - a hook must never break a launch
-    logger.debug("post-start hook failed: %s", exc)
 
 
 # The smallest rule a string must satisfy to be an image reference AT ALL: a registry
@@ -142,8 +127,6 @@ class ContainerRuntime:
     # True only when ``KANIBAKO_DOCKER_CMD`` chose ``cmd``; an explicit *command*
     # skips detection, so it never reads the variable.
     self.cmd_overridden = False
-    # Why the last ``unshare_chown``/``unshare_chmod``/``unshare_rename`` failed; "" after a success.
-    self.unshare_error = ""
     if command:
       self.cmd = command
     else:
@@ -226,51 +209,28 @@ class ContainerRuntime:
     )
     return result.returncode == 0
 
-  def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool:
-    """``chown uid:gid`` *paths* from within the rootless user namespace."""
-    # ⚑ NO ``-R``: callers pass an EXPLICIT list — a recursive sweep of ``~/canon``
-    # would take the seeded, agent-owned ``notebook/``/``workbook/`` books with it.
-    # ⚑ ``-h``: a symlink among *paths* is chowned itself, never its target.
-    return self._unshare_apply(["chown", "-h", f"{uid}:{gid}"], paths)
-
-  def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
-    """``chmod mode`` *paths* from within the rootless user namespace."""
-    # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
-    # ⚑ NO ``-h``: GNU chmod has it only from coreutils 9.5, so on an older host it
-    # would fail every call.  Callers on a box path refuse links first (boxfs).
-    return self._unshare_apply(["chmod", mode], paths)
-
   def unshare_rename(self, src: Path, dst: Path) -> bool:
-    """``rename(2)`` *src* to *dst* from within the rootless user namespace; never a copy."""
-    return self._unshare_apply(
-      [sys.executable, "-I", "-c", "import os,sys; os.rename(*sys.argv[1:])"],
-      [src, dst],
-    )
+    """``rename(2)`` *src* to *dst* from within the rootless user namespace; never a copy.
 
-  def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
-    """Run *argv* on *paths* as namespace root; on False, :attr:`unshare_error` says why."""
-    self.unshare_error = ""
-    if not paths:
-      self.unshare_error = "no paths given"
-      return False
-    runtime = Path(self.cmd).name
-    if "podman" not in runtime:
-      self.unshare_error = f"{runtime} has no rootless user namespace"
+    False for docker or a failure.
+    """
+    if "podman" not in Path(self.cmd).name:
       return False
     result = subprocess.run(
-      [self.cmd, "unshare", *argv, *(str(p) for p in paths)],
+      [
+        self.cmd,
+        "unshare",
+        sys.executable,
+        "-I",
+        "-c",
+        "import os,sys; os.rename(*sys.argv[1:])",
+        str(src),
+        str(dst),
+      ],
       capture_output=True,
       text=True,
     )
-    if result.returncode == 0:
-      return True
-    verb = Path(argv[0]).name
-    lines = (result.stderr or "").strip().splitlines()
-    detail = lines[0].strip() if lines else f"exit status {result.returncode}"
-    self.unshare_error = f"podman unshare {verb} failed: {detail}"
-    if verb == "chown" and "Operation not permitted" in detail:
-      self.unshare_error += " (the filesystem refuses ownership changes, e.g. NFS)"
-    return False
+    return result.returncode == 0
 
   def build(self, image: str, containerfile: Path, context: Path) -> None:
     """Build *image* from *containerfile*. Raises ContainerError on failure."""
@@ -402,7 +362,6 @@ class ContainerRuntime:
     entrypoint: str | None = None,
     cli_args: list[str] | None = None,
     detach: bool = False,
-    post_start: "Callable[[], None] | None" = None,
   ) -> int:
     """Run a container and return the exit code; *detach* backgrounds it (``-dt``, no ``--rm``)."""
     masks = tmpfs_masks or []
@@ -466,50 +425,10 @@ class ContainerRuntime:
           sys.stderr.write(result.stderr)
       else:
         logger.debug("Detached container started: %s", (result.stdout or "").strip())
-        # The box is up the instant ``run -d`` returns: hook runs INLINE, no watcher.
-        if post_start is not None:
-          _run_post_start(post_start)
       return result.returncode
 
-    # Foreground: inherit the terminal, and BLOCK for the whole session — so there is no
-    # "after start" moment in this thread and the hook needs a watcher alongside it.
-    watcher = None
-    if post_start is not None and name:
-      watcher = self._watch_for_start(name, post_start)
-    try:
-      fg_result = subprocess.run(cmd)
-    finally:
-      if watcher is not None:
-        watcher.set()
-      # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER: a box shorter-lived than one
-      # poll interval is never observed running, so this UNCONDITIONAL re-assert is
-      # what makes the on-disk state always end protected.  Never gate it on *watcher*.
-      if post_start is not None:
-        _run_post_start(post_start)
-    return fg_result.returncode
-
-  def _watch_for_start(
-    self,
-    name: str,
-    post_start: "Callable[[], None]",
-  ) -> "threading.Event":
-    """Fire *post_start* once *name* is running; return a cancel Event."""
-    canceled = threading.Event()
-
-    def _wait() -> None:
-      deadline = time.monotonic() + _POST_START_TIMEOUT_S
-      while not canceled.is_set() and time.monotonic() < deadline:
-        try:
-          if self.is_running(name):
-            _run_post_start(post_start)
-            return
-        except Exception as exc:  # noqa: BLE001 - never break a launch
-          logger.debug("post-start watcher probe failed: %s", exc)
-        canceled.wait(_POST_START_POLL_S)
-      logger.debug("post-start watcher gave up waiting for %s", name)
-
-    threading.Thread(target=_wait, daemon=True, name=f"kanibako-poststart-{name}").start()
-    return canceled
+    # Foreground: inherit the terminal and block for the whole session.
+    return subprocess.run(cmd).returncode
 
   def exec(
     self,
@@ -1039,8 +958,10 @@ def detect_shadowed_mounts(
   if enable_vault:
     candidates.append(GUEST_VAULT_RO)
     candidates.append(GUEST_VAULT_RW)
+  sources: dict[str, Path] = {}
   for mount in extra_mounts or []:
     candidates.append(mount.destination)
+    sources[mount.destination] = Path(mount.source)
 
   base_roots = {GUEST_HOME, GUEST_WORKSPACE}
   shadowed: list[str] = []
@@ -1059,6 +980,10 @@ def detect_shadowed_mounts(
       continue
     try:
       resolved = host_path.resolve()
+      # A bind IN PLACE (source = its own mountpoint: ``~/canon`` and its rw books)
+      # shows that very content, so it shadows nothing.
+      if dest in sources and sources[dest].resolve() == resolved:
+        continue
     except OSError:
       continue
     if resolved in seen_hosts:

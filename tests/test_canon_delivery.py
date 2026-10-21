@@ -18,9 +18,10 @@ was spelled ``bible``, and the keyspec keeps the retired spelling at its ``:1030
 row. Renaming a name inside a sentence about the past makes the sentence untrue. The nested-mount physics PASSED on real podman; the model was retired anyway
 because nesting forced MOUNTPOINTS to live inside bind SOURCES — site-packages for
 the charter chapter, the user's own stores for the handbook chapters — where a wheel
-cannot ship an empty directory and no runtime may safely write. Under the sibling
-model every mountpoint lives in the box home, materialized once at box create by
-``core_defaults.materialize_canon_skeleton`` and made root-owned + 555.
+cannot ship an empty directory and no runtime may safely write. Now every
+mountpoint lives in the box's own skeleton, made by
+``core_defaults.materialize_canon_skeleton`` at create and before each launch, and
+bound read-only at ``~/canon`` with ``notebook/`` + ``workbook/`` rw in place.
 
 ⚑ This module REPLACED ``test_playbook_delivery.py`` (the retired per-LEAF-FILE rom
 enumeration) in R1, and is REWRITTEN here for the sibling set.
@@ -29,8 +30,8 @@ enumeration) in R1, and is REWRITTEN here for the sibling set.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,8 +42,6 @@ from kanibako.settings import core_defaults
 from kanibako.launch import templates
 from kanibako.settings.core_defaults import (
   CANON_SEED_DENY_PREFIXES,
-  CANON_SKELETON_DIR_MODE,
-  CANON_SKELETON_FILE_MODE,
   CHARTER_AGENT_CHAPTER,
   HANDBOOK_CHAPTERS,
   PLUGIN_CHAPTER_MARKER_REL,
@@ -52,8 +51,6 @@ from kanibako.settings.core_defaults import (
   ROM_CONTENTS_REL,
   ROM_GUIDE_REL,
   ROM_ROOT_PARTS,
-  UNSHARE_BOX_ROOT_GID,
-  UNSHARE_BOX_ROOT_UID,
 )
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import narrow_table_winners
@@ -340,6 +337,9 @@ class TestTheDestinationPolicySets:
     assert core_defaults.canon_silent_dests() == {
       normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
       for chapter in HANDBOOK_CHAPTERS
+    } | {
+      normalize_bind_dest(f"{GUEST_HOME}/{rel}")
+      for rel in ("canon", *core_defaults.canon_rw_book_rels())
     } | {normalize_bind_dest(_CHARTER_AGENT_DEST)}
 
   def test_SYS_CONTENTS_is_in_NEITHER_set_so_it_still_warns(self):
@@ -446,9 +446,9 @@ class TestFailClosed:
 class TestDisjointness:
   def test_prefix_containment_not_set_intersection(self):
     """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
-    path to be refused. The message pins the PRIMARY reason (spec §2c): the
-    region is root-owned at create, so the copy fails with EACCES."""
-    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+    path to be refused. The message pins the reason (spec §2c): the region is
+    kanibako's read-only skeleton, never the box's own."""
+    with pytest.raises(PackagingError, match="never the box's own"):
       core_defaults.assert_canon_bind_seed_disjoint(
         {"canon/charter"},
         {"canon/charter/general/ROM_GENERAL.md"},
@@ -465,12 +465,10 @@ class TestDisjointness:
     """⚑ THE J-7 WIDENING. Under sibling binds ``canon/charter`` is no longer
     itself a bind dest — only its chapters are — so a guard built from the LITERAL
     dests would silently start allowing a seed at ``canon/charter/agent/…``. Spec
-    §2c forbids seeding anywhere under ``canon/charter/``, and under J-7 that path
-    is a root-owned 555 mountpoint, so the copy fails with EACCES at create rather
-    than merely being shadowed at launch. RED if someone narrows the deny list back
-    to the dests.
+    §2c forbids seeding anywhere under ``canon/charter/``. RED if someone narrows the
+    deny list back to the dests.
     """
-    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+    with pytest.raises(PackagingError, match="never the box's own"):
       core_defaults.assert_canon_bind_seed_disjoint(
         CANON_SEED_DENY_PREFIXES,
         {"canon/charter/agent/ROM_AGENT.md"},
@@ -520,7 +518,7 @@ class TestDisjointness:
 
   def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
     """Driven through the real emitter: a template seed under ``canon/charter``
-    aborts rather than being carried to a create that would EACCES."""
+    aborts rather than being carried to a create."""
     real_walk = templates.walk_shipped_files
 
     def _walk(root: Path) -> list[tuple[str, Path]]:
@@ -529,7 +527,7 @@ class TestDisjointness:
       return real_walk(root)
 
     monkeypatch.setattr(templates, "walk_shipped_files", _walk)
-    with pytest.raises(PackagingError, match="EACCES AT CREATE"):
+    with pytest.raises(PackagingError, match="never the box's own"):
       core_defaults.rom_default_categories()
 
 
@@ -759,7 +757,9 @@ class TestSiblingAssembly:
   read as precedent for re-introducing it.
   """
 
-  def test_no_canon_dest_is_a_prefix_of_another(self, tmp_path):
+  def test_no_packaged_canon_dest_is_a_prefix_of_another(self, tmp_path):
+    """The packaged binds are siblings of each other; their one parent is the
+    box's own ``~/canon``, never another packaged bind."""
     chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
 
     cats = _merged_canon_cats(chapter)
@@ -887,11 +887,14 @@ class TestLaunchWiring:
 
     snapshot, deliveries = self._launch_resolve(std, proj, target)
     must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    # As the launch does: the skeleton pass, then the emit over that home.
+    core_defaults.materialize_canon_skeleton(proj.shell_path, quiet=True)
     mounts = _emit_category_mounts(
       _launch_bind_map(snapshot),
       label="canon-wiring",
       must_exist=must_exist,
       skip_if_absent=skip_if_absent,
+      box_home=proj.shell_path,
     )
     return {m.destination: m for m in mounts}
 
@@ -909,10 +912,90 @@ class TestLaunchWiring:
     for dest in _CORE_DESTS:
       assert dest in by_dest, sorted(by_dest)
       assert by_dest[dest].options == "ro"
-    # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
-    # and ~/canon/charter is the retired whole-dir bind.
-    assert f"{GUEST_HOME}/canon" not in by_dest
+    # ⚑ ~/canon/charter is the retired whole-dir bind.
     assert f"{GUEST_HOME}/canon/charter" not in by_dest
+
+  def _emit_with_home(self, std, proj):
+    from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+
+    snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+    must_exist, skip_if_absent = self._main_source_policy(deliveries)
+    return _emit_category_mounts(
+      _launch_bind_map(snapshot),
+      label="canon-wiring",
+      must_exist=must_exist,
+      skip_if_absent=skip_if_absent,
+      box_home=proj.shell_path,
+    )
+
+  def test_the_box_skeleton_binds_ro_and_its_books_rw_in_place(self, std, config, project_dir):
+    """Spec rows ``box.bindings.ro[~/canon]`` + ``box.bindings.rw[~/canon/{notebook,
+    workbook}]``: sourced from the box's own skeleton, and the ro parent is emitted
+    BEFORE every canon bind over it."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    core_defaults.materialize_canon_skeleton(proj.shell_path)
+    mounts = self._emit_with_home(std, proj)
+    dests = [m.destination for m in mounts]
+    by_dest = {m.destination: m for m in mounts}
+
+    canon = f"{GUEST_HOME}/canon"
+    assert by_dest[canon].options == "ro"
+    assert Path(by_dest[canon].source) == proj.shell_path / "canon"
+    for rel in core_defaults.canon_rw_book_rels():
+      book = by_dest[f"{GUEST_HOME}/{rel}"]
+      assert "ro" not in book.options.split(","), rel
+      assert Path(book.source) == proj.shell_path / rel
+    under = [d for d in dests if d.startswith(f"{canon}/")]
+    assert len(under) >= 2 + len(_CORE_DESTS), dests
+    assert all(dests.index(canon) < dests.index(d) for d in under), dests
+
+  def test_a_linked_or_missing_book_is_omitted_silently(
+    self,
+    std,
+    config,
+    project_dir,
+    tmp_path,
+    caplog,
+  ):
+    """⚑ r5: a symlinked book source is never followed, refused, or replaced; a
+    missing one is never created by the rw guarantee-create (it follows links and
+    sits outside the box-file seam).  Both are omitted at DEBUG."""
+    import shutil
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    core_defaults.materialize_canon_skeleton(proj.shell_path)
+    notebook = proj.shell_path / "canon" / "notebook"
+    workbook = proj.shell_path / "canon" / "workbook"
+    shutil.rmtree(notebook)
+    shutil.rmtree(workbook)
+    target = tmp_path / "wiki-notebook"
+    target.mkdir()
+    notebook.symlink_to(target)
+
+    with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+      by_dest = {m.destination: m for m in self._emit_with_home(std, proj)}
+
+    for path in (notebook, workbook):
+      dest = f"{GUEST_HOME}/canon/{path.name}"
+      assert dest not in by_dest, dest
+      assert any(dest in r.getMessage() and "omitted" in r.getMessage() for r in caplog.records)
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not [m for m in warned if "notebook" in m or "workbook" in m], warned
+    assert os.readlink(notebook) == str(target)
+    assert list(target.iterdir()) == []
+    assert not workbook.exists() and not workbook.is_symlink()
+    assert f"{GUEST_HOME}/canon" in by_dest, "the ro parent still binds"
+
+  def test_a_null_book_entry_drops_just_its_rw_bind(self, std, config, project_dir):
+    """keyspace: a present-``None`` entry UNSETS just that destination; the book
+    then shows read-only under the ro ``~/canon``."""
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    core_defaults.materialize_canon_skeleton(proj.shell_path)
+    self._write_box_settings(proj, {"bindings": {"rw": {"~/canon/notebook": None}}})
+    by_dest = {m.destination: m for m in self._emit_with_home(std, proj)}
+    assert f"{GUEST_HOME}/canon/notebook" not in by_dest
+    assert f"{GUEST_HOME}/canon/workbook" in by_dest
+    assert by_dest[f"{GUEST_HOME}/canon"].options == "ro"
 
   def _write_box_settings(self, proj, box_table: dict) -> Path:
     """Write *box_table* as the box file's ``box:`` table; return the file."""
@@ -1117,7 +1200,7 @@ class TestLaunchWiring:
     tmp_path,
   ):
     """⚑ THE GATE-FALSE SHAPE J-7 SPECIFIES: no bind, but the mountpoint EXISTS in
-    the box home as an empty root-owned directory. The dangling ``@agent/`` import
+    the box home as an empty directory. The dangling ``@agent/`` import
     warning from the flattener is the honest signal — not a missing directory."""
     bare = tmp_path / "plugin-pkg" / "data" / "rom"
     bare.mkdir(parents=True)
@@ -1127,8 +1210,7 @@ class TestLaunchWiring:
     by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
     assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
 
-    with patch("kanibako.runtime.container.ContainerRuntime"):
-      core_defaults.materialize_canon_skeleton(proj.shell_path)
+    core_defaults.materialize_canon_skeleton(proj.shell_path)
     chapter_dir = proj.shell_path / "canon" / "charter" / "agent"
     assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
     assert not any(chapter_dir.iterdir()), "and it must be EMPTY"
@@ -1454,12 +1536,12 @@ class TestInternalBindEntryRefusal:
     bind still mounts on top) all pass."""
     box = {
       "box.masks": {
-        f"{GUEST_HOME}/canon": None,
+        f"{GUEST_HOME}/canon/charter": None,
         "/opt/kanibako2": True,
         f"{GUEST_HOME}/canon/charter/box/sub": True,
       },
       "box.bindings.rw": {"/opt/kanibako": ("/h/p",)},
-      "box.caches": {f"{GUEST_HOME}/canon": ("/h/c",)},
+      "box.caches": {f"{GUEST_HOME}/canon/charter": ("/h/c",)},
       "box.seeded": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
       "box.synced": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
     }
@@ -1518,18 +1600,11 @@ class TestInternalBindEntryRefusal:
         self._refuse([(self._level({"box.bindings.rw": {dest: None}}), None, None)])
 
 
-@pytest.fixture
-def fake_runtime():
-  """Patch ``ContainerRuntime`` at its definition module (the import inside
-  ``_protect_canon_skeleton`` is deferred, so this is the attribute it reads)."""
-  with patch("kanibako.runtime.container.ContainerRuntime") as rt:
-    rt.return_value.unshare_chown.return_value = True
-    rt.return_value.unshare_chmod.return_value = True
-    yield rt
-
-
 class TestCanonSkeleton:
-  def test_materializes_the_full_declared_set(self, tmp_path, fake_runtime):
+  """The SKELETON PASS (spec "The canon skeleton", steps 1–2): every canon mountpoint
+  exists in the box home, made through the box-file seam, before any bind lands."""
+
+  def test_materializes_the_full_declared_set(self, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
@@ -1539,7 +1614,7 @@ class TestCanonSkeleton:
       assert p.exists(), rel
       assert p.is_dir() == is_dir, rel
 
-  def test_the_three_file_mountpoints_are_zero_byte_files(self, tmp_path, fake_runtime):
+  def test_the_three_file_mountpoints_are_zero_byte_files(self, tmp_path):
     """A FILE bind mounts file-onto-file, so each needs a real (empty) file to
     land on — not a directory, and not nothing."""
     home = tmp_path / "home"
@@ -1555,23 +1630,19 @@ class TestCanonSkeleton:
       assert p.is_file(), rel
       assert p.stat().st_size == 0, rel
 
-  def test_skeleton_mirrors_the_bind_dests_exactly(self, tmp_path, fake_runtime):
+  def test_skeleton_mirrors_the_bind_dests_exactly(self):
     """⚑ THE MOUNTPOINT CONTRACT. Every canon bind dest must have a mountpoint in
-    the skeleton. A dest with none is a mountpoint podman creates itself — which
-    under the retired nested model meant mkdir-ing into site-packages, the exact
-    failure J-7 exists to remove."""
-    cats = core_defaults.rom_default_categories()
-    dests = set(cats[_ARM]) | {_CHARTER_AGENT_DEST}
+    the skeleton: under the ro ``~/canon`` crun cannot create a missing one on LXC
+    or an NFS home, and the launch fails."""
+    dests = set(core_defaults.rom_default_categories()[_ARM]) | {_CHARTER_AGENT_DEST}
+    for arm in core_defaults.canon_default_categories("claude").values():
+      if isinstance(arm, dict):
+        dests |= set(arm)
     skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
     for dest in dests:
       assert dest.removeprefix(f"{GUEST_HOME}/") in skeleton, dest
 
-  def test_creates_the_handbook_mountpoints_too(self, tmp_path, fake_runtime):
-    """⚑ The handbook BINDS are the seeds half's (they need ``<scope>.canon``
-    resolution, which does not exist yet) but their MOUNTPOINTS are part of THIS
-    one closed set. J-7 specifies the skeleton as a single set, an absent chapter
-    must show as an empty root-owned dir, and creating them later would mean
-    mkdir-ing into an already-555 tree."""
+  def test_creates_the_handbook_mountpoints_too(self, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
@@ -1580,19 +1651,12 @@ class TestCanonSkeleton:
     for chapter in HANDBOOK_CHAPTERS:
       assert (home / "canon" / "handbook" / chapter).is_dir(), chapter
 
-  def test_creates_the_import_fallback_entry_files(self, tmp_path, fake_runtime):
+  def test_creates_the_import_fallback_entry_files(self, tmp_path):
     """⚑⚑ F1: the three 0-byte IMPORT-FALLBACK files INSIDE the chapter dirs.
 
-    ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and
-    skip-if-absent governs the BIND, not the INDEX — so without these, every box
-    with no workset chapter (i.e. every primary box) printed ``unresolved import
-    workset/SYS_WORKSET.md`` on EVERY launch. With them, an unbound chapter
-    RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the mount,
-    so the store's real file shadows the fallback.
-
-    ⚑ The entry file sits DIRECTLY in the chapter dir. A ``directives/`` level
-    would still materialize a 0-byte file — and still warn on every launch,
-    because nothing imports that path.
+    ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, so without these
+    every box with no workset chapter warns ``unresolved import`` on every launch.
+    ⚑ The entry file sits DIRECTLY in the chapter dir: nothing imports a deeper path.
     """
     home = tmp_path / "home"
     home.mkdir()
@@ -1604,14 +1668,9 @@ class TestCanonSkeleton:
       assert fallback.is_file(), fallback
       assert fallback.read_bytes() == b"", "the fallback must be 0-byte"
 
-  def test_general_gets_no_import_fallback(self, tmp_path, fake_runtime):
-    """⚑ DELIBERATE ASYMMETRY. The system store ALWAYS supplies ``general``, so a
-    fallback there would mask a genuinely missing system handbook — which is
-    precisely what ``canon_hb_general`` being NON-optional exists to surface.
-
-    ⚑ The MOUNTPOINT must still exist (it is bound non-optionally); what must not
-    exist is anything INSIDE it. Asserting emptiness rather than one filename
-    catches a fallback planted under any spelling."""
+  def test_general_gets_no_import_fallback(self, tmp_path):
+    """⚑ DELIBERATE ASYMMETRY: a fallback in ``general`` would mask a genuinely
+    missing system handbook.  The MOUNTPOINT must still exist, and be empty."""
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
@@ -1621,16 +1680,9 @@ class TestCanonSkeleton:
     assert not list(general.iterdir()), sorted(general.iterdir())
 
   def test_the_fallback_names_match_what_SYS_CONTENTS_imports(self):
-    """The fallback paths are only useful if they are the ones the packaged index
-    actually imports — spelled in a different file, so drift is silent.
-
-    ⚑⚑ THE EXPECTATION IS DERIVED FROM THE SKELETON, NEVER RESTATED HERE. The
-    import path is read back out of ``canon_skeleton_rels()`` — the function that
-    PLACES the file — so if the skeleton ever re-introduces a level below the
-    chapter, the derived path stops matching what ``SYS_CONTENTS.md`` imports and
-    this REDS. Spelling the flat form on both sides would make the two agree by
-    construction and detect nothing.
-    """
+    """⚑⚑ THE EXPECTATION IS DERIVED FROM THE SKELETON, NEVER RESTATED HERE: the
+    import path is read back out of ``canon_skeleton_rels()``, so a level the
+    skeleton re-introduces below the chapter stops matching and this REDS."""
     contents = (
       templates._packaged_base_template() / templates.PACKAGED_HANDBOOK / "SYS_CONTENTS.md"
     ).read_text()
@@ -1649,202 +1701,133 @@ class TestCanonSkeleton:
         "puts the fallback); the import-fallback would resolve nothing"
       )
 
-  def test_fallbacks_are_protected_like_the_rest_of_the_skeleton(
-    self,
-    tmp_path,
-    fake_runtime,
-  ):
-    """They are MACHINERY, not content: root-owned and unwritable like every
-    other skeleton entry, so the agent cannot edit its own 'empty chapter'.
-
-    ⚑ The chapter dir is covered too — it is the fallback's parent, and it is
-    already a skeleton entry in its own right as that chapter's MOUNTPOINT."""
+  def test_creates_the_rw_books_when_missing(self, tmp_path):
+    """``notebook``/``workbook`` are rw mountpoints over the ro ``~/canon``: the
+    seed normally lays them, and the pass makes any the seed did not."""
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
+    assert core_defaults.canon_rw_book_rels() == ("canon/notebook", "canon/workbook")
+    for rel in core_defaults.canon_rw_book_rels():
+      assert (home / rel).is_dir(), rel
 
-    chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
-    covered = {str(p) for p in chown_paths}
-    hb = home / "canon" / "handbook"
-    for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-      assert str(hb / chapter / entry) in covered
-      assert str(hb / chapter) in covered
-
-  def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
-    """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
-    undeletable only because their parent is 555 — intended, per J-7."""
+  def test_is_idempotent_and_never_clobbers_the_books(self, tmp_path):
     home = tmp_path / "home"
-    home.mkdir()
-    core_defaults.materialize_canon_skeleton(home)
-    assert not (home / "canon" / "notebook").exists()
-    assert not (home / "canon" / "workbook").exists()
-
-  def test_is_idempotent(self, tmp_path, fake_runtime):
-    home = tmp_path / "home"
-    home.mkdir()
-    core_defaults.materialize_canon_skeleton(home)
-    (home / "canon" / "notebook").mkdir()
+    (home / "canon" / "notebook").mkdir(parents=True)
     (home / "canon" / "notebook" / "keep.md").write_text("mine\n")
-
-    core_defaults.materialize_canon_skeleton(home)  # must not raise or clobber
+    core_defaults.materialize_canon_skeleton(home)
+    core_defaults.materialize_canon_skeleton(home)
     assert (home / "canon" / "notebook" / "keep.md").read_text() == "mine\n"
 
-  def test_chown_covers_everything_with_the_container_root_uid(
-    self,
-    tmp_path,
-    fake_runtime,
-  ):
-    """⚑ THE UID ORACLE. ``chown 0:0`` inside ``podman unshare`` is the REAL host
-    user, whom ``keep-id:uid=1000`` maps to the in-box AGENT — so 0 would leave the
-    books agent-owned, the opposite of the intent. Pin the constant."""
+  def test_nothing_is_locked(self, tmp_path):
+    """The ro BIND replaces the retired ownership lockdown: every skeleton dir the
+    pass makes keeps owner write, so the host user can always manage the tree."""
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
+    for rel, is_dir in core_defaults.canon_skeleton_rels():
+      st = (home / rel).stat()
+      assert st.st_uid == os.getuid(), rel
+      if is_dir:
+        assert st.st_mode & 0o200, rel
 
-    chown_paths, uid, gid = fake_runtime.return_value.unshare_chown.call_args.args
-    assert (uid, gid) == (UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID)
-    assert uid != 0, "0 inside podman unshare is the host user = the in-box agent"
-    # ONE chown over the WHOLE skeleton — ownership is uniform, only modes split.
-    expected = [home / rel for rel, _ in core_defaults.canon_skeleton_rels()]
-    assert sorted(chown_paths) == sorted(expected)
-
-  def test_chmod_splits_dirs_555_from_file_mountpoints_444(
-    self,
-    tmp_path,
-    fake_runtime,
-  ):
-    """⚑ TWO MODES, TWO CALLS (spec J-7 banner, amended 2026-07-31).
-
-    The split is not cosmetic on the directory side: 555 keeps the SEARCH bit, and
-    a 444 directory would make crun's openat2 walk fail on every canon bind. On the
-    file side 555 would mark a 0-byte ``.md`` executable for no reason.
-    """
+  def test_restores_owner_write_on_a_555_skeleton_and_fills_it(self, tmp_path):
+    """§ 3 row 1: a box the retired lockdown left host-owned at 555.  The pass gives
+    each skeleton dir its owner write back, then creates what is missing under it."""
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
+    (home / "canon" / "workbook").rmdir()
+    (home / "canon" / "handbook" / "box" / "SYS_BOX.md").unlink()
+    dirs = [home / rel for rel, is_dir in core_defaults.canon_skeleton_rels() if is_dir]
+    for d in reversed(dirs):
+      if d.exists():
+        d.chmod(0o555)
+    try:
+      core_defaults.materialize_canon_skeleton(home, quiet=True)
+    finally:
+      for d in dirs:
+        if d.exists():
+          d.chmod(0o755)
+    assert (home / "canon" / "workbook").is_dir()
+    assert (home / "canon" / "handbook" / "box" / "SYS_BOX.md").is_file()
 
-    calls = {
-      mode: paths
-      for (paths, mode) in (c.args for c in fake_runtime.return_value.unshare_chmod.call_args_list)
-    }
-    assert set(calls) == {CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE}
-    assert (CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE) == ("555", "444")
-
-    rels = core_defaults.canon_skeleton_rels()
-    assert sorted(calls["555"]) == sorted(home / r for r, d in rels if d)
-    assert sorted(calls["444"]) == sorted(home / r for r, d in rels if not d)
-
-  def test_ownership_never_recurses_over_the_seeded_books(self, tmp_path, fake_runtime):
-    """A ``-R`` sweep of ``canon/`` would take the agent's own notebook/workbook
-    with it. The path list must be the enumerated skeleton, nothing more."""
+  def test_restore_reaches_every_skeleton_dir(self, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "canon" / "notebook").mkdir(parents=True)
     core_defaults.materialize_canon_skeleton(home)
+    dirs = [home / rel for rel, is_dir in core_defaults.canon_skeleton_rels() if is_dir]
+    for d in reversed(dirs):
+      d.chmod(0o555)
+    core_defaults.materialize_canon_skeleton(home, quiet=True)
+    assert {d: d.stat().st_mode & 0o777 for d in dirs} == {d: 0o755 for d in dirs}
 
-    chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
-    assert home / "canon" / "notebook" not in chown_paths
+  @pytest.mark.parametrize("quiet", (False, True))
+  def test_a_linked_rw_book_is_skipped_silently_and_untouched(self, tmp_path, caplog, quiet):
+    """⚑ r5: a user's ``~/canon/notebook -> ~/workspace/wiki/notebook`` is their own
+    setup.  Never refused, never followed, never replaced — and no warning."""
+    home = tmp_path / "home"
+    home.mkdir()
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (home / "canon").mkdir()
+    (home / "canon" / "notebook").symlink_to(target)
+    (home / "canon" / "workbook").symlink_to(tmp_path / "dangling")
+    with caplog.at_level(logging.DEBUG, logger="kanibako"):
+      core_defaults.materialize_canon_skeleton(home, quiet=quiet)
 
-  def test_falls_back_with_a_warning_when_no_runtime(self, tmp_path, caplog):
-    """DEGRADED BUT FUNCTIONAL: box create must not hard-fail without podman —
-    creating a box works today with no runtime installed — and the skeleton is
-    what makes the binds land, so the box is fully usable, just not litter-proof.
-    """
-    from kanibako.runtime.container import ContainerError
+    assert os.readlink(home / "canon" / "notebook") == str(target)
+    assert os.readlink(home / "canon" / "workbook") == str(tmp_path / "dangling")
+    assert list(target.iterdir()) == []
+    assert not (tmp_path / "dangling").exists()
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING], caplog.text
+    assert (home / "canon" / "charter" / "general").is_dir(), "the rest is still built"
+
+  def test_another_link_warns_at_create_and_is_never_followed(self, tmp_path, caplog):
+    home = tmp_path / "home"
+    home.mkdir()
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (home / "canon").mkdir()
+    (home / "canon" / "charter").symlink_to(target)
+    with caplog.at_level(logging.WARNING):
+      core_defaults.materialize_canon_skeleton(home)
+    assert list(target.iterdir()) == [], "nothing is created through the link"
+    assert any("canon/charter" in r.getMessage() for r in caplog.records), caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+      core_defaults.materialize_canon_skeleton(home, quiet=True)
+    assert not caplog.records, "a launch re-run says it at DEBUG"
+
+  def test_an_entry_it_cannot_create_warns_even_at_launch(self, tmp_path, caplog, monkeypatch):
+    """§ 3 row 2: a subuid-owned 555 skeleton refuses the create (EACCES).  Its
+    bind is omitted, so the miss is a WARNING naming the path, launch or not."""
+    from kanibako import boxfs
 
     home = tmp_path / "home"
     home.mkdir()
-    with (
-      patch(
-        "kanibako.runtime.container.ContainerRuntime", side_effect=ContainerError("no podman")
-      ),
-      caplog.at_level(logging.WARNING),
-    ):
-      core_defaults.materialize_canon_skeleton(home)
+    real_mkdir = boxfs.mkdir
 
-    assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
-    # One sentence: the error's own text follows a colon, its full stop not doubled.
-    assert any(
-      "left writable from inside the box: no podman. The box works" in r.message
-      for r in caplog.records
-    ), caplog.text
+    def _mkdir(path, root, **kw):
+      if path.name == "workbook":
+        raise PermissionError(13, "Permission denied", str(path))
+      return real_mkdir(path, root, **kw)
 
-  @pytest.mark.no_unshare_sim
-  @pytest.mark.parametrize(
-    ("cmd", "reason"),
-    (
-      (
-        "/usr/bin/podman",
-        "podman unshare chown failed: chown: changing ownership of 'x': Operation not "
-        "permitted (the filesystem refuses ownership changes, e.g. NFS). The box works",
-      ),
-      ("/usr/bin/docker", "docker has no rootless user namespace. The box works"),
-    ),
-  )
-  def test_unshare_warning_says_why(self, tmp_path, caplog, cmd: str, reason: str):
-    """The real runtime's failure reason reaches the warning, not a generic line."""
-    from kanibako.runtime.container import ContainerRuntime
+    monkeypatch.setattr(boxfs, "mkdir", _mkdir)
+    with caplog.at_level(logging.WARNING):
+      core_defaults.materialize_canon_skeleton(home, quiet=True)
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warned) == 1 and "canon/workbook" in warned[0], warned
+    assert (home / "canon" / "notebook").is_dir()
 
-    home = tmp_path / "home"
-    home.mkdir()
-    err = "chown: changing ownership of 'x': Operation not permitted\n"
-    with (
-      patch(
-        "kanibako.runtime.container.ContainerRuntime",
-        return_value=ContainerRuntime(command=cmd),
-      ),
-      patch(
-        "kanibako.runtime.container.subprocess.run",
-        return_value=MagicMock(returncode=1, stderr=err),
-      ) as run,
-      caplog.at_level(logging.WARNING),
-    ):
-      core_defaults.materialize_canon_skeleton(home)
-
-    if "podman" in cmd:
-      assert run.call_args.args[0][:5] == [cmd, "unshare", "chown", "-h", "1:1"]
-    else:
-      run.assert_not_called()
-    assert any(reason in r.message for r in caplog.records), caplog.text
-
-  @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
-  def test_falls_back_with_a_warning_when_unshare_fails(
-    self,
-    tmp_path,
-    caplog,
-    failing: str,
-  ):
-    """docker (no ``unshare``) or a failing call — same degraded shape."""
-    home = tmp_path / "home"
-    home.mkdir()
-    rt = MagicMock()
-    rt.unshare_chown.return_value = True
-    rt.unshare_chmod.return_value = True
-    rt.unshare_error = "the reason"
-    getattr(rt, failing).return_value = False
-    with (
-      patch("kanibako.runtime.container.ContainerRuntime", return_value=rt),
-      caplog.at_level(logging.WARNING),
-    ):
-      core_defaults.materialize_canon_skeleton(home)
-
-    assert (home / "canon" / "COLLECTION.md").is_file()
-    # ⚑ The two arms say DIFFERENT things and must not be conflated: a failed
-    # CHOWN leaves the tree agent-owned and writable; a failed CHMOD leaves it
-    # root-owned at default modes, where the agent still cannot write.
-    warning = " ".join(r.message for r in caplog.records)
-    assert ": the reason. The " in warning, caplog.text
-    if failing == "unshare_chown":
-      assert "left writable" in warning, caplog.text
-    else:
-      assert "root-owned but keep their default modes" in warning, caplog.text
-      assert "left writable" not in warning, caplog.text
+  def test_a_missing_home_is_left_alone(self, tmp_path):
+    core_defaults.materialize_canon_skeleton(tmp_path / "gone")
+    assert not (tmp_path / "gone").exists()
 
   def test_create_runs_the_skeleton_after_the_seed(self):
-    """⚑ ORDER IS LOAD-BEARING. The seeds half seeds ``canon/{notebook,workbook}``
-    UNDER the root this step makes 555; protect first and those copies die with
-    EACCES. Asserted on the SOURCE so it cannot rot silently.
-    """
+    """The pass fills only what the seed left missing, and runs INSIDE the
+    create-journal window, so an interrupted create replays it.  Asserted on the
+    SOURCE so it cannot rot silently."""
     import inspect
 
     from kanibako.commands.box import _parser

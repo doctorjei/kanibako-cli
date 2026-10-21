@@ -101,10 +101,6 @@ pythonpath = ["src"]
 markers = [
     "integration: tests requiring a real container runtime (podman/docker)",
     "e2e: end-to-end tests requiring podman + kanibako-oci image",
-    # Opt OUT of the KANI_TEST_SIM_UNSHARE=1 protected-canon simulation. For tests
-    # OF ``unshare_chown``/``unshare_chmod`` themselves: patching the subject with
-    # the stub turns real assertions into false reds.
-    "no_unshare_sim: never apply the protected-canon unshare simulation",
     # The KeyStore census (tests/_keystore_census.py) fails a run on an undeclared
     # key. A test that EXERCISES a refusal has to write one; it names the exact
     # paths here, and a named path that is never written fails the run in its turn.

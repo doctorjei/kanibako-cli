@@ -376,17 +376,8 @@ def start_mocks():
     # string and silently skip the seed. These two are the minimum realism the
     # seed path needs; everything else on ``std``/``proj`` stays mocked.
     #
-    # ⚑⚑ AND THE REALISM HAS A COST THAT ONLY APPEARS ON CI. This fixture patches
-    # ``kanibako.commands.start.ContainerRuntime``, but ``_protect_canon_skeleton``
-    # imports ``ContainerRuntime`` from ``kanibako.runtime.container`` INSIDE the function
-    # — so the REAL runtime runs, and on a host with working user namespaces the
-    # box home's canon skeleton is genuinely chowned to a foreign SUBUID. The
-    # ``TemporaryDirectory`` finalizer then dies in ``_resetperms``
-    # (``os.chmod(path, 0o700)``) with ``PermissionError``. It is invisible on the
-    # dev box (broken ``newuidmap`` ⇒ nothing is ever protected) and the
-    # ``KANI_TEST_SIM_UNSHARE`` sim cannot reproduce it (it chmods as the OWNER;
-    # the real defeat is foreign OWNERSHIP). Hence the reap in the ``finally``
-    # below — see ``tests/support/protected_trees``.
+    # ⚑ The ``finally`` below reaps the store through ``tests/support/protected_trees``,
+    # which says what can leave a tree the ``TemporaryDirectory`` finalizer cannot remove.
     _store_tmp = tempfile.TemporaryDirectory(prefix="kanibako-start-mocks-")
 
     with (
@@ -1134,127 +1125,6 @@ def start_mocks():
         _store_tmp.cleanup()
 
   return _make
-
-
-# ---------------------------------------------------------------------------
-# The PROTECTED-CANON simulation fixture (ordered after the R1b CI-red postmortem).
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def protected_canon(monkeypatch):
-  """Reproduce the PROTECTED canon-skeleton state on a host that cannot make one.
-
-  ⚑⚑ WHY THIS EXISTS.  ``core_defaults._protect_canon_skeleton`` chowns the
-  skeleton to a SUBUID via ``podman unshare`` and only then chmods it.  Where
-  ``podman unshare`` fails — a host with a broken ``newuidmap``, which includes
-  this project's dev box — the chown returns False and the guard RETURNS EARLY, so
-  the skeleton is left agent-owned at plain 0755.  Every local test run therefore
-  exercises ONLY the DEGRADED path, while CI runners and bifrost (working rootless
-  userns) genuinely protect the box.  A test can be green locally and red in CI
-  purely because of that split — which is exactly what happened once, when a
-  test-body ``rmtree`` met 555 directories on CI.
-
-  This fixture makes the protected state reproducible LOCALLY and
-  DETERMINISTICALLY: ``unshare_chown`` reports success (ownership cannot be
-  simulated without the namespace, and the test host owns the tree anyway) and
-  ``unshare_chmod`` applies a REAL ``os.chmod``.  What that buys is the MODE half —
-  the 555 dirs and 444 file mountpoints — which is what most of this class of bug
-  trips over.
-
-  ⚑ IT IS NOT AN ORACLE.  Ownership is NOT simulated, so nothing here can certify
-  "the agent cannot write the books"; only CI and bifrost can.  Use it to REPRODUCE
-  and REGRESS-TEST mode-related failures, never to claim protected-state proof.
-
-  ⚑ AUTOMATIC WHERE REQUESTED, opt-in globally: set ``KANI_TEST_SIM_UNSHARE=1`` to
-  make the simulation the default for the whole run (useful for sweeping the suite
-  the way the R1b postmortem did); otherwise it applies only to tests that request
-  the fixture by name.
-  """
-  import os as _os
-
-  from kanibako.runtime.container import ContainerRuntime
-
-  def _chown(self, paths, uid, gid):
-    return bool(paths)
-
-  def _chmod(self, paths, mode):
-    if not paths:
-      return False
-    for p in paths:
-      try:
-        _os.chmod(p, int(mode, 8))
-      except OSError:
-        return False
-    return True
-
-  monkeypatch.setattr(ContainerRuntime, "unshare_chown", _chown, raising=True)
-  monkeypatch.setattr(ContainerRuntime, "unshare_chmod", _chmod, raising=True)
-  return True
-
-
-@pytest.fixture(autouse=True)
-def _reap_protected_box_stores(tmp_path):
-  """Reap any PROTECTED box store a test left under its ``tmp_path``.
-
-  ⚑ THE SWEEP FINDING. Fifteen unit files drive the real create/skeleton path
-  (``run_create`` / ``seed_new_box`` / ``_run_container`` / the lifecycle verbs)
-  into ``tmp_path`` WITHOUT patching ``kanibako.runtime.container.ContainerRuntime`` — the
-  import site ``_protect_canon_skeleton`` actually uses — so on a host with working
-  user namespaces every one of them leaves foreign-owned directories behind.
-
-  They are absent from the CI failure list, and the reason matters: pytest's
-  ``tmp_path`` cleanup is DEFERRED (it keeps the last three numbered dirs and
-  removes older ones at the START of a LATER session), and CI runners are fresh
-  every run, so the sweep that would fail never runs there. On a PERSISTENT runner
-  it does — that is the ``/tmp/pytest-of-*`` creep the e2e gate measured. Same
-  class, later fuse.
-
-  ⚑⚑ OFF BY DEFAULT — set ``KANI_TEST_REAP_TMP=1``, and set it on a persistent
-  runner. Gated because the cost is real and the benefit here is not: finding a
-  store means walking each test's whole ``tmp_path``, and those trees are not small
-  (``test_commands/test_box.py`` alone: **7.9 s -> 94 s**, measured — a 12x
-  regression on one file). Paying that on every gate to pre-empt a failure that
-  provably does not occur where we gate is the wrong trade. The ONE site that
-  genuinely fails (``start_mocks``'s ``TemporaryDirectory``, whose finalizer chmods
-  and cannot be deferred) is reaped surgically and UNCONDITIONALLY at its known
-  root, for free.
-  """
-  yield
-  import os
-
-  if os.environ.get("KANI_TEST_REAP_TMP") != "1":
-    return
-  from tests.support.protected_trees import reap_box_stores
-
-  reap_box_stores(tmp_path)
-
-
-@pytest.fixture(autouse=True)
-def _sim_unshare_globally(request):
-  """Apply :func:`protected_canon` to EVERY test when ``KANI_TEST_SIM_UNSHARE=1``.
-
-  Zero-impact unless the env var is set: the fixture body returns immediately, so a
-  normal run, CI and the rework gates all pay nothing.
-  """
-  import os
-
-  if os.environ.get("KANI_TEST_SIM_UNSHARE") != "1":
-    return
-  if "protected_canon" in request.fixturenames:
-    return  # already requested explicitly
-  # ⚑ EXEMPT the tests OF the two methods being simulated. Patching
-  # ``unshare_chown``/``unshare_chmod`` inside ``test_container.py``'s own suite for
-  # them replaces the subject with the stub and turns four real assertions into
-  # false reds — in precisely the tool that exists to remove false greens.
-  if request.node.get_closest_marker("no_unshare_sim") is not None:
-    return
-  module = getattr(request.node, "module", None)
-  if getattr(module, "__name__", "").endswith("test_container"):
-    cls = getattr(request.node, "cls", None)
-    if cls is not None and cls.__name__ == "TestUnshareChownChmod":
-      return
-  request.getfixturevalue("protected_canon")
 
 
 #: Delivered host signals no test may INHERIT (``tasks/bugfixes.md``, the row

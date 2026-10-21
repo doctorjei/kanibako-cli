@@ -1,29 +1,11 @@
-"""Cleanup for test trees that contain a PROTECTED canon skeleton.
+"""Cleanup for test trees that may hold FOREIGN-OWNED entries.
 
-⚑⚑ WHY THIS EXISTS — the failure it prevents is INVISIBLE ON THE DEV BOX.
-
-Since J-7, ``core_defaults.materialize_canon_skeleton`` chowns a box's canon books
-to a mapped SUBUID via ``podman unshare``.  The host user then cannot chmod, unlink
-or rmdir them.  Any test that drives the real create/skeleton path and then lets an
-ORDINARY deleter clean up afterwards dies with ``PermissionError`` — and
-``tempfile.TemporaryDirectory`` is the sharpest case, because its finalizer runs
-``_resetperms`` → ``os.chmod(path, 0o700)`` on the way in, so it fails on the
-DIRECTORY ITSELF before it ever tries to recurse.
-
-The trap is that this is **environment-conditional**:
-
-* on a host with a broken ``newuidmap`` (this project's dev box) ``podman unshare``
-  fails, the protect pass short-circuits, every skeleton is left agent-owned, and
-  the naive cleanup succeeds — so the bug does not exist locally;
-* on CI runners and bifrost, user namespaces WORK, the skeleton is genuinely
-  foreign-owned, and the same code reddens.
-
-⚑ The ``KANI_TEST_SIM_UNSHARE`` simulation CANNOT reproduce it either: the sim
-chmods as the OWNER, so it reproduces the MODES (555/444) but not the OWNERSHIP,
-and it is foreign ownership that defeats the deleter.  A local green therefore
-proves nothing about this class — the same lesson memory
-``local-gate-blind-to-protected-canon`` records, arriving a third time (test-body
-rmtree → e2e ``/tmp`` creep → this).
+A box store can hold entries the host user cannot chmod, unlink or rmdir: a
+subuid-owned canon skeleton an older kanibako's ownership lockdown left, a
+mountpoint crun created, or a file in-box root wrote (the e2e tier).  An ORDINARY
+deleter dies on them with ``PermissionError`` — ``tempfile.TemporaryDirectory`` most
+sharply, because its finalizer runs ``_resetperms`` → ``os.chmod(path, 0o700)`` first.
+This only shows where user namespaces work (CI, bifrost), never on the dev box.
 
 ⚑ ONE ESCALATION, ONE PLACE.  Everything here delegates to
 :func:`kanibako.runtime.container.remove_box_tree`, the SAME deleter the product's own
@@ -37,8 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 
 #: The skeleton's on-disk SIGNATURE, relative to a box store root.  ``home/canon``
-#: is created by (and only by) ``materialize_canon_skeleton``, so its presence is
-#: what distinguishes a box store worth escalating over from an ordinary temp dir.
+#: is created by the canon skeleton pass (``materialize_canon_skeleton``), so its
+#: presence is what distinguishes a box store from an ordinary temp dir.
 _BOX_STORE_MARKER = ("home", "canon")
 
 

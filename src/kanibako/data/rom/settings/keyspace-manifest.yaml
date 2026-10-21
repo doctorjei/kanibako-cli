@@ -2294,12 +2294,20 @@ bind_default_entries:
 
   box.bindings.ro:
 
-    ## ---- CANON BOOKS + KICKOFF — the 12 §2c book/kickoff entries ----------
-    ## 7 INTERNAL (the canon index, the five charter chapters, kickoff) — the
-    ## package-sourced ones; 5 USER KEYS (the handbook chapters) — the spec's
+    ## ---- CANON BOOKS + KICKOFF — the §2c book/kickoff entries ---------------
+    ## INTERNAL: the box's own ~/canon skeleton and the package-sourced ones (the
+    ## canon index, the five charter chapters, kickoff); USER KEYS: the handbook
+    ## chapters and, under box.bindings.rw, notebook + workbook — the spec's
     ## own LOAD-BEARING distinction: the handbook is sourced from the
     ## `<scope>.canon` keys "or wherever the user redirects it, because it IS a
     ## settings key" (§2c). Do NOT flatten the two classes into one.
+    "~/canon":
+      user_key: false
+      owner: box
+      value: "({meta.box.home}/canon)"
+      note: "INTERNAL, dir ro — the box's own canon skeleton; every book binds over it
+             (delivery: companion § \"The canon skeleton\")."
+      spec: "§2c (CANON books)"
     "~/canon/COLLECTION.md":
       user_key: false
       owner: shared
@@ -2536,6 +2544,18 @@ bind_default_entries:
       owner: box
       default: "({meta.box.workspace})"
       spec: "§2c"
+    "~/canon/notebook":
+      user_key: true
+      owner: box
+      default: "({meta.box.home}/canon/notebook)"
+      note: "dir rw over the ro ~/canon"
+      spec: "§2c (CANON books)"
+    "~/canon/workbook":
+      user_key: true
+      owner: box
+      default: "({meta.box.home}/canon/workbook)"
+      note: "dir rw over the ro ~/canon"
+      spec: "§2c (CANON books)"
     "~/vault/rw":
       user_key: true
       owner: box

@@ -9,10 +9,8 @@ from kanibako.cli import _SUBCOMMANDS, build_parser
 from kanibako.commands.box._parser import run_create
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — these tests drive the REAL
-# ``run_create``, which materializes the J-7 canon skeleton and then makes it
-# root-owned + 555 via ``podman unshare``.  Where that works a bare ``rmtree`` dies
-# with EACCES partway through; where it does not (this project's dev box) the same
-# line passes — the asymmetry is the whole bug.  ``remove_box_tree`` is the sanctioned
+# ``run_create``, and a box tree can hold entries the host user cannot remove
+# (``tests/support/protected_trees`` says which).  ``remove_box_tree`` is the sanctioned
 # escalating deleter the product's own lifecycle verbs use.
 from kanibako.runtime.container import remove_box_tree
 
@@ -231,16 +229,14 @@ class TestRunCreate:
     assert (proj.shell_path / "canon" / "charter" / "agent").is_dir()
     assert (proj.shell_path / "canon" / "COLLECTION.md").is_file()
 
-  def test_create_protects_the_skeleton_after_seeding(
+  def test_create_runs_the_skeleton_pass_after_seeding(
     self,
     config_file,
     credentials_dir,
     project_dir,
   ):
-    """⚑ ORDER. The ownership pass must run AFTER the seed: the seeds half writes
-    ``canon/{notebook,workbook}`` UNDER the root this step makes 555, so protecting
-    first would kill those copies with EACCES.
-    """
+    """⚑ ORDER. The skeleton pass runs AFTER the seed: it fills only what the
+    seed left missing."""
     calls: list[str] = []
     parser = build_parser()
     args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
@@ -253,14 +249,22 @@ class TestRunCreate:
       calls.append("seed")
       return real_seed(*a, **kw)
 
-    rt = patch("kanibako.runtime.container.ContainerRuntime")
-    with rt as m_rt, patch.object(_start, "seed_new_box", _seed):
-      m_rt.return_value.unshare_chown.side_effect = lambda *a, **kw: calls.append("chown") or True
-      m_rt.return_value.unshare_chmod.return_value = True
+    from kanibako.settings import core_defaults
+
+    real_pass = core_defaults.materialize_canon_skeleton
+
+    def _pass(*a, **kw):
+      calls.append("skeleton")
+      return real_pass(*a, **kw)
+
+    with (
+      patch.object(_start, "seed_new_box", _seed),
+      patch.object(core_defaults, "materialize_canon_skeleton", _pass),
+    ):
       rc = run_create(args)
 
     assert rc == 0
-    assert calls == ["seed", "chown"], calls
+    assert calls == ["seed", "skeleton"], calls
 
   def test_create_survives_a_missing_container_runtime(
     self,
@@ -268,9 +272,8 @@ class TestRunCreate:
     credentials_dir,
     project_dir,
   ):
-    """DEGRADED BUT FUNCTIONAL: creating a box works today with no podman
-    installed, and must keep working. The skeleton is still built (so the binds
-    land); only the ownership lockdown is skipped, with a warning."""
+    """Creating a box works with no podman installed, and the canon skeleton is
+    still built, so the binds land at the first launch."""
     from kanibako.runtime.container import ContainerError
 
     parser = build_parser()

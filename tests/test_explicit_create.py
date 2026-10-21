@@ -24,13 +24,8 @@ from kanibako.commands.start import (
 )
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — not even to set up a case.
-# These tests drive the REAL ``run_create``, which materializes the J-7 canon skeleton
-# and then makes it root-owned + 555 via ``podman unshare``.  Where that works (CI
-# runners, bifrost) a bare ``rmtree`` of the box dir dies with EACCES partway through;
-# where it does not (this project's dev box, broken ``newuidmap``) the protect pass
-# short-circuits and the same line passes.  That asymmetry is the whole bug — it is why
-# the three tests below were green here and red in CI, and it is the SAME failure
-# ``test_commands/test_box_register.py`` already carries a note about.  ``remove_box_tree``
+# These tests drive the REAL ``run_create``, and a box tree can hold entries the host
+# user cannot remove (``tests/support/protected_trees`` says which).  ``remove_box_tree``
 # is the sanctioned escalating deleter the product's own lifecycle verbs use, so the
 # test tree carries no second, driftable copy of the escalation.
 from kanibako.runtime.container import remove_box_tree
@@ -600,17 +595,10 @@ class TestLaunchRefusesUnbuiltBox:
   A registered box whose directory has been deleted used to be re-materialized
   by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
   box, and leaves the filesystem untouched.
-
-  ⚑ EVERY test in this class takes ``protected_canon``.  Removing the box dir is
-  the SETUP for all three, and on an unprotected host that removal is trivial —
-  so without the fixture the local run cannot see the failure CI sees.  The
-  fixture reproduces the MODE half (555/444) deterministically; ownership still
-  only exists on CI/bifrost, so this makes the local run meaningful, not an
-  oracle.
   """
 
   def test_registered_box_with_missing_dir_refuses_and_builds_nothing(
-    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+    self, config_file, tmp_home, credentials_dir, capsys
   ):
     from kanibako.commands.box._parser import run_create
 
@@ -637,7 +625,7 @@ class TestLaunchRefusesUnbuiltBox:
     assert _primary_boxes(std).get("project") == str(tmp_home / "project")
 
   def test_the_cure_the_refusal_names_actually_works(
-    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+    self, config_file, tmp_home, credentials_dir, capsys
   ):
     """The B9 standard: a cure that does not work is worse than no cure.
 
@@ -661,7 +649,7 @@ class TestLaunchRefusesUnbuiltBox:
     assert _resolve_existing_box(std, config, None) is not None
 
   def test_shell_and_named_target_route_through_the_same_gate(
-    self, config_file, tmp_home, credentials_dir, capsys, protected_canon
+    self, config_file, tmp_home, credentials_dir, capsys
   ):
     """``kanibako shell`` and a bare-NAME target hit the one chokepoint too."""
     from kanibako.commands.box._parser import run_create
@@ -828,7 +816,7 @@ class TestLaunchAnnouncesRebuilds:
     ]
 
   def test_primary_missing_home_warns_it_comes_back_unseeded(
-    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
   ):
     from kanibako.commands.box._parser import run_create
 
@@ -871,7 +859,7 @@ class TestLaunchAnnouncesRebuilds:
     ]
 
   def test_standalone_missing_home_and_workspace_both_warn(
-    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
   ):
     from kanibako.commands.box._parser import run_create
 
@@ -1124,8 +1112,7 @@ class TestBrokenStandaloneNoBoxError:
     """Create a REAL standalone box, then delete its ``box_data/``.
 
     Returns ``(std, box_name, root)``.  Deletion goes through
-    ``remove_box_tree`` — the canon skeleton under ``box_data/home`` is
-    root-owned + 555 where ``podman unshare`` works.
+    ``remove_box_tree``, the sanctioned escalating deleter.
     """
     from kanibako.commands.box._parser import run_create
     from kanibako.project import registry_store

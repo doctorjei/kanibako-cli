@@ -205,11 +205,9 @@ def read_helper_number(path: Path) -> int | None:
 #: The helper-root-relative scripts dir, holding the entrypoint wrapper.
 #:
 #: ⚑ FLAT, and deliberately NOT ``canon/notebook/scripts``.  A helper home is not a
-#: box: it has no canon binds, and ``core_defaults.materialize_canon_skeleton_if_present``
-#: keys off the presence of a ``canon/`` dir, so putting the script under one would turn
-#: that no-op into a real skeleton materialization — "a silent layout change made by the
-#: wrong seam", in that function's own words.  The rest of a helper root is flat plain
-#: dirs (``workspace``, ``vault``) and this belongs with them.  It replaces a
+#: box: it has no canon binds, so a ``canon/`` dir there would be a layout no helper
+#: reads.  The rest of a helper root is flat plain dirs (``workspace``, ``vault``) and
+#: this belongs with them.  It replaces a
 #: vestigial two-level path whose first level carried nothing at all.
 HELPER_SCRIPTS_RELPATH = "scripts"
 

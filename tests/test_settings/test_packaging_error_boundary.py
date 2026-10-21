@@ -169,7 +169,7 @@ _MOVED_RAISES = [
       {"canon/charter"},
       {"canon/charter/general/ROM_GENERAL.md"},
     ),
-    "EACCES AT CREATE",
+    "never the box's own",
   ),
   (
     "internal_bind_row_is_missing",

@@ -26,7 +26,6 @@ from kanibako.launch.box_resolve import (
 )
 from kanibako.settings.config_io import dump_doc, refuse_scalar_sections
 from kanibako.runtime.container import remove_box_tree
-from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
 from kanibako.settings.paths import (
   BoxMode,
@@ -652,13 +651,11 @@ def _duplicate_to_standalone(
 
   if src_proj.shell_path.is_dir():
     if force and dst_shell.is_dir():
-      # The home carries the root-owned canon skeleton (J-7); a bare rmtree
-      # fails with EACCES and strands a half-removed destination.
+      # The home may carry a subuid-owned canon skeleton an older kanibako left
+      # (J-7); a bare rmtree fails with EACCES and strands a half-removed destination.
       remove_box_tree(dst_shell)
     if not lay_root_link(src_proj.shell_path, dst_shell):
       copy_tree_keeping_links(src_proj.shell_path, dst_shell)
-    # copytree carries the skeleton's modes but not its ownership — re-assert.
-    materialize_canon_skeleton(dst_shell)
 
   # Carry the source's box-scope settings into the destination's BOX TIER (M-8) — the
   # BOX TIER ONLY (:func:`kanibako.settings.config.carried_box_settings`).  A ``box.*``
@@ -854,7 +851,6 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
       dst_home = dst_project / "home"
       if not dst_home.is_dir() and not lay_root_link(src_proj.shell_path, dst_home):
         copy_tree_keeping_links(src_proj.shell_path, dst_home)
-      materialize_canon_skeleton(dst_home)
   except BaseException as exc:
     _unwind_local_name(std, project_name, dst_project, exc)
     raise
@@ -1304,10 +1300,6 @@ def run_duplicate(args: argparse.Namespace) -> int:
       new_project_dir,
       ignore=shutil.ignore_patterns(".kanibako.lock"),
     )
-    # The copy included home/ — re-assert its canon skeleton's ownership (J-7).
-    _dup_home = new_project_dir / "home"
-    if _dup_home.is_dir():
-      materialize_canon_skeleton(_dup_home)
   except BaseException as exc:
     # ⚑ The workspace first: the summary Note comes last.
     _undo_new_path(new_path, new_path_existed, new_path_before)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import importlib.resources
 import logging
+import os
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from importlib.resources.abc import Traversable
@@ -638,12 +639,9 @@ def assert_canon_bind_seed_disjoint(
         violations.append(f"{rel!r} is at/under the managed canon path {dest!r}")
   if violations:
     raise PackagingError(
-      "template seed lands in the MANAGED canon region (box create "
-      "materializes that region ROOT-OWNED, so the copy FAILS WITH EACCES "
-      "AT CREATE — it does not silently lose, it stops the create with an "
-      "OS error; and even where a copy could land, the mount SHADOWS it at "
-      "the same path regardless of order, so the content would be invisible "
-      "— not merged, not an error):\n"
+      "template seed lands in the MANAGED canon region (kanibako's skeleton, "
+      "read-only in the box, so a copy there is either shadowed by a book "
+      "bind or shown read-only beside the books, never the box's own):\n"
       + "\n".join(f"  - {v}" for v in violations)
       + "\nSeeds target canon/{notebook,workbook} ONLY (spec §2c)."
     )
@@ -673,8 +671,8 @@ def _rom_agent_chapter_dest() -> str:
 def rom_default_categories() -> BindArmTable:
   """Build the FIVE read-only packaged-CANON binds as ``default_categories`` (J-7, spec §2c).
 
-  ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
-  :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
+  ⚑⚑ NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
+  :func:`materialize_canon_skeleton` already made in the box's own skeleton.
   ⚑ ``charter/agent/`` is deliberately NOT required and must NOT ship.
 
   ⚑ RAISES :class:`PackagingError` when the packaged canon is MISSING, EMPTY, or INCOMPLETE:
@@ -919,7 +917,7 @@ def canon_default_categories(agent_name: str | None) -> dict[str, object]:
 # ===========================================================================
 
 # The handbook's chapters (BINDS: ``canon_default_categories``).  ⚑ Their MOUNTPOINTS belong to
-# this one closed skeleton — creating them later would mean mkdir-ing into an already-555 tree.
+# the skeleton below.
 HANDBOOK_CHAPTERS = ("general", "agent", "workset", "box")
 HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
 
@@ -939,24 +937,13 @@ HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
   ("box", "SYS_BOX.md"),
 )
 
-# ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0; under
-# :data:`kanibako.runtime.container.KEEP_ID_USERNS`, ``chown 0:0`` inside ``podman unshare``
-# would produce an AGENT-OWNED skeleton, the exact opposite of the intended effect.
-UNSHARE_BOX_ROOT_UID = 1
-UNSHARE_BOX_ROOT_GID = 1
-
-# ⚑ TWO MODES, NOT ONE (spec J-7 banner): dirs keep the SEARCH bit so crun can traverse to the
-# chapter mountpoints; file mountpoints must not be marked executable.
-CANON_SKELETON_DIR_MODE = "555"
-CANON_SKELETON_FILE_MODE = "444"
-
 
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
   """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs, PARENTS-FIRST (J-7).
 
-  ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated — a skeleton that
-  drifts from the binds is a mountpoint podman creates itself.
-  ``canon/notebook`` / ``canon/workbook`` are ABSENT by design: they are SEEDED and writable.
+  ⚑ DERIVED FROM THE SAME CONSTANTS AND ROWS AS THE BIND DESTS, never restated: every
+  entry is a mountpoint, and a missing one is a launch failure where crun cannot create
+  it (LXC, NFS).  The read-write books close the list (:func:`canon_rw_book_rels`).
   """
   root = CANON_GUEST_ROOT
   rels: list[tuple[str, bool]] = [
@@ -968,7 +955,7 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
   rels += [
     (f"{root}/{ROM_CHARTER_REL}/{chapter}", True)
     # ⚑ ``agent`` is ALWAYS pre-created, emission gate or not (J-7): a gate-false
-    # launch must show an EMPTY root-owned mountpoint, not a missing directory.
+    # launch must show an EMPTY mountpoint, not a missing directory.
     for chapter in (*ROM_CHARTER_CHAPTERS, CHARTER_AGENT_CHAPTER)
   ]
   rels += [
@@ -976,14 +963,26 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     (f"{root}/{HANDBOOK_CONTENTS_REL}", False),
   ]
   rels += [(f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS]
-  # The IMPORT-FALLBACK entry files (F1), INSIDE three of those chapter mountpoints —
-  # which the loop above already listed, so the file's parent is skeleton-owned and
-  # nothing here is agent-creatable.
+  # The IMPORT-FALLBACK entry files (F1), INSIDE three of those chapter mountpoints.
   rels += [
     (f"{root}/{HANDBOOK_REL}/{chapter}/{entry}", False)
     for chapter, entry in HANDBOOK_FALLBACK_ENTRIES
   ]
+  rels += [(rel, True) for rel in canon_rw_book_rels()]
   return tuple(rels)
+
+
+def canon_rw_book_rels() -> tuple[str, ...]:
+  """The home-relative paths of the canon books bound READ-WRITE in place (spec §2c).
+
+  Read off the ``canon:`` rows in the ``bindings.rw`` category: ``notebook`` and
+  ``workbook``, which are SEEDED and stay the box's own.
+  """
+  return tuple(
+    str(entry["box_dest"]).removeprefix("~/")
+    for entry in _load_doc().get("canon", [])
+    if entry["category"] == "bindings.rw"
+  )
 
 
 def materialize_canon_skeleton(
@@ -992,154 +991,65 @@ def materialize_canon_skeleton(
   logger: "logging.Logger | None" = None,
   quiet: bool = False,
 ) -> None:
-  """Create the canon SKELETON in a box home and make it root-owned + unwritable (J-7).
+  """The SKELETON PASS: make every canon mountpoint exist in a box home (J-7, spec §2c).
 
-  ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND — the 555 landing first kills the
-  ``canon/{notebook,workbook}`` copies with EACCES.
-  ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED ⇒ growing the skeleton is a MIGRATION.
-  ⚑ Ownership, not mode alone: a 555 dir the agent OWNS is no protection.
-  ⚑ The box home is box-writable and this runs with the box LIVE, so every entry goes
-  through :mod:`kanibako.boxfs`: a symlink at an entry or a parent is skipped with a
-  warning and never reaches the chown/chmod (which run ``-h`` where they can).
+  Runs at box create, after the seed, and again before each launch's bind emission
+  (*quiet*).  Per entry, parents first, all through :mod:`kanibako.boxfs`:
+
+  - a symlink at or above the entry skips it and everything under it; nothing is
+    replaced, chmodded, or followed.  A link at a read-write book is the user's own
+    setup and is skipped at DEBUG; any other link WARNS (DEBUG when *quiet*);
+  - an existing dir the host user owns that lacks owner write gets ``0o755`` back (a
+    skeleton the retired ownership lockdown left at 555);
+  - a missing entry is created; one that cannot be WARNS naming it, *quiet* or not,
+    because its bind is then omitted.
+
+  ⚑ The home must exist: a missing home is left alone, not created here.
   """
   from kanibako import boxfs
 
   log = logger or _skeleton_logger()
-  dirs: list[Path] = []
-  files: list[Path] = []
-  # Parents come first, so a refused link is met before the entries under it, which
-  # are then skipped without a second warning.
-  refused: list[Path] = []
+  if not shell_path.is_dir():
+    return
+  user_links = {shell_path / rel for rel in canon_rw_book_rels()}
+  skipped: list[Path] = []
   for rel, is_dir in canon_skeleton_rels():
     p = shell_path / rel
-    if any(p.is_relative_to(link) for link in refused):
+    if any(p.is_relative_to(done) for done in skipped):
       continue
-    if not boxfs.no_symlink_or_warn(p, shell_path):
-      refused.append(p)
+    link = boxfs.first_symlink(p, shell_path)
+    if link is not None:
+      skipped.append(link)
+      if link in user_links:
+        log.debug("canon skeleton: %s is a symlink; left as it is", link)
+      elif quiet:
+        log.debug("canon skeleton: %s is behind the symlink %s; skipped", p, link)
+      else:
+        boxfs.no_symlink_or_warn(p, shell_path)
       continue
     try:
-      if is_dir:
-        boxfs.mkdir(p, shell_path, parents=True, exist_ok=True)
-      else:
-        boxfs.mkdir(p.parent, shell_path, parents=True, exist_ok=True)
-        if not p.exists():
-          boxfs.touch(p, shell_path)
+      st = boxfs.stat(p, shell_path)
+    except FileNotFoundError:
+      st = None
     except OSError as exc:
-      log.debug("canon skeleton: could not create %s (%s)", p, exc)
+      skipped.append(p)
+      log.warning("canon skeleton: could not check %s (%s)", p, exc)
       continue
-    (dirs if is_dir else files).append(p)
-
-  if not dirs and not files:
-    return
-  _protect_canon_skeleton(dirs, files, log, quiet=quiet)
-
-
-def materialize_canon_skeleton_if_present(
-  shell_path: Path,
-  *,
-  logger: "logging.Logger | None" = None,
-) -> None:
-  """Re-assert an EXISTING canon skeleton; do nothing if the home has none (helper boxes).
-
-  ⚑ NOT :func:`materialize_canon_skeleton`: a helper home is not a box, and gaining canon
-  mountpoints from a launch would be a silent layout change made by the wrong seam.
-  """
-  from kanibako import boxfs
-
-  canon = shell_path / CANON_GUEST_ROOT
-  if not boxfs.no_symlink_or_warn(canon, shell_path) or not canon.is_dir():
-    return
-  materialize_canon_skeleton(shell_path, logger=logger, quiet=True)
+    try:
+      if st is None:
+        if is_dir:
+          boxfs.mkdir(p, shell_path)
+        else:
+          boxfs.touch(p, shell_path)
+      elif is_dir and st.st_uid == os.getuid() and not st.st_mode & 0o200:
+        boxfs.chmod(p, shell_path, 0o755)
+    except OSError as exc:
+      skipped.append(p)
+      log.warning("canon skeleton: could not create or open %s (%s)", p, exc)
 
 
 def _skeleton_logger() -> "logging.Logger":
   return logging.getLogger(__name__)
-
-
-def _protect_canon_skeleton(
-  dirs: list[Path],
-  files: list[Path],
-  log: "logging.Logger",
-  *,
-  quiet: bool = False,
-) -> None:
-  """Make the skeleton root-owned + unwritable from inside the user namespace.
-
-  THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod`` per mode
-  class.  ⚑ NEVER ``-R`` — a recursive sweep would take the SEEDED, agent-owned
-  ``notebook/`` + ``workbook/`` with it.
-  """
-  from kanibako.runtime.container import ContainerError, ContainerRuntime
-
-  everything = dirs + files
-  try:
-    runtime = ContainerRuntime()
-  except ContainerError as exc:
-    _warn_unprotected(everything[0], log, str(exc).rstrip("."), True, quiet)
-    return
-
-  if not runtime.unshare_chown(
-    everything,
-    UNSHARE_BOX_ROOT_UID,
-    UNSHARE_BOX_ROOT_GID,
-  ):
-    _warn_unprotected(
-      everything[0],
-      log,
-      runtime.unshare_error,
-      True,
-      quiet,
-    )
-    return
-  for group, mode in ((dirs, CANON_SKELETON_DIR_MODE), (files, CANON_SKELETON_FILE_MODE)):
-    if group and not runtime.unshare_chmod(group, mode):
-      _warn_unprotected(
-        everything[0],
-        log,
-        runtime.unshare_error,
-        False,
-        quiet,
-      )
-      return
-  log.debug(
-    "canon skeleton protected (%d dirs + %d files under %s)",
-    len(dirs),
-    len(files),
-    everything[0],
-  )
-
-
-def _warn_unprotected(
-  root: Path,
-  log: "logging.Logger",
-  reason: str,
-  agent_owned: bool,
-  quiet: bool = False,
-) -> None:
-  """Report a skeleton that did not get its full lockdown.
-
-  ⚑ *quiet* demotes the report to DEBUG; the POST-START caller sets it, because at WARNING
-  it would paint over the live session on every launch of a docker/unshare-less host.
-  ⚑ The two arms are genuinely different and must not share wording.
-  """
-  emit = log.debug if quiet else log.warning
-  if agent_owned:
-    emit(
-      "canon books at %s are left writable from inside the box: %s. The box "
-      "works normally — every canon bind still lands on its mountpoint — but "
-      "the agent can create stray files under ~/canon instead of only under "
-      "~/canon/{notebook,workbook}.",
-      root,
-      reason,
-    )
-  else:
-    emit(
-      "canon books at %s are root-owned but keep their default modes: %s. The "
-      "agent still cannot write them, and the box works normally; only the "
-      "declared 555/444 modes were not applied.",
-      root,
-      reason,
-    )
 
 
 def _table_bind_dests(table: str) -> frozenset[str]:
@@ -1224,15 +1134,16 @@ def _keyed_rows(
 _INTERNAL_BIND_TABLES = ("kani", "kickoff")
 
 #: The rows of MIXED tables that are INTERNAL, as ``(table, row key)``: the GENERATED
-#: storage.conf companion of the image store (``not_keys.never_a_key.images_conf``).
-_INTERNAL_BIND_ROWS = (("images", "images_conf"),)
+#: storage.conf companion of the image store (``not_keys.never_a_key.images_conf``) and
+#: the box's own read-only ``~/canon`` skeleton.
+_INTERNAL_BIND_ROWS = (("images", "images_conf"), ("canon", "canon_root"))
 
 
 def internal_bind_keys() -> frozenset[tuple[str, str]]:
   """Every INTERNAL bind as ``(arm key, normalized dest)`` — the binds no user arm may drop.
 
-  Spec §2c: the kanibako CLI delivery, the secrets snippet, the kickoff slot, the six
-  packaged-charter binds and the generated storage.conf are INTERNAL — not user keys, not
+  Spec §2c: the kanibako CLI delivery, the secrets snippet, the kickoff slot, the box's
+  ``~/canon`` skeleton, the six packaged-charter binds and the generated storage.conf are INTERNAL — not user keys, not
   repointable.  ``settings_launch.build_launch_snapshot`` re-imposes each one the floor
   carries AFTER the merge, so a user's ``box.bindings.ro: null`` (or an entry at the
   same dest) cannot remove or repoint kanibako's own delivery.

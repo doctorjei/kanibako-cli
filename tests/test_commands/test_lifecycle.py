@@ -2393,8 +2393,6 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
     create_workset("ws2", tmp_home / "ws2_root", std)
     leaf, state = self._member(env, ws1)
     stash_root = self._stash_dir(tmp_path, monkeypatch)
-    skeletons: list[Path] = []
-    monkeypatch.setattr(lc, "materialize_canon_skeleton", skeletons.append)
 
     def part_way(ws, name, *, bases=None):
       store = ws.projects_dir / name
@@ -2414,7 +2412,6 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         confirm=_conf_yes(),
       )
     self._assert_source_whole(ws1, leaf, state)
-    assert skeletons == [ws1.projects_dir / "alpha" / "home"]
     assert "Note: could not restore" not in capsys.readouterr().err
     assert list(stash_root.iterdir()) == []
 
@@ -2534,9 +2531,9 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
     monkeypatch,
     tmp_path,
     capsys,
-    protected_canon,
   ):
-    """Row A, S cell: SIGINT after the rmtree left the 555 canon skeleton behind."""
+    """Row A, S cell: SIGINT after the rmtree left a 555 canon skeleton (an older
+    kanibako's lockdown) behind."""
     import shutil
     import stat
     from kanibako.settings.core_defaults import (
@@ -2545,9 +2542,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
     )
 
     config, std, tmp_home = env
-    # ``protected_canon`` fakes the unshare calls, but the skeleton is protected only
-    # once a runtime is DETECTED: an executable stub, so this passes without podman.
-    # It fails every call, as a broken ``newuidmap`` makes podman unshare do.
+    # An executable runtime stub that fails every call, as a broken ``newuidmap``
+    # makes podman unshare do, so the escalation cannot clear the 555 remnant.
     stub = tmp_path / "fake-podman"
     stub.write_text("#!/bin/sh\nexit 1\n")
     stub.chmod(0o755)
@@ -2556,6 +2552,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
     create_workset("ws2", tmp_home / "ws2_root", std)
     leaf, state = self._member(env, ws1)
     materialize_canon_skeleton(state.shell_path)
+    for rel, is_dir in reversed(canon_skeleton_rels()):
+      (state.shell_path / rel).chmod(0o555 if is_dir else 0o444)
     stash_root = self._stash_dir(tmp_path, monkeypatch)
 
     def part_way(ws, name, *, bases=None):

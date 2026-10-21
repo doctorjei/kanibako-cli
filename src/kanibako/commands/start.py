@@ -4769,8 +4769,7 @@ def _run_container(
         selection_level=selection_level,
       )
       # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
-      # after the seed, inside the journal window.  See that call site for why
-      # both are load-bearing.
+      # after the seed, inside the journal window.
       core_defaults.materialize_canon_skeleton(proj.shell_path, logger=logger)
       _register_new_box(std, proj)
       _clear_create_entry(std, proj)
@@ -5320,12 +5319,18 @@ def _run_container(
     skip_if_absent = (
       core_defaults.canon_silent_dests() | (agent_dests - critical_dests)
     ) - must_exist
+    # ⚑ THE SKELETON PASS BEFORE EMISSION (spec "The canon skeleton", step 2): every
+    # canon mountpoint must exist before podman sees the binds, because crun cannot
+    # create one under the ro ``~/canon`` on LXC or an NFS home.
+    box_home = Path(_snapshot_home(_snapshot))
+    core_defaults.materialize_canon_skeleton(box_home, logger=logger, quiet=True)
     try:
       category_mounts = _emit_category_mounts(
         launch_binds,
         label="category",
         must_exist=must_exist,
         skip_if_absent=skip_if_absent,
+        box_home=box_home,
       )
     except BindingSourceError as exc:
       logger.error("Required mount source unusable: %s", exc)
@@ -5960,7 +5965,6 @@ def _run_container(
         entrypoint=entrypoint,
         cli_args=cli_args or None,
         detach=persistent,
-        post_start=_canon_reprotect_hook(proj, logger),
       )
     finally:
       # The hub outlives this command only while its box does: a persistent box
@@ -6086,10 +6090,7 @@ def _run_container(
         # It went unnoticed because reaching here at all is a RACE: the box
         # has to die inside the ~3 s poll window above. A crashing agent does
         # exactly that, and the window has been widening as the launch path
-        # gained pre-attach work (the post-start canon re-protect runs three
-        # ``podman unshare`` calls inline on the detached path before the
-        # first probe; this phase added five more binds for podman to set
-        # up). The e2e that caught it went green → flaky → deterministic
+        # gained pre-attach work (more binds for podman to set up). The e2e that caught it went green → flaky → deterministic
         # across three gates without its own subject changing once.
         #
         # Best-effort and never running: ``_teardown_persistent_box`` returns
@@ -8341,11 +8342,10 @@ def _resolve_launch_snapshot(
       family="core env",
       origins=cat_origins,
     )
-    # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
+    # The packaged CANON: five READ-ONLY binds (spec §2c, J-7) — the
     # COLLECTION.md index and the charter's ROM_CONTENTS.md as FILE binds, plus one
     # whole-directory bind per packaged chapter (general/workset/box).  Each
-    # lands on a mountpoint the box-create skeleton already made, so nothing
-    # nests and no mountpoint has to live inside a bind source.
+    # lands on a mountpoint the skeleton pass made in the box's own ``~/canon``.
     _merge_default_categories(
       default_categories,
       core_defaults.rom_default_categories(),
@@ -8421,8 +8421,8 @@ def _resolve_launch_snapshot(
       )
       # The plugin's CHARTER CHAPTER (spec §2c ``canon_charter_agent``), emitted
       # by CORE from the RESOLVED target beside the five core canon binds —
-      # gated on the plugin actually shipping one.  A SIBLING of them (J-7),
-      # not nested: it lands on ~/canon/charter/agent, a mountpoint the skeleton
+      # gated on the plugin actually shipping one.  Like them (J-7), it
+      # lands on ~/canon/charter/agent, a mountpoint the skeleton
       # always pre-creates whether or not this bind is emitted.  A box-scoped
       # INTERNAL bind, not an agent key — so the charter's agent chapter stays as
       # unrepointable as the rest of the book, and the bind follows the
@@ -9285,6 +9285,7 @@ def _emit_category_mounts(
   label: str,
   must_exist: frozenset[str] = frozenset(),
   skip_if_absent: frozenset[str] = frozenset(),
+  box_home: Path | None = None,
 ) -> list:
   """Emit a dest-keyed ``(src, opts)`` bind map as :class:`Mount`s under L7.
 
@@ -9292,11 +9293,14 @@ def _emit_category_mounts(
   launch path, the same shape translated from the narrow resolve's OWN table
   winners (:func:`_narrow_bind_map`) on the narrow resolves.  *must_exist* and
   *skip_if_absent* are the two DEST-keyed missing-source policies; a dest in
-  neither takes L7's warn-and-drop default.  Prose: llm-docs
-  ``commands/start.py.md``.
+  neither takes L7's warn-and-drop default.  A *skip_if_absent* source inside
+  *box_home* with a symlink at or above it counts as absent: it is never followed.
+  Prose: llm-docs ``commands/start.py.md``.
   """
+  import logging
   from pathlib import Path as _Path
 
+  from kanibako import boxfs
   from kanibako.settings.settings_categories import path_depth
   from kanibako.settings.store_collapse import is_mask
   from kanibako.targets.base import Mount
@@ -9312,14 +9316,24 @@ def _emit_category_mounts(
     if is_mask(bind):
       continue  # a MASK: tmpfs, no host source; _bind_map_masks takes it.
     src = _Path(bind.src)
+    # ⚑ BEFORE ``exists()``, which follows the link: a box-home source behind one
+    # (a user's ``~/canon/notebook`` link) is omitted, never bound through it.
+    if (
+      dest in skip_if_absent
+      and box_home is not None
+      and src.is_relative_to(box_home)
+      and boxfs.first_symlink(src, box_home) is not None
+    ):
+      logging.getLogger(__name__).debug(
+        "%s %s: source %s is behind a symlink; bind omitted", label, dest, bind.src
+      )
+      continue
     if not src.exists():
       # ⚑⚑ THE POLICY IS CONSULTED HERE, BEFORE THE rw GUARANTEE-CREATE
       # BELOW, AND THE ORDER IS THE WHOLE POINT: a must-exist dest whose
       # source vanished has to RAISE, and an rw ``mkdir`` would manufacture
       # the very thing the policy is asking about — turning the clean exit-1
       # safe-fail into an empty directory bound over the agent's binary.
-      import logging
-
       if dest in must_exist:
         # MUST-EXIST: the descriptor's AGENT_CRITICAL delivery binds. A
         # missing source is a clean exit-1 at the call site, never a crun
@@ -9477,10 +9491,6 @@ def _sync_box_at_create(
   two.  A ``synced`` dest is meaningless without the bind map, so this needs
   ``include_base_families=True``; widening the seed's resolve to reach the bind map
   would make it lie about what it reads.
-
-  ⚑ IT RUNS BEFORE ``materialize_canon_skeleton``, for the same reason the seed
-  does: the skeleton makes the canon region 555, and a copy into it afterwards dies
-  ``EACCES``.  Both create call sites keep that order.
 
   ⚑ THE SELECTION ONLY, never the full §1A CLI level: the create-side flags are
   not the launch's.  *selection_level* is a REQUIRED keyword (P7) because this
@@ -9953,9 +9963,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     selection_level=selection.selection_level if selection else None,
   )
   # The create-time ``synced`` write, the seed's SIBLING (see
-  # :func:`_sync_box_at_create`).  It is INSIDE this function, not beside the
-  # ``run_create`` call, so it lands BEFORE ``materialize_canon_skeleton`` — which
-  # makes the canon region 555 and would fail a copy into it with ``EACCES``.
+  # :func:`_sync_box_at_create`).
   # ⚑ The host-install PROBE: it feeds the agent delivery binds, and a ``None``
   # (agent not installed on this host) is an ordinary state, exactly as at launch.
   _sync_box_at_create(
@@ -11361,54 +11369,6 @@ def _core_default_categories(
   )
 
 
-def _canon_reprotect_hook(proj, logger):
-  """Return the POST-START canon re-protect callable for *proj*.
-
-  ⚑⚑ WHY POST-START, NOT AT CREATE ONLY (bifrost, 2026-07-31).  The box home is
-  bound with podman's ``:U`` option (``core-defaults.yaml`` key ``home``), which
-  RECURSIVELY RE-CHOWNS the bind SOURCE to the container user's mapping every time
-  a container is created.  So the ownership ``box create`` established is undone by
-  the very next launch: measured host-side on one box as ``165536 165536 555``
-  after create → ``1000 1000 555`` after start.  Modes survive; ownership does not
-  — and 555 the agent OWNS is no protection at all, because the owner can simply
-  ``chmod u+w``.  A gate agent proved exactly that: ``mkdir ~/canon/scratch``
-  succeeded inside a started box.
-
-  ``:U`` is NOT the thing to fix: it is the load-bearing keep-id correction for
-  hosts whose user is not uid 1000 (the ``1549e39`` class).  Re-asserting after the
-  chown is the cheap, correct answer — the same idempotent ``podman unshare``
-  chown+chmod pass, a handful of calls.
-
-  ⚑ ACCEPTED WINDOW — be precise about its size, it is NOT instantaneous.  On the
-  DETACHED path the hook runs inline the moment ``podman run -d`` returns, so the
-  gap is a single podman round-trip.  On the FOREGROUND path the box is left
-  agent-owned for up to ONE WATCHER POLL INTERVAL (0.25s) into the session, and a
-  container shorter-lived than that is only repaired when the session ENDS — the
-  on-disk state always ends protected, but a very short ephemeral run is
-  unprotected for its whole life.  Tolerable because this mechanism is
-  ANTI-POLLUTION (keep an agent from littering ~/canon), not a security boundary —
-  an agent that wanted to write there could already do so by other means.
-
-  Returns None when there is nothing to protect.
-  """
-  shell_path = getattr(proj, "shell_path", None)
-  if shell_path is None:
-    return None
-
-  def _reprotect() -> None:
-    # quiet=True: this runs as the terminal is handed to the agent, and on a
-    # docker/unshare-less host the degraded report would fire on EVERY launch,
-    # painting into the live TUI/tmux session.  Box create already said it once,
-    # loudly; the per-launch re-assert logs at DEBUG.
-    core_defaults.materialize_canon_skeleton(
-      shell_path,
-      logger=logger,
-      quiet=True,
-    )
-
-  return _reprotect
-
-
 def _kanibako_mounts():
   """The ``kani:`` table's binds as helper-container mounts.
 
@@ -11475,7 +11435,6 @@ def _run_setup_command(
     entrypoint=setup_entrypoint,
     cli_args=setup_args or None,
     detach=False,
-    post_start=_canon_reprotect_hook(proj, None),
   )
   # Remove the setup container so the relaunch recreates it fresh.
   if runtime.container_exists(container_name):

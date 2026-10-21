@@ -131,7 +131,7 @@ CANON_CORE_DESTS = (
   f"{GUEST_HOME}/canon/charter/workset",
   f"{GUEST_HOME}/canon/charter/box",
 )
-CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
+CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon/charter",)
 
 # The SIXTH canon bind — the resolved plugin's own charter chapter (``canon_charter_agent``).
 # ⚑ C-CANON R2: every first-party plugin now ships ``data/rom/ROM_AGENT.md``,
@@ -169,18 +169,22 @@ def assert_canon_binds_ro(cfg: dict) -> None:
   """The packaged canon is mounted READ-ONLY at all five declared guest slots.
 
   Host-side tests prove the SOURCE→DEST mapping; only a real container proves the
-  binds actually materialize onto the pre-created mountpoints, and that neither
-  book root is mounted.
+  binds actually materialize onto the pre-created mountpoints, over the box's own
+  ro ``~/canon`` with ``notebook/`` + ``workbook/`` rw in place, and that the
+  charter root is not mounted.
   """
+  canon = find_mount(cfg, f"{GUEST_HOME}/canon")
+  assert canon is not None and canon.get("RW") is False, "~/canon must be bound read-only"
+  for book in ("notebook", "workbook"):
+    m = find_mount(cfg, f"{GUEST_HOME}/canon/{book}")
+    assert m is not None and m.get("RW") is True, f"~/canon/{book} must be bound read-write"
   for dest in CANON_CORE_DESTS:
     m = find_mount(cfg, dest)
     assert m is not None, f"canon bind missing at {dest}"
     assert m.get("RW") is False, f"canon bind at {dest} must be read-only"
   for root in CANON_UNBOUND_ROOTS:
     assert find_mount(cfg, root) is None, (
-      f"{root} must NOT be bound — the canon is delivered as SIBLINGS onto "
-      "pre-created mountpoints (J-7), and ~/canon must stay traversable to the "
-      "seeded notebook/workbook books"
+      f"{root} must NOT be bound — its chapters bind onto pre-created mountpoints (J-7)"
     )
 
 
@@ -189,7 +193,7 @@ def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
 
   Host-side tests prove core emits the bind from the resolved target; only a real
   container proves the whole-directory bind lands on the skeleton's pre-created
-  (root-owned, EMPTY) mountpoint and that the chapter is actually readable in-box —
+  (EMPTY) mountpoint and that the chapter is actually readable in-box —
   which is what makes the charter's ``agent/ROM_AGENT.md`` import resolve
   instead of dangling.
   """
@@ -206,40 +210,21 @@ def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
   assert "Core Tome" in in_box, f"the agent chapter is not readable in-box, got {in_box!r}"
 
 
-def assert_canon_locked_down(box: str) -> None:
-  """⚑ THE OWNERSHIP FLIP (J-7) — the half no mount table can show.
-
-  Two assertions, and the SECOND is the one bifrost exists to settle:
-
-  1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
-     the stray-file pollution the skeleton exists to prevent, so its refusal is the
-     behavioral contract.
-  2. ``~/canon`` and ``~/canon/charter`` are owned by uid 0 IN-BOX. Without this a
-     wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
-     satisfy assertion 1 and sail through the entire suite — and that uid is
-     precisely the derivation this e2e is here to prove (``chown 0:0`` inside
-     ``podman unshare`` is the REAL HOST USER, whom ``keep-id:uid=1000`` maps to
-     the in-box agent; container-root is ns-uid 1).
-
-  ⚑ The writability of ``~/canon/{notebook,workbook}`` is asserted SEPARATELY, in
-  :func:`assert_canon_books_writable` — R1b deferred it because nothing created
-  those dirs yet; the seeds half does, so it is now live.
+def assert_canon_read_only(box: str) -> None:
+  """⚑ ``~/canon`` is a read-only bind (J-7): the agent can neither litter it nor
+  remove the rw books mounted in it.  The writability of the books themselves is
+  :func:`assert_canon_books_writable`.
   """
-  refused = podman_exec(
+  out = podman_exec(
     box_container(box),
-    ["sh", "-c", "mkdir ~/canon/scratch 2>&1; echo rc=$?"],
+    [
+      "sh",
+      "-c",
+      "mkdir ~/canon/scratch 2>&1; echo mkdir=$?; rmdir ~/canon/workbook 2>&1; echo rmdir=$?",
+    ],
   ).stdout
-  assert "rc=0" not in refused, f"~/canon must be UNWRITABLE from inside the box, got: {refused!r}"
-
-  owners = podman_exec(
-    box_container(box),
-    ["sh", "-c", "stat -c %u ~/canon ~/canon/charter"],
-  ).stdout.split()
-  assert owners == ["0", "0"], (
-    f"the canon book roots must be ROOT-OWNED in-box, got uids {owners!r}. "
-    "A non-zero non-1000 uid means UNSHARE_BOX_ROOT_UID landed on the wrong "
-    "subuid; 1000 means it landed on the agent (the chown 0:0 trap)."
-  )
+  assert "mkdir=0" not in out, f"~/canon must be UNWRITABLE from inside the box, got: {out!r}"
+  assert "rmdir=0" not in out, f"~/canon/workbook must not be removable, got: {out!r}"
 
 
 def assert_handbook_binds_ro(cfg: dict) -> None:
@@ -279,9 +264,9 @@ def assert_canon_books_writable(box: str) -> None:
   """⚑ The R1b-deferred half: notebook + workbook ARE writable, handbook is NOT.
 
   This is the whole shape of the canon in one assertion. The box's OWN books
-  (notebook, workbook) are SEEDED into the home and stay agent-owned and writable —
-  undeletable only because their 555 parent says so — while everything BOUND around
-  them is read-only. If this ever flips, an agent silently loses the only place it
+  (notebook, workbook) are SEEDED into the home and bound rw in place — undeletable
+  because they are mountpoints in the ro ``~/canon`` — while everything around them
+  is read-only. If this ever flips, an agent silently loses the only place it
   is allowed to write inside ``~/canon``.
   """
   out = podman_exec(
@@ -416,7 +401,7 @@ def test_claude_kickoff_loader_delivery(e2e_env):
     assert_canon_binds_ro(cfg)
     assert_agent_chapter_bound_ro(cfg, box)
     assert_handbook_binds_ro(cfg)
-    assert_canon_locked_down(box)
+    assert_canon_read_only(box)
     assert_canon_books_writable(box)
     assert_no_skip_if_absent_warnings(res.stderr)
     assert_flatten_resolves_every_import(cfg, box)
@@ -455,7 +440,7 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
     assert_canon_binds_ro(cfg)
     assert_agent_chapter_bound_ro(cfg, box)
     assert_handbook_binds_ro(cfg)
-    assert_canon_locked_down(box)
+    assert_canon_read_only(box)
     assert_canon_books_writable(box)
     assert_no_skip_if_absent_warnings(res.stderr)
     assert_flatten_resolves_every_import(cfg, box)

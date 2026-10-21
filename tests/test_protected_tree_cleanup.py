@@ -1,14 +1,7 @@
-"""The test-tier cleanup of PROTECTED canon skeletons (``tests/support/protected_trees``).
+"""The test-tier cleanup of foreign-owned box stores (``tests/support/protected_trees``).
 
-⚑⚑ THIS FILE GUARDS A BUG THAT CANNOT BE REPRODUCED ON THE DEV BOX.
-
-A box's canon skeleton is chowned to a foreign SUBUID by ``podman unshare``, after
-which the host user cannot chmod or unlink it.  ``tempfile.TemporaryDirectory``'s
-finalizer chmods on its way in (``_resetperms``), so a fixture that drives the real
-create path into one dies with ``PermissionError`` — on CI, where user namespaces
-work, and NOT here, where a broken ``newuidmap`` leaves every skeleton agent-owned.
-``KANI_TEST_SIM_UNSHARE`` does not close the gap either: it reproduces the MODES,
-not the OWNERSHIP, and ownership is what defeats the deleter.
+That module says what leaves such a tree; none of it happens on the dev box, where a
+broken ``newuidmap`` leaves every entry host-owned.
 
 So these tests cannot assert the real failure.  What they CAN do — and what makes
 them worth having — is pin the two things whose absence caused it:
@@ -104,10 +97,8 @@ class TestReapIsSurgicalAndSafe:
 
 class TestStartMocksReapsItsBoxStores:
   """⚑ THE FIXTURE-LEVEL PIN. ``start_mocks`` creates a REAL box home inside a
-  ``TemporaryDirectory`` and drives the REAL protect pass (it patches
-  ``commands.start.ContainerRuntime``, but ``_protect_canon_skeleton`` imports from
-  ``kanibako.runtime.container`` inside the function, so the real runtime runs). Its
-  finalizer must therefore reap before ``TemporaryDirectory`` cleans up.
+  ``TemporaryDirectory``. Its finalizer must reap before ``TemporaryDirectory``
+  cleans up.
 
   Drop the reap from the fixture and this reddens.
   """

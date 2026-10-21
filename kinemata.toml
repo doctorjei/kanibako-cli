@@ -2712,6 +2712,16 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/canon/handbook/' }
 
+# FACT: the rw canon BOOK rows' host sources (notebook, workbook, bound in place over the
+# box's ro `~/canon`) are what `core_defaults.canon_default_categories` emits into
+# `box.bindings.rw`. (The ro `~/canon` row is INTERNAL: a `value:`, not a `default:`.)
+[[registry]]
+name = "canon-book-binds"
+kind = "yaml-mapping"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/canon/' }
+
 # FACT: the helper message LOG's bind row is what `core_defaults.helper_default_categories`
 # emits into `box.bindings.ro`. (Its `box.bindings.rw` arm is `helper-socket-bind`'s.)
 [[registry]]
@@ -5158,9 +5168,24 @@ from kanibako.settings.core_defaults import canon_default_categories
 from kinemata_views import guest_bind_arm
 floor = canon_default_categories("<active>")
 for dest, (host_src, *_) in guest_bind_arm(floor, "bindings.ro"):
-    print(f"kanibako-handbook-bind: {dest}={host_src}")
+    if dest.startswith("~/canon/handbook/"):
+        print(f"kanibako-handbook-bind: {dest}={host_src}")
 """]
 extract = '(?m)^kanibako-handbook-bind: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+[[parity]]
+registry = "canon-book-binds"
+command = ["{python}", "-c", """
+from kanibako.settings.core_defaults import canon_default_categories
+from kinemata_views import guest_bind_arm
+floor = canon_default_categories("<active>")
+for dest, (host_src, *_) in guest_bind_arm(floor, "bindings.rw"):
+    print(f"kanibako-canon-book-bind: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-canon-book-bind: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
 translate = { pattern = '^\((.*)\)$', replacement = '\1' }

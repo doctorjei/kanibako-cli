@@ -423,40 +423,17 @@ class TestSupervisorFallback:
 
 
 class TestCanonSkeleton:
-  @pytest.fixture
-  def runtime(self, monkeypatch):
-    """Record what reaches ``podman unshare``; chmod applied for real (as the
-    ``protected_canon`` simulation does), so a followed link would show."""
-    from kanibako.runtime import container
-
-    calls: dict[str, list[Path]] = {"chown": [], "chmod": []}
-
-    class _Fake:
-      def unshare_chown(self, paths, uid, gid):
-        calls["chown"] += paths
-        return True
-
-      def unshare_chmod(self, paths, mode):
-        calls["chmod"] += paths
-        for p in paths:
-          os.chmod(p, int(mode, 8))
-        return True
-
-    monkeypatch.setattr(container, "ContainerRuntime", _Fake)
-    return calls
-
-  def test_parent_link_outside(self, home, outside, runtime, caplog):
+  def test_parent_link_outside(self, home, outside, caplog):
     (home / "canon").symlink_to(outside)
     before = _snapshot(outside)
     with caplog.at_level(logging.WARNING, logger=_BOXFS):
       core_defaults.materialize_canon_skeleton(home)
     _sentinel_untouched(outside, before)
     assert sorted(p.name for p in outside.iterdir()) == ["sentinel"]
-    assert runtime["chown"] == [] and runtime["chmod"] == []
     warned = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warned) == 1 and str(home / "canon") in warned[0].getMessage()
 
-  def test_leaf_link_outside(self, home, outside, runtime, caplog):
+  def test_leaf_link_outside(self, home, outside, caplog):
     rels = core_defaults.canon_skeleton_rels()
     file_rel = next(rel for rel, is_dir in rels if not is_dir)
     leaf = home / file_rel
@@ -466,12 +443,12 @@ class TestCanonSkeleton:
     with caplog.at_level(logging.WARNING, logger=_BOXFS):
       core_defaults.materialize_canon_skeleton(home)
     _sentinel_untouched(outside, before)
-    assert leaf not in runtime["chown"] and leaf not in runtime["chmod"]
+    assert leaf.is_symlink()
     assert _warned(caplog, leaf)
-    # Everything else is still protected.
-    assert home / "canon" in runtime["chown"]
+    # Everything else is still built.
+    assert (home / "canon" / "charter" / "general").is_dir()
 
-  def test_link_inside_the_tree(self, home, runtime, caplog):
+  def test_link_inside_the_tree(self, home, caplog):
     inside = home / "mine"
     inside.mkdir()
     os.chmod(inside, 0o750)
@@ -482,19 +459,10 @@ class TestCanonSkeleton:
     assert (inside.stat().st_mode & 0o777) == 0o750
     assert _warned(caplog, home / "canon")
 
-  def test_if_present_does_not_follow_a_linked_canon(self, home, outside, runtime, caplog):
-    (home / "canon").symlink_to(outside)
-    with caplog.at_level(logging.WARNING, logger=_BOXFS):
-      core_defaults.materialize_canon_skeleton_if_present(home)
-    assert sorted(p.name for p in outside.iterdir()) == ["sentinel"]
-    assert runtime["chown"] == []
-    assert _warned(caplog, home / "canon")
-
-  def test_no_link_control(self, home, runtime, caplog):
+  def test_no_link_control(self, home, caplog):
     with caplog.at_level(logging.WARNING, logger=_BOXFS):
       core_defaults.materialize_canon_skeleton(home)
     expected = [home / rel for rel, _ in core_defaults.canon_skeleton_rels()]
-    assert sorted(runtime["chown"]) == sorted(expected)
     assert all(p.exists() for p in expected)
     assert not caplog.records
 

@@ -35,10 +35,9 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode, load_primary_boxes
 
-# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — ``run_create`` materializes
-# the J-7 canon skeleton root-owned + 555, so a bare ``rmtree`` dies with EACCES where
-# ``podman unshare`` works and silently passes where it does not.  That asymmetry is
-# what makes a local green vacuous; ``remove_box_tree`` is the sanctioned deleter.
+# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — a box tree can hold entries
+# the host user cannot remove (``tests/support/protected_trees`` says which), and only
+# where user namespaces work; ``remove_box_tree`` is the sanctioned deleter.
 from kanibako.runtime.container import remove_box_tree
 from tests.support.early import early_record
 

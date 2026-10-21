@@ -487,7 +487,7 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
 
 
 class TestCanonDefaultCategories:
-  def test_declares_the_five_sibling_binds(self, tmp_path):
+  def test_declares_the_box_skeleton_and_the_five_handbook_binds(self, tmp_path):
     """⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6).
 
     The five binds are now ENTRIES of the ONE terminal ``box.bindings.ro``
@@ -496,8 +496,13 @@ class TestCanonDefaultCategories:
     chapter and the assertion is re-derived onto it rather than weakened.
     """
     cats = core_defaults.canon_default_categories("claude")
-    assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro"}
+    assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro", "box.bindings.rw"}
+    assert set(cats["box.bindings.rw"]) == {
+      f"{GUEST_HOME}/canon/notebook",
+      f"{GUEST_HOME}/canon/workbook",
+    }
     assert set(cats["box.bindings.ro"]) == {
+      f"{GUEST_HOME}/canon",
       f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
       f"{GUEST_HOME}/canon/handbook/general",
       f"{GUEST_HOME}/canon/handbook/agent",
@@ -566,9 +571,9 @@ class TestCanonDefaultCategories:
     # passed whether or not the chapter was emitted. The live property is the
     # absence of the chapter's DESTINATION from the arm.
     assert f"{GUEST_HOME}/canon/handbook/agent" not in cats["box.bindings.ro"]
-    # ...and the four non-agent chapters are still there, so this is proving an
-    # omission rather than an empty table.
-    assert len(cats["box.bindings.ro"]) == 4
+    # ...and the four non-agent chapters are still there (beside ``~/canon``), so
+    # this is proving an omission rather than an empty table.
+    assert len(cats["box.bindings.ro"]) == 5
     assert not any(k.startswith("agent.") for k in cats)
 
   def test_no_canon_row_carries_optional(self):
@@ -599,17 +604,21 @@ class TestCanonDefaultCategories:
     seeded = manifest_doc()["category_default_entries"]["workset.seeded"]
     assert seeded["~/"]["optional"] == "skip_if_absent", seeded
 
-  def test_the_silent_set_is_every_handbook_dest_but_SYS_CONTENTS_plus_the_plugin_chapter(
+  def test_the_silent_set_is_every_canon_dest_but_SYS_CONTENTS_plus_the_plugin_chapter(
     self,
   ):
     """⚑ The silent set is DERIVED, so ``general`` is in it — a flag could never
     put the global handbook there, which is what it takes to keep the per-launch
-    warning off every box that ships no chapter."""
+    warning off every box that ships no chapter.  The box's own ``~/canon`` and its
+    rw books are in it too: a missing one is omitted, never guarantee-created."""
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
     assert core_defaults.canon_silent_dests() == {
       normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
       for chapter in core_defaults.HANDBOOK_CHAPTERS
+    } | {
+      normalize_bind_dest(f"{GUEST_HOME}/{rel}")
+      for rel in ("canon", *core_defaults.canon_rw_book_rels())
     } | {normalize_bind_dest(f"{GUEST_HOME}/canon/charter/agent")}
 
   def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):

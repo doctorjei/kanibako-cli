@@ -1443,8 +1443,7 @@ class TestBoxInfo:
     # ``shutil.rmtree`` (the rule `cfc7257` set for the MBR-6 tests, and the
     # note at the top of ``tests/test_explicit_create.py``).  This case
     # builds its box with ``resolve_project``, not ``run_create``, so there
-    # is no root-owned canon skeleton here and no ``protected_canon``
-    # fixture to take — but the deleter is still the one sanctioned route,
+    # is no canon skeleton here — but the deleter is still the one sanctioned route,
     # so the test tree grows no second pattern to copy.
     from kanibako.runtime.container import remove_box_tree
 
@@ -2512,7 +2511,7 @@ class TestBoxDuplicateToWorkset:
     args = self._make_args(project_dir, tmp_home / "unused", workset="n2_ws", bare=bare)
     with (
       patch(
-        "kanibako.commands.box._lifecycle.materialize_canon_skeleton",
+        "kanibako.commands.box._lifecycle.lay_root_link",
         side_effect=RuntimeError("injected"),
       ),
       pytest.raises(RuntimeError, match="injected"),

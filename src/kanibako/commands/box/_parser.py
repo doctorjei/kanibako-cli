@@ -2101,8 +2101,8 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
       else:
         outcome.recover = recover_cure(_entry_probe)
   seed_new_box(std, config, proj, explicit_agent=_agent_arg)
-  # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
-  # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
+  # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it only fills what the seed left
+  # missing) and INSIDE the journal window (it must replay).
   materialize_canon_skeleton(proj.shell_path)
   # ⚑ The §D4a gate lives HERE, at the create verb: a PRIMARY box's membership IS its
   # workset, so it always registers; a standalone box only opts in.  An unregistered

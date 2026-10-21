@@ -13,7 +13,6 @@ from pathlib import Path
 
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
-from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.launch.box_identity import box_name_cure, refuse_standalone_rename
 from kanibako.git import is_git_repo
@@ -282,8 +281,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     projects_base.mkdir(parents=True, exist_ok=True)
 
     if proj.metadata_path.exists() and not remove_box_tree(proj.metadata_path):
-      # A box home carries the root-owned canon skeleton (J-7) and may carry
-      # files a rootless container wrote as root; a bare rmtree fails on both.
+      # A box home may carry a subuid-owned canon skeleton an older kanibako left
+      # (J-7) and files a rootless container wrote as root; a bare rmtree fails on both.
       print("failed.")
       print(
         f"Error: could not remove the existing box data at "
@@ -298,15 +297,6 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     # Remove info file from restored data
     restored_info = proj.metadata_path / "kanibako-archive-info.txt"
     restored_info.unlink(missing_ok=True)
-
-    # ⚑ Re-assert the canon skeleton on the RESTORED home.  ``tar.extractall``
-    # runs ``_keep_links_filter`` ("data" for every member but a symlink), which
-    # STRIPS ownership AND NORMALIZES directory modes (to 0755) — so the
-    # extracted skeleton is host-user-owned (= the agent, in-box) and plainly
-    # writable.  This call RESTORES both the ownership
-    # and the declared 555/444 modes; it is not merely an ownership top-up.
-    if proj.shell_path.is_dir():
-      materialize_canon_skeleton(proj.shell_path)
 
     # ⚑ REGISTER, exactly as create does — an extracted box that is not in the
     # registry is invisible to `box list`, unreachable by name, and (being

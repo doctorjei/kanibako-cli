@@ -334,7 +334,7 @@ class TestBindRows:
       for name, arm in doc["category_default_entries"].items()
       if name != "parametric_keys"
     )
-    assert binds == 31 and cats == 3
+    assert binds == 34 and cats == 3
     assert len(bind_rows()) == binds + cats
 
   def test_the_internal_entries_are_marked_and_are_the_manifest_s(self):
@@ -346,7 +346,7 @@ class TestBindRows:
       for dest, entry in entries.items()
       if entry.get("user_key") is False
     }
-    assert len(internal) == 11
+    assert len(internal) == 12
     assert {r.key for r in bind_rows() if r.internal} == internal
 
   def test_a_dest_renders_bracketed_and_is_never_split_on_a_dot(self):

@@ -398,7 +398,6 @@ class TestARollbackBesideALoopedStoreBase:
     stash_root = tmp_path / "stash-root"
     stash_root.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(stash_root))
-    monkeypatch.setattr(lc, "materialize_canon_skeleton", lambda _home: None)
 
     def part_way(ws, name, *, bases=None):
       store = ws.projects_dir / name

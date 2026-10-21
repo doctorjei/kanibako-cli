@@ -5,9 +5,10 @@ host user could not unlink — when an agent happened to write as root inside a
 ``--userns=keep-id`` container — so exactly one verb (``box rm --purge``) carried the
 ``podman unshare`` escalation and everything else used a bare ``shutil.rmtree``.
 
-Under J-7 that assumption is dead: **every** box home carries the canon skeleton, and
-the skeleton is root-owned and mode-``555`` by construction. Two consequences drive
-every test here:
+Under J-7's retired ownership lockdown **every** box home got a root-owned, mode-``555``
+canon skeleton, and boxes not launched since still carry one (the launch's skeleton
+pass gives a host-owned one its owner write back). Two consequences drive every test
+here:
 
 1. ``shutil.rmtree`` raises ``PermissionError`` on a tree containing 555 DIRECTORIES
    **even when the caller owns them** — unlinking a child needs write on its parent.
@@ -32,7 +33,7 @@ from kanibako.runtime.container import remove_box_tree
 
 
 def protected_box_home(box_dir: Path) -> Path:
-  """Build a box tree whose canon skeleton is 555, as box create leaves it.
+  """Build a box tree whose canon skeleton is 555, as the retired lockdown left it.
 
   Ownership is the test process's own (a unit test cannot mint subuids), which is
   precisely the case the Editor's finding makes interesting: the modes ALONE are
@@ -44,7 +45,7 @@ def protected_box_home(box_dir: Path) -> Path:
   (home / "canon" / "handbook" / "box").mkdir(parents=True)
   (home / "canon" / "COLLECTION.md").touch()
   (home / "canon" / "charter" / "ROM_CONTENTS.md").touch()
-  # The seeded books stay agent-owned + writable (undeletable only via the parent).
+  # The seeded books stayed agent-owned + writable.
   (home / "canon" / "notebook").mkdir()
   (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").write_text("mine\n")
   (box_dir / "box.yaml").write_text("box: {}\n")
@@ -319,20 +320,12 @@ class TestVerbsRouteThroughIt:
     mod = importlib.import_module(module)
     assert hasattr(mod, func), f"{module} lost its {func} import"
 
-  def test_a_created_box_is_not_removable_by_a_bare_rmtree(self, tmp_path):
+  def test_a_locked_box_is_not_removable_by_a_bare_rmtree(self, tmp_path):
     """⚑ THE REGRESSION CI CAUGHT, pinned as a unit.
 
-    `box create` leaves a canon skeleton. Where ``podman unshare`` WORKS that
-    skeleton ends up subuid-owned and 555, and a bare ``shutil.rmtree`` of the
-    box home then raises ``PermissionError`` partway through — which is what
-    reddened ``test_box_register.py`` in CI while every local run stayed green
-    (on a host whose ``podman unshare`` fails, the protect pass short-circuits
-    before the chmod and leaves a plain 755 tree).
-
-    ⚑ THE ASYMMETRY IS THE POINT: a bare rmtree of a created box home is
-    CONDITIONALLY broken — it works on exactly the machines where the protection
-    does not. So "it passed locally" proves nothing here, and the only safe rule
-    is that NO caller (test bodies included) bare-rmtrees a box home.
+    A box the retired lockdown left at 555 makes a bare ``shutil.rmtree`` of the
+    box home raise ``PermissionError`` partway through. So NO caller (test bodies
+    included) bare-rmtrees a box home.
     """
     box = tmp_path / "created-box"
     box.mkdir()

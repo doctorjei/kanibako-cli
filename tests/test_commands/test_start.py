@@ -243,18 +243,33 @@ class TestTargetWarnings:
       assert rc == 0
       m.runtime.run.assert_called_once()
 
-  def test_launch_passes_the_canon_reprotect_hook_to_run(self, start_mocks):
-    """⚑ THE WIRING. ``runtime.run`` gets a ``post_start`` callable, and that
-    callable re-protects the canon skeleton of THIS box's home.
+  def test_launch_runs_the_skeleton_pass_before_the_main_emit(self, start_mocks):
+    """⚑ THE WIRING (spec "The canon skeleton", step 2). Before the main emit, the
+    skeleton pass runs on the box home (quiet, as a launch), and the emit gets
+    that SAME home, so it can omit a canon source behind a symlink.
 
-    This is the mutation-honest half: deleting ``post_start=`` from the
-    ``runtime.run(...)`` call in ``_run_container`` makes this RED. Without it
-    the whole re-protect mechanism could be wired correctly inside
-    ``ContainerRuntime`` and never actually reached from a launch.
+    RED if the pass is dropped, moved after the emit, or the emit loses
+    ``box_home``: crun cannot create a missing mountpoint under the ro ``~/canon``.
     """
     from unittest.mock import patch as _patch
 
-    with start_mocks() as m:
+    from kanibako.commands import start as _start
+
+    calls: list[tuple[str, object]] = []
+    real_emit = _start._emit_category_mounts
+
+    def _emit(bindings, **kw):
+      calls.append(("emit:" + kw["label"], kw.get("box_home")))
+      return real_emit(bindings, **kw)
+
+    with (
+      start_mocks() as m,
+      _patch(
+        "kanibako.settings.core_defaults.materialize_canon_skeleton",
+        side_effect=lambda home, **kw: calls.append(("pass", (home, kw.get("quiet")))),
+      ),
+      _patch.object(_start, "_emit_category_mounts", side_effect=_emit),
+    ):
       m.target.detect.return_value = None
       rc = _run_container(
         project_dir=None,
@@ -266,18 +281,13 @@ class TestTargetWarnings:
         extra_args=[],
       )
       assert rc == 0
-      hook = m.runtime.run.call_args.kwargs.get("post_start")
-      assert callable(hook), (
-        "runtime.run must receive a post_start hook — podman's :U re-chowns "
-        "the home bind source at container creation, undoing the canon "
-        "ownership box create established"
-      )
-
-      # And it must re-protect THIS box's home, not merely be some callable.
-      with _patch("kanibako.settings.core_defaults.materialize_canon_skeleton") as m_protect:
-        hook()
-      m_protect.assert_called_once()
-      assert m_protect.call_args.args[0] == m.proj.shell_path
+    names = [name for name, _ in calls]
+    emit = names.index("emit:category")
+    passes = [i for i in range(emit) if names[i] == "pass"]
+    assert passes, f"no skeleton pass before the main emit: {names}"
+    passed_home, quiet = calls[passes[-1]][1]
+    assert quiet is True
+    assert calls[emit][1] == passed_home
 
   def test_shell_target_still_launches(self, start_mocks):
     """Container should still launch with the binary-less shell target."""
@@ -8689,10 +8699,8 @@ class TestSeedNewBoxCreateEntry:
     dropped from ``seed_new_box``, which is the whole of what makes a brand-new
     box's ``synced`` destinations sync-written rather than seed-written.
 
-    ⚑ AFTER the seed, and it must live INSIDE this function rather than beside
-    ``run_create``'s call to it: ``run_create`` materializes the canon skeleton
-    (555) immediately after, and a copy into that region afterwards dies EACCES.
-    The seed→skeleton half of that order is pinned in ``test_canon_delivery``.
+    ⚑ AFTER the seed, INSIDE this function. The seed→skeleton order is pinned in
+    ``test_canon_delivery``.
     """
     from kanibako.commands.start import seed_new_box
 
@@ -8734,19 +8742,18 @@ class TestSeedNewBoxCreateEntry:
     # can only do that if the create-side resolve is told the same thing.
     assert kwargs["deliver_creds"] is _SHARED_AUTH.creds_shared
 
-  def test_the_LAUNCH_auto_create_block_syncs_too_between_seed_and_skeleton(self):
+  def test_the_LAUNCH_auto_create_block_syncs_too_after_the_seed(self):
     """The OTHER create — ``workset connect``'s first launch — gets the same write.
 
     🛑 ASSERTED ON THE SOURCE, deliberately, and for the same reason
     ``test_canon_delivery`` asserts ``run_create``'s order that way: no harness
     can drive this block's ORDER. ``start_mocks`` stubs the resolve and hands
     ``_run_container`` a MagicMock project, so the three calls cannot be
-    distinguished by their effects — but the order is load-bearing twice over
-    (the seed writes first; the canon skeleton then makes that region 555 and a
-    copy into it afterwards dies EACCES).
+    distinguished by their effects — but the order is load-bearing (the seed
+    writes first).
 
     RED if the create-time sync is dropped from the launch auto-create path,
-    or hoisted above the seed, or pushed below the skeleton.
+    hoisted above the seed, or moved out of the create-journal window.
     """
     import inspect
 
@@ -8759,8 +8766,7 @@ class TestSeedNewBoxCreateEntry:
     skeleton = block.index("materialize_canon_skeleton(")
     register = block.index("_register_new_box(")
     assert seed < sync, "the sync is the seed's SIBLING, and runs after it"
-    assert sync < skeleton, "the skeleton makes the canon region 555 — a copy after it dies EACCES"
-    assert skeleton < register, "all of it inside the create-journal window"
+    assert max(sync, skeleton) < register, "all of it inside the create-journal window"
 
 
 class TestPersonaTokenCountsEveryMountedTier:
@@ -16521,7 +16527,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     tmp_home,
     credentials_dir,
     capsys,
-    protected_canon,
   ):
     from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
 
@@ -16554,7 +16559,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
 
@@ -16584,7 +16588,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """``workset.boxes`` -> ``<root>/boxes/project`` puts the new box dir INSIDE the old
     store; ``mv old old/project`` cannot run, so no move is printed, nor a Rebuild."""
@@ -16612,7 +16615,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
 
@@ -16637,7 +16639,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
     from kanibako.runtime.container import remove_box_tree
@@ -16676,7 +16677,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """The store follows ``workset.boxes`` (spec: ``meta.box.path`` IS the key), so the
     cure moves the old store TO the key's dir and never from it into ``box_data/``."""
@@ -16702,7 +16702,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """The user followed the key: the store sits at its value and the marker is kept.
     That box is healthy: the launch probe finds it, so no "no box" refusal is built."""
@@ -16728,7 +16727,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
     moved,
   ):
     """A root ``registry.yaml`` that lost the mark is no standalone, wherever
@@ -16762,7 +16760,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """An ABSENT root ``registry.yaml``: the cure creates the file."""
     from kanibako.commands.start import _no_box_error
@@ -16784,7 +16781,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
     monkeypatch,
   ):
     """S1c from the root itself (no spec): the standalone registry still names the
@@ -16811,7 +16807,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """A root ``workset.yaml`` that will not parse may still hold the marker, so the
     launch reports the parse error, never a missing marker."""
@@ -16832,7 +16827,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     from kanibako.commands.start import _no_box_error
     from kanibako.runtime.container import remove_box_tree
@@ -16851,7 +16845,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """A repoint at the user's own dir (here the workspace) is never an ``mv`` source,
     and nothing is moved into it either."""
@@ -16874,7 +16867,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """A null ``workset.boxes`` refuses; the message carries that refusal and its
     cure (the SettingsError arm), and neither a Rebuild nor a move."""
@@ -16896,7 +16888,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """Question 2 (the 154th addendum): the leaf is HERE with data and the key
     names a dir that is NOT there.  The single-question gate read a present
@@ -16931,7 +16922,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """A null key resolves to NO store, which is question 2 failing with no
     move to offer: the message carries the refusal, never the create."""
@@ -16953,7 +16943,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     """Leaf present AND the key at its default: BROKEN is false, so the gate
     returns ``None`` and the generic message still owns the call."""
@@ -16967,7 +16956,6 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     config_file,
     tmp_home,
     credentials_dir,
-    protected_canon,
   ):
     from kanibako.commands.start import _unbuilt_box_error
     from kanibako.project.workset import add_project, create_workset

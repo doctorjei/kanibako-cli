@@ -548,12 +548,8 @@ class TestSelfHeal:
     assert run_rm(_rm_args("mybox")) == 0
     # Delete the retained box metadata out-of-band.
     #
-    # ⚑ NOT a bare ``shutil.rmtree``. Since J-7 a created box home carries the
-    # canon skeleton, and on a host where ``podman unshare`` works that skeleton
-    # is subuid-owned and 555 — so ``rmtree`` raises ``PermissionError`` partway
-    # through and this test fails. It passed everywhere ``podman unshare`` does
-    # NOT work (the protect pass short-circuits before the chmod, leaving a plain
-    # 755 tree), which is why it went red only in CI. ``remove_box_tree`` is the
+    # ⚑ NOT a bare ``shutil.rmtree``: a box tree can hold entries the host user
+    # cannot remove (``tests/support/protected_trees``). ``remove_box_tree`` is the
     # sanctioned deleter and is exactly what the real ``rm --purge`` path uses.
     assert remove_box_tree(std.boxes / "mybox")
     capsys.readouterr()

@@ -57,7 +57,7 @@ pytestmark = [pytest.mark.e2e, *e2e_requires]
 # The seeded category dest.  ⚑ REPOINTED off the retired ``~/playbook`` to the box's
 # own NOTEBOOK — the canon's writable, box-owned book — because that is where a box's
 # durable notes live now, and because it exercises the one part of ``~/canon`` that
-# must stay AGENT-WRITABLE while everything around it is root-owned 555.
+# must stay AGENT-WRITABLE while everything around it is read-only.
 #
 # It stays a USER-DECLARED ``system.seeded`` entry, deliberately: a user-declared
 # seed is GUEST-space (``~/...``, translated by ``_guest_dest_to_host``), so this test

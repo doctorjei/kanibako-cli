@@ -1566,7 +1566,12 @@ class TestTheEmitterConsumesTheShape:
     assert HOME_DEST not in declared
     rw = [d for d, o in declared.items() if not is_read_only(o) and d in collapsed]
     assert rw, "the fixture must carry a rw bind that is not home"
-    assert all(collapsed[d].opts == "Z,U,rw" for d in rw), collapsed
+    # The mode is appended to the declared options; a bare row (the canon books,
+    # bound in place inside the home bind's own Z,U) carries the mode alone.
+    assert all(collapsed[d].opts == ",".join(filter(None, (declared[d], "rw"))) for d in rw), (
+      collapsed
+    )
+    assert any(collapsed[d].opts == "Z,U,rw" for d in rw), collapsed
     ro = [d for d, o in declared.items() if is_read_only(o) and d in collapsed]
     assert ro, "the fixture must carry a ro bind"
     assert all(collapsed[d].opts == "ro" for d in ro), collapsed

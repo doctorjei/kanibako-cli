@@ -34,7 +34,6 @@ from kanibako.launch.box_identity import (
 )
 from kanibako.runtime.container import ContainerRuntime, remove_box_tree, remove_path
 from kanibako.settings import bootstrap
-from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.workset_dirkeys import (
   EarlyScope,
   early_repoint,
@@ -909,8 +908,6 @@ def copy_into_workset(
       dst_shell = dst_project / "home"
       if not lay_root_link(shell_path, dst_shell):
         copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
-      # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
-      materialize_canon_skeleton(dst_shell)
 
     if copy_workspace:
       dst_workspace = workspace
@@ -2597,8 +2594,8 @@ def _copy_metadata(
   unwind: _Unwind,
 ) -> Path:
   """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
-  # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
-  # so a plain rmtree would silently fail to clean up its own destination.  Armed
+  # ⚑ ESCALATING removal, not a plain rmtree: the home copied below may carry a
+  # subuid-owned canon skeleton an older kanibako left, which a plain rmtree cannot clean up.  Armed
   # before the copy, which can fail part-way, and ONLY for a dir this copy creates:
   # a pre-existing dir may be a REPOINTED store holding the user's files.
   if not (dst_metadata.exists() or dst_metadata.is_symlink()):
@@ -2616,9 +2613,6 @@ def _copy_metadata(
   if src_shell.is_dir():
     if not lay_root_link(src_shell, dst_shell):
       copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
-    # ⚑ The copy carries the canon skeleton's 555 MODES but never its OWNERSHIP —
-    # re-assert (idempotent; J-7).
-    materialize_canon_skeleton(dst_shell)
   return dst_shell
 
 
@@ -4985,8 +4979,6 @@ def _to_workset(
         if stash_boxes.is_dir():
           dst = src_ws.projects_dir / src_name
           _copy_back(dst, partial(copy_tree_keeping_links, stash_boxes, dst, dirs_exist_ok=True))
-          if shell_source.is_dir():
-            materialize_canon_skeleton(dst / "home")
 
       steps: list[tuple[str, Path | None, Callable[[], object]]] = [
         (
@@ -5090,8 +5082,6 @@ def _to_workset(
   if shell_source.is_dir():
     if not lay_root_link(shell_source, dst_shell):
       copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
-    # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
-    materialize_canon_skeleton(dst_shell)
 
   old_leaf: tuple[Path, Path] | None = None
   if copy_workspace and in_tree_leaf is not None:
