@@ -233,13 +233,10 @@ migration code.** Four released config surfaces are removed outright
   - `notebook/` and `workbook/` — box-owned and writable: box directives/procedures, and
     box working state (devnotes, tasks, plans). Seeded once at `create`.
 
-  `box create` materializes a root-owned, mode-555 skeleton of book roots, chapter
-  mountpoints and file mountpoints, and launch mounts each chapter as an individual
-  read-only **sibling** — no mountpoint ever lives inside a bind source, and neither
-  `~/canon` nor `~/canon/bible` is ever bound whole. Protection is re-asserted after
-  every container start (the home bind's `:U` re-chowns the source), and the lifecycle
-  verbs escalate to delete or copy a protected tree. If a host cannot root-own the
-  skeleton, `create` says so loudly and the box works normally, unprotected.
+  `box create` builds a skeleton of book roots, chapter mountpoints and file mountpoints
+  in the box home, and each launch re-checks it, binds `~/canon` read-only from it, binds
+  each chapter read-only over it, and binds `notebook/` + `workbook/` read-write in place.
+  No mountpoint lives in a shared or packaged source.
   **New boxes only** — an existing box keeps launching and gains the new bible, but its
   own `~/playbook` directives stop being loaded (MIGRATION.md § *The canon books — where your
   instruction files now live* has the recipe).

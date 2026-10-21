@@ -144,7 +144,7 @@ inside boxes. In order of likely impact:
    break silently.
 
 8. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
-   workbook}` with a read-only, root-owned skeleton; `~/playbook` is retired as the entry
+   workbook}` with a read-only skeleton; `~/playbook` is retired as the entry
    point. Existing boxes keep launching but their own `~/playbook` directives **silently stop
    being loaded** and need hand-triage (see *The canon books — where your instruction files now
    live*). The packaged book is named `charter`; the `1.8.0rc1` and `rc2` prereleases spelled it
@@ -845,16 +845,11 @@ guidance now lives.
 
 What a v1.7.2 user needs to know:
 
-- **New boxes get a protected skeleton.** `box create` builds a root-owned, mode-555 canon
-  skeleton in the box home (chapter mountpoints plus 0-byte import-fallback files, so the
-  entry chain resolves even before content is bound). Consequences you should not mistake for
-  bugs: an agent cannot `mkdir` under `~/canon` itself; `notebook/` and `workbook/` are
-  writable but not deletable (their parent is 555). Deleting a box tree from the host needs
-  the escalation kanibako's own verbs (`rm --purge`, `extract`, `move`, `duplicate`) already
-  perform. If the root-owning step cannot run on your host, `create` says so loudly —
-  *"canon books at <path> are left writable from inside the box: <why>. The box works
-  normally…"* — and the box is fully functional, just
-  without the write protection.
+- **New boxes get a protected skeleton.** `box create` builds a canon skeleton in the box home
+  (chapter mountpoints plus 0-byte import-fallback files, so the entry chain resolves even before
+  content is bound), and launch binds `~/canon` read-only over it. Consequences you should not
+  mistake for bugs: an agent cannot create, rename, or delete anything under `~/canon` except
+  inside `notebook/` and `workbook/`, which are writable but cannot themselves be removed.
 - **Existing boxes keep launching** (including on LXC — the launch self-heals missing canon
   mountpoints rather than dying on crun's mkdir limitation), and they receive the new charter +
   `COLLECTION.md` automatically at their next launch after the upgrade, because those are
@@ -9767,9 +9762,8 @@ the [v1.8.0 guide](#migrating-to-kanibako-v180) for what the flattener makes of 
 
 ⚑ **Inside the canon, a template layer may seed the notebook and the workbook
 only.** The charter and the handbook reach the box as read-only binds, not as
-box-home seeds; the canon skeleton is created root-owned, so a layer that writes
-into either region stops the box create with a permission error rather than
-losing quietly.
+box-home seeds; a copy into either region is hidden by a bind or shown read-only
+beside the books, never the box's own.
 
 ### 8.5 ⚑ Host-config IMPORT removed (the headline break)
 
