@@ -852,8 +852,8 @@ What a v1.7.2 user needs to know:
   writable but not deletable (their parent is 555). Deleting a box tree from the host needs
   the escalation kanibako's own verbs (`rm --purge`, `extract`, `move`, `duplicate`) already
   perform. If the root-owning step cannot run on your host, `create` says so loudly —
-  *"canon books at <path> are left writable from inside the box: podman unshare chown did not
-  succeed. The box works normally…"* (verified) — and the box is fully functional, just
+  *"canon books at <path> are left writable from inside the box: <why>. The box works
+  normally…"* — and the box is fully functional, just
   without the write protection.
 - **Existing boxes keep launching** (including on LXC — the launch self-heals missing canon
   mountpoints rather than dying on crun's mkdir limitation), and they receive the new charter +

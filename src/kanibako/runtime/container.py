@@ -142,6 +142,8 @@ class ContainerRuntime:
     # True only when ``KANIBAKO_DOCKER_CMD`` chose ``cmd``; an explicit *command*
     # skips detection, so it never reads the variable.
     self.cmd_overridden = False
+    # Why the last ``unshare_chown``/``unshare_chmod``/``unshare_rename`` failed; "" after a success.
+    self.unshare_error = ""
     if command:
       self.cmd = command
     else:
@@ -246,16 +248,29 @@ class ContainerRuntime:
     )
 
   def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
+    """Run *argv* on *paths* as namespace root; on False, :attr:`unshare_error` says why."""
+    self.unshare_error = ""
     if not paths:
+      self.unshare_error = "no paths given"
       return False
-    if "podman" not in Path(self.cmd).name:
+    runtime = Path(self.cmd).name
+    if "podman" not in runtime:
+      self.unshare_error = f"{runtime} has no rootless user namespace"
       return False
     result = subprocess.run(
       [self.cmd, "unshare", *argv, *(str(p) for p in paths)],
       capture_output=True,
       text=True,
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+      return True
+    verb = Path(argv[0]).name
+    lines = (result.stderr or "").strip().splitlines()
+    detail = lines[0].strip() if lines else f"exit status {result.returncode}"
+    self.unshare_error = f"podman unshare {verb} failed: {detail}"
+    if verb == "chown" and "Operation not permitted" in detail:
+      self.unshare_error += " (the filesystem refuses ownership changes, e.g. NFS)"
+    return False
 
   def build(self, image: str, containerfile: Path, context: Path) -> None:
     """Build *image* from *containerfile*. Raises ContainerError on failure."""

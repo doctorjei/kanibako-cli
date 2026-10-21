@@ -1086,7 +1086,7 @@ def _protect_canon_skeleton(
     _warn_unprotected(
       everything[0],
       log,
-      "podman unshare chown did not succeed",
+      runtime.unshare_error,
       True,
       quiet,
     )
@@ -1096,7 +1096,7 @@ def _protect_canon_skeleton(
       _warn_unprotected(
         everything[0],
         log,
-        f"podman unshare chmod {mode} did not succeed",
+        runtime.unshare_error,
         False,
         quiet,
       )

@@ -423,6 +423,26 @@ class TestUnshareChownChmod:
       assert rt.unshare_chown(self._PATHS, 1, 1) is False
       assert rt.unshare_chmod(self._PATHS, "555") is False
       m.assert_not_called()
+    assert rt.unshare_error == "docker has no rootless user namespace"
+
+  def test_failure_reason_is_the_first_stderr_line(self):
+    from unittest.mock import MagicMock
+
+    rt = ContainerRuntime(command="/usr/bin/podman")
+    err = "chown: changing ownership of '/x': Operation not permitted\nsecond line\n"
+    with patch("kanibako.runtime.container.subprocess.run") as m:
+      m.return_value = MagicMock(returncode=1, stderr=err)
+      assert rt.unshare_chown(self._PATHS, 1, 1) is False
+      assert rt.unshare_error == (
+        "podman unshare chown failed: chown: changing ownership of '/x': "
+        "Operation not permitted (the filesystem refuses ownership changes, e.g. NFS)"
+      )
+      m.return_value = MagicMock(returncode=1, stderr="chmod: boom\n")
+      assert rt.unshare_chmod(self._PATHS, "555") is False
+      assert rt.unshare_error == "podman unshare chmod failed: chmod: boom"
+      m.return_value = MagicMock(returncode=0)
+      assert rt.unshare_chmod(self._PATHS, "555") is True
+      assert rt.unshare_error == ""
 
   def test_empty_path_list_is_a_no_op(self):
     rt = ContainerRuntime(command="/usr/bin/podman")

@@ -2712,6 +2712,8 @@ migration code.** Four released config surfaces are removed outright
 
 ### Fixed
 
+- **An unprotected canon skeleton says why.** The "left writable" warning now quotes podman's error
+  (such as an NFS home refusing the chown), or names a runtime with no rootless user namespace.
 - **A box with a live socket or FIFO in it moves.** `box move`, `box convert`, `box duplicate`, and a
   snapshot no longer fail on a socket (such as gpg-agent's `S.gpg-agent`) or FIFO in the box: each is
   skipped with a warning, since its program recreates it.

@@ -1769,6 +1769,44 @@ class TestCanonSkeleton:
       for r in caplog.records
     ), caplog.text
 
+  @pytest.mark.no_unshare_sim
+  @pytest.mark.parametrize(
+    ("cmd", "reason"),
+    (
+      (
+        "/usr/bin/podman",
+        "podman unshare chown failed: chown: changing ownership of 'x': Operation not "
+        "permitted (the filesystem refuses ownership changes, e.g. NFS). The box works",
+      ),
+      ("/usr/bin/docker", "docker has no rootless user namespace. The box works"),
+    ),
+  )
+  def test_unshare_warning_says_why(self, tmp_path, caplog, cmd: str, reason: str):
+    """The real runtime's failure reason reaches the warning, not a generic line."""
+    from kanibako.runtime.container import ContainerRuntime
+
+    home = tmp_path / "home"
+    home.mkdir()
+    err = "chown: changing ownership of 'x': Operation not permitted\n"
+    with (
+      patch(
+        "kanibako.runtime.container.ContainerRuntime",
+        return_value=ContainerRuntime(command=cmd),
+      ),
+      patch(
+        "kanibako.runtime.container.subprocess.run",
+        return_value=MagicMock(returncode=1, stderr=err),
+      ) as run,
+      caplog.at_level(logging.WARNING),
+    ):
+      core_defaults.materialize_canon_skeleton(home)
+
+    if "podman" in cmd:
+      assert run.call_args.args[0][:5] == [cmd, "unshare", "chown", "-h", "1:1"]
+    else:
+      run.assert_not_called()
+    assert any(reason in r.message for r in caplog.records), caplog.text
+
   @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
   def test_falls_back_with_a_warning_when_unshare_fails(
     self,
@@ -1782,6 +1820,7 @@ class TestCanonSkeleton:
     rt = MagicMock()
     rt.unshare_chown.return_value = True
     rt.unshare_chmod.return_value = True
+    rt.unshare_error = "the reason"
     getattr(rt, failing).return_value = False
     with (
       patch("kanibako.runtime.container.ContainerRuntime", return_value=rt),
@@ -1794,6 +1833,7 @@ class TestCanonSkeleton:
     # CHOWN leaves the tree agent-owned and writable; a failed CHMOD leaves it
     # root-owned at default modes, where the agent still cannot write.
     warning = " ".join(r.message for r in caplog.records)
+    assert ": the reason. The " in warning, caplog.text
     if failing == "unshare_chown":
       assert "left writable" in warning, caplog.text
     else:
