@@ -65,7 +65,7 @@ One emitter, one walk, three per-dest answers to "the host source is not there":
 | policy | parameter | who is in it | what happens |
 |---|---|---|---|
 | must-exist | `must_exist` | the descriptor's `AGENT_CRITICAL` dests ∪ core's packaged-canon dests (`core_defaults.rom_must_exist_dests`) | raise `BindingSourceError` → clean exit-1 |
-| skip-if-absent | `skip_if_absent` | the canon chapter dests (`core_defaults.canon_silent_dests`) ∪ the agent's best-effort dests, minus must-exist | dropped at `debug` |
+| skip-if-absent | `skip_if_absent` | the canon dests (`core_defaults.canon_silent_dests`) ∪ the agent's best-effort dests, minus must-exist | dropped at `debug` |
 | warn-and-drop | *(default)* | everything else (including the handbook's `SYS_CONTENTS.md`) | ro warns and drops; rw guarantee-creates |
 
 ⚑⚑ **The policy is consulted BEFORE the rw guarantee-create, and that ordering is the whole point.**
@@ -79,6 +79,14 @@ Pinned by `test_a_missing_critical_source_RAISES_before_any_mkdir`.
 fine. ⚑⚑ **Must-exist is SUBTRACTED where the skip set is BUILT**, not merely consulted first: a dest
 in both would raise anyway, and the overlap would look correct at the emitter while being a
 contradiction in the policy itself.
+
+⚑ **A skip-if-absent source inside *box_home* behind a symlink counts as ABSENT**, checked before
+`exists()` (which follows the link). The box's own `~/canon` and its rw books are bound from the box
+home, which the box can write; a user's `~/canon/notebook -> ~/workspace/wiki/notebook` is skipped,
+so the link still resolves in-box under the ro `~/canon` and podman never follows it host-side. The
+main emit passes the snapshot's home (`_snapshot_home`), the same one the skeleton pass ran on just
+before it (spec "The canon skeleton", step 2: crun cannot create a missing mountpoint under the ro
+`~/canon` on LXC or an NFS home).
 
 ### Why the DEST is the carrier
 
@@ -694,7 +702,7 @@ Both `_seed_box_home` call sites are creates and both get it, immediately after 
 
 | site | why |
 |---|---|
-| `seed_new_box` (the `box create` entry) | INSIDE that function, so it lands BEFORE `materialize_canon_skeleton`, which makes the canon region 555 and would fail a later copy with `EACCES` |
+| `seed_new_box` (the `box create` entry) | INSIDE that function, beside the seed it is the sibling of |
 | `_run_container`'s `if proj.is_new:` block | a `workset connect` member's FIRST launch, which materializes and seeds the box `workset connect` registered |
 
 ⚑ On the `workset connect` first-launch path the sync then runs **again**, later in the same process,

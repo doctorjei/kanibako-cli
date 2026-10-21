@@ -29,14 +29,10 @@ CANON_ACTIVE_AGENT_TOKEN = '<active>'
 HANDBOOK_CHAPTERS = ('general', 'agent', 'workset', 'box')
 HANDBOOK_CONTENTS_REL = f'{HANDBOOK_REL}/SYS_CONTENTS.md'
 HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (('agent', 'SYS_AGENT.md'), ('workset', 'SYS_WORKSET.md'), ('box', 'SYS_BOX.md'))
-UNSHARE_BOX_ROOT_UID = 1
-UNSHARE_BOX_ROOT_GID = 1
-CANON_SKELETON_DIR_MODE = '555'
-CANON_SKELETON_FILE_MODE = '444'
 BIND_TABLES = ('channels', 'core', 'kani', 'kickoff', 'canon', 'helpers', 'images')
 HELPER_SOCKET_NAME = 'helper.sock'
 _INTERNAL_BIND_TABLES = ('kani', 'kickoff')
-_INTERNAL_BIND_ROWS = (('images', 'images_conf'),)
+_INTERNAL_BIND_ROWS = (('images', 'images_conf'), ('canon', 'canon_root'))
 _CONVENIENCE_BIND_ROWS = (('kani', 'secret_export'), ('kickoff', 'kickoff'), ('helpers', 'helper_sock'), ('helpers', 'helper_budget'), ('images', 'images_conf'))
 ```
 
@@ -73,8 +69,8 @@ def rom_must_exist_dests() -> frozenset[str]
 def canon_silent_dests() -> frozenset[str]
 def canon_default_categories(agent_name: str | None) -> dict[str, object]
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]
+def canon_rw_book_rels() -> tuple[str, ...]
 def materialize_canon_skeleton(shell_path: Path, *, logger: 'logging.Logger | None'=None, quiet: bool=False) -> None
-def materialize_canon_skeleton_if_present(shell_path: Path, *, logger: 'logging.Logger | None'=None) -> None
 def bind_dest_families() -> dict[str, str]
 def bind_dest_owners() -> dict[str, str]
 def internal_bind_keys() -> frozenset[tuple[str, str]]
@@ -97,8 +93,6 @@ def _canon_dest(rel: str) -> str
 def _rom_sibling_binds() -> list[tuple[str, str, bool]]
 def _rom_agent_chapter_dest() -> str
 def _skeleton_logger() -> 'logging.Logger'
-def _protect_canon_skeleton(dirs: list[Path], files: list[Path], log: 'logging.Logger', *, quiet: bool=False) -> None
-def _warn_unprotected(root: Path, log: 'logging.Logger', reason: str, agent_owned: bool, quiet: bool=False) -> None
 def _table_bind_dests(table: str) -> frozenset[str]
 def _keyed_rows(table: str, key: str, role: str, *, exactly_one: bool=False) -> list[dict[str, Any]]
 ```

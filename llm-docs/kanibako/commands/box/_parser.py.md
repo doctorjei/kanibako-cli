@@ -148,8 +148,7 @@ time the journal opens the persona is known loadable. It STILL precedes the writ
 abort after the entry would leave a pending entry whose recovery replays the seed.
 
 The canon skeleton (J-7) is materialized AFTER the seed and INSIDE the journal window. After,
-because the seed writes `canon/{notebook,workbook}` under the same root this step makes 555 —
-protect first and those copies die with `EACCES`. Inside, because an interrupted create must
+because it only fills what the seed left missing. Inside, because an interrupted create must
 replay it like every other step.
 
 ### What a FRESH create persists (and a recovery does not)
@@ -325,7 +324,7 @@ earlier step failed, so re-running the purge can finish.
 A purge step is removed by `kanibako.runtime.container.remove_path`: a link loses only the link,
 and a folder goes through `remove_box_tree`, which EVERY box-tree deleter shares — `extract`,
 `move`, `duplicate` and `purge` all need the same `podman unshare` escalation, and they
-need it on every box (the canon skeleton is root-owned by construction).
+need it for a box whose canon skeleton an older kanibako's lockdown left subuid-owned.
 
 ## The listing
 

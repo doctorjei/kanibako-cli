@@ -730,8 +730,8 @@ Unregister a workset and optionally remove its directory tree. Returns the delet
 * *keeps* is asked of each box tree and of the root before any of them is deleted.
 * ⚑ **The irreversible step is LAST**, only after the registry is clean.
 
-⚑⚑ **BOX TREES FIRST (J-7).** The workset root contains `boxes/<name>/home/canon`, a root-owned 555
-skeleton per member box. A whole-root `shutil.rmtree` raises `PermissionError` as soon as it reaches
+⚑⚑ **BOX TREES FIRST (J-7).** The workset root can contain `boxes/<name>/home/canon`, a subuid-owned 555
+skeleton an older kanibako's ownership lockdown left in a member box. A whole-root `shutil.rmtree` raises `PermissionError` as soon as it reaches
 one — leaving the workset HALF-DELETED **after** its registry entries are already gone, which is
 unrecoverable by re-running. Clearing each box tree through `runtime.container.remove_box_tree`
 (which escalates, up to an unshare) first leaves only ordinary user content for the plain `rmtree`.
@@ -910,9 +910,9 @@ never dangles.
 
 ### ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7)
 
-`projects_dir/<name>` holds the box HOME, and every R1b box home carries the canon skeleton:
-root-owned and 555. `shutil.rmtree` raises `PermissionError` on a tree containing 555 directories
-**EVEN WHEN THE CALLER OWNS THEM**, so this breaks in BOTH the protected and the degraded state. It
+`projects_dir/<name>` holds the box HOME, which can carry a 555 canon skeleton an older kanibako's
+ownership lockdown left, and files a container wrote as root. `shutil.rmtree` raises
+`PermissionError` on a tree containing 555 directories **EVEN WHEN THE CALLER OWNS THEM**. It
 therefore goes through `remove_box_tree` (in `remove_member_store`). The workspace and vault dirs are ordinary user content and
 stay on the plain path — **the escalation is scoped to what actually needs it.**
 

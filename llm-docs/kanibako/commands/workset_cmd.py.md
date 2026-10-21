@@ -107,7 +107,7 @@ wins). A bare member name that is not an independently-registered box falls back
 which `remove_project` matches against the workset's member list by name.
 
 The `OSError` arm is not redundant with the `WorksetError` arm. A box tree can refuse deletion —
-a root-owned canon skeleton, or any file a rootless container wrote as root. `remove_project`
+a subuid-owned canon skeleton an older kanibako left, or any file a rootless container wrote as root. `remove_project`
 reports that by raising a `PermissionError`, which is reported like every other verb does, with
 the `podman unshare rm -rf` escalation the user can actually run.
 

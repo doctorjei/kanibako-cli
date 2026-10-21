@@ -273,10 +273,9 @@ nothing can still need it.**
   A copy-back into a REAL-dir destination it cannot write (the 555/444 canon skeleton a
   part-way removal left) removes that destination through `remove_path` and copies again from the
   stash — only when it is one of the source's own store leaves (`_member_store_bases` / name, what
-  `remove_member_store` deletes); a link or repointed leaf is never replaced, and its step Notes. The box-tree step then re-asserts the canon skeleton
-  (`materialize_canon_skeleton`), because a copy carries modes but not ownership.
+  `remove_member_store` deletes); a link or repointed leaf is never replaced, and its step Notes.
 * **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
-  of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints
+  of the box home, whose 555 canon dirs (an older kanibako's lockdown) defeat a plain `rmtree`. A `False` prints
   `Note: could not remove <stash>; it may hold credentials`.
 * **A workset source converted to primary or standalone** (`_plan_source_teardown`'s workset arm)
   has its row dropped by `release_project` at the point of no return (restore: `add_project(...,
@@ -436,16 +435,13 @@ new one's.
 
 ## The canon-skeleton hazard (J-7)
 
-Three sites copy a box home, and all three re-assert the canon skeleton afterwards, because
-`copytree` reproduces the skeleton's **555 MODES but never its OWNERSHIP**. The copy lands
-host-user-owned — which in-box is the agent, who can chmod it back —
-so `materialize_canon_skeleton` is called on the destination shell (idempotent).
-
-The same fact makes removal asymmetric: a plain `shutil.rmtree` over a tree containing a root-owned
-canon skeleton fails with `EACCES` and leaves the old box behind. Every box-tree deletion therefore
+A box home can carry a 555 canon skeleton an older kanibako's ownership lockdown left (subuid-owned
+until its next launch hands it back). A copy needs no repair — the next launch's skeleton pass gives
+a host-owned 555 dir its owner write back — but removal is asymmetric: a plain `shutil.rmtree` over
+such a tree fails with `EACCES` and leaves the old box behind. Every box-tree deletion therefore
 goes through `remove_box_tree` (or the escalating `remove_path`), which escalates — including the
 one on the UNWIND path (`_unwind_created_root(dst, remove_box_tree)`), since `_copy_metadata`
-creates a skeleton at its own destination and an `ignore_errors=True` rmtree would swallow the
+copies such a home to its own destination and an `ignore_errors=True` rmtree would swallow the
 `PermissionError` and silently leave the failed destination in place.
 
 ## Layout facts recorded here so nobody re-derives them

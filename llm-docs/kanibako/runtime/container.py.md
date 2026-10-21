@@ -52,7 +52,7 @@ or a garbage option string; the failure surfaces from podman at launch, not from
 ⚑ Both are **RECURSIVE and MUTATE THE HOST PATH** — `Z` relabels (SELinux) and `U` chowns
 everything underneath the bind SOURCE, on the host, at container creation. They are not annotations.
 This is the single most dangerous property of the argv this module builds, and it is what
-`KEEP_ID_USERNS` and the `post_start` hook both exist to contain.
+`KEEP_ID_USERNS` exists to contain.
 
 ## `KEEP_ID_USERNS` — why not plain `keep-id`
 
@@ -98,51 +98,6 @@ COLLAPSE — so nothing is bound into a box except through the keyspace. Only `-
 mount) stays in this module's own argv. The core mounts arrive from `_resolve_launch_snapshot` →
 `_install_assembly_collapse` → `meta.assembly.bindings` → `_emit_category_mounts`.
 
-## `post_start` — the `:U` re-chown repair seam
-
-*post_start* runs after podman has set the box's mounts up. It is the seam for work that must happen
-AFTER that moment — specifically the **canon re-protect**, because the home bind's `:U` option makes
-podman RECURSIVELY RE-CHOWN the home bind SOURCE to the container user's mapping at container
-creation, which resets the box-create canon skeleton from container-root back to the agent (host
-`165536 165536 555` post-create → `1000 1000 555` post-start).
-
-The hook is wired inside `run()` rather than as a separate step after each `runtime.run(...)` call,
-so that the ORDERING — and the detach/foreground split below — exists in ONE place instead of being
-re-derived at every call site.
-
-⚑ **IT IS NOT "COVERED BY CONSTRUCTION."** The parameter is OPT-IN, so a call site that does not
-pass *post_start* gets nothing. What IS true by construction is narrower, and worth stating exactly:
-`run()` is the only container-CREATION seam (stopped containers are `rm`'d and recreated, never
-`podman start`ed), so there is no OTHER place a `:U` chown can happen. Every call site that binds a
-box home must pass the hook itself; that obligation is enforced by a test
-(`test_container.TestPostStartCallSites`), not by the signature.
-
-The hook is a **repair step, not a precondition** — which is why `_run_post_start` swallows
-everything it raises. A box whose canon re-protect failed is degraded (litter-able) but perfectly
-usable, and taking the launch down over it would trade a cosmetic problem for a total one.
-
-### Two paths, two firing rules
-
-* **DETACHED** — the container is up the instant `podman run -d` returns, so the hook runs INLINE,
-  once, right there. No polling, no thread.
-* **FOREGROUND** — `subprocess.run(cmd)` BLOCKS for the whole session, so there is no "after start"
-  moment in this thread. The hook therefore runs from `_watch_for_start` alongside it, AND
-  unconditionally in the `finally`.
-
-⚑ **THE GUARANTEE LIVES IN THE `finally`, NOT IN THE WATCHER.** A container that lives less than one
-poll interval is never observed running (measured: up at 20 ms, gone at 50 ms — the first probe
-fires before the subprocess even starts and the second lands after the cancel), so the watcher
-*alone* would leave short-lived ephemeral boxes NEVER repaired, silently, and invisibly to any e2e
-using a long-running stub. Re-asserting once the container is gone costs one idempotent pass and
-makes the on-disk state ALWAYS end protected. The watcher is only an OPTIMIZATION: it shortens the
-window DURING a long session. Without the foreground arm entirely, the ephemeral/shell modes would
-run their whole session with an agent-owned canon while the detached path was protected — a split
-nobody would notice.
-
-`_watch_for_start` is a short-lived DAEMON thread: it cannot keep the process alive, it polls a
-bounded number of times (`_POST_START_TIMEOUT_S` / `_POST_START_POLL_S`), and every exception is
-swallowed and debug-logged. A launch must never fail because a post-start hook did.
-
 ## The detached-launch output
 
 `podman run -d` prints the new container's full SHA id to stdout. The caller reattaches by NAME
@@ -186,26 +141,18 @@ root, so the operation succeeds.
 
 * `unshare_rm` — the read side of the problem: a plain `rmtree` of a box's shell dir can fail with
   EACCES.
-* `unshare_chown` — the write-side counterpart, and the mechanism behind the canon skeleton's
-  root-owned book roots: a host user cannot hand a file to one of their own subuids directly,
-  but inside `podman unshare` those subuids are ordinary namespace uids.
-* `unshare_chmod` — runs inside the namespace because the paths are, by then, owned by a subuid the
-  host user cannot chmod directly.
 * `unshare_rename` — renaming a directory into another parent rewrites its `..`, which needs write on
   the directory itself; for one in-box root owns, only namespace root has it. The body is an
   in-namespace `python -I -c os.rename`: `rename(2)` and nothing else, so it can never fall back to a
   copy (`mv` would, across devices).
 
-⚑ **NO `-R`, on either mutating call.** Callers pass an EXPLICIT, enumerated path list — a recursive
-sweep of `~/canon` would take the seeded, agent-owned `notebook/` and `workbook/` books with it.
-
-All four are podman-only and return False for docker, for an empty *paths*, or on any failure.
+Both are podman-only and return False for docker or on any failure.
 
 ## `remove_box_tree` — THE box-tree deleter
 
 A box's home can contain files owned by mapped subuids — files a `--userns=keep-id` container wrote
-as root, and the root-owned canon skeleton kanibako itself creates at box create — which
-the host user cannot unlink. A plain `shutil.rmtree` then fails with EACCES.
+as root, and the subuid-owned canon skeleton an older kanibako's ownership lockdown left —
+which the host user cannot unlink. A plain `shutil.rmtree` then fails with EACCES.
 
 ⚑ **EVERY verb that deletes a box home or box metadata tree must come through here** — `rm --purge`,
 `extract`, `move`/`convert`, `duplicate`'s `--force`/rollback arms, and `purge`. A bare `rmtree` on
@@ -216,9 +163,8 @@ any of those paths is a bug: it fails on the canon skeleton and leaves a half-de
 1. **plain `rmtree`** — ordinary content.
 2. **`rmtree` after re-opening the directory modes we OWN.** ⚑ `rmtree` raises `PermissionError` on
    a tree containing 555 directories **even when the caller owns them** (unlinking a child needs
-   write on its parent), and an owned-but-555 canon skeleton is genuinely reachable:
-   `shutil.copytree` reproduces the skeleton's modes without its ownership, so every box-home copy
-   passes through that state, as does a create whose `chown` failed after the `chmod`. This step
+   write on its parent), and an owned-but-555 canon skeleton is genuinely reachable: the retired
+   lockdown left one on every box launched since (`:U` handed it back to the host user). This step
    needs no container runtime at all — which matters, because the machines that most often lack
    podman are exactly the ones running these verbs.
 3. **`podman unshare rm -rf`** — the SUBUID case, where the files are not ours and no amount of
@@ -343,8 +289,8 @@ Only home-side (shell_path) parents are loosened for traversal; project_path des
 ### The canon-skeleton skip is EXISTENCE-aware, not PATH-aware
 
 ⚑ **THE CANON SKELETON OWNS ITS OWN MOUNTPOINTS — BUT ONLY WHERE IT EXISTS.** On a box whose create
-built the skeleton the mountpoint is already there, root-owned and unwritable, so stubbing it is
-pointless and wrong-headed.
+built the skeleton (and every launch's skeleton pass re-checks it) the mountpoint is already
+there, so stubbing it is pointless and wrong-headed.
 
 ⚑ **That the skip tests EXISTENCE rather than just the path is load-bearing.** Boxes with NO
 skeleton exist: a box created before the skeleton, and any box whose create hit the degraded path.
@@ -355,13 +301,13 @@ pre-creates the mountpoints for exactly those boxes, which also makes this a fre
 migration: an old box gains its canon mountpoints on its next launch.
 
 Where the skeleton DOES exist the fall-through would be a no-op anyway (`_ensure_dir`/`_ensure_file`
-are create-if-absent, and `_loosen_parents` finds 555 already carrying the `0o011` search bits), so
+are create-if-absent, and `_loosen_parents` finds the `0o011` search bits already set), so
 the skip buys clarity rather than behavior — it says out loud that these mountpoints are not the
 launch path's to manage.
 
 `_is_managed_canon_dest` is ⚑ **PATH-shaped, not key-shaped, and deliberately so**: EVERY bind under
 `~/canon` is by construction one of the canon book binds, whose mountpoint
-`kanibako.settings.core_defaults.materialize_canon_skeleton` pre-created at box create. One uniform
+`kanibako.settings.core_defaults.materialize_canon_skeleton` pre-created. One uniform
 rule beats six per-key special cases. The seeded `canon/notebook` + `canon/workbook` are never
 binds, so they never reach here.
 
@@ -377,7 +323,9 @@ Candidates are the vault ro/rw dests (when *enable_vault*) plus each `mount.dest
 content IS the box, not something shadowed (the home/workspace base binds flow through
 *extra_mounts* too). A dest under the seed-denied managed canon region
 (`_is_seed_denied_canon_dest`, `CANON_SEED_DENY_PREFIXES`) is EXCLUDED too: box create's skeleton
-owns it and no seed lands there, so a bind there shadows no user content. Tmpfs masks are not
+owns it and no seed lands there, so a bind there shadows no user content. A bind IN PLACE, whose
+source resolves to its own host stub (`~/canon` and its rw books), shows that very content and is
+skipped too. Tmpfs masks are not
 candidates: masking is intentional hiding, and they are not in *extra_mounts*.
 
 ⚑ **This function is PURE.** It performs no filesystem mutation — no mkdir, touch, unlink or
@@ -435,12 +383,6 @@ and returns None. (Docker is backlog, not yet supported.)
 ## Functions
 
 ```python
-_run_post_start(hook: Callable[[], None]) -> None
-```
-Invoke a post-start *hook*, swallowing anything it raises. A hook is a repair step, never a
-precondition — see the `post_start` section.
-
-```python
 class ContainerRuntime
 ```
 Wrapper around the podman/docker CLI. `__init__` takes an explicit *command* or falls back to
@@ -482,25 +424,9 @@ ContainerRuntime.unshare_rm(path: Path) -> bool
 Remove *path* from within the rootless user namespace. podman-only; False for docker or any failure.
 
 ```python
-ContainerRuntime.unshare_chown(paths: list[Path], uid: int, gid: int) -> bool
-```
-`chown uid:gid` an EXPLICIT list of *paths* inside the namespace. ⚑ Never recursive.
-
-```python
-ContainerRuntime.unshare_chmod(paths: list[Path], mode: str) -> bool
-```
-`chmod mode` an EXPLICIT list of *paths* inside the namespace. ⚑ Never recursive.
-
-```python
 ContainerRuntime.unshare_rename(src: Path, dst: Path) -> bool
 ```
 `rename(2)` *src* to *dst* inside the namespace. ⚑ Never a copy; callers own the guards.
-
-```python
-ContainerRuntime._unshare_apply(argv: list[str], paths: list[Path]) -> bool
-```
-The shared body of the three mutating `unshare` calls: refuses an empty *paths* and refuses docker
-before spawning anything.
 
 ```python
 ContainerRuntime.build(image: str, containerfile: Path, context: Path) -> None
@@ -554,20 +480,14 @@ failure. *containers_dir* is unused.
 ```python
 ContainerRuntime.run(image, *, shell_path, project_path, vault_ro_path, vault_rw_path,
                      extra_mounts=None, tmpfs_masks=None, enable_vault=True, env=None,
-                     name=None, labels=None, entrypoint=None, cli_args=None, detach=False,
-                     post_start=None) -> int
+                     name=None, labels=None, entrypoint=None, cli_args=None,
+                     detach=False) -> int
 ```
 THE box launcher, and the only container-CREATION seam in the tree. Pre-creates stubs, assembles the
 argv described above, and returns the exit code. *labels* become `--label` options on the
 container. *detach* backgrounds it (`-dt`, no `--rm`); the
-foreground arm inherits the terminal and blocks. See the argv, mask and `post_start` sections — every
+foreground arm inherits the terminal and blocks. See the argv and mask sections — every
 parameter here has a platform note attached to it.
-
-```python
-ContainerRuntime._watch_for_start(name: str, post_start: Callable[[], None]) -> threading.Event
-```
-Fire *post_start* once *name* is running; returns a cancel Event. A bounded, exception-swallowing
-daemon thread — an optimization, never the guarantee.
 
 ```python
 ContainerRuntime.exec(name, command, *, env=None, attach=False) -> int
@@ -776,4 +696,3 @@ measured on this box. **Do not delete them for lack of a test; confirm at a bifr
    and that `openat2` traversal needs the `0o011` search bits.
 6. The `keep-id` uid-mapping consequences, and the podman >= 4.3 floor for `uid=`/`gid=`.
 7. The `:U` re-chown measurement (`165536 165536 555` → `1000 1000 555`).
-8. The 20 ms/50 ms short-lived-container timing behind the foreground `finally` guarantee.

@@ -78,10 +78,9 @@ Two things in the module are NOT table producers and should not be read as such:
 
 * `packaged_data_dir` — the packaging primitive — and `packaged_dir_or_none`, the
   directory finder built on it that :mod:`kanibako.launch.templates` imports.
-* the **canon SKELETON** (`canon_skeleton_rels` → `materialize_canon_skeleton` →
-  `_protect_canon_skeleton` → `_warn_unprotected`) — a filesystem MUTATOR that runs at box create,
-  after a box-home copy, and as a per-launch re-assert. It shells out to `podman unshare` and
-  chowns a real tree. It lives here because it is the exact mirror image of the canon BINDS above
+* the **canon SKELETON** (`canon_skeleton_rels` → `materialize_canon_skeleton`) — a filesystem
+  MUTATOR, through `kanibako.boxfs`, that runs at box create and before every launch's bind
+  emission. It lives here because it is the exact mirror image of the canon BINDS above
   and is derived from the same constants.
 
 ## STATIC / DYNAMIC / CONDITIONAL
@@ -304,7 +303,8 @@ kickoff bind, the one core bind with a gate, is its own family.
 ### `internal_bind_keys() -> frozenset[tuple[str, str]]`
 
 Every INTERNAL bind (spec §2c: not a user key, not repointable) as `(arm key, normalized dest)`: every
-row of the `kani:` and `kickoff:` tables, the `images:` table's `images_conf` row, the packaged-canon
+row of the `kani:` and `kickoff:` tables, the `images:` table's `images_conf` row, the `canon:`
+table's `canon_root` row (the box's own ro `~/canon`), the packaged-canon
 siblings (`_rom_sibling_binds`, the same list `rom_default_categories` emits from) and the plugin
 charter chapter (`_rom_agent_chapter_dest`). `settings_launch.build_launch_snapshot` re-imposes the
 floor's entries at these keys after the merge, so no user arm value drops or repoints them. Read from
@@ -456,16 +456,14 @@ Spec §2c: *"a template MUST NOT seed into the `canon/COLLECTION.md` · `canon/c
 
 ⚑ **WHY PREFIXES AND NOT THE LITERAL BIND DESTS.** Under J-7's SIBLING binds `canon/charter` is no
 longer itself a bind dest — only its chapters are — so passing the literal dests would silently stop
-rejecting a seed at `canon/charter/agent/x.md`. That seed is still forbidden, and under J-7 doubly so:
-the whole region is root-owned, so the copy would fail with EACCES at create rather than merely be
-shadowed at launch. The deny list therefore names the managed REGION, which is what §2c actually
+rejecting a seed at `canon/charter/agent/x.md`. That seed is still forbidden. The deny list therefore names the managed REGION, which is what §2c actually
 states.
 
 ⚑ **`canon/handbook` is in the list on the SKELETON's authority, not the bind's.** The trigger is not
-"is it bound?" but "does the box-create SKELETON own it?" — and it does:
-`materialize_canon_skeleton` creates `canon/handbook/` + its four chapter mountpoints +
-`SYS_CONTENTS.md` and makes them root-owned. A template seeding there would fail with EACCES
-regardless of what is bound. *(It is also bound today, by
+"is it bound?" but "does the SKELETON own it?" — and it does: `materialize_canon_skeleton`
+creates `canon/handbook/` + its four chapter mountpoints + `SYS_CONTENTS.md`, read-only in the box
+under the `~/canon` bind. A copy there is shadowed by a book bind or shown read-only beside the
+books, never the box's own. *(It is also bound today, by
 [`canon_default_categories`](#the-handbook-binds--the-scopecanon-floor).)*
 
 ## The packaged ROM canon — functions
@@ -501,11 +499,10 @@ walk today would make every comparison a guaranteed miss — a guard that runs, 
 nothing. Hence :func:`kanibako.launch.templates.packaged_box_home_template`, which names the level
 that IS home-relative.
 
-**PREFIX CONTAINMENT, not set intersection.** The managed region is root-owned from create, so a
-seed does not have to hit an exact path to fail: anything under it — `canon/charter/general/x.md` no
-less than `canon/charter` itself — fails with EACCES at create. Second, and weaker: where a copy could
-land at all, spec §0's copy-vs-mount rule makes the mount's shadowing of it ORDER-INDEPENDENT and
-SILENT. Hence a guard rather than a runtime resolution.
+**PREFIX CONTAINMENT, not set intersection.** A seed does not have to hit an exact path to be
+refused: anything under the region — `canon/charter/general/x.md` no less than `canon/charter`
+itself — is never the box's own, and spec §0's copy-vs-mount rule makes the mount's shadowing of it
+ORDER-INDEPENDENT and SILENT. Hence a guard rather than a runtime resolution.
 
 ```rom_default_categories() -> BindArmTable```
 Build the FIVE read-only packaged-CANON binds as `default_categories`.
@@ -532,10 +529,10 @@ reasonably want to override it?"* — answers itself here: the one book a user c
 one they cannot repoint, and `COLLECTION.md` is the INDEX that defines the canon's shape and load
 order, so a repointable index would mean no guaranteed structure.
 
-⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7: never one whole-directory bind). Every entry is its own
-bind onto a mountpoint that ALREADY EXISTS in the box home, materialized by
-:func:`materialize_canon_skeleton` at box create. Nothing nests inside anything, so no mountpoint
-ever has to live inside a bind SOURCE — which is what killed the whole-dir model: the plugin
+⚑⚑ **NOT A WHOLE-DIR BOOK** (J-7: never one whole-directory bind). Every entry is its own bind onto
+a mountpoint that ALREADY EXISTS in the box's own skeleton, materialized by
+:func:`materialize_canon_skeleton`, the source of the ro `~/canon` bind they all land over. No
+mountpoint ever has to live inside a SHARED source — which is what killed the whole-dir model: the plugin
 chapter's mountpoint would have had to exist inside site-packages (where a wheel cannot ship an
 empty directory and no runtime may write), and the handbook chapters' inside the user's own stores.
 The nested-mount physics PASSED on real podman; the model was retired anyway because of where it
@@ -599,17 +596,15 @@ binding is not"*.
 `agent.<agent>.canon`, personas included). A persona has no package, so it has no charter chapter;
 what it can have is a handbook chapter. Two books, two cardinalities, no overlap.
 
-⚑ **A SIBLING, not a nested bind** (J-7). Its dest does not
-sit inside another bind's: `~/canon/charter` is not bound at all, only its chapters are, and
-this one lands on a mountpoint the box-create skeleton already made. Nothing shadows anything, so
-the ascending mount depth-sort is not load-bearing here any more.
+⚑ **ONE PARENT** (J-7). `~/canon/charter` is not bound at all, only its chapters are, and this one
+lands on a mountpoint the skeleton already made in the box's own ro `~/canon`.
 
 **GATE** — emit ONLY when the plugin actually ships a chapter (`rom_root` exists AND contains
 `ROM_AGENT.md`). With no packaged placeholder chapter left to shadow, an ungated bare
 `data/rom/` would bind an EMPTY directory over the mountpoint: visibly identical to emitting
 nothing, but paid for with a per-launch missing-source WARNING from `_emit_category_mounts` — the
 wrong signal for the perfectly ordinary "this plugin has no chapter". Gate-false is the honest
-shape: an empty root-owned mountpoint plus ONE dangling-import warning from the flattener, which is
+shape: an empty mountpoint plus ONE dangling-import warning from the flattener, which is
 exactly what J-7 accepts.
 
 ## The HANDBOOK binds + the `<scope>.canon` floor
@@ -627,7 +622,9 @@ not key characters), so the substitution cannot collide.
 The canon destinations whose ABSENT source is dropped SILENTLY, as normalized box DESTS (D5).
 
 EVERY `canon:` row's `box_dest` EXCEPT `~/canon/handbook/SYS_CONTENTS.md`, PLUS the plugin's own
-chapter (`_rom_agent_chapter_dest()`). Derived from the ROWS rather than from a per-row flag, so
+chapter (`_rom_agent_chapter_dest()`). The box's own `~/canon` and its rw books are rows too: a
+missing one is omitted, never guarantee-created outside the box-file seam, and the emitter treats a
+symlinked one (inside the box home) as missing. Derived from the ROWS rather than from a per-row flag, so
 adding a handbook row cannot recreate the flag. ⚑⚑ **`SYS_CONTENTS.md` sits in neither set** and
 keeps the default warn-and-drop on purpose: it is the handbook's table of contents, so a box that
 loses it silently loses the one file naming every chapter it has. The other rows are chapter
@@ -687,15 +684,14 @@ tier.
 A NO-AGENT box (*agent_name* None) emits NEITHER the agent scalar NOR the `canon_hb_agent` entry —
 deliberately not an entry with an empty ref, which would produce exactly that degenerate path.
 
-## The box-create CANON SKELETON (J-7)
+## The CANON SKELETON (J-7)
 
 ```HANDBOOK_CHAPTERS = ("general", "agent", "workset", "box")```
 ```HANDBOOK_CONTENTS_REL```
 The handbook's chapters and its table of contents.
 
-Their MOUNTPOINTS are part of this one closed skeleton: J-7 specifies the skeleton as a single set,
-an absent chapter is REQUIRED to show as an empty root-owned dir, and creating them later would mean
-mkdir-ing into an already-555 tree. (Their BINDS are
+Their MOUNTPOINTS are part of the skeleton: an absent chapter is REQUIRED to show as an empty dir.
+(Their BINDS are
 [`canon_default_categories`](#the-handbook-binds--the-scopecanon-floor)'s.)
 
 ```HANDBOOK_FALLBACK_ENTRIES```
@@ -717,8 +713,7 @@ mask a genuinely missing system handbook — which is exactly what `canon_hb_gen
 NON-optional exists to surface.
 
 ⚑ **MACHINERY, NOT CONTENT.** The D2 cut stands: the global handbook STORE still ships `general`
-only. These files live in the BOX's skeleton, are root-owned like the rest of it, and are never
-installed anywhere.
+only. These files live in the BOX's skeleton and are never installed anywhere.
 
 ⚑⚑ **THE ENTRY FILE SITS DIRECTLY IN THE CHAPTER DIRECTORY**, with no `directives/` level:
 `SYS_CONTENTS.md` imports `<chapter>/<entry>`, and the packaged per-scope chapters ship that same
@@ -727,129 +722,56 @@ SILENT failure, not a cosmetic one: the fallback still materializes, so the skel
 while the unresolved-import warning returns on every launch of every box lacking that chapter. The
 flat spelling is the whole mechanism working.
 
-```UNSHARE_BOX_ROOT_UID = 1 · UNSHARE_BOX_ROOT_GID = 1```
-⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0.
-
-J-7's prose says `podman unshare chown 0:0`, but 0 does not do what it reads like. `podman unshare`
-enters the rootless INTERMEDIATE user namespace, whose mapping is `ns-uid 0 -> the real host user`
-and `ns-uid 1.. -> the host user's subuid range`. kanibako runs every box with
-`--userns=keep-id:uid=1000,gid=1000` (:data:`kanibako.runtime.container.KEEP_ID_USERNS`), under which
-the real host user appears IN-BOX as uid 1000 — the agent. So `chown 0:0` inside unshare produces an
-AGENT-OWNED skeleton, the exact opposite of J-7's stated effect (*"in-box: root-owned, unwritable"*).
-Container uid 0 under keep-id is the host user's FIRST SUBUID, which inside `podman unshare` is
-ns-uid 1 — hence 1.
-
-The property J-7 actually needs is *owner != the host user*, which holds for ANY subuid; 0 is the one
-value that provably breaks it. Named constants so a bifrost measurement corrects this in one place.
-
-⚑ **CAVEAT:** in a DEGENERATE configuration — a host `/etc/subuid` range shorter than GUEST_UID (so
-keep-id cannot fill container 0..999 from subuids at all) — ns-uid 1 may not render as container-root
-in-box. The SAFETY property is unaffected: the owner is still a subuid and still not the host user,
-so the books stay unwritable by the agent; only the cosmetic "shows as uid 0" would differ.
-
-```CANON_SKELETON_DIR_MODE = "555" · CANON_SKELETON_FILE_MODE = "444"```
-⚑ TWO MODES, NOT ONE (spec J-7 banner).
-
-**DIRS `r-xr-xr-x`:** unwritable by everyone, but the SEARCH bit stays set so crun's openat2
-destination resolution can still traverse `~/canon` and `~/canon/charter` to reach the chapter
-mountpoints — a 444 directory would break every canon bind.
-
-**FILE mountpoints `r--r--r--`:** the search bit is meaningless on a file, and 555 would mark a
-0-byte `.md` executable for no reason. Applied as a SEPARATE chmod call precisely because the two
-sets need different modes.
-
 ```canon_skeleton_rels() -> tuple[tuple[str, bool], ...]```
-The canon skeleton as `(home-relative posix path, is_dir)` pairs (J-7).
+The canon skeleton as `(home-relative posix path, is_dir)` pairs, PARENTS-FIRST (J-7).
 
-⚑ **DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated:** the skeleton IS the mirror
-image of the canon binds, so one edit to :data:`ROM_CHARTER_CHAPTERS` / :data:`HANDBOOK_CHAPTERS` moves
-both sides at once. A hand-kept second list is exactly the duplicated-shared-data class the design
-principles forbid — and a skeleton that drifts from the binds is a mountpoint podman then creates
-itself, which is the whole failure J-7 exists to remove.
+⚑ **DERIVED FROM THE SAME CONSTANTS AND ROWS AS THE BIND DESTS, never restated:** the skeleton IS the
+mirror image of the canon binds, so one edit to :data:`ROM_CHARTER_CHAPTERS` / :data:`HANDBOOK_CHAPTERS`
+or a `canon:` row moves both sides at once. Every entry is a mountpoint under the ro `~/canon` bind,
+and crun cannot create a missing one there on LXC or an NFS home (`crun: mkdir … Permission denied`,
+launch exit 126) — so a skeleton that drifts from the binds is a launch failure.
 
-Ordered PARENTS-FIRST so a caller can create them in sequence.
-
-`canon/notebook` and `canon/workbook` are ABSENT by design: they are SEEDED, agent-owned and
-writable, and become undeletable only because their parent is 555 — which is intended, not a side
-effect.
+The read-write books (`canon/notebook`, `canon/workbook`, :func:`canon_rw_book_rels`) close the list:
+the seed normally lays them, and the pass makes any it did not.
 
 ⚑ `agent` is ALWAYS pre-created among the charter chapters, emission gate or not (J-7): a gate-false
-launch must show an EMPTY root-owned mountpoint, not a missing directory.
+launch must show an EMPTY mountpoint, not a missing directory.
 
 ⚑ **THE CHAPTER MOUNTPOINTS ARE NOT EMPTY (F1):** three of them carry a 0-byte IMPORT-FALLBACK entry
-file, so `SYS_CONTENTS.md`'s unconditional imports resolve-to-empty instead of warning on every
-launch of every box that has no workset or box chapter. A BOUND chapter replaces the whole directory,
-fallback included. Each entry file sits DIRECTLY in its chapter mountpoint, which the chapter loop
-above has already listed — so its parent is skeleton-owned and root-owned like everything else here,
-and nothing in the books is agent-creatable. See :data:`HANDBOOK_FALLBACK_ENTRIES`.
+file. A BOUND chapter replaces the whole directory, fallback included. See
+:data:`HANDBOOK_FALLBACK_ENTRIES`.
+
+```canon_rw_book_rels() -> tuple[str, ...]```
+The home-relative paths of the books bound READ-WRITE in place, read off the `canon:` rows in the
+`bindings.rw` category. A symlink at one of them is the user's own setup, so the skeleton pass skips
+it silently.
 
 ```materialize_canon_skeleton(shell_path: Path, *, logger=None, quiet: bool = False) -> None```
-Create the canon SKELETON in a box home and make it root-owned + unwritable.
+THE SKELETON PASS: make every canon mountpoint exist in a box home, through `kanibako.boxfs`.
 
-The J-7 assembly model in one function. Callers today:
+Callers:
 
 * **box create** — `commands/box/_parser.py` and the connect-flow first launch in
-  `commands/start.py`, in both cases AFTER the seed and INSIDE the create-journal window.
-* **after any box-home COPY** — `commands/box/_lifecycle.py`, `commands/box/_duplicate.py`,
-  `commands/restore.py`.
-* **a per-launch re-assert** — `commands/start.py`'s post-start hook, with `quiet=True`.
+  `commands/start.py`, AFTER the seed (it only fills gaps) and INSIDE the create-journal window.
+* **every launch, before bind emission** — `commands/start.py`, with `quiet=True`. A box-home copy
+  (duplicate, move, restore) needs no call of its own: its first launch runs the pass.
 
-⚑ **ORDER IS LOAD-BEARING: seed FIRST, protect SECOND.** The seeds/handbook half will seed
-`canon/notebook` + `canon/workbook`, which live UNDER `canon/`; if the 555 landed first those copies
-would fail with EACCES.
+Per entry, parents first:
 
-⚑ **IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED.** Re-running over an already-materialized skeleton
-is a no-op (every `mkdir`/`touch` is create-if-absent) and the ownership pass is a plain re-assert,
-so calling this after a box-home COPY restores what the copy could not carry. It does NOT, however,
-let a FUTURE release add a new mountpoint to :func:`canon_skeleton_rels` and have existing boxes pick
-it up: creating a new entry inside an already-root-owned parent fails with EACCES, and this function
-swallows that (per-path `OSError` is debug-logged and skipped, because one unmakeable mountpoint must
-not cost a box all the others — podman's own error at launch is the honest signal).
-⇒ **Growing the skeleton is a MIGRATION, not a redeploy.** That is why the handbook mountpoints are
-created NOW, ahead of the binds that use them.
+1. **A symlink at or above the entry skips it and everything under it** (`boxfs.first_symlink`).
+   Nothing is replaced, chmodded, or followed. A link at a read-write book is silent (DEBUG); any
+   other link warns at create and logs at DEBUG at launch.
+2. **An existing dir the host user owns that lacks owner write gets `0o755` back.** That is a box
+   the retired ownership lockdown left at 555 (`:U` handed it back to the host user at its next
+   launch); without this the pass could not create a new entry in it.
+3. **A missing entry is created** (`boxfs.mkdir` / `boxfs.touch`). One that cannot be — a
+   subuid-owned 555 skeleton a pre-1.8 create left and no launch has handed back yet — WARNS naming
+   the path, launch or not, because its bind is then omitted for that launch.
 
-⚑ **WHY OWNERSHIP AND NOT MODE ALONE.** A 555 directory the agent OWNS is not protection — the owner
-can `chmod +w` it back. Only an owner the in-box agent is not can make `~/canon` un-litterable.
+A missing home is left alone: the pass builds into a home, it never creates one.
 
-**DEGRADED PATH** (no container runtime, docker, or a failing `unshare`): the skeleton is left
-agent-owned and writable and ONE warning is logged. Box create must not hard-fail on a missing
-runtime — creating a box works today with no podman installed — and the skeleton is what makes the
-binds land, so a box in this state is fully functional, just not litter-proof.
-
-```materialize_canon_skeleton_if_present(shell_path: Path, *, logger=None) -> None```
-Re-assert an EXISTING canon skeleton; do nothing if the home has none.
-
-The post-start re-protect for homes that are NOT box homes — helper boxes today
-(`channels/helper_listener.py`). :func:`materialize_canon_skeleton` would CREATE the skeleton, which
-is wrong here: a helper home is not a box and gaining canon mountpoints from a launch would be a
-silent layout change made by the wrong seam. Re-asserting what is already there is always right,
-because `:U` re-chowns whatever the bind source holds.
-
-```_protect_canon_skeleton(dirs, files, log, *, quiet: bool = False) -> None```
-Make the skeleton root-owned + unwritable from inside the user namespace.
-
-THREE `podman unshare` calls: one `chown` over everything, then a `chmod` per mode class — dirs `555`
-(the search bit is what lets crun traverse `~/canon` to reach the chapter mountpoints) and file
-mountpoints `444`.
-
-⚑ **NEVER `-R`:** a recursive sweep of `canon/` would take the SEEDED, agent-owned `notebook/` +
-`workbook/` with it, which must stay writable. The skeleton is a closed, enumerated set, so an
-explicit list is both safer and no harder.
-
-```_warn_unprotected(root, log, reason, agent_owned, quiet: bool = False) -> None```
-Report a skeleton that did not get its full lockdown.
-
-⚑ *quiet* demotes the report to DEBUG. The POST-START caller sets it: that hook runs while the
-user's terminal is being handed to the agent (tmux, a TUI), and on a docker host — or anywhere
-`unshare` cannot work — this fires on EVERY launch, so at WARNING it would paint over the session,
-forever, for a condition the user already learned about at box create. Create reports it loudly; the
-per-launch re-assert does not repeat it.
-
-⚑ **The two arms are genuinely different and must not share wording.** If the CHOWN did not happen
-(*agent_owned*), the tree is the agent's and fully writable in-box. If the chown SUCCEEDED and only a
-chmod failed, the tree is root-owned at its default mode (0755/0644) — the agent CANNOT write it, but
-the world-traversal and file modes are not the declared ones, and a later chmod re-assert is still
-owed.
+⚑ **NOT A LOCKDOWN.** The skeleton stays host-owned and writable on the host; the read-only
+`~/canon` bind is what keeps the agent from littering it or removing the books.
 
 ## The helper hub binds
 

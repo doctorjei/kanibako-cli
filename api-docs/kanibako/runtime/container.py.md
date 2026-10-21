@@ -11,8 +11,6 @@ Prose for these symbols lives in `llm-docs/kanibako/runtime/container.py.md`.
 logger = get_logger('container')
 KEEP_ID_USERNS = f'--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}'
 STUCK_STATES = frozenset({'removing', 'stopping'})
-_POST_START_TIMEOUT_S = 30.0
-_POST_START_POLL_S = 0.25
 _IMAGE_REF_RE = re.compile('[A-Za-z0-9][A-Za-z0-9._:/@-]*\\Z')
 _CANON_GUEST_PREFIX = f'{GUEST_HOME}/canon'
 _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_SEED_DENY_PREFIXES))
@@ -26,7 +24,6 @@ def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str 
 def remove_path(path: Path) -> bool
 def remove_box_tree(target: Path) -> bool
 def detect_shadowed_mounts(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool) -> list[str]
-def _run_post_start(hook: 'Callable[[], None]') -> None
 def _is_managed_canon_dest(dest: str) -> bool
 def _is_seed_denied_canon_dest(dest: str) -> bool
 def _guest_dest_to_host(dest: str, shell_path: Path, project_path: Path, *, map_home_root: bool=False) -> Path | None
@@ -44,8 +41,6 @@ class ContainerRuntime:
     def pull(self, image: str, *, quiet: bool=True) -> bool
     def remove_image(self, image: str) -> None
     def unshare_rm(self, path: Path) -> bool
-    def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool
-    def unshare_chmod(self, paths: list[Path], mode: str) -> bool
     def unshare_rename(self, src: Path, dst: Path) -> bool
     def build(self, image: str, containerfile: Path, context: Path) -> None
     def rebuild(self, image: str, containerfile: Path, context: Path, build_args: dict[str, str] | None=None) -> int
@@ -56,7 +51,7 @@ class ContainerRuntime:
     def load(self, archive: Path) -> str | None
     def diff(self, image: str) -> list[str]
     def ensure_image(self, image: str, containers_dir: Path | None=None) -> None
-    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, labels: dict[str, str] | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
+    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, labels: dict[str, str] | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False) -> int
     def exec(self, name: str, command: list[str], *, env: dict[str, str] | None=None, attach: bool=False) -> int
     def exec_ready(self, name: str) -> bool
     def exec_succeeds(self, name: str, command: list[str]) -> bool
@@ -81,7 +76,5 @@ class ContainerRuntime:
 
     @staticmethod
     def _detect() -> tuple[str, bool]
-    def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool
-    def _watch_for_start(self, name: str, post_start: 'Callable[[], None]') -> 'threading.Event'
     def _ask_stop(self, name: str) -> bool
 ```
