@@ -83,7 +83,7 @@ def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
-def _copy_vault_leaf_contents(src: Path, dst: Path | None, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None) -> None
+def _copy_vault_leaf_contents(src: Path, dst: Path | None, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None, *, aside: bool=False) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _is_per_box_leaf(leaf: Path, arm: Path) -> bool
 def _eloop(path: Path) -> OSError

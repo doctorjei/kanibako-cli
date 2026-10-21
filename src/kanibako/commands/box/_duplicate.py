@@ -440,12 +440,13 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
   # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
   if target_mode == BoxMode.standalone:
+    # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after; outside
+    # the ``try``, since a refusal wrote nothing to undo.
+    refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
+    # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
+    if not args.force:
+      refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
     try:
-      # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after.
-      refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
-      # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
-      if not args.force:
-        refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
       if not args.bare and workspace_src is not None and workspace_src.is_dir():
         # The copy DESTINATION is the destination root's resolved
         # ``workset.workspaces`` [Jei:2026-08-02] — the STANDALONE

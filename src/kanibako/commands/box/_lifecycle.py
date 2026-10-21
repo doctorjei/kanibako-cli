@@ -2674,8 +2674,13 @@ def _copy_vault_leaf_contents(
   dst: Path | None,
   removed: Collection[Path] = (),
   relocated: Mapping[Path, Path] | None = None,
+  *,
+  aside: bool = False,
 ) -> None:
   """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
+
+  *aside* marks a *dst* in the workset stash: a temp path the user never named, so
+  the copy prints no phase line of its own.
 
   ⚑ ``snapshots.py`` copies vault content under the same symlink rule; this is that
   operation aimed at the relocation destination.  No-ops when *src* holds nothing or
@@ -2723,7 +2728,8 @@ def _copy_vault_leaf_contents(
       "after this do not reach the original target.",
       file=sys.stderr,
     )
-  note_phase(f"Copying the vault to {dst}...")
+  if not aside:
+    note_phase(f"Copying the vault to {dst}...")
   try:
     copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
   except shutil.Error as e:
@@ -4958,8 +4964,8 @@ def _to_workset(
     stash_vault_ro = stash / "vault_ro"
     stash_vault_rw = stash / "vault_rw"
     try:
-      note_phase(f"Copying the box data to {stash}...")
       if state.metadata_path.is_dir():
+        note_phase("Setting the box data aside...")
         copy_tree_keeping_links(
           state.metadata_path,
           stash_boxes,
@@ -4972,7 +4978,7 @@ def _to_workset(
         stash_vault_ro,
         stash_vault_rw,
       ):
-        _copy_vault_leaf_contents(_src, _tmp)
+        _copy_vault_leaf_contents(_src, _tmp, aside=True)
     except BaseException:
       # Nothing is released yet: the source is whole and the stash a partial copy.
       _dispose_stash(stash)

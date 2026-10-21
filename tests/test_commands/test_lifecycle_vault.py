@@ -309,11 +309,11 @@ class TestVaultCarry:
     dest = ws_b.workspaces_dir / "b1"
     real_copy = _copy_vault_leaf_contents
 
-    def _fail_leg2(src, dst):
+    def _fail_leg2(src, dst, **kwargs):
       # Leg 1 lands inside the mkdtemp stash; leg 2 lands under ws_b.
       if ws_b.root.resolve() in dst.resolve().parents:
         raise OSError("injected leg-2 copy failure")
-      return real_copy(src, dst)
+      return real_copy(src, dst, **kwargs)
 
     monkeypatch.setattr(
       "kanibako.commands.box._lifecycle._copy_vault_leaf_contents",

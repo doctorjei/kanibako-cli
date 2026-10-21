@@ -20,6 +20,7 @@ from kanibako.commands.box._lifecycle import (
   execute_lifecycle,
   resolve_lifecycle_target,
 )
+from kanibako.errors import ConfigError
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
@@ -127,13 +128,13 @@ def test_a_convert_between_worksets_names_each_phase(env, capsys):
     confirm=lambda: True,
   )
   lines = _phase_lines(capsys.readouterr().err)
-  stash = next(ln for ln in lines if "kanibako-unwind-" in ln and ln.endswith("..."))
-  assert stash.startswith("Copying the box data to "), "\n".join(lines)
+  # The stash is a temp path the user never named: its phase names no path.
+  assert not [ln for ln in lines if "kanibako-unwind-" in ln and ln.endswith("...")], lines
   box = ws_b.projects_dir / "b1"
   wanted = [
     f"Copying the workspace to {dest}...",
     f"COPY {dest}",
-    stash,
+    "Setting the box data aside...",
     "Removing the old box data of 'b1'...",
     f"Copying the box data to {box}...",
     f"COPY {box}",
@@ -149,10 +150,21 @@ def confirmed(monkeypatch):
 
 @pytest.mark.usefixtures("marked_copies", "confirmed")
 class TestDuplicate:
-  def _args(self, src, dst):
+  def _args(self, src, dst, *, to_mode=None, force=False):
     return argparse.Namespace(
-      source_path=str(src), new_path=str(dst), bare=False, force=False, to_mode=None
+      source_path=str(src), new_path=str(dst), bare=False, force=force, to_mode=to_mode
     )
+
+  def test_a_refusal_that_wrote_nothing_names_no_undo(self, env, capsys):
+    """A scalar ``workset:`` at a standalone destination refuses before any copy."""
+    _config, _std, tmp_home = env
+    pdir = _primary(env)
+    dst = tmp_home / "dup"
+    dst.mkdir()
+    (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
+    with pytest.raises(ConfigError):
+      _duplicate.run_duplicate(self._args(pdir, dst, to_mode="standalone", force=True))
+    assert _phase_lines(capsys.readouterr().err) == []
 
   def test_each_copy_is_named_before_it_runs(self, env, capsys):
     config, std, tmp_home = env
