@@ -32,6 +32,7 @@ def plan_box_mounted_links(state: ProjectState, trees: Collection[Path | None]) 
 def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState) -> None
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
+def note_phase(line: str) -> None
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
 def looped_path_error(path: Path) -> ConfigError
 def looped_lock_reason(lock_file: Path) -> str

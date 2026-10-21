@@ -897,6 +897,7 @@ def copy_into_workset(
   # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
   try:
     dst_project = ws.projects_dir / proj_name
+    note_phase(f"Copying the box data to {dst_project}...")
     copy_tree_keeping_links(
       metadata_path,
       dst_project,
@@ -920,8 +921,10 @@ def copy_into_workset(
           early=_early_scope(std, BoxMode.standalone),
         )
       if not lay_root_link(source_path, dst_workspace):
+        note_phase(f"Copying the workspace to {dst_workspace}...")
         copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
   except BaseException:
+    note_phase("Undoing the duplicate...")
     _unwind_target_member(ws, proj_name, existed)
     raise
 
@@ -2216,6 +2219,8 @@ def execute_lifecycle(
     if sealed:
       unwind.note_interrupted()
     else:
+      if unwind.actions:
+        note_phase(f"Undoing the {_verb_noun(spec)}...")
       unwind.run()
       if unwind.failed:
         _note_unwind_incomplete(
@@ -2338,6 +2343,7 @@ def _run_steps(
     if created is not None:
       unwind.push(partial(_unwind_created_root, created))
     if not lay_root_link(src, landing):
+      note_phase(f"Copying the workspace to {landing}...")
       copy_tree_keeping_links(
         src,
         landing,
@@ -2430,6 +2436,17 @@ def _run_steps(
   return new_state, teardown
 
 
+def note_phase(line: str) -> None:
+  """Print *line* to stderr as a long copy, removal, or undo starts.
+
+  ⚑ One line per phase, never per file: a large tree otherwise copies in silence and
+  reads as a hang.
+  """
+  import sys
+
+  print(line, file=sys.stderr, flush=True)
+
+
 def _retire_old_workspace(old: Path, landed: Path) -> None:
   """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
 
@@ -2473,6 +2490,7 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
   landed_r = landed.resolve()
   if old_r == landed_r or old_r in landed_r.parents:
     return
+  note_phase(f"Removing the old workspace {old}...")
   try:
     shutil.rmtree(old)
   except OSError as err:
@@ -2602,6 +2620,7 @@ def _copy_metadata(
     unwind.push(partial(_unwind_created_root, dst_metadata, remove_box_tree))
   else:
     _arm_leftover_note(unwind, dst_metadata)
+  note_phase(f"Copying the box data to {dst_metadata}...")
   copy_tree_keeping_links(
     src_metadata,
     dst_metadata,
@@ -2704,6 +2723,7 @@ def _copy_vault_leaf_contents(
       "after this do not reach the original target.",
       file=sys.stderr,
     )
+  note_phase(f"Copying the vault to {dst}...")
   try:
     copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
   except shutil.Error as e:
@@ -3591,6 +3611,8 @@ def _finish_relocation(
           path, f"it holds the vault snapshots still under the old name '{state.name}'."
         )
       elif path.is_dir() or path.is_symlink():
+        if not path.is_symlink():
+          note_phase(f"Removing {path}...")
         try:
           remove_path(path)
         except OSError:  # the leftover Note below names it
@@ -4021,6 +4043,7 @@ def _retire_old_store(
     # whether the box tree (which may hold credentials) is gone.
     return _on_disk(p for p in _member_leaves(ws, name)[1:] if p is not None and p not in spared)
 
+  note_phase(f"Removing the old box data of '{name}'...")
   try:
     remove_member_store(ws, name, bases=bases)
   except OSError as err:
@@ -4935,6 +4958,7 @@ def _to_workset(
     stash_vault_ro = stash / "vault_ro"
     stash_vault_rw = stash / "vault_rw"
     try:
+      note_phase(f"Copying the box data to {stash}...")
       if state.metadata_path.is_dir():
         copy_tree_keeping_links(
           state.metadata_path,
@@ -5067,6 +5091,7 @@ def _to_workset(
 
   dst_project = target_ws.projects_dir / new_name
   # Copy metadata (minus lock+home) into the workset boxes dir.
+  note_phase(f"Copying the box data to {dst_project}...")
   copy_tree_keeping_links(
     metadata_source,
     dst_project,
@@ -5095,6 +5120,7 @@ def _to_workset(
         early=EarlyScope(std.early_system, _state_ws_token(state)),
       )
     if not lay_root_link(state.workspace_path, dst_workspace):
+      note_phase(f"Copying the workspace to {dst_workspace}...")
       copy_tree_keeping_links(
         state.workspace_path,
         dst_workspace,

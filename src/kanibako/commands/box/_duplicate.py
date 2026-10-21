@@ -431,7 +431,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
   # F2/F-3: capture whether the destination dir pre-existed BEFORE the workspace
   # copy, so a refusal/OSError can roll back a copy THIS call created without
   # deleting a pre-existing dir.
-  from kanibako.commands.box._lifecycle import _entry_names
+  from kanibako.commands.box._lifecycle import _entry_names, note_phase
 
   new_path_existed = new_path.exists() or new_path.is_symlink()
   new_path_before = _entry_names(new_path)
@@ -474,6 +474,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         register=bool(getattr(args, "register", False)),
       )
     except BaseException:
+      note_phase("Undoing the duplicate...")
       _undo_new_path(new_path, new_path_existed, new_path_before)
       raise
   else:
@@ -533,11 +534,13 @@ def _merge_workspace(src: Path, dst: Path, force: bool, *, share_root_link: bool
 
   Raises ``ProjectError`` naming each entry the merge could not copy.
   """
+  from kanibako.commands.box._lifecycle import note_phase
   from kanibako.errors import ProjectError
 
   try:
     if share_root_link and not dst.exists() and not dst.is_symlink() and lay_root_link(src, dst):
       return
+    note_phase(f"Copying the workspace to {dst}...")
     copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
   except shutil.Error as e:
     listing = failed_entries(e)
@@ -606,6 +609,7 @@ def _duplicate_to_standalone(
   (``_is_standalone_meta_dir``: only the root ``registry.yaml`` holding the
   mark) would resolve the two boxes to one (BUG#3).
   """
+  from kanibako.commands.box._lifecycle import note_phase
   from kanibako.errors import ProjectError
   from kanibako.settings.paths import (
     establish_standalone,
@@ -642,6 +646,7 @@ def _duplicate_to_standalone(
   src_meta_dir = box_metadata_dir(
     src_proj.mode, src_proj.metadata_path, early=src_proj._require_early()
   )
+  note_phase(f"Copying the box data to {dst_metadata}...")
   copy_tree_keeping_links(
     src_meta_dir,
     dst_metadata,
@@ -798,6 +803,8 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
   and the home-free check — so no refusal is preceded by a write to the
   destination (task-dupforce-fix1).
   """
+  from kanibako.commands.box._lifecycle import note_phase
+
   # Assign a new name for the duplicate.  The name MUST be registered first
   # because the destination metadata dir is derived from it (std.boxes/<name>).
   # Registers the PRIMARY membership (the sole store).
@@ -833,6 +840,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
       _merge_workspace(workspace_src, new_path, force, share_root_link=True)
     if force and dst_project.is_dir():
       remove_box_tree(dst_project)
+    note_phase(f"Copying the box data to {dst_project}...")
     copy_tree_keeping_links(
       src_meta_dir,
       dst_project,
@@ -852,6 +860,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
       if not dst_home.is_dir() and not lay_root_link(src_proj.shell_path, dst_home):
         copy_tree_keeping_links(src_proj.shell_path, dst_home)
   except BaseException as exc:
+    note_phase("Undoing the duplicate...")
     _unwind_local_name(std, project_name, dst_project, exc)
     raise
 
@@ -1283,7 +1292,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
   # name is already registered above.  A failure at EITHER step unregisters it,
   # so no "registered but no metadata" orphan survives, and removes a workspace
   # this call created.
-  from kanibako.commands.box._lifecycle import _entry_names
+  from kanibako.commands.box._lifecycle import _entry_names, note_phase
 
   new_path_existed = new_path.exists() or new_path.is_symlink()
   new_path_before = _entry_names(new_path)
@@ -1295,12 +1304,14 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # Copy metadata (entire project dir including home/).
     if args.force and new_project_dir.is_dir():
       remove_box_tree(new_project_dir)
+    note_phase(f"Copying the box data to {new_project_dir}...")
     copy_tree_keeping_links(
       source_project_dir,
       new_project_dir,
       ignore=shutil.ignore_patterns(".kanibako.lock"),
     )
   except BaseException as exc:
+    note_phase("Undoing the duplicate...")
     # ⚑ The workspace first: the summary Note comes last.
     _undo_new_path(new_path, new_path_existed, new_path_before)
     _unwind_local_name(std, dup_name, new_project_dir, exc)

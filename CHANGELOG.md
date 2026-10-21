@@ -2709,6 +2709,8 @@ migration code.** Four released config surfaces are removed outright
 
 ### Fixed
 
+- **A long move no longer looks hung.** `box move`, `box convert`, and `box duplicate` print a line
+  to stderr as each copy, removal, or undo starts.
 - **An unprotected canon skeleton says why.** The "left writable" warning now quotes podman's error
   (such as an NFS home refusing the chown), or names a runtime with no rootless user namespace.
 - **A box with a live socket or FIFO in it moves.** `box move`, `box convert`, `box duplicate`, and a
