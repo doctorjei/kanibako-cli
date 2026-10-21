@@ -1752,15 +1752,32 @@ class TestCanonSkeleton:
     assert (home / "canon" / "workbook").is_dir()
     assert (home / "canon" / "handbook" / "box" / "SYS_BOX.md").is_file()
 
-  def test_restore_reaches_every_skeleton_dir(self, tmp_path):
+  def test_restore_adds_owner_write_and_spares_the_books(self, tmp_path):
+    """Spec step 2 RESTORES owner write: ``u+w`` on every skeleton dir, other bits
+    kept; a read-write book's modes are the user's and are never touched."""
     home = tmp_path / "home"
     home.mkdir()
     core_defaults.materialize_canon_skeleton(home)
+    books = {home / rel for rel in core_defaults.canon_rw_book_rels()}
     dirs = [home / rel for rel, is_dir in core_defaults.canon_skeleton_rels() if is_dir]
     for d in reversed(dirs):
-      d.chmod(0o555)
-    core_defaults.materialize_canon_skeleton(home, quiet=True)
-    assert {d: d.stat().st_mode & 0o777 for d in dirs} == {d: 0o755 for d in dirs}
+      d.chmod(0o550)
+    try:
+      core_defaults.materialize_canon_skeleton(home, quiet=True)
+      modes = {d: d.stat().st_mode & 0o777 for d in dirs}
+    finally:
+      for d in dirs:
+        d.chmod(0o755)
+    assert modes == {d: 0o550 if d in books else 0o750 for d in dirs}
+
+  def test_a_launch_names_a_link_at_the_entry_as_a_symlink(self, tmp_path, caplog):
+    home = tmp_path / "home"
+    (home / "canon").mkdir(parents=True)
+    (home / "canon" / "charter").symlink_to(tmp_path)
+    with caplog.at_level(logging.DEBUG, logger="kanibako.settings.core_defaults"):
+      core_defaults.materialize_canon_skeleton(home, quiet=True)
+    said = [r.getMessage() for r in caplog.records if "canon/charter" in r.getMessage()]
+    assert said == [f"canon skeleton: {home / 'canon' / 'charter'} is a symlink; skipped"]
 
   @pytest.mark.parametrize("quiet", (False, True))
   def test_a_linked_rw_book_is_skipped_silently_and_untouched(self, tmp_path, caplog, quiet):

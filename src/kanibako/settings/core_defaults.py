@@ -19,6 +19,7 @@ import copy
 import importlib.resources
 import logging
 import os
+import stat
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from importlib.resources.abc import Traversable
@@ -999,8 +1000,9 @@ def materialize_canon_skeleton(
   - a symlink at or above the entry skips it and everything under it; nothing is
     replaced, chmodded, or followed.  A link at a read-write book is the user's own
     setup and is skipped at DEBUG; any other link WARNS (DEBUG when *quiet*);
-  - an existing dir the host user owns that lacks owner write gets ``0o755`` back (a
-    skeleton the retired ownership lockdown left at 555);
+  - an existing skeleton dir the host user owns that lacks owner write gets it back,
+    other bits kept (the retired ownership lockdown left them at 555).  The read-write
+    books are the user's and are never chmodded;
   - a missing entry is created; one that cannot be WARNS naming it, *quiet* or not,
     because its bind is then omitted.
 
@@ -1023,7 +1025,8 @@ def materialize_canon_skeleton(
       if link in user_links:
         log.debug("canon skeleton: %s is a symlink; left as it is", link)
       elif quiet:
-        log.debug("canon skeleton: %s is behind the symlink %s; skipped", p, link)
+        why = "is a symlink" if link == p else f"is behind the symlink {link}"
+        log.debug("canon skeleton: %s %s; skipped", p, why)
       else:
         boxfs.no_symlink_or_warn(p, shell_path)
       continue
@@ -1041,8 +1044,13 @@ def materialize_canon_skeleton(
           boxfs.mkdir(p, shell_path)
         else:
           boxfs.touch(p, shell_path)
-      elif is_dir and st.st_uid == os.getuid() and not st.st_mode & 0o200:
-        boxfs.chmod(p, shell_path, 0o755)
+      elif (
+        is_dir
+        and p not in user_links
+        and st.st_uid == os.getuid()
+        and not st.st_mode & stat.S_IWUSR
+      ):
+        boxfs.chmod(p, shell_path, stat.S_IMODE(st.st_mode) | stat.S_IWUSR)
     except OSError as exc:
       skipped.append(p)
       log.warning("canon skeleton: could not create or open %s (%s)", p, exc)

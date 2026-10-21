@@ -761,8 +761,9 @@ Per entry, parents first:
 1. **A symlink at or above the entry skips it and everything under it** (`boxfs.first_symlink`).
    Nothing is replaced, chmodded, or followed. A link at a read-write book is silent (DEBUG); any
    other link warns at create and logs at DEBUG at launch.
-2. **An existing dir the host user owns that lacks owner write gets `0o755` back.** That is a box
-   the retired ownership lockdown left at 555 (`:U` handed it back to the host user at its next
+2. **An existing skeleton dir the host user owns that lacks owner write gets it back** (`u+w`, other
+   bits kept; never a read-write book, whose modes are the user's). That is a box the retired
+   ownership lockdown left at 555 (`:U` handed it back to the host user at its next
    launch); without this the pass could not create a new entry in it.
 3. **A missing entry is created** (`boxfs.mkdir` / `boxfs.touch`). One that cannot be — a
    subuid-owned 555 skeleton a pre-1.8 create left and no launch has handed back yet — WARNS naming

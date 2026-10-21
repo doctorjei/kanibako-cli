@@ -5304,9 +5304,8 @@ class TestExitedBeforeAttachTeardown:
 
   ⚑ WHY IT SURFACED NOW. Reaching that branch is a RACE: the box must die inside
   the ~3 s poll window. A crashing agent does exactly that, and the window has been
-  widening as the launch path gained pre-attach work (the post-start canon
-  re-protect runs three ``podman unshare`` calls inline on the detached path before
-  the first probe; the seeds half added five more binds for podman to set up). The
+  widening as the launch path gained pre-attach work (more binds for podman to set
+  up). The
   e2e that caught it went green -> flaky -> deterministic across three gates
   without its own subject changing once.
   """
