@@ -184,20 +184,42 @@ class TestTheLaunchRefusesAMissingRoot:
     err = missing_channel_root_error(set_up, proj)
     assert err is not None and "workset.channels.mailboxes" in err
 
-  def test_a_broadcast_repointed_into_a_missing_dir_refuses(self, named, set_up):
+  def _repoint_broadcast(self, ws, path):
     from kanibako.settings.config import WORKSET_META_FILE
     from kanibako.settings.config_io import write_nested_key
     from kanibako.settings.config_keys import _KEY_ROUTES
 
+    sections, leaf = _KEY_ROUTES["workset.channels.broadcast"]
+    write_nested_key(ws.root / WORKSET_META_FILE, sections, leaf, str(path))
+
+  def test_a_broadcast_repointed_into_a_missing_dir_is_created_with_a_note(
+    self, named, set_up, capsys
+  ):
+    """The log is a FILE under the channel family, not a root: no refusal, and the
+    seeder makes its directory and says so."""
+    from kanibako.commands.start import _seed_channel_files
+
     ws, proj = named
     loud = ws.root / "loud"
-    sections, leaf = _KEY_ROUTES["workset.channels.broadcast"]
-    write_nested_key(ws.root / WORKSET_META_FILE, sections, leaf, str(loud / "b.md"))
-    err = missing_channel_root_error(set_up, proj)
-    assert err is not None
-    assert f"workset.channels.broadcast (its directory): {loud}" in err
-    loud.mkdir()
+    self._repoint_broadcast(ws, loud / "b.md")
     assert missing_channel_root_error(set_up, proj) is None
+    capsys.readouterr()
+    _seed_channel_files(set_up, proj)
+    assert (loud / "b.md").is_file()
+    assert capsys.readouterr().err == (
+      f"Note: created the missing directory {loud} for the broadcast log {loud / 'b.md'}.\n"
+    )
+
+  def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
+    from kanibako.commands.start import _seed_channel_files
+
+    ws, proj = named
+    share = ws.root / "channels" / "share"
+    share.rmdir()
+    self._repoint_broadcast(ws, share / "b.md")
+    _seed_channel_files(set_up, proj)
+    assert not share.exists()
+    assert "workset.channels.share" in missing_channel_root_error(set_up, proj)
 
   def test_a_standalone_box_is_checked_without_workset_roots(
     self, set_up, config, project_dir, credentials_dir

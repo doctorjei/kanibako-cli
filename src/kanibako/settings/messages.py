@@ -87,6 +87,8 @@ WARN_BOX_HOME_SEEDED = (
 # Information, never a warning: creating a missing read-write source is the rule.
 NOTE_RW_SOURCE_CREATED = "Note: created the missing read-write source %s (bound at %s)."
 # the host path, the box destination
+NOTE_BROADCAST_DIR_CREATED = "Note: created the missing directory %s for the broadcast log %s."
+# the directory, the log
 
 # ⚑ The 1st arg of each pair below is a LAYER DISCRIMINATOR, not a value; BAD_REF's is spliced
 # before "reference", so "" is load-bearing punctuation ("Unknown reference:").

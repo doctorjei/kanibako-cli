@@ -22,26 +22,12 @@ if TYPE_CHECKING:
   from kanibako.settings.paths import ProjectPaths, StandardPaths
 
 
-def _broadcast_dir(
-  key: str, broadcast: Path | None, chat: Path | None
-) -> list[tuple[str, Path | None]]:
-  """The directory of a ``broadcast`` log repointed out of its chat root, as a root.
-
-  The log is seeded at every launch, so a repoint into a missing directory refuses like
-  every other repointed channel path rather than seeding nothing.
-  """
-  if broadcast is None or broadcast.parent == chat:
-    return []
-  return [(f"{key} (its directory)", broadcast.parent)]
-
-
 def _system_roots(std: StandardPaths) -> list[tuple[str, Path | None]]:
   return [
     ("system.channels.common", std.channels_common),
     ("system.channels.chat", std.channels_chat),
     ("system.channels.share", std.channels_share),
     ("system.channels.mailboxes", std.channels_mailboxes),
-    *_broadcast_dir("system.channels.broadcast", std.channels_broadcast, std.channels_chat),
   ]
 
 
@@ -63,7 +49,6 @@ def _workset_roots(
       ("workset.channels.common", wch.common),
       ("workset.channels.chat", wch.chat),
       ("workset.channels.share", wch.share),
-      *_broadcast_dir("workset.channels.broadcast", wch.chat_broadcast, wch.chat),
     ]
   roots.append(
     ("workset.channels.mailboxes", _ch.partition_key_paths(std, ws_token, ws_root).mailboxes)
@@ -159,18 +144,30 @@ def make_proj_inbox(std: StandardPaths, proj: ProjectPaths) -> Path | None:
   return make_box_inbox(std, _ch.workset_name_token(proj), _ch.workset_root(proj, std), proj.name)
 
 
+def _box_roots(std: StandardPaths, proj: ProjectPaths | None) -> list[tuple[str, Path | None]]:
+  """*proj*'s channel roots: the system's, and its workset's (none without a box)."""
+  if proj is None:
+    return _system_roots(std)
+  return _system_roots(std) + _workset_roots(
+    std,
+    _ch.workset_name_token(proj),
+    _ch.workset_root(proj, std),
+    local=_ch.has_workset_channels(proj),
+  )
+
+
+def is_channel_root(std: StandardPaths, proj: ProjectPaths | None, path: Path) -> bool:
+  """True when *path* is one of *proj*'s channel roots, which only their owners make."""
+  return any(p == path for _, p in _box_roots(std, proj))
+
+
 def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | None:
   """The launch refusal for *proj*'s missing channel roots, or ``None``.
 
   Each root is named with its cure: ``kanibako setup`` for one setup makes, else
   ``mkdir -p``.  A null key names no root.
   """
-  roots = _system_roots(std) + _workset_roots(
-    std,
-    _ch.workset_name_token(proj),
-    _ch.workset_root(proj, std),
-    local=_ch.has_workset_channels(proj),
-  )
+  roots = _box_roots(std, proj)
   missing = [(k, p) for k, p in roots if p is not None and not p.is_dir()]
   if not missing:
     return None

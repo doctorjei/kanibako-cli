@@ -91,6 +91,7 @@ from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.messages import (
   WARN_BOX_HOME_REBUILT,
   WARN_BOX_HOME_SEEDED,
+  NOTE_BROADCAST_DIR_CREATED,
   NOTE_RW_SOURCE_CREATED,
 )
 from kanibako.settings.paths import (
@@ -119,7 +120,7 @@ from kanibako.agent_ref import (
   persona_of,
   with_harness,
 )
-from kanibako.channels.roots import make_proj_inbox, missing_channel_root_error
+from kanibako.channels.roots import is_channel_root, make_proj_inbox, missing_channel_root_error
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
@@ -11289,7 +11290,8 @@ def _seed_channel_files(std, proj) -> None:
   dir (every mode) and at the WORKSET chat dir for primary/named.  Create-if-absent
   (idempotent — never overwrites a user-edited log); the partition source DIRS
   themselves are made by their owners and never here (a launch refuses a missing
-  one first): a log whose directory is missing is skipped.  Keeps ``rotate_if_over`` on each
+  one first): a log whose directory is missing is skipped, except a repointed
+  ``broadcast``'s non-root directory, which is made with a ``Note:``.  Keeps ``rotate_if_over`` on each
   broadcast log (A5 — parity with the legacy ``broadcast.log`` rotation).
 
   ⚑⚑ EVERY PATH HERE IS READ OFF A RESOLVED KEY, never joined onto a channel root.
@@ -11332,8 +11334,15 @@ def _seed_channel_files(std, proj) -> None:
   for general, broadcast in logs:
     try:
       for log in (general, broadcast):
-        if log is None or not log.parent.is_dir():
+        if log is None:
           continue
+        if not log.parent.is_dir():
+          # A ``broadcast`` repointed out of its chat root names a log FILE, not a root:
+          # its directory is made here, and said.  A root is never made here.
+          if log != broadcast or is_channel_root(std, proj, log.parent):
+            continue
+          log.parent.mkdir(parents=True, exist_ok=True)
+          print(NOTE_BROADCAST_DIR_CREATED % (log.parent, log), file=sys.stderr)
         if not boxfs.no_symlink_or_warn(log, log.parent):
           continue
         if not log.exists():
