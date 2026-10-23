@@ -13,14 +13,13 @@ registry section it writes.
 
 ## The two live modes, and who calls them
 
-* **NAMED** — `import_named_workset` runs lazily in `settings/paths.py`'s `detect_project_mode`
-  ancestor walk — nothing sweeps eagerly — whenever `project/workset.is_workset_skeleton` matches a
-  level: the four dirs `create_workset` stamps, present together. After the import the walk re-runs
-  `box_resolve.named_path_space`, which now resolves.
+* **NAMED** — `import_named_workset` runs lazily in `import_pass` — nothing sweeps eagerly —
+  whenever `project/workset.is_workset_skeleton` matches a level: the four dirs `create_workset`
+  stamps, present together. A new registration walks again, and the registry claims the subject.
 * **STANDALONE** — a standalone box is unregistered by default, so a standalone root is only
-  CHECKED during detection (`refuse_standalone_spelling`, from `detect_project_mode` and
-  `box_resolve.walk_box_mode`), which never registers one. `import_standalone` runs only from
-  `box register`.
+  CHECKED during detection (`refuse_standalone_spelling`, from `paths.walk_project_mode`,
+  `box_resolve.walk_box_mode`, and `import_pass`), which never registers one.
+  `import_standalone` runs only from `box register`.
 
 ⚑⚑ **THE TWO MODES DIFFER IN WHERE THE NAME COMES FROM, AND ONLY THERE.** A standalone box composes
 one from its stored `workset.kuid` plus the live dir leaf. A workset records no name anywhere under
@@ -32,7 +31,7 @@ is what deleted this function once. Detection is presence-only in both modes, an
 `_is_standalone_meta_dir` is the standing proof the two questions separate: it finds a box without
 reading any name out of it.
 
-⚑ The walk ALSO calls `project/workset.refuse_retired_workset_identity` at each level, **before**
+⚑ The pass ALSO calls `project/workset.refuse_retired_workset_identity` at each level, **before**
 the NAMED test — deliberately. A v1.6/v1.7 root HAS the four-dir skeleton, so a NAMED arm running
 first would import it under its leaf name and leave the retired identity table, and the `projects:`
 list beside it, unread and unmentioned. The diagnosis has to precede the action or it never happens.
@@ -44,9 +43,9 @@ fire on a plain `kanibako box register`.
 
 ### The resolver's pass over a standalone root
 
-`refuse_standalone_spelling(registry, root)` reads only; `reconcile(result, std)` holds detection's
-write, re-derived from the `DetectionResult` (step 2 below); `check_standalone(registry, root, *,
-journal=None, early)` is both, for `create --standalone` (`commands/box/_parser.py`). None
+`refuse_standalone_spelling(registry, root)` reads only; `reconcile(walk, std)` holds detection's
+writes: `import_pass`, then the clear in step 2 below, re-derived from the answer;
+`check_standalone(registry, root, *, journal=None, early)` is both, for `create --standalone` (`commands/box/_parser.py`). None
 registers a box. In order:
 
 1. `refuse_second_link`: another spelling of a registered standalone's identity — a link, a bind
@@ -198,7 +197,7 @@ directory returns its registered name.
 ⚑ **The `$HOME` decline is the one that is not obvious, and it is deliberately one step earlier than
 `names.register_name`'s own refusal of a `$HOME` root.** That refusal still stands; it is simply
 never reached from here. It has to be pre-empted, because `create_workset` is HANDED a path while the
-ancestor walk arrives at `$HOME` under its own steam — `detect_project_mode`'s stop condition fires
+ancestor walk arrives at `$HOME` under its own steam — `paths.treewalk_levels` stops
 only AFTER the level has been tested — so a home directory that happens to carry the four-dir
 skeleton would RAISE out of **every** command's mode detection. Declining leaves it what it already
 was: a plain primary-mode dir.

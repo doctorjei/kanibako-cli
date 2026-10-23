@@ -6,9 +6,9 @@ is **imported** on discovery: registered, ALERTed to stderr, no confirmation
 prompt.  That is what lets a user move a tree to a new location (or machine) and
 have kanibako re-discover it.
 
-Two live modes: :func:`import_named_workset`, called lazily during the resolver's
-ancestor walk, and :func:`import_standalone`, called only by ``box register`` — a
-standalone box is unregistered by default, so the walk only CHECKS one
+Two live modes: :func:`import_named_workset`, called by :func:`import_pass` when
+detection reaches its treewalk, and :func:`import_standalone`, called only by ``box
+register`` — a standalone box is unregistered by default, so the walk only CHECKS one
 (:func:`refuse_standalone_spelling`) and never registers it; :func:`reconcile` holds
 detection's writes.  A retired third **PRIMARY** mode is sequestered in
 ``salvage/primary_reconcile.py`` — do not revive it here.
@@ -37,9 +37,10 @@ from __future__ import annotations
 
 import shlex
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from kanibako.project import registry_store
 from kanibako.project.names import lookup_by_path, register_name
@@ -48,8 +49,10 @@ from kanibako.settings.paths import (
   BoxMode,
   DetectionResult,
   StandardPaths,
+  Treewalk,
   _early_scope,
   standalone_box_store,
+  treewalk_levels,
 )
 from kanibako.utils import is_home_dir, literal_path
 
@@ -59,6 +62,9 @@ if TYPE_CHECKING:
 
 class ImportConflictError(KanibakoError):
   """A drop-in import refused: the name collides with a different entity."""
+
+
+_Answer = TypeVar("_Answer", bound=DetectionResult | None)
 
 
 def _alert(mode: str, name: str, path: Path) -> None:
@@ -234,16 +240,58 @@ def check_standalone(
   _clear_stale_standalone(registry, root, journal, early)
 
 
-def reconcile(result: DetectionResult | None, std: StandardPaths) -> None:
-  """Detection's writes, re-derived from its *result*; idempotent.
+def reconcile(walk: Callable[[], _Answer | Treewalk[_Answer]], std: StandardPaths) -> _Answer:
+  """Detection's writes around *walk*, a pure detection walk; idempotent.
 
-  A detected standalone box that is registered gets its stale J2 entry cleared.
+  :func:`import_pass`, then a detected standalone box that is registered gets its stale
+  J2 entry cleared.
   """
-  if result is None or result.mode is not BoxMode.standalone:
-    return
-  _clear_stale_standalone(
-    std.registry, result.project_root, std.journal, _early_scope(std, BoxMode.standalone)
-  )
+  result = import_pass(walk, std)
+  if result is not None and result.mode is BoxMode.standalone:
+    _clear_stale_standalone(
+      std.registry, result.project_root, std.journal, _early_scope(std, BoxMode.standalone)
+    )
+  return result
+
+
+def import_pass(walk: Callable[[], _Answer | Treewalk[_Answer]], std: StandardPaths) -> _Answer:
+  """*walk*'s answer; a walk that reached its treewalk first imports from the subject up.
+
+  A new registration walks again, and the registry claims the subject.  A registered root
+  is never imported again, so each walk adds at most one ancestor.
+  """
+  walked = walk()
+  while isinstance(walked, Treewalk):
+    if not _import_levels(walked.subject, std):
+      return walked.read()
+    walked = walk()
+  return walked
+
+
+def _import_levels(subject: Path, std: StandardPaths) -> bool:
+  """The treewalk with its import arm, from *subject* up; True when it registered a workset.
+
+  It stops where the walk stops, at a standalone mark or ``$HOME``, and raises the walk's
+  refusals at their own levels.
+  """
+  from kanibako.launch import box_resolve
+  from kanibako.project.workset import is_workset_skeleton, refuse_retired_workset_identity
+  from kanibako.settings.workset_dirkeys import EarlyScope
+
+  for current in treewalk_levels(subject):
+    # ⚑⚑ THE LEGACY REFUSAL RUNS FIRST, and unconditionally.  A v1.6/v1.7 root HAS
+    # the four-dir skeleton, so the import below would register it happily under
+    # its leaf name — leaving the retired identity table, and the `projects:` list
+    # beside it, unread and unmentioned.
+    refuse_retired_workset_identity(current)
+    if box_resolve.is_standalone_root(current):
+      refuse_standalone_spelling(std.registry, current)
+      return False
+    if is_workset_skeleton(current, early=EarlyScope(std.early_system, current.name)):
+      new = lookup_by_path(std.registry, literal_path(current)) is None
+      if import_named_workset(std.registry, current, journal=std.journal) is not None and new:
+        return True
+  return False
 
 
 def import_standalone(

@@ -9,7 +9,8 @@ here"; the registries collectively ARE the reverse index.
 Each helper takes its inputs explicitly (the resolved `kanibako.settings.paths.StandardPaths`, the
 `BootstrapConfig`, and the target directory) — no hidden global reads. `walk_box_mode` refuses
 another path to a registered standalone ([R188]); `detect_box_mode` is that walk plus
-`import_reconcile.reconcile`, which may clear a registered standalone root's stale import entry.
+`import_reconcile.reconcile`, which imports an unregistered workset root (and walks again) and
+clears a registered standalone root's stale import entry.
 
 The module also owns:
 
@@ -82,8 +83,8 @@ standalone — but a registry entry AT the path outranks it (D3-mode, below).
 ## The mode precedence — D3-mode, first match wins
 
 `walk_box_mode` is the one carrier of this order (system-design § Detection & import). Every path
-compares literally (links unfollowed). It writes nothing but the treewalk's workset import and
-`list_worksets`'s drop (`tests/test_detection_nowrite.py` runs it on a read-only tree).
+compares literally (links unfollowed). It writes nothing but `list_worksets`'s drop
+(`tests/test_detection_nowrite.py` runs it on a read-only tree).
 
 1. **The path space's registry has a box AT *project_dir*** → that box's mode, `primary` or
    `named`. The path space is the named workset whose tree holds the dir, else primary
@@ -91,9 +92,9 @@ compares literally (links unfollowed). It writes nothing but the treewalk's work
 2. **The standalone registry has a box AT *project_dir*** → `standalone`, marker or not. A root that
    lost its marker is that box, broken (D4 state 3), never "not a box".
 3. **An in-place mark** (the marker above) → `standalone`.
-4. **The `kanibako.settings.paths.detect_project_mode` treewalk** — composed, not duplicated. A
+4. **The `kanibako.settings.paths.walk_project_mode` treewalk** — composed, not duplicated. A
    `primary` result AT *project_dir* is its no-marker default, so not a box: `None`, which sends
-   the caller down its create path. Any other result passes through, including a `primary` at an
+   the caller down its create path; its step 5 stays a `Treewalk`. Any other result passes through, including a `primary` at an
    ANCESTOR (a subdirectory launch).
 
 ## Scanning for an owner

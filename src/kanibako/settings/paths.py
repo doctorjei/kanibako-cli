@@ -48,8 +48,8 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, overload
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Generic, NamedTuple, Protocol, TypeVar, overload
 
 from kanibako.identifiers import derived_name, find_identifier, first_free_name
 from kanibako.log import get_logger
@@ -152,6 +152,38 @@ class DetectionResult(NamedTuple):
 
   mode: BoxMode
   project_root: Path
+
+
+_Answer = TypeVar("_Answer", bound=DetectionResult | None)
+
+
+@dataclass(frozen=True)
+class Treewalk(Generic[_Answer]):
+  """A walk that reached the treewalk: its *result*, or the refusal it *held*.
+
+  The import pass (:func:`~kanibako.project.import_reconcile.import_pass`) runs from
+  *subject* before :meth:`read`, so an import below the level that stopped the walk wins.
+  """
+
+  subject: Path
+  result: _Answer
+  held: KanibakoError | None = None
+
+  def read(self) -> _Answer:
+    """*result*, or the held refusal raised."""
+    if self.held is not None:
+      raise self.held
+    return self.result
+
+
+def treewalk_levels(start: Path) -> Iterator[Path]:
+  """*start*, then each parent, through ``$HOME`` or the filesystem root."""
+  current = start
+  while True:
+    yield current
+    if is_home_dir(current) or current.parent == current:
+      return
+    current = current.parent
 
 
 @dataclass
@@ -2143,10 +2175,22 @@ def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool:
 def detect_project_mode(
   project_dir: Path, std: StandardPaths, config: BootstrapConfig
 ) -> DetectionResult:
-  """Infer which project mode applies to *project_dir*, walking ancestors for markers.
+  """:func:`walk_project_mode`, after :func:`~kanibako.project.import_reconcile.import_pass`.
 
   ⚑ A standalone result's stale J2 clear is ``import_reconcile.reconcile``'s, run by
   ``box_resolve.detect_box_mode``.
+  """
+  from kanibako.project import import_reconcile
+
+  return import_reconcile.import_pass(lambda: walk_project_mode(project_dir, std, config), std)
+
+
+def walk_project_mode(
+  project_dir: Path, std: StandardPaths, config: BootstrapConfig
+) -> DetectionResult | Treewalk[DetectionResult]:
+  """Infer which project mode applies to *project_dir*, walking ancestors for markers.
+
+  Writes nothing.  Step 5, the treewalk, answers as a :class:`Treewalk`.
   """
   resolved = Path(literal_path(project_dir))
 
@@ -2182,50 +2226,18 @@ def detect_project_mode(
   if unreadable is not None:
     raise unreadable
 
-  # 5. Walk ancestors for on-disk markers, IMPORTING an unregistered workset (never a
-  # standalone box).  STANDALONE is checked first at each level: the root file's own null
-  # defines it, skeleton or not.
+  # 5. The treewalk: the nearest standalone mark, else primary AT the subject.  A refusal
+  # is held: the import pass runs first, and an import below the refusing level wins.
   from kanibako.project import import_reconcile
-  from kanibako.project.workset import (
-    is_workset_skeleton,
-    refuse_retired_workset_identity,
-  )
-  from kanibako.settings.workset_dirkeys import EarlyScope
 
-  current = resolved
-  while True:
-    # ⚑⚑ THE LEGACY REFUSAL RUNS FIRST, and unconditionally.  A v1.6/v1.7 root HAS
-    # the four-dir skeleton, so the NAMED arm below would import it happily under
-    # its leaf name — leaving the retired identity table, and the `projects:` list
-    # beside it, unread and unmentioned.  Diagnosing the legacy shape has to come
-    # before acting on the directory, or the diagnosis never happens.
-    refuse_retired_workset_identity(current)
-
-    # STANDALONE: the root's own registry file holds the mark; box_data/ is not the marker.
-    if _is_standalone_meta_dir(current):
-      import_reconcile.refuse_standalone_spelling(std.registry, current)
-      return DetectionResult(BoxMode.standalone, current)
-
-    # NAMED: an unregistered workset root; import it, then the standard check resolves it.
-    if is_workset_skeleton(current, early=EarlyScope(std.early_system, current.name)):
-      import_reconcile.import_named_workset(
-        std.registry,
-        current,
-        journal=std.journal,
-      )
-      if box_resolve.named_path_space(resolved, std) is not None:
-        return DetectionResult(BoxMode.named, resolved)
-
-    # Stop conditions: reached $HOME or filesystem root.
-    if is_home_dir(current):
-      break
-    parent = current.parent
-    if parent == current:
-      break
-    current = parent
-
-  # 6. Default: primary mode at the original directory.
-  return DetectionResult(BoxMode.primary, resolved)
+  try:
+    for current in treewalk_levels(resolved):
+      if _is_standalone_meta_dir(current):
+        import_reconcile.refuse_standalone_spelling(std.registry, current)
+        return Treewalk(resolved, DetectionResult(BoxMode.standalone, current))
+  except KanibakoError as exc:
+    return Treewalk(resolved, DetectionResult(BoxMode.primary, resolved), exc)
+  return Treewalk(resolved, DetectionResult(BoxMode.primary, resolved))
 
 
 def _relative_to_either(path: Path, root: Path) -> Path | None:

@@ -993,7 +993,7 @@ or `None`.
 def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool
 ```
 True only if *root* carries the standalone box MARKER. *strict* refuses a malformed
-`workset.yaml` instead of reading it as no marker; `detect_project_mode`'s step 2 passes it.
+`workset.yaml` instead of reading it as no marker; `walk_project_mode`'s step 2 passes it.
 
 The marker is `<root>/registry.yaml` holding only `__STANDALONE__` (NOT inside the box store): the
 standalone self-declaration (design D4). It OVERRIDES any workset tree determination
@@ -1005,14 +1005,22 @@ def detect_project_mode(
     project_dir: Path, std: StandardPaths, config: BootstrapConfig,
 ) -> DetectionResult
 ```
-Infer which project mode applies to *project_dir*.
+`walk_project_mode` through `import_reconcile.import_pass`: the treewalk's workset imports, then
+the answer. It does not clear a stale J2 entry (`import_reconcile.reconcile` does).
+
+```python
+def walk_project_mode(
+    project_dir: Path, std: StandardPaths, config: BootstrapConfig,
+) -> DetectionResult | Treewalk[DetectionResult]
+```
+Infer which project mode applies to *project_dir*; writes nothing.
 
 ⚑ `box_resolve.walk_box_mode` is the one carrier of the mode order (D3-mode); this treewalk is its
 step 4, after the two registry checks and the in-place marker. Callers detect through
 `box_resolve.detect_box_mode`, not here.
 
-Walks ancestor directories (up to `$HOME` or filesystem root) looking for project markers. Returns a
-`DetectionResult` with the detected mode and the ancestor directory where the marker was found.
+Returns a `DetectionResult` with the detected mode and the ancestor directory where the marker was
+found; step 5 answers as a `Treewalk` (below).
 
 Detection order:
 
@@ -1028,10 +1036,20 @@ Detection order:
 4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
    (`_find_local_ancestor` → `load_primary_boxes`); deepest registered path that is an ancestor of
    *project_dir* wins. Membership alone decides: an entry with no `boxes/{name}/` still claims.
-5. **Walk ancestors for on-disk markers** — at each level, a standalone marker (vetted, never
-   registered), then a workset skeleton (an unregistered one is IMPORTED — see
-   `kanibako.project.import_reconcile`).
-6. **Default** — `primary` mode at the original *project_dir*.
+5. **The treewalk** (`treewalk_levels`, through `$HOME` or the filesystem root) — the nearest
+   standalone mark (vetted, never registered), else `primary` at *project_dir*. A refusal is
+   HELD in the `Treewalk`, not raised: `import_reconcile.import_pass` runs the import loop from
+   *project_dir* first, so an import below a mark, an unreadable level, or a legacy root wins
+   (bootstrap design § 4). The walk has no legacy refusal and no import; both are the pass's.
+
+```python
+@dataclass(frozen=True)
+class Treewalk(Generic[_Answer]):  # subject, result, held=None; read() -> _Answer
+def treewalk_levels(start: Path) -> Iterator[Path]
+```
+`Treewalk` is a walk's step-5 answer: `read()` returns *result* or raises *held*.
+`treewalk_levels` yields *start* and each parent through `$HOME` or `/`; the walk and the pass
+share it.
 
 ### Why step 1 must run before step 2
 

@@ -411,7 +411,7 @@ MALFORMED one is refused in `load_doc`'s own words, naming the file, like every 
 file: reading it as "no file" repointed every resolved workset key to its default in silence,
 including the vault arms the teardown paths delete by.
 ⚑ THREE CARVE-OUTS, each catching `ConfigError` itself — `refuse_retired_workset_identity` and
-`is_workset_skeleton`, both reached by `detect_project_mode`'s ancestor walk over every directory
+`is_workset_skeleton`, both reached by `import_reconcile.import_pass`'s walk over every directory
 above the cwd (most of them not ours), and `delete_workset`'s purge, which must not make a user
 hand-edit the very file they are deleting. Two other callers catch it: `commands/workset_cmd.py`'s
 `run_rm`, which counts the members at the DEFAULT registry path so the project-count guard still

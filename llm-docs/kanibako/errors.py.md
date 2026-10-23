@@ -265,9 +265,9 @@ A workset root's `workset.yaml` still carries a RETIRED workset identity table �
 workset has no identity table anywhere under its root; it is named by the global registry.
 
 One raise site, `project/workset.py:refuse_retired_workset_identity`, reached from `_load_workset`
-and from `settings/paths.py`'s ancestor walk. ⚑ **The subclass exists so ONE blanket catch can
+and from `import_reconcile.import_pass`'s ancestor walk. ⚑ **The subclass exists so ONE blanket catch can
 re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every exception out of
-`detect_project_mode` as "a non-project path is simply a miss", and an un-migrated workset root in
+`detect_box_or_default` as "a non-project path is simply a miss", and an un-migrated workset root in
 the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md § "A workset root no
 longer carries an identity table; an un-migrated root refuses".
 

@@ -31,7 +31,8 @@ from kanibako.settings.paths import (
   DetectionResult,
   ProjectPaths,
   StandardPaths,
-  detect_project_mode,
+  Treewalk,
+  walk_project_mode,
 )
 from kanibako.utils import is_file_unless_gone, literal_path, refuse_unreadable_file
 
@@ -401,26 +402,24 @@ def detect_box_mode(
   std: StandardPaths,
   config: BootstrapConfig,
 ) -> DetectionResult | None:
-  """:func:`walk_box_mode`, then :func:`~kanibako.project.import_reconcile.reconcile`'s writes."""
+  """:func:`walk_box_mode`, with :func:`~kanibako.project.import_reconcile.reconcile`'s writes."""
   from kanibako.project import import_reconcile
 
-  result = walk_box_mode(project_dir, std, config)
-  import_reconcile.reconcile(result, std)
-  return result
+  return import_reconcile.reconcile(lambda: walk_box_mode(project_dir, std, config), std)
 
 
 def walk_box_mode(
   project_dir: Path,
   std: StandardPaths,
   config: BootstrapConfig,
-) -> DetectionResult | None:
+) -> DetectionResult | Treewalk[DetectionResult | None] | None:
   """Detect *project_dir*'s box mode by the D3-mode order (first match wins).
 
   The ONE carrier of that order (system-design § Detection & import): the path space's
   registry, the standalone registry, an in-place settings file, then the treewalk.
   Every path compares literally (links unfollowed).  ``None`` = not a box (the
-  caller's create path).  ⚑ Writes nothing but the treewalk's workset import and
-  :func:`~kanibako.project.workset.list_worksets`'s drop.
+  caller's create path); the treewalk answers as a :class:`Treewalk`.  ⚑ Writes nothing
+  but :func:`~kanibako.project.workset.list_worksets`'s drop.
   """
   from kanibako.project import import_reconcile
   from kanibako.settings.paths import _find_local_ancestor
@@ -429,7 +428,7 @@ def walk_box_mode(
 
   # 1. The path space's registry has a box AT this path.  A box CONNECTED into a named
   # workset from outside its tree is recorded in that workset's registry, so it is that
-  # workset's box: it beats an in-place standalone marker, as in ``detect_project_mode``.
+  # workset's box: it beats an in-place standalone marker, as in ``walk_project_mode``.
   # ⚑ An EXTERNAL member's path space holds every path under that member, so a PRIMARY
   # box created there before the connect is recorded only in the primary registry: it
   # is still the box AT its own path, never the member above it.  Under a named ROOT
@@ -483,10 +482,14 @@ def walk_box_mode(
 
   # 5. The treewalk (compose, do not duplicate).  A PRIMARY result AT the path is its
   # no-marker default, so not a box; at an ANCESTOR it is that box (a subdir launch).
-  result = detect_project_mode(literal, std, config)
-  if result.mode is BoxMode.primary and Path(literal_path(result.project_root)) == literal:
-    return None
-  return result
+  def a_box(result: DetectionResult) -> DetectionResult | None:
+    at_path = Path(literal_path(result.project_root)) == literal
+    return None if result.mode is BoxMode.primary and at_path else result
+
+  walked = walk_project_mode(literal, std, config)
+  if isinstance(walked, Treewalk):
+    return Treewalk(walked.subject, a_box(walked.result), walked.held)
+  return a_box(walked)
 
 
 def detect_box_or_default(

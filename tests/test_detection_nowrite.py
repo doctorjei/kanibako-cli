@@ -3,7 +3,8 @@
 ``box_resolve.walk_box_mode`` runs on a tree made read-only end to end (the workspace,
 the registry, the journal), so any write it attempts fails, and every file's bytes and
 mtime are compared before and after.  ``detect_box_mode`` is the walk plus
-``import_reconcile.reconcile``, which clears a registered standalone's stale J2 entry.
+``import_reconcile.reconcile``: the workset import pass, then a registered standalone's
+stale J2 clear.
 """
 
 from __future__ import annotations
@@ -14,9 +15,20 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.errors import ConfigError
 from kanibako.launch import box_resolve, journal
+from kanibako.project import registry_store
 from kanibako.project.import_reconcile import ImportConflictError
-from kanibako.settings.paths import BoxMode, DetectionResult, resolve_standalone_project
+from kanibako.project.workset import create_workset
+from kanibako.settings.config import write_standalone_mark
+from kanibako.settings.config_io import dump_doc
+from kanibako.settings.paths import (
+  BoxMode,
+  DetectionResult,
+  Treewalk,
+  detect_project_mode,
+  resolve_standalone_project,
+)
 
 pytestmark = pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
 
@@ -52,10 +64,15 @@ def _set_tree_mode(root: Path, *, writable: bool) -> None:
   root.chmod(0o755 if writable else 0o555)
 
 
-def _walk_read_only(tree: Path, subject: Path, std, config) -> DetectionResult | None:
-  """``walk_box_mode`` on *subject* with *tree* read-only; asserts nothing under it changed."""
+def _walk_read_only(
+  tree: Path, subject: Path, std, config, *, locked: Path | None = None
+) -> DetectionResult | Treewalk[DetectionResult | None] | None:
+  """``walk_box_mode`` on *subject* with *tree* read-only (*locked* unreadable too);
+  asserts nothing under it changed."""
   before = _snapshot(tree)
   _set_tree_mode(tree, writable=False)
+  if locked is not None:
+    locked.chmod(0)
   try:
     return box_resolve.walk_box_mode(subject, std, config)
   finally:
@@ -79,9 +96,10 @@ def test_the_walk_leaves_a_stale_entry_and_reconcile_clears_it(
 ):
   subject = project_dir if where == "root" else project_dir / "src"
 
-  result = _walk_read_only(tmp_home, subject, std, config)
+  walked = _walk_read_only(tmp_home, subject, std, config)
 
-  assert result == DetectionResult(BoxMode.standalone, project_dir)
+  result = DetectionResult(BoxMode.standalone, project_dir)
+  assert walked == (result if where == "root" else Treewalk(subject, result))
   assert journal.pending_import(std.journal, stale_standalone) is not None
   assert box_resolve.detect_box_mode(subject, std, config) == result
   assert journal.pending_import(std.journal, stale_standalone) is None
@@ -102,4 +120,74 @@ def test_the_walk_answers_not_a_box_on_a_read_only_tree(std, config, tmp_home, c
   plain = tmp_home / "home" / "plain"
   plain.mkdir()
 
-  assert _walk_read_only(tmp_home, plain, std, config) is None
+  assert _walk_read_only(tmp_home, plain, std, config) == Treewalk(plain, None)
+  assert box_resolve.detect_box_mode(plain, std, config) is None
+
+
+@pytest.fixture(params=["mark", "unreadable", "legacy"])
+def blocked(request, std, tmp_home, credentials_dir):
+  """``(subject, root, locked)``: an unregistered workset *root* below a level that stops
+  the treewalk (a standalone mark, an unreadable registry file, a legacy root)."""
+  outer = tmp_home / "outer"
+  outer.mkdir()
+  locked = None
+  if request.param == "mark":
+    write_standalone_mark(outer)
+  elif request.param == "unreadable":
+    locked = outer / "registry.yaml"
+    locked.write_text("{}\n")
+  else:
+    dump_doc(outer / "workset.yaml", {"workset": {"meta": {"name": "legacyws"}}})
+  root = outer / "ws"
+  create_workset("ws", root, std)
+  registry_store.save_section(std.registry, "worksets", {})
+  subject = root / "workspaces" / "proj"
+  subject.mkdir()
+  yield subject, root, locked
+  if locked is not None:
+    locked.chmod(0o644)
+
+
+def test_an_import_below_a_stopping_level_wins(std, config, tmp_home, blocked, capsys):
+  subject, root, locked = blocked
+
+  walked = _walk_read_only(tmp_home, subject, std, config, locked=locked)
+
+  assert isinstance(walked, Treewalk)
+  assert registry_store.load_section(std.registry, "worksets") == {}
+  if locked is not None:
+    assert isinstance(walked.held, ConfigError)
+    locked.chmod(0)
+  capsys.readouterr()
+  assert box_resolve.detect_box_mode(subject, std, config) == DetectionResult(
+    BoxMode.named, subject
+  )
+  assert registry_store.load_section(std.registry, "worksets") == {"ws": str(root)}
+  assert "Imported workset 'ws'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("detect", [box_resolve.detect_box_mode, detect_project_mode])
+def test_an_importing_run_answers_as_the_next_run_does(std, config, blocked, capsys, detect):
+  subject, _, locked = blocked
+  if locked is not None:
+    locked.chmod(0)
+
+  first = detect(subject, std, config)
+  assert "Imported workset 'ws'" in capsys.readouterr().err
+  assert detect(subject, std, config) == first
+  assert "Imported" not in capsys.readouterr().err
+
+
+def test_a_legacy_root_with_no_import_below_still_refuses(std, config, tmp_home, credentials_dir):
+  from kanibako.errors import LegacyWorksetIdentityError
+
+  outer = tmp_home / "outer"
+  subject = outer / "proj"
+  subject.mkdir(parents=True)
+  dump_doc(outer / "workset.yaml", {"workset": {"meta": {"name": "legacyws"}}})
+
+  walked = _walk_read_only(tmp_home, subject, std, config)
+
+  assert walked == Treewalk(subject, None)
+  with pytest.raises(LegacyWorksetIdentityError):
+    box_resolve.detect_box_mode(subject, std, config)

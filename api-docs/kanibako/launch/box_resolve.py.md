@@ -25,7 +25,7 @@ def path_space_worksets(worksets: Mapping[str, str | Path], path: Path, *, resol
 def refuse_path_space_identity(path: Path, std: StandardPaths) -> None
 def named_path_space(path: Path, std: StandardPaths) -> str | None
 def detect_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | None
-def walk_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | None
+def walk_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | Treewalk[DetectionResult | None] | None
 def detect_box_or_default(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def standalone_box_name(box_root: Path, registered_name: str | None) -> str
 def held_standalone_stores(registry: Path, own_root: Path) -> dict[str, str]
