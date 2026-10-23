@@ -461,14 +461,14 @@ migration code.** Four released config surfaces are removed outright
   (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate` to a
   named or primary box, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its
   own command ending in `--name <new-name>`; and by the in-box `fork`. `workset connect --name` and `box duplicate
-  --name` now check the rule too. Rename a primary box with `kanibako box convert <path> --default --name <new-name>`.
+  --name` now check the rule too. Rename a box with
+  `box convert <path> --default --name <new>`, or `box move <path> <new-path> --name <new>` in a workset tree.
 
 - **A box name is ASCII-only.** A box name's characters are ASCII letters, digits, `_`, `-`, and `.`, the set
   podman allows in a container name; `create --name café` and a box named after a directory named `café` are
   refused, naming the character. The refusal offers the name's ASCII spelling as a command to run (`café` gives
   `--name cafe`, `かに` gives `--name kani`); a name with no spelling, such as kanji, asks for a new name. An
-  existing non-ASCII box is warned of and found by path; rename a primary box with
-  `kanibako box convert <path> --default --name <new-name>`.
+  existing non-ASCII box is warned about and found by its path; rename it as above.
 
 - **`box convert <path> --default --name <new>` renames a primary box in place**; its folder stays.
 

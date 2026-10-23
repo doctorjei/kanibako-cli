@@ -7485,11 +7485,8 @@ with the rule it breaks, before anything is written, by:
   the `box move` command that moves it to a new directory.
 
 `create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
-take it too. A primary box created under such a name before this release keeps its name until renamed:
-
-```
-kanibako box convert <path> --default --name <new-name>
-```
+take it too. An older box with such a name keeps it until you rename it with
+`box convert <path> --default --name <new>`, or `box move <path> <new-path> --name <new>` in a workset tree.
 
 ### A box name is ASCII-only
 
@@ -7503,11 +7500,8 @@ command to run: Latin letters lose their accents and kana are written in Hepburn
 and `かに` gives `--name kani`. Kanji has no spelling, so a name holding it asks for a new one.
 
 A box created under such a name before this release keeps working: each command that resolves it warns that the
-name does not meet the naming rules, and the box is found by its path only. Rename a primary box:
-
-```
-kanibako box convert <path> --default --name <new-name>
-```
+name does not meet the naming rules, and the box is found by its path, not its name. Rename it as
+the section above shows.
 
 A standalone box's name follows its directory, so one in a non-ASCII directory changes its name as if the
 directory were renamed: `café` goes from `<kuid>_caf_` to `<kuid>_cafe`, `かに` gives `<kuid>_kani`, and `東京` is

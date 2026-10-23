@@ -5826,13 +5826,15 @@ def abort_if_box_running(
   return True
 
 
-def _abort_if_locked(state: ProjectState, force: bool) -> bool:
+def _abort_if_locked(state: ProjectState, force: bool, *, in_place_rename: bool = False) -> bool:
   """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
   return abort_if_box_running(
     state.paths,
     state.metadata_path / ".kanibako.lock",
     force,
-    "Moving/converting it would copy then DELETE the live workspace.",
+    "Renaming it in place would replace its box home and store; the workspace is untouched."
+    if in_place_rename
+    else "Moving/converting it would copy then DELETE the live workspace.",
   )
 
 
@@ -6068,7 +6070,12 @@ def run_convert(args) -> int:
     return 1
 
   # Lock pre-flight: convert re-roots by copy-then-rmtree (mirrors move / duplicate).
-  if _abort_if_locked(state, getattr(args, "force", False)):
+  new_name = getattr(args, "name", None)
+  renamed = bool(new_name) and not _same_box_name(new_name, state.name)
+  in_place_rename = (
+    renamed and location is INPLACE and ownership == "default" and state.mode is BoxMode.primary
+  )
+  if _abort_if_locked(state, getattr(args, "force", False), in_place_rename=in_place_rename):
     return 2
 
   if location is INPLACE:
@@ -6081,7 +6088,8 @@ def run_convert(args) -> int:
     "Convert project:\n"
     f"  project: {state.name}\n"
     f"    owner: {state.owner} -> {ownership}\n"
-    f" location: {loc_desc}"
+    + (f"     name: {state.name} -> {new_name}\n" if renamed else "")
+    + f" location: {loc_desc}"
   )
   try:
     spec = TargetSpec(

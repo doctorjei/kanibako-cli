@@ -2044,6 +2044,37 @@ class TestConvertMoveCrossKindName:
     assert name not in boxes1
     assert pdir.is_dir()
 
+  def test_convert_inplace_rename_confirm_names_the_new_name(self, env, monkeypatch, capsys):
+    """197-RN: the confirm prompt for an in-place rename shows ``name: old -> new``."""
+    import kanibako.utils
+
+    config, std, tmp_home = env
+    pdir = _default(env, name="renbox")
+    monkeypatch.setattr(kanibako.utils, "confirm_or_abort", lambda *a, **k: False)
+    rc = run_convert(_convert_args(pdir, force=False, to_default=True, name="newbox"))
+    assert rc == 1
+    assert "     name: renbox -> newbox\n location: in place" in capsys.readouterr().out
+    assert load_primary_boxes(std.primary_workset) == {"renbox": str(pdir)}
+
+  def test_convert_inplace_rename_running_warning_spares_the_workspace(self, env, capsys):
+    """197-RN: a locked box's in-place rename warns that the workspace is untouched."""
+    import fcntl
+
+    config, std, tmp_home = env
+    pdir = _default(env, name="renbox")
+    lock = std.boxes / "renbox" / ".kanibako.lock"
+    with open(lock, "w") as held:
+      fcntl.flock(held, fcntl.LOCK_EX)
+      rc = run_convert(_convert_args(pdir, force=False, to_default=True, name="newbox"))
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert (
+      "Renaming it in place would replace its box home and store; the workspace is untouched."
+      in err
+    )
+    assert "DELETE" not in err
+    assert load_primary_boxes(std.primary_workset) == {"renbox": str(pdir)}
+
 
 # ---------------------------------------------------------------------------
 # parser: migrate is gone
