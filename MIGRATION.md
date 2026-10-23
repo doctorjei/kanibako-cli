@@ -2168,6 +2168,28 @@ not be the one that degrades quietly.
 
 ---
 
+### A link a box could have planted in a channel directory stops the launch
+
+**What changed.** Any box can write the channel directories bound into it, so any box can swap a
+directory there for a link to elsewhere on the host. A launch no longer follows one. It stops, naming
+the path, when a channel root nested in another channel directory is a link, or when a bind source
+there (another box's inbox, a `share_global` directory) has a link at or above it. A directory there
+that cannot be read stops it too: it cannot be checked. A channel root nested in no other may still be
+a link. This extends the missing-root refusal in *A missing bind source is handled by destination, not
+by who declared it*.
+
+**What to do.** Run the cure the refusal prints:
+
+- a link a box made: `rm` it (and `mkdir -p` a nested root, as printed);
+- a workset's mail you linked elsewhere: move the whole partition instead, with
+  `kanibako workset set <workset> workset.channels.mailboxes=<target>`;
+- a nested root you linked: point its key at the target (`kanibako system set` or `workset set`, as printed);
+- an unreadable directory: `chmod u+rwx` it.
+
+A single bind source has no `set` cure; see *Bind entries are edited in the settings file, not from the CLI*.
+
+---
+
 ### 2.29 A `synced` entry lands inside the bind that covers it, and is applied later in the launch
 
 **What changed.** `<scope>.synced` entries — the files re-copied into the box on every launch, which
