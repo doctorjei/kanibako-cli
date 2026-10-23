@@ -22,12 +22,26 @@ if TYPE_CHECKING:
   from kanibako.settings.paths import ProjectPaths, StandardPaths
 
 
+def _broadcast_dir(
+  key: str, broadcast: Path | None, chat: Path | None
+) -> list[tuple[str, Path | None]]:
+  """The directory of a ``broadcast`` log repointed out of its chat root, as a root.
+
+  The log is seeded at every launch, so a repoint into a missing directory refuses like
+  every other repointed channel path rather than seeding nothing.
+  """
+  if broadcast is None or broadcast.parent == chat:
+    return []
+  return [(f"{key} (its directory)", broadcast.parent)]
+
+
 def _system_roots(std: StandardPaths) -> list[tuple[str, Path | None]]:
   return [
     ("system.channels.common", std.channels_common),
     ("system.channels.chat", std.channels_chat),
     ("system.channels.share", std.channels_share),
     ("system.channels.mailboxes", std.channels_mailboxes),
+    *_broadcast_dir("system.channels.broadcast", std.channels_broadcast, std.channels_chat),
   ]
 
 
@@ -49,6 +63,7 @@ def _workset_roots(
       ("workset.channels.common", wch.common),
       ("workset.channels.chat", wch.chat),
       ("workset.channels.share", wch.share),
+      *_broadcast_dir("workset.channels.broadcast", wch.chat_broadcast, wch.chat),
     ]
   roots.append(
     ("workset.channels.mailboxes", _ch.partition_key_paths(std, ws_token, ws_root).mailboxes)

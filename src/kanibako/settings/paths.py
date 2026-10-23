@@ -21,7 +21,7 @@ from kanibako.settings.messages import (
   WARN_SA_SHADOWED_BY_PATH,
   WARN_BOX_BAD_KUID,
   WARN_BOX_KUID_HELD,
-  WARN_BOX_NO_VAULT,
+  NOTE_BOX_NO_VAULT,
   WARN_BOX_VAULT_UNUSABLE,
   ERR_SETTINGS_BAD_PATH,
   ERR_SETTINGS_BAD_REF,
@@ -3158,11 +3158,16 @@ def unusable_dir_finding(path: Path) -> str | None:
 
 
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
-  """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5).
+  """Advisory (never fatal): note when a box that EXPECTS a vault has none on disk (spec D5).
+
+  ⚑ The launch's own report of the vault it creates: the launch resolves with *warn*
+  once, and ``core_defaults.core_default_categories`` then creates it without a second line.
 
   ⚑ An arm whose path holds a dangling link or a non-directory is never bound
   (``core_defaults.core_default_categories``), so its warning names what is there.
   """
+  import sys
+
   try:
     if not proj.vault_enabled():
       return proj
@@ -3173,7 +3178,7 @@ def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
       if finding is not None:
         get_logger(__name__).warning(WARN_BOX_VAULT_UNUSABLE, arm, name, path, finding)
       elif arm == "rw" and path is not None and not path.is_dir():
-        get_logger(__name__).warning(WARN_BOX_NO_VAULT, name, path)
+        print(NOTE_BOX_NO_VAULT % (name, path), file=sys.stderr)
   except SettingsError:
     pass
 

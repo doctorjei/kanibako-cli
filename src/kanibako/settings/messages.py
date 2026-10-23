@@ -62,8 +62,9 @@ WARN_BOX_KUID_HELD = (
   "Warning: workset.kuid '%s' in %s belongs to registered box '%s' at %s; "
   "this box gets a new kuid."
 )  # kuid, root file, holder, holder root
-WARN_BOX_NO_VAULT = (
-  "Warning: cannot find vault for box '%s' (expected at %s); a launch "
+# A Note, not a warning: the launch creating the vault is the rule (it prints this once).
+NOTE_BOX_NO_VAULT = (
+  "Note: cannot find vault for box '%s' (expected at %s); a launch "
   + "creates a new, empty vault there; restore the old one first, or set "
   + "box.enable_vault=false to silence."
 )  # box name, the RW vault path

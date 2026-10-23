@@ -3388,25 +3388,29 @@ def _run_container(
   # MBR-6: a box with no workspace is refused at launch (below, in
   # ``_check_box_components``).  When its home is missing too, the resolve would
   # create the home first, and a NAMED box's home would then never be seeded.  So
-  # that case gets the same refusal here, on the probe.  A LIVE box is exempt: the
-  # launch reattaches to it and checks neither dir, as before.  A live box whose
-  # workspace alone is gone never reaches this branch.
+  # that case gets the same refusal here, on the probe.  A missing channel root is
+  # refused here too, for the same reason: a ``workset connect`` box refused after
+  # the resolve would keep a home its next launch never seeds.  A LIVE box is exempt
+  # from both: the launch reattaches to it and its dirs are live bind mounts.  A live
+  # box whose workspace alone is gone never reaches this branch.
+  _home_missing = not _existing.shell_path.is_dir()
+  _channel_error = missing_channel_root_error(std, _existing)
   _live = False
-  if not _existing.shell_path.is_dir():
-    if (persistent or detach) and not restart:
-      try:
-        _probe_runtime = ContainerRuntime()
-      except ContainerError:
-        pass  # no runtime: nothing is live; the launch fails on it further down
-      else:
-        # Labeled container, else the rendered name; None only for an unrenderable
-        # name, which is refused further down.
-        _live_name = box_container(_probe_runtime, _existing)
-        _live = _live_name is not None and _probe_runtime.is_running(_live_name)
-    _workspace_error = None if _live else _missing_workspace_error(_existing)
-    if _workspace_error is not None:
-      print(_workspace_error, file=sys.stderr)
-      return 1
+  if (_home_missing or _channel_error is not None) and (persistent or detach) and not restart:
+    try:
+      _probe_runtime = ContainerRuntime()
+    except ContainerError:
+      pass  # no runtime: nothing is live; the launch fails on it further down
+    else:
+      # Labeled container, else the rendered name; None only for an unrenderable
+      # name, which is refused further down.
+      _live_name = box_container(_probe_runtime, _existing)
+      _live = _live_name is not None and _probe_runtime.is_running(_live_name)
+  _workspace_error = None if _live or not _home_missing else _missing_workspace_error(_existing)
+  _probe_error = _workspace_error or (None if _live else _channel_error)
+  if _probe_error is not None:
+    print(_probe_error, file=sys.stderr)
+    return 1
   _warn_launch_rebuilds(_existing, live=_live)
 
   proj = resolve_box_target(
@@ -4469,7 +4473,7 @@ def _run_container(
   # host-side dirs (workspace + home) can be verified before committing to a
   # launch.  Runs HERE (launch time), not the shared resolve chokepoint, so a
   # `box list` / `archive` / `diagnose` of a MOVED box never hard-crashes.
-  _component_error = _check_box_components(proj) or missing_channel_root_error(std, proj)
+  _component_error = _check_box_components(proj)
   if _component_error is not None:
     print(_component_error, file=sys.stderr)
     return 1

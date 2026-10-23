@@ -12,7 +12,7 @@ import pytest
 
 from kanibako.channels import channels as _ch
 from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
-from kanibako.channels.roots import make_setup_channel_roots, missing_channel_root_error
+from kanibako.channels.roots import missing_channel_root_error
 from kanibako.project.workset import (
   _workset_skeleton_dirs,
   add_project,
@@ -29,8 +29,8 @@ from kanibako.settings.paths import (
 
 @pytest.fixture
 def set_up(std):
-  """A host after ``setup``."""
-  make_setup_channel_roots(std)
+  """A host after ``setup``: the ``config_file`` fixture made the roots."""
+  assert std.channels_common.is_dir()
   return std
 
 
@@ -76,8 +76,7 @@ class TestSetupMakesTheGlobalRoots:
       assert path.is_dir(), path
 
   def test_setup_makes_them_on_an_existing_host(self, std):
-    for path in _system_roots(std):
-      assert not path.exists(), path
+    shutil.rmtree(std.channels_common.parent)  # ``config_file`` ran setup's step
     from kanibako.commands.setup_cmd import _make_channel_roots
 
     _make_channel_roots()
@@ -184,6 +183,21 @@ class TestTheLaunchRefusesAMissingRoot:
     (set_up.channels_mailboxes / "my_set").rmdir()
     err = missing_channel_root_error(set_up, proj)
     assert err is not None and "workset.channels.mailboxes" in err
+
+  def test_a_broadcast_repointed_into_a_missing_dir_refuses(self, named, set_up):
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.config_keys import _KEY_ROUTES
+
+    ws, proj = named
+    loud = ws.root / "loud"
+    sections, leaf = _KEY_ROUTES["workset.channels.broadcast"]
+    write_nested_key(ws.root / WORKSET_META_FILE, sections, leaf, str(loud / "b.md"))
+    err = missing_channel_root_error(set_up, proj)
+    assert err is not None
+    assert f"workset.channels.broadcast (its directory): {loud}" in err
+    loud.mkdir()
+    assert missing_channel_root_error(set_up, proj) is None
 
   def test_a_standalone_box_is_checked_without_workset_roots(
     self, set_up, config, project_dir, credentials_dir

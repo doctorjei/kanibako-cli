@@ -92,7 +92,7 @@ WARN_SA_SHADOWED_BY_PATH # (name, the path it resolved to, the shadowed box's ro
 WARN_WS_BOX_BAD_NAME   # (box name, the REASON it fails)
 WARN_BOX_BAD_KUID      # (the KUID, box name)
 WARN_BOX_KUID_HELD     # (kuid, root file, holder box, holder root)
-WARN_BOX_NO_VAULT      # (box name, expected vault path)
+NOTE_BOX_NO_VAULT      # (box name, expected vault path)
 WARN_BOX_VAULT_UNUSABLE # ("rw" | "ro", box name, vault path, the finding)
 ```
 Conditions that DEGRADE a box rather than stop it.

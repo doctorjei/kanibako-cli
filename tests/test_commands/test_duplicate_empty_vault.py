@@ -92,10 +92,14 @@ def _args(source, dest, to_mode=None, *, workset=None, name=None):
 def _resolve_dest(env, path, caplog):
   """The copy as ``box info``/``start`` resolve it, and whether that warned."""
   config, std, _ = env
+  import contextlib
+  import io
+
   caplog.clear()
-  with caplog.at_level(logging.WARNING, logger="kanibako"):
+  err = io.StringIO()
+  with caplog.at_level(logging.WARNING, logger="kanibako"), contextlib.redirect_stderr(err):
     proj = resolve_box_target(std, config, str(path))
-  warned = any("cannot find vault" in r.getMessage() for r in caplog.records)
+  warned = "cannot find vault" in err.getvalue()
   return proj, warned
 
 
@@ -240,3 +244,44 @@ def test_a_failed_vault_setup_undoes_the_arms_it_made(env, monkeypatch, to_mode)
   for arm in made_arms:
     assert not arm.exists(), arm
   assert not dest.exists()
+
+
+@pytest.mark.parametrize(
+  ("kind", "to_mode"),
+  [
+    ("primary", None),
+    ("primary", BoxMode.standalone),
+    ("standalone", BoxMode.primary),
+    ("named", BoxMode.primary),
+    ("primary", BoxMode.named),
+  ],
+)
+def test_every_route_makes_the_copy_an_empty_inbox(env, kind, to_mode):
+  """A box's inbox is made with the box; a copy carries no mail."""
+  from kanibako.channels.channels import box_channel_addresses
+  from kanibako.channels.roots import make_setup_channel_roots
+
+  config, std, tmp_home = env
+  make_setup_channel_roots(std)
+  if kind == "named":
+    _ws, src = _named(env, "ibws", "ibsrc")
+  else:
+    src = _SOURCES[kind](env, "ibsrc")
+  src_inbox = box_channel_addresses(resolve_box_target(std, config, str(src)), std).inbox
+  src_inbox.mkdir(parents=True, exist_ok=True)
+  (src_inbox / "mail.md").write_text("for the source only")
+  dest = tmp_home / "ibsrc_copy"
+  if to_mode is BoxMode.named:
+    ws = create_workset("ibto", tmp_home / "ibto_root", std)
+    dest = ws.workspaces_dir / "ibsrc"
+    args = _args(src, tmp_home / "unused", BoxMode.named, workset="ibto")
+  else:
+    args = _args(src, dest, to_mode)
+
+  assert _duplicate.run_duplicate(args) == 0
+
+  inbox = box_channel_addresses(resolve_box_target(std, config, str(dest)), std).inbox
+  assert inbox != src_inbox
+  assert inbox.is_dir()
+  assert list(inbox.iterdir()) == []
+  assert (src_inbox / "mail.md").is_file()

@@ -168,10 +168,15 @@ def tmp_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def config_file(tmp_home):
-  """Write a default kanibako.cfg and return its path."""
+  """Write a default kanibako.cfg, make the channel roots ``setup`` makes, and return
+  the config's path: a host after setup (a launch refuses a missing channel root)."""
+  from kanibako.channels.roots import make_setup_channel_roots
+  from kanibako.settings.paths import load_std_paths
+
   config_home = tmp_home / "config"
   cf = config_home / CONFIG_FILENAME
   write_global_config(cf)
+  make_setup_channel_roots(load_std_paths(load_config(cf)))
   return cf
 
 

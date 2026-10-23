@@ -825,16 +825,24 @@ class TestMissingVaultAdvisory:
     )
 
   def _warned(self, caplog, proj):
+    """True when the missing-vault ``Note:`` printed (kept in ``self.note``); a
+    dangling-link or non-directory arm is still a WARNING record in *caplog*."""
+    import contextlib
+    import io
     import logging
 
     from kanibako.settings.paths import _flag_missing_vault
 
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="kanibako"):
+    err = io.StringIO()
+    with caplog.at_level(logging.WARNING, logger="kanibako"), contextlib.redirect_stderr(err):
       out = _flag_missing_vault(proj)
     # ALWAYS returns proj unchanged (advisory, never fatal).
     assert out is proj
-    return any("cannot find vault" in r.getMessage() for r in caplog.records)
+    self.note = err.getvalue()
+    # Information, never a warning (his Q2): no WARNING record for a vault the launch makes.
+    assert not any("cannot find vault" in r.getMessage() for r in caplog.records)
+    return self.note.startswith("Note: cannot find vault")
 
   def test_enabled_and_absent_warns_and_continues(self, tmp_path, caplog):
     proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
@@ -845,7 +853,7 @@ class TestMissingVaultAdvisory:
     # (vault_rw_path), never its parent.
     proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
     assert self._warned(caplog, proj)
-    [msg] = [r.getMessage() for r in caplog.records if "cannot find vault" in r.getMessage()]
+    msg = self.note
     # vault_rw_path.parent is a PREFIX of vault_rw_path, so a plain
     # substring check can't distinguish them; pin the exact argument via
     # the format string's own delimiters ("expected at %s)").
@@ -859,16 +867,24 @@ class TestMissingVaultAdvisory:
 
     proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
     assert self._warned(caplog, proj)
-    [msg] = [r.getMessage() for r in caplog.records if "cannot find vault" in r.getMessage()]
+    msg = self.note
     assert "a launch creates a new, empty vault there" in msg
+    assert "restore the old one first" in msg
     assert "without a vault" not in msg
-    # The claim, checked against the launch path itself.
-    binds = core_defaults.core_default_categories(
-      None,
-      proj,
-      enable_vault=True,
-      mode="standalone",
-    )
+    # The claim, checked against the launch path itself — which adds NO second line:
+    # this Note is the launch's one report of the vault it creates.
+    import contextlib
+    import io
+
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+      binds = core_defaults.core_default_categories(
+        None,
+        proj,
+        enable_vault=True,
+        mode="standalone",
+      )
+    assert err.getvalue() == ""
     assert proj.vault_rw_path.is_dir()
     assert list(proj.vault_rw_path.iterdir()) == []
     assert "/home/agent/vault/rw" in binds["box.bindings.rw"]
@@ -934,10 +950,14 @@ class TestMissingVaultAdvisory:
     )
 
     def _resolve_warned():
+      import contextlib
+      import io
+
       caplog.clear()
-      with caplog.at_level(logging.WARNING, logger="kanibako"):
+      err = io.StringIO()
+      with caplog.at_level(logging.WARNING, logger="kanibako"), contextlib.redirect_stderr(err):
         resolve_box_target(std, config, str(project_dir))
-      return any("cannot find vault" in r.getMessage() for r in caplog.records)
+      return "Note: cannot find vault" in err.getvalue()
 
     # Healthy box (vault present) → SILENT.
     assert not _resolve_warned()

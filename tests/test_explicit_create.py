@@ -928,6 +928,46 @@ class TestLaunchAnnouncesRebuilds:
       _launch(str(src))
     assert is_new == [True]
 
+  def test_a_connected_box_with_a_missing_channel_root_refuses_and_creates_nothing(
+    self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+  ):
+    """The channel-root refusal runs on the probe: a ``workset connect`` box gets no
+    home, so the launch after the cure still creates the home as NEW (seeded)."""
+    import kanibako.commands.start as start_mod
+    from kanibako.channels.roots import make_setup_channel_roots
+    from kanibako.project.workset import add_project, create_workset
+
+    config, std = _std(config_file)
+    make_setup_channel_roots(std)
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    src = tmp_home / "member"
+    src.mkdir()
+    add_project(ws, "member", src, std)
+    home = _resolve_existing_box(std, config, str(src)).shell_path
+    assert not home.exists()
+    share = ws.root / "channels" / "share"
+    share.rmdir()
+    real = start_mod.resolve_box_target
+    materialized: list[bool] = []
+
+    def fake(std, config, project_dir, *, initialize=False, **kw):
+      proj = real(std, config, project_dir, initialize=initialize, **kw)
+      if initialize:
+        materialized.append(proj.is_new)  # the gate on ``_seed_box_home``
+        raise _ResolveStop
+      return proj
+
+    monkeypatch.setattr(start_mod, "resolve_box_target", fake)
+    assert _launch(str(src)) == 1
+    assert f"workset.channels.share: {share}" in capsys.readouterr().err
+    assert materialized == []
+    assert not home.exists()
+
+    share.mkdir()  # the cure
+    with pytest.raises(_ResolveStop):
+      _launch(str(src))
+    assert materialized == [True]
+
   def test_intact_box_announces_nothing(
     self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
   ):

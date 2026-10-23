@@ -431,14 +431,9 @@ def core_default_categories(
         continue
       # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
       # a DISPLAY verb (``box show --effective``) must not write to disk.
-      if guarantee_create and src_path is not None and not src_path.is_dir():
-        import sys
-
-        from kanibako.settings.messages import NOTE_RW_SOURCE_CREATED
-
+      # The launch's resolve already said so (``paths.NOTE_BOX_NO_VAULT``), once.
+      if guarantee_create and src_path is not None:
         src_path.mkdir(parents=True, exist_ok=True)
-        if entry["category"] == "bindings.rw":
-          print(NOTE_RW_SOURCE_CREATED % (src_path, entry["box_dest"]), file=sys.stderr)
     category = entry["category"]
     # ⚑ TWO {key}-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
     # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
