@@ -517,6 +517,32 @@ class TestAddProject:
     add_project(ws, "fresh", tmp_home / "project")
     assert "Warning" not in capsys.readouterr().err
 
+  def test_vault_disabled_at_the_workset_tier_lays_no_leaves(self, std, tmp_home):
+    """``box.enable_vault: false`` resolved at the member's tiers: no vault leaves."""
+    from kanibako.settings.paths import workset_settings_path
+
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+    workset_settings_path(ws).write_text("box:\n  enable_vault: false\n")
+    add_project(ws, "cool_app", tmp_home / "project", std)
+
+    assert (ws.projects_dir / "cool_app").is_dir()
+    assert not (ws.vault_ro_dir / "cool_app").exists()
+    assert not (ws.vault_rw_dir / "cool_app").exists()
+
+  def test_explicit_vault_off_lays_no_leaves(self, std, tmp_home):
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+    add_project(ws, "cool_app", tmp_home / "project", std, enable_vault=False)
+
+    assert not (ws.vault_ro_dir / "cool_app").exists()
+    assert not (ws.vault_rw_dir / "cool_app").exists()
+
+  def test_vault_enabled_with_std_lays_both_leaves(self, std, tmp_home):
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+    add_project(ws, "cool_app", tmp_home / "project", std)
+
+    assert (ws.vault_ro_dir / "cool_app").is_dir()
+    assert (ws.vault_rw_dir / "cool_app").is_dir()
+
 
 class TestAddProjectConnectGuard:
   """add_project refuses external sources that would mis-resolve."""
@@ -1852,10 +1878,11 @@ class TestWorksetIdentityIsTheGlobalRegistry:
     resolved = root.resolve()
     assert not (resolved / "workset.yaml").exists()
     assert not (resolved / "workset.yaml").exists()
-    # ⚑ The ONE file under the root is the membership, and it holds ONE section
-    # of box rows — no name, no created stamp, no table about the workset itself.
+    # ⚑ The ONE file under the root that records anything is the membership, and it
+    # holds ONE section of box rows — no name, no created stamp, no table about the
+    # workset itself.  Beside it is only the vault skeleton's ``rw/`` ignore.
     files = sorted(p for p in resolved.rglob("*") if p.is_file())
-    assert files == [resolved / "registry.yaml"], files
+    assert files == [resolved / "registry.yaml", resolved / "vault" / ".gitignore"], files
     assert set(load_doc(resolved / "registry.yaml")) == {"boxes"}
 
   def test_the_name_is_in_the_global_registry(self, std, tmp_home):

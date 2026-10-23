@@ -61,7 +61,7 @@ from kanibako.errors import (
 )
 from kanibako.identifiers import find_identifier, name_flaw
 from kanibako.project.names import read_names, register_name, unregister_name
-from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.config import WORKSET_META_FILE, KanibakoConfig
 from kanibako.settings.messages import (
   ERR_CONFIG_NULL_PATH,
   ERR_LOOP_WORKSPACE_BIND,
@@ -93,10 +93,14 @@ from kanibako.utils import (
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
 from kanibako.settings.paths import (
+  BoxMode,
   StandardPaths,
+  _box_settings_files,
   _workset_box_paths,
   box_log_files,
   box_logs_to_remove,
+  init_vault_dirs,
+  resolve_box_enable_vault,
 )
 
 # ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
@@ -2393,6 +2397,7 @@ def add_project(
   rollback: _Unwind | None = None,
   leftover_cure: str = REMOVE_LEFTOVER,
   drop_marker: bool = False,
+  enable_vault: bool | None = None,
 ) -> WorksetProject:
   """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
@@ -2412,6 +2417,8 @@ def add_project(
   *drop_marker* (``workset connect`` only) removes a forced standalone
   source's marker as the LAST step, after the membership write, so an interrupt leaves
   the marker or the membership, never neither; the unwind writes it back.
+  *enable_vault* gates the vault leaves; ``None`` resolves ``box.enable_vault`` at the
+  member's tiers (the declared default without *std*).
   """
   # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
   # replaces its row, orphaning ``proj``'s store.
@@ -2495,16 +2502,32 @@ def add_project(
     )
     if not existed_box and not restoring:
       _warn_adopted_vault_leaves(name, (vault_ro_proj, vault_rw_proj))
-    if vault_ro_proj is not None and not vault_ro_proj.is_symlink():
-      existed_vault_ro = vault_ro_proj.exists()
-      vault_ro_proj.mkdir(parents=True, exist_ok=True)
-      if not existed_vault_ro and own_leaves:
-        unwind.push(partial(_unwind_created_root, vault_ro_proj, cure=leftover_cure))
-    if vault_rw_proj is not None and not vault_rw_proj.is_symlink():
-      existed_vault_rw = vault_rw_proj.exists()
-      vault_rw_proj.mkdir(parents=True, exist_ok=True)
-      if not existed_vault_rw and own_leaves:
-        unwind.push(partial(_unwind_created_root, vault_rw_proj, cure=leftover_cure))
+    # ⚑ The one vault setup (``init_vault_dirs``), gated on ``box.enable_vault`` as
+    # resolved at the member's tiers; a linked leaf is passed as a null arm.
+    if enable_vault is None:
+      box_tier, workset_tier = _box_settings_files(BoxMode.named, proj_box, ws)
+      enable_vault = (
+        KanibakoConfig().box_enable_vault
+        if std is None
+        else resolve_box_enable_vault(
+          std.config_file, box_path=box_tier, workset_path=workset_tier
+        )
+      )
+    ro_arm, rw_arm = (
+      None if arm is None or arm.is_symlink() else arm for arm in (vault_ro_proj, vault_rw_proj)
+    )
+    made: list[Path] = []
+    try:
+      init_vault_dirs(
+        ro_arm,
+        rw_arm,
+        enable_vault=enable_vault,
+        vault_root=ws.root,
+        created=made,
+      )
+    finally:
+      for arm in made if own_leaves else ():
+        unwind.push(partial(_unwind_created_root, arm, cure=leftover_cure))
 
     if is_external:
       # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.

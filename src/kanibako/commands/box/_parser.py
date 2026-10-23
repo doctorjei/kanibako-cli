@@ -1967,6 +1967,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
           std,
           noun="box creation",
           leftover_cure=_leftover_cure,
+          enable_vault=enable_vault,
         )
       except BaseException as e:
         # ⚑ ``add_project`` undid and named the member: one account of it.
