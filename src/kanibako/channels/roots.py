@@ -176,6 +176,23 @@ def outermost_channel_root(
   return min(covering, key=lambda p: len(p.parts), default=None)
 
 
+def _set_command(proj: ProjectPaths, key: str) -> str | None:
+  """The ``set`` command that writes *key* for *proj*'s scope, or ``None`` when none runs.
+
+  ⚑ Measured spellings: the primary workset is ``default``; a standalone box's
+  workset has no set door (its box tier may not write a workset key).
+  """
+  from kanibako.settings.paths import BoxMode
+
+  if key.startswith("system."):
+    return "kanibako system set"
+  if proj.mode is BoxMode.primary:
+    return "kanibako workset set default"
+  if proj.mode is BoxMode.named and proj.group is not None:
+    return f"kanibako workset set {shlex.quote(proj.group.name)}"
+  return None
+
+
 def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | None:
   """The launch refusal for *proj*'s missing channel roots, or ``None``.
 
@@ -191,11 +208,14 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
     # ⚑ A root nested in another is checked through the seam from the outer one: a
     # link there (a box can plant one) is not a root, though ``is_dir`` follows it.
     outer = outermost_channel_root(std, proj, path)
-    if outer is not None and outer != path and boxfs.first_symlink(path, outer) is not None:
-      lines.append(
-        f"  {key}: {path} — a link inside {outer}, which a box can write; "
-        "replace it with a directory"
-      )
+    link = None if outer is None or outer == path else boxfs.first_symlink(path, outer)
+    if link is not None:
+      q = shlex.quote
+      lines.append(f"  {key}: {link} is a link inside {outer}, which a box can write.")
+      lines.append(f"    If a box made it: rm {q(str(link))} && mkdir -p {q(str(path))}")
+      set_cmd = _set_command(proj, key)
+      if set_cmd is not None:
+        lines.append(f"    If you made it: {set_cmd} {key}={q(str(path.resolve()))}")
     elif not path.is_dir():
       cure = (
         "run 'kanibako setup'"

@@ -50,6 +50,31 @@ def _system_roots(std):
   return [std.channels_common, std.channels_chat, std.channels_share, std.channels_mailboxes]
 
 
+def _cure_lines(err, key):
+  """The refusal's lines for *key*: its own line and the cure lines under it."""
+  lines = err.splitlines()
+  i = next(n for n, line in enumerate(lines) if line.startswith(f"  {key}: "))
+  return [lines[i], *(line for line in lines[i + 1 :] if line.startswith("    "))]
+
+
+def _run_cure(err, label):
+  """Run the cure printed after *label*, as a user would: a shell line, or a CLI call."""
+  import shlex
+  import subprocess
+
+  from kanibako.cli import main
+
+  line = next(line for line in err.splitlines() if line.strip().startswith(label))
+  command = line.split(label, 1)[1].strip()
+  if command.startswith("kanibako "):
+    try:
+      main(shlex.split(command)[1:])
+    except SystemExit as exc:
+      assert not exc.code, command
+  else:
+    subprocess.run(["bash", "-c", command], check=True)
+
+
 class TestSetupMakesTheGlobalRoots:
   def test_first_run_init_makes_system_primary_and_reserved_partition_roots(
     self, tmp_path, monkeypatch
@@ -261,10 +286,75 @@ class TestTheLaunchRefusesAMissingRoot:
 
   def test_a_nested_root_swapped_for_a_link_refuses_the_launch(self, named, set_up, tmp_path):
     ws, proj = named
-    nest, _outside = self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
+    nest, outside = self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
     err = missing_channel_root_error(set_up, proj)
     assert err is not None
-    assert f"workset.channels.chat: {nest} — a link inside {set_up.channels_chat}" in err
+    assert _cure_lines(err, "workset.channels.chat") == [
+      f"  workset.channels.chat: {nest} is a link inside {set_up.channels_chat}, which a box can write.",
+      f"    If a box made it: rm {nest} && mkdir -p {nest}",
+      f"    If you made it: kanibako workset set my_set workset.channels.chat={outside}",
+    ]
+
+  @pytest.mark.parametrize("cure", ["If a box made it:", "If you made it:"])
+  def test_each_cure_runs_and_clears_the_refusal(self, named, set_up, tmp_path, cure):
+    ws, proj = named
+    self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
+    _run_cure(missing_channel_root_error(set_up, proj), cure)
+    assert missing_channel_root_error(set_up, proj) is None
+
+  @pytest.mark.parametrize("cure", ["If a box made it:", "If you made it:"])
+  def test_a_primary_partition_link_names_the_default_workset_and_runs(
+    self, set_up, config, project_dir, credentials_dir, tmp_path, cure
+  ):
+    proj = resolve_project(set_up, config, str(project_dir), initialize=True)
+    part = set_up.channels_mailboxes / WS_TOKEN_PRIMARY
+    outside = tmp_path / "nfs-mail"
+    shutil.copytree(part, outside)
+    shutil.rmtree(part)
+    part.symlink_to(outside)
+    err = missing_channel_root_error(set_up, proj)
+    assert _cure_lines(err, "workset.channels.mailboxes")[1:] == [
+      f"    If a box made it: rm {part} && mkdir -p {part}",
+      f"    If you made it: kanibako workset set default workset.channels.mailboxes={outside}",
+    ]
+    _run_cure(err, cure)
+    assert missing_channel_root_error(set_up, proj) is None
+
+  def test_a_standalone_partition_link_offers_no_set_cure(
+    self, set_up, config, project_dir, credentials_dir, tmp_path
+  ):
+    """A standalone box's workset has no set door, so only the first cure is printed."""
+    proj = resolve_standalone_project(set_up, config, str(project_dir), initialize=True)
+    part = set_up.channels_mailboxes / WS_TOKEN_STANDALONE
+    outside = tmp_path / "nfs-mail"
+    outside.mkdir()
+    part.rmdir()
+    part.symlink_to(outside)
+    err = missing_channel_root_error(set_up, proj)
+    assert _cure_lines(err, "workset.channels.mailboxes")[1:] == [
+      f"    If a box made it: rm {part} && mkdir -p {part}",
+    ]
+
+  @pytest.mark.parametrize("cure", ["If a box made it:", "If you made it:"])
+  def test_a_nested_system_root_names_system_set_and_runs(self, named, set_up, tmp_path, cure):
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.config_keys import _KEY_ROUTES
+    from kanibako.settings.paths import load_std_paths
+
+    _ws, proj = named
+    inner = set_up.channels_common / "share"
+    sections, leaf = _KEY_ROUTES["system.channels.share"]
+    write_nested_key(set_up.settings, sections, leaf, str(inner))
+    std = load_std_paths()
+    outside = tmp_path / "nfs-share"
+    outside.mkdir()
+    inner.symlink_to(outside)
+    err = missing_channel_root_error(std, proj)
+    assert _cure_lines(err, "system.channels.share")[2] == (
+      f"    If you made it: kanibako system set system.channels.share={outside}"
+    )
+    _run_cure(err, cure)
+    assert missing_channel_root_error(load_std_paths(), proj) is None
 
   def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
     from kanibako.commands.start import _seed_channel_files
