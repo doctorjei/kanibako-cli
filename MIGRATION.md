@@ -7485,10 +7485,10 @@ with the rule it breaks, before anything is written, by:
   the `box move` command that moves it to a new directory.
 
 `create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
-take it too. A box created under such a name before this release keeps its name until you rename it:
+take it too. A primary box created under such a name before this release keeps its name until renamed:
 
 ```
-kanibako box move <path> <new-path> --name <new-name>
+kanibako box convert <path> --default --name <new-name>
 ```
 
 ### A box name is ASCII-only
@@ -7503,10 +7503,10 @@ command to run: Latin letters lose their accents and kana are written in Hepburn
 and `かに` gives `--name kani`. Kanji has no spelling, so a name holding it asks for a new one.
 
 A box created under such a name before this release keeps working: each command that resolves it warns that the
-name does not meet the naming rules, and the box is found by its path, not its name. Rename it:
+name does not meet the naming rules, and the box is found by its path only. Rename a primary box:
 
 ```
-kanibako box move <path> <new-path> --name <new-name>
+kanibako box convert <path> --default --name <new-name>
 ```
 
 A standalone box's name follows its directory, so one in a non-ASCII directory changes its name as if the
@@ -7539,7 +7539,7 @@ command that gives it a valid name. `start` and `stop` refuse it, because it ren
 ```
 Error: box 'my-box' has no container name: box name must not contain '-'; names are 1 to 64 ASCII letters,
 digits, or '_', and do not start with a digit. Give the box a valid name, then try again:
-  kanibako box move /home/you/my-box <new-path> --name my_box
+  kanibako box convert /home/you/my-box --default --name my_box
 ```
 
 A box in a legacy workset is refused the same way, naming the workset and the commands that move the box into a

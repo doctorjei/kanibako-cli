@@ -2023,31 +2023,26 @@ class TestConvertMoveCrossKindName:
     assert pdir.is_dir()
     assert not dest.exists()
 
-  def test_convert_inplace_different_name_refuses(self, env):
-    """t-b (FIX2): in-place primary->default convert with a DIFFERENT --name
-    REFUSES (rc=1) rather than silently dropping the name.
-
-    The friendly message teaches the supported route (move to rename / drop
-    --name); the registry is unchanged (original name -> path, no new name)."""
+  def test_convert_inplace_different_name_renames(self, env):
+    """197-RN: in-place primary->default convert with a DIFFERENT --name renames the box
+    in place (rc=0): the folder stays, the registry holds only the new name."""
     import io
-    from contextlib import redirect_stderr
+    from contextlib import redirect_stderr, redirect_stdout
 
     config, std, tmp_home = env
     pdir = _default(env, name="renbox")
     boxes0 = load_primary_boxes(std.primary_workset)
     name = next(n for n, p in boxes0.items() if p == str(pdir))
 
-    buf = io.StringIO()
-    with redirect_stderr(buf):
+    out = io.StringIO()
+    with redirect_stderr(io.StringIO()), redirect_stdout(out):
       rc = run_convert(_convert_args(pdir, to_default=True, name="somethingelse"))
-    assert rc == 1
-    err = buf.getvalue().lower()
-    assert "rename" in err
-    assert "not supported" in err
-    # Registry unchanged: original name still maps to the path; no new name.
+    assert rc == 0
+    assert f"Converted 'somethingelse' to primary ({pdir})" in out.getvalue()
     boxes1 = load_primary_boxes(std.primary_workset)
-    assert boxes1.get(name) == str(pdir)
-    assert "somethingelse" not in boxes1
+    assert boxes1.get("somethingelse") == str(pdir)
+    assert name not in boxes1
+    assert pdir.is_dir()
 
 
 # ---------------------------------------------------------------------------

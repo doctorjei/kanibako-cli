@@ -279,18 +279,10 @@ def _default_rename_name(
     return None
   existing = _primary_name_at(state, std, landing_ws)
   if existing is not None:
-    # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
-    # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
-    # SAME box, so it is the moot reuse below and not a refused in-place rename.
-    if not _same_box_name(requested_name, existing):
-      raise ProjectError(
-        f"In-place rename of a primary (default-mode) box is not "
-        f"supported: '{existing}' -> '{requested_name}'. Move the box "
-        f"to rename it (e.g. `box move {shlex.quote(existing)} <new-path> --name "
-        f"{shlex.quote(requested_name)}`), or drop --name to keep the current name."
-      )
-    # --name equals the current name: a moot reuse, not a rename edge.
-    return None
+    # ⚑ Landing path already registered ⇒ SAME-PATH edge: another name is an in-place
+    # rename, minted like a move's.  Case-blind (§0): ``--name FOO`` on a box
+    # registered as ``foo`` names the SAME box, a moot reuse.
+    return None if _same_box_name(requested_name, existing) else requested_name
   # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the SAME
   # box, so the mint is its STORED spelling. Minting the typed case makes the source's
   # OWN registration read as a same-kind collision at ``_to_default``, refusing a move
@@ -2093,10 +2085,10 @@ def _validate(
     mint = _default_rename_name(state, std, landing_ws, requested_name)
     # ⚑ FIX1: a move that keeps the source's OWN name is exempt from the same-kind guard.
     own_name = _primary_source_own_name(state, std)
-    # The same-path edge and an own-name move both reuse the box's vault (``_to_default``).
-    vault_reused = (
-      landed is not None or _relocated_own_name(state, std, landing_ws, mint) is not None
-    )
+    # A same-path edge that keeps the name and an own-name move reuse the box's vault.
+    vault_reused = (landed is not None and mint is None) or _relocated_own_name(
+      state, std, landing_ws, mint
+    ) is not None
     if mint is not None and not _same_box_name(mint, own_name):
       check_primary_box_name_free(std.primary_workset, mint, str(landing_ws))
     # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
@@ -4115,15 +4107,18 @@ def _to_default(
   )
   if state.mode == BoxMode.primary and state.name:
     existing = _primary_name_at(state, std, new_workspace)
-    if existing is not None:
+    if existing is not None and mint is None:
       # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
       preserved_name = existing
     elif kept is not None:
       # RELOCATING own-name move.
       preserved_name = kept
+    # ⚑ An in-place rename frees the OLD name too, or the one-box-per-path guard refuses
+    # the new one; the source is still torn down as a move's (its row drop is then moot).
+    freed = existing if existing is not None else preserved_name
     # ⚑ A free that fails raises its own cause, not the register's "already registered".
-    if preserved_name is not None:
-      unregister_primary_box_name(std.primary_workset, preserved_name)
+    if freed is not None:
+      unregister_primary_box_name(std.primary_workset, freed)
   # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
   claimed = mint if mint is not None else kept
   if claimed is not None:

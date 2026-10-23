@@ -295,13 +295,26 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
     from kanibako.utils import unrenderable_box_name_refusal
 
     path = Path("/w") / name
-    text = unrenderable_box_name_refusal("-droste", "primary", path, None)
+    text = unrenderable_box_name_refusal("-droste", "named", path, None)
 
     # The offered name is ``-droste``'s '_' spelling (spec §0).
     cure = _line(text, "kanibako box move").replace("<new-path>", "/w/moved")
     _assert_inert(
       cure,
       ["box", "move", str(path), "/w/moved", "--name", "_droste"],
+      tmp_path / "paste",
+    )
+
+  def test_the_primary_convert_cure_pastes_to_one_argv(self, name, tmp_path):
+    from kanibako.utils import unrenderable_box_name_refusal
+
+    path = Path("/w") / name
+    text = unrenderable_box_name_refusal("-droste", "primary", path, None)
+
+    cure = _line(text, "kanibako box convert")
+    _assert_inert(
+      cure,
+      ["box", "convert", str(path), "--default", "--name", "_droste"],
       tmp_path / "paste",
     )
 
@@ -364,7 +377,7 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
   from kanibako.utils import unrenderable_box_name_refusal
 
   text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"), None)
-  assert "kanibako box move /home/u/plainbox <new-path> --name _droste" in text
+  assert "kanibako box convert /home/u/plainbox --default --name _droste" in text
 
 
 # ---------------------------------------------------------------------------
@@ -1182,22 +1195,6 @@ class TestTheOtherPrintedCommandsAreQuoted:
     assert [
       p.name for p in load_workset(ws.root, "xpb", early_system=std.early_system).projects
     ] == []
-
-  def test_the_in_place_rename_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
-    """``_lifecycle._default_rename_name`` refusing a primary box's in-place rename."""
-    from unittest.mock import MagicMock
-
-    from kanibako.commands.box import _lifecycle
-    from kanibako.errors import ProjectError
-
-    monkeypatch.setattr(_lifecycle, "_primary_name_at", lambda *a: name)
-    with pytest.raises(ProjectError) as refused:
-      _lifecycle._default_rename_name(MagicMock(), MagicMock(), tmp_path, name + "2")
-    cure = _backticked(str(refused.value), "box move").replace("<new-path>", "/w/moved")
-
-    argv, paste_cwd, _, _ = _paste(cure, tmp_path / "paste", stub="box")
-    assert not (paste_cwd / _MARKER).exists(), cure
-    assert argv == ["move", name, "/w/moved", "--name", name + "2"], argv
 
   def test_the_membership_guard_cure_names_one_workset(
     self, name, tmp_path, monkeypatch, config_file, tmp_home, credentials_dir

@@ -547,19 +547,106 @@ class TestConvertInPlace:
     assert pdir.is_dir()
     assert not (pdir / "box_data").exists()
 
-  def test_default_inplace_different_name_refuses(self, env):
-    """Fix-2: an in-place default convert with a DIFFERENT --name is REFUSED.
+  def test_default_inplace_rename_round_trip(self, env):
+    """197-RN: an in-place default convert with another --name RENAMES the box in place.
 
-    This test PREVIOUSLY passed ``name="proj2"`` and asserted the box silently
-    reused "proj" (dropping the different name) — the old-wrong behavior Fix-2
-    removes.  An in-place rename of a primary (default-mode) box is not
-    supported, so the engine now raises ``ProjectError`` and the registry is
-    left unchanged (name -> path preserved, no stray ``proj2``).
+    The folder stays put; the registry row, box store, vault leaves, and channel
+    partition move to the new name; the old name is gone.  Then it renames back.
     """
     config, std, tmp_home = env
     pdir = _make_default(env)  # registers "proj" → pdir
     state = resolve_lifecycle_target(str(pdir), std, config)
-    with pytest.raises(ProjectError, match="rename of a primary"):
+    assert state.vault_rw is not None
+    (state.vault_rw / "keep.txt").write_text("vault data")
+    (state.metadata_path / "marker.txt").write_text("store data")
+    mailbox = lc._own_partition(state, std).mailbox
+    assert mailbox is not None
+    mailbox.mkdir(parents=True)
+    (mailbox / "mail.txt").write_text("mail")
+    from kanibako.snapshots import box_snapshot_store
+
+    snap = box_snapshot_store(state.vault_rw, "proj") / "20260101T000000"
+    snap.mkdir(parents=True)
+    (snap / "s.txt").write_text("snap")
+
+    def rename(current: str, to: str):
+      st = resolve_lifecycle_target(current, std, config)
+      return execute_lifecycle(
+        st,
+        TargetSpec(location=INPLACE, ownership="default", name=to),
+        std,
+        config,
+        confirm=_conf_yes(),
+      )
+
+    for old, new_name in (("proj", "proj2"), ("proj2", "proj")):
+      new = rename(old, new_name)
+      assert new.name == new_name
+      assert new.workspace_path == pdir
+      assert (pdir / "file.txt").read_text() == "hello"
+      projects = load_primary_boxes(std.primary_workset)
+      assert projects == {new_name: str(pdir)}
+      assert (std.boxes / new_name / "marker.txt").read_text() == "store data"
+      assert not (std.boxes / old).exists()
+      assert new.vault_rw is not None and new.vault_rw.name == new_name
+      assert (new.vault_rw / "keep.txt").read_text() == "vault data"
+      assert not (new.vault_rw.parent / old).exists()
+      new_mailbox = lc._own_partition(new, std).mailbox
+      assert new_mailbox is not None and (new_mailbox / "mail.txt").read_text() == "mail"
+      assert not (new_mailbox.parent / old).exists()
+      store = box_snapshot_store(new.vault_rw, new_name)
+      assert (store / "20260101T000000" / "s.txt").read_text() == "snap"
+      assert not box_snapshot_store(new.vault_rw, old).exists()
+
+  def test_default_inplace_rename_taken_name_refuses(self, env):
+    """197-RN: an in-place rename onto a name another primary box holds refuses, no write."""
+    config, std, tmp_home = env
+    pdir = _make_default(env)
+    other = _make_default(env, name="other")
+    state = resolve_lifecycle_target(str(pdir), std, config)
+    with pytest.raises(ProjectError, match="other"):
+      execute_lifecycle(
+        state,
+        TargetSpec(location=INPLACE, ownership="default", name="other"),
+        std,
+        config,
+        confirm=_conf_yes(),
+      )
+    assert load_primary_boxes(std.primary_workset) == {"proj": str(pdir), "other": str(other)}
+
+  def test_default_inplace_rename_disabled_vault_with_data_refuses(self, env):
+    """197-RN: a rename carries no disabled vault, so data left under the old name refuses."""
+    from dataclasses import replace
+
+    config, std, tmp_home = env
+    pdir = _make_default(env)
+    state = resolve_lifecycle_target(str(pdir), std, config)
+    assert state.vault_rw is not None
+    (state.vault_rw / "keep.txt").write_text("vault data")
+    with pytest.raises(ProjectError, match="enable_vault is false"):
+      execute_lifecycle(
+        replace(state, enable_vault=False),
+        TargetSpec(location=INPLACE, ownership="default", name="proj2"),
+        std,
+        config,
+        confirm=_conf_yes(),
+      )
+    assert load_primary_boxes(std.primary_workset) == {"proj": str(pdir)}
+
+  def test_default_inplace_rename_failure_undoes(self, env, monkeypatch):
+    """197-RN: a failure mid-rename puts the old name, store, and vault back."""
+    config, std, tmp_home = env
+    pdir = _make_default(env)
+    state = resolve_lifecycle_target(str(pdir), std, config)
+    assert state.vault_rw is not None
+    (state.vault_rw / "keep.txt").write_text("vault data")
+
+    def boom(*_a, **_k):
+      raise OSError("injected")
+
+    # After the new row, store copy, vault leaves, and vault carry: the last step.
+    monkeypatch.setattr(lc, "_carry_box_logs", boom)
+    with pytest.raises(OSError, match="injected"):
       execute_lifecycle(
         state,
         TargetSpec(location=INPLACE, ownership="default", name="proj2"),
@@ -567,11 +654,12 @@ class TestConvertInPlace:
         config,
         confirm=_conf_yes(),
       )
-    projects = load_primary_boxes(std.primary_workset)
-    # Registry unchanged: original name still maps to the path, no new entry.
-    assert projects.get("proj") == str(pdir)
-    assert "proj2" not in projects
-    assert sum(1 for v in projects.values() if v == str(pdir)) == 1
+    assert load_primary_boxes(std.primary_workset) == {"proj": str(pdir)}
+    assert (std.boxes / "proj").is_dir()
+    assert not (std.boxes / "proj2").exists()
+    assert (state.vault_rw / "keep.txt").read_text() == "vault data"
+    assert not (state.vault_rw.parent / "proj2").exists()
+    assert (pdir / "file.txt").read_text() == "hello"
 
   def test_workset_to_default(self, env):
     config, std, tmp_home = env

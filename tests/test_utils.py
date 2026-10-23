@@ -436,8 +436,8 @@ class TestStartUnrenderableBoxNameRefusal:
   def test_it_names_the_box_name_rule(self):
     assert self.RULE in self._text()
 
-  def test_a_primary_box_is_cured_by_moving_it_to_its_spelling(self):
-    assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (self._text("primary"))
+  def test_a_primary_box_is_cured_by_renaming_it_in_place_to_its_spelling(self):
+    assert f"kanibako box convert {self.PATH} --default --name _droste" in (self._text("primary"))
 
   def test_a_named_box_is_cured_by_moving_it_to_its_spelling(self):
     assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (self._text("named"))
@@ -450,14 +450,14 @@ class TestStartUnrenderableBoxNameRefusal:
   def test_a_legacy_my_box_is_offered_my_underscore_box(self):
     text = unrenderable_box_name_refusal("my-box", "primary", self.PATH, None)
     assert "box name must not contain '-'" in text
-    assert f"kanibako box move {self.PATH} <new-path> --name my_box" in text
+    assert f"kanibako box convert {self.PATH} --default --name my_box" in text
 
   def test_a_taken_spelling_is_suffixed_as_a_derived_name_is(self):
     """``a_b`` and ``a_b2`` are held in the box's workset, so the cure offers ``a_b3``."""
     text = unrenderable_box_name_refusal(
       "a-b", "primary", self.PATH, None, taken=lambda name: name in {"a_b", "a_b2"}
     )
-    assert text.endswith(f"kanibako box move {self.PATH} <new-path> --name a_b3")
+    assert text.endswith(f"kanibako box convert {self.PATH} --default --name a_b3")
 
   def test_a_box_with_no_spelling_keeps_the_placeholder(self):
     text = unrenderable_box_name_refusal("\u6f22\u5b57", "primary", self.PATH, None)

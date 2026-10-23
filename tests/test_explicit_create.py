@@ -1249,7 +1249,7 @@ class TestBrokenStandaloneNoBoxError:
     assert "Error: box name 'my-box' does not meet the naming rules" in err
     assert (
       f"reached by its path only: give {root} in place of the name, or give it a "
-      f"valid name:\n  kanibako box move {root} <new-path> --name my_box\n"
+      f"valid name:\n  kanibako box convert {root} --default --name my_box\n"
     ) in err
     assert "does not exist" not in err and "kanibako create" not in err
 
@@ -1277,7 +1277,7 @@ class TestBrokenStandaloneNoBoxError:
     if mode == "standalone":
       assert msg.endswith(f"\n  kanibako box rm {root}\n  kanibako box register {root}")
     else:
-      assert msg.endswith(f"\n  kanibako box move {root} <new-path> --name bad_name")
+      assert msg.endswith(f"\n  kanibako box convert {root} --default --name bad_name")
 
   def test_the_rename_cure_offers_the_name_the_deriver_would_pick(
     self,
@@ -1296,7 +1296,7 @@ class TestBrokenStandaloneNoBoxError:
       register_primary_box_name(std.primary_workset, taken, str(tmp_home / taken))
     with pytest.raises(LegacyBoxNameError) as exc:
       refuse_legacy_box(std, "a-b")
-    assert str(exc.value).endswith(f"kanibako box move {root} <new-path> --name a_b3")
+    assert str(exc.value).endswith(f"kanibako box convert {root} --default --name a_b3")
 
   def test_the_box_own_path_after_a_mv_is_no_name_lookup(
     self,

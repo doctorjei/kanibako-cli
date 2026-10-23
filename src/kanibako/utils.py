@@ -131,8 +131,8 @@ def rename_box_cure(
   """The command that gives a *mode* box at *path* a new name, by path.
 
   A standalone box is named after its directory, so its cure moves the directory.
-  A member *connected* to that workset from outside it is renamed in place by
-  ``box convert``, since ``box move`` refuses to relocate its workspace.
+  A primary box, and a member *connected* to its workset from outside it, is renamed
+  in place by ``box convert``; an in-tree member's directory is its name, so it moves.
   With the refused *name*, the cure offers its spelling (spec §0) when one exists,
   suffixed as a derived name is when *taken* (its workset's membership) holds it."""
   if mode == "standalone":
@@ -146,6 +146,8 @@ def rename_box_cure(
     if offer is None
     else (offer[0] if taken is None else first_free_name(offer[0], taken))
   )
+  if mode == "primary":
+    return f"kanibako box convert {shlex.quote(str(path))} --default --name {new_name}"
   if connected is not None:
     return (
       f"kanibako box convert {shlex.quote(str(path))} "
