@@ -91,6 +91,7 @@ from kanibako.settings.paths import (
   box_logs_dir_for,
   box_workset_settings_paths,
   check_primary_box_name_free,
+  lay_box_vault,
   load_primary_boxes,
   primary_box_name_for_workspace,
   refuse_derived_box_name,
@@ -896,8 +897,6 @@ def copy_into_workset(
 
   # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
   # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
-  from kanibako.commands.box._duplicate import _lay_empty_vault, _unwind_vault_arms
-
   made: list[Path] = []
   try:
     dst_project = ws.projects_dir / proj_name
@@ -910,9 +909,7 @@ def copy_into_workset(
       ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
       dirs_exist_ok=True,
     )
-    _lay_empty_vault(
-      std, BoxMode.named, dst_project, _member_leaves(ws, proj_name)[2:], made, ws=ws
-    )
+    lay_box_vault(std, BoxMode.named, dst_project, _member_leaves(ws, proj_name)[2:], made, ws=ws)
 
     if shell_path.is_dir():
       dst_shell = dst_project / "home"
@@ -934,7 +931,8 @@ def copy_into_workset(
         copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
   except BaseException:
     note_phase("Undoing the duplicate...")
-    _unwind_vault_arms(made)
+    for path in reversed(made):
+      _unwind_created_root(path)
     _unwind_target_member(ws, proj_name, existed)
     raise
 
@@ -4924,8 +4922,6 @@ def _to_workset(
   dest: Path | None,
 ) -> tuple[ProjectState, _SourceTeardown | None]:
   """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
-  from kanibako.commands.box._duplicate import _lay_empty_vault
-
   internal = is_in_tree_workspace(target_ws, new_workspace)
 
   # The path add_project records and decides external wiring from.
@@ -5041,7 +5037,7 @@ def _to_workset(
         (
           "the vault folders",
           state.vault_rw,
-          lambda: _lay_empty_vault(
+          lambda: lay_box_vault(
             std,
             BoxMode.named,
             src_ws.projects_dir / src_name,
@@ -5199,7 +5195,7 @@ def _to_workset(
   write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
   made: list[Path] = []
   try:
-    _lay_empty_vault(std, BoxMode.named, dst_project, dst_vault, made, ws=target_ws)
+    lay_box_vault(std, BoxMode.named, dst_project, dst_vault, made, ws=target_ws)
   finally:
     for path in made:
       unwind.push(partial(_unwind_created_root, path))

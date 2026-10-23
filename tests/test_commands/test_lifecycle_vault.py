@@ -340,6 +340,55 @@ class TestVaultCarry:
     assert (src_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
     assert (src_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
 
+  def _fail_after_the_vault_lay(self, env, monkeypatch, name, *, seed):
+    """Move workset member *name* from ``wsa`` to ``wsb``; the log carry, AFTER the
+    destination vault is laid, fails.  *seed* fills the source vault; ``False`` removes
+    its leaves instead.  Returns ``(state, ws_b, seed map or None)``."""
+    config, std, tmp_home = env
+    ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+    ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+    internal = ws_a.workspaces_dir / name
+    internal.mkdir(parents=True)
+    add_project(ws_a, name, internal, std)
+    state = resolve_lifecycle_target(str(internal), std, config)
+    seeded = _seed_vault(state) if seed else None
+    if not seed:
+      # An empty leaf travels through the stash and comes back on its own; an ABSENT
+      # one is what only the undo's own vault step lays again.
+      state.vault_ro.rmdir()
+      state.vault_rw.rmdir()
+
+    def _boom(*_args, **_kwargs):
+      raise OSError("injected log-carry failure")
+
+    monkeypatch.setattr("kanibako.commands.box._lifecycle._carry_box_logs", _boom)
+    with pytest.raises(OSError, match="injected log-carry"):
+      execute_lifecycle(
+        state,
+        TargetSpec(location=ws_b.workspaces_dir / name, ownership="wsb"),
+        std,
+        config,
+        confirm=_conf_yes(),
+      )
+    return state, ws_b, seeded
+
+  def test_an_undone_move_removes_the_target_vault_it_laid(self, env, monkeypatch):
+    """The source vault comes back whole; the target's leaves and ``.gitignore`` go."""
+    state, ws_b, seed = self._fail_after_the_vault_lay(env, monkeypatch, "b1", seed=True)
+    assert seed is not None
+    assert (state.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
+    assert (state.vault_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
+    assert not (ws_b.vault_ro_dir / "b1").exists()
+    assert not (ws_b.vault_rw_dir / "b1").exists()
+    assert not (ws_b.root.resolve() / "vault" / ".gitignore").exists()
+
+  def test_an_undone_move_lays_the_source_vault_again(self, env, monkeypatch):
+    """A vault-enabled source with no leaves gets them back from the undo, as its
+    re-registration always laid them."""
+    state, _ws_b, _ = self._fail_after_the_vault_lay(env, monkeypatch, "e1", seed=False)
+    assert state.vault_ro.is_dir()
+    assert state.vault_rw.is_dir()
+
   def test_dangling_symlink_carries_as_a_link(self, env):
     """Q70: a dangling link is a link like any other — carried, never followed."""
     config, std, tmp_home = env

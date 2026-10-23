@@ -13,6 +13,7 @@ import logging
 import pytest
 
 from kanibako.commands.box import _duplicate
+from kanibako.settings import paths
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import write_nested_key
@@ -216,7 +217,7 @@ def test_a_failed_vault_setup_undoes_the_arms_it_made(env, monkeypatch, to_mode)
   config, std, tmp_home = env
   src = _primary(env, "undo")
   dest = tmp_home / "undo_copy"
-  real = _duplicate.init_vault_dirs
+  real = paths.init_vault_dirs
   made_arms = []
 
   def failing(ro, rw, *, enable_vault, vault_root, created):
@@ -224,7 +225,7 @@ def test_a_failed_vault_setup_undoes_the_arms_it_made(env, monkeypatch, to_mode)
     made_arms.extend(created)
     raise OSError("injected vault failure")
 
-  monkeypatch.setattr(_duplicate, "init_vault_dirs", failing)
+  monkeypatch.setattr(paths, "init_vault_dirs", failing)
 
   if to_mode is None:
     with pytest.raises(OSError, match="injected"):
