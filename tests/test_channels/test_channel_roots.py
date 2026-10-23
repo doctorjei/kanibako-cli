@@ -210,6 +210,27 @@ class TestTheLaunchRefusesAMissingRoot:
       f"Note: created the missing directory {loud} for the broadcast log {loud / 'b.md'}.\n"
     )
 
+  @pytest.mark.parametrize("leaf", ["sub/b.md", "b.md"])
+  def test_a_broadcast_behind_a_planted_link_writes_nothing_outside(
+    self, named, set_up, tmp_path, leaf, caplog
+  ):
+    """A box plants ``chat/evil -> /outside``; a broadcast under it, in a new subdir or
+    in the linked dir itself, is skipped with a warning and nothing lands outside."""
+    from kanibako.commands.start import _seed_channel_files
+
+    ws, proj = named
+    chat = ws.root / "channels" / "chat"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (chat / "evil").symlink_to(outside)
+    self._repoint_broadcast(ws, chat / "evil" / leaf)
+    with caplog.at_level(logging.WARNING):
+      _seed_channel_files(set_up, proj)
+    assert list(outside.rglob("*")) == []
+    assert any("evil" in r.getMessage() for r in caplog.records)
+    # The control: the scope's general log is still seeded.
+    assert (chat / "general.md").is_file()
+
   def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
     from kanibako.commands.start import _seed_channel_files
 

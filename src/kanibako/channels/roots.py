@@ -161,6 +161,18 @@ def is_channel_root(std: StandardPaths, proj: ProjectPaths | None, path: Path) -
   return any(p == path for _, p in _box_roots(std, proj))
 
 
+def covering_channel_root(
+  std: StandardPaths, proj: ProjectPaths | None, path: Path
+) -> Path | None:
+  """The deepest of *proj*'s channel roots at or above *path*, or ``None``.
+
+  A channel root is box-writable, so a host file call under it takes it as the
+  :mod:`kanibako.boxfs` seam root: no link a box planted below it is followed.
+  """
+  covering = [p for _, p in _box_roots(std, proj) if p is not None and path.is_relative_to(p)]
+  return max(covering, key=lambda p: len(p.parts), default=None)
+
+
 def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | None:
   """The launch refusal for *proj*'s missing channel roots, or ``None``.
 

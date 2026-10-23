@@ -332,7 +332,15 @@ class TestChannelLogs:
     return d
 
   def _std(self, chat):
-    return SimpleNamespace(channels_chat=chat, channels_broadcast=chat / "broadcast.md")
+    # The seeder reads every system channel root (to find the seam root): a real
+    # ``StandardPaths`` always carries them; the unused ones are null here.
+    return SimpleNamespace(
+      channels_chat=chat,
+      channels_broadcast=chat / "broadcast.md",
+      channels_common=None,
+      channels_share=None,
+      channels_mailboxes=None,
+    )
 
   def test_dangling_leaf_link_is_not_created(self, chat, outside, caplog):
     (chat / "general.md").symlink_to(outside / "planted")
