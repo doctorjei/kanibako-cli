@@ -883,10 +883,14 @@ def copy_into_workset(
   # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
   existed = _existing_member_leaves(ws, proj_name)
   # ⚑ The IN-TREE dir: a duplicate is INTERNAL, so add_project makes it, never a link.
-  add_project(ws, proj_name, workspace, std, noun="duplicate")
+  # ⚑ No vault yet: it is laid below, once the copied box tier can answer for it.
+  add_project(ws, proj_name, workspace, std, noun="duplicate", enable_vault=False)
 
   # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
   # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
+  from kanibako.commands.box._duplicate import _lay_empty_vault, _unwind_vault_arms
+
+  made: list[Path] = []
   try:
     dst_project = ws.projects_dir / proj_name
     note_phase(f"Copying the box data to {dst_project}...")
@@ -897,6 +901,9 @@ def copy_into_workset(
       dst_project,
       ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
       dirs_exist_ok=True,
+    )
+    _lay_empty_vault(
+      std, BoxMode.named, dst_project, _member_leaves(ws, proj_name)[2:], made, ws=ws
     )
 
     if shell_path.is_dir():
@@ -919,6 +926,7 @@ def copy_into_workset(
         copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
   except BaseException:
     note_phase("Undoing the duplicate...")
+    _unwind_vault_arms(made)
     _unwind_target_member(ws, proj_name, existed)
     raise
 
@@ -4911,6 +4919,8 @@ def _to_workset(
   dest: Path | None,
 ) -> tuple[ProjectState, _SourceTeardown | None]:
   """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
+  from kanibako.commands.box._duplicate import _lay_empty_vault
+
   internal = is_in_tree_workspace(target_ws, new_workspace)
 
   # The path add_project records and decides external wiring from.
@@ -5012,10 +5022,29 @@ def _to_workset(
           f"the record of '{src_name}' in workset '{src_ws.name}'",
           src_source_path,
           lambda: add_project(
-            src_ws, src_name, src_source_path, std, restoring=True, outer=unwind
+            src_ws,
+            src_name,
+            src_source_path,
+            std,
+            restoring=True,
+            outer=unwind,
+            enable_vault=False,
           ),
         ),
         ("the box tree", src_ws.projects_dir / src_name, _box_tree),
+        # ⚑ The vault is laid once the restored box tier can answer for it.
+        (
+          "the vault folders",
+          state.vault_rw,
+          lambda: _lay_empty_vault(
+            std,
+            BoxMode.named,
+            src_ws.projects_dir / src_name,
+            (state.vault_ro, state.vault_rw),
+            [],
+            ws=src_ws,
+          ),
+        ),
         # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
         # leaves into the stash; no-ops when leg 1 carried nothing.
         (
@@ -5088,8 +5117,16 @@ def _to_workset(
       outer_row = (state.name, prior)
   # Armed before the register, which creates leaves before it records the member.
   unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
+  # ⚑ No vault yet: it is laid below, once the destination's box tier is written.
   add_project(
-    target_ws, new_name, source_for_add, std, force=True, outer=unwind, outer_row=outer_row
+    target_ws,
+    new_name,
+    source_for_add,
+    std,
+    force=True,
+    outer=unwind,
+    outer_row=outer_row,
+    enable_vault=False,
   )
 
   dst_project = target_ws.projects_dir / new_name
@@ -5155,6 +5192,12 @@ def _to_workset(
   # ⚑⚑ The BOX-AUTHORED value, never the resolved one: the SOURCE workset's default must
   # not follow the box into a DIFFERENT workset as a box-scope override.
   write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
+  made: list[Path] = []
+  try:
+    _lay_empty_vault(std, BoxMode.named, dst_project, dst_vault, made, ws=target_ws)
+  finally:
+    for path in made:
+      unwind.push(partial(_unwind_created_root, path))
 
   # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
   if source_is_workset and state.ws is not None:

@@ -11,6 +11,7 @@ and never delete foreign ground).
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 
@@ -32,6 +33,7 @@ from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
   BoxMode,
   load_std_paths,
+  resolve_box_target,
   resolve_project,
   resolve_standalone_project,
 )
@@ -396,6 +398,27 @@ class TestVaultCarry:
     _assert_carried(new, seed)
     # wsb sits one level deeper than wsa: the escaping links are STILL verbatim (Q74).
     _assert_links_carried(new.vault_rw, texts)
+
+  def test_a_convert_into_a_workset_lays_the_vault_its_box_tier_resolves(self, env, caplog):
+    """The destination's vault is laid once its box tier is written: a box that authored
+    ``enable_vault: false`` gets no vault folders in a workset whose default is on."""
+    config, std, tmp_home = env
+    pdir = _make_default(env, name="boff", enable_vault=False)
+    state = resolve_lifecycle_target(str(pdir), std, config)
+    assert state.box_authored_vault is False
+    ws = create_workset("wson", tmp_home / "wson_root", std)
+    dest = ws.workspaces_dir / "boff"
+
+    execute_lifecycle(
+      state, TargetSpec(location=dest, ownership="wson"), std, config, confirm=_conf_yes()
+    )
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="kanibako"):
+      proj = resolve_box_target(std, config, str(dest))
+    assert proj.vault_enabled() is False
+    assert not proj.vault_ro_path.exists()
+    assert not proj.vault_rw_path.exists()
 
   def test_disabled_vault_move_completes_without_vault(self, env):
     """No destination vault exists when disabled — the carry stays hands-off."""
