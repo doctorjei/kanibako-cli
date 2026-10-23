@@ -68,6 +68,7 @@ def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=())
 def standalone_logs_dir(root: Path, *, early: EarlyScope) -> Path | None
 def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None, *, workset_name: str | None=None) -> Path | None
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
+def init_vault_dirs(vault_ro_path: Path | None, vault_rw_path: Path | None, *, enable_vault: bool, vault_root: Path, created: list[Path] | None=None) -> None
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]

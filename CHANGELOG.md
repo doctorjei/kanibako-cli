@@ -2709,6 +2709,8 @@ migration code.** Four released config surfaces are removed outright
 
 ### Fixed
 
+- **A duplicate gets an empty vault, as `create` does.** Its first start no longer warns "cannot find
+  vault"; the source's vault still does not travel.
 - **A long move no longer looks hung.** `box move`, `box convert`, and `box duplicate` print a line
   to stderr as each copy, removal, or undo starts.
 - **An unprotected canon skeleton says why.** The "left writable" warning now quotes podman's error

@@ -1965,17 +1965,37 @@ def _init_common(
   shell_path.mkdir(parents=True, exist_ok=True)
   _bootstrap_shell(shell_path)
 
-  # Vault directories (skip when vault is disabled).
-  if enable_vault:
-    if vault_ro_path is not None:
-      vault_ro_path.mkdir(parents=True, exist_ok=True)
-    if vault_rw_path is not None:
-      vault_rw_path.mkdir(parents=True, exist_ok=True)
-      # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
-      # whenever the gate would pass, satisfying this call's precondition silently.
-      write_vault_gitignore(vault_root, vault_rw_path)
+  init_vault_dirs(vault_ro_path, vault_rw_path, enable_vault=enable_vault, vault_root=vault_root)
 
   print(MSG_DONE, file=sys.stderr)
+
+
+def init_vault_dirs(
+  vault_ro_path: Path | None,
+  vault_rw_path: Path | None,
+  *,
+  enable_vault: bool,
+  vault_root: Path,
+  created: list[Path] | None = None,
+) -> None:
+  """Create a new box's EMPTY vault arms — the one vault setup ``create`` and ``duplicate`` share.
+
+  Nothing when *enable_vault* is false; a null arm is skipped.  Each arm this call
+  makes is appended to *created*, as it is made, for the caller's undo.
+  """
+  if not enable_vault:
+    return
+  for arm in (vault_ro_path, vault_rw_path):
+    if arm is None:
+      continue
+    existed = os.path.lexists(arm)
+    arm.mkdir(parents=True, exist_ok=True)
+    if not existed and created is not None:
+      created.append(arm)
+  if vault_rw_path is not None:
+    # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
+    # whenever the gate would pass, satisfying this call's precondition silently.
+    write_vault_gitignore(vault_root, vault_rw_path)
 
 
 def _host_path_within(candidate: Path, root: Path) -> bool:
@@ -2020,8 +2040,8 @@ def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None:
   arm's DEFAULT parent, so it can sit on disk while ``vault_rw`` points elsewhere and the
   ``rw/`` claim is already false.  A position cannot answer a key (P10).
 
-  ⚑ The skeleton must already be on disk — an absent one means no vault was laid here (a
-  duplicate never carries one), and inventing an empty ``vault/`` to hold the file would
+  ⚑ The skeleton must already be on disk — an absent one means no vault was laid here (the
+  box has ``box.enable_vault`` off), and inventing an empty ``vault/`` to hold the file would
   make this function a creator of the thing it only annotates.
   """
   vault_dir = vault_root / VAULT_PATH

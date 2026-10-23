@@ -31,17 +31,22 @@ from kanibako.settings.paths import (
   BoxMode,
   DetectionResult,
   WorksetSpec,
+  _box_settings_files,
+  _default_project_group,
   _early_scope,
+  _primary_box_paths,
   _resolve_local_dir,
   _resolve_workset_or_connected,
   assign_primary_box_name,
   box_metadata_dir,
   box_workset_settings_paths,
   check_primary_box_name_free,
+  init_vault_dirs,
   load_std_paths,
   primary_box_name_for_workspace,
   register_primary_box_name,
   refuse_derived_box_name,
+  resolve_box_enable_vault,
   resolve_standalone_project,
   resolve_project,
   resolve_workset_project,
@@ -588,6 +593,29 @@ def _source_authored_vault(src_proj) -> bool:
   return read_box_enable_vault(src_box)
 
 
+def _lay_empty_vault(
+  std, mode: BoxMode, metadata_path: Path, arms: tuple[Path | None, Path | None], made: list[Path]
+) -> None:
+  """Give the duplicate an EMPTY vault, as ``create`` does (:func:`init_vault_dirs`).
+
+  Vaults do not travel; the copy gets an empty one.  ``box.enable_vault`` is the
+  destination's RESOLVED value, read after its box tier is written, so the duplicate and
+  its first start agree.  Each arm made lands in *made*, for :func:`_unwind_vault_arms`.
+  """
+  early = _early_scope(std, mode) if mode is BoxMode.standalone else None
+  group = _default_project_group(std) if mode is BoxMode.primary else None
+  box_tier, workset_tier = _box_settings_files(mode, metadata_path, group, early=early)
+  enabled = resolve_box_enable_vault(std.config_file, box_path=box_tier, workset_path=workset_tier)
+  vault_root = metadata_path if mode is BoxMode.standalone else std.primary_workset
+  init_vault_dirs(*arms, enable_vault=enabled, vault_root=vault_root, created=made)
+
+
+def _unwind_vault_arms(made: list[Path]) -> None:
+  """Remove the vault arms :func:`_lay_empty_vault` made (never a shared parent)."""
+  for arm in reversed(made):
+    _remove_created_root(arm)
+
+
 def _duplicate_to_standalone(
   src_proj, new_path, std, force, src_enable_vault, carried, *, register: bool
 ):
@@ -692,7 +720,7 @@ def _duplicate_to_standalone(
   # Mirrors ``ProjectState.box_authored_vault`` in ``_lifecycle.py``; the caller decides
   # because ``establish_standalone`` is also the CREATE core, where its argument is a
   # genuinely authored ``--no-vault``.
-  _box_name, _dst_shell, _dst_vault_ro, dst_vault_rw = establish_standalone(
+  _box_name, _dst_shell, dst_vault_ro, dst_vault_rw = establish_standalone(
     std,
     new_path,
     enable_vault=src_enable_vault,
@@ -701,13 +729,16 @@ def _duplicate_to_standalone(
 
   write_project_gitignore(new_path)
 
-  # Write the vault ``.gitignore`` if the skeleton is there.  ⚑ On a FRESH destination it
-  # never is, and that is CONFIRMED INTENDED [Jei:2026-08-27]: a duplicate does NOT carry the
-  # source's vault.  establish_standalone does not create the vault dirs, so a duplicated
-  # box with enable_vault true has none until its first launch creates an empty one;
-  # _flag_missing_vault warns before that.
-  # _duplicate_to_local does not carry a vault either.  Do NOT "fix" this by copying the
-  # source's vault across -- vaults do not travel on duplicate.
+  # Vaults do not travel; the copy gets an empty one, as ``create`` lays it (Jei's rulings
+  # of 2026-08-27 and 197-DV).  Do NOT "fix" this by copying the source's vault across.
+  made: list[Path] = []
+  try:
+    _lay_empty_vault(std, BoxMode.standalone, new_path, (dst_vault_ro, dst_vault_rw), made)
+  except BaseException:
+    _unwind_vault_arms(made)
+    raise
+
+  # Write the vault ``.gitignore`` even with the vault disabled, if the skeleton is there.
   # ⚑ A destination that ALREADY held a standalone box is the case that made this reachable:
   # ``--force`` rebuilds ``box_data/`` and leaves the old ``vault/`` and root ``workset.yaml``
   # in place, and ``establish_standalone`` read-modify-writes ``workset.kuid`` INTO that file
@@ -796,9 +827,8 @@ def _assert_dup_home_free(std, name: str) -> None:
 def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, workspace_src=None):
   """Copy metadata into default-mode layout for new_path.
 
-  ⚑ The source's VAULT is not carried, and that is CONFIRMED INTENDED
-  (2026-08-27) -- the same holds for _duplicate_to_standalone.  Vaults do not
-  travel on duplicate.
+  ⚑ Vaults do not travel; the copy gets an empty one, as ``create`` lays it
+  (:func:`_lay_empty_vault`) — the same holds for _duplicate_to_standalone.
 
   ⚑⚑ *workspace_src*, when given, is merged into *new_path* HERE — after the mint
   and the home-free check — so no refusal is preceded by a write to the
@@ -836,6 +866,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
   # "registered but no metadata" orphan.  Unwind the registration + any partial
   # dest dir on failure, then re-raise — duplicate either fully succeeds or
   # leaves no trace.
+  made = []  # the vault arms laid below, for the undo
   try:
     if workspace_src is not None:
       _merge_workspace(workspace_src, new_path, force, share_root_link=True)
@@ -860,8 +891,12 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, w
       dst_home = dst_project / "home"
       if not dst_home.is_dir() and not lay_root_link(src_proj.shell_path, dst_home):
         copy_tree_keeping_links(src_proj.shell_path, dst_home)
+
+    _shell, vault_ro, vault_rw = _primary_box_paths(std, dst_project, project_name)
+    _lay_empty_vault(std, BoxMode.primary, dst_project, (vault_ro, vault_rw), made)
   except BaseException as exc:
     note_phase("Undoing the duplicate...")
+    _unwind_vault_arms(made)
     _unwind_local_name(std, project_name, dst_project, exc)
     raise
 
@@ -1297,6 +1332,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
   new_path_existed = new_path.exists() or new_path.is_symlink()
   new_path_before = _entry_names(new_path)
+  made: list[Path] = []
   try:
     # Copy workspace (unless --bare).
     if not args.bare:
@@ -1311,8 +1347,11 @@ def run_duplicate(args: argparse.Namespace) -> int:
       new_project_dir,
       ignore=shutil.ignore_patterns(".kanibako.lock"),
     )
+    _shell, vault_ro, vault_rw = _primary_box_paths(std, new_project_dir, dup_name)
+    _lay_empty_vault(std, BoxMode.primary, new_project_dir, (vault_ro, vault_rw), made)
   except BaseException as exc:
     note_phase("Undoing the duplicate...")
+    _unwind_vault_arms(made)
     # ⚑ The workspace first: the summary Note comes last.
     _undo_new_path(new_path, new_path_existed, new_path_before)
     _unwind_local_name(std, dup_name, new_project_dir, exc)

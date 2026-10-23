@@ -3282,8 +3282,9 @@ class TestWorksetTierVaultDefaultIsNotPinned:
     dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
     assert dup.vault_enabled() is False
 
-  def test_duplicate_creates_no_vault_either_way(self, env):
-    """Resolved governs CREATION, and on this path nothing is created — before or after."""
+  def test_duplicate_creates_the_vault_its_resolved_value_names(self, env):
+    """Resolved governs CREATION: the copy resolves on in its new scope, so it gets an
+    EMPTY vault (197-DV) while the source workset's off stays behind."""
     config, std, tmp_home = env
     pdir = _make_default(env, name="dupvault")
     self._publish_primary_default(std, False)
@@ -3293,9 +3294,10 @@ class TestWorksetTierVaultDefaultIsNotPinned:
 
     dst = tmp_home / "dupvault_copy"
     dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
-    # A duplicate never carries a vault (``_duplicate.py``, confirmed intended) …
-    assert not dup.vault_ro_path.exists()
-    assert not dup.vault_rw_path.exists()
+    # Vaults do not travel; the copy gets an empty one …
+    assert dup.vault_enabled() is True
+    assert dup.vault_ro_path.is_dir() and not any(dup.vault_ro_path.iterdir())
+    assert dup.vault_rw_path.is_dir() and not any(dup.vault_rw_path.iterdir())
     # … and never removes the source's.
     assert src_proj.vault_rw_path.is_dir()
 
