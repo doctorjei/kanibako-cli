@@ -113,11 +113,20 @@ class TestSetupMakesTheGlobalRoots:
       assert path.is_dir(), path
 
   def test_setup_makes_them_on_an_existing_host(self, std):
-    shutil.rmtree(std.channels_common.parent)  # ``config_file`` ran setup's step
+    """Every root setup owns: the system's, the primary workset's, both partitions."""
     from kanibako.commands.setup_cmd import _make_channel_roots
 
+    wch = _ch.workset_channels_at(std.primary_workset, early=_ch_early(std, WS_TOKEN_PRIMARY))
+    workset_roots = [wch.common, wch.chat, wch.share]
+    partitions = [std.channels_mailboxes / t for t in (WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE)]
+    roots = [*_system_roots(std), *workset_roots, *partitions]
+    assert all(path.is_dir() for path in roots)  # ``config_file`` ran setup's step
+    shutil.rmtree(std.channels_common.parent)  # the system roots and both partitions
+    for path in workset_roots:
+      shutil.rmtree(path)
+    assert not any(path.exists() for path in roots)
     _make_channel_roots()
-    for path in _system_roots(std):
+    for path in roots:
       assert path.is_dir(), path
 
 
