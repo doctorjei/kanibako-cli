@@ -108,6 +108,8 @@ def _create_and_launch(
   )
   mounts = _emit_category_mounts(
     _launch_bind_map(snapshot),
+    std=std,
+    proj=proj,
     label="host-path-literals",
     skip_if_absent=deliveries.agent_dests,
   )

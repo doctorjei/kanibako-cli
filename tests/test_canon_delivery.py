@@ -891,6 +891,8 @@ class TestLaunchWiring:
     core_defaults.materialize_canon_skeleton(proj.shell_path, quiet=True)
     mounts = _emit_category_mounts(
       _launch_bind_map(snapshot),
+      std=std,
+      proj=proj,
       label="canon-wiring",
       must_exist=must_exist,
       skip_if_absent=skip_if_absent,
@@ -922,6 +924,8 @@ class TestLaunchWiring:
     must_exist, skip_if_absent = self._main_source_policy(deliveries)
     return _emit_category_mounts(
       _launch_bind_map(snapshot),
+      std=std,
+      proj=proj,
       label="canon-wiring",
       must_exist=must_exist,
       skip_if_absent=skip_if_absent,
@@ -1303,6 +1307,8 @@ class TestLaunchWiring:
     with pytest.raises(BindingSourceError) as excinfo:
       _emit_category_mounts(
         _launch_bind_map(snapshot),
+        std=std,
+        proj=proj,
         label="canon-wiring",
         must_exist=must_exist,
         skip_if_absent=skip_if_absent,
@@ -1346,6 +1352,8 @@ class TestLaunchWiring:
         m.destination: m
         for m in _emit_category_mounts(
           bind_map,
+          std=std,
+          proj=proj,
           label="canon-wiring",
           must_exist=must_exist,
           skip_if_absent=skip_if_absent,
@@ -1399,6 +1407,8 @@ class TestLaunchWiring:
     with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
       mounts = _emit_category_mounts(
         _launch_bind_map(snapshot),
+        std=std,
+        proj=proj,
         label="canon-wiring",
         must_exist=must_exist,
         skip_if_absent=skip_if_absent,
@@ -1449,6 +1459,8 @@ class TestLaunchWiring:
     with pytest.raises(BindingSourceError):
       _emit_category_mounts(
         bind_map,
+        std=std,
+        proj=proj,
         label="canon-wiring",
         must_exist=must_exist,
         skip_if_absent=silent_plus,

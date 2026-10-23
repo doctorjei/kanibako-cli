@@ -1614,18 +1614,20 @@ class TestTheEmitterConsumesTheShape:
       normalize_bind_dest(e.box_dest) for e in _entries(std, proj, snapshot)
     }
 
-  def test_a_mask_in_the_map_emits_no_mount(self):
+  def test_a_mask_in_the_map_emits_no_mount(self, std):
     """A MASK has no host source; the tmpfs arm takes it (:class:`TestTheMaskArm`)."""
     from kanibako.settings.store_collapse import MASK, CollapsedBind
 
     emitted = _emit_category_mounts(
       {"/home/agent/w": MASK, "/tmp": CollapsedBind("/tmp", "rw")},
+      std=std,
+      proj=None,
       label="shape",
     )
 
     assert [m.destination for m in emitted] == ["/tmp"]
 
-  def test_the_emitter_depth_sorts_the_map_it_is_given(self, tmp_path):
+  def test_the_emitter_depth_sorts_the_map_it_is_given(self, std, tmp_path):
     """⚑ A dest-keyed map carries NO order, so EMISSION owns the depth-sort.
 
     Podman resolves nested dests by last-``-v``-wins/depth-sort, so the deepest
@@ -1639,6 +1641,8 @@ class TestTheEmitterConsumesTheShape:
     deep, mid, shallow = "/home/agent/w/v/u", "/home/agent/w", "/home"
     emitted = _emit_category_mounts(
       {d: CollapsedBind(src, "ro") for d in (deep, mid, shallow)},
+      std=std,
+      proj=None,
       label="shape",
     )
 
@@ -1657,9 +1661,11 @@ class TestTheMaskArm:
   """
 
   @staticmethod
-  def _mounted(bindings):
+  def _mounted(bindings, std):
     """The dests the emitter would mount from *bindings* (sources that exist)."""
-    return [m.destination for m in _emit_category_mounts(bindings, label="mask-arm")]
+    return [
+      m.destination for m in _emit_category_mounts(bindings, std=std, proj=None, label="mask-arm")
+    ]
 
   def test_a_declared_mask_reaches_the_tmpfs_arm_THROUGH_THE_COLLAPSE(
     self,
@@ -1713,7 +1719,7 @@ class TestTheMaskArm:
     chosen = _launch_bind_map(snapshot)
 
     assert _bind_map_masks(chosen) == ["/home/agent/private"]
-    assert "/home/agent/private/notes" not in self._mounted(chosen)
+    assert "/home/agent/private/notes" not in self._mounted(chosen, std)
 
   def test_a_bind_AT_a_mask_dest_takes_the_point_instead_of_emitting_BOTH(
     self,
@@ -1747,7 +1753,7 @@ class TestTheMaskArm:
     chosen = _launch_bind_map(snapshot)
 
     assert _bind_map_masks(chosen) == []
-    assert "/home/agent/contested" in self._mounted(chosen)
+    assert "/home/agent/contested" in self._mounted(chosen, std)
     assert {"masks", "bindings.ro"} <= {
       e.category
       for e in _entries(std, proj, snapshot)
@@ -1801,7 +1807,7 @@ class TestTheMaskArm:
         },
       )
 
-  def test_the_two_arms_PARTITION_one_map(self, tmp_path):
+  def test_the_two_arms_PARTITION_one_map(self, std, tmp_path):
     """⚑ ONE VALUE, BOTH ARMS: mutate the map and BOTH answers move with it.
 
     The arms are complementary halves of the same keys — nothing is delivered
@@ -1815,12 +1821,12 @@ class TestTheMaskArm:
       "/home/agent/bound": CollapsedBind(src, "ro"),
       "/home/agent/hidden": MASK,
     }
-    assert self._mounted(bindings) == ["/home/agent/bound"]
+    assert self._mounted(bindings, std) == ["/home/agent/bound"]
     assert _bind_map_masks(bindings) == ["/home/agent/hidden"]
 
     bindings["/home/agent/bound"] = MASK
 
-    assert self._mounted(bindings) == []
+    assert self._mounted(bindings, std) == []
     assert _bind_map_masks(bindings) == ["/home/agent/bound", "/home/agent/hidden"]
 
   def test_the_LAUNCH_reads_the_map_ONCE_and_serves_both_arms_from_it(
@@ -1895,11 +1901,17 @@ class TestTheThreeMissingSourcePolicies:
 
   _CRITICAL = "/home/agent/.local/bin/claude"
 
+  @pytest.fixture(autouse=True)
+  def _std_paths(self, std):
+    self._std = std
+
   def _emit(self, dest, src, **policy):
     from kanibako.settings.store_collapse import CollapsedBind
 
     return _emit_category_mounts(
       {dest: CollapsedBind(src, "ro")},
+      std=self._std,
+      proj=None,
       label="shape",
       **policy,
     )
@@ -1949,7 +1961,7 @@ class TestTheThreeMissingSourcePolicies:
         skip_if_absent=frozenset({self._CRITICAL}),
       )
 
-  def test_a_missing_critical_source_RAISES_before_any_mkdir(self, tmp_path):
+  def test_a_missing_critical_source_RAISES_before_any_mkdir(self, std, tmp_path):
     """⚑⚑ THE ORDERING, PINNED: the policy is read BEFORE the rw guarantee-create.
 
     An ``rw`` critical dest whose source vanished must RAISE. Consulted after the
@@ -1965,6 +1977,8 @@ class TestTheThreeMissingSourcePolicies:
     with pytest.raises(BindingSourceError):
       _emit_category_mounts(
         {self._CRITICAL: CollapsedBind(str(src), "rw")},
+        std=std,
+        proj=None,
         label="shape",
         must_exist=frozenset({self._CRITICAL}),
       )
@@ -2060,17 +2074,21 @@ class TestTheThreeMissingSourcePolicies:
     with pytest.raises(BindingSourceError, match=re.escape(critical)):
       _emit_category_mounts(
         chosen,
+        std=std,
+        proj=proj,
         label="policy",
         must_exist=frozenset({critical}),
       )
 
-  def test_an_rw_dest_with_no_policy_still_guarantee_creates(self, tmp_path):
+  def test_an_rw_dest_with_no_policy_still_guarantee_creates(self, std, tmp_path):
     """The L7 rw arm is UNMOVED — it just runs after the policy now."""
     from kanibako.settings.store_collapse import CollapsedBind
 
     src = tmp_path / "made" / "here"
     emitted = _emit_category_mounts(
       {"/home/agent/w": CollapsedBind(str(src), "rw")},
+      std=std,
+      proj=None,
       label="shape",
     )
 
@@ -3631,6 +3649,8 @@ class TestANarrowTableDestIsMountedOnce:
     snapshot, _deliveries = _resolve(std, proj)
     return snapshot, _emit_category_mounts(
       _launch_bind_map(snapshot),
+      std=std,
+      proj=proj,
       label="category",
     )
 
@@ -3652,7 +3672,7 @@ class TestANarrowTableDestIsMountedOnce:
       selection_level=None,
     )
 
-  def _hub(self, std, proj, mounts, tmp_path, run_dir=None):
+  def _hub(self, std, proj, mounts, tmp_path, run_dir=None, hub_cls=None):
     """The REAL hub start, with the hub process itself stubbed out; returns the
     runtime dir it used.
 
@@ -3671,7 +3691,7 @@ class TestANarrowTableDestIsMountedOnce:
     from kanibako.channels import hub_daemon
     from kanibako.commands.start import _start_helper_hub
 
-    with patch.object(hub_daemon, "HubProcess"):
+    with patch.object(hub_daemon, "HubProcess", hub_cls or MagicMock()):
       _start_helper_hub(
         runtime=MagicMock(),
         image="img",
@@ -3696,6 +3716,22 @@ class TestANarrowTableDestIsMountedOnce:
   @staticmethod
   def _at(mounts, dest):
     return [m for m in mounts if str(m.destination) == dest]
+
+  def test_a_linked_hub_source_stops_the_hub_it_started(self, std, config, project_dir, tmp_path):
+    """The hub runs before its narrow emit, so a refused emit must stop it."""
+    from unittest.mock import MagicMock
+
+    from kanibako.channels.roots import ChannelLinkError
+    from kanibako.commands import start as start_mod
+
+    proj = self._box(std, config, project_dir)
+    hub_cls = MagicMock()
+    with (
+      patch.object(start_mod, "_emit_category_mounts", side_effect=ChannelLinkError("x")),
+      pytest.raises(ChannelLinkError),
+    ):
+      self._hub(std, proj, [], tmp_path, hub_cls=hub_cls)
+    hub_cls.return_value.stop.assert_called_once_with()
 
   def test_a_user_spawn_budget_bind_is_mounted_once_from_its_source(
     self,

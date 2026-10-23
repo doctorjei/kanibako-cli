@@ -461,6 +461,8 @@ class TestKickoffLaunchWiring:
     mounts = list(
       _emit_category_mounts(
         _launch_bind_map(snapshot),
+        std=std,
+        proj=proj,
         label="kickoff-wiring",
         must_exist=critical,
         skip_if_absent=deliveries.agent_dests - critical,

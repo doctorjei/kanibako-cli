@@ -109,7 +109,7 @@ def _shipped_descriptor(agent: str):
   return PluginDescriptor(command=(agent,), bindings=binds, mode={})
 
 
-def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
+def _new_delivery_mounts(agent, install, desc, ctx, *, std, node_name=None):
   """The NEW single-route delivery: 7a partial → snapshot → adapter → the ONE
   category emitter under its must-exist policy (critical-set exit-1).
 
@@ -157,6 +157,8 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
   )
   return _emit_category_mounts(
     _bind_map_from_mounts(entries),
+    std=std,
+    proj=None,
     label="delivery-equivalence",
     must_exist=critical,
     skip_if_absent=_agent_delivered_dests(entries) - critical,
@@ -168,7 +170,7 @@ def _mount_sig(mounts):
 
 
 @pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
-def test_delivery_matches_descriptor_mounts(agent, tmp_path):
+def test_delivery_matches_descriptor_mounts(agent, std, tmp_path):
   # The riskiest swap: the NEW snapshot delivery route must yield the SAME
   # Mount SET (source, dest, options) as the OLD descriptor_mounts, per agent.
   from kanibako.targets.assembly import descriptor_mounts
@@ -178,7 +180,7 @@ def test_delivery_matches_descriptor_mounts(agent, tmp_path):
   ctx = _ctx(agent, None)
 
   old = descriptor_mounts(desc, install, overrides={})
-  new = _new_delivery_mounts(agent, install, desc, ctx)
+  new = _new_delivery_mounts(agent, install, desc, ctx, std=std)
   assert _mount_sig(new) == _mount_sig(old)
   # Every shipped delivery bind is ro → options "ro" both paths (no rw drift).
   assert all(m.options == "ro" for m in new)
@@ -197,7 +199,7 @@ def test_delivery_matches_descriptor_mounts(agent, tmp_path):
 # ----------------------------------------------------------------------------- #
 
 
-def test_persona_node_delivery_binds_emitted_under_node(tmp_path):
+def test_persona_node_delivery_binds_emitted_under_node(std, tmp_path):
   # A persona: the CLAUDE harness (install.name == "claude", claude's share +
   # launcher descriptor) driven at the active NODE "navigator℘claude". The read
   # side (snapshot_category_entries active_agent=node) walks agent.default ∪
@@ -214,7 +216,7 @@ def test_persona_node_delivery_binds_emitted_under_node(tmp_path):
   desc = _shipped_descriptor("claude")  # share (dir) + launcher (file)
   ctx = _ctx(node, None)  # ctx keyed by the NODE
 
-  new = _new_delivery_mounts("claude", install, desc, ctx, node_name=node)
+  new = _new_delivery_mounts("claude", install, desc, ctx, node_name=node, std=std)
 
   # The launcher + install-dir (share) binds ARE emitted (not orphaned/vanished).
   sources = {str(m.source) for m in new}
@@ -223,11 +225,11 @@ def test_persona_node_delivery_binds_emitted_under_node(tmp_path):
   assert str(install.install_dir) in sources
   # Byte-identical to what the SAME descriptor emits — the node keys the slot,
   # the bind SET is exactly claude's (the harness plugin's) delivery mounts.
-  bare = _new_delivery_mounts("claude", install, desc, _ctx("claude", None))
+  bare = _new_delivery_mounts("claude", install, desc, _ctx("claude", None), std=std)
   assert _mount_sig(new) == _mount_sig(bare)
 
 
-def test_bare_delivery_byte_identical_before_after_node_threading(tmp_path):
+def test_bare_delivery_byte_identical_before_after_node_threading(std, tmp_path):
   # Backward-compat (load-bearing): for a BARE agent node == harness == install.name,
   # so threading the node-name is a no-op. Passing node_name explicitly must equal
   # omitting it (which falls back to install.name).
@@ -237,13 +239,13 @@ def test_bare_delivery_byte_identical_before_after_node_threading(tmp_path):
     install = _install(agent, sub)
     desc = _shipped_descriptor(agent)
     ctx = _ctx(agent, None)
-    threaded = _new_delivery_mounts(agent, install, desc, ctx, node_name=agent)
-    default = _new_delivery_mounts(agent, install, desc, ctx)  # node_name=None
+    threaded = _new_delivery_mounts(agent, install, desc, ctx, node_name=agent, std=std)
+    default = _new_delivery_mounts(agent, install, desc, ctx, std=std)  # node_name=None
     assert _mount_sig(threaded) == _mount_sig(default)
 
 
 @pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
-def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
+def test_delivery_critical_missing_exit1_parity(agent, std, tmp_path):
   # AGENT_CRITICAL must-exist exit-1: a missing critical source raises
   # BindingSourceError on BOTH paths (the safe-fail relocated, not dropped).
   from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
@@ -266,10 +268,10 @@ def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
   with pytest.raises(BindingSourceError):
     descriptor_mounts(desc, install)
   with pytest.raises(BindingSourceError):
-    _new_delivery_mounts(agent, install, desc, ctx)
+    _new_delivery_mounts(agent, install, desc, ctx, std=std)
 
 
-def test_depth_order_preserved_across_families(tmp_path):
+def test_depth_order_preserved_across_families(std, tmp_path):
   # Nested dests must keep depth-order (shallow first) so podman's last-wins
   # resolves the deepest mount on top — the Editor's depth-order condition.
   #
@@ -323,6 +325,8 @@ def test_depth_order_preserved_across_families(tmp_path):
     m.destination
     for m in _emit_category_mounts(
       _bind_map_from_mounts(entries),
+      std=std,
+      proj=None,
       label="depth-order",
     )
   ]

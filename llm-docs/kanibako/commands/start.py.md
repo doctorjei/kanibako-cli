@@ -88,6 +88,15 @@ main emit passes the snapshot's home (`_snapshot_home`), the same one the skelet
 before it (spec "The canon skeleton", step 2: crun cannot create a missing mountpoint under the ro
 `~/canon` on LXC or an NFS home).
 
+⚑ **A source in a channel tree with a link at or above it REFUSES the launch**, before any mount is
+emitted or source made (`roots.refuse_linked_channel_sources`). Every box binds the mailboxes and
+share roots rw, so a box can swap another box's inbox for a link, and podman binds the link's target.
+The walk runs from the outermost channel root (`outermost_channel_root`), so a user's link at the root
+itself is trusted. `std` and `proj` are required for that reason: a caller cannot skip the check.
+A missing rw source under an existing root is made through `boxfs.mkdir` from that root.
+⚠ The check is not the mount: podman resolves the source path later, so a link planted between the
+check and `podman run` is still followed (no no-follow bind route exists).
+
 ### Why the DEST is the carrier
 
 `optional` was never a realization fact — it is a DECLARATION fact — and the collapsed map is keyed

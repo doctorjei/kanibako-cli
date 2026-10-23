@@ -336,6 +336,10 @@ migration code.** Four released config surfaces are removed outright
   missing-vault advisory is a `Note:` too, printed by every command that resolves the box (the
   launch prints it once, and its creation adds no second line). See
   `MIGRATION.md`, "A missing bind source is handled by destination, not by who declared it".
+- **A launch refuses a bind source behind a link inside a channel directory.** A box can write each
+  channel directory bound into it, so it could swap another box's inbox, or any other source there,
+  for a link to a host directory. The launch exits 1 instead, naming the link and the `rm` that
+  clears it. A top-level channel root may still be a link.
 - **References are braced: `{a.b.c}` names a key and `{$NAME}` a variable.** For this release, a bare `@a.b.c`
   naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command,
   naming the file and the braced spelling; otherwise `@` and `$` are text. Quote a `{`-leading value:
