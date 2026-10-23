@@ -774,6 +774,25 @@ class TestABindSourceBehindALinkInAChannelTree:
     finally:
       part.chmod(0o755)
 
+  def test_an_unsearchable_channel_root_is_named_once(self, set_up, box):
+    """The blocking dir is the root itself: no "<root> inside <root>"."""
+    from kanibako.channels.roots import ChannelLinkError
+
+    part, extra = self._share_global_behind_a_0600_partition(set_up, box)
+    part.chmod(0o755)
+    root = set_up.channels_share
+    root.chmod(0o600)
+    try:
+      with pytest.raises(ChannelLinkError) as exc:
+        self._emit(set_up, box, extra)
+    finally:
+      root.chmod(0o755)
+    key = "box.bindings.rw[/home/agent/global]"
+    assert _cure_lines(str(exc.value), key) == [
+      f"  {key}: {root} cannot be read, so it cannot be checked for a link.",
+      f"    If a box made it: chmod u+rwx {root}",
+    ]
+
   def test_a_subuid_owned_unsearchable_partition_keeps_the_unshare_prefix(
     self, set_up, box, monkeypatch
   ):
