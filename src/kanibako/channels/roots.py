@@ -197,14 +197,31 @@ def _set_command(proj: ProjectPaths, key: str) -> str | None:
   return None
 
 
+def _as_owner(path: Path, command: str) -> str:
+  """*command*, run as *path*'s owner: under ``podman unshare`` when that is not us.
+
+  A box with sudo makes files owned by a host subuid, which only the rootless
+  namespace can change.  ⚑ Printed as podman for every runtime, as every other
+  ``podman unshare`` cure is.
+  """
+  try:
+    foreign = os.lstat(path).st_uid != os.getuid()
+  except OSError:
+    foreign = False
+  return f"podman unshare {command}" if foreign else command
+
+
 def _link_lines(
-  key: str, link: Path, outer: Path | None, box_cure: str, user_cure: str | None
+  key: str, link: Path, outer: Path | None, remake: Path | None, user_cure: str | None
 ) -> list[str]:
   """The refusal lines for *key*, whose path has *link* under the channel root *outer*.
 
+  The box cure removes *link* and, with *remake*, makes that path again; each command
+  runs as the owner of the directory it changes (:func:`_as_owner`).
   ⚑ :func:`boxfs.first_symlink` fails closed: a directory it cannot open comes back as
-  if a link.  That one is named as unreadable, with a ``chmod`` cure instead of *box_cure*.
+  if a link.  That one is named as unreadable, with a ``chmod`` cure instead.
   """
+  q = shlex.quote
   try:
     is_link = stat.S_ISLNK(os.lstat(link).st_mode)
   except OSError:
@@ -212,8 +229,11 @@ def _link_lines(
   if not is_link:
     return [
       f"  {key}: {link} inside {outer} cannot be read, so it cannot be checked for a link.",
-      f"    If a box made it: chmod u+rwx {shlex.quote(str(link))}",
+      f"    If a box made it: {_as_owner(link, f'chmod u+rwx {q(str(link))}')}",
     ]
+  box_cure = _as_owner(link.parent, f"rm {q(str(link))}")
+  if remake is not None:
+    box_cure += f" && {_as_owner(link.parent, f'mkdir -p {q(str(remake))}')}"
   lines = [
     f"  {key}: {link} is a link inside {outer}, which a box can write.",
     f"    If a box made it: {box_cure}",
@@ -246,7 +266,7 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
         key,
         link,
         outer,
-        f"rm {q(str(link))} && mkdir -p {q(str(path))}",
+        path,
         None if set_cmd is None else f"{set_cmd} {key}={q(str(path.resolve()))}",
       )
     elif not path.is_dir():
@@ -287,7 +307,7 @@ def refuse_linked_channel_sources(
     link = None if outer is None or outer == src else boxfs.first_symlink(src, outer)
     if link is not None:
       key = f"box.bindings.{'ro' if read_only else 'rw'}[{dest}]"
-      lines += _link_lines(key, link, outer, f"rm {shlex.quote(str(link))}", None)
+      lines += _link_lines(key, link, outer, None, None)
   if lines:
     subject = "this box" if proj is None else f"box '{proj.name or proj.project_path}'"
     head = (

@@ -75,6 +75,18 @@ def _run_cure(err, label):
     subprocess.run(["bash", "-c", command], check=True)
 
 
+def _as_foreign_owner(monkeypatch):
+  """Make every path ``roots`` asks about look owned by another uid (a host subuid)."""
+  import os
+  import types
+
+  from kanibako.channels import roots
+
+  monkeypatch.setattr(
+    roots, "os", types.SimpleNamespace(lstat=os.lstat, getuid=lambda: os.getuid() + 1)
+  )
+
+
 class TestSetupMakesTheGlobalRoots:
   def test_first_run_init_makes_system_primary_and_reserved_partition_roots(
     self, tmp_path, monkeypatch
@@ -294,6 +306,17 @@ class TestTheLaunchRefusesAMissingRoot:
       f"    If a box made it: rm {nest} && mkdir -p {nest}",
       f"    If you made it: kanibako workset set my_set workset.channels.chat={outside}",
     ]
+
+  def test_a_subuid_owned_parent_takes_the_cure_under_podman_unshare(
+    self, named, set_up, tmp_path, monkeypatch
+  ):
+    ws, proj = named
+    nest, _outside = self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
+    _as_foreign_owner(monkeypatch)
+    err = missing_channel_root_error(set_up, proj)
+    assert _cure_lines(err, "workset.channels.chat")[1] == (
+      f"    If a box made it: podman unshare rm {nest} && podman unshare mkdir -p {nest}"
+    )
 
   @pytest.mark.parametrize("cure", ["If a box made it:", "If you made it:"])
   def test_each_cure_runs_and_clears_the_refusal(self, named, set_up, tmp_path, cure):
@@ -659,6 +682,37 @@ class TestABindSourceBehindALinkInAChannelTree:
       assert mounts[self._INBOX] == part / box.name
     finally:
       part.chmod(0o755)
+
+  def test_a_subuid_owned_dir_takes_its_cures_under_podman_unshare(
+    self, set_up, box, tmp_path, monkeypatch
+  ):
+    """A box with sudo makes subuid-owned dirs: ``rm`` and ``chmod`` need the namespace."""
+    from kanibako.channels.roots import ChannelLinkError
+
+    inbox = _ch.box_channel_addresses(box, set_up).inbox
+    self._swap(inbox, tmp_path / "elsewhere")
+    key = f"box.bindings.rw[{self._INBOX}]"
+    with pytest.raises(ChannelLinkError) as plain:
+      self._emit(set_up, box)
+    assert _cure_lines(str(plain.value), key)[1] == f"    If a box made it: rm {inbox}"
+    _as_foreign_owner(monkeypatch)
+    with pytest.raises(ChannelLinkError) as foreign:
+      self._emit(set_up, box)
+    assert _cure_lines(str(foreign.value), key)[1] == (
+      f"    If a box made it: podman unshare rm {inbox}"
+    )
+    inbox.unlink()
+    inbox.mkdir()
+    part = inbox.parent
+    part.chmod(0)
+    try:
+      with pytest.raises(ChannelLinkError) as unreadable:
+        self._emit(set_up, box)
+    finally:
+      part.chmod(0o755)
+    assert _cure_lines(str(unreadable.value), key)[1] == (
+      f"    If a box made it: podman unshare chmod u+rwx {part}"
+    )
 
   def test_a_user_linked_top_level_root_still_binds(self, set_up, box, tmp_path):
     """The control: a channel root itself is the user's, and may be a link."""
