@@ -1201,7 +1201,7 @@ away by folding it into step 2.
 OVERWRITE, so folding it in would falsify the create-if-absent contract; and this function's resolve
 is deliberately NARROW (no bind map), while the sync needs a FULL one.
 
-The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE per-launch mechanisms
+The per-launch credsync REFRESH and the channel-root check are SEPARATE per-launch mechanisms
 and are NOT part of this one-time seed.
 
 ### `_apply_init_seeds` — the applier, and why it RETURNS its snapshot

@@ -138,8 +138,9 @@ inside boxes. In order of likely impact:
    `mkdir -p <data>/agents/claude/common && mv <data>/agents/claude/{plugins,cache} <data>/agents/claude/common/`
 
 7. **The `commons` channel is now `common`** — on disk (host) and in-box
-   (`~/channels/commons` → `~/channels/common`). Move the directories before first launch or
-   an empty `common/` is created, silently; it sits beside your old, populated `commons/` (see
+   (`~/channels/commons` → `~/channels/common`). Move the directories before you run `setup`,
+   which otherwise makes an empty system `common/` beside your old, populated `commons/`; a
+   workset's missing `common/` refuses the launch, naming it (see
    *Channel rename: `commons` → `common`*). Any scripts/notes of yours that reference the old path
    break silently.
 
@@ -809,8 +810,8 @@ One word now names both the mount category and the channel. Three things move at
 
 What you must do, **before your first launch on v1.8.0**:
 1. `mv commons common` at the system channel root and in every workset's `channels/` dir.
-   (If you launch first, an empty `common/` is guarantee-created; it sits beside your old, populated
-   `commons/` — content still on disk, invisible to every box, no error.)
+   (If you run `setup` first, it makes an empty system `common/` beside your old, populated
+   `commons/`; a workset's missing `common/` refuses the launch, naming it.)
 2. If you ever set a `…channels.commons` key (`kanibako workset set <workset>
    workset.channels.commons=<path>`, or `kanibako system set system.channels.commons=<path>`):
    the stored value is now **orphaned** — the launch silently ignores it and reverts to the
@@ -926,7 +927,7 @@ mv <data>/agents/claude/plugins <data>/agents/claude/common/plugins
 mv <data>/agents/claude/cache   <data>/agents/claude/common/cache
 ```
 
-If you skip it, the launch guarantee-creates an **empty** `common/plugins` and binds it over
+If you skip it, `setup` makes an **empty** `common/plugins` and the launch binds it over
 `~/.claude/plugins` — every installed claude plugin appears gone, with no message. The old dir
 is still on disk; move it and relaunch. (If those dirs are mount points on your host — e.g.
 NFS — re-point the mount instead of `mv`.) Any *user-declared* agent commons entry with a
@@ -1202,8 +1203,8 @@ which**; only the first is a stale key that can stop the resolve, and only in so
 - **`workset.{boxes,vault_ro,vault_rw,logs}` overrides become live** where they were inert
   (standalone: all four; `workset.{vault_ro,vault_rw}` and `workset.logs`: all modes). **These ARE declared
   keys — do not delete one** on the strength of this section; the change is that a value you
-  already set now takes effect. The corresponding mount moves silently, since the new location
-  is guarantee-created. ⚑ **`workset.boxes` and `workset.logs` no longer move the mount alone.**
+  already set now takes effect. The corresponding mount moves; a missing new `rw` location is
+  created, with a `Note:` line. ⚑ **`workset.boxes` and `workset.logs` no longer move the mount alone.**
   They used to: kanibako's own writes went to the default location while the mount followed your
   setting. Both now steer the writes as well, in every mode — read *A repointed `workset.boxes`
   or `workset.logs` now takes effect* (see *A repointed `workset.boxes` or `workset.logs` now takes
@@ -2099,8 +2100,16 @@ with the vault disabled*, on the last axis where a mask could still be quietly d
 | what happens | which destinations |
 |---|---|
 | the launch stops with a clean error | the agent's own delivery binds — its binary, launcher, and shared install dir — and kanibako's packaged core canon |
+| the launch stops, naming the path and a cure | the workspace, and the system and workset channel roots |
+| the source is created, with a `Note:` line | every other `rw` source |
 | the bind is dropped silently | every handbook chapter except `SYS_CONTENTS.md` (which warns), the agent's best-effort shares, and a plugin's charter chapter when the plugin ships none |
 | the bind is dropped with a warning | everything else |
+
+**⚠️ A launch no longer creates a workspace or a channel root.** `setup` makes the system roots and
+the primary workset's, `workset create` a named workset's, and `create` a box's workspace and inbox.
+A host or a workset whose roots were never made (one created before v1.8.0 and never launched)
+refuses its first launch, naming each root and its cure: run `kanibako setup`, or `mkdir -p` the
+path it names. A standalone box's missing workspace refuses too; it is no longer recreated empty.
 
 Which answer a bind got used to depend on how it was **declared** rather than on where it lands: the
 agent's delivery binds were emitted separately, carrying their own rule, and the silent case was a
@@ -3997,10 +4006,13 @@ is now resolved through its own key.
 3. **If you repointed `broadcast` or `share_global`, expect the path to take effect** on the next
    launch. Anything written under the old default stays there.
 
+The repointed directory must exist: if it is missing, the launch refuses and names it. Create it,
+or `kanibako workset reset <workset> <key>`.
+
 **One new refusal.** A repoint that cannot be resolved before the launch snapshot is built now
 fails by name instead of quietly falling back to the default. This is the same closed-keyspace
 behavior `workset.channelroot` already had; it now covers the five leaves as well. A setting that
-resolves is unaffected.
+resolves is unaffected. A repointed channel directory that does not exist also refuses, naming it.
 
 ---
 
@@ -8950,7 +8962,8 @@ Two behavioral changes you must account for when hand-migrating:
   real host directory you want mounted.
 - **Lazy → guarantee-create.** The legacy `[shared]` block mounted a cache *only
   if the host dir already existed* (a missing dir was silently skipped). The
-  `caches` category emitter (rw) **creates a missing source** before binding it.
+  `caches` category emitter (rw) **creates a missing source**, with a `Note:` line, before
+  binding it.
   If you relied on the lazy "skip when absent" behavior, drop the key instead.
 
 There is **no migration code** — move your `[shared]` entries to `caches` keys by
