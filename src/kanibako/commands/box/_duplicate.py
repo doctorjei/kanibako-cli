@@ -594,24 +594,37 @@ def _source_authored_vault(src_proj) -> bool:
 
 
 def _lay_empty_vault(
-  std, mode: BoxMode, metadata_path: Path, arms: tuple[Path | None, Path | None], made: list[Path]
+  std,
+  mode: BoxMode,
+  metadata_path: Path,
+  arms: tuple[Path | None, Path | None],
+  made: list[Path],
+  *,
+  ws=None,
 ) -> None:
   """Give the duplicate an EMPTY vault, as ``create`` does (:func:`init_vault_dirs`).
 
   Vaults do not travel; the copy gets an empty one.  ``box.enable_vault`` is the
   destination's RESOLVED value, read after its box tier is written, so the duplicate and
-  its first start agree.  Each arm made lands in *made*, for :func:`_unwind_vault_arms`.
+  its first start agree.  Each path made lands in *made*, for :func:`_unwind_vault_arms`.
+  *ws* is a NAMED destination's workset (its tier and its vault skeleton).  A linked arm
+  is kept as it stands.
   """
   early = _early_scope(std, mode) if mode is BoxMode.standalone else None
-  group = _default_project_group(std) if mode is BoxMode.primary else None
+  group = _default_project_group(std) if mode is BoxMode.primary else ws
   box_tier, workset_tier = _box_settings_files(mode, metadata_path, group, early=early)
   enabled = resolve_box_enable_vault(std.config_file, box_path=box_tier, workset_path=workset_tier)
-  vault_root = metadata_path if mode is BoxMode.standalone else std.primary_workset
-  init_vault_dirs(*arms, enable_vault=enabled, vault_root=vault_root, created=made)
+  if mode is BoxMode.named:
+    assert ws is not None, "a named destination needs its workset"
+    vault_root = ws.root
+  else:
+    vault_root = metadata_path if mode is BoxMode.standalone else std.primary_workset
+  ro_arm, rw_arm = (None if arm is None or arm.is_symlink() else arm for arm in arms)
+  init_vault_dirs(ro_arm, rw_arm, enable_vault=enabled, vault_root=vault_root, created=made)
 
 
 def _unwind_vault_arms(made: list[Path]) -> None:
-  """Remove the vault arms :func:`_lay_empty_vault` made (never a shared parent)."""
+  """Remove what :func:`_lay_empty_vault` made (never a shared parent)."""
   for arm in reversed(made):
     _remove_created_root(arm)
 

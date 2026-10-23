@@ -1981,7 +1981,8 @@ def init_vault_dirs(
   """Create a new box's EMPTY vault arms — the one vault setup ``create`` and ``duplicate`` share.
 
   Nothing when *enable_vault* is false; a null arm is skipped.  Each arm this call
-  makes is appended to *created*, as it is made, for the caller's undo.
+  makes, and the skeleton's ``.gitignore`` if it writes one, is appended to *created*,
+  as it is made, for the caller's undo.
   """
   if not enable_vault:
     return
@@ -1995,7 +1996,11 @@ def init_vault_dirs(
   if vault_rw_path is not None:
     # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
     # whenever the gate would pass, satisfying this call's precondition silently.
+    gitignore = vault_root / VAULT_PATH / IGNORE_FILE
+    had = os.path.lexists(gitignore)
     write_vault_gitignore(vault_root, vault_rw_path)
+    if not had and created is not None and os.path.lexists(gitignore):
+      created.append(gitignore)
 
 
 def _host_path_within(candidate: Path, root: Path) -> bool:

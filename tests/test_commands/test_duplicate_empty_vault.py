@@ -160,6 +160,22 @@ def test_to_named_lays_an_empty_vault_and_carries_nothing(env, caplog, source_ki
   assert (ws.workspaces_dir / "tn" / "file.txt").is_file()
 
 
+def test_to_named_box_tier_on_over_a_workset_tier_off_lays_the_vault(env, caplog):
+  """The vault is laid once the copy's box tier lands: its ``true`` beats the workset's ``false``."""
+  config, std, tmp_home = env
+  src = _primary(env, "bon")
+  src_proj = resolve_project(std, config, project_dir=str(src), initialize=False)
+  write_nested_key(src_proj.metadata_path / "box.yaml", ("box",), "enable_vault", True)
+  ws = create_workset("bonws", tmp_home / "bonws_root", std)
+  write_nested_key(ws.root / "workset.yaml", ("box",), "enable_vault", False)
+
+  rc = _duplicate.run_duplicate(_args(src, tmp_home / "unused", BoxMode.named, workset="bonws"))
+  assert rc == 0
+
+  proj, warned = _resolve_dest(env, ws.workspaces_dir / "bon", caplog)
+  _assert_empty_vault(proj, warned)
+
+
 @pytest.mark.parametrize("to_mode", [None, BoxMode.primary, BoxMode.standalone])
 def test_box_authored_vault_off_creates_none(env, caplog, to_mode):
   """The source's own ``enable_vault: false`` travels, so the copy gets no vault dirs."""

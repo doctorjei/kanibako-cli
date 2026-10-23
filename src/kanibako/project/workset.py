@@ -2418,7 +2418,8 @@ def add_project(
   source's marker as the LAST step, after the membership write, so an interrupt leaves
   the marker or the membership, never neither; the unwind writes it back.
   *enable_vault* gates the vault leaves; ``None`` resolves ``box.enable_vault`` at the
-  member's tiers (the declared default without *std*).
+  member's tiers (the declared default without *std*).  A caller that writes the box
+  tier after this call passes ``False`` and lays the vault once it has.
   """
   # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
   # replaces its row, orphaning ``proj``'s store.

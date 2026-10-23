@@ -536,6 +536,25 @@ class TestAddProject:
     assert not (ws.vault_ro_dir / "cool_app").exists()
     assert not (ws.vault_rw_dir / "cool_app").exists()
 
+  @pytest.mark.parametrize("preexisting", [False, True])
+  def test_a_rolled_back_add_removes_only_the_gitignore_it_wrote(
+    self, std, tmp_home, monkeypatch, preexisting
+  ):
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+    gitignore = ws.root.resolve() / "vault" / ".gitignore"
+    if preexisting:
+      gitignore.write_text("rw/\n")
+
+    def boom(*_args, **_kwargs):
+      raise OSError("injected membership failure")
+
+    monkeypatch.setattr("kanibako.settings.paths._register_workset_box_membership", boom)
+    with pytest.raises(OSError, match="injected"):
+      add_project(ws, "cool_app", tmp_home / "project", std)
+
+    assert not (ws.vault_rw_dir / "cool_app").exists()
+    assert gitignore.exists() is preexisting
+
   def test_vault_enabled_with_std_lays_both_leaves(self, std, tmp_home):
     ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
     add_project(ws, "cool_app", tmp_home / "project", std)
