@@ -250,8 +250,9 @@ def _link_lines(
     is_link = False
   if not is_link:
     locked = _blocking_dir(link, outer)
+    where = "" if locked == outer else f" inside {outer}"
     return [
-      f"  {key}: {locked} inside {outer} cannot be read, so it cannot be checked for a link.",
+      f"  {key}: {locked}{where} cannot be read, so it cannot be checked for a link.",
       f"    If a box made it: {_as_owner(locked, f'chmod u+rwx {q(str(locked))}')}",
     ]
   box_cure = _as_owner(link.parent, f"rm {q(str(link))}")
