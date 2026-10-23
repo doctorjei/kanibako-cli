@@ -2003,6 +2003,36 @@ def init_vault_dirs(
       created.append(gitignore)
 
 
+def lay_box_vault(
+  std: StandardPaths,
+  mode: BoxMode,
+  metadata_path: Path,
+  arms: tuple[Path | None, Path | None],
+  made: list[Path],
+  *,
+  ws: _WorksetRooted | None = None,
+) -> None:
+  """Give a box landed by a lifecycle op an EMPTY vault, as ``create`` does (:func:`init_vault_dirs`).
+
+  Vaults do not travel; the box gets an empty one.  ``box.enable_vault`` is the
+  destination's RESOLVED value, read after its box tier is written, so the op and the
+  box's first start agree.  Each path made lands in *made*, for the caller's undo.
+  *ws* is a NAMED destination's workset (its tier and its vault skeleton).  A linked arm
+  is kept as it stands.
+  """
+  early = _early_scope(std, mode) if mode is BoxMode.standalone else None
+  group = _default_project_group(std) if mode is BoxMode.primary else ws
+  box_tier, workset_tier = _box_settings_files(mode, metadata_path, group, early=early)
+  enabled = resolve_box_enable_vault(std.config_file, box_path=box_tier, workset_path=workset_tier)
+  if mode is BoxMode.named:
+    assert ws is not None, "a named destination needs its workset"
+    vault_root = ws.root
+  else:
+    vault_root = metadata_path if mode is BoxMode.standalone else std.primary_workset
+  ro_arm, rw_arm = (None if arm is None or arm.is_symlink() else arm for arm in arms)
+  init_vault_dirs(ro_arm, rw_arm, enable_vault=enabled, vault_root=vault_root, created=made)
+
+
 def _host_path_within(candidate: Path, root: Path) -> bool:
   """True when the HOST path *candidate* is *root* or lies beneath it (no I/O).
 
