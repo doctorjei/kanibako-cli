@@ -401,15 +401,29 @@ def detect_box_mode(
   std: StandardPaths,
   config: BootstrapConfig,
 ) -> DetectionResult | None:
+  """:func:`walk_box_mode`, then :func:`~kanibako.project.import_reconcile.reconcile`'s writes."""
+  from kanibako.project import import_reconcile
+
+  result = walk_box_mode(project_dir, std, config)
+  import_reconcile.reconcile(result, std)
+  return result
+
+
+def walk_box_mode(
+  project_dir: Path,
+  std: StandardPaths,
+  config: BootstrapConfig,
+) -> DetectionResult | None:
   """Detect *project_dir*'s box mode by the D3-mode order (first match wins).
 
   The ONE carrier of that order (system-design § Detection & import): the path space's
   registry, the standalone registry, an in-place settings file, then the treewalk.
   Every path compares literally (links unfollowed).  ``None`` = not a box (the
-  caller's create path).
+  caller's create path).  ⚑ Writes nothing but the treewalk's workset import and
+  :func:`~kanibako.project.workset.list_worksets`'s drop.
   """
   from kanibako.project import import_reconcile
-  from kanibako.settings.paths import _early_scope, _find_local_ancestor
+  from kanibako.settings.paths import _find_local_ancestor
 
   literal = Path(literal_path(project_dir))
 
@@ -444,9 +458,7 @@ def detect_box_mode(
     )
     if not registered and not is_standalone_root(root):
       return False
-    import_reconcile.check_standalone(
-      std.registry, root, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
-    )
+    import_reconcile.refuse_standalone_spelling(std.registry, root)
     return True
 
   if standalone_at(literal, registry=True):

@@ -1007,8 +1007,9 @@ def detect_project_mode(
 ```
 Infer which project mode applies to *project_dir*.
 
-⚑ `box_resolve.detect_box_mode` is the one carrier of the mode order (D3-mode); this treewalk is its
-step 4, after the two registry checks and the in-place marker. Callers detect through it, not here.
+⚑ `box_resolve.walk_box_mode` is the one carrier of the mode order (D3-mode); this treewalk is its
+step 4, after the two registry checks and the in-place marker. Callers detect through
+`box_resolve.detect_box_mode`, not here.
 
 Walks ancestor directories (up to `$HOME` or filesystem root) looking for project markers. Returns a
 `DetectionResult` with the detected mode and the ancestor directory where the marker was found.
@@ -1021,7 +1022,7 @@ Detection order:
    standalone.
 2. **In-place standalone marker** — a root `registry.yaml` holding the mark AT *project_dir*
    declares it standalone (D3-mode 3); OVERRIDES workset tree membership. Vetted, never
-   registered (`import_reconcile.check_standalone`).
+   registered (`import_reconcile.refuse_standalone_spelling`).
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
    first, then the root itself).
 4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
@@ -1054,9 +1055,9 @@ step 1.) `box_resolve.detect_box_mode` checks the same marker as its D3-mode 3, 
 registry checks and before it calls this treewalk. Both key on one signal (the `registry.yaml`
 mark, via `_is_standalone_meta_dir` → `box_resolve.is_standalone_root`); a workset's
 `registry.yaml` holds members instead. Only the resolved dir itself is inspected here; an ancestor
-marker is the step-5 walk's. `import_reconcile.check_standalone` then vets the root but never
-registers it. A malformed marker file is refused only after steps 3-4 find no registry claim on the
-dir.
+marker is the step-5 walk's. `import_reconcile.refuse_standalone_spelling` then vets the root but
+never registers it; the stale J2 clear is `import_reconcile.reconcile`'s, after detection. A
+malformed marker file is refused only after steps 3-4 find no registry claim on the dir.
 
 ### Step 5 — the ancestor walk
 
@@ -1064,8 +1065,8 @@ At each level, first `project.workset.refuse_retired_workset_identity` refuses a
 which would otherwise import under its leaf name with its retired identity unread. Then:
 
 * **STANDALONE first** — the root `registry.yaml`'s own mark
-  (`_is_standalone_meta_dir`; a bare `box_data/` is not the marker). `import_reconcile.check_standalone`
-  vets it; a standalone box is never imported here.
+  (`_is_standalone_meta_dir`; a bare `box_data/` is not the marker).
+  `import_reconcile.refuse_standalone_spelling` vets it; a standalone box is never imported here.
 * **NAMED** — the whole workset skeleton (`project.workset.is_workset_skeleton`). An unregistered root
   is imported (`import_reconcile.import_named_workset`, named for its leaf), then the standard
   workset check resolves it.

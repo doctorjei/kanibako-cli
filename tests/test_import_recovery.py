@@ -410,8 +410,10 @@ class TestStandaloneImportRecovery:
     assert registry_store.load_standalone(std.registry).get(name)
     assert journal.pending_import(std.journal, box_key) is not None
 
-    # Re-resolve hits the import's idempotent no-op branch → clears stale.
-    detect_project_mode(project_dir, std, config)
+    # Re-detection's reconcile clears the stale entry.
+    from kanibako.launch import box_resolve
+
+    box_resolve.detect_box_mode(project_dir, std, config)
 
     assert journal.pending_import(std.journal, box_key) is None
     assert journal.read_journal(std.journal) == {}

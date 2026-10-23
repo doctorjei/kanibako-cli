@@ -71,8 +71,9 @@ Per op: **write entry → (idempotent op steps) → clear entry.**
 
 The HARD INVARIANT, inherited from B3: the entry is cleared IMMEDIATELY after the op's committing
 step — never before it. Hence `registered ==> no pending entry` holds at rest. Every stale-entry
-sweep in the tree (`import_reconcile._clear_stale_import`, the resolve-time clear in
-`settings/paths.py`) exists to restore that invariant after a crash in the register → clear window.
+sweep in the tree (`import_reconcile._clear_stale_import`, run at resolve time by
+`import_reconcile.reconcile` and `import_named_workset`) exists to restore that invariant after a
+crash in the register → clear window.
 
 ## The document schema
 

@@ -9,8 +9,9 @@ have kanibako re-discover it.
 Two live modes: :func:`import_named_workset`, called lazily during the resolver's
 ancestor walk, and :func:`import_standalone`, called only by ``box register`` — a
 standalone box is unregistered by default, so the walk only CHECKS one
-(:func:`check_standalone`) and never registers it.  A retired third **PRIMARY**
-mode is sequestered in ``salvage/primary_reconcile.py`` — do not revive it here.
+(:func:`refuse_standalone_spelling`) and never registers it; :func:`reconcile` holds
+detection's writes.  A retired third **PRIMARY** mode is sequestered in
+``salvage/primary_reconcile.py`` — do not revive it here.
 
 ⚑ The two modes differ in where the NAME comes from, and only there.  A standalone
 box composes one from its stored ``workset.kuid`` plus the live dir leaf.  A workset
@@ -43,7 +44,13 @@ from typing import TYPE_CHECKING
 from kanibako.project import registry_store
 from kanibako.project.names import lookup_by_path, register_name
 from kanibako.errors import KanibakoError
-from kanibako.settings.paths import standalone_box_store
+from kanibako.settings.paths import (
+  BoxMode,
+  DetectionResult,
+  StandardPaths,
+  _early_scope,
+  standalone_box_store,
+)
 from kanibako.utils import is_home_dir, literal_path
 
 if TYPE_CHECKING:
@@ -165,26 +172,18 @@ def refuse_second_link(registry: Path, root: Path) -> None:
     )
 
 
-def check_standalone(
-  registry: Path,
-  root: Path,
-  *,
-  journal: Path | None = None,
-  early: "EarlyScope",
-) -> None:
-  """The resolver's pass over a standalone root at *root*: it never registers one.
+def refuse_standalone_spelling(registry: Path, root: Path) -> None:
+  """Detection's refusals over a standalone root at *root*; it reads, never writes.
 
-  Another spelling of a registered root's identity is refused ([R188]), registered
-  or not, before anything is written; a registered root then gets its stale J2 entry
-  cleared.  An unregistered root that is another spelling of a PARKED standalone's
-  directory, or shares its ``workset.yaml`` file, is refused too.  ⚑ Here only, not
-  in :func:`refuse_second_link`: ``box register <root>`` (:func:`import_standalone`)
-  is the route that re-registers a parked box at a new spelling, and it must stay open.
+  Another spelling of a registered root's identity is refused ([R188]).  An
+  unregistered root that is another spelling of a PARKED standalone's directory, or
+  shares its ``workset.yaml`` file, is refused too.  ⚑ Here only, not in
+  :func:`refuse_second_link`: ``box register <root>`` (:func:`import_standalone`) is
+  the route that re-registers a parked box at a new spelling, and it must stay open.
   """
   root = Path(literal_path(root))
   refuse_second_link(registry, root)
   if registry_store.standalone_name_for_root(registry, root) is not None:
-    _clear_stale_import(journal, standalone_box_store(root, early=early))
     return
   parked = registry_store.deregistered_standalone_for_dir(registry, root)
   if parked is None:
@@ -208,6 +207,43 @@ def check_standalone(
       f"{stored}); a standalone box has one path. Work from {stored}, or register "
       f"it at this path: kanibako box register {shlex.quote(str(root))}"
     )
+
+
+def _clear_stale_standalone(
+  registry: Path, root: Path, journal: Path | None, early: "EarlyScope"
+) -> None:
+  """A registered standalone root's stale J2 entry, cleared; any other root is left."""
+  if registry_store.standalone_name_for_root(registry, root) is not None:
+    _clear_stale_import(journal, standalone_box_store(root, early=early))
+
+
+def check_standalone(
+  registry: Path,
+  root: Path,
+  *,
+  journal: Path | None = None,
+  early: "EarlyScope",
+) -> None:
+  """:func:`refuse_standalone_spelling`, then a registered root's stale J2 clear.
+
+  Both halves, for ``create --standalone``'s check before any write.  It never
+  registers a box.
+  """
+  root = Path(literal_path(root))
+  refuse_standalone_spelling(registry, root)
+  _clear_stale_standalone(registry, root, journal, early)
+
+
+def reconcile(result: DetectionResult | None, std: StandardPaths) -> None:
+  """Detection's writes, re-derived from its *result*; idempotent.
+
+  A detected standalone box that is registered gets its stale J2 entry cleared.
+  """
+  if result is None or result.mode is not BoxMode.standalone:
+    return
+  _clear_stale_standalone(
+    std.registry, result.project_root, std.journal, _early_scope(std, BoxMode.standalone)
+  )
 
 
 def import_standalone(

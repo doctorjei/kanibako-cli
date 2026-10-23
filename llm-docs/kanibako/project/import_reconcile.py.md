@@ -18,9 +18,9 @@ registry section it writes.
   level: the four dirs `create_workset` stamps, present together. After the import the walk re-runs
   `box_resolve.named_path_space`, which now resolves.
 * **STANDALONE** — a standalone box is unregistered by default, so a standalone root is only
-  CHECKED during resolution (`check_standalone`, from `detect_project_mode`, `box_resolve.
-  detect_box_mode`, and `commands/box/_parser.py`), which never registers one. `import_standalone`
-  runs only from `box register`.
+  CHECKED during detection (`refuse_standalone_spelling`, from `detect_project_mode` and
+  `box_resolve.walk_box_mode`), which never registers one. `import_standalone` runs only from
+  `box register`.
 
 ⚑⚑ **THE TWO MODES DIFFER IN WHERE THE NAME COMES FROM, AND ONLY THERE.** A standalone box composes
 one from its stored `workset.kuid` plus the live dir leaf. A workset records no name anywhere under
@@ -42,14 +42,17 @@ list beside it, unread and unmentioned. The diagnosis has to precede the action 
 seed-free."* That is the reason the function must stay index-only — a seed step added here would
 fire on a plain `kanibako box register`.
 
-### `check_standalone` — the resolver's pass over a standalone root
+### The resolver's pass over a standalone root
 
-`check_standalone(registry, root, *, journal=None, early)` never registers a box. In order:
+`refuse_standalone_spelling(registry, root)` reads only; `reconcile(result, std)` holds detection's
+write, re-derived from the `DetectionResult` (step 2 below); `check_standalone(registry, root, *,
+journal=None, early)` is both, for `create --standalone` (`commands/box/_parser.py`). None
+registers a box. In order:
 
 1. `refuse_second_link`: another spelling of a registered standalone's identity — a link, a bind
    mount, or a hard-linked `workset.yaml` (`registry_store.standalone_identity_holder`) — raises
    `ImportConflictError` naming the registered root ([R188]).
-2. A registered root gets its stale J2 entry cleared, and the check returns.
+2. A registered root returns; `reconcile` (or `check_standalone`) clears its stale J2 entry.
 3. An unregistered root that is another spelling of a PARKED (`deregistered`) standalone's
    directory, or shares its `workset.yaml` file, is refused with the cure
    `kanibako box register <root>`. That refusal lives here only, not in `refuse_second_link`,

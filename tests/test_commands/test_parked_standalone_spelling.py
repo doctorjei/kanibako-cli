@@ -3,8 +3,8 @@
 ``box rm <name>`` parks a standalone box: its row moves to ``deregistered`` with the root
 spelling it was registered at.  The resolver's [R188] check consulted only REGISTERED
 rows, so a launch at another spelling of the same directory (a link, or the directory
-behind one) passed, and composed a second box name for one tree.  ``check_standalone``
-now refuses that spelling.  ``box register <spelling>`` stays the re-registration route.
+behind one) passed, and composed a second box name for one tree.
+``refuse_standalone_spelling`` now refuses that spelling.  ``box register <spelling>`` stays the re-registration route.
 
 ⚑ Every door case goes through the production parser (``cli.build_parser`` +
 ``args.func``).

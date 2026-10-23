@@ -7,9 +7,9 @@ on-disk LAYOUT. Nothing else. There is no marker file in the user's repository s
 here"; the registries collectively ARE the reverse index.
 
 Each helper takes its inputs explicitly (the resolved `kanibako.settings.paths.StandardPaths`, the
-`BootstrapConfig`, and the target directory) — no hidden global reads. `detect_box_mode` may clear a
-stale import journal entry for a registered standalone root, and refuses another path to a
-registered standalone ([R188]).
+`BootstrapConfig`, and the target directory) — no hidden global reads. `walk_box_mode` refuses
+another path to a registered standalone ([R188]); `detect_box_mode` is that walk plus
+`import_reconcile.reconcile`, which may clear a registered standalone root's stale import entry.
 
 The module also owns:
 
@@ -81,8 +81,9 @@ standalone — but a registry entry AT the path outranks it (D3-mode, below).
 
 ## The mode precedence — D3-mode, first match wins
 
-`detect_box_mode` is the one carrier of this order (system-design § Detection & import). Every path
-compares literally (links unfollowed).
+`walk_box_mode` is the one carrier of this order (system-design § Detection & import). Every path
+compares literally (links unfollowed). It writes nothing but the treewalk's workset import and
+`list_worksets`'s drop (`tests/test_detection_nowrite.py` runs it on a read-only tree).
 
 1. **The path space's registry has a box AT *project_dir*** → that box's mode, `primary` or
    `named`. The path space is the named workset whose tree holds the dir, else primary

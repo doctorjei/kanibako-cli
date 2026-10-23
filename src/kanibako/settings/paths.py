@@ -2143,7 +2143,11 @@ def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool:
 def detect_project_mode(
   project_dir: Path, std: StandardPaths, config: BootstrapConfig
 ) -> DetectionResult:
-  """Infer which project mode applies to *project_dir*, walking ancestors for markers."""
+  """Infer which project mode applies to *project_dir*, walking ancestors for markers.
+
+  ⚑ A standalone result's stale J2 clear is ``import_reconcile.reconcile``'s, run by
+  ``box_resolve.detect_box_mode``.
+  """
   resolved = Path(literal_path(project_dir))
 
   # 1. Registered-member check (settings-free).  ⚑ MUST run BEFORE the step-2 marker check:
@@ -2164,9 +2168,7 @@ def detect_project_mode(
   if standalone_here:
     from kanibako.project import import_reconcile
 
-    import_reconcile.check_standalone(
-      std.registry, resolved, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
-    )
+    import_reconcile.refuse_standalone_spelling(std.registry, resolved)
     return DetectionResult(BoxMode.standalone, resolved)
 
   # 3. Workset check (no walk needed — relative_to handles subdirs).
@@ -2201,9 +2203,7 @@ def detect_project_mode(
 
     # STANDALONE: the root's own registry file holds the mark; box_data/ is not the marker.
     if _is_standalone_meta_dir(current):
-      import_reconcile.check_standalone(
-        std.registry, current, journal=std.journal, early=_early_scope(std, BoxMode.standalone)
-      )
+      import_reconcile.refuse_standalone_spelling(std.registry, current)
       return DetectionResult(BoxMode.standalone, current)
 
     # NAMED: an unregistered workset root; import it, then the standard check resolves it.
