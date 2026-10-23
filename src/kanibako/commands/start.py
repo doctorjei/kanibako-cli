@@ -121,10 +121,12 @@ from kanibako.agent_ref import (
   with_harness,
 )
 from kanibako.channels.roots import (
+  ChannelLinkError,
   outermost_channel_root,
   is_channel_root,
   make_proj_inbox,
   missing_channel_root_error,
+  refuse_linked_channel_sources,
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
@@ -2822,6 +2824,8 @@ def _assemble_image_sharing_mounts(
     if resolved_store is not None:
       img_mounts = _emit_category_mounts(
         _img_deliveries.narrow_bindings,
+        std=std,
+        proj=proj,
         label="images",
       )
       _add_narrow_mounts(extra_mounts, img_mounts)
@@ -3068,10 +3072,16 @@ def _start_helper_hub(
     # No persona tier (audit): the HELPER table only, whose pinned
     # box_dests are disjoint from anything a persona bundle can name.
   )
-  helper_hub_mounts = _emit_category_mounts(
-    _hub_deliveries.narrow_bindings,
-    label="helper",
-  )
+  try:
+    helper_hub_mounts = _emit_category_mounts(
+      _hub_deliveries.narrow_bindings,
+      std=std,
+      proj=proj,
+      label="helper",
+    )
+  except ChannelLinkError:
+    hub.stop()  # the caller never gets it to stop
+    raise
   _add_narrow_mounts(extra_mounts, helper_hub_mounts)
   return hub
 
@@ -3129,6 +3139,8 @@ def _deliver_spawn_budget(
     extra_mounts,
     _emit_category_mounts(
       _budget_deliveries.narrow_bindings,
+      std=std,
+      proj=proj,
       label="spawn budget",
     ),
   )
@@ -5333,6 +5345,8 @@ def _run_container(
     try:
       category_mounts = _emit_category_mounts(
         launch_binds,
+        std=std,
+        proj=proj,
         label="category",
         must_exist=must_exist,
         skip_if_absent=skip_if_absent,
@@ -9288,6 +9302,8 @@ def _add_narrow_mounts(extra_mounts: list, narrow_mounts: list) -> None:
 def _emit_category_mounts(
   bindings,
   *,
+  std,
+  proj,
   label: str,
   must_exist: frozenset[str] = frozenset(),
   skip_if_absent: frozenset[str] = frozenset(),
@@ -9301,6 +9317,8 @@ def _emit_category_mounts(
   *skip_if_absent* are the two DEST-keyed missing-source policies; a dest in
   neither takes L7's warn-and-drop default.  A *skip_if_absent* source inside
   *box_home* with a symlink at or above it counts as absent: it is never followed.
+  A source in one of *proj*'s channel trees with a link at or above it refuses the
+  launch before anything is emitted (:func:`refuse_linked_channel_sources`).
   Prose: llm-docs ``commands/start.py.md``.
   """
   import logging
@@ -9315,12 +9333,16 @@ def _emit_category_mounts(
   # A dest-keyed map carries NO order, so emission owns the depth-sort the
   # reconcile used to hand over: shallower first, so podman's own depth-sort /
   # last-``-v``-wins lands the most specific mount on top.
-  for dest, bind in sorted(
-    bindings.items(),
-    key=lambda kv: (path_depth(kv[0]), kv[0]),
-  ):
-    if is_mask(bind):
-      continue  # a MASK: tmpfs, no host source; _bind_map_masks takes it.
+  # A MASK is tmpfs, with no host source; _bind_map_masks takes it.
+  binds = [
+    (dest, bind)
+    for dest, bind in sorted(bindings.items(), key=lambda kv: (path_depth(kv[0]), kv[0]))
+    if not is_mask(bind)
+  ]
+  refuse_linked_channel_sources(
+    std, proj, [(dest, _Path(bind.src), is_read_only(bind.opts)) for dest, bind in binds]
+  )
+  for dest, bind in binds:
     src = _Path(bind.src)
     # ⚑ BEFORE ``exists()``, which follows the link: a box-home source behind one
     # (a user's ``~/canon/notebook`` link) is omitted, never bound through it.
@@ -9372,8 +9394,14 @@ def _emit_category_mounts(
         continue
       # rw bind: create the host source dir and say so.  The roots a launch must not
       # recreate (workspace, channel roots) were refused before this point.
+      # ⚑ One under an existing channel root is made through the seam from it; with
+      # no root there, no box can have planted a link.
+      outer = outermost_channel_root(std, proj, src)
       try:
-        src.mkdir(parents=True, exist_ok=True)
+        if outer is None or outer == src or not outer.is_dir():
+          src.mkdir(parents=True, exist_ok=True)
+        else:
+          boxfs.mkdir(src, outer, parents=True, exist_ok=True)
         print(NOTE_RW_SOURCE_CREATED % (src, dest), file=sys.stderr)
       except OSError as exc:
         # ⚑ A source that could not be created (a dangling link is the common

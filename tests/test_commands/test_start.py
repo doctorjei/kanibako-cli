@@ -3312,6 +3312,8 @@ class TestPluginsAndCacheShares:
     )
     return _emit_category_mounts(
       deliveries.narrow_bindings,
+      std=std,
+      proj=None,
       label="share",
       skip_if_absent=deliveries.agent_dests,
     )

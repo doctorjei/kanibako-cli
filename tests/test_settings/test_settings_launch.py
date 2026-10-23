@@ -631,7 +631,7 @@ def test_the_flat_bindings_table_is_the_route_that_replaced_it():
   assert "x" in str(active.agent["codex"].bindings.rw)
 
 
-def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
+def test_settings_file_repoints_delivery_bind_by_dest(std, tmp_path: Path):
   # A user-settable ``agent.<name>.bindings.{ro,rw}`` ENTRY written on a scope
   # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
   # cascade — the plural-arm route that REPLACED the retired singular
@@ -707,6 +707,8 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
   # is the live emission seam rather than a second route that shadowed it.
   mounts = _emit_category_mounts(
     _bind_map_from_mounts(entries),
+    std=std,
+    proj=None,
     label="delivery",
     must_exist=frozenset({"/box/share"}),
   )
@@ -1410,11 +1412,11 @@ class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
     assert f"{category} is dest-keyed" in text  # says WHY
 
 
-def test_adapter_feeds_the_emitter_unchanged(tmp_path):
+def test_adapter_feeds_the_emitter_unchanged(std, tmp_path):
   # End-to-end: adapter entries flow into the ONE emitter cleanly.
   # ⚑ REAL host dirs: the emitter guarantee-creates a MISSING rw source, so
   # absolute literals would try to mkdir them on the machine running the suite.
-  home, ws = tmp_path / "home", tmp_path / "ws"
+  home, ws = tmp_path / "box-home", tmp_path / "ws"
   home.mkdir()
   ws.mkdir()
   snap = KeyStore(
@@ -1434,6 +1436,8 @@ def test_adapter_feeds_the_emitter_unchanged(tmp_path):
     m.destination
     for m in _emit_category_mounts(
       _bind_map_from_mounts(entries),
+      std=std,
+      proj=None,
       label="adapter-feed",
     )
   ]

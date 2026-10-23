@@ -115,6 +115,8 @@ def _build(std, proj):
   )
   mounts = _emit_category_mounts(
     deliveries.narrow_bindings,
+    std=std,
+    proj=proj,
     label="channel",
     skip_if_absent=deliveries.agent_dests,
   )

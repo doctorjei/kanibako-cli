@@ -288,6 +288,10 @@ class TestSkipIfAbsentEmission:
 
   _DEST = f"{GUEST_HOME}/canon/x"
 
+  @pytest.fixture(autouse=True)
+  def _std_paths(self, std):
+    self._std = std
+
   def _emit(self, *, skip_if_absent, caplog):
     from kanibako.commands.start import (
       _bind_map_from_mounts,
@@ -311,6 +315,8 @@ class TestSkipIfAbsentEmission:
     with caplog.at_level(logging.WARNING):
       mounts = _emit_category_mounts(
         _bind_map_from_mounts([entry]),
+        std=self._std,
+        proj=None,
         label="category",
         skip_if_absent=skip_if_absent,
       )
@@ -327,6 +333,7 @@ class TestSkipIfAbsentEmission:
 
   def test_the_default_is_EMPTY_so_an_unpassed_policy_never_softens_a_drop(
     self,
+    std,
     caplog,
   ):
     """⚑ The parameter defaults empty deliberately: warn-and-drop is L7's
@@ -350,6 +357,8 @@ class TestSkipIfAbsentEmission:
       assert (
         _emit_category_mounts(
           _bind_map_from_mounts([entry]),
+          std=std,
+          proj=None,
           label="category",
         )
         == []
@@ -383,7 +392,7 @@ class TestUncreatableReadWriteSourceIsDropped:
 
   _DEST = f"{GUEST_HOME}/data"
 
-  def test_a_dangling_link_source_is_dropped_and_named(self, tmp_path, caplog):
+  def test_a_dangling_link_source_is_dropped_and_named(self, std, tmp_path, caplog):
     import os
 
     from kanibako.commands.start import (
@@ -406,6 +415,8 @@ class TestUncreatableReadWriteSourceIsDropped:
     with caplog.at_level(logging.WARNING):
       mounts = _emit_category_mounts(
         _bind_map_from_mounts([entry]),
+        std=std,
+        proj=None,
         label="category",
       )
     assert mounts == []
@@ -429,6 +440,10 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
   below spells the category that matches its options so the two never disagree.
   """
 
+  @pytest.fixture(autouse=True)
+  def _std_paths(self, std):
+    self._std = std
+
   def _emit(self, *, category: str, options: str, host_src: str, caplog):
     from kanibako.commands.start import (
       _bind_map_from_mounts,
@@ -450,6 +465,8 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
     with caplog.at_level(logging.WARNING):
       return _emit_category_mounts(
         _bind_map_from_mounts([entry]),
+        std=self._std,
+        proj=None,
         label="folded",
       )
 
@@ -662,7 +679,7 @@ class TestCanonDefaultCategories:
 
 
 class TestHandbookMountOrdering:
-  def test_contents_and_chapters_are_EMITTED_in_ascending_depth(self, tmp_path):
+  def test_contents_and_chapters_are_EMITTED_in_ascending_depth(self, std, tmp_path):
     """A depth-sort regression is otherwise SILENT. Under J-7 the chapters are
     siblings rather than nested, so ordering is no longer load-bearing for
     correctness — but the ordering itself is still what a future non-sibling
@@ -708,6 +725,8 @@ class TestHandbookMountOrdering:
       m.destination
       for m in _emit_category_mounts(
         _bind_map_from_mounts(entries),
+        std=std,
+        proj=None,
         label="handbook-order",
       )
     ]

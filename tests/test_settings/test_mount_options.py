@@ -50,6 +50,7 @@ def test_todays_bind_options_values_read_exactly_as_they_always_did():
 
 
 def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
+  std,
   tmp_path,
 ):
   """🛑 THE HELPER SOCKET. ``opts or _bind_options(category)`` breaks the box.
@@ -125,6 +126,8 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
     m.destination: m
     for m in _emit_category_mounts(
       _narrow_bind_map(entries, core_defaults.helper_bind_dests()),
+      std=std,
+      proj=None,
       label="options-fidelity",
     )
   }

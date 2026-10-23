@@ -420,14 +420,17 @@ class TestTheChatSeederMakesNoRoot:
 
 
 class TestAnyOtherMissingRwSourceIsInformation:
-  def test_it_is_created_with_a_note_and_no_warning(self, tmp_path, capsys, caplog):
+  def test_it_is_created_with_a_note_and_no_warning(self, std, tmp_path, capsys, caplog):
     from kanibako.commands.start import _emit_category_mounts
     from kanibako.settings.kb_store import BindEntry
 
     src = tmp_path / "user" / "share"
     with caplog.at_level(logging.WARNING):
       mounts = _emit_category_mounts(
-        {"/home/agent/share": BindEntry(src=str(src), opts="rw")}, label="category"
+        {"/home/agent/share": BindEntry(src=str(src), opts="rw")},
+        std=std,
+        proj=None,
+        label="category",
       )
     assert src.is_dir()
     assert [m.destination for m in mounts] == ["/home/agent/share"]
@@ -491,9 +494,170 @@ class TestAnyOtherMissingRwSourceIsInformation:
       if not is_mask(bind) and not is_read_only(bind.opts) and not Path(bind.src).is_dir()
     ]
     assert unmade == [], "an rw source no owner made"
-    mounts = _emit_category_mounts(binds, label="category")
+    mounts = _emit_category_mounts(binds, std=set_up, proj=proj, label="category")
     assert "Note:" not in capsys.readouterr().err
     dests = {m.destination for m in mounts}
     assert "/home/agent/channels/inbox" in dests
     assert "/home/agent/vault/rw" in dests
     assert "/home/agent/.claude/plugins" in dests
+
+
+class TestABindSourceBehindALinkInAChannelTree:
+  """A box can swap anything under a channel root it has bound, such as another box's
+  inbox, for a link; the launch refuses to bind through it."""
+
+  _INBOX = "/home/agent/channels/inbox"
+
+  @pytest.fixture
+  def box(self, set_up, config_file, project_dir, credentials_dir):
+    import argparse
+
+    from kanibako.commands.box._parser import run_create
+    from kanibako.launch.templates import ensure_agent_stores
+    from kanibako.settings.config import load_config
+
+    ensure_agent_stores(set_up, ["claude"])
+    args = argparse.Namespace(
+      path=str(project_dir),
+      standalone=False,
+      no_vault=False,
+      name=None,
+      image=None,
+      agent=None,
+      allow_home=False,
+      recover=False,
+    )
+    assert run_create(args) == 0
+    return resolve_project(set_up, load_config(config_file), str(project_dir), initialize=True)
+
+  def _emit(self, std, proj, extra=None):
+    from kanibako.commands.start import (
+      _emit_category_mounts,
+      _launch_bind_map,
+      _resolve_launch_snapshot,
+    )
+    from kanibako.plugins.claude.target import ClaudeTarget
+
+    target = ClaudeTarget()
+    snapshot, _ = _resolve_launch_snapshot(
+      std=std,
+      proj=proj,
+      agent_name="claude",
+      system_settings_path=std.settings,
+      agent_cfg_path=None,
+      desc=target.descriptor,
+      install=None,
+      target=target,
+      cli_level=None,
+    )
+    binds = dict(_launch_bind_map(snapshot))
+    binds.update(extra or {})
+    return _emit_category_mounts(binds, std=std, proj=proj, label="category")
+
+  @staticmethod
+  def _swap(path, outside):
+    """Replace *path* with a link to *outside*, as another box could."""
+    outside.mkdir()
+    (outside / "victim.txt").write_text("host data\n")
+    path.rmdir()
+    path.symlink_to(outside)
+
+  def test_a_linked_inbox_refuses_and_mounts_nothing(self, set_up, box, tmp_path):
+    from kanibako.channels.roots import ChannelLinkError
+    from kanibako.errors import KanibakoError
+
+    inbox = _ch.box_channel_addresses(box, set_up).inbox
+    outside = tmp_path / "another-box-chose-this"
+    self._swap(inbox, outside)
+    with pytest.raises(ChannelLinkError) as exc:
+      self._emit(set_up, box)
+    assert isinstance(exc.value, KanibakoError)
+    key = f"box.bindings.rw[{self._INBOX}]"
+    assert _cure_lines(str(exc.value), key) == [
+      f"  {key}: {inbox} is a link inside {set_up.channels_mailboxes}, which a box can write.",
+      f"    If a box made it: rm {inbox}",
+    ]
+    assert sorted(p.name for p in outside.iterdir()) == ["victim.txt"]
+
+  def test_the_cure_runs_and_the_launch_binds_a_new_inbox(self, set_up, box, tmp_path):
+    from kanibako.channels.roots import ChannelLinkError
+
+    inbox = _ch.box_channel_addresses(box, set_up).inbox
+    outside = tmp_path / "another-box-chose-this"
+    self._swap(inbox, outside)
+    with pytest.raises(ChannelLinkError) as exc:
+      self._emit(set_up, box)
+    _run_cure(str(exc.value), "If a box made it:")
+    mounts = {m.destination: m.source for m in self._emit(set_up, box)}
+    assert mounts[self._INBOX] == inbox
+    assert inbox.is_dir() and not inbox.is_symlink()
+    assert sorted(p.name for p in outside.iterdir()) == ["victim.txt"]
+
+  def test_a_linked_share_global_partition_refuses(self, set_up, box, tmp_path):
+    from kanibako.channels.roots import ChannelLinkError
+    from kanibako.settings.kb_store import BindEntry
+
+    share_global = _ch.box_channel_addresses(box, set_up).share_global
+    partition = share_global.parent
+    partition.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "nfs-share-global"
+    self._swap(partition, outside)
+    extra = {"/home/agent/global": BindEntry(src=str(share_global), opts="rw")}
+    with pytest.raises(ChannelLinkError) as exc:
+      self._emit(set_up, box, extra)
+    key = "box.bindings.rw[/home/agent/global]"
+    assert _cure_lines(str(exc.value), key)[:2] == [
+      f"  {key}: {partition} is a link inside {set_up.channels_share}, which a box can write.",
+      f"    If a box made it: rm {partition}",
+    ]
+    assert sorted(p.name for p in outside.iterdir()) == ["victim.txt"]
+
+  def test_a_user_linked_top_level_root_still_binds(self, set_up, box, tmp_path):
+    """The control: a channel root itself is the user's, and may be a link."""
+    root = set_up.channels_mailboxes
+    nfs = tmp_path / "nfs-mailboxes"
+    shutil.copytree(root, nfs)
+    shutil.rmtree(root)
+    root.symlink_to(nfs)
+    mounts = {m.destination: m.source for m in self._emit(set_up, box)}
+    assert mounts[self._INBOX] == _ch.box_channel_addresses(box, set_up).inbox
+
+  def test_a_missing_inbox_is_still_created_with_a_note(self, set_up, box, capsys):
+    inbox = _ch.box_channel_addresses(box, set_up).inbox
+    inbox.rmdir()
+    capsys.readouterr()
+    mounts = {m.destination: m.source for m in self._emit(set_up, box)}
+    assert inbox.is_dir()
+    assert mounts[self._INBOX] == inbox
+    assert (
+      f"Note: created the missing read-write source {inbox} (bound at {self._INBOX}).\n"
+      in capsys.readouterr().err
+    )
+
+  def test_the_refusal_stops_the_launch_before_the_container_runs(self, start_mocks):
+    """Wired into ``_run_container``: the refusal propagates (the CLI prints it as an
+    ``Error:`` line, rc 1) and no container runs."""
+    from unittest import mock
+
+    from kanibako.channels.roots import ChannelLinkError
+    from kanibako.commands import start as _start
+
+    with (
+      start_mocks() as m,
+      mock.patch.object(
+        _start, "refuse_linked_channel_sources", side_effect=ChannelLinkError("linked")
+      ) as refuse,
+    ):
+      m.target.detect.return_value = None
+      with pytest.raises(ChannelLinkError):
+        _start._run_container(
+          project_dir=None,
+          entrypoint=None,
+          image_override=None,
+          new_session=False,
+          safe_mode=False,
+          resume_mode=False,
+          extra_args=[],
+        )
+    refuse.assert_called()
+    m.runtime.run.assert_not_called()

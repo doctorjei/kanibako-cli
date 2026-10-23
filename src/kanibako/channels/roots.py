@@ -12,11 +12,13 @@ when it is missing.
 from __future__ import annotations
 
 import shlex
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako import boxfs
 from kanibako.channels import channels as _ch
+from kanibako.errors import KanibakoError
 
 if TYPE_CHECKING:
   from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -193,6 +195,19 @@ def _set_command(proj: ProjectPaths, key: str) -> str | None:
   return None
 
 
+def _link_lines(
+  key: str, link: Path, outer: Path | None, box_cure: str, user_cure: str | None
+) -> list[str]:
+  """The refusal lines for *key*, whose path has *link* under the channel root *outer*."""
+  lines = [
+    f"  {key}: {link} is a link inside {outer}, which a box can write.",
+    f"    If a box made it: {box_cure}",
+  ]
+  if user_cure is not None:
+    lines.append(f"    If you made it: {user_cure}")
+  return lines
+
+
 def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | None:
   """The launch refusal for *proj*'s missing channel roots, or ``None``.
 
@@ -211,11 +226,14 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
     link = None if outer is None or outer == path else boxfs.first_symlink(path, outer)
     if link is not None:
       q = shlex.quote
-      lines.append(f"  {key}: {link} is a link inside {outer}, which a box can write.")
-      lines.append(f"    If a box made it: rm {q(str(link))} && mkdir -p {q(str(path))}")
       set_cmd = _set_command(proj, key)
-      if set_cmd is not None:
-        lines.append(f"    If you made it: {set_cmd} {key}={q(str(path.resolve()))}")
+      lines += _link_lines(
+        key,
+        link,
+        outer,
+        f"rm {q(str(link))} && mkdir -p {q(str(path))}",
+        None if set_cmd is None else f"{set_cmd} {key}={q(str(path.resolve()))}",
+      )
     elif not path.is_dir():
       cure = (
         "run 'kanibako setup'"
@@ -230,3 +248,35 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
     "a channel directory is missing or is a link, and a launch does not recreate one."
   )
   return "\n".join([head, *lines])
+
+
+class ChannelLinkError(KanibakoError):
+  """A bind source in a channel tree has a link a box could have planted."""
+
+
+def refuse_linked_channel_sources(
+  std: StandardPaths, proj: ProjectPaths | None, sources: Iterable[tuple[str, Path, bool]]
+) -> None:
+  """Raise :class:`ChannelLinkError` when a ``(dest, src, read_only)`` bind source has a link.
+
+  A source under a channel root other than the root itself is box-writable down to the
+  outermost root, so a link at it or between them (another box's inbox swapped for
+  one) would redirect the bind.  The root itself is :func:`missing_channel_root_error`'s.
+  ⚑ The box cure is a bare ``rm``: the launch makes a missing rw source, and a ro
+  source may be a file, where ``mkdir -p`` would be wrong.  There is no user cure: no
+  ``set`` command moves one bind entry (it is written in a settings file).
+  """
+  lines: list[str] = []
+  for dest, src, read_only in sources:
+    outer = outermost_channel_root(std, proj, src)
+    link = None if outer is None or outer == src else boxfs.first_symlink(src, outer)
+    if link is not None:
+      key = f"box.bindings.{'ro' if read_only else 'rw'}[{dest}]"
+      lines += _link_lines(key, link, outer, f"rm {shlex.quote(str(link))}", None)
+  if lines:
+    subject = "this box" if proj is None else f"box '{proj.name or proj.project_path}'"
+    head = (
+      f"{subject} cannot launch: a bind source is behind a link in a channel directory, "
+      "and a launch does not follow one."
+    )
+    raise ChannelLinkError("\n".join([head, *lines]))
