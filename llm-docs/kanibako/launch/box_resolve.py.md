@@ -92,7 +92,9 @@ compares literally (links unfollowed). It writes nothing but `list_worksets`'s d
 2. **The standalone registry has a box AT *project_dir*** → `standalone`, marker or not. A root that
    lost its marker is that box, broken (D4 state 3), never "not a box".
 3. **An in-place mark** (the marker above) → `standalone`.
-4. **The `kanibako.settings.paths.walk_project_mode` treewalk** — composed, not duplicated. A
+4. **The `walk_project_mode` treewalk** (`walk_project_mode(project_dir, std, config) ->
+   DetectionResult | Treewalk[DetectionResult]`; its steps are in `settings/paths.py.md` under
+   `detect_project_mode`) — composed, not duplicated. A
    `primary` result AT *project_dir* is its no-marker default, so not a box: `None`, which sends
    the caller down its create path; its step 5 stays a `Treewalk`. Any other result passes through, including a `primary` at an
    ANCESTOR (a subdirectory launch).

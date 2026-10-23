@@ -17,7 +17,7 @@ registry section it writes.
   whenever `project/workset.is_workset_skeleton` matches a level: the four dirs `create_workset`
   stamps, present together. A new registration walks again, and the registry claims the subject.
 * **STANDALONE** — a standalone box is unregistered by default, so a standalone root is only
-  CHECKED during detection (`refuse_standalone_spelling`, from `paths.walk_project_mode`,
+  CHECKED during detection (`refuse_standalone_spelling`, from `box_resolve.walk_project_mode`,
   `box_resolve.walk_box_mode`, and `import_pass`), which never registers one.
   `import_standalone` runs only from `box register`.
 

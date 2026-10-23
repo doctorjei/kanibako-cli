@@ -993,7 +993,7 @@ or `None`.
 def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool
 ```
 True only if *root* carries the standalone box MARKER. *strict* refuses a malformed
-`workset.yaml` instead of reading it as no marker; `walk_project_mode`'s step 2 passes it.
+`workset.yaml` instead of reading it as no marker.
 
 The marker is `<root>/registry.yaml` holding only `__STANDALONE__` (NOT inside the box store): the
 standalone self-declaration (design D4). It OVERRIDES any workset tree determination
@@ -1005,15 +1005,12 @@ def detect_project_mode(
     project_dir: Path, std: StandardPaths, config: BootstrapConfig,
 ) -> DetectionResult
 ```
-`walk_project_mode` through `import_reconcile.import_pass`: the treewalk's workset imports, then
-the answer. It does not clear a stale J2 entry (`import_reconcile.reconcile` does).
-
-```python
-def walk_project_mode(
-    project_dir: Path, std: StandardPaths, config: BootstrapConfig,
-) -> DetectionResult | Treewalk[DetectionResult]
-```
-Infer which project mode applies to *project_dir*; writes nothing.
+`box_resolve.walk_project_mode` (the order below) through `import_reconcile.import_pass`: the
+treewalk's workset imports, then the answer. It does not clear a stale J2 entry
+(`import_reconcile.reconcile` does). ⚑ The walk lives in `launch/` because it reads
+`box_resolve` and `import_reconcile`, which `settings/` must not import (the
+`settings-imports-no-runtime-layers` boundary rule); this wrapper's two lazy imports are
+ratcheted.
 
 ⚑ `box_resolve.walk_box_mode` is the one carrier of the mode order (D3-mode); this treewalk is its
 step 4, after the two registry checks and the in-place marker. Callers detect through

@@ -2175,69 +2175,17 @@ def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool:
 def detect_project_mode(
   project_dir: Path, std: StandardPaths, config: BootstrapConfig
 ) -> DetectionResult:
-  """:func:`walk_project_mode`, after :func:`~kanibako.project.import_reconcile.import_pass`.
+  """:func:`~kanibako.launch.box_resolve.walk_project_mode`, after
+  :func:`~kanibako.project.import_reconcile.import_pass`.
 
   ⚑ A standalone result's stale J2 clear is ``import_reconcile.reconcile``'s, run by
   ``box_resolve.detect_box_mode``.
   """
-  from kanibako.project import import_reconcile
-
-  return import_reconcile.import_pass(lambda: walk_project_mode(project_dir, std, config), std)
-
-
-def walk_project_mode(
-  project_dir: Path, std: StandardPaths, config: BootstrapConfig
-) -> DetectionResult | Treewalk[DetectionResult]:
-  """Infer which project mode applies to *project_dir*, walking ancestors for markers.
-
-  Writes nothing.  Step 5, the treewalk, answers as a :class:`Treewalk`.
-  """
-  resolved = Path(literal_path(project_dir))
-
-  # 1. Registered-member check (settings-free).  ⚑ MUST run BEFORE the step-2 marker check:
-  # otherwise the box resolves standalone, the very dual identity that --force removed.
   from kanibako.launch import box_resolve
-
-  if box_resolve.find_connected_member(resolved, std) is not None:
-    return DetectionResult(BoxMode.named, resolved)
-
-  # 2. In-place standalone marker AT the resolved dir (D3-mode 3 precedes the treewalk):
-  # it OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
-  # A malformed file is refused only after steps 3-4 find no registry claim on the dir.
-  unreadable: ConfigError | None = None
-  try:
-    standalone_here = _is_standalone_meta_dir(resolved, strict=True)
-  except ConfigError as exc:
-    standalone_here, unreadable = False, exc
-  if standalone_here:
-    from kanibako.project import import_reconcile
-
-    import_reconcile.refuse_standalone_spelling(std.registry, resolved)
-    return DetectionResult(BoxMode.standalone, resolved)
-
-  # 3. Workset check (no walk needed — relative_to handles subdirs).
-  if box_resolve.named_path_space(resolved, std) is not None:
-    return DetectionResult(BoxMode.named, resolved)
-
-  # 4. Name-based default-mode check (one-pass scan, deepest match wins).
-  ac_ancestor = _find_local_ancestor(resolved, std)
-  if ac_ancestor is not None:
-    return DetectionResult(BoxMode.primary, ac_ancestor)
-  if unreadable is not None:
-    raise unreadable
-
-  # 5. The treewalk: the nearest standalone mark, else primary AT the subject.  A refusal
-  # is held: the import pass runs first, and an import below the refusing level wins.
   from kanibako.project import import_reconcile
 
-  try:
-    for current in treewalk_levels(resolved):
-      if _is_standalone_meta_dir(current):
-        import_reconcile.refuse_standalone_spelling(std.registry, current)
-        return Treewalk(resolved, DetectionResult(BoxMode.standalone, current))
-  except KanibakoError as exc:
-    return Treewalk(resolved, DetectionResult(BoxMode.primary, resolved), exc)
-  return Treewalk(resolved, DetectionResult(BoxMode.primary, resolved))
+  walk = box_resolve.walk_project_mode
+  return import_reconcile.import_pass(lambda: walk(project_dir, std, config), std)
 
 
 def _relative_to_either(path: Path, root: Path) -> Path | None:

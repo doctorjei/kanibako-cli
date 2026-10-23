@@ -74,7 +74,6 @@ def init_vault_dirs(vault_ro_path: Path | None, vault_rw_path: Path | None, *, e
 def lay_box_vault(std: StandardPaths, mode: BoxMode, metadata_path: Path, arms: tuple[Path | None, Path | None], made: list[Path], *, ws: _WorksetRooted | None=None) -> None
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
-def walk_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | Treewalk[DetectionResult]
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def box_connected_workset(std: StandardPaths, proj: ProjectPaths) -> str | None
 def box_name_taken(std: StandardPaths, proj: ProjectPaths) -> Callable[[str], bool] | None
