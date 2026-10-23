@@ -1403,7 +1403,7 @@ class TestStopABoxThatRendersNoName:
     live_runtime,
     capsys,
   ):
-    """``stop <that box>`` says there is no container name, names the cure, rc 1."""
+    """``stop <that box>`` says there is no container name, names the in-place rename, rc 1."""
     workspace, name = self._legacy_box(std, config, tmp_home)
     capsys.readouterr()
 
@@ -1412,7 +1412,9 @@ class TestStopABoxThatRendersNoName:
     err = capsys.readouterr().err
     assert "has no container name" in err
     assert "must not contain '-'" in err
-    assert "box move" in err and "--name" in err
+    assert err.rstrip().endswith(
+      f"kanibako box convert {workspace.resolve()} --default --name _legacy"
+    ), err
     assert name == "-legacy"
 
   def test_stop_never_falls_back_to_the_old_container_name(
