@@ -2182,9 +2182,13 @@ by who declared it*.
 
 - a link a box made: `rm` it (and `mkdir -p` a nested root, as printed);
 - a workset's mail you linked elsewhere: move the whole partition instead, with
-  `kanibako workset set <workset> workset.channels.mailboxes=<target>`;
+  `kanibako workset set <workset> workset.channels.mailboxes=<target>` (a standalone box has no
+  workset to set, so only the `rm` applies);
 - a nested root you linked: point its key at the target (`kanibako system set` or `workset set`, as printed);
 - an unreadable directory: `chmod u+rwx` it.
+
+A directory a box made with `sudo` belongs to a host subuid, so the refusal prefixes that cure with
+`podman unshare`.
 
 A single bind source has no `set` cure; see *Bind entries are edited in the settings file, not from the CLI*.
 
