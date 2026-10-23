@@ -657,8 +657,38 @@ def ensure_agent_stores(
     # is repointable and ``workset.template`` has no say over it.
     for rel in _BOX_TEMPLATE_SKELETON:
       (store / AGENT_TEMPLATE_STORE_REL / rel).mkdir(parents=True, exist_ok=True)
+    # (4) the target's declared read-write store leaves (claude's ``common/plugins``),
+    # which a launch would otherwise create and report.
+    for leaf in _declared_rw_store_leaves(name):
+      (store / leaf).mkdir(parents=True, exist_ok=True)
     touched.append(name)
   return touched
+
+
+def _declared_rw_store_leaves(name: str) -> list[str]:
+  """The store-relative leaves of *name*'s declared read-write ``common``/``caches`` binds.
+
+  Read off the same two hooks and the same leaf rule the persona share shim uses
+  (``commands.start.ensure_persona_share_symlinks``); a read-only entry is not made.
+  """
+  from kanibako.settings.agent_representation import harness_store_leaf
+  from kanibako.settings.settings_categories import is_read_only
+  from kanibako.targets import discover_targets
+
+  cls = discover_targets().get(name)
+  if cls is None:
+    return []
+  target = cls()
+  leaves: list[str] = []
+  for table in (target.default_common(), target.default_category_binds()):
+    for key, arm in table.items():
+      if not key.startswith(f"agent.{name}.") or not isinstance(arm, dict):
+        continue
+      for entry in arm.values():
+        leaf = harness_store_leaf(entry[0], name)
+        if leaf is not None and not is_read_only(entry[1] if len(entry) > 1 else None):
+          leaves.append(leaf)
+  return leaves
 
 
 def _core_chapter_due(store: Path, *earlier: Path | None) -> bool:

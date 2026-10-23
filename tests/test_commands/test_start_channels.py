@@ -50,6 +50,14 @@ from kanibako.settings.config_keys import _KEY_ROUTES
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _set_up(std):
+  """A host after ``setup``, which makes the channel roots a launch never recreates."""
+  from kanibako.channels.roots import make_setup_channel_roots
+
+  make_setup_channel_roots(std)
+
+
 @pytest.fixture
 def primary_proj(std, config, project_dir):
   return resolve_project(std, config, str(project_dir), initialize=True)
@@ -166,13 +174,20 @@ class TestPrimaryChannelMounts:
     # The mailboxes mount is the PARENT of the inbox source (overlay alias).
     assert by_dest["/home/agent/channels/mailboxes"][0] == str(std.channels_mailboxes)
 
-  def test_l7_guarantee_creates_sources(self, primary_proj, std):
-    """The rw L7 branch mkdir's every channel partition source."""
-    by_dest, _ = _build(std, primary_proj)
+  def test_only_the_inbox_is_created_and_it_is_reported(self, primary_proj, std, capsys):
+    """The roots come from ``setup``; the emitter creates only the missing inbox (this
+    box was resolved, not created) and reports it as a ``Note:``."""
     from pathlib import Path
 
+    inbox = _ch.box_channel_addresses(primary_proj, std).inbox
+    capsys.readouterr()
+    by_dest, _ = _build(std, primary_proj)
     for src, _opts in by_dest.values():
       assert Path(src).is_dir(), src
+    assert capsys.readouterr().err == (
+      f"Note: created the missing read-write source {inbox} "
+      "(bound at /home/agent/channels/inbox).\n"
+    )
 
   def test_chat_files_seeded(self, primary_proj, std):
     _build(std, primary_proj)
@@ -267,7 +282,8 @@ class TestNullWorksetChatIsNotSeeded:
     _seed_channel_files(std, named_proj)
     # ``general.md`` names no key and ``broadcast`` is ``{workset.channels.chat}``/
     # ``broadcast.md`` — an embedded ref, so §0 makes the whole value null with it.
-    assert not (ws_root / "channels" / "chat").exists()
+    # (``workset create`` made the default dir, before the null.)
+    assert list((ws_root / "channels" / "chat").iterdir()) == []
     # The SYSTEM-scope log is unconditional — only the workset arm is nulled.
     assert (std.channels_chat / "general.md").is_file()
 

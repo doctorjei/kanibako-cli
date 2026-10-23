@@ -91,7 +91,7 @@ from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.messages import (
   WARN_BOX_HOME_REBUILT,
   WARN_BOX_HOME_SEEDED,
-  WARN_BOX_WORKSPACE_REBUILT,
+  NOTE_RW_SOURCE_CREATED,
 )
 from kanibako.settings.paths import (
   BoxMode,
@@ -119,6 +119,7 @@ from kanibako.agent_ref import (
   persona_of,
   with_harness,
 )
+from kanibako.channels.roots import make_proj_inbox, missing_channel_root_error
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
@@ -2127,10 +2128,10 @@ def _warn_launch_rebuilds(proj: ProjectPaths, *, live: bool = False) -> None:
   """Name what the launch resolve is about to re-create under an existing box (MBR-6).
 
   MBR-6 [Jei:2026-08-02f]: *"a launch should not silently rebuild anything."*
-  A missing HOME or STANDALONE workspace is re-created by the resolve after this,
-  so it is announced here, on the NON-materializing probe, before anything exists.
-  A notice, not a refusal: these launches work today.  A PRIMARY or NAMED box's
-  missing workspace is refused, never rebuilt (before this call when the home is gone too).
+  A missing HOME is re-created by the resolve after this, so it is announced here,
+  on the NON-materializing probe, before anything exists.  A notice, not a refusal.
+  A missing workspace is refused, never rebuilt: before this call when the home is
+  gone too, else by :func:`_check_box_components`.
   A *live* box is reattached, never seeded, so a NAMED one gets the rebuild warning too.
   """
   logger = get_logger("start")
@@ -2140,12 +2141,6 @@ def _warn_launch_rebuilds(proj: ProjectPaths, *, live: bool = False) -> None:
       WARN_BOX_HOME_SEEDED if proj.mode is BoxMode.named and not live else WARN_BOX_HOME_REBUILT
     )
     logger.warning(template, label, proj.shell_path)
-  if (
-    proj.mode is BoxMode.standalone
-    and proj.project_path is not None
-    and not proj.project_path.is_dir()
-  ):
-    logger.warning(WARN_BOX_WORKSPACE_REBUILT, label, proj.project_path)
 
 
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None:
@@ -3390,14 +3385,14 @@ def _run_container(
   # Q106: the workspace bind is mounted at every launch, so a box whose workspace resolves
   # through a null ``workset.workspaces`` refuses here, on the probe, like MBR-6 above.
   _refuse_null_workspace_bind(std, _existing)
-  # MBR-6: a PRIMARY or NAMED box with no workspace is refused at launch (below, in
+  # MBR-6: a box with no workspace is refused at launch (below, in
   # ``_check_box_components``).  When its home is missing too, the resolve would
   # create the home first, and a NAMED box's home would then never be seeded.  So
   # that case gets the same refusal here, on the probe.  A LIVE box is exempt: the
   # launch reattaches to it and checks neither dir, as before.  A live box whose
   # workspace alone is gone never reaches this branch.
   _live = False
-  if _existing.mode is not BoxMode.standalone and not _existing.shell_path.is_dir():
+  if not _existing.shell_path.is_dir():
     if (persistent or detach) and not restart:
       try:
         _probe_runtime = ContainerRuntime()
@@ -4474,7 +4469,7 @@ def _run_container(
   # host-side dirs (workspace + home) can be verified before committing to a
   # launch.  Runs HERE (launch time), not the shared resolve chokepoint, so a
   # `box list` / `archive` / `diagnose` of a MOVED box never hard-crashes.
-  _component_error = _check_box_components(proj)
+  _component_error = _check_box_components(proj) or missing_channel_root_error(std, proj)
   if _component_error is not None:
     print(_component_error, file=sys.stderr)
     return 1
@@ -4734,6 +4729,7 @@ def _run_container(
     #     seed-routing unit tests drive).
     if proj.is_new:
       _write_create_entry(std, proj)
+      make_proj_inbox(std, proj)
       _seed_box_home(
         std=std,
         proj=proj,
@@ -9364,9 +9360,11 @@ def _emit_category_mounts(
           bind.src,
         )
         continue
-      # rw bind: create the host source dir (L7 guarantee-create).
+      # rw bind: create the host source dir and say so.  The roots a launch must not
+      # recreate (workspace, channel roots) were refused before this point.
       try:
         src.mkdir(parents=True, exist_ok=True)
+        print(NOTE_RW_SOURCE_CREATED % (src, dest), file=sys.stderr)
       except OSError as exc:
         # ⚑ A source that could not be created (a dangling link is the common
         # case) is DROPPED like a missing ro source: podman would only abort on it.
@@ -9421,7 +9419,7 @@ def _seed_box_home(
   standing invitation to "simplify" by widening the narrow resolve, which is
   exactly what must not happen.
 
-  The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
+  The per-launch credsync REFRESH and the channel-root check are SEPARATE
   per-launch mechanisms and are NOT part of this one-time seed.
 
   *selection_level* is the §1A SELECTION, a REQUIRED keyword (P7): the seed resolve
@@ -11286,7 +11284,8 @@ def _seed_channel_files(std, proj) -> None:
   The default log (``general.md``) + the reserved BROADCAST log, at the SYSTEM chat
   dir (every mode) and at the WORKSET chat dir for primary/named.  Create-if-absent
   (idempotent — never overwrites a user-edited log); the partition source DIRS
-  themselves are mkdir'd by the L7 rw-branch.  Keeps ``rotate_if_over`` on each
+  themselves are made by their owners and never here (a launch refuses a missing
+  one first): a log whose directory is missing is skipped.  Keeps ``rotate_if_over`` on each
   broadcast log (A5 — parity with the legacy ``broadcast.log`` rotation).
 
   ⚑⚑ EVERY PATH HERE IS READ OFF A RESOLVED KEY, never joined onto a channel root.
@@ -11310,7 +11309,7 @@ def _seed_channel_files(std, proj) -> None:
   from kanibako.channels import channels as _ch
 
   # (general log, broadcast log) per scope.  ⚑ A NULL KEY SEEDS NOTHING: its log's
-  # source does not exist, and the guarantee-create is for a source that does.  The two
+  # source does not exist, and the seed is for a source that does.  The two
   # null INDEPENDENTLY — ``broadcast`` is its own key, so an explicit repoint of it still
   # resolves when ``chat`` is null (spec §0).  ⚑ THE ``is not None`` GUARD IS LOAD-BEARING:
   # ``StandardPaths.channels_chat`` admits ``None``, so the bare ``/`` would raise
@@ -11329,9 +11328,8 @@ def _seed_channel_files(std, proj) -> None:
   for general, broadcast in logs:
     try:
       for log in (general, broadcast):
-        if log is None:
+        if log is None or not log.parent.is_dir():
           continue
-        log.parent.mkdir(parents=True, exist_ok=True)
         if not boxfs.no_symlink_or_warn(log, log.parent):
           continue
         if not log.exists():

@@ -803,9 +803,9 @@ def _stop_at_materialize(monkeypatch, seen):
 
 
 class TestLaunchAnnouncesRebuilds:
-  """MBR-6 residual 1: a missing home (any mode) or STANDALONE workspace is
-  re-created by the launch, so the launch SAYS so — a notice, never a refusal
-  (the launch works today).  Printed on the probe, before anything is created.
+  """MBR-6 residual 1: a missing home (any mode) is re-created by the launch, so the
+  launch SAYS so — a notice, never a refusal.  Printed on the probe, before anything
+  is created.  A missing workspace is refused instead.
   """
 
   def _notices(self, caplog):
@@ -858,9 +858,10 @@ class TestLaunchAnnouncesRebuilds:
       f"Note: box 'member' has no home directory ({home}); this launch creates it and seeds it."
     ]
 
-  def test_standalone_missing_home_and_workspace_both_warn(
-    self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
+  def test_standalone_missing_home_and_workspace_refuses_and_creates_nothing(
+    self, config_file, tmp_home, credentials_dir, caplog, capsys, monkeypatch
   ):
+    """A launch never recreates a workspace, so this refuses on the probe, as NAMED does."""
     from kanibako.commands.box._parser import run_create
 
     config, std = _std(config_file)
@@ -871,20 +872,18 @@ class TestLaunchAnnouncesRebuilds:
     assert proj is not None and proj.project_path is not None
     assert remove_box_tree(proj.shell_path)
     assert remove_box_tree(proj.project_path)
-    seen: list[bool] = []
-    _stop_at_materialize(monkeypatch, seen)
+    capsys.readouterr()
+    _stop_at_materialize(monkeypatch, [])
 
-    with pytest.raises(_ResolveStop):
-      _launch(str(root))
-    assert seen == [False]
-    assert self._notices(caplog) == [
-      f"Warning: the home directory for box '{proj.name}' is missing "
-      f"({proj.shell_path}); this launch re-creates it with only a minimal shell "
-      "profile; the seed and templates are not re-applied.",
-      f"Warning: the workspace for box '{proj.name}' is missing "
-      f"({proj.project_path}); this launch creates a new, empty folder there, and "
-      "work done in the box lands in it.",
-    ]
+    assert _launch(str(root)) == 1
+    assert capsys.readouterr().err == (
+      f"Error: the workspace for box '{proj.name}' is missing ({proj.project_path}).\n"
+      "  Kanibako will not launch a box with no workspace.\n"
+      "  If you moved it, re-create or remap the box.\n"
+    )
+    assert not proj.shell_path.exists()
+    assert not proj.project_path.exists()
+    assert self._notices(caplog) == []
 
   def test_named_missing_home_and_workspace_refuses_and_creates_nothing(
     self, config_file, tmp_home, credentials_dir, caplog, capsys, monkeypatch

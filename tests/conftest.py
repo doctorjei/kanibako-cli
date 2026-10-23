@@ -438,6 +438,11 @@ def start_mocks():
         "kanibako.commands.start",
         _resolve_launch_snapshot=DEFAULT,
         _seed_channel_files=DEFAULT,
+        # The channel-root check and the connect box's inbox read channel keys off
+        # ``std``/``proj``: same MagicMock-path rationale.  Real paths:
+        # ``tests/test_channels/test_channel_roots.py``.
+        missing_channel_root_error=DEFAULT,
+        make_proj_inbox=DEFAULT,
         _container_logs=DEFAULT,
         registry_path=DEFAULT,
         _write_create_entry=DEFAULT,
@@ -555,6 +560,8 @@ def start_mocks():
 
       m_credsync.selected_source_root = _real_ssr
       m_launch_mount_stubs["_seed_channel_files"].return_value = None
+      m_launch_mount_stubs["missing_channel_root_error"].return_value = None
+      m_launch_mount_stubs["make_proj_inbox"].return_value = None
       m_launch_mount_stubs["_container_logs"].return_value = ""
       m_launch_mount_stubs["_write_create_entry"].return_value = None
       m_launch_mount_stubs["_clear_create_entry"].return_value = None
@@ -1099,6 +1106,7 @@ def start_mocks():
           credsync=m_credsync,
           resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
           seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
+          missing_channel_root_error=m_launch_mount_stubs["missing_channel_root_error"],
           # Create-journal stubs (write-ahead recovery flow) — exposed so
           # explicit-create tests can assert the launch path never resurrects
           # a half-created box (no seed / register / clear on launch).

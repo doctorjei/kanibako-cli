@@ -2087,7 +2087,8 @@ def create_workset(
   unwind = _Unwind()
   try:
     # ⚑ Skeleton = the FOUR dirs of :func:`_workset_skeleton_dirs`, which is also
-    # what detection tests for; auth/channels are created lazily elsewhere.  NO file
+    # what detection tests for; the channel roots are made below, OUTSIDE it, so a
+    # workset made before them is still detected.  NO file
     # is written at all — no workset.yaml (a workset root need not have one) and
     # no registry.yaml (a workset with no members has no membership to record).
     root.mkdir(parents=True)
@@ -2101,6 +2102,12 @@ def create_workset(
     for subdir_path in _workset_skeleton_dirs(root, early=ws.early_scope):
       if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root.resolve():
         subdir_path.mkdir(parents=True, exist_ok=True)
+    from kanibako import boxfs
+    from kanibako.channels.roots import make_workset_channel_roots
+
+    for made in make_workset_channel_roots(std, name, root):
+      if not _path_in_tree(made, root):
+        unwind.push(partial(boxfs.rmdir, made, made.parent))
 
     def _drop_workset() -> None:
       if read_names(std.registry).get("worksets", {}).get(name) == str(root):

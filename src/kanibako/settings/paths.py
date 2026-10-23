@@ -3381,13 +3381,11 @@ def resolve_standalone_project(
     )
     is_new = True
 
-  if initialize:
-    # Recovery: ensure home + workspace exist (a null names no workspace to make).
-    if not shell_path.is_dir():
-      shell_path.mkdir(parents=True, exist_ok=True)
-      _bootstrap_shell(shell_path)
-    if project_path is not None:
-      project_path.mkdir(parents=True, exist_ok=True)
+  # Recovery: ensure the home exists.  ⚑ Never the workspace: a launch refuses a
+  # missing one (``start._check_box_components``); only the create makes it.
+  if initialize and not shell_path.is_dir():
+    shell_path.mkdir(parents=True, exist_ok=True)
+    _bootstrap_shell(shell_path)
 
   return ProjectPaths(
     project_path=project_path,

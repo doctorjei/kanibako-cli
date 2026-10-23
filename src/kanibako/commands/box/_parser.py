@@ -1734,6 +1734,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     seed_new_box,
   )
   from kanibako.settings.core_defaults import materialize_canon_skeleton
+  from kanibako.channels.roots import make_proj_inbox
 
   # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materializing
   # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
@@ -2020,6 +2021,10 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
 
     # ⚑ A fresh create, or a replay: every write below is an idempotent set.
     if proj.is_new or is_recovery:
+      # ⚑ A replay finishes the standalone workspace an interrupted first attempt did
+      # not reach: no launch recreates it.
+      if args.standalone and proj.project_path is not None:
+        proj.project_path.mkdir(parents=True, exist_ok=True)
       # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE helper, writing the BOX-TIER file
       # from the ONE pair (M-8): an EXPLICIT ``-i``/``--image`` through the one
       # flag→key table, and ``--agent`` as the §2h REQUEST ``pref.system.agent``
@@ -2101,6 +2106,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
       else:
         outcome.recover = recover_cure(_entry_probe)
   seed_new_box(std, config, proj, explicit_agent=_agent_arg)
+  make_proj_inbox(std, proj)
   # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it only fills what the seed left
   # missing) and INSIDE the journal window (it must replay).
   materialize_canon_skeleton(proj.shell_path)

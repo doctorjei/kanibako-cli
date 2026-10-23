@@ -377,14 +377,14 @@ class TestTheChatSeederFollowsTheKey:
 
     ws_root = named_proj.group.root
     _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
+    (ws_root / "talk").mkdir()  # a repointed root is the user's to make
     _seed_channel_files(std, named_proj)
 
     assert (ws_root / "talk" / "general.md").is_file()
     assert (ws_root / "talk" / "broadcast.md").is_file()
     # ⚑ AND NOWHERE ELSE.  The old code seeded the un-overridden join, which is
-    # mounted nowhere — so the guest's ~/channels/workset/chat was empty and the
-    # host grew a stray directory the user never asked for.
-    assert not (ws_root / "channels" / "chat").exists()
+    # mounted nowhere — so the guest's ~/channels/workset/chat was empty.
+    assert list((ws_root / "channels" / "chat").iterdir()) == []
 
   def test_a_broadcast_repoint_is_the_file_that_gets_created(self, named_proj, std):
     from kanibako.commands.start import _seed_channel_files
