@@ -2056,6 +2056,27 @@ class TestConvertMoveCrossKindName:
     assert "     name: renbox -> newbox\n location: in place" in capsys.readouterr().out
     assert load_primary_boxes(std.primary_workset) == {"renbox": str(pdir)}
 
+  @pytest.mark.parametrize(
+    ("target", "owner"),
+    [
+      ({"to_default": True, "name": "newbox"}, "primary"),
+      ({"to_standalone": True}, "standalone"),
+      ({"to_workset": "wsx"}, "workset:wsx"),
+    ],
+    ids=["default", "standalone", "workset"],
+  )
+  def test_convert_confirm_names_the_target_mode(self, env, monkeypatch, capsys, target, owner):
+    """The confirm prompt names the target by its mode value, never ``default``."""
+    import kanibako.utils
+    from kanibako.project.workset import create_workset
+
+    config, std, tmp_home = env
+    create_workset("wsx", tmp_home / "wsx_root", std)
+    pdir = _default(env, name="renbox")
+    monkeypatch.setattr(kanibako.utils, "confirm_or_abort", lambda *a, **k: False)
+    assert run_convert(_convert_args(pdir, force=False, **target)) == 1
+    assert f"    owner: primary -> {owner}\n" in capsys.readouterr().out
+
   def test_convert_inplace_rename_running_warning_spares_the_workspace(self, env, capsys):
     """197-RN: a locked box's in-place rename warns that the workspace is untouched."""
     import fcntl

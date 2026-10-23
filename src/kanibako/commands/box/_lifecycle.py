@@ -6084,10 +6084,12 @@ def run_convert(args) -> int:
     loc_desc = "into the workset"
   else:
     loc_desc = f"to {location}"
+  # The target as a mode value (``primary``, never ``default``); UNCHANGED returned above.
+  target_owner = owner_token(*_ownership_to_mode(ownership))  # type: ignore[arg-type]
   summary = (
     "Convert project:\n"
     f"  project: {state.name}\n"
-    f"    owner: {state.owner} -> {ownership}\n"
+    f"    owner: {state.owner} -> {target_owner}\n"
     + (f"     name: {state.name} -> {new_name}\n" if renamed else "")
     + f" location: {loc_desc}"
   )
