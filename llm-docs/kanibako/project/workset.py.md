@@ -43,8 +43,9 @@ Three notes the diagram cannot carry:
 * ⚑ **`create_workset` makes FOUR DIRS AND NO FILES** — `boxes/`, the resolved workspaces dir,
   `vault/` and `logs/`. There is no `registry.yaml` (no members yet, so no membership to record)
   and no `workset.yaml`. Both, plus
-  `auth/` and `channels/`, are created lazily by the paths that own them (a `workset set`/`share add`
-  write, the plugin's auth dir, the launch-path channel guarantee-create). Their absence from a fresh
+  `auth/`, are created lazily by the paths that own them (a `workset set`/`share add` write, the
+  plugin's auth dir). `channels/` is made right after the skeleton, outside it
+  (`channels.roots.make_workset_channel_roots`), so a root made before it is still detected. Their absence from a fresh
   root is correct, not a bug — and for `workset.yaml` it is the NORMAL case. `template/` and
   `canon/handbook/` are stamped by the `workset create` COMMAND, through
   `launch.templates.install_workset_template`, after `create_workset` returns.
