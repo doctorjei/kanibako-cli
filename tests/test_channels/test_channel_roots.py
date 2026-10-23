@@ -82,9 +82,8 @@ def _as_foreign_owner(monkeypatch):
 
   from kanibako.channels import roots
 
-  monkeypatch.setattr(
-    roots, "os", types.SimpleNamespace(lstat=os.lstat, getuid=lambda: os.getuid() + 1)
-  )
+  uid = os.getuid() + 1
+  monkeypatch.setattr(roots, "os", types.SimpleNamespace(**{**vars(os), "getuid": lambda: uid}))
 
 
 class TestSetupMakesTheGlobalRoots:
@@ -415,6 +414,30 @@ class TestTheLaunchRefusesAMissingRoot:
     finally:
       locked.chmod(0o755)
 
+  def test_a_listable_unsearchable_dir_above_a_nested_root_is_the_one_named(self, named, set_up):
+    """Mode 0600: the walk fails on the CHILD, but the cure must name the dir itself."""
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.config_keys import _KEY_ROUTES
+    from kanibako.settings.paths import load_std_paths
+
+    _ws, proj = named
+    locked = set_up.channels_common / "locked"
+    inner = locked / "share"
+    inner.mkdir(parents=True)
+    sections, leaf = _KEY_ROUTES["system.channels.share"]
+    write_nested_key(set_up.settings, sections, leaf, str(inner))
+    std = load_std_paths()
+    locked.chmod(0o600)
+    try:
+      err = missing_channel_root_error(std, proj)
+      assert _cure_lines(err, "system.channels.share")[1] == (
+        f"    If a box made it: chmod u+rwx {locked}"
+      )
+      _run_cure(err, "If a box made it:")
+      assert missing_channel_root_error(std, proj) is None
+    finally:
+      locked.chmod(0o755)
+
   def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
     from kanibako.commands.start import _seed_channel_files
 
@@ -720,6 +743,50 @@ class TestABindSourceBehindALinkInAChannelTree:
     finally:
       part.chmod(0o755)
     assert _cure_lines(str(unreadable.value), key)[1] == (
+      f"    If a box made it: podman unshare chmod u+rwx {part}"
+    )
+
+  def _share_global_behind_a_0600_partition(self, set_up, box):
+    from kanibako.settings.kb_store import BindEntry
+
+    share_global = _ch.box_channel_addresses(box, set_up).share_global
+    share_global.mkdir(parents=True, exist_ok=True)
+    share_global.parent.chmod(0o600)
+    return share_global.parent, {"/home/agent/global": BindEntry(str(share_global), "rw")}
+
+  def test_a_listable_unsearchable_partition_is_named_and_its_cure_runs(self, set_up, box):
+    """``chmod 600`` on a partition: the walk fails on the child, so name the partition."""
+    from kanibako.channels.roots import ChannelLinkError
+
+    part, extra = self._share_global_behind_a_0600_partition(set_up, box)
+    key = "box.bindings.rw[/home/agent/global]"
+    try:
+      with pytest.raises(ChannelLinkError) as exc:
+        self._emit(set_up, box, extra)
+      assert _cure_lines(str(exc.value), key) == [
+        f"  {key}: {part} inside {set_up.channels_share} cannot be read,"
+        " so it cannot be checked for a link.",
+        f"    If a box made it: chmod u+rwx {part}",
+      ]
+      _run_cure(str(exc.value), "If a box made it:")
+      mounts = {m.destination: m.source for m in self._emit(set_up, box, extra)}
+      assert str(mounts["/home/agent/global"]) == extra["/home/agent/global"].src
+    finally:
+      part.chmod(0o755)
+
+  def test_a_subuid_owned_unsearchable_partition_keeps_the_unshare_prefix(
+    self, set_up, box, monkeypatch
+  ):
+    from kanibako.channels.roots import ChannelLinkError
+
+    part, extra = self._share_global_behind_a_0600_partition(set_up, box)
+    _as_foreign_owner(monkeypatch)
+    try:
+      with pytest.raises(ChannelLinkError) as exc:
+        self._emit(set_up, box, extra)
+    finally:
+      part.chmod(0o755)
+    assert _cure_lines(str(exc.value), "box.bindings.rw[/home/agent/global]")[1] == (
       f"    If a box made it: podman unshare chmod u+rwx {part}"
     )
 
