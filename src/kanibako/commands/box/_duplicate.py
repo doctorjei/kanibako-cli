@@ -1036,14 +1036,17 @@ def _duplicate_to_workset(args, std, config) -> int:
   # std-aware: the duplicate always lands a fresh INTERNAL workspace (a copy,
   # never a connection); a bare duplicate of an external-connected source is
   # refused in run_duplicate; a connection is 1:1 (an external path is one box's).
+  # ⚑ The copy source is the source's WORKSPACE.  A standalone source's is its resolved
+  # ``workset.workspaces``, never the ROOT, whose ``vault/`` must not travel (197-DV).
+  workspace_src = src_proj.project_path if source_mode == BoxMode.standalone else source_path
   copy_into_workset(
     ws,
     proj_name,
     src_proj.metadata_path,
     src_proj.shell_path,
-    source_path,
+    workspace_src or source_path,
     source_mode,
-    copy_workspace=not args.bare,
+    copy_workspace=not args.bare and workspace_src is not None,
     std=std,
   )
   _repoint_duplicated_links(

@@ -898,8 +898,10 @@ def copy_into_workset(
   try:
     dst_project = ws.projects_dir / proj_name
     note_phase(f"Copying the box data to {dst_project}...")
+    # ⚑ The box METADATA DIR, never a standalone source's ROOT, which would drag its
+    # workspace and vault along (vaults do not travel on duplicate).
     copy_tree_keeping_links(
-      metadata_path,
+      box_metadata_dir(source_mode, metadata_path, early=_early_scope(std, BoxMode.standalone)),
       dst_project,
       ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
       dirs_exist_ok=True,

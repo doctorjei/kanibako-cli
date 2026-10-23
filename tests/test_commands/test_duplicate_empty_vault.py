@@ -56,8 +56,9 @@ def _standalone(env, name):
   config, std, tmp_home = env
   pdir = tmp_home / name
   pdir.mkdir()
-  (pdir / "file.txt").write_text("hi")
-  _seed_vault(resolve_standalone_project(std, config, project_dir=str(pdir), initialize=True))
+  proj = resolve_standalone_project(std, config, project_dir=str(pdir), initialize=True)
+  (proj.project_path / "file.txt").write_text("hi")
+  _seed_vault(proj)
   return pdir
 
 
@@ -97,6 +98,11 @@ def _resolve_dest(env, path, caplog):
   return proj, warned
 
 
+def _assert_no_secret(*trees):
+  for tree in trees:
+    assert list(tree.rglob(SECRET)) == [], tree
+
+
 def _assert_empty_vault(proj, warned):
   assert proj.vault_enabled() is True
   for arm in (proj.vault_ro_path, proj.vault_rw_path):
@@ -132,6 +138,7 @@ def test_every_route_lays_an_empty_vault_and_carries_nothing(env, caplog, kind, 
 
   proj, warned = _resolve_dest(env, dest, caplog)
   _assert_empty_vault(proj, warned)
+  _assert_no_secret(dest, proj.metadata_path)
   # The source keeps its vault, contents and all.
   src_proj = resolve_box_target(std, config, str(src))
   assert (src_proj.vault_rw_path / SECRET).is_file()
@@ -147,6 +154,10 @@ def test_to_named_lays_an_empty_vault_and_carries_nothing(env, caplog, source_ki
   assert rc == 0
   proj, warned = _resolve_dest(env, ws.workspaces_dir / "tn", caplog)
   _assert_empty_vault(proj, warned)
+  # Nowhere in the workset: not the box data, not the workspace (a standalone ROOT holds
+  # its vault, so copying the root instead of its workspace carried it).
+  _assert_no_secret(ws.root)
+  assert (ws.workspaces_dir / "tn" / "file.txt").is_file()
 
 
 @pytest.mark.parametrize("to_mode", [None, BoxMode.primary, BoxMode.standalone])
