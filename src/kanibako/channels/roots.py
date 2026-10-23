@@ -211,6 +211,27 @@ def _as_owner(path: Path, command: str) -> str:
   return f"podman unshare {command}" if foreign else command
 
 
+def _blocking_dir(path: Path, outer: Path | None) -> Path:
+  """The directory at or above *path*, not above *outer*, that we cannot read or search.
+
+  :func:`boxfs.first_symlink` returns the entry it failed to open, which is the CHILD
+  of a dir that can be listed but not searched (mode 0600); that child cannot even be
+  stat'ed.  *path* itself when no such dir is found.
+  """
+  for d in (path, *path.parents):
+    if outer is not None and not d.is_relative_to(outer):
+      break
+    try:
+      os.lstat(d)
+    except OSError:
+      continue
+    if not os.access(d, os.R_OK | os.X_OK, follow_symlinks=False):
+      return d
+    if d == outer:
+      break
+  return path
+
+
 def _link_lines(
   key: str, link: Path, outer: Path | None, remake: Path | None, user_cure: str | None
 ) -> list[str]:
@@ -219,7 +240,8 @@ def _link_lines(
   The box cure removes *link* and, with *remake*, makes that path again; each command
   runs as the owner of the directory it changes (:func:`_as_owner`).
   ⚑ :func:`boxfs.first_symlink` fails closed: a directory it cannot open comes back as
-  if a link.  That one is named as unreadable, with a ``chmod`` cure instead.
+  if a link.  The dir that blocks it (:func:`_blocking_dir`) is named as unreadable,
+  with a ``chmod`` cure instead.
   """
   q = shlex.quote
   try:
@@ -227,9 +249,10 @@ def _link_lines(
   except OSError:
     is_link = False
   if not is_link:
+    locked = _blocking_dir(link, outer)
     return [
-      f"  {key}: {link} inside {outer} cannot be read, so it cannot be checked for a link.",
-      f"    If a box made it: {_as_owner(link, f'chmod u+rwx {q(str(link))}')}",
+      f"  {key}: {locked} inside {outer} cannot be read, so it cannot be checked for a link.",
+      f"    If a box made it: {_as_owner(locked, f'chmod u+rwx {q(str(locked))}')}",
     ]
   box_cure = _as_owner(link.parent, f"rm {q(str(link))}")
   if remake is not None:
