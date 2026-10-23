@@ -356,6 +356,33 @@ class TestTheLaunchRefusesAMissingRoot:
     _run_cure(err, cure)
     assert missing_channel_root_error(load_std_paths(), proj) is None
 
+  def test_an_unreadable_dir_above_a_nested_root_is_named_unreadable(self, named, set_up):
+    """``first_symlink`` fails closed on a dir it cannot open; the refusal says so, and
+    its cure runs."""
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.config_keys import _KEY_ROUTES
+    from kanibako.settings.paths import load_std_paths
+
+    _ws, proj = named
+    locked = set_up.channels_common / "locked"
+    inner = locked / "share"
+    inner.mkdir(parents=True)
+    sections, leaf = _KEY_ROUTES["system.channels.share"]
+    write_nested_key(set_up.settings, sections, leaf, str(inner))
+    std = load_std_paths()
+    locked.chmod(0)
+    try:
+      err = missing_channel_root_error(std, proj)
+      assert _cure_lines(err, "system.channels.share") == [
+        f"  system.channels.share: {locked} inside {set_up.channels_common} cannot be read,"
+        " so it cannot be checked for a link.",
+        f"    If a box made it: chmod u+rwx {locked}",
+      ]
+      _run_cure(err, "If a box made it:")
+      assert missing_channel_root_error(std, proj) is None
+    finally:
+      locked.chmod(0o755)
+
   def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
     from kanibako.commands.start import _seed_channel_files
 
@@ -611,6 +638,27 @@ class TestABindSourceBehindALinkInAChannelTree:
       f"    If a box made it: rm {partition}",
     ]
     assert sorted(p.name for p in outside.iterdir()) == ["victim.txt"]
+
+  def test_an_unreadable_partition_is_named_unreadable_and_its_cure_runs(self, set_up, box):
+    """A box can ``chmod 000`` the partition above a sibling's inbox: no ``rm`` cure."""
+    from kanibako.channels.roots import ChannelLinkError
+
+    part = _ch.box_channel_addresses(box, set_up).inbox.parent
+    part.chmod(0)
+    try:
+      with pytest.raises(ChannelLinkError) as exc:
+        self._emit(set_up, box)
+      key = f"box.bindings.rw[{self._INBOX}]"
+      assert _cure_lines(str(exc.value), key) == [
+        f"  {key}: {part} inside {set_up.channels_mailboxes} cannot be read,"
+        " so it cannot be checked for a link.",
+        f"    If a box made it: chmod u+rwx {part}",
+      ]
+      _run_cure(str(exc.value), "If a box made it:")
+      mounts = {m.destination: m.source for m in self._emit(set_up, box)}
+      assert mounts[self._INBOX] == part / box.name
+    finally:
+      part.chmod(0o755)
 
   def test_a_user_linked_top_level_root_still_binds(self, set_up, box, tmp_path):
     """The control: a channel root itself is the user's, and may be a link."""

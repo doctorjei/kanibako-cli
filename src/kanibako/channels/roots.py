@@ -11,7 +11,9 @@ when it is missing.
 
 from __future__ import annotations
 
+import os
 import shlex
+import stat
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -198,7 +200,20 @@ def _set_command(proj: ProjectPaths, key: str) -> str | None:
 def _link_lines(
   key: str, link: Path, outer: Path | None, box_cure: str, user_cure: str | None
 ) -> list[str]:
-  """The refusal lines for *key*, whose path has *link* under the channel root *outer*."""
+  """The refusal lines for *key*, whose path has *link* under the channel root *outer*.
+
+  ⚑ :func:`boxfs.first_symlink` fails closed: a directory it cannot open comes back as
+  if a link.  That one is named as unreadable, with a ``chmod`` cure instead of *box_cure*.
+  """
+  try:
+    is_link = stat.S_ISLNK(os.lstat(link).st_mode)
+  except OSError:
+    is_link = False
+  if not is_link:
+    return [
+      f"  {key}: {link} inside {outer} cannot be read, so it cannot be checked for a link.",
+      f"    If a box made it: chmod u+rwx {shlex.quote(str(link))}",
+    ]
   lines = [
     f"  {key}: {link} is a link inside {outer}, which a box can write.",
     f"    If a box made it: {box_cure}",
@@ -245,7 +260,7 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
     return None
   head = (
     f"Error: box '{proj.name or proj.project_path}' cannot launch: "
-    "a channel directory is missing or is a link, and a launch does not recreate one."
+    "a channel directory is missing, a link, or unreadable, and a launch does not recreate one."
   )
   return "\n".join([head, *lines])
 
@@ -276,7 +291,7 @@ def refuse_linked_channel_sources(
   if lines:
     subject = "this box" if proj is None else f"box '{proj.name or proj.project_path}'"
     head = (
-      f"{subject} cannot launch: a bind source is behind a link in a channel directory, "
-      "and a launch does not follow one."
+      f"{subject} cannot launch: a bind source is behind a link or an unreadable "
+      "directory in a channel directory, and a launch does not follow one."
     )
     raise ChannelLinkError("\n".join([head, *lines]))
