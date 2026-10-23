@@ -167,17 +167,23 @@ def tmp_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def config_file(tmp_home):
-  """Write a default kanibako.cfg, make the channel roots ``setup`` makes, and return
-  the config's path: a host after setup (a launch refuses a missing channel root)."""
+def bare_config_file(tmp_home):
+  """Write a default kanibako.cfg and return its path: a host with no store dirs yet,
+  for a test that a resolve creates nothing."""
+  cf = tmp_home / "config" / CONFIG_FILENAME
+  write_global_config(cf)
+  return cf
+
+
+@pytest.fixture
+def config_file(bare_config_file):
+  """:func:`bare_config_file` plus the channel roots ``setup`` makes: a host after setup
+  (a launch refuses a missing channel root)."""
   from kanibako.channels.roots import make_setup_channel_roots
   from kanibako.settings.paths import load_std_paths
 
-  config_home = tmp_home / "config"
-  cf = config_home / CONFIG_FILENAME
-  write_global_config(cf)
-  make_setup_channel_roots(load_std_paths(load_config(cf)))
-  return cf
+  make_setup_channel_roots(load_std_paths(load_config(bare_config_file)))
+  return bare_config_file
 
 
 @pytest.fixture

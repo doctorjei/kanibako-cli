@@ -460,6 +460,11 @@ class TestBoxChannelAddresses:
 
 
 class TestPurity:
+  @pytest.fixture
+  def config_file(self, bare_config_file):
+    """A host before setup: no channel root exists for a helper to be blamed for."""
+    return bare_config_file
+
   def test_no_dirs_created(self, primary_proj, std):
     addr = channels.box_channel_addresses(primary_proj, std)
     wch = channels.workset_channel_paths(primary_proj, std)

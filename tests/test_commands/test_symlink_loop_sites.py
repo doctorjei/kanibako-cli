@@ -366,7 +366,8 @@ class TestAMemberLeafUnderANullWorkspacesKey:
 class TestARollbackBesideALoopedStoreBase:
   """A ws→ws rollback that replaces a remnant compares against every store base of the
   source workset; a looped one must not stop the box tree's restore.  The record step
-  still fails there (it re-creates the vault leaf under the loop), and names the loop."""
+  makes no vault, so it restores; the vault step after the box tree fails under the loop
+  and names it."""
 
   def test_the_box_tree_restores_whole(
     self, config_file, tmp_home, credentials_dir, monkeypatch, tmp_path, capsys
@@ -420,11 +421,13 @@ class TestARollbackBesideALoopedStoreBase:
       )
     err = capsys.readouterr().err
     assert "could not restore the box tree" not in err, err
-    record = f"Note: could not restore the record of 'alpha' in workset 'ws1' at {leaf}: "
-    assert record in err, err
-    assert "Errno" not in err.split(record)[1].splitlines()[0], err
-    assert f"{state.vault_ro.parent}" in err.split(record)[1].splitlines()[0], err
-    assert "it is a symlink loop" in err.split(record)[1].splitlines()[0], err
+    assert "could not restore the record" not in err, err
+    vault = f"Note: could not restore the vault folders at {state.vault_rw}: "
+    assert vault in err, err
+    line = err.split(vault)[1].splitlines()[0]
+    assert "Errno" not in line, err
+    assert f"{state.vault_ro.parent}" in line, err
+    assert "it is a symlink loop" in line, err
     assert (state.shell_path / "h.txt").read_text() == "home"
 
 

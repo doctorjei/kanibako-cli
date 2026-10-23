@@ -21,23 +21,38 @@ from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
 
 
 @pytest.fixture
-def early_reads(monkeypatch) -> list[str]:
-  """The scope names every early read is made under; a read with no scope raises."""
+def _early_log(monkeypatch) -> tuple[list[str], list[tuple[Path, str]]]:
+  """Every early read's scope name, and its ``(workset root, scope name)``; a read with no
+  scope raises."""
   from kanibako.settings import workset_dirkeys
 
   real = workset_dirkeys.early_repoint
-  seen: list[str] = []
+  names: list[str] = []
+  pairs: list[tuple[Path, str]] = []
 
   def spy(workset_root, workset_settings, key, *, early=None):
     if early is None:
       raise AssertionError(f"workset.{key} under {workset_root} was read with no record")
-    seen.append(early.workset_name)
+    names.append(early.workset_name)
+    pairs.append((Path(workset_root), early.workset_name))
     return real(workset_root, workset_settings, key, early=early)
 
   for module in list(sys.modules.values()):
     if getattr(module, "early_repoint", None) is real:
       monkeypatch.setattr(module, "early_repoint", spy)
-  return seen
+  return names, pairs
+
+
+@pytest.fixture
+def early_reads(_early_log) -> list[str]:
+  """The scope names every early read is made under."""
+  return _early_log[0]
+
+
+@pytest.fixture
+def early_read_pairs(_early_log) -> list[tuple[Path, str]]:
+  """``(workset root, scope name)`` for every early read."""
+  return _early_log[1]
 
 
 def _team(std, tmp_home: Path):
@@ -53,14 +68,18 @@ class TestWorksetSites:
     # The logs-share check walks the default workset under the token its boxes read.
     assert set(early_reads) == {"team", WS_TOKEN_PRIMARY}
 
-  def test_connect_and_release_a_member(self, std, tmp_home, early_reads):
+  def test_connect_and_release_a_member(self, std, tmp_home, early_read_pairs):
     ws = _team(std, tmp_home)
     source = tmp_home / "ext-src"
     source.mkdir()
-    early_reads.clear()
+    early_read_pairs.clear()
     workset.add_project(ws, "ext", source, std)
     workset.release_project(ws, "ext")
-    assert set(early_reads) == {"team"}
+    # The vault lay resolves the system tier, which reads the default workset's keys:
+    # each workset is read under its own name.
+    token_of = {ws.root: "team", std.primary_workset: WS_TOKEN_PRIMARY}
+    assert (ws.root, "team") in early_read_pairs
+    assert all(token_of.get(root) == name for root, name in early_read_pairs), early_read_pairs
 
 
 class TestStartSites:

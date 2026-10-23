@@ -724,8 +724,15 @@ class TestPurgeGuardRows:
     An empty "KEEPS these 0" header would be noise, and worse, would make the ordering
     rule look satisfied by a purge that kept nothing at all.
     """
+    from kanibako.channels.channels import WS_TOKEN_STANDALONE
+
     root = tmp_home / "sa"
     _create(root, standalone=True)
+    # ``create`` makes the box's inbox, which a purge keeps; remove it so that
+    # nothing is left to keep.
+    partition = _std(config_file).channels_mailboxes / WS_TOKEN_STANDALONE
+    (inbox,) = partition.iterdir()
+    inbox.rmdir()
     capsys.readouterr()
     _closed_stdin(monkeypatch)
 

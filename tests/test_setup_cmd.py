@@ -25,6 +25,14 @@ class _FakeTarget:
   def detect(self):
     return object() if self._detects else None
 
+  # The two bind hooks every real ``Target`` inherits from the base (both ``{}``);
+  # store creation reads them for the declared read-write leaves.
+  def default_common(self):
+    return {}
+
+  def default_category_binds(self):
+    return {}
+
 
 def _make_target(name: str, detects: bool = True):
   """A plugin class DECLARING *name* — its ``Target.name``, in the plugin's own case.

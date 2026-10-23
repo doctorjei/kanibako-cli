@@ -45,7 +45,7 @@ def _primary_names(std):
 
 
 class TestLoadStdPaths:
-  def test_resolves_without_creating(self, config_file, tmp_home):
+  def test_resolves_without_creating(self, bare_config_file, tmp_home):
     """``load_std_paths`` RESOLVES ONLY — it creates nothing.
 
     The eager-``mkdir`` block stood here until the set-door brick repair: one
@@ -54,7 +54,7 @@ class TestLoadStdPaths:
     store materializes at its own point of use, so the resolve answers the
     same paths and leaves the filesystem alone.
     """
-    config = load_config(config_file)
+    config = load_config(bare_config_file)
     std = load_std_paths(config)
 
     # Anti-vacuity: the resolve really answered, so the absences below say
