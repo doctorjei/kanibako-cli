@@ -161,16 +161,19 @@ def is_channel_root(std: StandardPaths, proj: ProjectPaths | None, path: Path) -
   return any(p == path for _, p in _box_roots(std, proj))
 
 
-def covering_channel_root(
+def outermost_channel_root(
   std: StandardPaths, proj: ProjectPaths | None, path: Path
 ) -> Path | None:
-  """The deepest of *proj*'s channel roots at or above *path*, or ``None``.
+  """The SHALLOWEST of *proj*'s channel roots at or above *path*, or ``None``.
 
   A channel root is box-writable, so a host file call under it takes it as the
   :mod:`kanibako.boxfs` seam root: no link a box planted below it is followed.
+  ⚑ The outermost, never the deepest: a root nested in another is itself writable by
+  every box with the outer root, which can swap it for a link, and the seam trusts
+  its root.
   """
   covering = [p for _, p in _box_roots(std, proj) if p is not None and path.is_relative_to(p)]
-  return max(covering, key=lambda p: len(p.parts), default=None)
+  return min(covering, key=lambda p: len(p.parts), default=None)
 
 
 def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | None:
@@ -180,19 +183,30 @@ def missing_channel_root_error(std: StandardPaths, proj: ProjectPaths) -> str | 
   ``mkdir -p``.  A null key names no root.
   """
   roots = _box_roots(std, proj)
-  missing = [(k, p) for k, p in roots if p is not None and not p.is_dir()]
-  if not missing:
-    return None
   setup_made = set(_setup_roots(std))
-  lines = [
+  lines: list[str] = []
+  for key, path in roots:
+    if path is None:
+      continue
+    # ⚑ A root nested in another is checked through the seam from the outer one: a
+    # link there (a box can plant one) is not a root, though ``is_dir`` follows it.
+    outer = outermost_channel_root(std, proj, path)
+    if outer is not None and outer != path and boxfs.first_symlink(path, outer) is not None:
+      lines.append(
+        f"  {key}: {path} — a link inside {outer}, which a box can write; "
+        "replace it with a directory"
+      )
+    elif not path.is_dir():
+      cure = (
+        "run 'kanibako setup'"
+        if path in setup_made
+        else f"create it with: mkdir -p {shlex.quote(str(path))}"
+      )
+      lines.append(f"  {key}: {path} — {cure}")
+  if not lines:
+    return None
+  head = (
     f"Error: box '{proj.name or proj.project_path}' cannot launch: "
-    "a channel directory is missing, and a launch does not recreate one."
-  ]
-  for key, path in missing:
-    cure = (
-      "run 'kanibako setup'"
-      if path in setup_made
-      else f"create it with: mkdir -p {shlex.quote(str(path))}"
-    )
-    lines.append(f"  {key}: {path} — {cure}")
-  return "\n".join(lines)
+    "a channel directory is missing or is a link, and a launch does not recreate one."
+  )
+  return "\n".join([head, *lines])

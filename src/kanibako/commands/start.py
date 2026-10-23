@@ -121,7 +121,7 @@ from kanibako.agent_ref import (
   with_harness,
 )
 from kanibako.channels.roots import (
-  covering_channel_root,
+  outermost_channel_root,
   is_channel_root,
   make_proj_inbox,
   missing_channel_root_error,
@@ -11341,10 +11341,10 @@ def _seed_channel_files(std, proj) -> None:
       for log in (general, broadcast):
         if log is None:
           continue
-        # ⚑ The seam root is the channel root covering the log, so a link a box
-        # planted between it and the log is refused; only a dir outside every
+        # ⚑ The seam root is the OUTERMOST channel root covering the log, so a link a
+        # box planted between it and the log (a swapped nested root too) is refused; only a dir outside every
         # channel root (no box writes there) is its own root.
-        root = covering_channel_root(std, proj, log.parent) or log.parent
+        root = outermost_channel_root(std, proj, log.parent) or log.parent
         if not boxfs.no_symlink_or_warn(log, root):
           continue
         if not log.parent.is_dir():

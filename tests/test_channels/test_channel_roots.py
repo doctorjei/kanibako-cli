@@ -231,6 +231,41 @@ class TestTheLaunchRefusesAMissingRoot:
     # The control: the scope's general log is still seeded.
     assert (chat / "general.md").is_file()
 
+  def _nest_workset_chat_in_the_system_chat(self, ws, set_up, tmp_path):
+    """``workset.channels.chat = {system.channels.chat}/nest``, and a box with the
+    outer root rw has swapped ``nest`` for a link to *outside*."""
+    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.config_io import write_nested_key
+    from kanibako.settings.config_keys import _KEY_ROUTES
+
+    nest = set_up.channels_chat / "nest"
+    sections, leaf = _KEY_ROUTES["workset.channels.chat"]
+    write_nested_key(ws.root / WORKSET_META_FILE, sections, leaf, str(nest))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    nest.symlink_to(outside)
+    return nest, outside
+
+  def test_a_nested_root_swapped_for_a_link_writes_nothing_outside(
+    self, named, set_up, tmp_path, caplog
+  ):
+    from kanibako.commands.start import _seed_channel_files
+
+    ws, proj = named
+    _nest, outside = self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
+    with caplog.at_level(logging.WARNING):
+      _seed_channel_files(set_up, proj)
+    assert list(outside.rglob("*")) == []
+    # The control: the outer root's own logs are still seeded.
+    assert (set_up.channels_chat / "general.md").is_file()
+
+  def test_a_nested_root_swapped_for_a_link_refuses_the_launch(self, named, set_up, tmp_path):
+    ws, proj = named
+    nest, _outside = self._nest_workset_chat_in_the_system_chat(ws, set_up, tmp_path)
+    err = missing_channel_root_error(set_up, proj)
+    assert err is not None
+    assert f"workset.channels.chat: {nest} — a link inside {set_up.channels_chat}" in err
+
   def test_a_broadcast_repointed_into_a_missing_root_makes_no_root(self, named, set_up):
     from kanibako.commands.start import _seed_channel_files
 
