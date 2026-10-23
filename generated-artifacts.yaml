@@ -71,6 +71,7 @@ artifacts:
   api-docs/kanibako/channels/helper_listener.py.md:
   api-docs/kanibako/channels/helpers.py.md:
   api-docs/kanibako/channels/hub_daemon.py.md:
+  api-docs/kanibako/channels/roots.py.md:
   api-docs/kanibako/cli.py.md:
   api-docs/kanibako/commands/__init__.py.md:
   api-docs/kanibako/commands/agent_cmd.py.md:

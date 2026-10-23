@@ -16,6 +16,7 @@ def _write_system_agent(name: str) -> None
 def _write_setup_marker() -> None
 def _run_template_refresh(args: argparse.Namespace) -> TemplateStep
 def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None
+def _make_channel_roots() -> None
 def _run_agent_selection(args: argparse.Namespace) -> str | None
 ```
 

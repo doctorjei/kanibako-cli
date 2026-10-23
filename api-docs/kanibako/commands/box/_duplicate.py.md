@@ -25,8 +25,8 @@ def _refuse_unmarked_source(source: DetectionResult, std) -> int | None
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int
 def _merge_workspace(src: Path, dst: Path, force: bool, *, share_root_link: bool=False) -> None
 def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bool) -> None
+def _make_duplicate_inbox(dest: Path, std, config) -> None
 def _source_authored_vault(src_proj) -> bool
-def _lay_empty_vault(std, mode: BoxMode, metadata_path: Path, arms: tuple[Path | None, Path | None], made: list[Path]) -> None
 def _unwind_vault_arms(made: list[Path]) -> None
 def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, carried, *, register: bool)
 def _undo_new_path(path: Path, existed: bool, before: frozenset[str] | None) -> None

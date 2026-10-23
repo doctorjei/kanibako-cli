@@ -54,6 +54,7 @@ def _assert_contained(target: Path, root: Path, *, what: str) -> None
 def _packaged_base_template() -> Path | None
 def _packaged_shared_bundle() -> Path | None
 def _packaged_agent_store(agent_name: str) -> Path | None
+def _declared_rw_store_leaves(name: str) -> list[str]
 def _core_chapter_due(store: Path, *earlier: Path | None) -> bool
 def _assert_stamp_leaf_in_root(workset_path: Path, doc: Mapping[str, Any] | None, resolved: Path, leaf: str, *, early: EarlyScope) -> None
 def _workset_stamp_dirs(workset_path: Path, *, canon_only: bool, early: EarlyScope) -> tuple[Path | None, Path | None]
