@@ -293,8 +293,8 @@ def _ensure_initialized() -> None:
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
     sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
-    # The channel type-root skeleton is not pre-created here: the launch path creates
-    # it (start.py), and no host-side pre-launch consumer of it exists.
+    # The channel roots are setup's to make; a launch refuses a missing one.
+    from kanibako.channels.roots import make_setup_channel_roots
 
     # Create agents directory and generate default per-agent settings files.
     # Each agent's settings live INSIDE its store dir as
@@ -350,6 +350,7 @@ def _ensure_initialized() -> None:
     # a Layer-1 read carries no settings for this call to have wanted.
     std_paths = load_std_paths()
     install_packaged_templates(std_paths, target_names)
+    make_setup_channel_roots(std_paths)
   except BaseException:
     cf.unlink(missing_ok=True)
     raise

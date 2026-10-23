@@ -524,6 +524,7 @@ def run_setup(args: argparse.Namespace) -> int:
   # Step 5: Template refresh (TRUE REFRESH of the system-owned staging).
   template_step = _run_template_refresh(args)
   print()
+  _make_channel_roots()
 
   # Mark setup complete — but ONLY when Step 5 reached a settled state (see
   # ``TemplateStep.records_completion``, which says what withholding does NOT
@@ -570,6 +571,19 @@ def run_setup(args: argparse.Namespace) -> int:
   # ⚑ The exit status carries the same claim the banner does: a run that
   # recorded nothing is a FAILED setup for anything scripting it.
   return 0 if recorded else 1
+
+
+def _make_channel_roots() -> None:
+  """Make the channel roots setup owns; a launch refuses a missing one."""
+  from kanibako.channels.roots import make_setup_channel_roots
+  from kanibako.settings.config import load_config
+  from kanibako.settings.paths import load_std_paths
+
+  cf, _ = _settings_paths()
+  try:
+    make_setup_channel_roots(load_std_paths(load_config(cf)))
+  except OSError as e:
+    raise KanibakoError(f"could not create the channel directories: {e}") from e
 
 
 def _run_agent_selection(args: argparse.Namespace) -> str | None:

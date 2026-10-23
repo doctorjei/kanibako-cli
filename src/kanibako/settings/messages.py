@@ -83,11 +83,9 @@ WARN_BOX_HOME_REBUILT = (
 WARN_BOX_HOME_SEEDED = (
   "Note: box '%s' has no home directory (%s); this launch creates it " + "and seeds it."
 )  # box name, the home path
-WARN_BOX_WORKSPACE_REBUILT = (
-  "Warning: the workspace for box '%s' is missing (%s); this launch "
-  + "creates a new, empty folder there, and work done in the box lands "
-  + "in it."
-)  # box name, the workspace path
+# Information, never a warning: creating a missing read-write source is the rule.
+NOTE_RW_SOURCE_CREATED = "Note: created the missing read-write source %s (bound at %s)."
+# the host path, the box destination
 
 # ⚑ The 1st arg of each pair below is a LAYER DISCRIMINATOR, not a value; BAD_REF's is spliced
 # before "reference", so "" is load-bearing punctuation ("Unknown reference:").

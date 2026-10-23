@@ -1993,7 +1993,10 @@ class TestWorksetSkeletonMarker:
 
     root = tmp_home / "worksets" / "shared"
     create_workset("shared", root, std)
-    stamped = sorted(p for p in root.resolve().iterdir() if p.is_dir())
+    # ``channels/`` is made beside the skeleton, never in it: a workset made before it
+    # must still be detected.
+    assert (root.resolve() / "channels").is_dir()
+    stamped = sorted(p for p in root.resolve().iterdir() if p.is_dir() and p.name != "channels")
     assert stamped == sorted(
       _workset_skeleton_dirs(root.resolve(), early=_early_scope(std, BoxMode.named, "shared"))
     )
