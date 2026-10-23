@@ -50,14 +50,6 @@ from kanibako.settings.config_keys import _KEY_ROUTES
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _set_up(std):
-  """A host after ``setup``, which makes the channel roots a launch never recreates."""
-  from kanibako.channels.roots import make_setup_channel_roots
-
-  make_setup_channel_roots(std)
-
-
 @pytest.fixture
 def primary_proj(std, config, project_dir):
   return resolve_project(std, config, str(project_dir), initialize=True)

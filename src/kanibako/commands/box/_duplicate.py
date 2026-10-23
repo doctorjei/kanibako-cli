@@ -522,6 +522,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
       raise
 
   _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
+  _make_duplicate_inbox(new_path, std, config)
   print(f"Duplicated project to {target_mode.value} mode:")
   print(f"  from: {source_path}")
   print(f"    to: {new_path}")
@@ -580,6 +581,22 @@ def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bo
     pairs.append((src.workspace_path, dst.workspace_path))
   links = plan_box_mounted_links(src, [old for old, _new in pairs])
   repoint_box_mounted_links(links, dict(pairs), dst)
+
+
+def _make_duplicate_inbox(dest: Path, std, config) -> None:
+  """Make the inbox of the duplicate at *dest*: a box's inbox is made with the box.
+
+  A duplicate copies no mail (nothing here reads a mailbox), so the new inbox starts
+  empty.  Best-effort: when it cannot be made, the first launch makes it, with a Note.
+  """
+  from kanibako.channels.roots import make_proj_inbox
+  from kanibako.errors import KanibakoError
+  from kanibako.settings.paths import resolve_box_target
+
+  try:
+    make_proj_inbox(std, resolve_box_target(std, config, str(dest), warn=False))
+  except (KanibakoError, OSError, ValueError):
+    pass
 
 
 def _source_authored_vault(src_proj) -> bool:
@@ -1049,13 +1066,9 @@ def _duplicate_to_workset(args, std, config) -> int:
     copy_workspace=not args.bare and workspace_src is not None,
     std=std,
   )
-  _repoint_duplicated_links(
-    source_path,
-    ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name,
-    std,
-    config,
-    bare=args.bare,
-  )
+  dup_workspace = ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name
+  _repoint_duplicated_links(source_path, dup_workspace, std, config, bare=args.bare)
+  _make_duplicate_inbox(dup_workspace, std, config)
 
   print("Duplicated project to workset:")
   print(f"  from:    {source_path}")
@@ -1191,6 +1204,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
       return 1
 
   _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
+  _make_duplicate_inbox(new_path, std, config)
   print(f"Duplicated project to {target_mode.value} mode:")
   print(f"  from: {ws.name}/{proj_name}")
   print(f"    to: {new_path}")
@@ -1361,6 +1375,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     raise
 
   _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
+  _make_duplicate_inbox(new_path, std, config)
   print("Duplicated project:")
   print(f"  from: {source_path} ({source_name})")
   print(f"    to: {new_path} ({dup_name})")

@@ -332,7 +332,8 @@ migration code.** Four released config surfaces are removed outright
   roots and the primary workset's, `workset create` a named workset's, and `create` a box's inbox. A
   launch whose workspace or channel root is missing exits 1, naming each path and its cure (`kanibako
   setup`, or `mkdir -p`); a standalone box's missing workspace is no longer recreated empty. Any
-  other missing read-write source is still created, now with a `Note:` line on stderr. See
+  other missing read-write source is still created, now with a `Note:` line on stderr; the
+  missing-vault advisory is a `Note:` too, printed once by the launch that creates it. See
   `MIGRATION.md`, "A missing bind source is handled by destination, not by who declared it".
 - **References are braced: `{a.b.c}` names a key and `{$NAME}` a variable.** For this release, a bare `@a.b.c`
   naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command,
