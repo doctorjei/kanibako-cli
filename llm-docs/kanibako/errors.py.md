@@ -338,8 +338,8 @@ for reaching the container without an agent.
 `system.agent` resolved to present-`None`: no default is set, so an agent must be named.
 
 Raised in `select_agent`, not here — `resolve_agent` receives `None` for BOTH absent arguments and
-cannot tell the two states apart. ⚑ **It is reachable by TYPO:** YAML reads `null`, `Null`, `NULL`,
-`~` and a key left blank after its colon as Python `None`. `None`/`none` are STRINGS and land on
+cannot tell the two states apart. ⚑ **It is reachable by TYPO:** kanibako reads `null`, `Null`,
+`NULL`, `None`, `~` and a blank value as Python `None`. `'None'`/`none` are STRINGS and land on
 `AgentNotInstalledError` instead, so these three messages must stay mutually unmistakable.
 
 ```class AgentNotInstalledError(AgentResolutionError):```
