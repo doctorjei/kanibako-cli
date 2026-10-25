@@ -168,10 +168,7 @@ def _layer1_settings_keys(data: dict) -> list[str]:
   behaved like a carve-out.  All three are settings tables that do not belong in this file,
   so all three are refused, and the message names the table it can see.
 
-  ⚑ ``str(name)`` BECAUSE A YAML KEY NEED NOT BE A STRING (2026-09-09).  ``1: x``,
-  ``true: x`` and ``~: x`` are all legal YAML, and the raw key reached ``sorted`` and
-  ``"\\n  ".join`` as an ``int``/``bool``/``None`` — a ``TypeError`` traceback in the one
-  file whose whole purpose is that a hand-editing user FINDS OUT.
+  ⚑ ``str(name)`` is defensive: ``load_doc`` already refuses a key that is not text.
   """
   keys: list[str] = []
   for name, value in data.items():
@@ -1029,9 +1026,7 @@ def _flatten_leaves(
   ``config:`` refusal and its stored view (``settings_assemble.stored_config_entries``),
   which reads that table exactly as the Layer-1 read would and DISPLAYS the values —
   ``str()`` would print a stored ``null`` as ``None``, a spelling the file never held.
-  ⚑ ``str(k)`` ON THE UNPREFIXED ARM: a YAML key need not be a string, and only the
-  f-string arm stringified one — so a top-level ``1: x`` handed an ``int`` to callers
-  that sort and join (:func:`_layer1_settings_keys`).
+  ⚑ ``str(k)`` on the unprefixed arm is defensive: ``load_doc`` refuses a key that is not text.
 
   ⚑ *with_nodes* ALSO REPORTS A ``dict`` POSITION AS ITS OWN ENTRY before descending: a
   MAP IS OTHERWISE INVISIBLE HERE, its leaf spelled one segment deeper — which is how a
