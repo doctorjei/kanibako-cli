@@ -688,7 +688,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
   # ``cfg.state`` above keep it, and for the same reason: it is the DECLARED
   # suppression state (spec §2h's present-``None``), not a malformed one. A bare
   # ``str()`` turned ``FOO:`` into the four-byte string ``"None"`` INSIDE the record —
-  # after which no reader could tell it from a user who really wrote ``FOO: None``, and
+  # after which no reader could tell it from a user who really wrote ``FOO: 'None'``, and
   # the file fallback that answers ``null`` for every other category was never reached.
   # The two tables disagreed about one idiom while sitting two lines apart.
   env_sub = agent_sec.get("env", {})

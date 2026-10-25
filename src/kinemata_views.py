@@ -1496,7 +1496,7 @@ def plugin_descriptors() -> list[str]:
 
 def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]:
   """`(location, row)` for every mapping in *source* that carries `owner:`."""
-  import yaml
+  from kanibako.settings.config_io import parse_packaged
 
   found: list[tuple[str, dict[str, Any]]] = []
 
@@ -1510,7 +1510,7 @@ def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]:
       for index, value in enumerate(node):
         walk(value, f"{where}[{index}]")
 
-  walk(yaml.safe_load((_TREE / source).read_text()), "")
+  walk(parse_packaged((_TREE / source).read_text()), "")
   return found
 
 
@@ -1595,11 +1595,11 @@ class AgentCredFiles(_TailRegistry):
     super().__init__(name=name, **options)
 
   def _rows(self) -> list[dict[str, object]]:
-    import yaml
+    from kanibako.settings.config_io import parse_packaged
 
     out: list[dict[str, object]] = []
     for source in plugin_descriptors():
-      doc = yaml.safe_load((_TREE / source).read_text()) or {}
+      doc = parse_packaged((_TREE / source).read_text()) or {}
       for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
         out.append({"key": str(cred["host_rel"]), "source": source})
     return out

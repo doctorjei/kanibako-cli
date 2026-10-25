@@ -9,8 +9,8 @@ Because the metadata lives at a fixed path inside the rootfs, it rides
 ``podman save`` / ``load`` / ``push`` natively -- whoever ends up with the image
 also ends up with its ``rig.yaml``, no side-channel required.
 
-All on-disk serialization goes through PyYAML: writing with ``yaml.safe_dump``,
-reading through :func:`kanibako.settings.config_io.parse_doc_text`, which is a
+All on-disk serialization goes through PyYAML: writing with
+:func:`kanibako.settings.config_io._dump_text`, reading through :func:`kanibako.settings.config_io.parse_doc_text`, which is a
 SafeLoader with kanibako's document refusals on top. There is no hand-rolled
 serializer or parser here.
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 import yaml  # type: ignore[import-untyped]
 
 from kanibako._atomic import atomic_write_text
-from kanibako.settings.config_io import parse_doc_text, yaml_problem
+from kanibako.settings.config_io import _dump_text, parse_doc_text, yaml_problem
 
 
 @dataclass
@@ -67,7 +67,7 @@ def dump_rig_meta(meta: RigMeta) -> str:
     if field_name not in _ALWAYS and value is None:
       continue
     data[field_name] = value
-  return yaml.safe_dump(data, sort_keys=False)
+  return _dump_text(data)
 
 
 def write_rig_meta(meta: RigMeta, path: Path) -> None:

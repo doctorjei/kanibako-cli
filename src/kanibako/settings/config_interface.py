@@ -2,7 +2,7 @@
 
 **_Argument grammar_**
 - ``key=value`` → set · ``key`` → get · no args → show overrides · ``--effective`` → resolved
-- ``--null key`` → SET an explicit present-``None``; ``reset key`` is the verb that UNDOES it
+- ``--null key`` or ``key=None`` → SET an explicit present-``None``; ``reset key`` UNDOES it
 - ``reset --all`` → remove all overrides (with confirmation)
 
 ⚑ ``reset`` is a sibling VERB (``box reset <key>``), not a ``--reset`` flag — none is defined.
@@ -204,14 +204,19 @@ def parse_config_arg(
   *,
   set_null: bool = False,
 ) -> "tuple[ConfigAction, str, str | None]":
-  """Parse a single positional config argument into ``(action, key, value)``."""
+  """Parse a single positional config argument into ``(action, key, value)``.
+
+  A value of exactly ``None`` is the null, as ``--null`` writes and as a settings file reads
+  it; ``null`` stays the four-character string.
+  """
   if set_null:
     return (ConfigAction.set, (arg or "").strip(), None)
   if arg is None:
     return (ConfigAction.show, "", "")
   if "=" in arg:
     key, _, value = arg.partition("=")
-    return (ConfigAction.set, key.strip(), value.strip())
+    value = value.strip()
+    return (ConfigAction.set, key.strip(), None if value == "None" else value)
   return (ConfigAction.get, arg.strip(), "")
 
 
