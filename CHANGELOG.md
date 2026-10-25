@@ -332,7 +332,9 @@ migration code.** Four released config surfaces are removed outright
   `None` now means `null`; it used to be the string `None` (so `box.enable_vault: None` read as
   true). `set <key>=None` writes what `--null` writes and is refused where `--null` is. A quoted
   `'None'` in a file is still a string, and `set <key>=null` still stores the string `null`. A
-  mapping key that is not text (`None:`, `~:`, `true:`, `1:`) is refused by name instead of crashing.
+  mapping key that is not text (`None:`, `~:`, `true:`, `1:`), in any settings file or
+  `kanibako.cfg`, is refused instead of crashing: "has a key at '<table>' that YAML reads as null,
+  not a name. Quote that key, then retry."
 - **A launch no longer creates a workspace or a channel root.** `setup` makes the system channel
   roots and the primary workset's, `workset create` a named workset's, and `create` a box's inbox. A
   launch whose workspace or channel root is missing exits 1, naming each path and its cure (`kanibako
@@ -1366,12 +1368,6 @@ migration code.** Four released config surfaces are removed outright
   the whole store back at its default location in silence; it now names the offending value. A
   `config:` with nothing under it still reads as the empty foundation, which is what an
   `init`-written (zero-byte) file means. Same MIGRATION.md section as above.
-
-- **A non-string top-level key in `kanibako.cfg` produces the refusal instead of a traceback.**
-  `1: x`, `true: x` and `~: x` are all legal YAML, and the key reached the refusal's sort-and-join
-  as an `int`/`bool`/`None`, so the file whose whole purpose is that you find out answered with a
-  `TypeError` stack instead. Reachable only by hand-writing that file — which is the population
-  the refusal exists for.
 
 - **An undeclared FLAT key spelling is no longer read as a settings key.** A top-level `box_image:`
   resolved identically to the declared `box: image:` — two spellings for one key, one of which the

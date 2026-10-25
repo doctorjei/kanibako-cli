@@ -27,8 +27,8 @@ verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.
 
 ### Why `--null` is a FLAG and not a magic value token
 
-`config set` stores scalars VERBATIM — nothing in it YAML- or literal-parses a value (only keys
-declared `bool` in `KEY_TYPES` coerce, and `None` reads as null as it does in a file) — so no
+`config set` stores scalars VERBATIM — nothing in it YAML- or literal-parses a value (only
+`KEY_TYPES` bools coerce, and `None` is null, as in a file) — so no
 rule turns the string `"null"` into `None`, and one for this route alone would be a dialect:
 `box.env.X=null` and `box.image=null` are legitimate strings. The flag says what is meant,
 applies to EVERY key whose leaf accepts the present-`None` terminal, and cannot collide with

@@ -785,10 +785,8 @@ DATA, not a key segment — so nothing here flattens one.
 
 ⚑ A `null` leaf becomes the string `"None"`, so both path reads call `_refuse_null_paths` first.
 
-⚑ **`str(k)` ON THE UNPREFIXED ARM (in `_flatten_leaves`): a YAML key need not be a string.** A
-top-level `1:` / `true:` / `~:` would otherwise hand an `int`/`bool`/`None` to
-`_layer1_settings_keys`, which sorts and joins — a `TypeError` traceback in the one file whose
-whole purpose is that a hand-editing user finds out.
+⚑ `str(k)` on `_flatten_leaves`' unprefixed arm is defensive: `load_doc` refuses a key that is not
+text.
 
 ```_refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None```
 Refuse a `null` at any of *path_keys* in *table*, naming *path* and the keys. It raises through

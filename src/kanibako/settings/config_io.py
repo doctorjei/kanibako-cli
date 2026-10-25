@@ -339,7 +339,7 @@ def load_doc(path: Path | None) -> dict:
 
 
 def _unnamed_key(data: dict) -> tuple[str, object] | None:
-  """``(table path, key)`` of the first mapping key in *data* that is not a ``str``, else None.
+  """``(table path, key)`` of a mapping key in *data* that is not a ``str``, else None.
 
   ⚑ Config documents only (:func:`load_doc`), never :func:`parse_doc_text`: a template
   file kanibako merely compares may hold ``on:`` or ``8080:`` keys legitimately.
