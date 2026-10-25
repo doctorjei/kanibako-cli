@@ -52,7 +52,7 @@ from tests.e2e.conftest import (
   e2e_requires,
   run_kanibako,
 )
-from tests.e2e.test_instructions_delivery import rm, run_install
+from tests.e2e.test_instructions_delivery import rm
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
@@ -214,7 +214,6 @@ def test_codex_delivery_real_box(e2e_env):
   (both seams reconverge on the real path)."""
   env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_deliv"
   _seed_codex_stub(e2e_env)
-  run_install(env)
 
   r = run_kanibako(["create", str(project), "--name", box], env=env)
   assert r.returncode == 0, f"create failed: {r.stderr}"
@@ -277,7 +276,6 @@ def test_codex_box_has_charter_pid_helper(e2e_env):
   """
   env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_rom"
   _seed_codex_stub(e2e_env)
-  run_install(env)
   name = box_container(box)
 
   r = run_kanibako(["create", str(project), "--name", box], env=env)
@@ -299,7 +297,6 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
   the marker PID with the panel surface attached triggers SELF_HEAL_CLI; all
   surfaces gone → TEARDOWN (container exits)."""
   env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_watch"
-  run_install(env)
   name = box_container(box)
 
   r = run_kanibako(["create", str(project), "--name", box], env=env)
@@ -527,7 +524,6 @@ def test_codex_ppid_marker_real_cli(e2e_env):
   the CLI half; the panel/app-server half stays manual M1)."""
   env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_ppid"
   _forward_real_codex_creds(e2e_env)
-  run_install(env)
   name = box_container(box)
   r = run_kanibako(["create", str(project), "--name", box], env=env)
   assert r.returncode == 0, f"create failed: {r.stderr}"
