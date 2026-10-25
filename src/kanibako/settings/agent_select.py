@@ -26,8 +26,8 @@ are deliberately NOT the same sentence:
 * ``system.agent`` **present-``None``** — a settings file declined to name a default ⇒
   :class:`~kanibako.errors.AgentNoDefaultError`, which asks for a name.
 
-A third, unrelated failure is easy to confuse with them and must stay distinct: YAML
-reads ``None``/``none`` as STRINGS, so those spellings request an agent by that name
+A third, unrelated failure is easy to confuse with them and must stay distinct: kanibako
+reads ``'None'``/``none`` as STRINGS, so those spellings request an agent by that name
 and fail as *not installed*.
 
 The reference material lives in ``llm-docs/kanibako/settings/agent_select.py.md``:

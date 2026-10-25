@@ -138,9 +138,9 @@ class AgentUnsetError(AgentResolutionError):
 class AgentNoDefaultError(AgentResolutionError):
   """``system.agent`` resolved to present-``None``: no default is set (spec §2b).
 
-  ⚑ Reachable BY TYPO — YAML reads ``null``, ``Null``, ``NULL``, ``~`` and a bare
-  key with nothing after the colon as Python ``None`` — so the message names the
-  spellings. (``None``/``none`` are STRINGS and fail as an unknown agent instead,
+  ⚑ Reachable BY TYPO — kanibako reads ``null``, ``Null``, ``NULL``, ``None``, ``~`` and a
+  bare key with nothing after the colon as Python ``None`` — so the message names the
+  spellings. (``'None'``/``none`` are STRINGS and fail as an unknown agent instead,
   which is why this message must not read like that one.)
   """
 

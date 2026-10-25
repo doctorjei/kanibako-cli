@@ -891,7 +891,7 @@ def test_a_non_string_sub_key_refuses_through_the_cli(tree) -> None:
   first = tree.cli("agent", "show", "claude")
   refusal = first.stdout + first.stderr
   assert first.returncode != 0, refusal
-  assert "`self.1.env` is not a settings key" in refusal, refusal
+  assert "has a key at 'self' that YAML reads as 1, not a name. Quote that key" in refusal, refusal
   assert "Traceback" not in refusal and "TypeError" not in refusal, refusal
 
 

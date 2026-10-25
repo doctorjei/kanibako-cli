@@ -601,8 +601,8 @@ class TestSelectAgentSeam:
 
   @pytest.mark.parametrize(
     "spelling",
-    ["null", "Null", "NULL", "~", ""],
-    ids=["null", "Null", "NULL", "tilde", "blank-after-colon"],
+    ["null", "Null", "NULL", "~", "", "None"],
+    ids=["null", "Null", "NULL", "tilde", "blank-after-colon", "python-None"],
   )
   def test_a_null_request_refuses_saying_no_default_is_set(
     self,
@@ -647,16 +647,17 @@ class TestSelectAgentSeam:
     # 🛑 NOT the other refusal: this one must never send the reader to setup.
     assert "kanibako setup" not in msg
 
-  def test_the_python_spelling_of_none_is_a_NAME_not_the_null_state(
+  @pytest.mark.parametrize("spelling", ["'None'", "none"], ids=["quoted-None", "none"])
+  def test_a_quoted_none_or_lowercase_none_is_a_NAME_not_the_null_state(
     self,
     tmp_path,
     monkeypatch,
+    spelling,
   ):
-    """``None``/``none`` are STRINGS in YAML — a third failure, kept distinct.
+    """A plain ``None`` is the null (above); a quoted ``'None'`` or ``none`` is a STRING.
 
-    A Python-literate user reaching for the wrong spelling asks for an agent
-    LITERALLY CALLED "None" and is told it is not installed. Neither refusal
-    above may be confusable with that; this pins the fork.
+    It asks for an agent LITERALLY CALLED that and is told it is not installed — a
+    third failure, never confusable with the null refusal; this pins the fork.
     """
     from kanibako.errors import AgentNoDefaultError, AgentNotInstalledError
     from kanibako.settings.agent_select import select_agent
@@ -667,11 +668,11 @@ class TestSelectAgentSeam:
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text("pref:\n  system:\n    agent: None\n")
+    box_file.write_text(f"pref:\n  system:\n    agent: {spelling}\n")
     with pytest.raises(AgentNotInstalledError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
-    assert "'None' is not installed" in msg
+    assert f"'{spelling.strip(chr(39))}' is not installed" in msg
     assert "No default agent" not in msg
     assert not isinstance(ei.value, AgentNoDefaultError)
 
