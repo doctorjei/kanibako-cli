@@ -16,7 +16,7 @@ DIFFERENT refusals:
 
 ⚑ A third failure is easy to confuse with them and must stay distinct: kanibako reads `'None'`/`none`
 as STRINGS, so those spellings request an agent by that name and fail as `AgentNotInstalledError`.
-⚑ The null state is reachable BY TYPO — `null`, `Null`, `NULL`, `~` and a key left blank after its
+⚑ The null state is reachable BY TYPO — `null`, `Null`, `NULL`, `None`, `~` and a key left blank after its
 colon all read as Python `None`.
 
 The module is deliberately thin. It contains one dataclass, two context builders

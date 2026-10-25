@@ -454,9 +454,9 @@ you get depends on which of two states `system.agent` is in:
 | unset (no such line) | setup has never chosen one | error -- run `kanibako setup` |
 | `null` | no default is set, deliberately | error -- name one with `--agent <name>` or `pref.system.agent` |
 
-`null` is what YAML reads from `null`, `Null`, `NULL`, `~` **and a key left blank
-after its colon**. (`None` and `none` are *strings*, so those spell a request for an
-agent named "None" and fail as an agent that is not installed.)
+`null` is what kanibako reads from `null`, `Null`, `NULL`, `None`, `~` **and a key
+left blank after its colon**. (`'None'` and `none` are *strings*, so those request an
+agent of that name and fail as not installed.)
 
 A plain-shell box is a **choice**, not a fallback. Name the built-in `shell`
 pseudo-agent -- `--agent shell`, or `kanibako box set pref.system.agent=shell`

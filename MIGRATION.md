@@ -5275,10 +5275,10 @@ Name one with '--agent <name>', or set this box's agent with:
 
 The first means nothing has ever set `system.agent`. The second means a settings file set it to
 null — *no default*, deliberately — so an agent must be named below it. ⚑ **Null is reachable by
-typo:** YAML reads `null`, `Null`, `NULL`, `~` **and a key left blank after its colon** all as null,
-so `system.agent:` with nothing after it lands on the second message. `None` and `none` are
-*strings*, so they ask for an agent named "None" and fail as one that is not installed — a third
-message, meaning something else again.
+typo:** kanibako reads `null`, `Null`, `NULL`, `None`, `~` **and a key left blank after its
+colon** all as null, so `system.agent:` with nothing after it lands on the second message. `'None'`
+and `none` are *strings*, so they ask for an agent of that name and fail as not installed — a
+third message, meaning something else again.
 
 🛑 **`pref.system.agent: null` does not give you a plain-shell box** — it is the second refusal
 above. ⚑ **Nothing you could do in v1.7.2 stopped working here:** `pref.*` did not exist in v1.7.2
