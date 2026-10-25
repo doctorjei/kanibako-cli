@@ -331,7 +331,8 @@ migration code.** Four released config surfaces are removed outright
 - **A bare `None` is `null`.** In any settings file, and as the value in `set <key>=None`, a plain
   `None` now means `null`; it used to be the string `None` (so `box.enable_vault: None` read as
   true). `set <key>=None` writes what `--null` writes and is refused where `--null` is. A quoted
-  `'None'` in a file is still a string, and `set <key>=null` still stores the string `null`.
+  `'None'` in a file is still a string, and `set <key>=null` still stores the string `null`. A
+  mapping key that is not text (`None:`, `~:`, `true:`, `1:`) is refused by name instead of crashing.
 - **A launch no longer creates a workspace or a channel root.** `setup` makes the system channel
   roots and the primary workset's, `workset create` a named workset's, and `create` a box's inbox. A
   launch whose workspace or channel root is missing exits 1, naming each path and its cure (`kanibako

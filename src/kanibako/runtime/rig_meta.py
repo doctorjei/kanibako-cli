@@ -10,9 +10,9 @@ Because the metadata lives at a fixed path inside the rootfs, it rides
 also ends up with its ``rig.yaml``, no side-channel required.
 
 All on-disk serialization goes through PyYAML: writing with
-:func:`kanibako.settings.config_io._dump_text`, reading through :func:`kanibako.settings.config_io.parse_doc_text`, which is a
-SafeLoader with kanibako's document refusals on top. There is no hand-rolled
-serializer or parser here.
+:func:`kanibako.settings.config_io._dump_text`, reading through
+:func:`kanibako.settings.config_io.parse_doc_text`, which is a SafeLoader with kanibako's
+document refusals on top. There is no hand-rolled serializer or parser here.
 """
 
 from __future__ import annotations

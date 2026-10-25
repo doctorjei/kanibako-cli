@@ -537,6 +537,8 @@ inside boxes. In order of likely impact:
     *The workset registry is a fixed file, and a standalone box is marked in it*.
 62. **A directory under `workset.workspaces` that `registry.yaml` does not list is not a member** — see
     *An unregistered directory in a working set is not a member*.
+63. **A plain `None` in a settings file or in `set <key>=None` is `null`; quote it to mean the text**
+    — see *A bare `None` is `null`, in a settings file and in `set`*.
 
 ---
 
@@ -2883,7 +2885,7 @@ self:
   caches:
     ~/.cache/uv: [/store/caches/uv]
   seeded:
-    ~: [/store/template]
+    '~': [/store/template]      # quoted: a plain ~ is YAML's null
   common:
     ~/.claude/plugins: [/store/agents/claude/common/plugins]
   synced:
@@ -8172,7 +8174,9 @@ box:
 ```
 
 A `None` you meant as "unset" now works as you meant, or is refused by name where a `null`
-has no meaning (such as `box.enable_vault`, which used to read a plain `None` as true).
+has no meaning (such as `box.enable_vault`, which used to read a plain `None` as true). A
+mapping key YAML reads as something other than text (`None:`, `~:`, `true:`, `1:`) is refused by
+name; quote it (a home destination is `'~':`).
 
 **What is NOT covered.** Only `None` exactly: `none` and `NONE` stay strings. `set <key>=null`
 still stores the string `null`. The CLI has no spelling for the string `None`; write it in the

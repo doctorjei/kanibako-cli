@@ -296,10 +296,10 @@ class TestLayer1ExoticKeyTypes:
   @pytest.mark.parametrize(
     "text,named",
     [
-      ("1: x\n", "1"),
-      ("true: x\n", "True"),
-      ("~: x\n", "None"),
-      ("1: x\nbox: y\n", "box"),  # the SORT arm: a str and an int in one document
+      ("1: x\n", "reads as 1,"),
+      ("true: x\n", "reads as true,"),
+      ("~: x\n", "reads as null,"),
+      ("1: x\nbox: y\n", "reads as 1,"),  # the SORT arm: a str and an int in one document
     ],
   )
   def test_a_non_string_top_level_key_refuses_by_name(self, tmp_path, text, named):

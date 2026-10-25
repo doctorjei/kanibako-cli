@@ -18,7 +18,7 @@ verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.
 | `key` | get |
 | *(no args)* | show overrides at this level |
 | `--effective` | show resolved values |
-| `--null key` | SET an explicit present-`None` — the suppression request |
+| `--null key`, `key=None` | SET an explicit present-`None` — the suppression request |
 | `reset key` | remove the override; the verb that UNDOES `--null` |
 | `reset --all` | remove all overrides (confirmed unless `--force`) |
 
@@ -28,8 +28,8 @@ verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.
 ### Why `--null` is a FLAG and not a magic value token
 
 `config set` stores scalars VERBATIM — nothing in it YAML- or literal-parses a value (only keys
-declared `bool` in `KEY_TYPES` coerce) — so there is no existing rule under which the string
-`"null"` would become `None`, and inventing one for this route alone would be a dialect:
+declared `bool` in `KEY_TYPES` coerce, and `None` reads as null as it does in a file) — so no
+rule turns the string `"null"` into `None`, and one for this route alone would be a dialect:
 `box.env.X=null` and `box.image=null` are legitimate strings. The flag says what is meant,
 applies to EVERY key whose leaf accepts the present-`None` terminal, and cannot collide with
 data. It is the CLI spelling of §2h's suppression request

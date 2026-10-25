@@ -9,7 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_io.py.md`.
 
 ```
 MAX_DOC_DEPTH = 64
-_PACKAGED_LOADER = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+_NULL_TAG = 'tag:yaml.org,2002:null'
 _BRACE_VALUE_RE = re.compile('^(\\s*(?:-\\s+)?(?:[^\\s#\'\\"{-][^#]*?:\\s+)?)(\\{[^#]*?)\\s*(?:\\s#.*)?$')
 _MERGE_TAG = 'tag:yaml.org,2002:merge'
 _VALUE_TAG = 'tag:yaml.org,2002:value'
@@ -35,8 +35,10 @@ def stored_leaf_object(noun_file: 'Path | None', sections: tuple[str, ...], leaf
 def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_scalar) -> str | None
 def render_stored_pref(v: object) -> str
 def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
+def _read_none_as_null(cls: type) -> None
 def _unquoted_brace_hint(mark: yaml.Mark | None) -> str
 def _guard_document(data: object) -> None
+def _unnamed_key(data: dict) -> tuple[str, object] | None
 def _dump_text(data: dict) -> str
 def _resolved_section(table: dict, section: str) -> str
 ```
@@ -58,6 +60,8 @@ class DocumentTooDeepError(yaml.YAMLError):
     def __init__(self, dotted: str, limit: int) -> None
 
     def __str__(self) -> str
+
+class _PackagedLoader(getattr(yaml, 'CSafeLoader', yaml.SafeLoader)):
 
 class _UniqueKeyLoader(yaml.SafeLoader):
     def construct_document(self, node: yaml.Node) -> object

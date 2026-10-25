@@ -22,8 +22,8 @@ The two arms above are the route for **settings-cascade** documents. Two in-tree
 outside it:
 
 * `runtime/rig_meta.py` — `/etc/kanibako/rig.yaml`, the truth-in-image metadata for an extended
-  rig. It rides inside the image rootfs rather than living in the cascade, and calls
-  `yaml.safe_dump` directly.
+  rig. It rides inside the image rootfs rather than living in the cascade, and writes through
+  `_dump_text`.
 * `plugins/goose/credentials.py` (agent-goose package) — goose's OWN config and secrets files,
   owned by the agent, not kanibako; it calls `yaml.safe_dump` directly.
 
@@ -34,7 +34,8 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 ```
 `parse_packaged` parses a YAML file kanibako SHIPS (never a user's file) with the fastest safe
-loader (`CSafeLoader` when present). `load_packaged_mapping` reads the shipped document at *ref* and
+loader (`_PackagedLoader`, over `CSafeLoader` when present; plain `None` is null, see
+below). `load_packaged_mapping` reads the shipped document at *ref* and
 raises `PackagingError` when it is empty or not a mapping: a broken install, never an empty
 document (spec §0). `core_defaults`, `keyspace_manifest` and `agent_defaults` read through it.
 
@@ -103,6 +104,7 @@ do not "simplify":
 | `"a: 1\na: 2\n"` (duplicate key) | `{'a': 2}` — **last wins, no error** | `ConfigError` (both lines) |
 | `"﻿a: 1\n"` (BOM) | `{'a': 1}` — BOM is stripped, no error | `{'a': 1}` |
 | a leading TAB | raises `ScannerError` | `ConfigError` |
+| `"a:\n  None: x\n"` (key not text) | `{'a': {'None': 'x'}}`; kanibako's loader: `{None: 'x'}` | `ConfigError` (quote the key) |
 
 ## The repeated-key refusal (`_UniqueKeyLoader`, Q103)
 
@@ -113,6 +115,11 @@ key's dotted path (`box.env.A`, `list[1].k` inside a sequence) and both location
 that into a `ConfigError` naming the file. Spec §0: PyYAML's last-wins (table above) is a silent
 accept that drops the first spelling. Being a `yaml.YAMLError`, a reader that forgot this subclass
 still reads the document as unreadable rather than last-wins.
+
+⚑ **A plain `None` is null.** `_UniqueKeyLoader`, `_PackagedLoader` and `_SafeDumper` share one
+resolver (`_read_none_as_null`): only the plain scalar `None` (not `none`), so a quoted `'None'`
+stays a string and the dumper quotes a str `'None'`. `load_doc` (not `parse_doc_text`: a compared
+template may hold `on:` keys) refuses any mapping key that is not a `str`.
 
 * **Why the node tree:** the constructed `dict` has already lost the first spelling, and only the
   nodes carry lines and parentage.
@@ -143,7 +150,7 @@ loader), and so is `runtime/baseline.py`'s image-baseline manifest. The other re
 * `plugins/goose/credentials.py` (agent-goose package) — goose's OWN config/secrets, owned by the
   agent, not kanibako: `yaml.safe_load`.
 * `src/kinemata_views.py` — the conformance tooling's own reader of shipped YAML, outside the
-  `kanibako` package: `yaml.safe_load`.
+  `kanibako` package: `parse_packaged`.
 
 ⚑ **The `isinstance(text, str)` guard is a HOST-SAFETY guard, not a type nicety.** A non-`str`
 (e.g. a `MagicMock` from an under-mocked test path) fed to `yaml.safe_load` can balloon memory
@@ -164,8 +171,8 @@ temp file and leaves the original intact.
 Dump options are pinned: `sort_keys=False` (authoring order survives a round-trip),
 `default_flow_style=False` (block style), `allow_unicode=True` (non-ASCII is emitted literally
 rather than `\uXXXX`-escaped). The dumper is `_SafeDumper`, a `yaml.SafeDumper` that writes a `str`
-SUBCLASS as a plain string (BARE-REF-GUARD: `settings_resolve.DataExpr`); the stock safe
-representer refuses a subclass outright.
+SUBCLASS as a plain string (BARE-REF-GUARD: `settings_resolve.DataExpr`; the stock safe
+representer refuses a subclass) and quotes a str `'None'`.
 
 ## Document mutators (load → mutate → dump)
 
@@ -270,9 +277,9 @@ does not mention. Absence is reported by the READ, above any rendering; a render
 injective on purpose: a stored `""` and a stored `'""'` both render `""`. Such a door reads
 `stored_leaf_object` below.
 
-⚑ `null` names **the YAML the file holds, not the word you type to write it**: `--null` is the write
-spelling, and `set <key>=null` stores the three-character STRING, which reads back through this same
-line. Reading a `get` line back is not always retyping it.
+⚑ `null` names **the YAML the file holds, not the word you type to write it**: `--null` and
+`set <key>=None` write it, and `set <key>=null` stores the four-character STRING, which reads back
+through this same line.
 
 ```python
 def stored_leaf_object(noun_file, sections, leaf, *, default: object = None) -> object
