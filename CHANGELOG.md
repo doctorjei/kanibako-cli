@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.8.0] - 2026-10-17
+## [1.8.0] - 2026-10-25
 
 This release completes the **settings-keyspace rework** and lands the **canon books**.
 The keyspace is now genuinely closed and single-routed: a box can *request* values at
