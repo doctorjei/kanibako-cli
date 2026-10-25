@@ -21,10 +21,8 @@ FINAL file) is a LATER increment and is NOT asserted here.
 Scope: boxes exit immediately in e2e (the agent can't auth) — that's expected; we
 inspect the exited container's Mounts/Env.
 
-⚑ The ``e2e_env`` / ``goose_e2e_env`` fixtures pre-write the bootstrap config, so
-``_ensure_initialized`` early-returns and the packaged-template install is skipped.
-Each test runs the real ``install_packaged_templates`` against the fixture data dir
-first — exactly what first-init does — so the install + bind path is genuinely
+⚑ The ``e2e_env`` / ``goose_e2e_env`` fixtures run ``kanibako setup``, whose template
+step installs the packaged templates, so the install + bind path is genuinely
 exercised.  (The box guide itself is delivered live inside the ``canon_charter_general``
 CHAPTER RO bind at ``~/canon/charter/general`` — the guide sits at
 ``ROM_GENERAL.md`` inside it — plus launch-flatten, not installed to a
@@ -42,7 +40,6 @@ import pytest
 
 from tests.e2e.conftest import (
   box_container,
-  _active_env,
   _podman,
   e2e_requires,
   podman_exec,
@@ -78,23 +75,6 @@ def env_of(cfg: dict) -> dict[str, str]:
     k, _, v = str(item).partition("=")
     out[k] = v
   return out
-
-
-def run_install(env: dict) -> None:
-  """Run the real packaged-template install against the fixture data dir.
-
-  First-init is otherwise skipped because the fixture pre-writes the bootstrap
-  config, so the template staging would never happen.
-  """
-  from kanibako.settings.config import config_file_path, load_config
-  from kanibako.settings.paths import load_std_paths
-  from kanibako.targets import discover_targets
-  from kanibako.launch.templates import install_packaged_templates
-
-  with _active_env(env):
-    config = load_config(config_file_path(Path(env["XDG_CONFIG_HOME"])))
-    std = load_std_paths(config)
-    install_packaged_templates(std, list(discover_targets()))
 
 
 KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
@@ -379,7 +359,6 @@ def test_claude_kickoff_loader_delivery(e2e_env):
   """claude: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md
   (single directive import); mount-parent .config/kanibako auto-created by podman."""
   env, project, box = e2e_env["env"], e2e_env["project"], "instr_claude"
-  run_install(env)
 
   r = run_kanibako(["create", str(project), "--name", box], env=env)
   assert r.returncode == 0, f"create failed: {r.stderr}"
@@ -418,7 +397,6 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
     goose_e2e_env["project"],
     "instr_goose",
   )
-  run_install(env)
 
   r = run_kanibako(["create", str(project), "--name", box], env=env)
   assert r.returncode == 0, f"create failed: {r.stderr}"

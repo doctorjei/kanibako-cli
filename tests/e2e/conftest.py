@@ -482,10 +482,9 @@ def write_e2e_settings_files(
   dead.  Off CI the official ref is absent, the bare local tag wins, and nothing is
   pulled — strictly less work than the declared default's cold pull.
 
-  🛑 THE BOOTSTRAP FILE IS STILL CREATED, and it is not optional: ``cli._ensure_initialized``
-  early-returns on its EXISTENCE alone, so an env without it re-runs first-run init —
-  packaged-template install and all — which ``test_instructions_delivery`` explicitly
-  relies on NOT happening.  It goes through the product's own ``write_global_config``
+  🛑 THE BOOTSTRAP FILE IS STILL CREATED: ``cli._ensure_initialized`` early-returns on
+  its EXISTENCE alone, so an env without it re-runs first-run init on its first
+  command.  It goes through the product's own ``write_global_config``
   so its shape has one source.
 
   ⚑ ONE SITE, deliberately.  The dead stanza was copied into FOUR fixtures and was
@@ -519,6 +518,29 @@ def write_e2e_settings_files(
     doc["agent"] = agent_keys
   resolved = load_system_config(config_file, data_home=data_home, home=home)
   dump_doc(resolved["config.settings"], doc)
+
+
+def run_e2e_setup(env: dict[str, str]) -> None:
+  """Run ``kanibako setup`` headless in *env*, as a user must before a first launch.
+
+  Setup makes the system and primary-workset channel roots, which a launch refuses
+  to run without, installs the packaged templates, and records completion. Every
+  e2e env builder calls this after ``write_e2e_settings_files``, so the agent pin
+  is already in place and setup's agent step leaves it alone. ``stdin`` is closed
+  so setup never prompts, even under ``pytest -s`` at a terminal.
+  """
+  result = subprocess.run(
+    ["kanibako", "setup"],
+    env=env,
+    stdin=subprocess.DEVNULL,
+    capture_output=True,
+    text=True,
+    timeout=SUBPROCESS_TIMEOUT,
+  )
+  assert result.returncode == 0, (
+    f"kanibako setup failed (rc={result.returncode}):\n"
+    f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +638,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
       "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
   )
+  run_e2e_setup(env)
 
   # Compute expected container name.  For a fresh project created via
   # kanibako create, the name is based on the directory name.
@@ -748,6 +771,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
       "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
   )
+  run_e2e_setup(env)
 
   yield {
     "env": env,

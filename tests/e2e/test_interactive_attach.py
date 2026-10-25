@@ -45,6 +45,7 @@ from tests.e2e.conftest import (  # noqa: E402
   CONTAINER_PREFIX,
   box_container,
   e2e_requires,
+  run_e2e_setup,
   run_kanibako,
   write_e2e_settings_files,
 )
@@ -148,6 +149,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
       "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
   )
+  run_e2e_setup(env)
 
   yield {
     "env": env,
@@ -320,6 +322,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
       "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     }
   )
+  run_e2e_setup(env)
 
   yield {
     "env": env,
