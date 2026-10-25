@@ -274,7 +274,7 @@ def parse_doc_text(text: str) -> object:
 
 def load_doc(path: Path | None) -> dict:
   """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
-  a self-reference, or unbounded nesting raises.
+  a key that is not a ``str``, a self-reference, or unbounded nesting raises.
 
   ⚑ Only ``ENOENT``/``ENOTDIR`` read as missing, never ``Path.exists()``: a file kanibako
   cannot reach (EACCES on it or a parent, a link loop) refuses, naming it."""
@@ -329,7 +329,37 @@ def load_doc(path: Path | None) -> dict:
       f"the config file {path} is {shape}, not a mapping of keys. "
       "Fix or remove the file, then retry."
     )
+  where = _unnamed_key(data)
+  if where is not None:
+    raise ConfigError(
+      f"the config file {path} has a key at '{where[0]}' that YAML reads as "
+      f"{render_stored_scalar(where[1])}, not a name. Quote that key, then retry."
+    )
   return data
+
+
+def _unnamed_key(data: dict) -> tuple[str, object] | None:
+  """``(table path, key)`` of the first mapping key in *data* that is not a ``str``, else None.
+
+  ⚑ Config documents only (:func:`load_doc`), never :func:`parse_doc_text`: a template
+  file kanibako merely compares may hold ``on:`` or ``8080:`` keys legitimately.
+  Iterative, and each container is walked once, so a shared alias costs nothing.
+  """
+  stack: list[tuple[object, str]] = [(data, "")]
+  seen: set[int] = set()
+  while stack:
+    value, dotted = stack.pop()
+    if id(value) in seen:
+      continue
+    seen.add(id(value))
+    if isinstance(value, dict):
+      for k, v in value.items():
+        if not isinstance(k, str):
+          return (dotted or "(top level)", k)
+        stack.append((v, f"{dotted}.{k}" if dotted else k))
+    elif isinstance(value, list):
+      stack.extend((item, f"{dotted}[{i}]") for i, item in enumerate(value))
+  return None
 
 
 class _SafeDumper(yaml.SafeDumper):

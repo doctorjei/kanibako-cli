@@ -390,7 +390,7 @@ class TestCategoryTablesCarryThrough:
     path.write_text(
       "self:\n"
       "  caches: {~/.cache/uv: [/store/uv]}\n"
-      "  seeded: {~: [/store/template]}\n"
+      "  seeded: {'~': [/store/template]}\n"
       "  common: {~/.claude/plugins: [/store/plugins]}\n"
       "  synced: {~/.config/x: [/store/x]}\n"
       "  masks: {~/.ssh: true}\n"
