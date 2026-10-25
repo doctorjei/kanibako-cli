@@ -8157,6 +8157,27 @@ self:
 
 Without `provider`, each new box asks once.
 
+### A bare `None` is `null`, in a settings file and in `set`
+
+**What changed.** A plain `None` in any settings file now reads as `null`; it used to be the
+four-letter string. `set <key>=None` at every scope writes a `null`, as `--null` does, and is
+refused where `--null` is (see *A `null` at a box scalar with a value default is refused, not
+defaulted*).
+
+**What you must do.** Nothing, unless a file holds a plain `None` you meant as text. Quote it:
+
+```yaml
+box:
+  shell: 'None'    # the string; a plain None is now null
+```
+
+A `None` you meant as "unset" now works as you meant, or is refused by name where a `null`
+has no meaning (such as `box.enable_vault`, which used to read a plain `None` as true).
+
+**What is NOT covered.** Only `None` exactly: `none` and `NONE` stay strings. `set <key>=null`
+still stores the string `null`. The CLI has no spelling for the string `None`; write it in the
+file, quoted. goose's own `secrets.yaml` and `config.yaml` are read as goose reads them.
+
 ---
 
 ## 3. For plugin authors

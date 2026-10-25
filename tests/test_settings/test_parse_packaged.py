@@ -13,7 +13,7 @@ from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_da
 
 @pytest.mark.skipif(not yaml.__with_libyaml__, reason="PyYAML built without libyaml")
 def test_the_c_parser_is_used_where_pyyaml_has_it():
-  assert config_io._PACKAGED_LOADER is yaml.CSafeLoader
+  assert issubclass(config_io._PackagedLoader, yaml.CSafeLoader)
 
 
 @pytest.mark.parametrize(

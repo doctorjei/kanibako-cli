@@ -46,7 +46,7 @@ from kanibako.settings.agent_config import (
   is_self_resolving,
   root_relative_source,
 )
-from kanibako.settings.config_io import load_packaged_mapping
+from kanibako.settings.config_io import _SafeDumper, load_packaged_mapping
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.messages import PER_OWNER_SET_WORDS
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, SECRET_VAR_RE
@@ -353,8 +353,9 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
   emit_empty = _EMPTY_WORDS.get(empty) if isinstance(empty, str) else None
   if "empty" in entry and emit_empty is None:
     # The YAML spelling the user wrote (``null``, not Python's ``None``).
-    spelled = yaml.safe_dump(
+    spelled = yaml.dump(
       {"empty": empty},
+      Dumper=_SafeDumper,
       default_flow_style=True,
       width=float("inf"),
     ).strip()[1:-1]

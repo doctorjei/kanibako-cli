@@ -23,8 +23,25 @@ from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError, PackagingError
 
 
-#: libyaml where PyYAML has it, else pure Python; both are SafeLoaders.
-_PACKAGED_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_NULL_TAG = "tag:yaml.org,2002:null"
+
+
+def _read_none_as_null(cls: type) -> None:
+  """Make a PLAIN ``None`` resolve to null for *cls*, a loader or a dumper.
+
+  ⚑ kanibako's own YAML reads ``None`` as ``null``, because a user who types Python's
+  spelling means the null, never the four-letter string.  Only the plain scalar: a quoted
+  ``'None'`` stays a string, and the dumper (which carries the same resolver) quotes a str
+  ``'None'`` so it reads back as written.  Exactly ``None``; ``none``/``NONE`` stay strings.
+  """
+  cls.add_implicit_resolver(_NULL_TAG, re.compile(r"^None$"), ["N"])  # type: ignore[attr-defined]
+
+
+class _PackagedLoader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):  # type: ignore[misc]
+  """libyaml where PyYAML has it, else pure Python; a SafeLoader either way."""
+
+
+_read_none_as_null(_PackagedLoader)
 
 #: The deepest table/list nesting one document may hold, counted so the outermost
 #: mapping is 1.  ⚑ A HOST-SAFETY FLOOR, NOT A TASTE CALL: the loader composes and the
@@ -36,7 +53,7 @@ MAX_DOC_DEPTH = 64
 
 def parse_packaged(text: str) -> object:
   """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
-  return yaml.load(text, Loader=_PACKAGED_LOADER)
+  return yaml.load(text, Loader=_PackagedLoader)
 
 
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]:
@@ -175,6 +192,9 @@ class _UniqueKeyLoader(yaml.SafeLoader):
         except TypeError:  # unhashable key: SafeConstructor refuses it itself
           pass
         self._check_duplicates(value_node, dotted, seen_nodes)
+
+
+_read_none_as_null(_UniqueKeyLoader)
 
 
 def _guard_document(data: object) -> None:
@@ -321,6 +341,7 @@ class _SafeDumper(yaml.SafeDumper):
 
 
 _SafeDumper.add_multi_representer(str, yaml.SafeDumper.represent_str)
+_read_none_as_null(_SafeDumper)
 
 
 def _dump_text(data: dict) -> str:
@@ -507,11 +528,10 @@ def render_stored_scalar(v: object) -> str:
   THE THREE STORED SPELLINGS, each its own: a present-``None`` (the tri-state OMIT) is
   ``null``; a terminal ``""`` is ``""``; a bool is lowercase, the spelling ``set`` accepts
   back.  ⚑ EACH NAMES THE YAML THE FILE HOLDS, WHICH IS NOT THE SAME AS THE WORD YOU TYPE
-  TO WRITE IT.  ``null`` is the file's null, and the write spelling for it is the ``--null``
-  FLAG: ``set <key>=null`` stores the three-character STRING, a different value that reads
-  back through this same line.  A ``get`` may only teach values the CLI reads, and
-  ``str(None)`` taught ``None``, which a typed key refuses and a string key stores as three
-  letters — but reading a line back is not always retyping it.
+  TO WRITE IT.  ``null`` is the file's null, and the write spellings for it are the ``--null``
+  FLAG and ``set <key>=None``: ``set <key>=null`` stores the four-character STRING, a
+  different value that reads back through this same line.  A ``get`` may only teach values
+  the CLI reads.
   """
   if v is None:
     return "null"
