@@ -29,9 +29,10 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 ```
 `parse_packaged` parses a YAML file kanibako SHIPS (never a user's file) with the fastest safe
-loader (`_PackagedLoader`, over `CSafeLoader` when present). `load_packaged_mapping` reads the shipped document at *ref* and
-raises `PackagingError` when it is empty or not a mapping: a broken install, never an empty
-document (spec §0). `core_defaults`, `keyspace_manifest` and `agent_defaults` read through it.
+loader (`_PackagedLoader`, over `CSafeLoader` when present). `load_packaged_mapping` reads the
+shipped document at *ref* and raises `PackagingError` when it is empty or not a mapping: a broken
+install, never an empty document (spec §0). `core_defaults`, `keyspace_manifest` and
+`agent_defaults` read through it.
 
 ## The parse-failure seam
 
