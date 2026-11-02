@@ -106,7 +106,7 @@ def test_unreadable_path_keeps_the_file_error(tmp_path, monkeypatch):
   path = tmp_path / "rig.yaml"
   failure = PermissionError(13, "denied", str(path))
 
-  def read(_path):
+  def read(_path, encoding=None):
     raise failure
 
   with monkeypatch.context() as patch:
