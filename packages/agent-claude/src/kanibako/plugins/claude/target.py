@@ -300,30 +300,9 @@ class ClaudeTarget(Target):
     )
 
   def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
-    """Extract persona values from a rendered claude ``settings.json``.
+    """Read native ``settings.json``; unreadable, syntax, and shape errors stay distinct.
 
-    The persona-grata store renders a claude persona as a harness-native
-    ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
-    endpoint and whose top-level ``model`` names the model.  ``model`` keeps
-    its states apart: absent or a non-string non-null value reads as
-    ``None``; JSON ``null`` reads as
-    :data:`~kanibako.targets.base.PERSONA_DEFAULT_MODEL` (the persona's
-    default); a string, ``""`` included, stays as written (``""`` = no
-    model).
-    The bearer token var is claude's FIXED declared ``persona.token_var`` (the harness does
-    not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
-    block is carried through verbatim as
-    :attr:`~kanibako.targets.base.PersonaSettings.env` — the two
-    single-source vars are excluded (they ride the endpoint field and the
-    secret-path bind), and a non-string value is not deliverable as an env
-    value, so its NAME is reported in ``env_dropped`` rather than dropped
-    in silence.
-
-    FAIL-SOFT (base-class contract): absent / unreadable, malformed JSON,
-    a non-object document, a non-object ``env``, or a missing/empty
-    ``ANTHROPIC_BASE_URL`` (a claude persona config without an endpoint is
-    unusable) each return an outcome NAMING that cause and the file.  Pure
-    read; never touches the token.
+    Pure read, fail-soft; never reads the token file.
     """
     settings = config_dir / "settings.json"
     try:
@@ -342,16 +321,28 @@ class ClaudeTarget(Target):
       )
     if not isinstance(data, dict):
       return PersonaReadOutcome(None, (f"claude persona config {settings} is not a JSON object"))
-    env = data.get("env")
+    return self.project_persona_settings(data, source=str(settings))
+
+  def project_persona_settings(
+    self, config: Mapping[str, object], *, source: str
+  ) -> PersonaReadOutcome:
+    """Project Claude's env and model without I/O or mutation.
+
+    ``null`` model means the persona default; absent/non-string means absent;
+    string values, including empty, stay literal. Endpoint and token variables
+    use their own fields; remaining string env values pass through, while dropped
+    non-string names are reported. Rejections name *source*.
+    """
+    env = config.get("env")
     if not isinstance(env, dict):
-      return PersonaReadOutcome(None, (f"claude persona config {settings} has no 'env' object"))
+      return PersonaReadOutcome(None, (f"claude persona config {source} has no 'env' object"))
     base_url = env.get(_PERSONA_BASE_URL_VAR)
     if not isinstance(base_url, str) or not base_url:
       return PersonaReadOutcome(
-        None, (f"claude persona config {settings} names no env.{_PERSONA_BASE_URL_VAR} endpoint")
+        None, (f"claude persona config {source} names no env.{_PERSONA_BASE_URL_VAR} endpoint")
       )
-    model = data.get("model")
-    if "model" in data and model is None:
+    model = config.get("model")
+    if "model" in config and model is None:
       model = PERSONA_DEFAULT_MODEL
     elif not isinstance(model, str):
       model = None

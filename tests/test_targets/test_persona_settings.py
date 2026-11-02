@@ -381,6 +381,122 @@ class TestCodexReadPersonaSettings:
     )
 
 
+class TestProjectPersonaSettings:
+  @pytest.mark.parametrize(
+    ("target_cls", "filename", "text", "data"),
+    [
+      (ClaudeTarget, "settings.json", '{"env": {}}', {"env": {}}),
+      (CodexTarget, "config.toml", 'model = "literal"\n', {"model": "literal"}),
+    ],
+  )
+  def test_native_reader_delegates_parsed_data(
+    self, tmp_path, monkeypatch, target_cls, filename, text, data
+  ):
+    (tmp_path / filename).write_text(text)
+    target = target_cls()
+    expected = PersonaReadOutcome(None, "synthetic projection result")
+    seen = []
+
+    def project(config, *, source):
+      seen.append((config, source))
+      return expected
+
+    monkeypatch.setattr(target, "project_persona_settings", project)
+    assert target.read_persona_settings(tmp_path) is expected
+    assert seen == [(data, str(tmp_path / filename))]
+
+  @pytest.mark.parametrize("target_cls", [ShellTarget, GooseTarget])
+  def test_unsupported_harness_has_no_projection(self, target_cls):
+    target = target_cls()
+    assert target.project_persona_settings({}, source="synthetic native config") == (
+      PersonaReadOutcome(settings=None, reject_reason=None)
+    )
+    assert target.project_persona_settings.__func__ is Target.project_persona_settings
+
+  @pytest.mark.parametrize(
+    "data",
+    [
+      {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}},
+      {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}, "model": None},
+      {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}, "model": ""},
+      {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}, "model": "concrete"},
+      {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}, "model": 7},
+      {
+        "env": {
+          "ANTHROPIC_BASE_URL": "https://e.example",
+          "ANTHROPIC_AUTH_TOKEN": "synthetic-excluded-token",
+          "KEPT": "literal",
+          "NUMBER": 7,
+          "NULL": None,
+          "BOOL": False,
+        },
+      },
+      {},
+      {"env": []},
+      {"env": {}},
+      {"env": {"ANTHROPIC_BASE_URL": ""}},
+      {"env": {"ANTHROPIC_BASE_URL": 7}},
+    ],
+  )
+  def test_claude_projection_matches_native_reader_without_io(self, tmp_path, monkeypatch, data):
+    _write_claude_settings(tmp_path, data)
+    target = ClaudeTarget()
+    expected = target.read_persona_settings(tmp_path)
+    self._project_without_io(target, data, tmp_path / "settings.json", expected, monkeypatch)
+
+  @pytest.mark.parametrize(
+    "text",
+    [
+      _NAVIGATOR_TABLE,
+      'model = "concrete"\n' + _NAVIGATOR_TABLE,
+      'model = ""\n' + _NAVIGATOR_TABLE,
+      "model = 7\n" + _NAVIGATOR_TABLE,
+      'model_provider = "gone"\n' + _NAVIGATOR_TABLE,
+      'model_provider = "other"\n' + _NAVIGATOR_TABLE + "\n[model_providers.other]\n"
+      'base_url = "https://other.example"\nenv_key = "OTHER_KEY"\n',
+      _NAVIGATOR_TABLE + "\n[model_providers.other]\n"
+      'base_url = "https://other.example"\nenv_key = "OTHER_KEY"\n',
+      'model_providers = { navigator = "not a table" }\n',
+      '[model_providers.navigator]\nbase_url = "https://e.example"\n',
+      '[model_providers.navigator]\nbase_url = "https://e.example"\nenv_key = ""\n',
+      '[model_providers.navigator]\nenv_key = "TOKEN"\n',
+      '[model_providers.navigator]\nbase_url = ""\nenv_key = "TOKEN"\n',
+      'model = "concrete"\n',
+    ],
+  )
+  def test_codex_projection_matches_native_reader_without_io(self, tmp_path, monkeypatch, text):
+    import tomllib
+
+    _write_codex_config(tmp_path, text)
+    target = CodexTarget()
+    expected = target.read_persona_settings(tmp_path)
+    data = tomllib.loads(text)
+    self._project_without_io(target, data, tmp_path / "config.toml", expected, monkeypatch)
+
+  @staticmethod
+  def _project_without_io(target, data, source, expected, monkeypatch):
+    import builtins
+    import copy
+    import os
+
+    before = copy.deepcopy(data)
+
+    def forbidden(*args, **kwargs):
+      pytest.fail("native-config projection attempted filesystem I/O")
+
+    with monkeypatch.context() as patch:
+      patch.setattr(builtins, "open", forbidden)
+      patch.setattr(os, "open", forbidden)
+      for name in ("open", "read_text", "read_bytes", "write_text", "write_bytes", "stat"):
+        patch.setattr(Path, name, forbidden)
+      actual = target.project_persona_settings(data, source=str(source))
+    assert actual == expected
+    assert data == before
+    if actual.settings is not None and "env" in data:
+      actual.settings.env["ONLY_RESULT"] = "not in input"
+      assert data == before
+
+
 # ---------------------------------------------------------------------------
 # verify_persona: the minimal real-completion probe (four-arm PersonaProbeOutcome)
 # ---------------------------------------------------------------------------

@@ -453,21 +453,9 @@ class CodexTarget(Target):
     return False
 
   def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
-    """Extract persona values from a rendered codex ``config.toml``.
+    """Read native ``config.toml``; unreadable and syntax errors stay distinct.
 
-    The store renders a codex persona in the SAME ``[model_providers.<id>]``
-    shape kanibako emits at launch, so this parses the inverse: ``base_url``
-    → endpoint, ``env_key`` → auth_env (codex configs SELF-NAME the bearer
-    var), plus the top-level ``model``: absent or a non-string reads as
-    ``None``; a string, ``""`` included, stays as written (``""`` = no
-    model; TOML has no null, so no persona-default arm).  Table selection:
-    the ``model_provider`` key when it names a present table, else the
-    single table when exactly one exists.  A codex config carries NO env block, so ``env``/``env_dropped``
-    stay empty — unlike claude, whose persona env rides the config.
-
-    FAIL-SOFT (base-class contract): every reject below returns an outcome
-    NAMING its cause and the file.  Pure stdlib ``tomllib`` read; never
-    touches the token.
+    Pure read, fail-soft; never reads the token file.
     """
     import tomllib
 
@@ -483,12 +471,23 @@ class CodexTarget(Target):
     except ValueError as exc:
       # ValueError covers tomllib.TOMLDecodeError.
       return PersonaReadOutcome(None, (f"codex persona config {cfg} is not valid TOML ({exc})"))
-    providers = data.get("model_providers")
+    return self.project_persona_settings(data, source=str(cfg))
+
+  def project_persona_settings(
+    self, config: Mapping[str, object], *, source: str
+  ) -> PersonaReadOutcome:
+    """Project Codex's selected provider and model without I/O or mutation.
+
+    Select the named provider when present, otherwise the sole provider. Endpoint
+    and auth env must be nonempty strings. Absent/non-string models mean absent;
+    strings, including empty, stay literal. Rejections name *source*.
+    """
+    providers = config.get("model_providers")
     if not isinstance(providers, dict) or not providers:
       return PersonaReadOutcome(
-        None, (f"codex persona config {cfg} declares no [model_providers.<id>] table")
+        None, (f"codex persona config {source} declares no [model_providers.<id>] table")
       )
-    selected = data.get("model_provider")
+    selected = config.get("model_provider")
     if isinstance(selected, str) and selected in providers:
       table = providers[selected]
     elif len(providers) == 1:
@@ -497,28 +496,28 @@ class CodexTarget(Target):
       return PersonaReadOutcome(
         None,
         (
-          f"codex persona config {cfg} declares {len(providers)} "
+          f"codex persona config {source} declares {len(providers)} "
           f"[model_providers.<id>] tables and no 'model_provider' "
           f"selecting one of them"
         ),
       )
     if not isinstance(table, dict):
       return PersonaReadOutcome(
-        None, (f"codex persona config {cfg}: the selected model_providers entry is not a table")
+        None, (f"codex persona config {source}: the selected model_providers entry is not a table")
       )
     base_url = table.get("base_url")
     env_key = table.get("env_key")
     if not isinstance(base_url, str) or not base_url:
       return PersonaReadOutcome(
         None,
-        (f"codex persona config {cfg}: the selected model_providers table names no 'base_url'"),
+        (f"codex persona config {source}: the selected model_providers table names no 'base_url'"),
       )
     if not isinstance(env_key, str) or not env_key:
       return PersonaReadOutcome(
         None,
-        (f"codex persona config {cfg}: the selected model_providers table names no 'env_key'"),
+        (f"codex persona config {source}: the selected model_providers table names no 'env_key'"),
       )
-    model = data.get("model")
+    model = config.get("model")
     if not isinstance(model, str):
       model = None
     return PersonaReadOutcome(

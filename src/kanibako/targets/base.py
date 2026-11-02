@@ -530,7 +530,7 @@ class PersonaSettings(NamedTuple):
 
 
 class PersonaReadOutcome(NamedTuple):
-  """The tri-state result of `Target.read_persona_settings`."""
+  """Persona extraction's tri-state result."""
 
   settings: PersonaSettings | None  # non-None = a usable config was read
   reject_reason: str | None  # non-None = PRESENT but UNUSABLE; BOTH None = no reader
@@ -1454,6 +1454,16 @@ class Target(ABC):
 
     ⚑ FAIL-SOFT: NEVER raises; an unusable config returns a SPECIFIC reject reason,
     not a bare `None`. Pure read — never writes, never reads the token file.
+    """
+    return PersonaReadOutcome(settings=None, reject_reason=None)
+
+  def project_persona_settings(
+    self, config: Mapping[str, object], *, source: str
+  ) -> PersonaReadOutcome:
+    """Extract persona values from native configuration without I/O or mutation.
+
+    *source* labels rejection diagnostics. Unsupported harnesses return both fields
+    ``None``; unusable configurations return a specific reason, never a bare ``None``.
     """
     return PersonaReadOutcome(settings=None, reject_reason=None)
 

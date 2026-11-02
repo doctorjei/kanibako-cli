@@ -298,6 +298,7 @@ class Target(ABC):
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def reattach_config_notice(self) -> str | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
+    def project_persona_settings(self, config: Mapping[str, object], *, source: str) -> PersonaReadOutcome
     def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0, token: str | None=None) -> PersonaProbeOutcome
     def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
