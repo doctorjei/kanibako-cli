@@ -1,4 +1,4 @@
-"""Native JSON(C) configuration codecs and host transport."""
+"""Native configuration codecs and host transport."""
 
 from __future__ import annotations
 
@@ -171,3 +171,36 @@ def test_wire_rewrites_through_host_link_only_after_consent(tmp_path, monkeypatc
   assert target.stat().st_ino == before.st_ino
   expected = {"editor.fontFamily": "雪", "dev.containers.dockerPath": str(wrapper)}
   assert target.read_bytes() == (json.dumps(expected, indent=2) + "\n").encode("utf-8")
+
+
+@pytest.mark.parametrize(
+  "text",
+  [
+    "",
+    'name = "literal"\nenabled = true\nvalues = [1, 2.5, false]\n',
+    "when = 2026-11-02T12:30:00Z\nday = 2026-11-02\ntime = 12:30:00\n",
+    '[model_providers.native]\nbase_url = "https://e.example/v1"\nenv_key = "TOKEN"\n',
+    "value = inf\nnegative = -inf\n",
+  ],
+)
+def test_native_toml_keeps_stdlib_values_and_types(text):
+  import tomllib
+
+  assert config_io.parse_toml_text(text) == tomllib.loads(text)
+
+
+def test_native_toml_keeps_nan():
+  import math
+
+  assert math.isnan(config_io.parse_toml_text("value = nan\n")["value"])
+
+
+@pytest.mark.parametrize("text", ["[broken", "value = null", "value = 1\nvalue = 2\n"])
+def test_native_toml_preserves_stdlib_syntax_errors(text):
+  import tomllib
+
+  with pytest.raises(tomllib.TOMLDecodeError) as native:
+    tomllib.loads(text)
+  with pytest.raises(tomllib.TOMLDecodeError) as facade:
+    config_io.parse_toml_text(text)
+  assert str(facade.value) == str(native.value)

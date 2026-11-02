@@ -27,6 +27,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.settings.config_io import parse_toml_text, read_doc_text
 from kanibako.settings.agent_defaults import (
   load_behavior,
   load_category_binds,
@@ -457,17 +458,15 @@ class CodexTarget(Target):
 
     Pure read, fail-soft; never reads the token file.
     """
-    import tomllib
-
     cfg = config_dir / CODEX_CONFIG_FILE
     try:
-      raw = cfg.read_text(encoding="utf-8")
+      raw = read_doc_text(cfg, encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
       return PersonaReadOutcome(
         None, (f"codex persona config {cfg} is absent or unreadable ({exc})")
       )
     try:
-      data = tomllib.loads(raw)
+      data = parse_toml_text(raw)
     except ValueError as exc:
       # ValueError covers tomllib.TOMLDecodeError.
       return PersonaReadOutcome(None, (f"codex persona config {cfg} is not valid TOML ({exc})"))

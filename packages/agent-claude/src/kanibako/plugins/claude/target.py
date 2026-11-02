@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.settings.config_io import parse_json_text, read_doc_text
 from kanibako.settings.agent_defaults import (
   load_behavior,
   load_category_binds,
@@ -306,7 +307,7 @@ class ClaudeTarget(Target):
     """
     settings = config_dir / "settings.json"
     try:
-      raw = settings.read_text(encoding="utf-8")
+      raw = read_doc_text(settings, encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
       # UnicodeDecodeError is a ValueError, but it is an UNREADABLE-file
       # problem, not a syntax one — keep it out of the JSON-parse arm.
@@ -314,7 +315,7 @@ class ClaudeTarget(Target):
         None, (f"claude persona config {settings} is absent or unreadable ({exc})")
       )
     try:
-      data = json.loads(raw)
+      data = parse_json_text(raw)
     except ValueError as exc:
       return PersonaReadOutcome(
         None, (f"claude persona config {settings} is not valid JSON ({exc})")

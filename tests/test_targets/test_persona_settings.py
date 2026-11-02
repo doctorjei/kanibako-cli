@@ -381,6 +381,74 @@ class TestCodexReadPersonaSettings:
     )
 
 
+class TestPersonaNativeConfigIO:
+  @pytest.mark.parametrize(
+    ("target_cls", "module_name", "filename", "parser_name", "text"),
+    [
+      (ClaudeTarget, "claude", "settings.json", "parse_json_text", '{"env": {}}'),
+      (CodexTarget, "codex", "config.toml", "parse_toml_text", 'model = "café"\n'),
+    ],
+  )
+  def test_reader_uses_utf8_facade_before_projection(
+    self, tmp_path, monkeypatch, target_cls, module_name, filename, parser_name, text
+  ):
+    import importlib
+
+    from kanibako.settings import config_io
+
+    module = importlib.import_module(f"kanibako.plugins.{module_name}.target")
+    path = tmp_path / filename
+    calls = []
+    target = target_cls()
+    expected = PersonaReadOutcome(None, "synthetic projected outcome")
+    native_parse = getattr(config_io, parser_name)
+    parsed = native_parse(text)
+
+    def read(source, *, encoding):
+      calls.append(("read", source, encoding))
+      return text
+
+    def parse(raw):
+      calls.append(("parse", raw))
+      return native_parse(raw)
+
+    def project(config, *, source):
+      calls.append(("project", config, source))
+      return expected
+
+    monkeypatch.setattr(module, "read_doc_text", read)
+    monkeypatch.setattr(module, parser_name, parse)
+    monkeypatch.setattr(target, "project_persona_settings", project)
+    assert target.read_persona_settings(tmp_path) is expected
+    assert calls == [("read", path, "utf-8"), ("parse", text), ("project", parsed, str(path))]
+
+  @pytest.mark.parametrize(
+    ("target_cls", "module_name", "filename"),
+    [(ClaudeTarget, "claude", "settings.json"), (CodexTarget, "codex", "config.toml")],
+  )
+  @pytest.mark.parametrize(
+    "error",
+    [PermissionError("synthetic denied"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid")],
+  )
+  def test_reader_retains_unreadable_error_not_syntax_error(
+    self, tmp_path, monkeypatch, target_cls, module_name, filename, error
+  ):
+    import importlib
+
+    module = importlib.import_module(f"kanibako.plugins.{module_name}.target")
+
+    def read(source, *, encoding):
+      assert source == tmp_path / filename
+      assert encoding == "utf-8"
+      raise error
+
+    monkeypatch.setattr(module, "read_doc_text", read)
+    outcome = target_cls().read_persona_settings(tmp_path)
+    assert outcome == PersonaReadOutcome(
+      None, f"{module_name} persona config {tmp_path / filename} is absent or unreadable ({error})"
+    )
+
+
 class TestProjectPersonaSettings:
   @pytest.mark.parametrize(
     ("target_cls", "filename", "text", "data"),

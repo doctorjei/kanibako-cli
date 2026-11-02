@@ -1,4 +1,4 @@
-"""Centralized configuration I/O, YAML/native JSON(C) codecs, and document mutators.
+"""Centralized configuration I/O, YAML/native codecs, and document mutators.
 
 A config DOCUMENT is a settings-cascade file, agent file, registry, or
 ``spawn.yaml``; native tool configurations retain their own codecs. A DOCUMENT
@@ -13,6 +13,7 @@ from __future__ import annotations
 import errno
 import json
 import re
+import tomllib
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, Callable
@@ -302,6 +303,11 @@ def overwrite_doc_text(path: Path, text: str) -> None:
 def parse_json_text(text: str) -> Any:
   """Parse native JSON without shape checks or error normalization."""
   return json.loads(text)
+
+
+def parse_toml_text(text: str) -> dict[str, Any]:
+  """Parse native TOML without shape checks or error normalization."""
+  return tomllib.loads(text)
 
 
 def _strip_jsonc(text: str) -> str:

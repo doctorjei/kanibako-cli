@@ -1,16 +1,17 @@
-# Config Document I/O — YAML, native JSON, and document mutators
+# Configuration I/O — YAML, native codecs, and mutators
 
 `load_doc`/`dump_doc` handle kanibako YAML. Mutators preserve `(sections, leaf)` content;
 `config_keys`/`config_dest` own routing. Packaging's `pyproject.toml` is excluded.
 
-## Host transport and native JSON(C)
+## Host transport and native codecs
 
-`read_doc_text` accepts optional encoding; its default remains unchanged. `write_doc_text` is atomic.
+`read_doc_text` preserves default/explicit encodings; `write_doc_text` is atomic.
 `overwrite_doc_text` follows links in place. Box text delegates to boxfs with roots; Codex surgery
 remains caller-owned; rig validation and empty bootstrap creation persist.
 
-JSON retains stdlib defaults. `parse_json_text` preserves errors; `render_json_text` supports
+`parse_json_text`/`parse_toml_text` preserve stdlib values/errors. `render_json_text` supports
 compare-before-write, separators/indent. `dump_json_doc` truncates before streaming, preserving partial failures.
+Persona readers use UTF-8 reads/native parsing; plugins retain projection/errors.
 Tweakcc/Docker retain policies; other native callers remain.
 
 `load_jsonc` tries strict JSON, then `_strip_jsonc`: block comments, whole-line `//` comments, and
