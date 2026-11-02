@@ -41,7 +41,6 @@ matching ``$DOCKER_HOST`` — ensures the ssh tunnel and routes to
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import shlex
@@ -58,6 +57,7 @@ from kanibako.runtime.container import (
   running_from_inspect,
 )
 from kanibako.settings.bootstrap import XDG_RUNTIME_DIR
+from kanibako.settings.config_io import overwrite_doc_text, read_doc_text, render_json_text
 from kanibako.settings.paths import resolve_cache_path, resolve_state_path
 
 logger = get_logger("vscode_remote")
@@ -560,14 +560,13 @@ def ensure_docker_context_meta(name: str, url: str) -> Path:
     "Metadata": {},
     "Endpoints": {"docker": {"Host": url, "SkipTLSVerify": False}},
   }
-  content = json.dumps(payload, separators=(",", ":"))
+  content = render_json_text(payload, separators=(",", ":"))
   try:
-    if meta_file.read_text() == content:
+    if read_doc_text(meta_file) == content:
       return meta_file
   except OSError:
     pass
-  meta_dir.mkdir(parents=True, exist_ok=True)
-  meta_file.write_text(content)
+  overwrite_doc_text(meta_file, content)
   return meta_file
 
 

@@ -8,12 +8,13 @@ to the user and shared across projects with identical configs.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Final
 
 from kanibako.log import get_logger
+from kanibako.settings.config_io import dump_json_doc, load_json_doc
 from kanibako.utils import deep_merge
 
 logger = get_logger("tweakcc")
@@ -78,11 +79,10 @@ def load_external_config(config_path: str | None) -> dict:
     return {}
 
   try:
-    with open(path) as f:
-      data = json.load(f)
+    data = load_json_doc(path)
     logger.debug("Loaded external tweakcc config: %s", path)
     return data if isinstance(data, dict) else {}
-  except (json.JSONDecodeError, OSError) as e:
+  except (JSONDecodeError, OSError) as e:
     logger.warning("Failed to load tweakcc config %s: %s", path, e)
     return {}
 
@@ -120,7 +120,5 @@ def build_merged_config(
 
 def write_merged_config(config: dict, output_path: Path) -> None:
   """Write the merged tweakcc config to a JSON file."""
-  output_path.parent.mkdir(parents=True, exist_ok=True)
-  with open(output_path, "w") as f:
-    json.dump(config, f, indent=2)
+  dump_json_doc(output_path, config, indent=2)
   logger.debug("Wrote merged tweakcc config: %s", output_path)

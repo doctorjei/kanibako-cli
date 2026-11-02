@@ -1,17 +1,17 @@
-"""Centralized load/dump/mutate for kanibako config documents (YAML).
+"""Centralized configuration I/O, YAML/native JSON codecs, and document mutators.
 
-Terminology: a config DOCUMENT is one settings-cascade file (``kanibako.cfg``,
-a scope's settings file (``yaml``), an agent file, the consolidated name
-registry, ``spawn.yaml``); a DOCUMENT MUTATOR is a read-modify-write at a
-``(sections, leaf)`` path.  The mutators know nothing about the KEYSPACE — which
-file and which nested slot a config KEY maps to is answered by
-:mod:`kanibako.settings.config_keys` and :mod:`kanibako.settings.config_dest`.
-(pyproject.toml is Python packaging and is NOT handled here.)
+A config DOCUMENT is a settings-cascade file, agent file, registry, or
+``spawn.yaml``; native tool configurations retain their own codecs. A DOCUMENT
+MUTATOR performs read-modify-write at a ``(sections, leaf)`` path without knowing
+the KEYSPACE. :mod:`kanibako.settings.config_keys` and
+:mod:`kanibako.settings.config_dest` locate keys within files.
+Python packaging's ``pyproject.toml`` is excluded.
 """
 
 from __future__ import annotations
 
 import errno
+import json
 import re
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -280,6 +280,30 @@ def read_doc_text(path: Path) -> str:
 def write_doc_text(path: Path, text: str) -> None:
   """Atomically write host configuration text; box-writable paths require the box-file seam."""
   atomic_write_text(path, text)
+
+
+def overwrite_doc_text(path: Path, text: str) -> None:
+  """Overwrite host text in place, following links; box paths require the box-file seam."""
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_text(text)
+
+
+def load_json_doc(path: Path) -> Any:
+  """Read native host JSON without shape checks or error normalization."""
+  with open(path) as stream:
+    return json.load(stream)
+
+
+def dump_json_doc(path: Path, data: Any, *, indent: int | None = None) -> None:
+  """Stream native host JSON after truncation, preserving in-place write behavior."""
+  path.parent.mkdir(parents=True, exist_ok=True)
+  with open(path, "w") as stream:
+    json.dump(data, stream, indent=indent)
+
+
+def render_json_text(data: Any, *, separators: tuple[str, str] | None = None) -> str:
+  """Render native JSON with unchanged standard-library defaults."""
+  return json.dumps(data, separators=separators)
 
 
 def load_doc(path: Path | None) -> dict:

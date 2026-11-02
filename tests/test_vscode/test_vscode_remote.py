@@ -12,6 +12,7 @@ import os
 import re
 import shlex
 import socket
+import stat
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -429,9 +430,103 @@ def test_context_meta_is_idempotent():
   assert meta_file.stat().st_mtime_ns == mtime
 
 
-def test_context_meta_refuses_non_kanibako_name():
+def test_context_meta_refuses_non_kanibako_name(monkeypatch):
+  def unexpected_io():
+    raise AssertionError("context refusal must precede filesystem work")
+
+  monkeypatch.setattr(vr, "_docker_config_dir", unexpected_io)
   with pytest.raises(ValueError):
     vr.ensure_docker_context_meta("myctx", "ssh://x/sock")
+
+
+def test_context_meta_exact_compact_bytes():
+  meta_file = vr.ensure_docker_context_meta("kanibako-remote-synthetic", "unix:///synthetic.sock")
+  assert meta_file.read_bytes() == (
+    b'{"Name":"kanibako-remote-synthetic","Metadata":{},'
+    b'"Endpoints":{"docker":{"Host":"unix:///synthetic.sock","SkipTLSVerify":false}}}'
+  )
+
+
+def test_context_meta_rewrites_equivalent_pretty_json():
+  name = "kanibako-remote-synthetic"
+  url = "unix:///synthetic.sock"
+  meta_file = vr.ensure_docker_context_meta(name, url)
+  compact = meta_file.read_text()
+  meta_file.write_text(json.dumps(json.loads(compact), indent=2))
+  os.utime(meta_file, ns=(1, 1))
+  assert vr.ensure_docker_context_meta(name, url) == meta_file
+  assert meta_file.read_text() == compact
+  assert meta_file.stat().st_mtime_ns != 1
+
+
+def test_context_meta_invalid_utf8_propagates():
+  name = "kanibako-remote-synthetic"
+  url = "unix:///synthetic.sock"
+  meta_file = vr.ensure_docker_context_meta(name, url)
+  meta_file.write_bytes(b"\xff")
+  with pytest.raises(UnicodeDecodeError):
+    vr.ensure_docker_context_meta(name, url)
+  assert meta_file.read_bytes() == b"\xff"
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_context_meta_preserves_link_target_identity_and_mode(tmp_path, link_kind):
+  name = "kanibako-remote-synthetic"
+  url = "unix:///synthetic.sock"
+  meta_file = vr.ensure_docker_context_meta(name, url)
+  content = meta_file.read_text()
+  target = tmp_path / "target.json"
+  meta_file.rename(target)
+  target.write_text("old content")
+  target.chmod(0o640)
+  before = target.stat()
+  if link_kind == "symlink":
+    meta_file.symlink_to(target)
+  else:
+    meta_file.hardlink_to(target)
+
+  assert vr.ensure_docker_context_meta(name, url) == meta_file
+
+  assert meta_file.is_symlink() is (link_kind == "symlink")
+  assert meta_file.stat().st_ino == target.stat().st_ino == before.st_ino
+  assert stat.S_IMODE(target.stat().st_mode) == stat.S_IMODE(before.st_mode)
+  assert target.read_text() == content
+
+
+def test_context_meta_read_oserror_still_attempts_overwrite(monkeypatch):
+  name = "kanibako-remote-synthetic"
+  url = "unix:///synthetic.sock"
+  meta_file = vr.ensure_docker_context_meta(name, url)
+  content = meta_file.read_bytes()
+  meta_file.write_text("old content")
+  real_read = Path.read_text
+
+  def denied(path, *args, **kwargs):
+    if path == meta_file:
+      raise PermissionError("synthetic read denial")
+    return real_read(path, *args, **kwargs)
+
+  monkeypatch.setattr(Path, "read_text", denied)
+  assert vr.ensure_docker_context_meta(name, url) == meta_file
+  assert meta_file.read_bytes() == content
+
+
+def test_context_meta_write_error_propagates(monkeypatch):
+  name = "kanibako-remote-synthetic"
+  url = "unix:///synthetic.sock"
+  meta_file = vr.ensure_docker_context_meta(name, url)
+  meta_file.write_text("old content")
+  real_write = Path.write_text
+
+  def denied(path, *args, **kwargs):
+    if path == meta_file:
+      raise PermissionError("synthetic write denial")
+    return real_write(path, *args, **kwargs)
+
+  monkeypatch.setattr(Path, "write_text", denied)
+  with pytest.raises(PermissionError, match="synthetic write denial"):
+    vr.ensure_docker_context_meta(name, url)
+  assert meta_file.read_text() == "old content"
 
 
 # --- RemoteEngine argv prefix + env PATH ------------------------------------

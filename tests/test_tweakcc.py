@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+import stat
 from pathlib import Path
 
 import pytest
@@ -86,6 +88,38 @@ class TestLoadExternalConfig:
     result = load_external_config("~/.tweakcc/config.json")
     assert result == {"key": "val"}
 
+  def test_native_json_keys_duplicates_and_nonfinite(self, tmp_path):
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"": 1, "@cache": 2, "__cache__": 3, "value": 0, "value": NaN}')
+    result = load_external_config(str(cfg))
+    assert {key: result[key] for key in ("", "@cache", "__cache__")} == {
+      "": 1,
+      "@cache": 2,
+      "__cache__": 3,
+    }
+    assert math.isnan(result["value"])
+
+  def test_invalid_utf8_propagates(self, tmp_path):
+    cfg = tmp_path / "config.json"
+    cfg.write_bytes(b"\xff")
+    with pytest.raises(UnicodeDecodeError):
+      load_external_config(str(cfg))
+    assert cfg.read_bytes() == b"\xff"
+
+  def test_read_oserror_warns_and_returns_empty(self, tmp_path, monkeypatch, caplog):
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"key": "value"}')
+    real_open = open
+
+    def denied(path, *args, **kwargs):
+      if path == cfg:
+        raise PermissionError("synthetic read denial")
+      return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", denied)
+    assert load_external_config(str(cfg)) == {}
+    assert "Failed to load tweakcc config" in caplog.text
+
 
 class TestDeepMerge:
   def test_flat(self):
@@ -158,6 +192,55 @@ class TestWriteMergedConfig:
     output = tmp_path / "deep" / "nested" / "config.json"
     write_merged_config({"key": "val"}, output)
     assert output.exists()
+
+  def test_exact_json_spelling_without_final_newline(self, tmp_path):
+    output = tmp_path / "config.json"
+    config = {"word": "é", "switch": True}
+    write_merged_config(config, output)
+    assert output.read_text() == '{\n  "word": "\\u00e9",\n  "switch": true\n}'
+
+  @pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+  def test_write_preserves_link_target_identity_and_mode(self, tmp_path, link_kind):
+    target = tmp_path / "target.json"
+    target.write_text("old content")
+    target.chmod(0o640)
+    before = target.stat()
+    output = tmp_path / "config.json"
+    if link_kind == "symlink":
+      output.symlink_to(target)
+    else:
+      output.hardlink_to(target)
+
+    config = {"value": "updated"}
+    write_merged_config(config, output)
+
+    assert output.is_symlink() is (link_kind == "symlink")
+    assert output.stat().st_ino == target.stat().st_ino == before.st_ino
+    assert stat.S_IMODE(target.stat().st_mode) == stat.S_IMODE(before.st_mode)
+    assert target.read_text() == json.dumps(config, indent=2)
+    assert load_external_config(str(output)) == config
+
+  def test_serialization_failure_keeps_streamed_prefix(self, tmp_path):
+    output = tmp_path / "config.json"
+    output.write_text("original contents")
+    with pytest.raises(TypeError):
+      write_merged_config({"before": 1, "bad": object()}, output)
+    assert output.read_text() == '{\n  "before": 1,\n  "bad": '
+
+  def test_native_write_error_propagates(self, tmp_path, monkeypatch):
+    output = tmp_path / "config.json"
+    output.write_text("original contents")
+    real_open = open
+
+    def denied(path, *args, **kwargs):
+      if path == output:
+        raise PermissionError("synthetic write denial")
+      return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", denied)
+    with pytest.raises(PermissionError, match="synthetic write denial"):
+      write_merged_config({"value": "new"}, output)
+    assert output.read_text() == "original contents"
 
 
 class TestAgentConfigTweakcc:

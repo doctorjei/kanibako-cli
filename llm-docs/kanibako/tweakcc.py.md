@@ -1,9 +1,8 @@
 # tweakcc — the binary transform, and the key that names it
 
-`tweakcc` patches Claude Code's `cli.js` bundle. This module resolves and merges the config
-(`resolve_tweakcc_config`, `build_merged_config`, `write_merged_config`); `tweakcc_cache.py` owns
-the cache, its key, and its flock refcount; `commands/start.py::_apply_tweakcc` runs the patch
-inside a throwaway container.
+`tweakcc` patches Claude Code's `cli.js`. This module resolves/merges configuration; native JSON I/O
+uses `settings.config_io`, retaining in-place writes. `tweakcc_cache.py` owns cache keys and flock
+refcounts; `commands/start.py::_apply_tweakcc` patches inside a throwaway container.
 
 ## `TRANSFORM_NAME` — why the word is spelled on both sides of the seam
 

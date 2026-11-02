@@ -1,23 +1,21 @@
-# Config Document I/O — the one YAML seam, and the document mutators
+# Config Document I/O — YAML, native JSON, and document mutators
 
-`config_io` owns settings-document parsing, serialization, and host file transport. `load_doc` and
-`dump_doc` handle bootstrap and scope settings, agent files, registries, and helper `spawn.yaml`.
-PyYAML owns serialization; packaging's `pyproject.toml` is excluded.
+`config_io` provides settings codecs and host file transport. `load_doc`/`dump_doc` handle kanibako
+YAML; `load_json_doc`/`dump_json_doc` handle migrated native JSON callers, retaining their shape/error
+policies. Packaging's `pyproject.toml` is excluded.
 
-Beside them live the read-modify-write **document mutators** — read/write/remove at a
-`(sections, leaf)` path, plus the scalar rendering `get` displays. They know nothing about the
-KEYSPACE: a caller hands them a resolved path into a document and they preserve everything else in
-it. Which file, and which nested slot, a config KEY maps to is a different question, answered by
-`kanibako.settings.config_keys` and `kanibako.settings.config_dest`.
+Document mutators preserve content around a resolved `(sections, leaf)` path. Keyspace routing belongs
+to `config_keys` and `config_dest`. `load_doc`'s high fan-in makes parse-failure normalization essential.
 
-`load_doc` is one of the highest-fan-in functions in the tree, which is the reason the
-parse-failure normalization below is not optional.
+## Host transport and native JSON
 
-## Scope — what "every document" does and does not cover
+`read_doc_text` reads raw text; `write_doc_text` writes atomically. `overwrite_doc_text` instead writes
+in place and follows links. Box-writable paths require the box-file seam. Rig metadata retains its
+validation; bootstrap creation writes zero bytes.
 
-`read_doc_text` and `write_doc_text` carry raw host text; the writer is atomic. Box-writable paths
-require the box-file seam. Rig metadata shares these doors, `_dump_text`, and `parse_doc_text`,
-retaining its own validation. Bootstrap creation writes empty text, not an empty mapping.
+Native JSON retains stdlib defaults. `dump_json_doc` opens/truncates before streaming, preserving partial
+serialization failures. `render_json_text` supports bytewise compare-before-write. Tweakcc and Docker
+metadata retain their domain policies; this does not consolidate every native-format caller.
 
 ## Packaged documents
 
