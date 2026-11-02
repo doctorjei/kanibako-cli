@@ -469,3 +469,172 @@ def test_existing_parent_overwrite_keeps_default_encoding_and_write_error(tmp_pa
   assert raised.value is error
   assert calls == [(path, "new", (), {})]
   assert path.read_text() == "keep"
+
+
+@pytest.mark.parametrize("link", ["leaf", "parent", "hard"])
+def test_host_byte_transport_keeps_raw_bytes_links_inode_and_mode(tmp_path, link):
+  target = tmp_path / "config"
+  target.write_bytes(b"\xff\x00before\r\nafter\rtail\n")
+  target.chmod(0o640)
+  path = tmp_path / "alias"
+  if link == "leaf":
+    path.symlink_to(target)
+  elif link == "parent":
+    path.symlink_to(tmp_path, target_is_directory=True)
+    path = path / target.name
+  else:
+    path.hardlink_to(target)
+  before = target.stat()
+  assert config_io.read_doc_bytes(path) == target.read_bytes()
+  replacement = b"\xfe\x00new\r\nshort\r\n"
+  assert config_io.overwrite_doc_bytes_in_existing_parent(path, replacement) == len(replacement)
+  assert target.read_bytes() == replacement
+  assert config_io.read_doc_bytes(path) == replacement
+  assert target.stat().st_ino == before.st_ino
+  assert target.stat().st_mode == before.st_mode
+  if link == "leaf":
+    assert path.is_symlink()
+  elif link == "parent":
+    assert path.parent.is_symlink()
+  else:
+    assert path.stat().st_ino == before.st_ino
+
+
+def test_host_byte_overwrite_creates_leaf_and_truncates_to_empty(tmp_path):
+  path = tmp_path / "config"
+  assert config_io.overwrite_doc_bytes_in_existing_parent(path, b"\xff\r\n") == 3
+  assert path.read_bytes() == b"\xff\r\n"
+  inode = path.stat().st_ino
+  assert config_io.overwrite_doc_bytes_in_existing_parent(path, b"") == 0
+  assert path.read_bytes() == b""
+  assert path.stat().st_ino == inode
+
+
+@pytest.mark.parametrize("link", ["leaf", "parent", "hard"])
+def test_host_append_preserves_existing_bytes_links_inode_and_mode(tmp_path, link):
+  target = tmp_path / "config"
+  original = b"\xff\x00before\r\nafter\rtail"
+  target.write_bytes(original)
+  target.chmod(0o640)
+  path = tmp_path / "alias"
+  if link == "leaf":
+    path.symlink_to(target)
+  elif link == "parent":
+    path.symlink_to(tmp_path, target_is_directory=True)
+    path = path / target.name
+  else:
+    path.hardlink_to(target)
+  before = target.stat()
+  config_io.append_doc_text_in_existing_parent(path, "\nnew\r\nlast\r")
+  assert target.read_bytes() == original + b"\nnew\r\nlast\r"
+  assert target.stat().st_ino == before.st_ino
+  assert target.stat().st_mode == before.st_mode
+  if link == "leaf":
+    assert path.is_symlink()
+  elif link == "parent":
+    assert path.parent.is_symlink()
+  else:
+    assert path.stat().st_ino == before.st_ino
+
+
+def test_host_append_creates_leaf_and_uses_default_open(tmp_path, monkeypatch):
+  import builtins
+
+  path = tmp_path / "config"
+  real_open = builtins.open
+  calls = []
+
+  def capture(*args, **kwargs):
+    calls.append((args, kwargs))
+    return real_open(*args, **kwargs)
+
+  monkeypatch.setattr(config_io, "open", capture, raising=False)
+  config_io.append_doc_text_in_existing_parent(path, "first\n")
+  config_io.append_doc_text_in_existing_parent(path, "second\n")
+  assert path.read_bytes() == b"first\nsecond\n"
+  assert calls == [((path, "a"), {}), ((path, "a"), {})]
+
+
+@pytest.mark.parametrize(
+  ("operation", "args"),
+  [
+    (config_io.read_doc_bytes, ()),
+    (config_io.overwrite_doc_bytes_in_existing_parent, (b"new",)),
+    (config_io.append_doc_text_in_existing_parent, ("new",)),
+    (config_io.unlink_doc_file, ()),
+  ],
+)
+def test_host_transports_keep_missing_parent_and_directory_errors(tmp_path, operation, args):
+  path = tmp_path / "absent" / "config"
+  with pytest.raises(FileNotFoundError):
+    operation(path, *args)
+  assert not path.parent.exists()
+  with pytest.raises(IsADirectoryError):
+    operation(tmp_path, *args)
+
+
+@pytest.mark.parametrize(
+  ("operation", "args"),
+  [
+    (config_io.read_doc_bytes, ()),
+    (config_io.overwrite_doc_bytes_in_existing_parent, (b"new",)),
+    (config_io.append_doc_text_in_existing_parent, ("new",)),
+    (config_io.unlink_doc_file, ()),
+  ],
+)
+def test_host_transports_propagate_real_permission_errors(tmp_path, operation, args):
+  import os
+
+  if os.geteuid() == 0:
+    pytest.skip("root bypasses filesystem permissions")
+  parent = tmp_path / "locked"
+  parent.mkdir()
+  path = parent / "config"
+  original = b"\xffkeep\r\n"
+  path.write_bytes(original)
+  parent.chmod(0)
+  try:
+    with pytest.raises(PermissionError) as raised:
+      operation(path, *args)
+    assert raised.value.filename == str(path)
+  finally:
+    parent.chmod(0o700)
+  assert path.read_bytes() == original
+
+
+def test_host_unlink_preserves_missing_ok_and_other_errors(tmp_path):
+  path = tmp_path / "absent" / "config"
+  with pytest.raises(FileNotFoundError):
+    config_io.unlink_doc_file(path)
+  with pytest.raises(FileNotFoundError):
+    config_io.unlink_doc_file(path, missing_ok=False)
+  config_io.unlink_doc_file(path, missing_ok=True)
+  assert not path.parent.exists()
+  with pytest.raises(IsADirectoryError):
+    config_io.unlink_doc_file(tmp_path, missing_ok=True)
+
+
+@pytest.mark.parametrize("link", ["leaf", "parent", "hard", "dangling"])
+def test_host_unlink_removes_leaf_not_link_target(tmp_path, link):
+  target = tmp_path / "config"
+  target.write_bytes(b"\xffkeep\r\n")
+  before = target.stat()
+  path = tmp_path / "alias"
+  if link == "leaf":
+    path.symlink_to(target)
+  elif link == "parent":
+    path.symlink_to(tmp_path, target_is_directory=True)
+    path = path / target.name
+  elif link == "hard":
+    path.hardlink_to(target)
+  else:
+    path.symlink_to(tmp_path / "missing")
+  config_io.unlink_doc_file(path)
+  assert not path.exists() and not path.is_symlink()
+  if link == "parent":
+    assert path.parent.is_symlink()
+    assert not target.exists()
+  else:
+    assert target.read_bytes() == b"\xffkeep\r\n"
+    assert target.stat().st_ino == before.st_ino
+    assert target.stat().st_mode == before.st_mode

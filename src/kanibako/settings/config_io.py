@@ -295,6 +295,27 @@ def write_doc_text(path: Path, text: str) -> None:
   atomic_write_text(path, text)
 
 
+def read_doc_bytes(path: Path) -> bytes:
+  """Read raw host bytes through links; box paths require the box-file seam."""
+  return path.read_bytes()
+
+
+def overwrite_doc_bytes_in_existing_parent(path: Path, data: bytes) -> int:
+  """Overwrite host bytes in place through links; never create parents."""
+  return path.write_bytes(data)
+
+
+def append_doc_text_in_existing_parent(path: Path, text: str) -> None:
+  """Append host text through links with default encoding; never create parents."""
+  with open(path, "a") as stream:
+    stream.write(text)
+
+
+def unlink_doc_file(path: Path, *, missing_ok: bool = False) -> None:
+  """Unlink the host leaf, not its link target, with native missing-file behavior."""
+  path.unlink(missing_ok=missing_ok)
+
+
 def read_box_doc_bytes(path: Path, root: Path) -> bytes:
   """Read box configuration bytes through the explicit-root no-follow seam."""
   return boxfs.read_bytes(path, root)

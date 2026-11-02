@@ -5,21 +5,21 @@
 
 ## Host transport and native codecs
 
-`read_doc_text` preserves encodings; `write_doc_text` is atomic. `overwrite_doc_text` mkdirs,
-then `overwrite_doc_text_in_existing_parent` overwrites in-place through links.
-`copy_doc_file` preserves copy2 metadata/links/errors. `replace_json_doc` renders before fixed
-`.json.tmp` write/replace; no mkdir. Rooted box text/bytes use boxfs; `read_packaged_bytes`
-retains bytes. Codex surgery, rig validation, and empty bootstrap creation remain.
+`read_doc_text` keeps encodings; `write_doc_text` is atomic. `overwrite_doc_text` mkdirs before
+`overwrite_doc_text_in_existing_parent` overwrites in-place through links. Host bytes/append follow links:
+raw reads, in-place writes, default-encoding append; no mkdir. Unlink removes leaves with native
+`missing_ok`. `copy_doc_file` keeps copy2 metadata/links/errors; `replace_json_doc` renders before
+fixed `.json.tmp` write/replace; no mkdir. Rooted box text/bytes use boxfs; `read_packaged_bytes`
+keeps bytes. Codex surgery, rig validation, and empty bootstrap creation remain.
 
-JSON str/bytes/bytearray and TOML parsing retain stdlib values/errors; `parse_native_yaml` uses
-unguarded SafeLoader. Goose retains mapping/error/size policy. `render_json_text` supports
-compare-before-write, separators/indent; `dump_json_doc` truncates before streaming, including
-partial failures. Persona UTF-8/projection/errors and Tweakcc/Docker policies remain caller-owned.
+JSON str/bytes/bytearray and TOML retain stdlib values/errors; `parse_native_yaml` uses unguarded
+SafeLoader. Goose owns mapping/error/size policy. `render_json_text`: compare-before-write,
+separators/indent. `dump_json_doc` truncates before streaming, including partial failures.
+Persona UTF-8/projection/errors and Tweakcc/Docker policies remain caller-owned.
 
-`load_jsonc` tries JSON before `_strip_jsonc` removes block comments, whole-line `//` comments,
-and trailing commas before `}`/`]`. Failure returns `None`; inline `//` comments remain
-unsupported to avoid URL guesses. Regex limitations and caller shape/consent/strict-JSON
-rewrite policies remain.
+`load_jsonc` tries JSON, then `_strip_jsonc`: block comments, whole-line `//` comments, trailing
+commas before `}`/`]`. Unparseable → `None`; inline `//` stays unsupported (URL ambiguity).
+Regex limitations and caller shape/consent/strict-JSON rewrite policies remain.
 
 ## Packaged documents
 
@@ -27,11 +27,10 @@ rewrite policies remain.
 def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 ```
-`parse_packaged` parses a YAML file kanibako SHIPS (never a user's file) with the fastest safe
-loader (`_PackagedLoader`, over `CSafeLoader` when present). `load_packaged_mapping` reads the
-shipped document at *ref* and raises `PackagingError` when it is empty or not a mapping: a broken
-install, never an empty document (spec §0). `core_defaults`, `keyspace_manifest` and
-`agent_defaults` read through it.
+`parse_packaged` uses the fastest safe loader (`_PackagedLoader`, over `CSafeLoader` when present)
+for YAML kanibako SHIPS, never user files. `load_packaged_mapping` reads *ref*, raising
+`PackagingError` for empty/non-mapping documents: broken installs, never empty documents (spec §0).
+`core_defaults`, `keyspace_manifest` and `agent_defaults` use it.
 
 ## The parse-failure seam
 
