@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.settings.config_io import parse_json_text, read_doc_text
+from kanibako.settings.config_io import copy_doc_file, parse_json_text, read_doc_text
 from kanibako.settings.agent_defaults import (
   load_behavior,
   load_category_binds,
@@ -206,7 +205,7 @@ class ClaudeTarget(Target):
         # project->host writeback: wholesale copy (engine gated mtime).
         if src is not None and Path(src).is_file():
           dst.parent.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(str(src), str(dst))
+          copy_doc_file(src, dst)
         return
       # direction "in": host->project claudeAiOauth merge.
       if src is not None and Path(src).is_file():

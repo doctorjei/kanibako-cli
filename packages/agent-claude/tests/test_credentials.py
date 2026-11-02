@@ -269,3 +269,141 @@ class TestWritebackExtra:
     (project_home / ".claude.json").symlink_to(secret)
     ClaudeTarget().writeback_extra(project_home=project_home, host_home=host_home)
     assert not (host_home / ".claude.json").exists()
+
+
+class TestCredentialConfigTransport:
+  def test_missing_destination_copy_keeps_source_metadata(self, tmp_path):
+    import os
+
+    source = tmp_path / "source.json"
+    source.write_text('{"claudeAiOauth": {}, "unknown": true}')
+    source.chmod(0o640)
+    os.utime(source, ns=(1000000000, 2000000000))
+    link = tmp_path / "source-link.json"
+    link.symlink_to(source)
+    destination = tmp_path / "new" / ".credentials.json"
+    assert merge_oauth_in(link, destination)
+    assert destination.read_bytes() == source.read_bytes()
+    assert destination.stat().st_mode == source.stat().st_mode
+    assert destination.stat().st_mtime_ns == source.stat().st_mtime_ns
+    assert link.is_symlink()
+
+  def test_merge_keeps_fixed_temp_mode_and_unknown_destination_keys(self, tmp_path):
+    source = tmp_path / "source.json"
+    source.write_text('{"claudeAiOauth": {}, "host_only": true}')
+    destination = tmp_path / "credentials.json"
+    destination.write_text('{"unknown": [1, 2]}')
+    temporary = destination.with_suffix(".json.tmp")
+    temporary.write_text("old")
+    temporary.chmod(0o640)
+    before = temporary.stat()
+    assert merge_oauth_in(source, destination)
+    assert json.loads(destination.read_text()) == {"unknown": [1, 2], "claudeAiOauth": {}}
+    assert destination.stat().st_ino == before.st_ino
+    assert destination.stat().st_mode == before.st_mode
+    assert not temporary.exists()
+
+  def test_account_failed_replace_keeps_host_and_written_temp(self, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    box = tmp_path / "box" / ".claude.json"
+    box.parent.mkdir()
+    box.write_text('{"oauthAccount": {"synthetic": true}}')
+    host = tmp_path / "host" / ".claude.json"
+    host.parent.mkdir()
+    host.write_text('{"unknown": true}')
+    before = host.read_bytes()
+    temporary = host.with_suffix(".json.tmp")
+    original_replace = Path.replace
+
+    def fail(path, target):
+      if path == temporary:
+        raise PermissionError("synthetic replacement denial")
+      return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail)
+    assert merge_oauth_account_out(box, host, box_root=box.parent) is False
+    assert host.read_bytes() == before
+    assert json.loads(temporary.read_text()) == {
+      "unknown": True,
+      "oauthAccount": {"synthetic": True},
+    }
+
+  @pytest.mark.parametrize("operation", ["in", "account-out"])
+  def test_invalid_host_utf8_retains_existing_exception(self, tmp_path, operation):
+    source = tmp_path / "source.json"
+    destination = tmp_path / "destination.json"
+    if operation == "in":
+      source.write_bytes(b"\xff")
+      destination.write_text("{}")
+      with pytest.raises(UnicodeDecodeError):
+        merge_oauth_in(source, destination)
+      assert destination.read_text() == "{}"
+    else:
+      source.write_text('{"oauthAccount": {}}')
+      destination.write_bytes(b"\xff")
+      with pytest.raises(UnicodeDecodeError):
+        merge_oauth_account_out(source, destination, box_root=tmp_path)
+      assert destination.read_bytes() == b"\xff"
+
+  def test_account_parent_link_below_box_root_is_not_followed(self, tmp_path, caplog):
+    root = tmp_path / "box"
+    root.mkdir()
+    held = tmp_path / "outside"
+    held.mkdir()
+    source = held / ".claude.json"
+    source.write_text('{"oauthAccount": {}}')
+    (root / "linked").symlink_to(held, target_is_directory=True)
+    host = tmp_path / "host.json"
+    host.write_text('{"unknown": true}')
+    with caplog.at_level(logging.WARNING):
+      assert not merge_oauth_account_out(root / "linked" / source.name, host, box_root=root)
+    assert host.read_text() == '{"unknown": true}'
+    assert source.read_text() == '{"oauthAccount": {}}'
+    assert "symlink" in caplog.text
+
+  @pytest.mark.parametrize("host_link", [False, True])
+  def test_real_staging_consumers_keep_merge_backup_mode_and_times(self, tmp_path, host_link):
+    import os
+    import stat
+
+    from kanibako.targets.credsync import refresh_cred_files, writeback_cred_files
+
+    target = ClaudeTarget()
+    host, box = tmp_path / "host", tmp_path / "box"
+    rel = ".claude/.credentials.json"
+    store = host / rel
+    store.parent.mkdir(parents=True)
+    actual = tmp_path / "actual-store.json" if host_link else store
+    original = {"claudeAiOauth": {"phase": 1}, "host_unknown": True}
+    actual.write_text(json.dumps(original))
+    actual.chmod(0o640)
+    os.utime(actual, (200, 200))
+    if host_link:
+      store.symlink_to(actual)
+    project = box / rel
+    project.parent.mkdir(parents=True)
+    project.write_text('{"claudeAiOauth": {}, "box_unknown": true}')
+    os.utime(project, (100, 100))
+
+    refresh_cred_files(target.descriptor, target, source_root=host, project_home=box)
+    assert json.loads(project.read_text()) == {
+      "claudeAiOauth": {"phase": 1},
+      "box_unknown": True,
+    }
+    assert stat.S_IMODE(project.stat().st_mode) == 0o600
+    project.write_text('{"claudeAiOauth": {"phase": 2}, "box_unknown": true}')
+    os.utime(project, ns=(300000000000, 400000000000))
+    box_mtime = project.stat().st_mtime_ns
+
+    writeback_cred_files(target.descriptor, target, source_root=host, project_home=box)
+    assert json.loads(actual.read_text()) == {
+      "claudeAiOauth": {"phase": 2},
+      "box_unknown": True,
+    }
+    assert stat.S_IMODE(actual.stat().st_mode) == 0o640
+    assert actual.stat().st_mtime_ns == box_mtime
+    backup = store.with_name(store.name + ".bak")
+    assert json.loads(backup.read_text()) == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+    assert store.is_symlink() is host_link

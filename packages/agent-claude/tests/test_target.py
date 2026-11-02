@@ -145,7 +145,7 @@ class TestDetect:
 
     t = ClaudeTarget()
     # No shutil.which involved: assert it is never consulted.
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       result = t.detect()
     m_which.assert_not_called()
 
@@ -165,7 +165,7 @@ class TestDetect:
     _anchor_contract(monkeypatch, launcher, install_dir)
 
     t = ClaudeTarget()
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       result = t.detect()
     m_which.assert_not_called()
     assert result is None
@@ -331,7 +331,7 @@ class TestCheckAuth:
     """check_auth returns True when the contract launcher is absent."""
     _anchor_contract(monkeypatch, tmp_path / "bin" / "claude", tmp_path / "share")
     t = ClaudeTarget()
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       assert t.check_auth() is True
     m_which.assert_not_called()
 
@@ -385,7 +385,7 @@ class TestCheckAuth:
     _anchor_contract(monkeypatch, launcher, tmp_path / "share")
     t = ClaudeTarget()
     status_result = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": True}))
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       with patch(
         "kanibako.plugins.claude.target.subprocess.run", return_value=status_result
       ) as m_run:
@@ -439,7 +439,7 @@ class TestPrepareHost:
     t = ClaudeTarget()
     install = self._install(tmp_path, monkeypatch=monkeypatch)
     update_result = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       with patch(
         "kanibako.plugins.claude.target.subprocess.run", return_value=update_result
       ) as m_run:
@@ -461,7 +461,7 @@ class TestPrepareHost:
     install = self._install(tmp_path, anchor=False)
     # Anchor to a path that does NOT exist.
     _anchor_contract(monkeypatch, tmp_path / "absent" / "claude", tmp_path / "share")
-    with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+    with patch("shutil.which") as m_which:
       with patch("kanibako.plugins.claude.target.subprocess.run") as m_run:
         t.prepare_host(install, auto_auth=True, data_path=tmp_path)
     m_which.assert_not_called()

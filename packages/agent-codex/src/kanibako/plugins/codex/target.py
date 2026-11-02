@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.settings.config_io import parse_toml_text, read_doc_text
+from kanibako.settings.config_io import parse_json_text, parse_toml_text, read_doc_text
 from kanibako.settings.agent_defaults import (
   load_behavior,
   load_category_binds,
@@ -414,12 +414,10 @@ class CodexTarget(Target):
     The plugin reads no field of the file; :meth:`check_auth` asks only that it
     be non-empty, and an object with nothing in it is empty.
     """
-    import json
-
     if not spec.home_rel.endswith("auth.json"):
       return None
     try:
-      doc = json.loads(data)
+      doc = parse_json_text(data)
     except ValueError as exc:
       return f"not JSON: {exc}"
     if not isinstance(doc, dict) or not doc:

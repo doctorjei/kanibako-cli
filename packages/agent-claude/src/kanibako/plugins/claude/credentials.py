@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
 from kanibako import boxfs
+from kanibako.settings.config_io import (
+  copy_doc_file,
+  parse_json_text,
+  read_box_doc_text,
+  read_doc_text,
+  replace_json_doc,
+)
 
 
 def merge_oauth_in(src: Path, dst: Path) -> bool:
@@ -31,11 +37,11 @@ def merge_oauth_in(src: Path, dst: Path) -> bool:
   # If project creds don't exist, just copy host wholesale.
   if not dst.is_file():
     dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(src), str(dst))
+    copy_doc_file(src, dst)
     return True
 
   try:
-    host_data = json.loads(src.read_text())
+    host_data = parse_json_text(read_doc_text(src))
   except (json.JSONDecodeError, OSError) as exc:
     print(f"Warning: Cannot read host credentials: {exc}", file=sys.stderr)
     return False
@@ -49,15 +55,13 @@ def merge_oauth_in(src: Path, dst: Path) -> bool:
     return False
 
   try:
-    project_data = json.loads(dst.read_text())
+    project_data = parse_json_text(read_doc_text(dst))
   except (json.JSONDecodeError, OSError):
     project_data = {}
 
   project_data["claudeAiOauth"] = oauth
 
-  tmp = dst.with_suffix(".json.tmp")
-  tmp.write_text(json.dumps(project_data, indent=2) + "\n")
-  tmp.replace(dst)
+  replace_json_doc(dst, project_data)
   return True
 
 
@@ -68,7 +72,7 @@ def credentials_error(data: bytes) -> str | None:
   ``claudeAiOauth`` block is present, here required to be an object.
   """
   try:
-    doc = json.loads(data)
+    doc = parse_json_text(data)
   except ValueError as exc:
     return f"not JSON: {exc}"
   if not isinstance(doc, dict):
@@ -107,7 +111,7 @@ def merge_oauth_account_out(project_json: Path, host_json: Path, *, box_root: Pa
   if not boxfs.no_symlink_or_warn(project_json, box_root):
     return False
   try:
-    box_data = json.loads(boxfs.read_text(project_json, box_root))
+    box_data = parse_json_text(read_box_doc_text(project_json, box_root))
   except (ValueError, OSError):
     return False
   if not isinstance(box_data, dict):
@@ -118,7 +122,7 @@ def merge_oauth_account_out(project_json: Path, host_json: Path, *, box_root: Pa
 
   if host_json.is_file():
     try:
-      host_data = json.loads(host_json.read_text())
+      host_data = parse_json_text(read_doc_text(host_json))
       if not isinstance(host_data, dict):
         host_data = {}
     except (json.JSONDecodeError, OSError):
@@ -131,9 +135,7 @@ def merge_oauth_account_out(project_json: Path, host_json: Path, *, box_root: Pa
 
   try:
     host_json.parent.mkdir(parents=True, exist_ok=True)
-    tmp = host_json.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(host_data, indent=2) + "\n")
-    tmp.replace(host_json)
+    replace_json_doc(host_json, host_data)
   except OSError:
     return False
   return True

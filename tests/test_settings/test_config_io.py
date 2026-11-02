@@ -304,3 +304,168 @@ def test_box_byte_transport_keeps_root_and_error_contracts(tmp_path, monkeypatch
   with pytest.raises(PermissionError) as caught:
     config_io.write_box_doc_bytes(root / "config", root, b"{}")
   assert caught.value is error
+
+
+@pytest.mark.parametrize("kind", [str, bytes, bytearray])
+def test_native_json_preserves_stdlib_text_and_byte_inputs(kind):
+  raw = '{"value": [true, null, "café"]}'
+  data = raw if kind is str else kind(raw.encode("utf-8"))
+  assert config_io.parse_json_text(data) == json.loads(data)
+
+
+@pytest.mark.parametrize("data", [b"{", bytearray(b"{"), b"\xff"])
+def test_native_json_keeps_byte_input_errors(data):
+  try:
+    json.loads(data)
+  except ValueError as error:
+    with pytest.raises(type(error)) as raised:
+      config_io.parse_json_text(data)
+    assert raised.value.args == error.args
+  else:
+    pytest.fail("synthetic malformed JSON unexpectedly parsed")
+
+
+def test_host_copy_preserves_copy2_links_metadata_and_inode(tmp_path):
+  import os
+
+  source = tmp_path / "source.json"
+  source.write_bytes(b'{"value": 1}\n')
+  source.chmod(0o640)
+  os.utime(source, ns=(1000000000, 2000000000))
+  source_link = tmp_path / "source-link.json"
+  source_link.symlink_to(source)
+  held = tmp_path / "held.json"
+  held.write_text("old")
+  inode = held.stat().st_ino
+  destination = tmp_path / "destination.json"
+  destination.symlink_to(held)
+
+  config_io.copy_doc_file(source_link, destination)
+
+  assert source_link.is_symlink() and destination.is_symlink()
+  assert held.read_bytes() == source.read_bytes()
+  assert held.stat().st_ino == inode
+  assert held.stat().st_mode == source.stat().st_mode
+  assert held.stat().st_mtime_ns == source.stat().st_mtime_ns
+
+
+def test_host_copy_does_not_create_parents_and_keeps_copy_errors(tmp_path, monkeypatch):
+  source = tmp_path / "source.json"
+  source.write_text("{}")
+  destination = tmp_path / "absent" / "config.json"
+  with pytest.raises(FileNotFoundError):
+    config_io.copy_doc_file(source, destination)
+  assert not destination.parent.exists()
+  error = PermissionError("synthetic copy denial")
+  seen = []
+
+  def fail(src, dst):
+    seen.append((src, dst))
+    raise error
+
+  monkeypatch.setattr(config_io.shutil, "copy2", fail)
+  with pytest.raises(PermissionError) as raised:
+    config_io.copy_doc_file(source, destination)
+  assert raised.value is error
+  assert seen == [(str(source), str(destination))]
+
+
+def test_fixed_json_replace_keeps_temp_mode_and_replaces_host_link(tmp_path):
+  held = tmp_path / "held.json"
+  held.write_text("untouched")
+  destination = tmp_path / "config.json"
+  destination.symlink_to(held)
+  temporary = destination.with_suffix(".json.tmp")
+  temporary.write_text("old temp")
+  temporary.chmod(0o640)
+  before = temporary.stat()
+  data = {"unknown": [True, None], "value": "literal"}
+
+  config_io.replace_json_doc(destination, data)
+
+  assert not destination.is_symlink()
+  assert destination.read_text() == json.dumps(data, indent=2) + "\n"
+  assert destination.stat().st_ino == before.st_ino
+  assert destination.stat().st_mode == before.st_mode
+  assert held.read_text() == "untouched"
+  assert not temporary.exists()
+
+
+def test_fixed_json_replace_retains_existing_temp_link_behavior(tmp_path):
+  held = tmp_path / "held.json"
+  held.write_text("old")
+  destination = tmp_path / "config.json"
+  destination.write_text("destination")
+  temporary = destination.with_suffix(".json.tmp")
+  temporary.symlink_to(held)
+
+  config_io.replace_json_doc(destination, {"value": 1})
+
+  assert destination.is_symlink()
+  assert held.read_text() == '{\n  "value": 1\n}\n'
+  assert not temporary.is_symlink()
+
+
+def test_fixed_json_replace_serializes_before_open_and_never_creates_parents(tmp_path):
+  destination = tmp_path / "config.json"
+  destination.write_text("destination")
+  temporary = destination.with_suffix(".json.tmp")
+  temporary.write_text("keep temp")
+  with pytest.raises(TypeError):
+    config_io.replace_json_doc(destination, {"value": object()})
+  assert destination.read_text() == "destination"
+  assert temporary.read_text() == "keep temp"
+  absent = tmp_path / "absent" / "config.json"
+  with pytest.raises(FileNotFoundError):
+    config_io.replace_json_doc(absent, {})
+  assert not absent.parent.exists()
+
+
+def test_fixed_json_replace_preserves_temp_after_replace_failure(tmp_path):
+  destination = tmp_path / "config.json"
+  destination.mkdir()
+  temporary = destination.with_suffix(".json.tmp")
+  with pytest.raises(IsADirectoryError):
+    config_io.replace_json_doc(destination, {"value": 1})
+  assert destination.is_dir()
+  assert temporary.read_text() == '{\n  "value": 1\n}\n'
+
+
+def test_existing_parent_overwrite_creates_leaf_and_preserves_host_links(tmp_path):
+  path = tmp_path / "new.json"
+  config_io.overwrite_doc_text_in_existing_parent(path, "first\n")
+  assert path.read_bytes() == b"first\n"
+  path.chmod(0o640)
+  before = path.stat()
+  link = tmp_path / "link.json"
+  link.symlink_to(path)
+  config_io.overwrite_doc_text_in_existing_parent(link, "replacement\n")
+  assert link.is_symlink()
+  assert path.read_bytes() == b"replacement\n"
+  assert path.stat().st_ino == before.st_ino
+  assert path.stat().st_mode == before.st_mode
+
+
+def test_existing_parent_overwrite_does_not_create_missing_parents(tmp_path):
+  path = tmp_path / "absent" / "config.json"
+  with pytest.raises(FileNotFoundError):
+    config_io.overwrite_doc_text_in_existing_parent(path, "value")
+  assert not path.parent.exists()
+
+
+def test_existing_parent_overwrite_keeps_default_encoding_and_write_error(tmp_path, monkeypatch):
+  path = tmp_path / "config.json"
+  path.write_text("keep")
+  error = PermissionError("synthetic write denial")
+  calls = []
+
+  def fail(source, text, *args, **kwargs):
+    calls.append((source, text, args, kwargs))
+    raise error
+
+  monkeypatch.setattr(Path, "write_text", fail)
+  with pytest.raises(PermissionError) as raised:
+    config_io.overwrite_doc_text_in_existing_parent(path, "new")
+  assert raised.value is error
+  assert calls == [(path, "new", (), {})]
+  assert path.read_text() == "keep"

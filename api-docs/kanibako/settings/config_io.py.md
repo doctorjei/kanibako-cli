@@ -31,7 +31,10 @@ def write_box_doc_bytes(path: Path, root: Path, data: bytes) -> None
 def read_box_doc_text(path: Path, root: Path) -> str
 def write_box_doc_text(path: Path, root: Path, text: str) -> None
 def overwrite_doc_text(path: Path, text: str) -> None
-def parse_json_text(text: str) -> Any
+def overwrite_doc_text_in_existing_parent(path: Path, text: str) -> None
+def copy_doc_file(src: Path, dst: Path) -> None
+def replace_json_doc(path: Path, data: Any) -> None
+def parse_json_text(text: str | bytes | bytearray) -> Any
 def parse_toml_text(text: str) -> dict[str, Any]
 def load_jsonc(text: str) -> object | None
 def load_json_doc(path: Path) -> Any

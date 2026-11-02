@@ -13,6 +13,7 @@ from __future__ import annotations
 import errno
 import json
 import re
+import shutil
 import tomllib
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -317,10 +318,27 @@ def write_box_doc_text(path: Path, root: Path, text: str) -> None:
 def overwrite_doc_text(path: Path, text: str) -> None:
   """Overwrite host text in place, following links; box paths require the box-file seam."""
   path.parent.mkdir(parents=True, exist_ok=True)
+  overwrite_doc_text_in_existing_parent(path, text)
+
+
+def overwrite_doc_text_in_existing_parent(path: Path, text: str) -> None:
+  """Overwrite host text in place with default encoding; never create parents."""
   path.write_text(text)
 
 
-def parse_json_text(text: str) -> Any:
+def copy_doc_file(src: Path, dst: Path) -> None:
+  """Copy host configuration with copy2 metadata/link semantics; do not create parents."""
+  shutil.copy2(str(src), str(dst))
+
+
+def replace_json_doc(path: Path, data: Any) -> None:
+  """Render before fixed-sibling ``.json.tmp`` write/replace; parents must exist."""
+  tmp = path.with_suffix(".json.tmp")
+  overwrite_doc_text_in_existing_parent(tmp, render_json_text(data, indent=2) + "\n")
+  tmp.replace(path)
+
+
+def parse_json_text(text: str | bytes | bytearray) -> Any:
   """Parse native JSON without shape checks or error normalization."""
   return json.loads(text)
 

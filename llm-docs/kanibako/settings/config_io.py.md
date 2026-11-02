@@ -1,24 +1,25 @@
-# Configuration I/O — YAML, native codecs, and mutators
+# Configuration I/O
 
-`load_doc`/`dump_doc` handle kanibako YAML. Mutators preserve `(sections, leaf)` content;
-`config_keys`/`config_dest` own routing. Packaging's `pyproject.toml` is excluded.
+`load_doc`/`dump_doc` handle YAML; mutators preserve `(sections, leaf)`.
+`config_keys`/`config_dest` own routing. `pyproject.toml` is excluded.
 
 ## Host transport and native codecs
 
-`read_doc_text` preserves default/explicit encodings; `write_doc_text` is atomic;
-`overwrite_doc_text` follows links. Box text/bytes use rooted boxfs; `read_packaged_bytes`
+`read_doc_text` preserves encodings; `write_doc_text` is atomic. `overwrite_doc_text` mkdirs,
+then `overwrite_doc_text_in_existing_parent` overwrites in-place through links.
+`copy_doc_file` preserves copy2 metadata/links/errors. `replace_json_doc` renders before fixed
+`.json.tmp` write/replace; no mkdir. Rooted box text/bytes use boxfs; `read_packaged_bytes`
 retains bytes. Codex surgery, rig validation, and empty bootstrap creation remain.
 
-`parse_json_text`/`parse_toml_text` retain stdlib values/errors; `parse_native_yaml` uses
-SafeLoader without document guards. Goose keeps mapping/error/size policy.
-`render_json_text` supports compare-before-write, separators/indent; `dump_json_doc` truncates before
-streaming, including partial failures. Persona readers keep UTF-8/projection/errors; Tweakcc/Docker
-retain policy. Other native callers remain.
+JSON str/bytes/bytearray and TOML parsing retain stdlib values/errors; `parse_native_yaml` uses
+unguarded SafeLoader. Goose retains mapping/error/size policy. `render_json_text` supports
+compare-before-write, separators/indent; `dump_json_doc` truncates before streaming, including
+partial failures. Persona UTF-8/projection/errors and Tweakcc/Docker policies remain caller-owned.
 
-`load_jsonc` tries strict JSON, then `_strip_jsonc` for block comments, whole-line `//` comments,
-and trailing commas before `}`/`]`. Inline `//` comments return `None`, avoiding URL-string guesses.
-Regex limitations remain; callers retain shape checks, consent, and strict-JSON rewrite policy.
-Invalid input returns `None`.
+`load_jsonc` tries JSON before `_strip_jsonc` removes block comments, whole-line `//` comments,
+and trailing commas before `}`/`]`. Failure returns `None`; inline `//` comments remain
+unsupported to avoid URL guesses. Regex limitations and caller shape/consent/strict-JSON
+rewrite policies remain.
 
 ## Packaged documents
 

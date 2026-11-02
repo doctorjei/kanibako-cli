@@ -502,3 +502,20 @@ def test_a_failed_spec_skips_only_itself_and_keeps_the_dirty_flag(
   _engine_writeback(_synthetic(), tmp_path, monkeypatch)
   assert secrets.read_text() == _GOOSE_OK
   assert not flag.exists()
+
+
+@pytest.mark.parametrize(
+  ("make", "rel", "text"),
+  [
+    (_claude, ".claude/.credentials.json", '{"claudeAiOauth": {}}'),
+    (_codex, ".codex/auth.json", '{"synthetic": true}'),
+  ],
+)
+@pytest.mark.parametrize("kind", [str, bytes, bytearray])
+def test_native_credential_validation_keeps_stdlib_input_types(make, rel, text, kind):
+  target = make()
+  spec = next(spec for spec in target.descriptor.cred_files if spec.home_rel == rel)
+  data = text if kind is str else kind(text.encode("utf-8"))
+  assert target.cred_writeback_error(spec, data) is None
+  bad = "{" if kind is str else kind(b"{")
+  assert target.cred_writeback_error(spec, bad).startswith("not JSON:")
