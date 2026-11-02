@@ -18,7 +18,14 @@ from kanibako.settings.bootstrap import (
   SITE_SETTINGS_FILE,
   SYSTEM_PATH_DEFAULTS,
 )
-from kanibako.settings.config_io import dump_doc, load_doc, refuse_scalar_sections, write_doc_text
+from kanibako.settings.config_io import (
+  dump_doc,
+  load_doc,
+  read_box_doc_bytes,
+  refuse_scalar_sections,
+  write_box_doc_text,
+  write_doc_text,
+)
 from kanibako.settings.messages import (
   ERR_CONFIG_LAYER1_SETTINGS,
   ERR_CONFIG_LAYER1_TABLE,
@@ -582,7 +589,7 @@ def is_standalone_mark_file(path: Path) -> bool:
   from kanibako.utils import unreadable_path_error
 
   try:
-    raw = boxfs.read_bytes(path, path.parent)
+    raw = read_box_doc_bytes(path, path.parent)
   except boxfs.SymlinkRefusedError:
     return False
   except OSError as exc:
@@ -606,7 +613,7 @@ def write_standalone_mark(workset_root: Path) -> None:
   try:
     st = boxfs.stat(path, workset_root)
   except FileNotFoundError:
-    boxfs.write_text(path, workset_root, WS_TOKEN_STANDALONE + "\n")
+    write_box_doc_text(path, workset_root, WS_TOKEN_STANDALONE + "\n")
     return
   except boxfs.SymlinkRefusedError:
     what = "a symlink"

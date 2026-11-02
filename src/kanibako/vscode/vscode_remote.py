@@ -57,7 +57,12 @@ from kanibako.runtime.container import (
   running_from_inspect,
 )
 from kanibako.settings.bootstrap import XDG_RUNTIME_DIR
-from kanibako.settings.config_io import overwrite_doc_text, read_doc_text, render_json_text
+from kanibako.settings.config_io import (
+  overwrite_doc_text,
+  overwrite_doc_text_in_existing_parent,
+  read_doc_text,
+  render_json_text,
+)
 from kanibako.settings.paths import resolve_cache_path, resolve_state_path
 
 logger = get_logger("vscode_remote")
@@ -401,7 +406,9 @@ def write_context_entry(
   d = contexts_dir()
   d.mkdir(parents=True, exist_ok=True)
   path = d / name
-  path.write_text(f"URL={url}\nDEST={dest}\nUID={uid}\nSOCK={sock}\nREMOTE_SOCK={remote_sock}\n")
+  overwrite_doc_text_in_existing_parent(
+    path, f"URL={url}\nDEST={dest}\nUID={uid}\nSOCK={sock}\nREMOTE_SOCK={remote_sock}\n"
+  )
   return path
 
 
@@ -410,7 +417,7 @@ def read_context_entry(name: str) -> dict[str, str]:
   path = contexts_dir() / name
   result: dict[str, str] = {}
   try:
-    raw = path.read_text()
+    raw = read_doc_text(path)
   except OSError:
     return result
   for line in raw.splitlines():

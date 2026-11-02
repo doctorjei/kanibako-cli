@@ -14,7 +14,7 @@ import shlex
 import socket
 import stat
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -743,3 +743,138 @@ def test_format_remote_failure_no_output_is_called_out():
   double error."""
   msg = vr.format_remote_failure("kanibako start", "host", "   ")
   assert "Response from remote host:\n    (no output from remote host)" in msg
+
+
+def test_context_reader_keeps_malformed_duplicate_and_first_equals_rules(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  root.mkdir()
+  path = root / "context"
+  text = "ignored\nURL=first\r\nURL=second=tail\r\n=empty-key\n spaced = value \n"
+  path.write_bytes(text.encode())
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  calls = []
+  read = vr.read_doc_text
+
+  def host_read(candidate):
+    calls.append(candidate)
+    return read(candidate)
+
+  monkeypatch.setattr(vr, "read_doc_text", host_read)
+  assert vr.read_context_entry("context") == {
+    "URL": "second=tail",
+    "": "empty-key",
+    " spaced ": " value ",
+  }
+  assert calls == [path]
+  assert path.read_bytes() == text.encode()
+
+
+def test_context_reader_retains_oserror_and_decode_error_split(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  root.mkdir()
+  path = root / "context"
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  assert vr.read_context_entry("missing") == {}
+  path.write_bytes(b"\xff")
+  with pytest.raises(UnicodeDecodeError):
+    vr.read_context_entry("context")
+  assert path.read_bytes() == b"\xff"
+
+  def denied(_):
+    raise PermissionError("synthetic denial")
+
+  monkeypatch.setattr(vr, "read_doc_text", denied)
+  assert vr.read_context_entry("context") == {}
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_context_store_retains_link_target_inode_and_exact_flat_bytes(
+  tmp_path, monkeypatch, link_kind
+):
+  root = tmp_path / "contexts"
+  root.mkdir()
+  target = tmp_path / "target"
+  target.write_bytes(b"old")
+  target.chmod(0o640)
+  path = root / "context"
+  if link_kind == "symlink":
+    path.symlink_to(target)
+  else:
+    path.hardlink_to(target)
+  before = target.stat()
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  write = Mock(wraps=vr.overwrite_doc_text_in_existing_parent)
+  monkeypatch.setattr(vr, "overwrite_doc_text_in_existing_parent", write)
+  result = vr.write_context_entry(
+    "context", url="unix:///s=tail", dest=" user@host ", uid=1000, sock="/s", remote_sock="/r"
+  )
+  assert result == path
+  text = "URL=unix:///s=tail\nDEST= user@host \nUID=1000\nSOCK=/s\nREMOTE_SOCK=/r\n"
+  write.assert_called_once_with(path, text)
+  assert target.read_bytes() == text.encode()
+  assert path.is_symlink() is (link_kind == "symlink")
+  assert path.stat().st_ino == target.stat().st_ino == before.st_ino
+  assert stat.S_IMODE(target.stat().st_mode) == stat.S_IMODE(before.st_mode)
+  assert vr.read_context_entry("context")["URL"] == "unix:///s=tail"
+
+
+def test_context_write_keeps_missing_intermediate_parent_failure(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  with pytest.raises(FileNotFoundError):
+    vr.write_context_entry(
+      "nested/context", url="unix:///s", dest="synthetic", uid=1000, sock="/s", remote_sock="/r"
+    )
+  assert root.is_dir()
+  assert not (root / "nested").exists()
+
+
+def test_context_write_retains_unescaped_values(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  path = vr.write_context_entry(
+    "context", url="unix:///s\nEXTRA=a=b", dest="synthetic", uid=1000, sock="/s", remote_sock="/r"
+  )
+  assert path.read_bytes().startswith(b"URL=unix:///s\nEXTRA=a=b\nDEST=synthetic\n")
+  assert vr.read_context_entry("context")["EXTRA"] == "a=b"
+
+
+def test_context_write_keeps_default_encoding_and_existing_nested_parent(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  (root / "nested").mkdir(parents=True)
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  path = vr.write_context_entry(
+    "nested/context", url="unix:///雪", dest="café", uid=42, sock="/s", remote_sock="/r"
+  )
+  reference = tmp_path / "reference"
+  reference.write_text("URL=unix:///雪\nDEST=café\nUID=42\nSOCK=/s\nREMOTE_SOCK=/r\n")
+  assert path.read_bytes() == reference.read_bytes()
+  assert vr.read_context_entry("nested/context")["DEST"] == "café"
+
+
+@pytest.mark.parametrize("error", [PermissionError("synthetic denial"), UnicodeError("encoding")])
+def test_context_write_propagates_transport_errors(tmp_path, monkeypatch, error):
+  root = tmp_path / "contexts"
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  failed = Mock(side_effect=error)
+  monkeypatch.setattr(vr, "overwrite_doc_text_in_existing_parent", failed)
+  with pytest.raises(type(error)) as caught:
+    vr.write_context_entry(
+      "context", url="unix:///s", dest="synthetic", uid=42, sock="/s", remote_sock="/r"
+    )
+  assert caught.value is error
+  assert root.is_dir()
+  assert not (root / "context").exists()
+  failed.assert_called_once()
+
+
+def test_context_write_keeps_directory_leaf_failure(tmp_path, monkeypatch):
+  root = tmp_path / "contexts"
+  (root / "context").mkdir(parents=True)
+  monkeypatch.setattr(vr, "contexts_dir", lambda: root)
+  with pytest.raises(IsADirectoryError):
+    vr.write_context_entry(
+      "context", url="unix:///s", dest="synthetic", uid=42, sock="/s", remote_sock="/r"
+    )
+  assert (root / "context").is_dir()
+  assert list((root / "context").iterdir()) == []

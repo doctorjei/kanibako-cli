@@ -8,6 +8,8 @@ the resolver faces, and the three per-mode paths that actually CREATE the direct
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from kanibako.project.workset import (
@@ -404,3 +406,103 @@ class TestStandaloneModeVault:
     assert proj.vault_rw_path == root / "vault"
     assert (root / "vault").is_dir()
     assert not (root / "vault" / ".gitignore").exists()
+
+
+def test_vault_gitignore_uses_existing_parent_host_door(tmp_path, monkeypatch):
+  from kanibako.settings import config_io, paths
+
+  vault = tmp_path / "vault"
+  vault.mkdir()
+  write = Mock(wraps=config_io.overwrite_doc_text_in_existing_parent)
+  monkeypatch.setattr(config_io, "overwrite_doc_text_in_existing_parent", write)
+  paths.write_vault_gitignore(tmp_path, vault / "rw")
+  write.assert_called_once_with(vault / ".gitignore", "rw/\n")
+  assert (vault / ".gitignore").read_bytes() == b"rw/\n"
+  assert not (vault / "rw").exists()
+
+
+@pytest.mark.parametrize("gate", ["missing", "outside", "same", "existing"])
+def test_vault_gitignore_keeps_location_and_existence_gates(tmp_path, monkeypatch, gate):
+  from kanibako.settings import config_io, paths
+
+  vault = tmp_path / "vault"
+  if gate != "missing":
+    vault.mkdir()
+  path = vault / ".gitignore"
+  if gate == "existing":
+    path.write_bytes(b"user content\xff\r\n")
+    before = path.stat()
+  rw = tmp_path / "outside" if gate == "outside" else vault if gate == "same" else vault / "rw"
+  write = Mock(side_effect=AssertionError("unexpected write"))
+  monkeypatch.setattr(config_io, "overwrite_doc_text_in_existing_parent", write)
+  paths.write_vault_gitignore(tmp_path, rw)
+  write.assert_not_called()
+  if gate == "existing":
+    assert path.read_bytes() == b"user content\xff\r\n"
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+  else:
+    assert not path.exists()
+  assert vault.is_dir() is (gate != "missing")
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_vault_gitignore_keeps_in_place_link_behavior_after_gate(tmp_path, monkeypatch, link_kind):
+  from kanibako.settings import config_io, paths
+
+  vault = tmp_path / "vault"
+  vault.mkdir()
+  target = tmp_path / "target"
+  target.write_bytes(b"old")
+  target.chmod(0o640)
+  before = target.stat()
+  write = config_io.overwrite_doc_text_in_existing_parent
+
+  def link_and_write(candidate, text):
+    assert candidate == vault / ".gitignore"
+    assert not candidate.exists()
+    if link_kind == "symlink":
+      candidate.symlink_to(target)
+    else:
+      candidate.hardlink_to(target)
+    write(candidate, text)
+
+  monkeypatch.setattr(config_io, "overwrite_doc_text_in_existing_parent", link_and_write)
+  paths.write_vault_gitignore(tmp_path, vault / "rw")
+  path = vault / ".gitignore"
+  assert path.is_symlink() is (link_kind == "symlink")
+  assert path.stat().st_ino == target.stat().st_ino == before.st_ino
+  assert target.stat().st_mode == before.st_mode
+  assert target.read_bytes() == b"rw/\n"
+
+
+def test_vault_gitignore_does_not_recreate_parent_lost_after_gate(tmp_path, monkeypatch):
+  from kanibako.settings import config_io, paths
+
+  vault = tmp_path / "vault"
+  vault.mkdir()
+  write = config_io.overwrite_doc_text_in_existing_parent
+
+  def remove_parent_and_write(candidate, text):
+    vault.rmdir()
+    write(candidate, text)
+
+  monkeypatch.setattr(config_io, "overwrite_doc_text_in_existing_parent", remove_parent_and_write)
+  with pytest.raises(FileNotFoundError):
+    paths.write_vault_gitignore(tmp_path, vault / "rw")
+  assert not vault.exists()
+
+
+def test_vault_gitignore_propagates_write_error(tmp_path, monkeypatch):
+  from kanibako.settings import config_io, paths
+
+  vault = tmp_path / "vault"
+  vault.mkdir()
+  error = PermissionError("synthetic denial")
+  write = Mock(side_effect=error)
+  monkeypatch.setattr(config_io, "overwrite_doc_text_in_existing_parent", write)
+  with pytest.raises(PermissionError) as caught:
+    paths.write_vault_gitignore(tmp_path, vault / "rw")
+  assert caught.value is error
+  assert not (vault / ".gitignore").exists()
+  write.assert_called_once_with(vault / ".gitignore", "rw/\n")

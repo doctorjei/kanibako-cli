@@ -2116,9 +2116,11 @@ def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None:
     return
   if vault_rw_path == vault_dir or not _host_path_within(vault_rw_path, vault_dir):
     return
+  from kanibako.settings.config_io import overwrite_doc_text_in_existing_parent
+
   gitignore = vault_dir / IGNORE_FILE
   if not gitignore.exists():
-    gitignore.write_text("rw/\n")
+    overwrite_doc_text_in_existing_parent(gitignore, "rw/\n")
 
 
 def _init_project(
@@ -3196,11 +3198,12 @@ def establish_standalone(
 def _restore_mark(path: Path, root: Path, mark: bytes) -> None:
   """Write *mark* back at *path* only while nothing is there: never over a user's file."""
   from kanibako import boxfs
+  from kanibako.settings.config_io import write_box_doc_bytes
 
   try:
     boxfs.stat(path, root)
   except FileNotFoundError:
-    boxfs.write_bytes(path, root, mark)
+    write_box_doc_bytes(path, root, mark)
 
 
 def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]], None]) -> None:
@@ -3214,10 +3217,11 @@ def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]],
   """
   from kanibako import boxfs
   from kanibako.settings.config import is_standalone_mark
+  from kanibako.settings.config_io import read_box_doc_bytes
 
   path = root / WORKSET_REGISTRY_FILE
   try:
-    old = boxfs.read_bytes(path, root)
+    old = read_box_doc_bytes(path, root)
     if not is_standalone_mark(old):
       return
     push_undo(lambda: _restore_mark(path, root, old))
