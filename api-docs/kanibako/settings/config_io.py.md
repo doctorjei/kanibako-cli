@@ -18,12 +18,16 @@ _ABSENT = object()
 
 ## Functions
 ```
+def read_packaged_bytes(ref: Traversable) -> bytes
+def parse_native_yaml(text: str | bytes) -> Any
 def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def read_doc_text(path: Path, *, encoding: str | None=None) -> str
 def write_doc_text(path: Path, text: str) -> None
+def read_box_doc_bytes(path: Path, root: Path) -> bytes
+def write_box_doc_bytes(path: Path, root: Path, data: bytes) -> None
 def read_box_doc_text(path: Path, root: Path) -> str
 def write_box_doc_text(path: Path, root: Path, text: str) -> None
 def overwrite_doc_text(path: Path, text: str) -> None

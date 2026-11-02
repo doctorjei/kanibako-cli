@@ -5,19 +5,20 @@
 
 ## Host transport and native codecs
 
-`read_doc_text` preserves default/explicit encodings; `write_doc_text` is atomic.
-`overwrite_doc_text` follows links in place. Box text delegates to boxfs with roots; Codex surgery
-remains caller-owned; rig validation and empty bootstrap creation persist.
+`read_doc_text` preserves default/explicit encodings; `write_doc_text` is atomic;
+`overwrite_doc_text` follows links. Box text/bytes use rooted boxfs; `read_packaged_bytes`
+retains bytes. Codex surgery, rig validation, and empty bootstrap creation remain.
 
-`parse_json_text`/`parse_toml_text` preserve stdlib values/errors. `render_json_text` supports
-compare-before-write, separators/indent. `dump_json_doc` truncates before streaming, preserving partial failures.
-Persona readers use UTF-8 reads/native parsing; plugins retain projection/errors.
-Tweakcc/Docker retain policies; other native callers remain.
+`parse_json_text`/`parse_toml_text` retain stdlib values/errors; `parse_native_yaml` uses
+SafeLoader without document guards. Goose keeps mapping/error/size policy.
+`render_json_text` supports compare-before-write, separators/indent; `dump_json_doc` truncates before
+streaming, including partial failures. Persona readers keep UTF-8/projection/errors; Tweakcc/Docker
+retain policy. Other native callers remain.
 
-`load_jsonc` tries strict JSON, then `_strip_jsonc`: block comments, whole-line `//` comments, and
-trailing commas before `}`/`]`. Inline `//` comments return `None`, avoiding URL-string guesses.
-Regex limitations remain. Both commands
-retain shape checks, consent, and strict-JSON rewrite policy. Invalid input returns `None`.
+`load_jsonc` tries strict JSON, then `_strip_jsonc` for block comments, whole-line `//` comments,
+and trailing commas before `}`/`]`. Inline `//` comments return `None`, avoiding URL-string guesses.
+Regex limitations remain; callers retain shape checks, consent, and strict-JSON rewrite policy.
+Invalid input returns `None`.
 
 ## Packaged documents
 
@@ -36,8 +37,6 @@ install, never an empty document (spec §0). `core_defaults`, `keyspace_manifest
 ```python
 def yaml_problem(exc: yaml.YAMLError) -> str
 ```
-One-line rendering of a YAML parse failure (the problem + where).
-
 `yaml`'s multi-line `str()` cites `"<unicode string>"` because the loader receives text, not a file.
 The caller names the file; `yaml_problem` supplies the problem and line/column. It is public so
 rig metadata and overlays can share the renderer while retaining their own exception types.

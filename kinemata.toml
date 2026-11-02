@@ -1371,17 +1371,16 @@ kind = "code-patterns"
 
   # ⚑ A PROXY, WIDER THAN THE DEFECT. The defect was a packaged-YAML loader
   # that returned {} for a non-mapping document; matching is per line, so that
-  # two-line shape cannot be expressed. What can be is that YAML is parsed in
-  # these three files only, and `config_io` refuses a non-mapping.
+  # two-line shape cannot be expressed. Parser calls stay in approved homes;
+  # config_io's document/packaged loaders refuse non-mappings.
   [[registry.entry]]
   id = "load_packaged_mapping"
   antipatterns = ['\byaml\.(safe_)?load\(']
   home = [
     "src/kanibako/settings/config_io.py",
-    "packages/agent-goose/src/kanibako/plugins/goose/credentials.py",
     "src/kinemata_views.py",
   ]
-  note = "YAML is parsed in config_io (load_doc, load_packaged_mapping), which refuses a non-mapping"
+  note = "Native YAML uses config_io; load_doc and load_packaged_mapping refuse non-mappings"
 
   # A regex that spells the header: the `#\s*` prefix, or the token followed by
   # a group, a class, or `:\s`. All three regexes the one grammar replaced

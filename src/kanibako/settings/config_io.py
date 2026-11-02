@@ -53,6 +53,16 @@ _read_none_as_null(_PackagedLoader)
 MAX_DOC_DEPTH = 64
 
 
+def read_packaged_bytes(ref: Traversable) -> bytes:
+  """Read exact bytes from a packaged configuration resource."""
+  return ref.read_bytes()
+
+
+def parse_native_yaml(text: str | bytes) -> Any:
+  """Parse native YAML without kanibako document guards or normalization."""
+  return yaml.safe_load(text)
+
+
 def parse_packaged(text: str) -> object:
   """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
   return yaml.load(text, Loader=_PackagedLoader)
@@ -282,6 +292,16 @@ def read_doc_text(path: Path, *, encoding: str | None = None) -> str:
 def write_doc_text(path: Path, text: str) -> None:
   """Atomically write host configuration text; box-writable paths require the box-file seam."""
   atomic_write_text(path, text)
+
+
+def read_box_doc_bytes(path: Path, root: Path) -> bytes:
+  """Read box configuration bytes through the explicit-root no-follow seam."""
+  return boxfs.read_bytes(path, root)
+
+
+def write_box_doc_bytes(path: Path, root: Path, data: bytes) -> None:
+  """Atomically replace box configuration bytes through the no-follow seam."""
+  boxfs.write_bytes(path, root, data)
 
 
 def read_box_doc_text(path: Path, root: Path) -> str:

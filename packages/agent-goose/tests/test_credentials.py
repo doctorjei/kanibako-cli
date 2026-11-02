@@ -38,3 +38,59 @@ class TestParseYaml:
 # ``CredFileSpec`` (realized by the credsync engine); their tests moved to the
 # engine-level credsync coverage and are deleted here.  ``read_yaml`` and
 # ``write_yaml`` went with the ``config.yaml`` sync, their only user.
+
+
+@pytest.mark.parametrize(
+  "text",
+  [
+    "value: None\n",
+    "value: null\n",
+    "on: yes\nvalue: off\n",
+    "value: first\nvalue: last\n",
+    "base: &base {x: 1}\ncopy: *base\n",
+    "base: &base {x: 1}\nvalue: {<<: *base, y: 2}\n",
+    "value: !!binary YWJj\n",
+    "value: 2026-11-02\n",
+    "value: 2026-11-02T12:00:00Z\n",
+    "value: !!python/object:builtins.object {}\n",
+    "value: [unterminated\n",
+    "",
+    "---\nvalue: 1\n---\nvalue: 2\n",
+    "﻿value: café\n",
+  ],
+)
+@pytest.mark.parametrize("encoding", [None, "utf-8-sig", "utf-16", "utf-32"])
+def test_native_yaml_outcome_matches_safe_load(text, encoding):
+  payload = text if encoding is None else text.encode(encoding)
+  try:
+    loaded = yaml.safe_load(payload)
+  except yaml.YAMLError:
+    expected = {}
+  else:
+    expected = loaded if isinstance(loaded, dict) else {}
+  actual = parse_yaml(payload)
+  assert actual == expected
+  assert [(type(k), type(v)) for k, v in actual.items()] == [
+    (type(k), type(v)) for k, v in expected.items()
+  ]
+
+
+def test_native_alias_identity_cycles_and_depth_remain_supported():
+  shared = parse_yaml("first: &base {value: 1}\nsecond: *base\n")
+  assert shared["first"] is shared["second"]
+  cycle = parse_yaml("value: &loop [*loop]\n")["value"]
+  assert cycle[0] is cycle
+  text = "value: " + "[" * 70 + "1" + "]" * 70
+  value = parse_yaml(text)["value"]
+  for _ in range(70):
+    value = value[0]
+  assert value == 1
+
+
+def test_native_nonfinite_values_remain_floats():
+  import math
+
+  data = parse_yaml("positive: .inf\nnegative: -.inf\nnan: .nan\n")
+  assert data["positive"] == float("inf")
+  assert data["negative"] == float("-inf")
+  assert math.isnan(data["nan"])

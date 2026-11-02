@@ -15,10 +15,13 @@ except ImportError:
   raise ImportError("PyYAML is required for the Goose plugin. Install it with: pip install pyyaml")
 
 
+from kanibako.settings.config_io import parse_native_yaml
+
+
 def parse_yaml(text: str | bytes) -> dict:
   """Parse YAML text as a mapping, returning {} for anything else or an error."""
   try:
-    data = yaml.safe_load(text)
+    data = parse_native_yaml(text)
   except yaml.YAMLError:
     return {}
   return data if isinstance(data, dict) else {}

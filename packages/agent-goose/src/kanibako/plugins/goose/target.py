@@ -131,26 +131,29 @@ class GooseTarget(Target):
     from importlib.resources import files
 
     from kanibako import boxfs
+    from kanibako.settings.config_io import (
+      read_box_doc_bytes,
+      read_packaged_bytes,
+      write_box_doc_bytes,
+    )
 
-    data = (
-      files(_DEFAULTS_PACKAGE)
-      .joinpath(
+    data = read_packaged_bytes(
+      files(_DEFAULTS_PACKAGE).joinpath(
         "data",
         "agents-plugin",
         "hooks",
         _HOOKS_FILE,
       )
-      .read_bytes()
     )
     path = config_root.joinpath(*_HOOKS_DIR, _HOOKS_FILE)
     if not boxfs.no_symlink_or_warn(path, config_root):
       return False
     try:
-      if boxfs.read_bytes(path, config_root) == data:
+      if read_box_doc_bytes(path, config_root) == data:
         return False
     except FileNotFoundError:
       pass
-    boxfs.write_bytes(path, config_root, data)
+    write_box_doc_bytes(path, config_root, data)
     return True
 
   def has_resumable_session(self, home: Path) -> bool:
@@ -301,12 +304,13 @@ def _box_provider_named(box_home: Path) -> bool:
   """
   from kanibako import boxfs
   from kanibako.plugins.goose.credentials import parse_yaml
+  from kanibako.settings.config_io import read_box_doc_bytes
 
   path = box_home / ".config" / "goose" / GOOSE_CONFIG_FILE
   try:
     if boxfs.stat(path, box_home).st_size > _BOX_CONFIG_MAX_BYTES:
       return False
-    data = boxfs.read_bytes(path, box_home)
+    data = read_box_doc_bytes(path, box_home)
   except (OSError, ValueError):
     return False
   if len(data) > _BOX_CONFIG_MAX_BYTES:

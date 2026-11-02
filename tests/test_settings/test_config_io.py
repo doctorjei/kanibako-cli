@@ -204,3 +204,103 @@ def test_native_toml_preserves_stdlib_syntax_errors(text):
   with pytest.raises(tomllib.TOMLDecodeError) as facade:
     config_io.parse_toml_text(text)
   assert str(facade.value) == str(native.value)
+
+
+def test_native_yaml_does_not_inherit_kanibako_document_guards():
+  import yaml
+
+  text = "value: None\nrepeat: first\nrepeat: last\n"
+  assert (
+    config_io.parse_native_yaml(text)
+    == yaml.safe_load(text)
+    == {"value": "None", "repeat": "last"}
+  )
+  assert config_io.parse_doc_text("value: None\n") == {"value": None}
+  cyclic = config_io.parse_native_yaml("value: &loop [*loop]\n")["value"]
+  assert cyclic[0] is cyclic
+  text = "value: " + "[" * 70 + "1" + "]" * 70
+  data = config_io.parse_native_yaml(text)["value"]
+  for _ in range(70):
+    data = data[0]
+  assert data == 1
+
+
+def test_packaged_byte_reader_preserves_a_traversable_resource(tmp_path):
+  import zipfile
+
+  data = b"\x00\xff\xef\xbb\xbf\r\n{}\n"
+  archive = tmp_path / "package.zip"
+  with zipfile.ZipFile(archive, "w") as stream:
+    stream.writestr("data/hooks.json", data)
+  with zipfile.ZipFile(archive) as stream:
+    resource = zipfile.Path(stream, "data/hooks.json")
+    assert config_io.read_packaged_bytes(resource) == data
+    with pytest.raises(FileNotFoundError):
+      config_io.read_packaged_bytes(zipfile.Path(stream, "absent.json"))
+
+
+def test_box_byte_transport_keeps_exact_bytes_atomic_replace_and_mode(tmp_path):
+  root = tmp_path / "home"
+  root.mkdir()
+  path = root / "nested" / "hooks.json"
+  first = b"\xff\x00\r\n{}\n"
+  config_io.write_box_doc_bytes(path, root, first)
+  assert config_io.read_box_doc_bytes(path, root) == first
+  path.chmod(0o640)
+  inode = path.stat().st_ino
+  config_io.write_box_doc_bytes(path, root, b"replacement\n")
+  assert config_io.read_box_doc_bytes(path, root) == b"replacement\n"
+  assert path.stat().st_ino != inode
+  assert path.stat().st_mode & 0o777 == 0o640
+
+
+@pytest.mark.parametrize("link", ["leaf", "parent"])
+def test_box_byte_transport_refuses_links_without_touching_target(tmp_path, link):
+  from kanibako.boxfs import SymlinkRefusedError
+
+  root = tmp_path / "home"
+  root.mkdir()
+  outside = tmp_path / "outside"
+  outside.mkdir()
+  target = outside / "hooks.json"
+  target.write_bytes(b"host sentinel\n")
+  before = (target.read_bytes(), target.stat().st_mode, target.stat().st_ino)
+  if link == "leaf":
+    (root / "nested").mkdir()
+    (root / "nested" / "hooks.json").symlink_to(target)
+  else:
+    (root / "nested").symlink_to(outside)
+  path = root / "nested" / "hooks.json"
+  with pytest.raises(SymlinkRefusedError):
+    config_io.read_box_doc_bytes(path, root)
+  with pytest.raises(SymlinkRefusedError):
+    config_io.write_box_doc_bytes(path, root, b"new")
+  assert (target.read_bytes(), target.stat().st_mode, target.stat().st_ino) == before
+
+
+def test_box_byte_transport_keeps_root_and_error_contracts(tmp_path, monkeypatch):
+  root = tmp_path / "home"
+  root.mkdir()
+  outside = tmp_path / "outside.json"
+  outside.write_bytes(b"{}")
+  original = outside.read_bytes()
+  for operation, args in (
+    (config_io.read_box_doc_bytes, (outside, root)),
+    (config_io.write_box_doc_bytes, (outside, root, b"new")),
+  ):
+    with pytest.raises(ValueError):
+      operation(*args)
+  assert outside.read_bytes() == original
+  error = PermissionError("synthetic denial")
+
+  def denied(*_):
+    raise error
+
+  monkeypatch.setattr(config_io.boxfs, "read_bytes", denied)
+  with pytest.raises(PermissionError) as caught:
+    config_io.read_box_doc_bytes(root / "config", root)
+  assert caught.value is error
+  monkeypatch.setattr(config_io.boxfs, "write_bytes", denied)
+  with pytest.raises(PermissionError) as caught:
+    config_io.write_box_doc_bytes(root / "config", root, b"{}")
+  assert caught.value is error

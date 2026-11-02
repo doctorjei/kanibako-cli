@@ -873,3 +873,106 @@ class TestCanonHooksPlugin:
     assert self._deliver(tmp_path / "home") is False
     assert victim.read_text() == "keep"
     assert (hooks / "hooks.json").is_symlink()
+
+
+class TestNativeConfigFacade:
+  def test_provider_retains_pre_read_size_check(self, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from kanibako.plugins.goose import target
+    from kanibako.settings import config_io
+
+    monkeypatch.setattr(
+      config_io.boxfs, "stat", lambda *_: SimpleNamespace(st_size=target._BOX_CONFIG_MAX_BYTES + 1)
+    )
+    monkeypatch.setattr(
+      config_io, "read_box_doc_bytes", lambda *_: pytest.fail("oversized file was read")
+    )
+    assert target._box_provider_named(tmp_path) is False
+
+  def test_provider_retains_post_read_size_check(self, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from kanibako.plugins.goose import credentials, target
+    from kanibako.settings import config_io
+
+    calls = []
+    monkeypatch.setattr(config_io.boxfs, "stat", lambda *_: SimpleNamespace(st_size=1))
+
+    def grown(path, root):
+      calls.append((path, root))
+      return b"x" * (target._BOX_CONFIG_MAX_BYTES + 1)
+
+    monkeypatch.setattr(config_io, "read_box_doc_bytes", grown)
+    monkeypatch.setattr(
+      credentials, "parse_yaml", lambda *_: pytest.fail("oversized bytes parsed")
+    )
+    assert target._box_provider_named(tmp_path) is False
+    assert calls == [(tmp_path / ".config" / "goose" / target.GOOSE_CONFIG_FILE, tmp_path)]
+
+  @pytest.mark.parametrize("error", [PermissionError("denied"), ValueError("outside root")])
+  def test_provider_keeps_read_error_policy(self, tmp_path, monkeypatch, error):
+    from types import SimpleNamespace
+
+    from kanibako.plugins.goose import target
+    from kanibako.settings import config_io
+
+    monkeypatch.setattr(config_io.boxfs, "stat", lambda *_: SimpleNamespace(st_size=1))
+
+    def failed(*_):
+      raise error
+
+    monkeypatch.setattr(config_io, "read_box_doc_bytes", failed)
+    assert target._box_provider_named(tmp_path) is False
+
+  def test_hook_transports_resource_bytes_without_reformatting(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
+
+    original = b'\xef\xbb\xbf{\r\n  "hooks": {}\r\n}\n'
+    reads, writes = [], []
+    read, write = config_io.read_box_doc_bytes, config_io.write_box_doc_bytes
+    resources = []
+
+    def resource_bytes(resource):
+      resources.append(resource)
+      assert resource.name == "hooks.json"
+      return original
+
+    def read_box(path, root):
+      reads.append((path, root))
+      return read(path, root)
+
+    def write_box(path, root, data):
+      writes.append((path, root, data))
+      write(path, root, data)
+
+    monkeypatch.setattr(config_io, "read_packaged_bytes", resource_bytes)
+    monkeypatch.setattr(config_io, "read_box_doc_bytes", read_box)
+    monkeypatch.setattr(config_io, "write_box_doc_bytes", write_box)
+    target = GooseTarget()
+    path = tmp_path / _HOOKS / "hooks.json"
+    assert target.deliver_directive_hook(config_root=tmp_path, access="full") is True
+    assert path.read_bytes() == original
+    assert writes == [(path, tmp_path, original)]
+    before = path.stat()
+    assert target.deliver_directive_hook(config_root=tmp_path, access="restricted") is False
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+    assert len(resources) == 2
+    assert reads == [(path, tmp_path), (path, tmp_path)]
+    assert len(writes) == 1
+
+  @pytest.mark.parametrize("error", [PermissionError("denied"), ValueError("outside root")])
+  def test_hook_only_tolerates_missing_read(self, tmp_path, monkeypatch, error):
+    from kanibako.settings import config_io
+
+    def failed(*_):
+      raise error
+
+    monkeypatch.setattr(config_io, "read_box_doc_bytes", failed)
+    monkeypatch.setattr(
+      config_io, "write_box_doc_bytes", lambda *_: pytest.fail("unexpected write")
+    )
+    with pytest.raises(type(error)) as caught:
+      GooseTarget().deliver_directive_hook(config_root=tmp_path, access="full")
+    assert caught.value is error
