@@ -22,6 +22,8 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
+def read_doc_text(path: Path) -> str
+def write_doc_text(path: Path, text: str) -> None
 def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict, *, header: str='') -> None
 def write_root_key(path: Path, key: str, value: object) -> None

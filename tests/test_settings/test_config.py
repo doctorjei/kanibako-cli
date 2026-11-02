@@ -496,6 +496,11 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
     assert yaml.safe_load(cf.read_text()) == {"config": {"agents": "/x"}}
     assert load_config(cf).config_paths == {"config.agents": "/x"}
 
+  def test_creates_parent_directories_without_adding_content(self, tmp_path):
+    cf = tmp_path / "nested" / CONFIG_FILENAME
+    write_global_config(cf)
+    assert cf.read_bytes() == b""
+
   def test_it_takes_no_config_object(self):
     """⚑ THE RULING IS IN THE SIGNATURE. A ``KanibakoConfig`` is settings, so there
     is nothing it could legitimately contribute — and a parameter that is accepted
@@ -514,6 +519,66 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
     cf = tmp_path / CONFIG_FILENAME
     write_global_config(cf)
     assert load_doc(cf) == {}
+
+
+class TestHostDocumentText:
+  def test_round_trip_preserves_raw_text_and_creates_parents(self, tmp_path):
+    from kanibako.settings.config_io import read_doc_text, write_doc_text
+
+    path = tmp_path / "nested" / "document.yaml"
+    text = "# keep this comment\nvalue: None\n"
+    write_doc_text(path, text)
+    assert path.read_bytes() == text.encode("utf-8")
+    assert read_doc_text(path) == text
+
+  def test_read_normalizes_file_newlines(self, tmp_path):
+    from kanibako.settings.config_io import read_doc_text
+
+    path = tmp_path / "document.yaml"
+    path.write_bytes(b"first\r\nsecond\r")
+    assert read_doc_text(path) == "first\nsecond\n"
+
+  def test_missing_read_keeps_the_path_exception(self, tmp_path):
+    from kanibako.settings.config_io import read_doc_text
+
+    path = tmp_path / "missing.yaml"
+    with pytest.raises(FileNotFoundError) as exc:
+      read_doc_text(path)
+    assert exc.value.filename == str(path)
+
+  def test_invalid_encoding_keeps_the_decode_exception(self, tmp_path):
+    from kanibako.settings.config_io import read_doc_text
+
+    path = tmp_path / "document.yaml"
+    path.write_bytes(b"\xff")
+    with pytest.raises(UnicodeDecodeError):
+      read_doc_text(path)
+
+  def test_load_doc_keeps_its_error_policy_around_the_text_reader(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
+
+    path = tmp_path / "document.yaml"
+    failure = PermissionError(13, "denied", str(path))
+
+    def read(_path):
+      raise failure
+
+    monkeypatch.setattr(config_io, "read_doc_text", read)
+    with pytest.raises(ConfigError) as exc:
+      config_io.load_doc(path)
+    assert str(path) in str(exc.value)
+    assert exc.value.__cause__ is failure
+
+  def test_dump_doc_passes_rendered_text_and_header_to_the_writer(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
+
+    path = tmp_path / "document.yaml"
+    written = []
+    monkeypatch.setattr(
+      config_io, "write_doc_text", lambda path, text: written.append((path, text))
+    )
+    config_io.dump_doc(path, {"value": "written"}, header="# header\n")
+    assert written == [(path, "# header\nvalue: written\n")]
 
 
 class TestReadSetupCompleted:

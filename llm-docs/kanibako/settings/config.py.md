@@ -350,8 +350,8 @@ is the pin. This generalizes the rule spec §2b states for one key, `box.enable_
 initialized" test, so an absent file would re-run first-run init — packaged-template install and
 all — on every command forever. **Zero bytes, not `{}`**: this file is the hand-edit surface the
 `config.*` refusal sends users to (`config_keys._config_key_refusal`), and a leading `{}` makes an
-appended `config:` block a YAML error. It goes through the same atomic writer `dump_doc` delegates
-to, so the create is atomic either way.
+appended `config:` block a YAML error. Empty text goes through `config_io.write_doc_text`, the atomic
+writer shared with `dump_doc`.
 
 ⚑ **NO `agent_name` row**: `box.agent_name` is RETIRED (§2b), and writing a BOX key into the CONFIG
 file was wrong even while it existed — nothing ever read it back from here. Stale copies in existing

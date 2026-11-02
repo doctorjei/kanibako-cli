@@ -272,6 +272,16 @@ def parse_doc_text(text: str) -> object:
   return data
 
 
+def read_doc_text(path: Path) -> str:
+  """Read host configuration text; box-writable paths require the box-file seam."""
+  return path.read_text()
+
+
+def write_doc_text(path: Path, text: str) -> None:
+  """Atomically write host configuration text; box-writable paths require the box-file seam."""
+  atomic_write_text(path, text)
+
+
 def load_doc(path: Path | None) -> dict:
   """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
   a key that is not a ``str``, a self-reference, or unbounded nesting raises.
@@ -281,7 +291,7 @@ def load_doc(path: Path | None) -> dict:
   if path is None:
     return {}
   try:
-    text = path.read_text()
+    text = read_doc_text(path)
   except (FileNotFoundError, NotADirectoryError):
     return {}
   except OSError as exc:
@@ -386,7 +396,7 @@ def _dump_text(data: dict) -> str:
 
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None:
   """Serialize *data* to *path* as YAML, atomically (creates parent dirs), after *header*."""
-  atomic_write_text(path, header + _dump_text(data))
+  write_doc_text(path, header + _dump_text(data))
 
 
 # ---------------------------------------------------------------------------

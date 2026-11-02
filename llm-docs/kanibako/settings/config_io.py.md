@@ -1,11 +1,8 @@
 # Config Document I/O — the one YAML seam, and the document mutators
 
-`config_io` is where a settings-cascade document becomes a `dict` and where a `dict` becomes a file
-on disk. Every level of the cascade — the bootstrap `kanibako.cfg`, each scope's own
-settings file, the agent files, plus the consolidated name registry and the helper spawn budget
-(`spawn.yaml`) — is read by `load_doc` and written by `dump_doc`. Serialization is PyYAML
-throughout; there is no hand-rolled serializer. (`pyproject.toml` is Python packaging and is NOT
-handled here.)
+`config_io` owns settings-document parsing, serialization, and host file transport. `load_doc` and
+`dump_doc` handle bootstrap and scope settings, agent files, registries, and helper `spawn.yaml`.
+PyYAML owns serialization; packaging's `pyproject.toml` is excluded.
 
 Beside them live the read-modify-write **document mutators** — read/write/remove at a
 `(sections, leaf)` path, plus the scalar rendering `get` displays. They know nothing about the
@@ -18,9 +15,9 @@ parse-failure normalization below is not optional.
 
 ## Scope — what "every document" does and does not cover
 
-The two arms above are the route for **settings-cascade** documents. `runtime/rig_meta.py` writes
-`/etc/kanibako/rig.yaml`, which rides inside the image rootfs, through `_dump_text` rather than
-`dump_doc`.
+`read_doc_text` and `write_doc_text` carry raw host text; the writer is atomic. Box-writable paths
+require the box-file seam. Rig metadata shares these doors, `_dump_text`, and `parse_doc_text`,
+retaining its own validation. Bootstrap creation writes empty text, not an empty mapping.
 
 ## Packaged documents
 

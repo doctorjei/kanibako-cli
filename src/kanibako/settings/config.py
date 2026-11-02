@@ -8,7 +8,6 @@ from pathlib import Path
 from stat import S_ISDIR
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, TypedDict
-from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (
   BOXES_PATH,
@@ -19,7 +18,7 @@ from kanibako.settings.bootstrap import (
   SITE_SETTINGS_FILE,
   SYSTEM_PATH_DEFAULTS,
 )
-from kanibako.settings.config_io import dump_doc, load_doc, refuse_scalar_sections
+from kanibako.settings.config_io import dump_doc, load_doc, refuse_scalar_sections, write_doc_text
 from kanibako.settings.messages import (
   ERR_CONFIG_LAYER1_SETTINGS,
   ERR_CONFIG_LAYER1_TABLE,
@@ -438,7 +437,7 @@ def write_global_config(path: Path) -> None:
   # sends users to (``config_keys._config_key_refusal``), and a leading ``{}`` makes an
   # appended ``config:`` block a YAML error.  Written through the SAME atomic writer
   # ``dump_doc`` delegates to, so the create is atomic either way.
-  atomic_write_text(path, "")
+  write_doc_text(path, "")
 
 
 def persist_creation_flags(

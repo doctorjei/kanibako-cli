@@ -22,8 +22,13 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
 
-from kanibako._atomic import atomic_write_text
-from kanibako.settings.config_io import _dump_text, parse_doc_text, yaml_problem
+from kanibako.settings.config_io import (
+  _dump_text,
+  parse_doc_text,
+  read_doc_text,
+  write_doc_text,
+  yaml_problem,
+)
 
 
 @dataclass
@@ -72,7 +77,7 @@ def dump_rig_meta(meta: RigMeta) -> str:
 
 def write_rig_meta(meta: RigMeta, path: Path) -> None:
   """Write *meta* to *path*, creating the parent directory if needed."""
-  atomic_write_text(path, dump_rig_meta(meta))
+  write_doc_text(path, dump_rig_meta(meta))
 
 
 def load_rig_meta(source: str | Path) -> RigMeta:
@@ -85,7 +90,7 @@ def load_rig_meta(source: str | Path) -> RigMeta:
   ⚑ Read through :func:`parse_doc_text`, the one entry point for a YAML document, and
   render through :func:`yaml_problem`: a repeated key is never silently kept LAST.
   """
-  text = source.read_text() if isinstance(source, Path) else source
+  text = read_doc_text(source) if isinstance(source, Path) else source
 
   try:
     data = parse_doc_text(text)

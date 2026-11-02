@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -84,6 +86,34 @@ def test_write_creates_parent_dirs(tmp_path):
   write_rig_meta(meta, path)
   assert path.is_file()
   assert load_rig_meta(path) == meta
+
+
+def test_a_string_path_remains_raw_yaml(tmp_path):
+  path = tmp_path / "rig.yaml"
+  write_rig_meta(RigMeta(name="from-file"), path)
+  with pytest.raises(ValueError, match="rig.yaml must be a non-empty YAML mapping"):
+    load_rig_meta(str(path))
+
+
+def test_missing_path_keeps_the_file_error(tmp_path):
+  path = tmp_path / "missing.yaml"
+  with pytest.raises(FileNotFoundError) as exc:
+    load_rig_meta(path)
+  assert exc.value.filename == str(path)
+
+
+def test_unreadable_path_keeps_the_file_error(tmp_path, monkeypatch):
+  path = tmp_path / "rig.yaml"
+  failure = PermissionError(13, "denied", str(path))
+
+  def read(_path):
+    raise failure
+
+  with monkeypatch.context() as patch:
+    patch.setattr(Path, "read_text", read)
+    with pytest.raises(PermissionError) as exc:
+      load_rig_meta(path)
+  assert exc.value is failure
 
 
 def test_missing_name_raises():
