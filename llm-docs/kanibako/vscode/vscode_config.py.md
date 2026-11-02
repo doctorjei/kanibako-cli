@@ -13,11 +13,10 @@ that gets the panel installed in the first place.
 The box home is a bind mount, so "in-box `~/.claude/settings.json`" is a host path here and a box
 path to the agent. Writing it from the host is how a per-box value gets in.
 
-⚑ **These files are NOT ours.** Every one of them — the VS Code image config, the claude
-`settings.json`, the codex `config.toml` — is a file a user or another
-program also writes. So every writer in this module is a **read-modify-write union-merge or a
-surgical line edit**, never a create-and-clobber, and every one is **idempotent**: re-running it
-over its own output changes nothing and skips the write.
+⚑ **These files are NOT ours.** Others write VS Code's image config, claude's
+`settings.json`, and codex's `config.toml`. Writers merge readable, parseable input or edit managed
+lines; read/parse failures may supply empty input.
+With usable input, writers are **idempotent** and skip unchanged output.
 
 ## Attached container configuration (the `kanibako code` seed)
 
@@ -196,8 +195,9 @@ format. It gates the hook behind a content-hash trust (`[hooks.state]`) PLUS a d
 kanibako's runtime dependencies are argcomplete, PyYAML, and packaging — **no tomlkit**.
 `tomllib` is read-only and cannot round-trip comments, and re-serializing an arbitrary user config
 through a hand-rolled emitter risks corrupting exotic TOML — multiline strings, datetimes, floats.
-So the manager edits ONLY kanibako-managed lines and leaves every other byte of the user's file,
-all comments and all data, untouched. Two mechanisms:
+On readable input, unmanaged content is kept, subject to managed edits and assembly's
+separator normalization. Codex reads treat `OSError` as empty; a successful write may replace unread
+content with managed text. Unicode errors propagate. Two mechanisms:
 
 * **Regions.** The hook group, trust hash and directory trust live in one comment-delimited
   managed region regenerated at the file's end. The model-provider table lives in a **second**
@@ -218,11 +218,10 @@ No managed key is ever written by both:
 * `seed_codex_sandbox_mode` (`CodexTarget.deliver_panel_permissions`) — ONLY the top-level
   `sandbox_mode` key.
 
-Both share the same primitives — regions, root-key surgery, and `_assemble_codex_managed` — so
-their composed output is byte-stable. ⚑ `_assemble_codex_managed` is the single source of truth for
-the separator and trailing-newline bytes between body and regions, which is precisely why the two
-writers can never drift on assembly bytes. It expects a body already rstripped of trailing
-newlines.
+Both use regions, root-key surgery, and `_assemble_codex_managed` for stable bytes.
+`_assemble_codex_managed` owns separator/trailing-newline bytes; its body must be newline-rstripped.
+Text uses config_io's `read_box_doc_text`/`write_box_doc_text`; boxfs owns no-follow walks and
+atomic replacement.
 
 ⚑ `_extract_delimited_region` exists in an EXTRACT form, rather than only a strip form, for
 `seed_codex_sandbox_mode`: that writer must edit a root-section key while carrying the managed

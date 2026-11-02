@@ -581,6 +581,160 @@ class TestHostDocumentText:
     assert written == [(path, "# header\nvalue: written\n")]
 
 
+class TestBoxDocumentText:
+  def test_delegates_to_boxfs_with_the_original_arguments(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
+
+    path = tmp_path / "nested" / "config.toml"
+    text = "# café\r\n"
+    calls = []
+    monkeypatch.setattr(config_io.boxfs, "read_text", lambda p, r: calls.append((p, r)) or text)
+    monkeypatch.setattr(config_io.boxfs, "write_text", lambda p, r, t: calls.append((p, r, t)))
+    assert config_io.read_box_doc_text(path, tmp_path) is text
+    assert config_io.write_box_doc_text(path, tmp_path, text) is None
+    assert calls == [(path, tmp_path), (path, tmp_path, text)]
+    assert all(call[0] is path and call[1] is tmp_path for call in calls)
+
+  @pytest.mark.parametrize("operation", ["read", "write"])
+  def test_keeps_the_boxfs_exception_identity(self, tmp_path, monkeypatch, operation):
+    from kanibako.settings import config_io
+
+    path = tmp_path / "config.toml"
+    failure = PermissionError(13, "denied", str(path))
+
+    def fail(*args):
+      raise failure
+
+    monkeypatch.setattr(config_io.boxfs, f"{operation}_text", fail)
+    with pytest.raises(PermissionError) as exc:
+      if operation == "read":
+        config_io.read_box_doc_text(path, tmp_path)
+      else:
+        config_io.write_box_doc_text(path, tmp_path, "text")
+    assert exc.value is failure
+
+  def test_utf8_crlf_new_mode_and_trusted_root(self, tmp_path):
+    from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
+
+    real = tmp_path / "real"
+    real.mkdir()
+    root = tmp_path / "home"
+    root.symlink_to(real, target_is_directory=True)
+    path = root / "nested" / "config.toml"
+    text = '# café\r\nvalue = "雪"\r\nlast\r'
+    write_box_doc_text(path, root, text)
+    assert path.read_bytes() == text.encode("utf-8")
+    assert read_box_doc_text(path, root) == text
+    assert path.stat().st_mode & 0o777 == 0o600
+
+  def test_invalid_utf8_and_unencodable_text_leave_bytes_untouched(self, tmp_path):
+    from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
+
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"\xff\r\n")
+    before = path.stat()
+    with pytest.raises(UnicodeDecodeError):
+      read_box_doc_text(path, tmp_path)
+    with pytest.raises(UnicodeEncodeError):
+      write_box_doc_text(path, tmp_path, "\ud800")
+    assert path.read_bytes() == b"\xff\r\n"
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+
+  def test_replacement_keeps_mode_and_does_not_overwrite_a_hardlink(self, tmp_path):
+    from kanibako.settings.config_io import write_box_doc_text
+
+    path = tmp_path / "config.toml"
+    alias = tmp_path / "alias"
+    path.write_bytes(b"old\n")
+    path.chmod(0o640)
+    alias.hardlink_to(path)
+    before = path.stat()
+    write_box_doc_text(path, tmp_path, "new\r\n")
+    assert path.read_bytes() == b"new\r\n"
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert path.stat().st_ino != before.st_ino
+    assert alias.stat().st_ino == before.st_ino
+    assert alias.read_bytes() == b"old\n"
+
+  def test_failed_rename_keeps_original_and_cleans_temporary_file(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
+
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"old\n")
+    before = path.stat()
+    failure = OSError(5, "injected rename failure", str(path))
+
+    def fail(*args, **kwargs):
+      raise failure
+
+    monkeypatch.setattr(config_io.boxfs.os, "rename", fail)
+    with pytest.raises(OSError) as exc:
+      config_io.write_box_doc_text(path, tmp_path, "new\n")
+    assert exc.value is failure
+    assert path.read_bytes() == b"old\n"
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+    assert list(tmp_path.iterdir()) == [path]
+
+  @pytest.mark.parametrize("parent_link", [False, True], ids=["leaf", "parent"])
+  def test_links_refuse_both_operations_without_touching_the_target(self, tmp_path, parent_link):
+    from kanibako.boxfs import SymlinkRefusedError
+    from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
+
+    root = tmp_path / "home"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "config.toml"
+    target.write_bytes(b"host\n")
+    if parent_link:
+      (root / "nested").symlink_to(outside, target_is_directory=True)
+    else:
+      (root / "nested").mkdir()
+      (root / "nested" / "config.toml").symlink_to(target)
+    path = root / "nested" / "config.toml"
+    before = target.stat()
+    for operation in (
+      lambda: read_box_doc_text(path, root),
+      lambda: write_box_doc_text(path, root, "clobber"),
+    ):
+      with pytest.raises(SymlinkRefusedError) as exc:
+        operation()
+      assert exc.value.path == path
+      assert exc.value.link == (path.parent if parent_link else path)
+    assert target.read_bytes() == b"host\n"
+    assert target.stat().st_ino == before.st_ino
+    assert target.stat().st_mtime_ns == before.st_mtime_ns
+
+  @pytest.mark.parametrize("operation", ["read", "write"])
+  def test_root_boundary_errors_are_boxfs_errors(self, tmp_path, operation):
+    from kanibako.settings import config_io
+
+    root = tmp_path / "home"
+    root.mkdir()
+    facade = getattr(config_io, f"{operation}_box_doc_text")
+    direct = getattr(config_io.boxfs, f"{operation}_text")
+    for path in (root, tmp_path / "outside", root / ".." / "escape"):
+      args = (path, root) if operation == "read" else (path, root, "text")
+      with pytest.raises(ValueError) as expected:
+        direct(*args)
+      with pytest.raises(ValueError) as actual:
+        facade(*args)
+      assert actual.value.args == expected.value.args
+    missing_args = (
+      (root / "missing", root)
+      if operation == "read"
+      else (root / "missing", tmp_path / "absent", "text")
+    )
+    with pytest.raises((FileNotFoundError, ValueError)) as expected:
+      direct(*missing_args)
+    with pytest.raises(type(expected.value)) as actual:
+      facade(*missing_args)
+    assert actual.value.args == expected.value.args
+    assert getattr(actual.value, "filename", None) == getattr(expected.value, "filename", None)
+
+
 class TestReadSetupCompleted:
   """read_setup_completed: the raw ``system.setup_completed`` reader (W1 gate).
 

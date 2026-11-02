@@ -22,7 +22,11 @@ from kanibako.commands import start
 from kanibako.log import rotate_if_over
 from kanibako.settings import core_defaults
 from kanibako.settings.paths import _bootstrap_shell, _upgrade_shell
-from kanibako.vscode.vscode_config import seed_codex_config, seed_session_start_hook
+from kanibako.vscode.vscode_config import (
+  seed_codex_config,
+  seed_codex_sandbox_mode,
+  seed_session_start_hook,
+)
 
 _BOXFS = "kanibako.boxfs"
 
@@ -504,20 +508,29 @@ class TestAgentConfigSeeds:
     _sentinel_untouched(outside, before)
     assert not (outside / "settings.json").exists()
 
-  def test_codex_config_leaf_and_parent_links(self, home, outside, caplog):
+  @pytest.mark.parametrize("sandbox", [False, True], ids=["directives", "sandbox"])
+  def test_codex_config_leaf_and_parent_links(self, home, outside, caplog, monkeypatch, sandbox):
+    from kanibako.vscode import vscode_config as vc
+
+    seed = (lambda p, r: seed_codex_sandbox_mode(p, root=r)) if sandbox else self._codex
+    monkeypatch.setattr(vc, "read_box_doc_text", lambda *args: pytest.fail("unexpected read"))
+    monkeypatch.setattr(vc, "write_box_doc_text", lambda *args: pytest.fail("unexpected write"))
     (home / ".codex").mkdir()
     (home / ".codex" / "config.toml").symlink_to(outside / "sentinel")
     before = _snapshot(outside)
     with caplog.at_level(logging.WARNING, logger=_BOXFS):
-      assert self._codex(home / ".codex" / "config.toml", home) is False
+      assert seed(home / ".codex" / "config.toml", home) is False
     _sentinel_untouched(outside, before)
+    assert _warned(caplog, home / ".codex" / "config.toml")
     (home / ".codex" / "config.toml").unlink()
     (home / ".codex").rmdir()
     (home / ".codex").symlink_to(outside)
     with caplog.at_level(logging.WARNING, logger=_BOXFS):
-      assert self._codex(home / ".codex" / "config.toml", home) is False
+      assert seed(home / ".codex" / "config.toml", home) is False
     _sentinel_untouched(outside, before)
     assert not (outside / "config.toml").exists()
+    assert (home / ".codex").is_symlink()
+    assert _warned(caplog, home / ".codex" / "config.toml")
 
   def test_link_inside_the_tree(self, home, caplog):
     real = home / "real.json"

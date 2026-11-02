@@ -1045,6 +1045,175 @@ def test_seed_codex_config_absent_file_is_created(tmp_path):
   assert path.exists()
 
 
+class TestCodexTextTransport:
+  @pytest.fixture(params=["directives", "sandbox"])
+  def seed(self, request):
+    if request.param == "directives":
+      return seed_codex_config, {"box_config_path": _BOX_CFG, "codex_cwd": _CODEX_CWD}
+    return seed_codex_sandbox_mode, {}
+
+  def test_facade_routing_and_home_creation_order(self, tmp_path, monkeypatch, seed):
+    from kanibako.vscode import vscode_config as vc
+
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    events = []
+    check, read, write, home = (
+      vc.boxfs.no_symlink_or_warn,
+      vc.read_box_doc_text,
+      vc.write_box_doc_text,
+      vc._make_box_home,
+    )
+
+    def checked(p, r):
+      events.append(("check", p, r))
+      return check(p, r)
+
+    def read_text(p, r):
+      events.append(("read", p, r))
+      return read(p, r)
+
+    def make_home(r):
+      events.append(("home", r))
+      home(r)
+
+    def write_text(p, r, text):
+      events.append(("write", p, r, text))
+      write(p, r, text)
+
+    monkeypatch.setattr(vc.boxfs, "no_symlink_or_warn", checked)
+    monkeypatch.setattr(vc, "read_box_doc_text", read_text)
+    monkeypatch.setattr(vc, "write_box_doc_text", write_text)
+    monkeypatch.setattr(vc, "_make_box_home", make_home)
+    assert function(path, root=tmp_path, **kwargs) is True
+    expected = [("check", path, tmp_path), ("read", path, tmp_path)]
+    if function is seed_codex_config:
+      expected.append(("home", tmp_path))
+    text = (
+      _merge("") if function is seed_codex_config else '\nsandbox_mode = "danger-full-access"\n'
+    )
+    assert events == [*expected, ("write", path, tmp_path, text)]
+    assert path.read_bytes() == text.encode("utf-8")
+
+  @pytest.mark.parametrize("failure_type", [FileNotFoundError, PermissionError])
+  def test_read_oserror_still_merges_as_empty(self, tmp_path, monkeypatch, seed, failure_type):
+    from kanibako.vscode import vscode_config as vc
+
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"unreadable user bytes\r\n")
+    failure = failure_type(13, "injected read failure", str(path))
+    written = []
+
+    def fail(p, r):
+      assert p is path and r is tmp_path
+      raise failure
+
+    monkeypatch.setattr(vc, "read_box_doc_text", fail)
+    monkeypatch.setattr(vc, "write_box_doc_text", lambda *args: written.append(args))
+    assert function(path, root=tmp_path, **kwargs) is True
+    expected = (
+      _merge("") if function is seed_codex_config else '\nsandbox_mode = "danger-full-access"\n'
+    )
+    assert written == [(path, tmp_path, expected)]
+    assert path.read_bytes() == b"unreadable user bytes\r\n"
+
+  @pytest.mark.parametrize("operation", ["read", "write"])
+  def test_decode_and_write_errors_propagate_unchanged(
+    self, tmp_path, monkeypatch, seed, operation
+  ):
+    from kanibako.vscode import vscode_config as vc
+
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"# user\r\n")
+    before = path.stat()
+    failure = (
+      UnicodeDecodeError("utf-8", b"\xff", 0, 1, "injected")
+      if operation == "read"
+      else PermissionError(13, "injected write failure", str(path))
+    )
+
+    def fail(*args):
+      raise failure
+
+    monkeypatch.setattr(vc, f"{operation}_box_doc_text", fail)
+    with pytest.raises(type(failure)) as exc:
+      function(path, root=tmp_path, **kwargs)
+    assert exc.value is failure
+    assert path.read_bytes() == b"# user\r\n"
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+
+  def test_real_decode_failure_never_writes(self, tmp_path, monkeypatch, seed):
+    from kanibako.vscode import vscode_config as vc
+
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"\xff\r\n")
+    monkeypatch.setattr(vc, "write_box_doc_text", lambda *args: pytest.fail("unexpected write"))
+    with pytest.raises(UnicodeDecodeError):
+      function(path, root=tmp_path, **kwargs)
+    assert path.read_bytes() == b"\xff\r\n"
+
+  def test_no_op_preserves_inode_mtime_and_user_bytes(self, tmp_path, monkeypatch, seed):
+    from kanibako.vscode import vscode_config as vc
+
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    text = (
+      _merge("# café\r\n")
+      if function is seed_codex_config
+      else '# café\r\nsandbox_mode = "danger-full-access"\n\n\n'
+    )
+    path.write_bytes(text.encode("utf-8"))
+    os.utime(path, ns=(1_000_000_000, 2_000_000_000))
+    before = path.stat()
+    monkeypatch.setattr(vc, "write_box_doc_text", lambda *args: pytest.fail("unexpected write"))
+    monkeypatch.setattr(
+      vc, "_make_box_home", lambda *args: pytest.fail("unexpected home creation")
+    )
+    assert function(path, root=tmp_path, **kwargs) is False
+    assert path.read_bytes() == text.encode("utf-8")
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+
+  def test_real_write_keeps_user_and_managed_bytes_and_breaks_hardlinks(self, tmp_path, seed):
+    function, kwargs = seed
+    path = tmp_path / "config.toml"
+    text = _merge_prov('# café\r\nsandbox_mode = "read-only"\n[custom]\r\nx = "雪"\r\n')
+    path.write_bytes(text.encode("utf-8"))
+    path.chmod(0o640)
+    alias = tmp_path / "hardlink"
+    alias.hardlink_to(path)
+    before = path.stat()
+    expected = (
+      _merge(text)
+      if function is seed_codex_config
+      else text.replace('sandbox_mode = "read-only"', 'sandbox_mode = "danger-full-access"')
+    )
+    assert function(path, root=tmp_path, **kwargs) is True
+    assert path.read_bytes() == expected.encode("utf-8")
+    assert "# café\r\n" in expected and '[custom]\r\nx = "雪"\r' in expected
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert path.stat().st_ino != before.st_ino
+    assert alias.stat().st_ino == before.st_ino
+    assert alias.read_bytes() == text.encode("utf-8")
+
+  def test_missing_home_policy_is_unchanged(self, tmp_path, seed):
+    function, kwargs = seed
+    root = tmp_path / "missing-home"
+    path = root / ".codex" / "config.toml"
+    if function is seed_codex_config:
+      assert function(path, root=root, **kwargs) is True
+      assert path.is_file()
+    else:
+      with pytest.raises(FileNotFoundError) as exc:
+        function(path, root=root, **kwargs)
+      assert exc.value.filename == str(root)
+      assert not root.exists()
+
+
 # --- Codex personas INC 1: merge_codex_model_provider (pure; text→text) ------
 
 _NAVIGATOR = dict(

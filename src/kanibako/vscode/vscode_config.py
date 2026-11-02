@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from kanibako import boxfs
+from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
 
 
 def _strip_jsonc(text: str) -> str:
@@ -813,7 +814,7 @@ def seed_codex_config(
   if not boxfs.no_symlink_or_warn(config_path, root):
     return False
   try:
-    existing = boxfs.read_text(config_path, root)
+    existing = read_box_doc_text(config_path, root)
   except OSError:
     existing = ""
   merged = merge_codex_config(
@@ -825,7 +826,7 @@ def seed_codex_config(
   if config_path.exists() and merged == existing:
     return False
   _make_box_home(root)
-  boxfs.write_text(config_path, root, merged)
+  write_box_doc_text(config_path, root, merged)
   return True
 
 
@@ -839,7 +840,7 @@ def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool:
     return False
   found = True
   try:
-    existing = boxfs.read_text(config_path, root)
+    existing = read_box_doc_text(config_path, root)
   except OSError:
     existing, found = "", False
   # ⚑ EXTRACT the managed regions before root-key surgery: an insert goes before the
@@ -863,5 +864,5 @@ def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool:
   merged = _assemble_codex_managed(reconciled, regions)
   if found and merged == existing:
     return False
-  boxfs.write_text(config_path, root, merged)
+  write_box_doc_text(config_path, root, merged)
   return True

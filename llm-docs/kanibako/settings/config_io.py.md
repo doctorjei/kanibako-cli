@@ -1,17 +1,17 @@
 # Config Document I/O — YAML, native JSON, and document mutators
 
-`config_io` provides settings codecs and host file transport. `load_doc`/`dump_doc` handle kanibako
-YAML; `load_json_doc`/`dump_json_doc` handle migrated native JSON callers, retaining their shape/error
-policies. Packaging's `pyproject.toml` is excluded.
+`config_io` owns codecs, mutators, and host/box text transport. `load_doc`/`dump_doc` handle kanibako
+YAML; `load_json_doc`/`dump_json_doc` retain native JSON caller policies. Packaging's `pyproject.toml`
+is excluded.
 
-Document mutators preserve content around a resolved `(sections, leaf)` path. Keyspace routing belongs
-to `config_keys` and `config_dest`. `load_doc`'s high fan-in makes parse-failure normalization essential.
+Mutators preserve content around `(sections, leaf)` paths; `config_keys` and `config_dest` own routing.
+`load_doc` normalizes parse failures for its many callers.
 
 ## Host transport and native JSON
 
-`read_doc_text` reads raw text; `write_doc_text` writes atomically. `overwrite_doc_text` instead writes
-in place and follows links. Box-writable paths require the box-file seam. Rig metadata retains its
-validation; bootstrap creation writes zero bytes.
+`read_doc_text` reads host text; `write_doc_text` writes atomically. `overwrite_doc_text` writes in
+place, following links. `read_box_doc_text`/`write_box_doc_text` delegate to boxfs with explicit roots;
+Codex TOML surgery remains caller-owned. Rig metadata retains validation; bootstrap creation writes zero bytes.
 
 Native JSON retains stdlib defaults. `dump_json_doc` opens/truncates before streaming, preserving partial
 serialization failures. `render_json_text` supports bytewise compare-before-write. Tweakcc and Docker

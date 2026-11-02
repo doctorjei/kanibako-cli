@@ -24,6 +24,8 @@ def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def read_doc_text(path: Path) -> str
 def write_doc_text(path: Path, text: str) -> None
+def read_box_doc_text(path: Path, root: Path) -> str
+def write_box_doc_text(path: Path, root: Path, text: str) -> None
 def overwrite_doc_text(path: Path, text: str) -> None
 def load_json_doc(path: Path) -> Any
 def dump_json_doc(path: Path, data: Any, *, indent: int | None=None) -> None

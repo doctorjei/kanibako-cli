@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 import yaml
 
+from kanibako import boxfs
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError, PackagingError
 
@@ -280,6 +281,16 @@ def read_doc_text(path: Path) -> str:
 def write_doc_text(path: Path, text: str) -> None:
   """Atomically write host configuration text; box-writable paths require the box-file seam."""
   atomic_write_text(path, text)
+
+
+def read_box_doc_text(path: Path, root: Path) -> str:
+  """Read UTF-8 box configuration text through the no-follow box-file seam."""
+  return boxfs.read_text(path, root)
+
+
+def write_box_doc_text(path: Path, root: Path, text: str) -> None:
+  """Atomically replace box configuration text through the no-follow box-file seam."""
+  boxfs.write_text(path, root, text)
 
 
 def overwrite_doc_text(path: Path, text: str) -> None:
