@@ -10,7 +10,7 @@ from kanibako.errors import DerivedBoxNameError, KanibakoError
 from kanibako.launch.box_identity import box_name_cure
 from kanibako.settings.paths import load_primary_boxes, refuse_derived_box_name
 from kanibako.targets.base import _validate_agent_binary
-from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
+from kanibako.settings.config_io import load_jsonc, read_doc_text
 
 
 def _format_check(status: str, label: str, detail: str) -> str:
@@ -430,11 +430,11 @@ def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
       f"settings.json not found ({settings_path}) -- {remediation}",
     )
   try:
-    text = settings_path.read_text(encoding="utf-8")
+    text = read_doc_text(settings_path, encoding="utf-8")
   except OSError:
     return ("--", label, f"cannot read settings.json ({settings_path})")
 
-  data = _load_jsonc(text)
+  data = load_jsonc(text)
   if not isinstance(data, dict):
     return (
       "--",

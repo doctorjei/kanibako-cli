@@ -1,4 +1,4 @@
-"""Centralized configuration I/O, YAML/native JSON codecs, and document mutators.
+"""Centralized configuration I/O, YAML/native JSON(C) codecs, and document mutators.
 
 A config DOCUMENT is a settings-cascade file, agent file, registry, or
 ``spawn.yaml``; native tool configurations retain their own codecs. A DOCUMENT
@@ -273,9 +273,9 @@ def parse_doc_text(text: str) -> object:
   return data
 
 
-def read_doc_text(path: Path) -> str:
+def read_doc_text(path: Path, *, encoding: str | None = None) -> str:
   """Read host configuration text; box-writable paths require the box-file seam."""
-  return path.read_text()
+  return path.read_text(encoding=encoding)
 
 
 def write_doc_text(path: Path, text: str) -> None:
@@ -299,6 +299,32 @@ def overwrite_doc_text(path: Path, text: str) -> None:
   path.write_text(text)
 
 
+def parse_json_text(text: str) -> Any:
+  """Parse native JSON without shape checks or error normalization."""
+  return json.loads(text)
+
+
+def _strip_jsonc(text: str) -> str:
+  """Best-effort strip of JSONC (comments + trailing commas) to plain JSON."""
+  text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+  # ⚑ WHOLE-LINE ``//`` only, deliberately: an inline ``//`` may be inside a string value.
+  text = re.sub(r"(?m)^\s*//.*$", "", text)
+  text = re.sub(r",(\s*[}\]])", r"\1", text)
+  return text
+
+
+def load_jsonc(text: str) -> object | None:
+  """Parse JSONC text, returning the object or ``None`` if unparseable."""
+  try:
+    return parse_json_text(text)
+  except ValueError:
+    pass
+  try:
+    return parse_json_text(_strip_jsonc(text))
+  except ValueError:
+    return None
+
+
 def load_json_doc(path: Path) -> Any:
   """Read native host JSON without shape checks or error normalization."""
   with open(path) as stream:
@@ -312,9 +338,11 @@ def dump_json_doc(path: Path, data: Any, *, indent: int | None = None) -> None:
     json.dump(data, stream, indent=indent)
 
 
-def render_json_text(data: Any, *, separators: tuple[str, str] | None = None) -> str:
+def render_json_text(
+  data: Any, *, separators: tuple[str, str] | None = None, indent: int | None = None
+) -> str:
   """Render native JSON with unchanged standard-library defaults."""
-  return json.dumps(data, separators=separators)
+  return json.dumps(data, separators=separators, indent=indent)
 
 
 def load_doc(path: Path | None) -> dict:

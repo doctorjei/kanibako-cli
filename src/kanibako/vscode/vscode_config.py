@@ -24,27 +24,6 @@ from kanibako import boxfs
 from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
 
 
-def _strip_jsonc(text: str) -> str:
-  """Best-effort strip of JSONC (comments + trailing commas) to plain JSON."""
-  text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-  # ⚑ WHOLE-LINE ``//`` only, deliberately: an inline ``//`` may be inside a string value.
-  text = re.sub(r"(?m)^\s*//.*$", "", text)
-  text = re.sub(r",(\s*[}\]])", r"\1", text)
-  return text
-
-
-def load_jsonc(text: str) -> object | None:
-  """Parse JSONC text, returning the object or ``None`` if unparseable."""
-  try:
-    return json.loads(text)
-  except ValueError:
-    pass
-  try:
-    return json.loads(_strip_jsonc(text))
-  except ValueError:
-    return None
-
-
 # ⚑ WIRE PATH — per-IMAGE attached configs, under the user config home (``~/.config``
 # on Linux). CONFIRMED by the Phase-0 VS Code test; not a choice of ours.
 _IMAGE_CONFIGS_SUBPATH = "Code/User/globalStorage/ms-vscode-remote.remote-containers/imageConfigs"

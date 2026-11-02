@@ -22,14 +22,16 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
-def read_doc_text(path: Path) -> str
+def read_doc_text(path: Path, *, encoding: str | None=None) -> str
 def write_doc_text(path: Path, text: str) -> None
 def read_box_doc_text(path: Path, root: Path) -> str
 def write_box_doc_text(path: Path, root: Path, text: str) -> None
 def overwrite_doc_text(path: Path, text: str) -> None
+def parse_json_text(text: str) -> Any
+def load_jsonc(text: str) -> object | None
 def load_json_doc(path: Path) -> Any
 def dump_json_doc(path: Path, data: Any, *, indent: int | None=None) -> None
-def render_json_text(data: Any, *, separators: tuple[str, str] | None=None) -> str
+def render_json_text(data: Any, *, separators: tuple[str, str] | None=None, indent: int | None=None) -> str
 def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict, *, header: str='') -> None
 def write_root_key(path: Path, key: str, value: object) -> None
@@ -46,6 +48,7 @@ def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: 
 def _read_none_as_null(cls: type) -> None
 def _unquoted_brace_hint(mark: yaml.Mark | None) -> str
 def _guard_document(data: object) -> None
+def _strip_jsonc(text: str) -> str
 def _unnamed_key(data: dict) -> tuple[str, object] | None
 def _dump_text(data: dict) -> str
 def _resolved_section(table: dict, section: str) -> str

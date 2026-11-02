@@ -1,21 +1,22 @@
 # Config Document I/O — YAML, native JSON, and document mutators
 
-`config_io` owns codecs, mutators, and host/box text transport. `load_doc`/`dump_doc` handle kanibako
-YAML; `load_json_doc`/`dump_json_doc` retain native JSON caller policies. Packaging's `pyproject.toml`
-is excluded.
+`load_doc`/`dump_doc` handle kanibako YAML. Mutators preserve `(sections, leaf)` content;
+`config_keys`/`config_dest` own routing. Packaging's `pyproject.toml` is excluded.
 
-Mutators preserve content around `(sections, leaf)` paths; `config_keys` and `config_dest` own routing.
-`load_doc` normalizes parse failures for its many callers.
+## Host transport and native JSON(C)
 
-## Host transport and native JSON
+`read_doc_text` accepts optional encoding; its default remains unchanged. `write_doc_text` is atomic.
+`overwrite_doc_text` follows links in place. Box text delegates to boxfs with roots; Codex surgery
+remains caller-owned; rig validation and empty bootstrap creation persist.
 
-`read_doc_text` reads host text; `write_doc_text` writes atomically. `overwrite_doc_text` writes in
-place, following links. `read_box_doc_text`/`write_box_doc_text` delegate to boxfs with explicit roots;
-Codex TOML surgery remains caller-owned. Rig metadata retains validation; bootstrap creation writes zero bytes.
+JSON retains stdlib defaults. `parse_json_text` preserves errors; `render_json_text` supports
+compare-before-write, separators/indent. `dump_json_doc` truncates before streaming, preserving partial failures.
+Tweakcc/Docker retain policies; other native callers remain.
 
-Native JSON retains stdlib defaults. `dump_json_doc` opens/truncates before streaming, preserving partial
-serialization failures. `render_json_text` supports bytewise compare-before-write. Tweakcc and Docker
-metadata retain their domain policies; this does not consolidate every native-format caller.
+`load_jsonc` tries strict JSON, then `_strip_jsonc`: block comments, whole-line `//` comments, and
+trailing commas before `}`/`]`. Inline `//` comments return `None`, avoiding URL-string guesses.
+Regex limitations remain. Both commands
+retain shape checks, consent, and strict-JSON rewrite policy. Invalid input returns `None`.
 
 ## Packaged documents
 
@@ -36,11 +37,9 @@ def yaml_problem(exc: yaml.YAMLError) -> str
 ```
 One-line rendering of a YAML parse failure (the problem + where).
 
-`yaml`'s own `str()` is multi-line and cites `"<unicode string>"` as the source (we hand the loader
-TEXT, not the file), so it names everything except the file. The caller supplies the file; this
-supplies the problem and its line/column. ⚑ **THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A
-SECOND READER:** a file's own loader (the rig metadata's, an overlay's) wraps the failure in its
-own error type and renders it here, so one failure reads in one set of words.
+`yaml`'s multi-line `str()` cites `"<unicode string>"` because the loader receives text, not a file.
+The caller names the file; `yaml_problem` supplies the problem and line/column. It is public so
+rig metadata and overlays can share the renderer while retaining their own exception types.
 
 A `yaml.MarkedYAMLError` (a `ScannerError`, a `ParserError`) carries a populated `.problem` and
 `.problem_mark`, which is what the `isinstance` arm keys on. The `" ".join(str(exc).split())`

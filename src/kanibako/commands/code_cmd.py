@@ -28,11 +28,17 @@ from kanibako.settings.paths import (
   load_std_paths,
   resolve_box_target,
 )
+from kanibako.settings.config_io import (
+  load_jsonc,
+  overwrite_doc_text,
+  parse_json_text,
+  read_doc_text,
+  render_json_text,
+)
 from kanibako.settings.settings_resolve import GUEST_WORKSPACE
 from kanibako.utils import box_container
 from kanibako.vscode.vscode_config import (
   attached_container_config_path,
-  load_jsonc,
   seed_attached_container_config,
 )
 
@@ -548,7 +554,7 @@ def _wire_docker_path(wrapper_path) -> int | None:
   existing_text: str | None = None
   if settings_path.is_file():
     try:
-      existing_text = settings_path.read_text(encoding="utf-8")
+      existing_text = read_doc_text(settings_path, encoding="utf-8")
     except OSError:
       print(
         f"Error: cannot read {settings_path}.\n{manual}",
@@ -589,7 +595,7 @@ def _wire_docker_path(wrapper_path) -> int | None:
   # user the exact snippet (NEVER clobber).
   if existing_text is not None and existing_text.strip():
     try:
-      json.loads(existing_text)
+      parse_json_text(existing_text)
     except ValueError:
       print(
         current_line + "Error: your VS Code settings.json contains JSONC comments or "
@@ -621,8 +627,7 @@ def _wire_docker_path(wrapper_path) -> int | None:
     return 1
 
   data["dev.containers.dockerPath"] = wrapper_str
-  settings_path.parent.mkdir(parents=True, exist_ok=True)
-  settings_path.write_text(json.dumps(data, indent=2) + "\n")
+  overwrite_doc_text(settings_path, render_json_text(data, indent=2) + "\n")
   print(f"Updated {settings_path}.", file=sys.stderr)
   return None
 

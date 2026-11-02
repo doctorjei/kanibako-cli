@@ -63,23 +63,7 @@ that schema exactly is the point.
 `_read_existing_config` never raises: absent, unreadable, invalid JSON, or valid JSON that is not
 an object all collapse to `{}`. VS Code owns the file and may have written anything into it.
 
-## JSONC
-
-VS Code's `settings.json` is JSONC — it permits `//` and `/* */` comments and trailing commas,
-none of which `json.loads` accepts. `load_jsonc` tries strict JSON first (the common case: VS Code
-writes valid JSON when the settings UI does the editing) and falls back to `_strip_jsonc`.
-
-`_strip_jsonc` is a light best-effort pass, NOT a JSONC parser: block comments, then **whole-line**
-`//` comments only, then trailing commas before `}`/`]`.
-
-⚑ The whole-line restriction is deliberate and is a **string-safety** decision. A trailing inline
-comment (`"...": "podman" // note`) is NOT stripped, because reliably telling a real comment from a
-`//` inside a string value — `"http://..."` is the obvious case — needs a real tokenizer, and a
-wrong guess **corrupts a string value**. A hand-edited file like that therefore fails to parse and
-degrades to `None` in `load_jsonc`, which is a visible non-answer rather than a silent false read.
-
-This is the shared JSONC reader for the tree: `commands/diagnose.py` and `commands/code_cmd.py`
-both import it.
+JSONC codecs live in [`settings/config_io`](../settings/config_io.py.md).
 
 ## Access tiers reach no panel file
 
@@ -346,12 +330,6 @@ never swallowed by a re-strip. Each strip is followed by `rstrip("\n")` so re-me
 accumulate blank lines.
 
 ## Functions
-
-```_strip_jsonc(text: str) -> str```
-Best-effort strip of JSONC (comments + trailing commas) to plain JSON.
-
-```load_jsonc(text: str) -> object | None```
-Parse JSONC text, returning the object or `None` if unparseable.
 
 ```_encode_image_ref(ref: str) -> str```
 Percent-encode *ref* the way VS Code keys `imageConfigs` files.

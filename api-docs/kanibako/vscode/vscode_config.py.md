@@ -36,7 +36,6 @@ _CODEX_PROVIDER_REGION_END = '# <<< kanibako-managed (model provider) <<<'
 
 ## Functions
 ```
-def load_jsonc(text: str) -> object | None
 def attached_container_config_path(image_ref: str, config_home: Path) -> Path
 def merge_attached_container_config(existing: dict, *, workspace_folder: str, extension: str | None) -> dict
 def seed_attached_container_config(path: Path, *, workspace_folder: str, extension: str | None) -> bool
@@ -49,7 +48,6 @@ def merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model
 def merge_codex_model_provider(text: str, *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str, model: str | None=None) -> str
 def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None, root: Path) -> bool
 def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool
-def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path, root: Path | None=None) -> dict
 def _make_box_home(root: Path) -> None
