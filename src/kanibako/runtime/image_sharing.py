@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
+from kanibako.settings.config_io import overwrite_doc_text
 
 if TYPE_CHECKING:
   from kanibako.runtime.container import ContainerRuntime
@@ -236,7 +237,6 @@ def write_storage_conf(staging_dir: Path) -> Path:
   Returns the written path.
   """
   storage_conf_content = generate_storage_conf(SHARED_STORE_CONTAINER_PATH)
-  staging_dir.mkdir(parents=True, exist_ok=True)
   storage_conf_path = staging_dir / "storage.conf"
-  storage_conf_path.write_text(storage_conf_content)
+  overwrite_doc_text(storage_conf_path, storage_conf_content)
   return storage_conf_path

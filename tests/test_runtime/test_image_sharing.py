@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.image_sharing import (
   SHARED_STORE_CONTAINER_PATH,
@@ -155,14 +157,70 @@ class TestWriteStorageConf:
 
   def test_writes_conf_and_returns_path(self, tmp_path):
     """Writes the generated storage.conf into staging, returns its path."""
-    staging = tmp_path / "staging"
+    staging = tmp_path / "nested" / "staging"
 
     conf_path = write_storage_conf(staging)
 
     assert conf_path == staging / "storage.conf"
     # The generated conf is WRITTEN (it is the bound source, spec D-M8).
     assert conf_path.exists()
-    assert SHARED_STORE_CONTAINER_PATH in conf_path.read_text()
+    assert conf_path.read_bytes() == (
+      b"[storage]\n"
+      b'  driver = "overlay"\n'
+      b"  [storage.options]\n"
+      b'    additionalimagestores = ["/var/lib/shared-images"]\n'
+    )
+
+  def test_overwrites_host_symlink_target_in_place(self, tmp_path):
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    target = tmp_path / "actual.conf"
+    target.write_text("old content")
+    target.chmod(0o640)
+    before = target.stat()
+    link = staging / "storage.conf"
+    link.symlink_to(target)
+
+    assert write_storage_conf(staging) == link
+    assert link.is_symlink()
+    assert target.read_text() == generate_storage_conf(SHARED_STORE_CONTAINER_PATH)
+    assert target.stat().st_ino == before.st_ino
+    assert target.stat().st_mode == before.st_mode
+
+  def test_default_encoding_and_write_error_are_unchanged(self, tmp_path, monkeypatch):
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    path = staging / "storage.conf"
+    path.write_text("keep")
+    error = PermissionError("synthetic write denial")
+    seen = []
+
+    def fail_write(self, text, *args, **kwargs):
+      seen.append((self, text, args, kwargs))
+      raise error
+
+    monkeypatch.setattr(Path, "write_text", fail_write)
+    with pytest.raises(PermissionError) as raised:
+      write_storage_conf(staging)
+    assert raised.value is error
+    assert seen == [(path, generate_storage_conf(SHARED_STORE_CONTAINER_PATH), (), {})]
+    assert path.read_text() == "keep"
+
+  def test_parent_creation_error_propagates_without_changing_file(self, tmp_path):
+    staging = tmp_path / "not-a-directory"
+    staging.write_text("keep")
+    with pytest.raises(FileExistsError):
+      write_storage_conf(staging)
+    assert staging.read_text() == "keep"
+
+  def test_directory_destination_error_propagates(self, tmp_path):
+    staging = tmp_path / "staging"
+    destination = staging / "storage.conf"
+    destination.mkdir(parents=True)
+    with pytest.raises(IsADirectoryError):
+      write_storage_conf(staging)
+    assert destination.is_dir()
+    assert list(destination.iterdir()) == []
 
   def test_independent_of_the_probe(self, tmp_path):
     """Generation does not consult the probe (11a: the probe feeds ONLY
