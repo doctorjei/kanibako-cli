@@ -229,6 +229,9 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    env:
+      KANI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-integration
+      KANI_TIMING_LOG: ${{ github.workspace }}/integration-timing.jsonl
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -236,9 +239,18 @@ jobs:
           python-version: "3.11"
       - run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       - run: pytest -m integration tests/ -v
+      - name: Upload integration timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-timing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.KANI_TIMING_LOG }}
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      KANI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-e2e
+      KANI_TIMING_LOG: ${{ github.workspace }}/e2e-timing.jsonl
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.run_e2e)
@@ -301,3 +313,9 @@ jobs:
         # pull regression is visible at a glance; the conftest also writes
         # storage diagnostics to the run summary (ensure_image_in_pinned_store).
         run: pytest -m e2e tests/e2e/ -v --durations=15
+      - name: Upload e2e timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-timing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.KANI_TIMING_LOG }}
