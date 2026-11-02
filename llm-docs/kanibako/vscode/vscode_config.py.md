@@ -60,10 +60,9 @@ union-merge, never a create-if-absent:
 VS Code itself writes is exactly `extensions` (a JSON array) plus `workspaceFolder`, and matching
 that schema exactly is the point.
 
-`_read_existing_config` never raises: absent, unreadable, invalid JSON, or valid JSON that is not
-an object all collapse to `{}`. VS Code owns the file and may have written anything into it.
-
-JSONC codecs live in [`settings/config_io`](../settings/config_io.py.md).
+`_read_existing_config` returns `{}` for absent, unreadable, invalid JSON, or non-object input.
+Decode errors escape. JSON(C) codecs and host/box text transport live in
+[`settings/config_io`](../settings/config_io.py.md).
 
 ## Access tiers reach no panel file
 

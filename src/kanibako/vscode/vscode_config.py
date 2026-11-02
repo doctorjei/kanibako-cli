@@ -21,7 +21,14 @@ from pathlib import Path
 from typing import NamedTuple
 
 from kanibako import boxfs
-from kanibako.settings.config_io import read_box_doc_text, write_box_doc_text
+from kanibako.settings.config_io import (
+  overwrite_doc_text,
+  parse_json_text,
+  read_box_doc_text,
+  read_doc_text,
+  render_json_text,
+  write_box_doc_text,
+)
 
 
 # ⚑ WIRE PATH — per-IMAGE attached configs, under the user config home (``~/.config``
@@ -66,17 +73,17 @@ def merge_attached_container_config(
 
 
 def _read_existing_config(path: Path, root: Path | None = None) -> dict:
-  """Read *path* as a JSON object → ``{}`` on absence/corruption; NEVER raises.
+  """Read a JSON object; absent/unreadable/invalid input gives ``{}``.
 
-  *root* marks *path* as box-writable, under the box tree *root*: the read then goes
-  through :mod:`kanibako.boxfs`, and a symlink reads as absent.
+  Decode errors escape. With *root*, use the no-follow box-file seam;
+  a symlink reads as absent.
   """
   try:
-    raw = path.read_text() if root is None else boxfs.read_text(path, root)
+    raw = read_doc_text(path) if root is None else read_box_doc_text(path, root)
   except OSError:
     return {}
   try:
-    data = json.loads(raw)
+    data = parse_json_text(raw)
   except (ValueError, TypeError):
     return {}
   return data if isinstance(data, dict) else {}
@@ -97,9 +104,8 @@ def seed_attached_container_config(
   )
   if path.exists() and merged == existing:
     return False
-  path.parent.mkdir(parents=True, exist_ok=True)
   # Non-atomic is acceptable: VS Code re-reads on each attach and the seed is idempotent.
-  path.write_text(json.dumps(merged, indent=2) + "\n")
+  overwrite_doc_text(path, render_json_text(merged, indent=2) + "\n")
   return True
 
 
@@ -127,7 +133,7 @@ def _write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -
   if path.exists() and merged == existing:
     return False
   _make_box_home(root)
-  boxfs.write_text(path, root, json.dumps(merged, indent=2) + "\n")
+  write_box_doc_text(path, root, render_json_text(merged, indent=2) + "\n")
   return True
 
 
