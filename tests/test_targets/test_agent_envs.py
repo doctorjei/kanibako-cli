@@ -381,9 +381,11 @@ class TestTheDeclarationIsRefusedRatherThanBent:
   """A plugin's declaration is checked AT LOAD, against the CLOSED keyspace (§0).
 
   Every refusal here names what is wrong. The alternative — a floor entry that only
-  fails at the next launch, or a coerced value — is exactly the deferred surprise §0
-  forbids, and on this channel a silently absent variable is a box that misbehaves
-  rather than one that fails.
+  fails at the next launch — is exactly the deferred surprise §0 forbids, and on
+  this channel a silently absent variable is a box that misbehaves rather than one
+  that fails. A SCALAR is not one of those refusals: it stringifies (§2a as
+  amended 2026-11-03); what is refused is a name that is illegal, or a value with
+  no clear text form at all.
   """
 
   @staticmethod
@@ -399,9 +401,17 @@ class TestTheDeclarationIsRefusedRatherThanBent:
       agent_defaults.load_envs("pkg", "f.yaml", "goose")
     assert "2FA" in str(excinfo.value)
 
-  def test_a_non_string_value_is_refused_rather_than_coerced(self, monkeypatch):
-    # YAML would turn an unquoted ``true`` into a bool whose str() is "True".
+  def test_a_scalar_value_is_stringified_rather_than_refused(self, monkeypatch):
+    # His 2026-11-03 ruling: an unquoted scalar loads as its text instead of
+    # blocking the launch. A bool renders the way Yapyon writes it -- "True".
     agent_defaults = self._load(monkeypatch, {"env": {"GOOSE_DISABLE_KEYRING": True}})
+    got = agent_defaults.load_envs("pkg", "f.yaml", "goose")
+    assert got["agent.goose.env.GOOSE_DISABLE_KEYRING"] == "True"
+
+  def test_a_value_with_no_clear_text_is_still_refused_by_name(self, monkeypatch):
+    # What §2a as amended still refuses: a value with no clear, unambiguous
+    # string representation at all.
+    agent_defaults = self._load(monkeypatch, {"env": {"GOOSE_DISABLE_KEYRING": ["a"]}})
     with pytest.raises(SettingsError) as excinfo:
       agent_defaults.load_envs("pkg", "f.yaml", "goose")
     assert "GOOSE_DISABLE_KEYRING" in str(excinfo.value)
