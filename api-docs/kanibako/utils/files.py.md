@@ -15,6 +15,7 @@ _GITIGNORE_ENTRIES = [f'{STANDALONE_META_DIR}/']
 def path_hash(project_path: str) -> str
 def link_write_refusal(path: Path, *internal_roots: Path) -> str | None
 def write_gitignore(project_path: Path) -> None
+def unrestorable_link_note(path: Path) -> str
 def gitignore_to_strip(project_path: Path) -> Path | None
 def gitignore_holds_only_kanibako(gitignore: Path) -> bool
 def strip_gitignore(gitignore: Path) -> bool

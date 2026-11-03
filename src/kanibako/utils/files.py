@@ -77,6 +77,20 @@ def write_gitignore(project_path: Path) -> None:
   )
 
 
+def unrestorable_link_note(path: Path) -> str:
+  """The Note for a root file a create wrote through a link and cannot put back.
+
+  The rooted seam opens leaves with ``O_NOFOLLOW``, so a link leaf is never
+  captured and the undo has nothing to restore.  Say so rather than skip silently.
+  """
+  if path.name == IGNORE_FILE:
+    return (
+      f"left {path} in place — it is a link, so kanibako's "
+      f"{', '.join(_GITIGNORE_ENTRIES)} line is yours to remove"
+    )
+  return f"left {path} in place — it is a link, so this create cannot restore it"
+
+
 def gitignore_to_strip(project_path: Path) -> Path | None:
   """The root .gitignore holding a line :func:`write_gitignore` writes, else None.
 

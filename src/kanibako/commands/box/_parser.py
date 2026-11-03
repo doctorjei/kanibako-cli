@@ -125,6 +125,7 @@ from kanibako.utils.files import (
   gitignore_holds_only_kanibako,
   gitignore_to_strip,
   strip_gitignore,
+  unrestorable_link_note,
   write_gitignore,
 )
 
@@ -1310,13 +1311,22 @@ def _new_box_undo(
   # bytes: an append keeps both a prefix and the kuid.  name -> [original, ours].
   rewrites: dict[str, list[bytes]] = {}
   modes: dict[str, int] = {}  # an atomic rewrite lands a fresh file's mode
+  # ⚑ A LINK LEAF is never capturable: the rooted seam opens leaves with O_NOFOLLOW.
+  # A create that writes through one leaves something it cannot put back, so
+  # remember which and say so at undo instead of skipping silently.  Holding the
+  # descriptor across the window (b-prime) is what would make this exact.
+  links: set[str] = set()
+  written: set[str] = set()
   if standalone:
     for fname in (IGNORE_FILE, WORKSET_META_FILE):
       if _regular(root / fname):
         rewrites[fname] = [read_box_doc_bytes(root / fname, root)] * 2
         modes[fname] = boxfs.stat(root / fname, root).st_mode & 0o7777
+      elif (root / fname).is_symlink():
+        links.add(fname)
 
   def wrote(fname: str) -> None:
+    written.add(fname)
     if fname in rewrites and _regular(root / fname):
       rewrites[fname][1] = read_box_doc_bytes(root / fname, root)
 
@@ -1351,6 +1361,10 @@ def _new_box_undo(
         print(
           f"Note: left {path} as found; it changed after this create wrote it.", file=sys.stderr
         )
+    # ⚑ Written through a link, so never captured: the least the user is owed is to
+    # hear that it is still there.
+    for fname in sorted(links & written):
+      print(f"Note: {unrestorable_link_note(root / fname)}.", file=sys.stderr)
 
   return undo, wrote
 

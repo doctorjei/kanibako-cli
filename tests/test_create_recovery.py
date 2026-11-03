@@ -2866,6 +2866,38 @@ class TestWindowUndoRestoresARootWorksetFile:
     assert outside.read_bytes() != b"*.pyc\n"
     assert f"left {gi} as found" in capsys.readouterr().err
 
+  def test_a_link_written_through_is_reported_at_undo(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """An internal link the create wrote through cannot be restored; the user hears it.
+
+    The rooted seam opens leaves with ``O_NOFOLLOW``, so a link leaf is never
+    captured.  The leftover is honest only if it is announced.
+    """
+    from kanibako.commands.box._parser import run_create
+
+    path = tmp_home / "sa"
+    path.mkdir()
+    shared = path / "shared_ignore"
+    shared.write_bytes(b"*.pyc\n")
+    gi = path / ".gitignore"
+    gi.symlink_to(shared)
+
+    def _stop(std, proj):
+      raise _InterruptCreate("stopped at the end of the undo window")
+
+    with pytest.MonkeyPatch.context() as mp:
+      _at_window_end(mp, True, _stop)
+      with pytest.raises(_InterruptCreate):
+        run_create(_create_args(path, standalone=True, no_vault=False))
+
+    assert shared.read_bytes() == b"*.pyc\nbox_data/\n"
+    assert gi.is_symlink()
+    err = capsys.readouterr().err
+    assert f"left {gi} in place" in err
+    assert "it is a link" in err
+    assert "box_data/" in err
+
   def test_the_gitignore_restore_leaves_a_later_edit_alone(
     self, config_file, tmp_home, credentials_dir
   ):
