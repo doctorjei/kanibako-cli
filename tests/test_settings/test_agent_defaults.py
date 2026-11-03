@@ -1526,3 +1526,34 @@ class TestBindingOwnerCell:
     with pytest.raises(SettingsError) as exc:
       agent_defaults.load_descriptor(package, filename)
     assert "'boxes'" in str(exc.value) and "'ref'" in str(exc.value)
+
+
+class TestEnvScalarStringification:
+  """§2a as amended: a scalar env value is stringified, not refused.
+
+  The rule that got here: a plugin author writing an unquoted ``32768`` used to
+  fail the whole load, which blocked a box from starting at all. A scalar now
+  realizes as its text; only a value with NO clear, unambiguous text is refused.
+  """
+
+  def test_an_unquoted_int_loads_as_its_text(self) -> None:
+    assert agent_defaults._env_values({"env": {"MAX_OUTPUT_TOKENS": 32768}}, "f.yml") == {
+      "MAX_OUTPUT_TOKENS": "32768"
+    }
+
+  def test_bools_render_the_way_yapyon_writes_them(self) -> None:
+    got = agent_defaults._env_values({"env": {"A": True, "B": False}}, "f.yml")
+    assert got == {"A": "True", "B": "False"}
+
+  def test_a_float_loads_as_its_plain_decimal(self) -> None:
+    assert agent_defaults._env_values({"env": {"R": 1.5}}, "f.yml") == {"R": "1.5"}
+
+  def test_a_string_is_left_alone(self) -> None:
+    assert agent_defaults._env_values({"env": {"S": "already"}}, "f.yml") == {"S": "already"}
+
+  @pytest.mark.parametrize("bad", [None, [1, 2], {"k": "v"}, float("nan"), float("inf")])
+  def test_a_value_with_no_clear_text_is_refused_and_named(self, bad: object) -> None:
+    with pytest.raises(SettingsError) as exc:
+      agent_defaults._env_values({"env": {"BAD": bad}}, "f.yml")
+    assert "'BAD'" in str(exc.value)
+    assert "clear, unambiguous" in str(exc.value)

@@ -36,6 +36,7 @@ Split (documented in each YAML header too):
 from __future__ import annotations
 
 import importlib.resources
+import math
 from pathlib import Path
 from typing import Any
 
@@ -822,14 +823,35 @@ def load_category_binds(package: str, filename: str, agent: str) -> CategoryBind
   return binds
 
 
+def _env_text(value: object) -> str | None:
+  """The text a declared env value realizes as, or ``None`` if it has none.
+
+  A string is itself. A bool renders the way Yapyon writes it — ``True`` /
+  ``False`` — and a finite number as its plain decimal form. ``None`` is the
+  unset idiom rather than a value, and a non-finite float or any container has
+  no single obvious text, so all of those return ``None`` and get refused
+  rather than guessed at (§2a: a scalar is accepted only where its string
+  representation is clear and unambiguous).
+  """
+  if isinstance(value, str):
+    return value
+  if isinstance(value, bool):  # before int: bool is an int subclass
+    return str(value)
+  if isinstance(value, (int, float)):
+    if isinstance(value, float) and not math.isfinite(value):
+      return None
+    return str(value)
+  return None
+
+
 def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]:
   """Read the file's top-level ``env:`` section as ``{VAR: expanded value}``.
 
   The section is a MAP, not a list of entries, so one VAR cannot be declared
   twice in one file — the representation carries that rule and there is nothing
-  to enforce.  A non-string value is REFUSED rather than coerced: an environment
-  variable IS a string, and YAML would otherwise turn an unquoted ``1`` / ``true``
-  into an int / bool whose ``str()`` is not what the author wrote (``True``).
+  to enforce.  A scalar value is stringified by :func:`_env_text` rather than
+  refused, so an unquoted ``32768`` loads as ``"32768"`` instead of blocking
+  the launch; only a value with no clear text form is refused.
   """
   section = doc.get("env", {}) or {}
   if not isinstance(section, dict):
@@ -839,13 +861,14 @@ def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]:
     )
   values: dict[str, str] = {}
   for var, value in section.items():
-    if not isinstance(value, str):
+    text = _env_text(value)
+    if text is None:
       raise SettingsError(
         f"{filename}: env variable {str(var)!r} declares a "
-        f"{type(value).__name__} value; an environment variable is a "
-        f'STRING — quote it (e.g. "1", "true")'
+        f"{type(value).__name__} value with no clear, unambiguous string "
+        f"representation (§2a)"
       )
-    values[str(var)] = _guest_path(value, filename)
+    values[str(var)] = _guest_path(text, filename)
   return values
 
 
