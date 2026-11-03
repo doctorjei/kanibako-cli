@@ -40,6 +40,7 @@ from kanibako.agent_ref import (
   persona_of,
 )
 from kanibako.errors import ConfigError
+from kanibako.settings.config_io import read_doc_text_capped
 from kanibako.settings.paths import user_config_home
 from kanibako.targets.base import (
   PERSONA_DEFAULT_MODEL,
@@ -155,8 +156,8 @@ def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult:
   """
   pointer = entry.persona_dir / ".secret_path"
   try:
-    with pointer.open(encoding="utf-8") as fh:
-      raw = fh.read(_POINTER_CAP + 1)  # capped: one path line, never a slurp
+    # capped: one path line, never a slurp
+    raw = read_doc_text_capped(pointer, cap=_POINTER_CAP, encoding="utf-8")
   except FileNotFoundError:
     return SecretPathResult(None, f"no .secret_path file at {pointer}")
   except UnicodeDecodeError:

@@ -290,6 +290,21 @@ def read_doc_text(path: Path, *, encoding: str | None = None) -> str:
   return path.read_text(encoding=encoding)
 
 
+def read_doc_text_capped(path: Path, *, cap: int, encoding: str | None = None) -> str:
+  """Read at most ``cap + 1`` characters of host configuration text.
+
+  The extra character is the point: a caller that passes its own limit can tell a
+  WHOLE file from an OVERSIZED one by ``len(result) > cap``, without ever reading
+  the rest. Use this where a config file has a declared shape (one line, one path)
+  and an unbounded read would mean slurping an arbitrary file off disk.
+
+  Raises the same ``OSError`` / ``UnicodeDecodeError`` a plain read does, so the
+  caller's handling is unchanged.
+  """
+  with open(path, encoding=encoding) as stream:
+    return stream.read(cap + 1)
+
+
 def write_doc_text(path: Path, text: str) -> None:
   """Atomically write host configuration text; box-writable paths require the box-file seam."""
   atomic_write_text(path, text)

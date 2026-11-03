@@ -25,6 +25,7 @@ def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def read_doc_text(path: Path, *, encoding: str | None=None) -> str
+def read_doc_text_capped(path: Path, *, cap: int, encoding: str | None=None) -> str
 def write_doc_text(path: Path, text: str) -> None
 def read_doc_bytes(path: Path) -> bytes
 def overwrite_doc_bytes_in_existing_parent(path: Path, data: bytes) -> int

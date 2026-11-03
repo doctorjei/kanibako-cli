@@ -712,3 +712,36 @@ def test_host_unlink_removes_leaf_not_link_target(tmp_path, link):
     assert target.read_bytes() == b"\xffkeep\r\n"
     assert target.stat().st_ino == before.st_ino
     assert target.stat().st_mode == before.st_mode
+
+
+class TestReadDocTextCapped:
+  """The capped host-text door: it reads cap+1 at most, so a caller can tell a
+  whole file from an oversized one without slurping the rest."""
+
+  def test_a_file_under_the_cap_comes_back_whole(self, tmp_path: Path) -> None:
+    path = tmp_path / "small.txt"
+    path.write_text("one line\n", encoding="utf-8")
+    got = config_io.read_doc_text_capped(path, cap=64, encoding="utf-8")
+    assert got == "one line\n"
+
+  def test_a_file_exactly_at_the_cap_is_not_flagged_oversize(self, tmp_path: Path) -> None:
+    path = tmp_path / "exact.txt"
+    path.write_text("x" * 8, encoding="utf-8")
+    got = config_io.read_doc_text_capped(path, cap=8, encoding="utf-8")
+    assert len(got) == 8 and not len(got) > 8
+
+  def test_an_oversized_file_returns_cap_plus_one_never_more(self, tmp_path: Path) -> None:
+    path = tmp_path / "huge.txt"
+    path.write_text("y" * 10_000, encoding="utf-8")
+    got = config_io.read_doc_text_capped(path, cap=8, encoding="utf-8")
+    assert len(got) == 9 and len(got) > 8
+
+  def test_missing_file_raises_like_a_plain_read(self, tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+      config_io.read_doc_text_capped(tmp_path / "gone.txt", cap=8, encoding="utf-8")
+
+  def test_undecodable_bytes_raise_like_a_plain_read(self, tmp_path: Path) -> None:
+    path = tmp_path / "bad.txt"
+    path.write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(UnicodeDecodeError):
+      config_io.read_doc_text_capped(path, cap=8, encoding="utf-8")
