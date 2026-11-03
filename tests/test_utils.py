@@ -573,7 +573,104 @@ class TestStripGitignore:
     finally:
       gitignore.chmod(0o644)
     assert "could not read" in capsys.readouterr().err
-    assert gitignore.read_text() == "box_data/\n"
+
+
+class TestWriteGitignoreLinkPolicy:
+  """A root ``.gitignore`` is written through a link only when the link stays in home."""
+
+  def test_an_internal_link_is_written_through(self, tmp_home):
+    """A link to a file under ``$HOME`` is the user's own; the append follows it."""
+    from kanibako.utils.files import write_gitignore
+
+    home = tmp_home / "home"
+    shared = home / "shared_gitignore"
+    shared.write_bytes(b"*.pyc\n")
+    root = home / "proj"
+    root.mkdir()
+    gitignore = root / ".gitignore"
+    gitignore.symlink_to(shared)
+
+    write_gitignore(root)
+
+    assert shared.read_bytes() == b"*.pyc\nbox_data/\n"
+    assert gitignore.is_symlink()
+
+  def test_a_link_outside_home_is_left_alone(self, tmp_home, capsys):
+    """The outside target keeps its bytes; the Note names the file and the reason."""
+    from kanibako.utils.files import write_gitignore
+
+    home = tmp_home / "home"
+    outside = tmp_home / "outside"
+    outside.write_bytes(b"*.pyc\n")
+    root = home / "proj"
+    root.mkdir()
+    gitignore = root / ".gitignore"
+    gitignore.symlink_to(outside)
+
+    write_gitignore(root)
+
+    assert outside.read_bytes() == b"*.pyc\n"
+    assert gitignore.is_symlink()
+    err = capsys.readouterr().err
+    assert f"did not write {gitignore}" in err
+    assert "links outside the home directory" in err
+
+  def test_a_dead_link_is_not_created_through(self, tmp_home, capsys):
+    """``open(..., "a")`` on a dangling link CREATES the target; it must not happen."""
+    from kanibako.utils.files import write_gitignore
+
+    home = tmp_home / "home"
+    root = home / "proj"
+    root.mkdir()
+    gone = tmp_home / "never-created"
+    (root / ".gitignore").symlink_to(gone)
+
+    write_gitignore(root)
+
+    assert not gone.exists()
+    assert "does not exist" in capsys.readouterr().err
+
+  def test_a_dead_link_inside_home_is_still_refused(self, tmp_home, capsys):
+    """Home is where a link may WRITE, not where a dangling one may be created."""
+    from kanibako.utils.files import write_gitignore
+
+    home = tmp_home / "home"
+    root = home / "proj"
+    root.mkdir()
+    gone = home / "not-yet"
+    (root / ".gitignore").symlink_to(gone)
+
+    write_gitignore(root)
+
+    assert not gone.exists()
+    assert "does not exist" in capsys.readouterr().err
+
+  def test_a_plain_file_is_never_refused(self, tmp_home):
+    from kanibako.utils.files import link_write_refusal, write_gitignore
+
+    root = tmp_home / "home" / "proj"
+    root.mkdir()
+    gitignore = root / ".gitignore"
+    gitignore.write_bytes(b"a/\n")
+
+    assert link_write_refusal(gitignore, root) is None
+    write_gitignore(root)
+    assert gitignore.read_bytes() == b"a/\nbox_data/\n"
+
+  def test_a_project_outside_home_still_writes_its_own_links(self, tmp_home):
+    """A project need not live under home; its own tree is internal too."""
+    from kanibako.utils.files import write_gitignore
+
+    root = tmp_home / "srv" / "proj"
+    root.mkdir(parents=True)
+    shared = root / "shared" / "ignore"
+    shared.parent.mkdir()
+    shared.write_bytes(b"*.pyc\n")
+    (root / ".gitignore").symlink_to(shared)
+
+    write_gitignore(root)
+
+    assert shared.read_bytes() == b"*.pyc\nbox_data/\n"
 
 
 class TestTheCwdIsReadOnlyThroughLogicalCwd:

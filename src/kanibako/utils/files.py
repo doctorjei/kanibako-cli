@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -23,9 +24,44 @@ def path_hash(project_path: str) -> str:
   return hashlib.sha256(project_path.encode()).hexdigest()
 
 
+def link_write_refusal(path: Path, *internal_roots: Path) -> str | None:
+  """Why kanibako must not write through *path*, or ``None`` when it may.
+
+  A non-link is always fine.  A link is fine when it resolves under the user's
+  home or under any of *internal_roots* -- the trees the caller owns, since a
+  project need not live under home.  Anything else is refused: a dead link would
+  be CREATED by ``open(..., "a")`` outside the tree, and a target outside is
+  read-only to kanibako.  ``os.path.realpath`` stops at a loop instead of
+  raising, so a loop reads as dead.
+  """
+  if not path.is_symlink():
+    return None
+  target = os.path.realpath(path)
+  if not os.path.exists(target):
+    return f"it links to {target}, which does not exist"
+  for root in (Path.home(), *internal_roots):
+    here = os.path.realpath(root)
+    if target == here or target.startswith(here + os.sep):
+      return None
+  return f"it links outside the home directory and this project, to {target}"
+
+
 def write_gitignore(project_path: Path) -> None:
-  """Append the standalone box-metadata dir (box_data/) to the project .gitignore."""
+  """Append the standalone box-metadata dir (box_data/) to the project .gitignore.
+
+  A root ``.gitignore`` that links outside the home directory, or to nothing, is
+  left alone; see :func:`link_write_refusal`.
+  """
   gitignore = project_path / IGNORE_FILE
+  refusal = link_write_refusal(gitignore, project_path)
+  if refusal is not None:
+    print(
+      f"Note: did not write {gitignore} — {refusal}. Add "
+      f"{', '.join(_GITIGNORE_ENTRIES)} to the file you want it in.",
+      file=sys.stderr,
+    )
+    return
+
   existing = ""
   if gitignore.is_file():
     existing = read_doc_text(gitignore)
