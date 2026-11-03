@@ -306,6 +306,80 @@ def test_box_byte_transport_keeps_root_and_error_contracts(tmp_path, monkeypatch
   assert caught.value is error
 
 
+def test_rooted_in_place_bytes_preserve_exact_content_and_shared_inode(tmp_path):
+  root = tmp_path / "home"
+  root.mkdir()
+  path = root / ".gitignore"
+  path.write_bytes(b"original contents\r\n")
+  path.chmod(0o640)
+  alias = root / "alias"
+  alias.hardlink_to(path)
+  before = path.stat()
+  data = b"\xff\x00\r\n"
+  assert config_io.overwrite_box_doc_bytes_in_existing_parent(path, root, data) == len(data)
+  assert path.read_bytes() == alias.read_bytes() == data
+  assert (path.stat().st_ino, path.stat().st_mode) == (before.st_ino, before.st_mode)
+  assert config_io.overwrite_box_doc_bytes_in_existing_parent(path, root, b"") == 0
+  assert alias.read_bytes() == b""
+
+
+def test_rooted_in_place_bytes_create_leaf_but_not_parents_or_invalid_content(tmp_path):
+  root = tmp_path / "home"
+  root.mkdir()
+  path = root / ".gitignore"
+  assert config_io.overwrite_box_doc_bytes_in_existing_parent(path, root, b"new") == 3
+  with pytest.raises(FileNotFoundError):
+    config_io.overwrite_box_doc_bytes_in_existing_parent(root / "missing" / "f", root, b"x")
+  assert not (root / "missing").exists()
+  with pytest.raises(TypeError):
+    config_io.overwrite_box_doc_bytes_in_existing_parent(path, root, "invalid")
+  assert path.read_bytes() == b"new"
+
+
+@pytest.mark.parametrize("link", ["leaf", "parent"])
+def test_rooted_in_place_bytes_refuse_links_without_touching_host(tmp_path, link):
+  from kanibako.boxfs import SymlinkRefusedError
+
+  root = tmp_path / "home"
+  root.mkdir()
+  outside = tmp_path / "outside"
+  outside.mkdir()
+  sentinel = outside / ".gitignore"
+  sentinel.write_bytes(b"keep\r\n")
+  before = sentinel.stat()
+  if link == "leaf":
+    (root / "nested").mkdir()
+    (root / "nested" / ".gitignore").symlink_to(sentinel)
+  else:
+    (root / "nested").symlink_to(outside)
+  with pytest.raises(SymlinkRefusedError):
+    config_io.overwrite_box_doc_bytes_in_existing_parent(
+      root / "nested" / ".gitignore", root, b"bad"
+    )
+  assert sentinel.read_bytes() == b"keep\r\n"
+  assert (sentinel.stat().st_ino, sentinel.stat().st_mode) == (before.st_ino, before.st_mode)
+  with pytest.raises(ValueError):
+    config_io.overwrite_box_doc_bytes_in_existing_parent(sentinel, root, b"bad")
+
+
+def test_rooted_in_place_bytes_delegate_exact_root_and_errors(tmp_path, monkeypatch):
+  root = tmp_path / "home"
+  path = root / ".gitignore"
+  data = b"\xff\r\n"
+  seen = []
+  error = PermissionError("injected rooted denial")
+
+  def denied(*args):
+    seen.append(args)
+    raise error
+
+  monkeypatch.setattr(config_io.boxfs, "write_bytes_in_place", denied)
+  with pytest.raises(PermissionError) as raised:
+    config_io.overwrite_box_doc_bytes_in_existing_parent(path, root, data)
+  assert raised.value is error
+  assert seen == [(path, root, data)]
+
+
 @pytest.mark.parametrize("kind", [str, bytes, bytearray])
 def test_native_json_preserves_stdlib_text_and_byte_inputs(kind):
   raw = '{"value": [true, null, "café"]}'

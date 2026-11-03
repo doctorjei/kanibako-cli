@@ -326,6 +326,11 @@ def write_box_doc_bytes(path: Path, root: Path, data: bytes) -> None:
   boxfs.write_bytes(path, root, data)
 
 
+def overwrite_box_doc_bytes_in_existing_parent(path: Path, root: Path, data: bytes) -> int:
+  """Overwrite box bytes in place through the explicit-root seam; never create parents."""
+  return boxfs.write_bytes_in_place(path, root, data)
+
+
 def read_box_doc_text(path: Path, root: Path) -> str:
   """Read UTF-8 box configuration text through the no-follow box-file seam."""
   return boxfs.read_text(path, root)

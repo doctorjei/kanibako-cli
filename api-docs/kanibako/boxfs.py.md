@@ -19,6 +19,7 @@ def read_bytes_with_stat(path: Path, root: Path) -> tuple[bytes, os.stat_result]
 def read_bytes(path: Path, root: Path) -> bytes
 def read_text(path: Path, root: Path, encoding: str='utf-8') -> str
 def write_bytes(path: Path, root: Path, data: bytes, mode: int | None=None, times: tuple[int, int] | None=None) -> None
+def write_bytes_in_place(path: Path, root: Path, data: bytes) -> int
 def write_text(path: Path, root: Path, data: str, mode: int | None=None, times: tuple[int, int] | None=None) -> None
 def listdir(path: Path, root: Path) -> list[str]
 def stat(path: Path, root: Path) -> os.stat_result

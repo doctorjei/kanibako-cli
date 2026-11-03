@@ -11,9 +11,9 @@ check for a site that skips the path with a warning instead.
 How: *root* is opened, then each component below it with ``openat`` relative to the
 last (``O_NOFOLLOW | O_DIRECTORY``), and the leaf with ``O_NOFOLLOW``.  Every operation
 acts through those descriptors, so a box that swaps a component for a link while the
-host works cannot redirect it; the swap makes the operation fail instead.  Writes go to
-a temp file in the verified parent and are renamed over the leaf through the same
-descriptor, so a leaf link is replaced, never written through.
+host works cannot redirect it. Atomic writes rename a temp file in the verified
+parent over the leaf; in-place writes verify the opened file before truncating.
+Neither writes through a leaf link.
 
 Imports only the stdlib and ``log``, so core and the plugins can both import it
 without a cycle.
@@ -339,6 +339,26 @@ def write_bytes(
       _kept_mode(fd, leaf) if mode is None else mode,
       times,
     )
+
+
+def write_bytes_in_place(path: Path, root: Path, data: bytes) -> int:
+  """Overwrite regular *path* in place, retaining its inode; never create parents.
+
+  New files use 0o666 less the umask. Validate bytes before opening; failures after
+  truncation may leave partial content.
+  """
+  data = memoryview(data).tobytes()
+  path = Path(path)
+  with _parent(path, root) as (pfd, leaf):
+    fd = _open_leaf(leaf, pfd, path, os.O_WRONLY | os.O_CREAT | os.O_NONBLOCK)
+    try:
+      with os.fdopen(fd, "wb", closefd=False) as stream:
+        if not _st.S_ISREG(os.fstat(fd).st_mode):
+          raise OSError(errno.EINVAL, "not a regular file", str(path))
+        os.ftruncate(fd, 0)
+        return stream.write(data)
+    finally:
+      os.close(fd)
 
 
 def write_text(

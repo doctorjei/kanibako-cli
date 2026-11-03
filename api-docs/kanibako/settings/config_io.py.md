@@ -32,6 +32,7 @@ def append_doc_text_in_existing_parent(path: Path, text: str) -> None
 def unlink_doc_file(path: Path, *, missing_ok: bool=False) -> None
 def read_box_doc_bytes(path: Path, root: Path) -> bytes
 def write_box_doc_bytes(path: Path, root: Path, data: bytes) -> None
+def overwrite_box_doc_bytes_in_existing_parent(path: Path, root: Path, data: bytes) -> int
 def read_box_doc_text(path: Path, root: Path) -> str
 def write_box_doc_text(path: Path, root: Path, text: str) -> None
 def overwrite_doc_text(path: Path, text: str) -> None

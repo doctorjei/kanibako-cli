@@ -6,11 +6,12 @@
 ## Host transport and native codecs
 
 `read_doc_text` keeps encodings; `write_doc_text` is atomic. `overwrite_doc_text` mkdirs before
-`overwrite_doc_text_in_existing_parent` overwrites in-place through links. Host bytes/append follow links:
-raw reads, in-place writes, default-encoding append; no mkdir. Unlink removes leaves with native
-`missing_ok`. `copy_doc_file` keeps copy2 metadata/links/errors; `replace_json_doc` renders before
-fixed `.json.tmp` write/replace; no mkdir. Rooted box text/bytes use boxfs; `read_packaged_bytes`
-keeps bytes. Codex surgery, rig validation, and empty bootstrap creation remain.
+`overwrite_doc_text_in_existing_parent`. Host raw reads, in-place writes, and default-encoding
+appends follow links without mkdir. Unlink retains `missing_ok`. `copy_doc_file` keeps
+copy2 metadata/links/errors; `replace_json_doc` renders before fixed `.json.tmp` write/replace,
+without mkdir. Box text/bytes use boxfs; writes replace atomically, except
+`overwrite_box_doc_bytes_in_existing_parent`: in-place, existing parents.
+`read_packaged_bytes` keeps bytes. Codex surgery, rig validation, and empty bootstraps remain.
 
 JSON str/bytes/bytearray and TOML retain stdlib values/errors; `parse_native_yaml` uses unguarded
 SafeLoader. Goose owns mapping/error/size policy. `render_json_text`: compare-before-write,

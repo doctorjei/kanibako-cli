@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import io
 import logging
 import os
 import socket
@@ -176,6 +177,215 @@ def test_write_refuses_links_and_writes_files(tree):
   assert (root / "a" / "new" / "f").read_text() == "hi"
   boxfs.write_bytes(root / "a" / "new" / "f", root, b"yo")
   assert (root / "a" / "new" / "f").read_bytes() == b"yo"
+
+
+def test_in_place_write_keeps_inode_hardlink_mode_and_exact_bytes(tree):
+  root, _, _ = tree
+  path = root / "a" / "f"
+  path.write_bytes(b"long original contents")
+  path.chmod(0o640)
+  alias = root / "a" / "alias"
+  alias.hardlink_to(path)
+  before = path.stat()
+  data = b"\xff\x00\r\n"
+  assert boxfs.write_bytes_in_place(path, root, data) == len(data)
+  assert path.read_bytes() == alias.read_bytes() == data
+  assert (path.stat().st_ino, path.stat().st_mode) == (before.st_ino, before.st_mode)
+  assert boxfs.write_bytes_in_place(path, root, b"") == 0
+  assert alias.read_bytes() == b""
+
+
+@pytest.mark.parametrize("mask", [0o022, 0o077])
+def test_in_place_write_creates_only_leaf_with_native_umask(tree, mask):
+  root, _, _ = tree
+  path = root / "a" / "new"
+  old_mask = os.umask(mask)
+  try:
+    assert boxfs.write_bytes_in_place(path, root, b"new") == 3
+  finally:
+    os.umask(old_mask)
+  assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~mask
+  with pytest.raises(FileNotFoundError):
+    boxfs.write_bytes_in_place(root / "absent" / "f", root, b"x")
+  assert not (root / "absent").exists()
+
+
+@pytest.mark.parametrize("data", [None, "text", 4, [1, 2], object()])
+def test_in_place_write_validates_bytes_before_mutating_or_creating(tree, data):
+  root, _, _ = tree
+  existing = root / "a" / "f"
+  existing.write_bytes(b"keep")
+  for path in (existing, root / "a" / "absent"):
+    with pytest.raises(TypeError):
+      boxfs.write_bytes_in_place(path, root, data)
+  assert existing.read_bytes() == b"keep"
+  assert not (root / "a" / "absent").exists()
+
+
+def test_in_place_write_accepts_buffer_bytes_before_opening(tree):
+  root, _, _ = tree
+  path = root / "a" / "f"
+  data = memoryview(b"abcdef")[::2]
+  assert boxfs.write_bytes_in_place(path, root, data) == 3
+  assert path.read_bytes() == b"ace"
+
+
+def test_in_place_write_refuses_links_and_root_escape(tree):
+  root, outside, sentinel = tree
+  before = sentinel.read_bytes(), sentinel.stat().st_ino, sentinel.stat().st_mode
+  for path in _links(root, outside):
+    with pytest.raises(SymlinkRefusedError):
+      boxfs.write_bytes_in_place(path, root, b"bad")
+  for path in (sentinel, root, root / "a" / ".." / ".." / "host" / "secret"):
+    with pytest.raises(ValueError):
+      boxfs.write_bytes_in_place(path, root, b"bad")
+  assert (sentinel.read_bytes(), sentinel.stat().st_ino, sentinel.stat().st_mode) == before
+
+
+@pytest.mark.parametrize("kind", ["directory", "fifo", "socket"])
+def test_in_place_write_refuses_nonregular_without_blocking(tree, kind):
+  root, _, _ = tree
+  path = root / "a" / "nonregular"
+  with contextlib.ExitStack() as stack:
+    if kind == "directory":
+      path.mkdir()
+    elif kind == "fifo":
+      os.mkfifo(path)
+      reader = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+      stack.callback(os.close, reader)
+    else:
+      sock = stack.enter_context(socket.socket(socket.AF_UNIX))
+      sock.bind(str(path))
+    before = path.stat()
+    with pytest.raises(OSError):
+      boxfs.write_bytes_in_place(path, root, b"bad")
+    assert (path.stat().st_ino, path.stat().st_mode) == (before.st_ino, before.st_mode)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+def test_in_place_write_preserves_native_permission_error(tree):
+  root, _, _ = tree
+  path = root / "a" / "f"
+  path.write_bytes(b"keep")
+  path.chmod(0o400)
+  try:
+    with pytest.raises(PermissionError):
+      boxfs.write_bytes_in_place(path, root, b"bad")
+    assert path.read_bytes() == b"keep"
+  finally:
+    path.chmod(0o600)
+
+
+@pytest.mark.parametrize("failure", ["fstat", "ftruncate"])
+def test_in_place_write_closes_descriptors_on_prewrite_errors(tree, monkeypatch, failure):
+  root, _, _ = tree
+  path = root / "a" / "f"
+  path.write_bytes(b"keep")
+  real_open, real_stat = os.open, os.fstat
+  opened = []
+  error = OSError(errno.EIO, "injected prewrite failure")
+
+  def record_open(*args, **kwargs):
+    fd = real_open(*args, **kwargs)
+    opened.append(fd)
+    return fd
+
+  def fail(*args):
+    raise error
+
+  monkeypatch.setattr(boxfs.os, "open", record_open)
+  monkeypatch.setattr(boxfs.os, failure, fail)
+  with pytest.raises(OSError) as raised:
+    boxfs.write_bytes_in_place(path, root, b"bad")
+  assert raised.value is error
+  for fd in opened:
+    with pytest.raises(OSError) as closed:
+      real_stat(fd)
+    assert closed.value.errno == errno.EBADF
+  assert path.read_bytes() == b"keep"
+
+
+@pytest.mark.parametrize("failure", [None, "constructor", "write"])
+def test_in_place_write_closes_leaf_on_success_and_stream_errors(tree, monkeypatch, failure):
+  root, _, _ = tree
+  path = root / "a" / "f"
+  path.write_bytes(b"original")
+  error = (
+    MemoryError("stream allocation failed")
+    if failure == "constructor"
+    else OSError(errno.ENOSPC, "injected write failure")
+  )
+
+  class PartialWriter(io.BufferedWriter):
+    def write(self, data):
+      super().write(bytes(data)[:2])
+      raise error
+
+  def failing_fdopen(fd, mode, closefd=True):
+    if failure == "constructor":
+      raise error
+    return PartialWriter(io.FileIO(fd, mode, closefd=closefd))
+
+  if failure:
+    monkeypatch.setattr(boxfs.os, "fdopen", failing_fdopen)
+  before = set(os.listdir("/proc/self/fd"))
+  if failure:
+    with pytest.raises(type(error)) as raised:
+      boxfs.write_bytes_in_place(path, root, b"new")
+    assert raised.value is error
+    assert path.read_bytes() == (b"original" if failure == "constructor" else b"ne")
+  else:
+    assert boxfs.write_bytes_in_place(path, root, b"new") == 3
+    assert path.read_bytes() == b"new"
+  assert set(os.listdir("/proc/self/fd")) == before
+
+
+@pytest.mark.parametrize("kind", ["leaf", "parent", "fifo"])
+def test_in_place_write_preopen_swap_cannot_redirect_outside(tree, monkeypatch, kind):
+  root, outside, sentinel = tree
+  parent = root / "a" / "b"
+  path = parent / "secret"
+  path.write_bytes(b"box copy")
+  real_open_leaf = boxfs._open_leaf
+
+  def swap_then_open(*args, **kwargs):
+    if kind == "parent":
+      parent.rename(root / "a" / "moved")
+      parent.symlink_to(outside)
+    else:
+      path.unlink()
+      if kind == "leaf":
+        path.symlink_to(sentinel)
+      else:
+        os.mkfifo(path)
+    return real_open_leaf(*args, **kwargs)
+
+  monkeypatch.setattr(boxfs, "_open_leaf", swap_then_open)
+  if kind == "parent":
+    assert boxfs.write_bytes_in_place(path, root, b"new") == 3
+    assert (root / "a" / "moved" / "secret").read_bytes() == b"new"
+  else:
+    with pytest.raises(OSError):
+      boxfs.write_bytes_in_place(path, root, b"new")
+  assert sentinel.read_text() == "host data"
+
+
+def test_in_place_write_uses_opened_inode_after_leaf_link_swap(tree, monkeypatch):
+  root, _, sentinel = tree
+  path = root / "a" / "f"
+  path.write_bytes(b"box copy")
+  held = root / "a" / "held"
+  real_truncate = os.ftruncate
+
+  def swap_then_truncate(fd, length):
+    path.rename(held)
+    path.symlink_to(sentinel)
+    return real_truncate(fd, length)
+
+  monkeypatch.setattr(boxfs.os, "ftruncate", swap_then_truncate)
+  assert boxfs.write_bytes_in_place(path, root, b"new") == 3
+  assert held.read_bytes() == b"new"
+  assert sentinel.read_text() == "host data"
 
 
 def test_copy_file_keeps_mode_and_times_and_refuses_links(tree):
