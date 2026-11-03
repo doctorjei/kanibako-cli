@@ -8983,3 +8983,35 @@ class TestSetTimeAgentFileRootScalar:
     dump_doc(agent_file, {"self": {"model": "opus", "zz_undeclared": "x"}})
     value, errors = self._expand_probe(std, agent_file, "{agent.claude.model}/x")
     assert self._KEY in errors, (value, errors)
+
+
+class TestRestoredOnFailure:
+  """Creation-settings rollback on a real file: the preimage text, or absence."""
+
+  def test_a_raise_restores_the_preimage(self, tmp_path):
+    from kanibako.settings.config_interface import _restored_on_failure
+
+    path = tmp_path / "box.yaml"
+    path.write_bytes(b"a: 1\n")
+    with pytest.raises(RuntimeError), _restored_on_failure(path):
+      path.write_bytes(b"a: 2\n")
+      raise RuntimeError
+    assert path.read_bytes() == b"a: 1\n"
+
+  def test_a_raise_removes_a_file_the_block_created(self, tmp_path):
+    from kanibako.settings.config_interface import _restored_on_failure
+
+    path = tmp_path / "box.yaml"
+    with pytest.raises(RuntimeError), _restored_on_failure(path):
+      path.write_bytes(b"a: 2\n")
+      raise RuntimeError
+    assert not path.exists()
+
+  def test_success_keeps_the_write(self, tmp_path):
+    from kanibako.settings.config_interface import _restored_on_failure
+
+    path = tmp_path / "box.yaml"
+    path.write_bytes(b"a: 1\n")
+    with _restored_on_failure(path):
+      path.write_bytes(b"a: 2\n")
+    assert path.read_bytes() == b"a: 2\n"

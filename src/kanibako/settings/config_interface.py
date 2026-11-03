@@ -38,7 +38,6 @@ from kanibako.settings.config import (
   system_path_ref_error,
   unset_project_config_key,
 )
-from kanibako._atomic import atomic_write_text
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
@@ -146,12 +145,15 @@ from kanibako.settings.config_io import (
   count_leaves,
   dump_doc,
   load_doc,
+  read_doc_text,
   read_stored_leaf,
   read_stored_pref,
   remove_nested_key,
   remove_root_key,
   render_stored_pref,
   render_stored_scalar,
+  unlink_doc_file,
+  write_doc_text,
   write_nested_key,
   write_root_key,
 )
@@ -2583,14 +2585,14 @@ def _write_creation_prefs(
 @contextmanager
 def _restored_on_failure(path: Path) -> "Iterator[None]":
   """Put *path* back byte-for-byte (or absent) when the block raises."""
-  before = path.read_text(encoding="utf-8") if stat_unless_gone(path) is not None else None
+  before = read_doc_text(path, encoding="utf-8") if stat_unless_gone(path) is not None else None
   try:
     yield
   except BaseException:
     if before is None:
-      path.unlink(missing_ok=True)
+      unlink_doc_file(path, missing_ok=True)
     else:
-      atomic_write_text(path, before)
+      write_doc_text(path, before)
     raise
 
 

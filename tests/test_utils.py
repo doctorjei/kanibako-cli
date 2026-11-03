@@ -520,6 +520,27 @@ class TestStripGitignore:
     assert strip_gitignore(gitignore_to_strip(tmp_path))
     assert gitignore.read_bytes() == b"a/\r\nb/\r\n"
 
+  def test_append_and_strip_stay_in_place(self, tmp_path):
+    from kanibako.utils.files import strip_gitignore, write_gitignore
+
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_bytes(b"a/")
+    gitignore.chmod(0o600)
+    ino = gitignore.stat().st_ino
+    write_gitignore(tmp_path)
+    assert gitignore.read_bytes() == b"a/\nbox_data/\n"
+    assert strip_gitignore(gitignore)
+    assert gitignore.read_bytes() == b"a/\n"
+    st = gitignore.stat()
+    assert (st.st_ino, st.st_mode & 0o777) == (ino, 0o600)
+
+  def test_append_never_creates_the_parent(self, tmp_path):
+    from kanibako.utils.files import write_gitignore
+
+    with pytest.raises(FileNotFoundError):
+      write_gitignore(tmp_path / "missing")
+    assert not (tmp_path / "missing").exists()
+
   def test_our_line_absent_plans_nothing(self, tmp_path, capsys):
     from kanibako.utils.files import gitignore_to_strip
 

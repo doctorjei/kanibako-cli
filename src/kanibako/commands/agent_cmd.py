@@ -427,21 +427,20 @@ def _agent_file_verdict_after_edit(
   answers that without touching the reader's contract (a DOTTED spelling stays refused).
   Only the READER's verdict is a bad entry; a copy the write cannot land raises ``ConfigError``.
   """
-  import shutil
   import tempfile
   from pathlib import Path
 
   from kanibako.errors import ConfigError, KanibakoError
   from kanibako.settings.agent_file import AgentFileSlot, scope_view, write_leaf
   from kanibako.settings.config_interface import _ill_typed_stored_entries
-  from kanibako.settings.config_io import load_doc
+  from kanibako.settings.config_io import copy_doc_file, load_doc
   from kanibako.settings.messages import WARN_CONFIG_ILL_TYPED_ENTRIES
   from kanibako.settings.settings_assemble import ReadPurpose, agent_record
   from kanibako.settings.settings_resolve import SettingsError
 
   with tempfile.TemporaryDirectory(prefix="kanibako-agentset-") as tmp:
     probe = Path(tmp) / path.name
-    shutil.copy2(path, probe)
+    copy_doc_file(path, probe)
 
     def real(text: object) -> str:
       # Errors and warnings here name the COPY; the user needs the real path.
