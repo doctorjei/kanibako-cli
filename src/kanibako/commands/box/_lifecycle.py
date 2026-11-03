@@ -4624,20 +4624,26 @@ def _hold_root_gitignore(
   lines the root file held beyond kanibako's; the tail strips kanibako's as before.
   The restore is pushed BEFORE the lift's undo, so a rollback puts both files back.
   """
-  import os
+  from kanibako import boxfs
+  from kanibako.settings.config_io import (
+    overwrite_box_doc_bytes_in_existing_parent,
+    read_box_doc_bytes,
+  )
 
   ours, theirs = root / bootstrap.IGNORE_FILE, workspace / bootstrap.IGNORE_FILE
   if not (ours.is_file() and not ours.is_symlink() and (theirs.exists() or theirs.is_symlink())):
     return None
-  held, mode = ours.read_bytes(), ours.stat().st_mode & 0o7777
-  their_bytes = theirs.read_bytes() if theirs.is_file() and not theirs.is_symlink() else None
+  held, mode = read_box_doc_bytes(ours, root), boxfs.stat(ours, root).st_mode & 0o7777
+  their_bytes = (
+    read_box_doc_bytes(theirs, workspace) if theirs.is_file() and not theirs.is_symlink() else None
+  )
 
   def _put_back() -> None:
     if their_bytes is not None and theirs.is_file() and not theirs.is_symlink():
-      theirs.write_bytes(their_bytes)
+      overwrite_box_doc_bytes_in_existing_parent(theirs, workspace, their_bytes)
     if not (ours.exists() or ours.is_symlink()):
-      ours.write_bytes(held)
-      os.chmod(ours, mode)
+      overwrite_box_doc_bytes_in_existing_parent(ours, root, held)
+      boxfs.chmod(ours, root, mode)
 
   unwind.push(_put_back)
   if their_bytes is None or gitignore_holds_only_kanibako(ours):
@@ -4652,7 +4658,7 @@ def _hold_root_gitignore(
     return None
   sep = b"" if not their_bytes or their_bytes.endswith(b"\n") else b"\n"
   merged = their_bytes + sep + "".join(f"{line}\n" for line in extra).encode()
-  return partial(ours.write_bytes, merged)
+  return partial(overwrite_box_doc_bytes_in_existing_parent, ours, root, merged)
 
 
 def _unconsolidate_workspace_subdir(

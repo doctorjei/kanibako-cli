@@ -2814,6 +2814,58 @@ class TestWindowUndoRestoresARootWorksetFile:
       "the failed create left its .gitignore entries in the USER's file"
     )
 
+  def test_the_gitignore_restore_is_in_place(self, config_file, tmp_home, credentials_dir):
+    """The restore keeps the file's inode, its hard links, and its mode."""
+    import os
+
+    from kanibako.commands.box._parser import run_create
+
+    path = tmp_home / "sa"
+    path.mkdir()
+    mine = b"# my rules\n*.pyc"
+    gi = path / ".gitignore"
+    gi.write_bytes(mine)
+    gi.chmod(0o640)
+    twin = tmp_home / "twin"
+    os.link(gi, twin)
+    inode = gi.stat().st_ino
+
+    with pytest.MonkeyPatch.context() as mp:
+      _at_window_end(mp, True, self._fail())
+      with pytest.raises(_InterruptCreate):
+        run_create(_create_args(path, standalone=True, no_vault=False))
+
+    assert gi.read_bytes() == twin.read_bytes() == mine
+    assert gi.stat().st_ino == inode
+    assert gi.stat().st_mode & 0o7777 == 0o640
+
+  def test_the_restore_never_writes_through_a_link(
+    self, config_file, tmp_home, credentials_dir, capsys
+  ):
+    """A root file swapped for a link after the write is left as found; its target too."""
+    from kanibako.commands.box._parser import run_create
+
+    path = tmp_home / "sa"
+    path.mkdir()
+    gi = path / ".gitignore"
+    gi.write_bytes(b"*.pyc\n")
+    outside = tmp_home / "outside"
+
+    def _swap(std, proj):
+      outside.write_bytes(gi.read_bytes())
+      gi.unlink()
+      gi.symlink_to(outside)
+      raise _InterruptCreate("stopped at the end of the undo window")
+
+    with pytest.MonkeyPatch.context() as mp:
+      _at_window_end(mp, True, _swap)
+      with pytest.raises(_InterruptCreate):
+        run_create(_create_args(path, standalone=True, no_vault=False))
+
+    assert gi.is_symlink()
+    assert outside.read_bytes() != b"*.pyc\n"
+    assert f"left {gi} as found" in capsys.readouterr().err
+
   def test_the_gitignore_restore_leaves_a_later_edit_alone(
     self, config_file, tmp_home, credentials_dir
   ):

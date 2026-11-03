@@ -1244,11 +1244,19 @@ def _new_box_undo(
     load_workset_settings_doc,
     resolve_workset_canon,
   )
+  from kanibako import boxfs
   from kanibako.runtime.container import remove_box_tree
+  from kanibako.settings.config_io import (
+    overwrite_box_doc_bytes_in_existing_parent,
+    read_box_doc_bytes,
+  )
   from kanibako.settings.paths import VAULT_PATH
 
   def _absent(path: Path) -> bool:
     return not path.exists() and not path.is_symlink()
+
+  def _regular(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
 
   # ⚑ NAME THIS CREATE'S OWN OUTPUTS: never found by diffing a tree, whose set
   # difference takes every path that appeared while the window was open.
@@ -1304,13 +1312,13 @@ def _new_box_undo(
   modes: dict[str, int] = {}  # an atomic rewrite lands a fresh file's mode
   if standalone:
     for fname in (IGNORE_FILE, WORKSET_META_FILE):
-      if (root / fname).is_file():
-        rewrites[fname] = [(root / fname).read_bytes()] * 2
-        modes[fname] = (root / fname).stat().st_mode & 0o7777
+      if _regular(root / fname):
+        rewrites[fname] = [read_box_doc_bytes(root / fname, root)] * 2
+        modes[fname] = boxfs.stat(root / fname, root).st_mode & 0o7777
 
   def wrote(fname: str) -> None:
-    if fname in rewrites and (root / fname).is_file():
-      rewrites[fname][1] = (root / fname).read_bytes()
+    if fname in rewrites and _regular(root / fname):
+      rewrites[fname][1] = read_box_doc_bytes(root / fname, root)
 
   def undo() -> None:
     # ⚑ LEAVES, THEN FILES, THEN DEEPEST PARENT.
@@ -1336,9 +1344,9 @@ def _new_box_undo(
         path.rmdir()
     for fname, (original, ours) in rewrites.items():
       path = root / fname
-      if path.is_file() and path.read_bytes() == ours:
-        path.write_bytes(original)
-        path.chmod(modes[fname])
+      if _regular(path) and read_box_doc_bytes(path, root) == ours:
+        overwrite_box_doc_bytes_in_existing_parent(path, root, original)
+        boxfs.chmod(path, root, modes[fname])
       else:
         print(
           f"Note: left {path} as found; it changed after this create wrote it.", file=sys.stderr

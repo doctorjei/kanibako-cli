@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import os
 
 import pytest
 
+from kanibako import boxfs
 from kanibako.commands.box import _lifecycle
 from kanibako.commands.box._lifecycle import (
   TargetSpec,
@@ -126,6 +128,42 @@ class TestConvertOutOfStandaloneGitignore:
     assert _convert(root, to_default=True) != 0
     assert (root / ".gitignore").read_bytes() == before
     assert (root / "workspace" / ".gitignore").read_bytes() == _USER
+
+  def test_the_merge_writes_the_lifted_file_in_place(self, env, tmp_home):
+    root = self._root(env, b"secret/\n")
+    lifted = root / "workspace" / ".gitignore"
+    twin = tmp_home / "twin"
+    os.link(lifted, twin)
+    inode = lifted.stat().st_ino
+    assert _convert(root, to_default=True) == 0
+    assert (root / ".gitignore").read_bytes() == twin.read_bytes() == _USER + b"secret/\n"
+    assert (root / ".gitignore").stat().st_ino == inode
+
+  def test_a_rollback_restores_the_root_files_mode(self, env, monkeypatch):
+    root = self._root(env)
+    (root / ".gitignore").chmod(0o640)
+    before = (root / ".gitignore").read_bytes()
+
+    def boom(*_a, **_k):
+      raise OSError("injected")
+
+    monkeypatch.setattr(_lifecycle, "_apply_ownership_and_markers", boom)
+    assert _convert(root, to_default=True) != 0
+    assert (root / ".gitignore").read_bytes() == before
+    assert (root / ".gitignore").stat().st_mode & 0o7777 == 0o640
+
+  def test_the_merge_never_writes_through_a_link(self, env, tmp_home):
+    root = self._root(env, b"secret/\n")
+    unwind = _lifecycle._Unwind()
+    merge = _lifecycle._hold_root_gitignore(root, root / "workspace", unwind)
+    assert merge is not None
+    outside = tmp_home / "outside"
+    outside.write_bytes(b"theirs\n")
+    (root / ".gitignore").unlink()
+    (root / ".gitignore").symlink_to(outside)
+    with pytest.raises(boxfs.SymlinkRefusedError):
+      merge()
+    assert outside.read_bytes() == b"theirs\n"
 
 
 def _runtime_says(monkeypatch, running):
